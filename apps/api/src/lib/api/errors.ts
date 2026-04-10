@@ -1,130 +1,34 @@
-/**
- * Error handling utilities for API routes
- */
+export type ErrorCode =
+  | 'VALIDATION_ERROR'
+  | 'NOT_FOUND'
+  | 'CONFLICT'
+  | 'UNAUTHORIZED'
+  | 'FORBIDDEN'
+  | 'INTERNAL'
+  | 'UPSTREAM_ERROR';
 
-import { NextResponse } from "next/server";
-import { ZodError } from "zod";
-import { Prisma } from "@prisma/client";
-
-export class ApiError extends Error {
+export class SupabaseError extends Error {
   constructor(
-    public statusCode: number,
-    message: string,
-    public code?: string,
+    public readonly original: { code?: string; message: string; details?: string },
+    public readonly httpStatus: number = 500
   ) {
-    super(message);
-    this.name = "ApiError";
+    super(original.message);
+    this.name = 'SupabaseError';
   }
 }
 
-export interface ErrorResponse {
-  error: {
-    message: string;
-    code?: string;
-    details?: unknown;
-  };
-}
-
-export function handleApiError(error: unknown): NextResponse<ErrorResponse> {
-  console.error("API Error:", error);
-
-  // Zod validation errors
-  if (error instanceof ZodError) {
-    return NextResponse.json(
-      {
-        error: {
-          message: "Validation error",
-          code: "VALIDATION_ERROR",
-          details: error.issues,
-        },
-      },
-      { status: 400 },
-    );
+/**
+ * Translates a Supabase/PostgreSQL error code into our API error code.
+ */
+export function translateSupabaseError(err: { code?: string; message: string }): {
+  code: ErrorCode;
+  status: number;
+} {
+  switch (err.code) {
+    case 'PGRST116': return { code: 'NOT_FOUND', status: 404 };
+    case '23505':    return { code: 'CONFLICT', status: 409 };
+    case '23503':    return { code: 'VALIDATION_ERROR', status: 400 };
+    case '42501':    return { code: 'FORBIDDEN', status: 403 };
+    default:         return { code: 'INTERNAL', status: 500 };
   }
-
-  // Custom API errors
-  if (error instanceof ApiError) {
-    return NextResponse.json(
-      {
-        error: {
-          message: error.message,
-          code: error.code,
-        },
-      },
-      { status: error.statusCode },
-    );
-  }
-
-  // Prisma errors
-  if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    // Record not found
-    if (error.code === "P2025") {
-      return NextResponse.json(
-        {
-          error: {
-            message: "Resource not found",
-            code: "NOT_FOUND",
-          },
-        },
-        { status: 404 },
-      );
-    }
-
-    // Unique constraint violation
-    if (error.code === "P2002") {
-      return NextResponse.json(
-        {
-          error: {
-            message: "A record with this value already exists",
-            code: "DUPLICATE_RECORD",
-          },
-        },
-        { status: 409 },
-      );
-    }
-
-    // Foreign key constraint violation
-    if (error.code === "P2003") {
-      return NextResponse.json(
-        {
-          error: {
-            message: "Related record not found",
-            code: "FOREIGN_KEY_ERROR",
-          },
-        },
-        { status: 400 },
-      );
-    }
-  }
-
-  // Generic server error
-  return NextResponse.json(
-    {
-      error: {
-        message: "Internal server error",
-        code: "INTERNAL_ERROR",
-      },
-    },
-    { status: 500 },
-  );
-}
-
-export function createSuccessResponse<T>(data: T, status = 200) {
-  return NextResponse.json({ success: true, data }, { status });
-}
-
-export function createErrorResponse(
-  message: string,
-  status = 400,
-  code?: string,
-) {
-  return NextResponse.json(
-    {
-      error: {
-        message,
-        code: code || (status === 404 ? "NOT_FOUND" : "ERROR"),
-      },
-    },
-    { status },
-  );
 }
