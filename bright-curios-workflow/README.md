@@ -405,6 +405,19 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 
 Check out the [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 
+## GitHub Packages authentication
+
+This project depends on `@tn-figueiredo/shared` published on GitHub
+Packages. The `.npmrc` at the repo root references `NODE_AUTH_TOKEN`
+from the environment.
+
+If `npm install` fails with `401 Unauthorized`:
+
+1. Create a classic GitHub token at <https://github.com/settings/tokens>
+   with the `read:packages` scope.
+2. Export it: `export NODE_AUTH_TOKEN=<token>` (add to your shell profile).
+3. Retry `npm install`.
+
 ---
 
 **Built with ❤️ for content creators**
