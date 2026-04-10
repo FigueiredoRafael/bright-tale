@@ -1,4 +1,12 @@
-.worktrees/
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Builds
+.next/
+dist/
+out/
+*.tsbuildinfo
 
 # Env — NEVER commit
 .env
@@ -7,3 +15,22 @@
 .env.development
 .env.production
 .env.staging
+
+# Supabase local runtime
+supabase/.branches/
+supabase/.temp/
+
+# Logs / caches
+.vercel/
+.turbo/
+*.log
+.DS_Store
+
+# Testing
+coverage/
+
+# Storybook
+storybook-static/
+
+# Worktrees
+.worktrees/
