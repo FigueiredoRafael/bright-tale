@@ -17,6 +17,29 @@
 - `~/Workspace/BrightCurios/bright-tale/bright-curios-workflow` — Next.js app (Phase 2)
 - `~/Workspace/tonagarantia` — used only for pre-publish validation in Phase 1
 
+## Preconditions
+
+Before starting, verify each repo has `node_modules` installed and that `NODE_AUTH_TOKEN` is available in the shell for GitHub Packages authentication.
+
+```bash
+# tnf-ecosystem
+cd ~/Workspace/tnf-ecosystem && test -d node_modules || npm install
+
+# tonagarantia (needed for Task 13 validation)
+cd ~/Workspace/tonagarantia && test -d node_modules || npm install
+
+# bright-tale workflow (will receive the package in Task 19)
+cd ~/Workspace/BrightCurios/bright-tale/bright-curios-workflow && test -d node_modules || npm install
+
+# Confirm auth token for GitHub Packages
+echo "NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:+present}${NODE_AUTH_TOKEN:-missing}"
+```
+If `missing`, generate a classic PAT at <https://github.com/settings/tokens> with `read:packages` (and `write:packages` for publishing later — only needed in CI, not locally) and export it in the shell profile.
+
+**Known pre-existing state in tnf-ecosystem:** the `main` branch has uncommitted modifications in `packages/auth/package.json` and `packages/auth/tsup.config.ts`. **Do NOT touch those files in any commit of this plan.** If you accidentally stage them, unstage with `git restore --staged packages/auth/`.
+
+**Rollback:** if anything in Phase 1 publishing goes wrong, consult `bright-curios-workflow/docs/superpowers/specs/2026-04-10-aurora-theme-design.md` §3.13 for the rollback plan (either release a `0.8.1` fix or `npm deprecate` the broken version).
+
 ---
 
 ## Phase 1 — Extend and publish `@tn-figueiredo/shared@0.8.0`
@@ -32,18 +55,25 @@ Run:
 cd ~/Workspace/tnf-ecosystem
 git status
 ```
-Expected: a clean `main` or only the pre-existing uncommitted `packages/auth/package.json` and `packages/auth/tsup.config.ts` (these are NOT to be touched).
+Expected: clean `main` or only the pre-existing modifications in `packages/auth/package.json` and `packages/auth/tsup.config.ts`. If any OTHER files are modified, stop and investigate — do not proceed blindly.
 
-- [ ] **Step 2: Create the feature branch**
+- [ ] **Step 2: Fetch latest main**
 
 Run:
 ```bash
 cd ~/Workspace/tnf-ecosystem
-git checkout main
-git pull --ff-only
-git checkout -b feat/shared-theme-rich-tokens
+git fetch origin main
 ```
-Expected: `Switched to a new branch 'feat/shared-theme-rich-tokens'`
+Expected: fetch completes. `git pull --ff-only` is avoided because the dirty `packages/auth/*` working-tree files would block a merge.
+
+- [ ] **Step 3: Create the feature branch from origin/main**
+
+Run:
+```bash
+cd ~/Workspace/tnf-ecosystem
+git checkout -b feat/shared-theme-rich-tokens origin/main
+```
+Expected: `Switched to a new branch 'feat/shared-theme-rich-tokens'`. The pre-existing `packages/auth/*` modifications will carry over onto the new branch as uncommitted changes — leave them untouched, and only stage files explicitly listed in each task's commit step.
 
 ---
 
@@ -679,74 +709,72 @@ git commit -m "test(shared): cover shadows, typography.scale/families, scales"
 
 ---
 
-### Task 10: Extend the subpath imports test with new types
+### Task 10: Extend the subpath imports test to exercise new theme types
 
 **Files:**
 - Modify: `packages/shared/src/__tests__/subpath-imports.test.ts`
 
-- [ ] **Step 1: Read the current file**
+The existing file is a single top-level `describe('subpath imports', …)` with `it(...)` blocks that use `await import('../<subpath>/index.js')` and assert runtime exports. The `./theme` test currently only checks `createTheme`. New theme types are type-only (no runtime presence), so the meaningful test for them is a compile-time import.
 
-Run:
-```bash
-cat ~/Workspace/tnf-ecosystem/packages/shared/src/__tests__/subpath-imports.test.ts
-```
+- [ ] **Step 1: Add a top-level type-only import at the top of the file**
 
-- [ ] **Step 2: Add an assertion that the new types are importable**
-
-Find the block (or create one) that imports from `'../theme/index.js'`. Add a type-only import line and a dummy usage assertion:
+Edit `packages/shared/src/__tests__/subpath-imports.test.ts`. Replace the first line:
 
 ```ts
+import { describe, it, expect } from 'vitest';
+```
+
+with:
+
+```ts
+import { describe, it, expect } from 'vitest';
+// Compile-time assertion: new theme types are exported from the subpath.
+// These are type-only imports (erased at runtime); the build fails if any
+// of them is missing from `./theme`.
 import type {
-  ThemePalette,
+  AppTheme,
+  ThemeColors,
+  ThemeSpacing,
+  ThemeTypography,
+  ThemeRadii,
   ColorScale,
-  SurfaceSet,
   BrandPalette,
   AccentColors,
-  FontFace,
+  SurfaceSet,
+  SemanticColors,
+  ThemePalette,
   TypeToken,
+  FontFace,
   ThemeScales,
   ThemeShadows,
 } from '../theme/index.js';
-
-// Compile-time usage — all types must exist on the exported surface.
-type _Assert =
-  | ThemePalette
-  | ColorScale
-  | SurfaceSet
-  | BrandPalette
-  | AccentColors
-  | FontFace
-  | TypeToken
-  | ThemeScales
-  | ThemeShadows;
-
-describe('theme subpath: new types are exported', () => {
-  it('exports are reachable (type-level)', () => {
-    // The import itself is the assertion; runtime just confirms it loaded.
-    const mod: unknown = undefined satisfies undefined;
-    expect(mod).toBeUndefined();
-  });
-});
+// Reference each imported type so the import is not pruned.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _ThemeSubpathExports =
+  | AppTheme | ThemeColors | ThemeSpacing | ThemeTypography | ThemeRadii
+  | ColorScale | BrandPalette | AccentColors | SurfaceSet | SemanticColors
+  | ThemePalette | TypeToken | FontFace | ThemeScales | ThemeShadows;
 ```
 
-**Note:** If the file already has an umbrella `describe` or helper, adapt the addition to fit its style instead of duplicating. The key is that the new type imports compile.
+- [ ] **Step 2: Leave the existing `./theme` runtime test unchanged**
+
+The existing `it('./theme exports createTheme', …)` block stays as-is. It already validates runtime resolution of the subpath.
 
 - [ ] **Step 3: Run the tests**
 
-Run:
 ```bash
 cd ~/Workspace/tnf-ecosystem/packages/shared
 npm run build
 npx vitest run src/__tests__/subpath-imports.test.ts
 ```
-Expected: all pre-existing tests pass plus the new describe block.
+Expected: all 10 pre-existing tests still pass. The build (tsc via `npm run build` → `turbo run build`) also succeeds, which is the compile-time proof that the new type imports resolve.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 cd ~/Workspace/tnf-ecosystem
 git add packages/shared/src/__tests__/subpath-imports.test.ts
-git commit -m "test(shared): verify new theme types export via subpath"
+git commit -m "test(shared): assert new theme types export via subpath (type-level)"
 ```
 
 ---
@@ -893,7 +921,7 @@ Expected: `turbo run typecheck` — no TS errors in any package.
 cd ~/Workspace/tnf-ecosystem
 npm run test
 ```
-Expected: all packages' test suites pass, including the 10 new theme tests added in Tasks 7–10.
+Expected: all packages' test suites pass, including the 11 new runtime tests added to `theme.test.ts` in Tasks 7 (1), 8 (6), and 9 (4). Task 10 adds compile-time type assertions only — no new `it()` blocks — so the `subpath-imports.test.ts` count remains at 10 runtime tests.
 
 - [ ] **Step 4: Confirm clean git state**
 
@@ -957,15 +985,24 @@ npm run typecheck 2>/dev/null || npx tsc --noEmit 2>/dev/null || echo "no typech
 ```
 Expected: pass, or graceful skip.
 
-- [ ] **Step 7: Unlink when done**
+- [ ] **Step 7: Unlink and restore the published shared package in tonagarantia**
 
 ```bash
 cd ~/Workspace/tonagarantia
 npm unlink @tn-figueiredo/shared
+npm install @tn-figueiredo/shared
 cd ~/Workspace/tnf-ecosystem/packages/shared
 npm unlink
 ```
-Expected: tonagarantia `node_modules/@tn-figueiredo/shared` is restored to the normal package, not a symlink.
+Expected: tonagarantia `node_modules/@tn-figueiredo/shared` is restored to the published `0.7.0` package (real directory, not a symlink). The second `npm install` is required because `npm unlink` alone leaves the dependency tree broken — npm needs to re-fetch the registry copy.
+
+- [ ] **Step 8: Verify the restore**
+
+```bash
+cd ~/Workspace/tonagarantia
+ls -la node_modules/@tn-figueiredo/shared | head -2
+```
+Expected: regular directory, not a symlink (no `->` arrow in the `ls -l` output).
 
 ---
 
@@ -1029,12 +1066,12 @@ Expected: branch published on GitHub.
 
 Using `gh`:
 ```bash
-gh pr create --title "feat(shared): extend AppTheme with optional rich design tokens" --body "$(cat <<'EOF'
+gh pr create --base main --title "feat(shared): extend AppTheme with optional rich design tokens" --body "$(cat <<'EOF'
 ## Summary
 - Adds optional `palette`, `shadows`, `scales`, and extended `typography` fields to `AppTheme`
 - Backward compatible: all new fields are optional. Existing consumers unchanged.
 - README updated with layering explanation and rich-usage example.
-- 10 new tests covering preservation, deep-freeze, and backward compat.
+- 11 new runtime tests + compile-time type assertions covering preservation, deep-freeze, and backward compat.
 
 ## Context
 Enables Aurora-style design systems in consumer apps (starting with
@@ -1044,7 +1081,7 @@ Bright-Tale). See the design spec in bright-tale:
 ## Test plan
 - [x] `turbo run build` passes
 - [x] `turbo run typecheck` passes
-- [x] `turbo run test` passes (10 new theme tests included)
+- [x] `turbo run test` passes (11 new runtime theme tests + type-level assertions included)
 - [x] Validated against tonagarantia (`apps/web`, `apps/api`, `apps/mobile`) via `npm link` — no regressions
 
 ## Release
@@ -1086,21 +1123,30 @@ gh pr merge <NUMBER> --squash
 ```
 Expected: PR merged; CI re-runs and executes `npm run publish-packages` (`turbo run build && changeset publish`).
 
-- [ ] **Step 3: Verify `0.8.0` is published**
+- [ ] **Step 3: Ensure `NODE_AUTH_TOKEN` is set**
 
 ```bash
-npm view @tn-figueiredo/shared versions --registry https://npm.pkg.github.com
+[ -n "$NODE_AUTH_TOKEN" ] && echo "token ok" || echo "MISSING — export NODE_AUTH_TOKEN before next step"
 ```
-Expected: list includes `0.8.0`.
-
-If this fails with 401, export `NODE_AUTH_TOKEN` first:
+Expected: `token ok`. If missing, export a GitHub PAT with `read:packages` scope:
 ```bash
 export NODE_AUTH_TOKEN=<github-token-with-read-packages-scope>
 ```
 
+- [ ] **Step 4: Verify `0.8.0` is published**
+
+```bash
+npm view @tn-figueiredo/shared versions --registry https://npm.pkg.github.com
+```
+Expected: list includes `0.8.0`. If the CI run is still in progress, wait up to ~3 minutes and retry.
+
 ---
 
 ## Phase 2 — Consume Aurora in `bright-tale`
+
+> **Tip for parallel development:** if you want to start Phase 2 before `0.8.0` is published, you can temporarily set `bright-curios-workflow/package.json`'s dependency to `"@tn-figueiredo/shared": "file:../../../tnf-ecosystem/packages/shared"` (adjust the relative path). Run `npm install` to create the symlink, do the work, then swap back to `"@tn-figueiredo/shared": "^0.8.0"` before merging.
+
+> **Note on `npx tsc --noEmit`:** Next.js 16 generates type files under `.next/types/*` during `next build`. The standalone `tsc --noEmit` steps in Tasks 22, 25, 26, and 27 only check the files we created; if they report errors in `.next/types`, run `npm run build` once to regenerate those files (or delete `.next/` and rely on the `npm run build` in Task 29 to re-create everything).
 
 ### Task 17: Create feature branch in bright-tale
 
@@ -1474,7 +1520,9 @@ git commit -m "feat(workflow): expose aurora theme via lib/theme barrel"
 
 - [ ] **Step 1: Create the test file**
 
-Create `bright-curios-workflow/src/lib/theme/__tests__/css-parity.test.ts` with exact contents:
+Create `bright-curios-workflow/src/lib/theme/__tests__/css-parity.test.ts` with exact contents.
+
+**Note on path resolution:** bright-tale runs as ESM, so `__dirname` is undefined at runtime. The test uses `process.cwd()` which Vitest sets to the workflow package root (`bright-curios-workflow/`), making the CSS path stable regardless of where the test runner is invoked from.
 
 ```ts
 import { readFileSync } from 'node:fs';
@@ -1482,7 +1530,9 @@ import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { aurora } from '../aurora';
 
-const cssPath = join(__dirname, '..', '..', '..', 'app', 'globals.css');
+// Vitest sets process.cwd() to the package root where vitest.config.ts lives.
+// This avoids ESM pitfalls with __dirname / import.meta.url path handling.
+const cssPath = join(process.cwd(), 'src', 'app', 'globals.css');
 const css = readFileSync(cssPath, 'utf-8');
 
 type Scope = 'theme' | 'root' | 'dark';
@@ -1955,9 +2005,17 @@ git commit -m "feat(workflow): use Aurora fonts and wire ThemeProvider in root l
 **Files:**
 - Modify: `bright-curios-workflow/README.md`
 
-- [ ] **Step 1: Append the authentication section**
+- [ ] **Step 1: Inspect the existing README tail**
 
-Append to the end of `bright-curios-workflow/README.md`:
+```bash
+cd /Users/figueiredo/Workspace/BrightCurios/bright-tale/bright-curios-workflow
+tail -20 README.md
+```
+Look for a trailing "License", "Contributing", or similar footer section. If one exists, insert the new section ABOVE it (not at the very end). If no footer exists, append at the end.
+
+- [ ] **Step 2: Add the authentication section**
+
+Insert the following block at the appropriate location identified in Step 1:
 
 ```md
 
@@ -1975,7 +2033,7 @@ If `npm install` fails with `401 Unauthorized`:
 3. Retry `npm install`.
 ```
 
-- [ ] **Step 2: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
 cd /Users/figueiredo/Workspace/BrightCurios/bright-tale
@@ -1995,7 +2053,15 @@ git commit -m "docs(workflow): document NODE_AUTH_TOKEN for @tn-figueiredo packa
 cd /Users/figueiredo/Workspace/BrightCurios/bright-tale/bright-curios-workflow
 npm run test
 ```
-Expected: **all** tests pass, including `aurora.test.ts` (8 cases) and `css-parity.test.ts` (10 cases).
+Expected: **all** tests pass, including `aurora.test.ts` (8 cases) and `css-parity.test.ts` (10 cases). If any pre-existing test regresses, diagnose it before proceeding — it likely means a component was relying on a CSS variable that was renamed or removed.
+
+- [ ] **Step 1b: Explicitly run the new theme tests**
+
+```bash
+cd /Users/figueiredo/Workspace/BrightCurios/bright-tale/bright-curios-workflow
+npx vitest run src/lib/theme/__tests__
+```
+Expected: exactly 18 tests pass (8 from `aurora.test.ts` + 10 from `css-parity.test.ts`). This guards against the `npm run test` config accidentally filtering them out.
 
 - [ ] **Step 2: Run the linter**
 
