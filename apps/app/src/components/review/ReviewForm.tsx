@@ -34,7 +34,7 @@ import type {
     ProductionOutput,
     BrainstormIdea,
     ResearchOutput,
-} from "@/types/agents";
+} from "@brighttale/shared/types/agents";
 
 interface ReviewFormProps {
     initialYaml?: string;

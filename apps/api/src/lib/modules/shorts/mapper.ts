@@ -9,7 +9,7 @@ import type {
   CanonicalCore,
   CanonicalCoreArgumentStep,
   CanonicalCoreStat,
-} from "@/types/agents";
+} from "@brighttale/shared/types/agents";
 
 export interface ShortsAgentInput {
   idea_id: string;

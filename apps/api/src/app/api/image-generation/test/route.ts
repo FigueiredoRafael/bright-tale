@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GeminiImagenProvider } from "@/lib/ai/providers/gemini-imagen";
 import { decrypt } from "@/lib/crypto";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
   try {

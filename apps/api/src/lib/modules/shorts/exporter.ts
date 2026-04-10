@@ -4,7 +4,7 @@
  */
 
 import type { ShortsModuleOutput } from "./schema";
-import type { ShortOutput } from "@/types/agents";
+import type { ShortOutput } from "@brighttale/shared/types/agents";
 import {
   generateShortsMarkdownExport as _md,
   generateShortsHtmlExport as _html,

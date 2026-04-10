@@ -2,7 +2,7 @@ import mockAdapter from "./mock";
 import { ProviderAIAdapter } from "./providerAdapter";
 import { OpenAIProvider } from "./providers/openai";
 import { AnthropicProvider } from "./providers/anthropic";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/crypto";
 import type { AIAdapter } from "./adapter";
 

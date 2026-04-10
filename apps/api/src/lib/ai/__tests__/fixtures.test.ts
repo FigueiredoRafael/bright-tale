@@ -1,4 +1,4 @@
-import { validateDiscoveryOutput } from "@/lib/schemas/discovery";
+import { validateDiscoveryOutput } from "@brighttale/shared/schemas/discovery";
 import fixture1 from "../../../../test/fixtures/ai/discovery.json";
 import fixture2 from "../../../../test/fixtures/ai/discovery-multiple.json";
 

@@ -5,7 +5,7 @@
  */
 
 import type { VideoModuleOutput } from "./schema";
-import type { VideoOutput } from "@/types/agents";
+import type { VideoOutput } from "@brighttale/shared/types/agents";
 import {
   generateVideoMarkdownExport as _md,
   generateVideoHtmlExport as _html,

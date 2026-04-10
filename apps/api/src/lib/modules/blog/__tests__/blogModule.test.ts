@@ -3,7 +3,7 @@ import { blogOutputSchema, type BlogModuleOutput } from "../schema";
 import { mapCanonicalCoreToBlogInput } from "../mapper";
 import { generateBlogMarkdownExport } from "../exporter";
 import { validateBlog, type BlogValidationResult } from "../validator";
-import type { CanonicalCore } from "@/types/agents";
+import type { CanonicalCore } from "@brighttale/shared/types/agents";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 

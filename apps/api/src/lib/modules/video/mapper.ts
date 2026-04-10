@@ -9,8 +9,8 @@ import type {
   CanonicalCoreArgumentStep,
   CanonicalCoreStat,
   CanonicalCoreEmotionalArc,
-} from "@/types/agents";
-import type { VideoStyleConfigInput } from "@/lib/schemas/videoStyle";
+} from "@brighttale/shared/types/agents";
+import type { VideoStyleConfigInput } from "@brighttale/shared/schemas/videoStyle";
 
 export interface VideoAgentInput {
   idea_id: string;

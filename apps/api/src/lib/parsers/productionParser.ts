@@ -6,7 +6,7 @@
  */
 
 import yaml from "js-yaml";
-import type { ProductionOutput } from "@/types/agents";
+import type { ProductionOutput } from "@brighttale/shared/types/agents";
 
 export type ParseResult =
   | { success: true; data: ProductionOutput; error?: never }

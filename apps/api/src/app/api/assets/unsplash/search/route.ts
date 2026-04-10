@@ -3,7 +3,7 @@
  * Search Unsplash for images
  */
 import { NextRequest, NextResponse } from "next/server";
-import { searchUnsplashQuerySchema } from "@/lib/schemas/assets";
+import { searchUnsplashQuerySchema } from "@brighttale/shared/schemas/assets";
 import {
   handleApiError,
   createSuccessResponse,

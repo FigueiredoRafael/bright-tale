@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server";
 import { validateBody, validateQueryParams } from "@/lib/api/validation";
 import { handleApiError, createSuccessResponse } from "@/lib/api/errors";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import {
   listIdeasQuerySchema,
   createIdeaSchema,
   calculateSimilarity,
   type SimilarityWarning,
-} from "@/lib/schemas/ideas";
+} from "@brighttale/shared/schemas/ideas";
 
 const SIMILARITY_THRESHOLD = 80;
 

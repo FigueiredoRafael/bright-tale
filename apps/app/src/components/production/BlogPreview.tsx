@@ -17,7 +17,7 @@ import {
     Tag,
     Link2,
 } from "lucide-react";
-import type { BlogOutput } from "@/types/agents";
+import type { BlogOutput } from "@brighttale/shared/types/agents";
 
 interface BlogPreviewProps {
     blog: BlogOutput;

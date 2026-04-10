@@ -10,7 +10,7 @@ import type {
   CanonicalCoreEmotionalArc,
   CanonicalCoreStat,
   CanonicalCoreQuote,
-} from "@/types/agents";
+} from "@brighttale/shared/types/agents";
 
 export interface TalkingPointSeed {
   step: number;

@@ -3,7 +3,7 @@ import { podcastOutputSchema, type PodcastModuleOutput } from "../schema";
 import { mapCanonicalCoreToPodcastInput } from "../mapper";
 import { generatePodcastMarkdownExport } from "../exporter";
 import { validatePodcast, type PodcastValidationResult } from "../validator";
-import type { CanonicalCore } from "@/types/agents";
+import type { CanonicalCore } from "@brighttale/shared/types/agents";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 

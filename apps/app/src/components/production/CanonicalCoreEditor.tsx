@@ -13,7 +13,7 @@ import {
   canonicalCoreSchema,
   type CanonicalCore,
   type CanonicalCoreInput,
-} from "@/lib/schemas/canonicalCore";
+} from "@brighttale/shared/schemas/canonicalCore";
 
 interface CanonicalCoreEditorProps {
   value: CanonicalCoreInput;

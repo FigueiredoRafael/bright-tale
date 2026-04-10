@@ -3,7 +3,7 @@ import { shortsOutputSchema, type ShortsModuleOutput } from "../schema";
 import { mapCanonicalCoreToShortsInput } from "../mapper";
 import { generateShortsMarkdownExport } from "../exporter";
 import { validateShorts, type ShortsValidationResult } from "../validator";
-import type { CanonicalCore } from "@/types/agents";
+import type { CanonicalCore } from "@brighttale/shared/types/agents";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 

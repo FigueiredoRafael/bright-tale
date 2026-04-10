@@ -5,10 +5,10 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { createSuccessResponse, createErrorResponse } from "@/lib/api/errors";
 import { z } from "zod";
-import { createCanonicalCoreSchema } from "@/lib/schemas/canonicalCoreApi";
+import { createCanonicalCoreSchema } from "@brighttale/shared/schemas/canonicalCoreApi";
 
 const listQuerySchema = z.object({
   idea_id: z.string().optional(),

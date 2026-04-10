@@ -8,7 +8,7 @@ import type {
   CanonicalCoreArgumentStep,
   CanonicalCoreStat,
   CanonicalCoreEmotionalArc,
-} from "@/types/agents";
+} from "@brighttale/shared/types/agents";
 
 export interface BlogAgentInput {
   idea_id: string;

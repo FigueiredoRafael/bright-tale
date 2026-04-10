@@ -19,8 +19,8 @@ export {
   productionOutputSchema,
   validateProductionInput,
   validateProductionOutput,
-  type ProductionInput,
-  type ProductionOutput,
+  type ProductionInput as ProductionSchemaInput,
+  type ProductionOutput as ProductionSchemaOutput,
 } from "./production";
 
 // Review Agent schemas
@@ -33,8 +33,8 @@ export {
   validateReviewOutput,
   validateReviewOutputBlogVideo,
   validateReviewOutputPublication,
-  type ReviewInput,
-  type ReviewOutput,
+  type ReviewInput as ReviewSchemaInput,
+  type ReviewOutput as ReviewSchemaOutput,
   type ReviewOutputBlogVideo,
   type ReviewOutputPublication,
 } from "./review";

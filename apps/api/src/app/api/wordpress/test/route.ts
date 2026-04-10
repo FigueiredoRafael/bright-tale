@@ -3,7 +3,7 @@
  * Test WordPress connection with detailed diagnostics
  */
 import { NextRequest, NextResponse } from "next/server";
-import { testWordPressConnectionSchema } from "@/lib/schemas/wordpress";
+import { testWordPressConnectionSchema } from "@brighttale/shared/schemas/wordpress";
 import { handleApiError, createSuccessResponse } from "@/lib/api/errors";
 import { validateBody } from "@/lib/api/validation";
 

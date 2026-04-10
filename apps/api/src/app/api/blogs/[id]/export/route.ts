@@ -5,10 +5,10 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { createErrorResponse } from "@/lib/api/errors";
 import { markdownToHtml } from "@/lib/utils";
-import type { BlogOutput } from "@/types/agents";
+import type { BlogOutput } from "@brighttale/shared/types/agents";
 
 interface Params {
   params: Promise<{ id: string }>;

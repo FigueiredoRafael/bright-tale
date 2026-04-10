@@ -6,14 +6,14 @@
  */
 
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import {
   handleApiError,
   createSuccessResponse,
   ApiError,
 } from "@/lib/api/errors";
 import { validateBody } from "@/lib/api/validation";
-import { updateProjectSchema } from "@/lib/schemas/projects";
+import { updateProjectSchema } from "@brighttale/shared/schemas/projects";
 
 /**
  * GET /api/projects/[id]

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { validateBody } from "@/lib/api/validation";
 import { handleApiError, createSuccessResponse } from "@/lib/api/errors";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 
 const archiveSchema = z.object({
   ideas: z

@@ -3,7 +3,7 @@
  * Generates markdown and HTML formats from PodcastOutput
  */
 
-import type { PodcastOutput } from "@/types/agents";
+import type { PodcastOutput } from "@brighttale/shared/types/agents";
 import { markdownToHtml } from "@/lib/utils";
 
 export function generatePodcastMarkdownExport(podcast: PodcastOutput): string {

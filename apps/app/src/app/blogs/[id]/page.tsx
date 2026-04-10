@@ -41,7 +41,7 @@ import {
 } from "lucide-react";
 import BlogEditor from "@/components/production/BlogEditor";
 import BlogPreview from "@/components/production/BlogPreview";
-import type { BlogOutput } from "@/types/agents";
+import type { BlogOutput } from "@brighttale/shared/types/agents";
 
 interface BlogDraftFull {
     id: string;

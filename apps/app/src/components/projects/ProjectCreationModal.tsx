@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import type { DiscoveryOutput } from "@/lib/schemas/discovery";
+import type { DiscoveryOutput } from "@brighttale/shared/schemas/discovery";
 
 interface ProjectCreationModalProps {
     open: boolean;

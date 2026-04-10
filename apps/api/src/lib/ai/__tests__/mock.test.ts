@@ -1,5 +1,5 @@
 import mockAdapter from "../mock";
-import { validateDiscoveryOutput } from "@/lib/schemas/discovery";
+import { validateDiscoveryOutput } from "@brighttale/shared/schemas/discovery";
 
 describe("Mock AI adapter", () => {
   it("returns valid discovery output", async () => {

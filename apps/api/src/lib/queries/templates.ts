@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 
 function deepMerge(a: any, b: any): any {
   if (Array.isArray(a) && Array.isArray(b)) return b; // child overrides arrays

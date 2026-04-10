@@ -5,13 +5,13 @@
  */
 
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { handleApiError, createSuccessResponse } from "@/lib/api/errors";
 import { validateBody, validateQueryParams } from "@/lib/api/validation";
 import {
   createResearchSchema,
   listResearchQuerySchema,
-} from "@/lib/schemas/research";
+} from "@brighttale/shared/schemas/research";
 
 /**
  * POST /api/research

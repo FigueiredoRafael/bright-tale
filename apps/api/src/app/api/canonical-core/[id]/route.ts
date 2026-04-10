@@ -6,10 +6,10 @@
  */
 
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { createSuccessResponse, createErrorResponse } from "@/lib/api/errors";
 import { z } from "zod";
-import { updateCanonicalCoreSchema } from "@/lib/schemas/canonicalCoreApi";
+import { updateCanonicalCoreSchema } from "@brighttale/shared/schemas/canonicalCoreApi";
 
 export async function GET(
   _request: NextRequest,

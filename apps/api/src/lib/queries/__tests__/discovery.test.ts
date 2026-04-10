@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { createProjectsFromDiscovery } from "@/lib/queries/discovery";
 import fixture from "../../../../test/fixtures/ai/discovery-multiple.json";
 

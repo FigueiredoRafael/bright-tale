@@ -37,12 +37,12 @@ import type {
     BrainstormIdea,
     ResearchOutput,
     LegacyIdea
-} from "@/types/agents";
-import { isLegacyIdea, normalizeLegacyIdea, mapBrainstormToResearchInput, mapResearchToProductionInput } from "@/types/agents";
+} from "@brighttale/shared/types/agents";
+import { isLegacyIdea, normalizeLegacyIdea, mapBrainstormToResearchInput, mapResearchToProductionInput } from "@brighttale/shared/types/agents";
 import { useToast } from "@/hooks/use-toast";
 import { saveContentDraft } from "@/lib/workflow/contentSaver";
-import { canonicalCoreSchema, type CanonicalCoreInput, type CanonicalCore } from "@/lib/schemas/canonicalCore";
-import { type VideoStyleConfig } from "@/lib/schemas/videoStyle";
+import { canonicalCoreSchema, type CanonicalCoreInput, type CanonicalCore } from "@brighttale/shared/schemas/canonicalCore";
+import { type VideoStyleConfig } from "@brighttale/shared/schemas/videoStyle";
 import { mapCanonicalCoreToBlogInput } from "@/lib/modules/blog/mapper";
 import { mapCanonicalCoreToVideoInput } from "@/lib/modules/video/mapper";
 import { mapCanonicalCoreToShortsInput } from "@/lib/modules/shorts/mapper";

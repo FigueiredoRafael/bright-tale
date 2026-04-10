@@ -5,7 +5,7 @@
  * (pinned comment seed), and key_stats (social proof in thread).
  */
 
-import type { CanonicalCore, CanonicalCoreStat } from "@/types/agents";
+import type { CanonicalCore, CanonicalCoreStat } from "@brighttale/shared/types/agents";
 
 export interface EngagementAgentInput {
   idea_id: string;

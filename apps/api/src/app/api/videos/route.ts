@@ -5,11 +5,11 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { createSuccessResponse, createErrorResponse } from "@/lib/api/errors";
-import { createVideoSchema, videoQuerySchema } from "@/lib/schemas/videos";
+import { createVideoSchema, videoQuerySchema } from "@brighttale/shared/schemas/videos";
 import { z } from "zod";
-import type { VideoOutput } from "@/types/agents";
+import type { VideoOutput } from "@brighttale/shared/types/agents";
 
 export async function GET(request: NextRequest) {
   try {

@@ -3,7 +3,7 @@ import { engagementOutputSchema, type EngagementModuleOutput } from "../schema";
 import { mapCanonicalCoreToEngagementInput } from "../mapper";
 import { generateEngagementMarkdownExport } from "../exporter";
 import { validateEngagement, type EngagementValidationResult } from "../validator";
-import type { CanonicalCore } from "@/types/agents";
+import type { CanonicalCore } from "@brighttale/shared/types/agents";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 

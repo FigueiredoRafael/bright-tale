@@ -5,7 +5,7 @@
  */
 
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { handleApiError, createSuccessResponse } from "@/lib/api/errors";
 import { z } from "zod";
 

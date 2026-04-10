@@ -8,7 +8,7 @@ import {
   createSuccessResponse,
   ApiError,
 } from "@/lib/api/errors";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 
 export async function GET(
   request: NextRequest,

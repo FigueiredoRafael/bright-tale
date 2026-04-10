@@ -22,8 +22,8 @@ import {
 import AgentPromptViewer from "@/components/agents/AgentPromptViewer";
 import IdeaLibraryPicker from "@/components/ideas/IdeaLibraryPicker";
 import { Copy, Check, ArrowRight, Sparkles, AlertCircle, Library, Save, Pencil, X, Lightbulb } from "lucide-react";
-import type { BrainstormIdea, BrainstormOutput, LegacyIdea } from "@/types/agents";
-import { normalizeLegacyIdea, isLegacyIdea } from "@/types/agents";
+import type { BrainstormIdea, BrainstormOutput, LegacyIdea } from "@brighttale/shared/types/agents";
+import { normalizeLegacyIdea, isLegacyIdea } from "@brighttale/shared/types/agents";
 
 // Form schema matching BC_BRAINSTORM_INPUT
 const formSchema = z.object({

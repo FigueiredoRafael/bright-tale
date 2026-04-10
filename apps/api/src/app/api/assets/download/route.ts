@@ -9,7 +9,7 @@ import path from "path";
 import fs from "fs";
 import archiver from "archiver";
 import { Readable } from "stream";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
   try {

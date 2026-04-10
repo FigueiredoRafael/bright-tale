@@ -4,7 +4,7 @@
  */
 
 import type { PodcastModuleOutput } from "./schema";
-import type { PodcastOutput } from "@/types/agents";
+import type { PodcastOutput } from "@brighttale/shared/types/agents";
 import {
   generatePodcastMarkdownExport as _md,
   generatePodcastHtmlExport as _html,

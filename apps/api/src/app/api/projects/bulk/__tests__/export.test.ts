@@ -1,5 +1,5 @@
 import { POST } from "@/app/api/projects/bulk/route";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 
 describe("POST /api/projects/bulk (export)", () => {
   it("returns JSON attachment with selected projects", async () => {

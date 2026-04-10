@@ -4,13 +4,13 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { createErrorResponse } from "@/lib/api/errors";
 import {
   generatePodcastMarkdownExport,
   generatePodcastHtmlExport,
 } from "@/lib/exporters/podcastExporter";
-import type { PodcastOutput } from "@/types/agents";
+import type { PodcastOutput } from "@brighttale/shared/types/agents";
 
 interface Params {
   params: Promise<{ id: string }>;

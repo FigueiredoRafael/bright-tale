@@ -34,8 +34,8 @@ import MarkdownImport from "@/components/import/MarkdownImport";
 import { Copy, Check, ArrowRight, Search, AlertCircle, Upload, BookOpen, CheckCircle, XCircle, Lightbulb, Download, Library, RefreshCw } from "lucide-react";
 import type { ParsedResearch } from "@/lib/parsers/markdown";
 import { researchToMarkdown } from "@/lib/parsers/markdown";
-import type { BrainstormIdea, ResearchOutput, SelectedIdeaForResearch, LegacyIdea } from "@/types/agents";
-import { normalizeLegacyIdea, isLegacyIdea, mapBrainstormToResearchInput } from "@/types/agents";
+import type { BrainstormIdea, ResearchOutput, SelectedIdeaForResearch, LegacyIdea } from "@brighttale/shared/types/agents";
+import { normalizeLegacyIdea, isLegacyIdea, mapBrainstormToResearchInput } from "@brighttale/shared/types/agents";
 
 const formSchema = z.object({
     research_focus: z.string().optional(),

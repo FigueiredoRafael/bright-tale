@@ -21,7 +21,7 @@ import {
   Volume2,
   ChevronDown,
 } from "lucide-react";
-import type { VideoOutput } from "@/types/agents";
+import type { VideoOutput } from "@brighttale/shared/types/agents";
 
 interface VideoPreviewProps {
   video: VideoOutput;

@@ -3,14 +3,14 @@
  * Fetch WordPress tags
  */
 import { NextRequest, NextResponse } from "next/server";
-import { fetchTagsQuerySchema } from "@/lib/schemas/wordpress";
+import { fetchTagsQuerySchema } from "@brighttale/shared/schemas/wordpress";
 import {
   handleApiError,
   createSuccessResponse,
   ApiError,
 } from "@/lib/api/errors";
 import { validateQueryParams } from "@/lib/api/validation";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/crypto";
 
 export async function GET(request: NextRequest) {

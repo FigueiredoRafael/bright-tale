@@ -7,7 +7,7 @@ import { z } from "zod";
 import { handleApiError, ApiError } from "@/lib/api/errors";
 import { validateBody } from "@/lib/api/validation";
 import { markdownToHtml } from "@/lib/utils";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/crypto";
 
 const testMarkdownSchema = z.object({

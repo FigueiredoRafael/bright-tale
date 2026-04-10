@@ -5,7 +5,7 @@
  */
 
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import {
   handleApiError,
   createSuccessResponse,
@@ -15,7 +15,7 @@ import { validateBody, validateQueryParams } from "@/lib/api/validation";
 import {
   createTemplateSchema,
   listTemplatesQuerySchema,
-} from "@/lib/schemas/templates";
+} from "@brighttale/shared/schemas/templates";
 
 /**
  * POST /api/templates

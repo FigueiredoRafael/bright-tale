@@ -12,7 +12,7 @@
 
 import { mockImageProvider } from "./providers/mock-imagen";
 import { GeminiImagenProvider } from "./providers/gemini-imagen";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/crypto";
 import type { ImageProvider } from "./imageProvider";
 

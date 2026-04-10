@@ -25,7 +25,7 @@ import {
     Download,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { BlogOutput, ReviewOutput } from "@/types/agents";
+import type { BlogOutput, ReviewOutput } from "@brighttale/shared/types/agents";
 import yaml from "js-yaml";
 
 interface WordPressConfig {

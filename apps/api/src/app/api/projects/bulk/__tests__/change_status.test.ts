@@ -1,5 +1,5 @@
 import { POST } from "@/app/api/projects/bulk/route";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 
 describe("POST /api/projects/bulk change_status", () => {
   it("updates status for selected projects", async () => {

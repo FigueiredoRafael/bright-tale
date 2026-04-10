@@ -4,14 +4,14 @@
  *   ?projectId=  ?contentType=  ?role=  ?source=  ?page=  ?limit=
  */
 import { NextRequest, NextResponse } from "next/server";
-import { saveAssetSchema } from "@/lib/schemas/assets";
+import { saveAssetSchema } from "@brighttale/shared/schemas/assets";
 import {
   handleApiError,
   createSuccessResponse,
   ApiError,
 } from "@/lib/api/errors";
 import { validateBody } from "@/lib/api/validation";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
   try {

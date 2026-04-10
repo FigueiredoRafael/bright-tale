@@ -3,7 +3,7 @@
  * Generates markdown and HTML formats from ShortOutput[]
  */
 
-import type { ShortOutput } from "@/types/agents";
+import type { ShortOutput } from "@brighttale/shared/types/agents";
 import { markdownToHtml } from "@/lib/utils";
 
 export function generateShortsMarkdownExport(shorts: ShortOutput[]): string {

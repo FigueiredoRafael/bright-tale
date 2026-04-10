@@ -4,13 +4,13 @@
  */
 
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import {
   handleApiError,
   createSuccessResponse,
   ApiError,
 } from "@/lib/api/errors";
-import { validStageTypes, normalizeStageType } from "@/lib/schemas/stages";
+import { validStageTypes, normalizeStageType } from "@brighttale/shared/schemas/stages";
 
 /**
  * GET /api/stages/[projectId]/[stageType]

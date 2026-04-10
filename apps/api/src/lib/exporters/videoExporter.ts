@@ -3,7 +3,7 @@
  * Generates markdown, HTML, and teleprompter formats from VideoOutput
  */
 
-import type { VideoOutput } from "@/types/agents";
+import type { VideoOutput } from "@brighttale/shared/types/agents";
 import { markdownToHtml } from "@/lib/utils";
 
 // ─── Markdown Export ────────────────────────────────────────────────────────

@@ -6,8 +6,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getImageProvider } from "@/lib/ai/imageIndex";
 import { saveImageLocally } from "@/lib/files/imageStorage";
-import { generateImageRequestSchema } from "@/lib/schemas/imageGeneration";
-import { prisma } from "@/lib/prisma";
+import { generateImageRequestSchema } from "@brighttale/shared/schemas/imageGeneration";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
   try {

@@ -4,14 +4,14 @@
  */
 
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import {
   handleApiError,
   createSuccessResponse,
   ApiError,
 } from "@/lib/api/errors";
 import { validateBody } from "@/lib/api/validation";
-import { createRevisionSchema } from "@/lib/schemas/stages";
+import { createRevisionSchema } from "@brighttale/shared/schemas/stages";
 
 /**
  * POST /api/stages/[projectId]/[stageType]/revisions

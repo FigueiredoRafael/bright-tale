@@ -5,9 +5,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/crypto";
-import { createAIConfigSchema } from "@/lib/schemas/ai";
+import { createAIConfigSchema } from "@brighttale/shared/schemas/ai";
 
 export async function POST(req: NextRequest) {
   try {

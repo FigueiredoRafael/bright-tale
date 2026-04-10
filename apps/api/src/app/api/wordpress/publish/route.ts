@@ -3,7 +3,7 @@
  * Publish a project to WordPress with image upload and placeholder replacement
  */
 import { NextRequest, NextResponse } from "next/server";
-import { publishToWordPressSchema } from "@/lib/schemas/wordpress";
+import { publishToWordPressSchema } from "@brighttale/shared/schemas/wordpress";
 import { markdownToHtml } from "@/lib/utils";
 import yaml from "js-yaml";
 import {
@@ -12,7 +12,7 @@ import {
   ApiError,
 } from "@/lib/api/errors";
 import { validateBody } from "@/lib/api/validation";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/crypto";
 
 export async function POST(request: NextRequest) {

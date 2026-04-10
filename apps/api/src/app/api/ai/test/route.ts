@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { testAIConfigSchema } from "@/lib/schemas/ai";
+import { testAIConfigSchema } from "@brighttale/shared/schemas/ai";
 import { OpenAIProvider } from "@/lib/ai/providers/openai";
 import { AnthropicProvider } from "@/lib/ai/providers/anthropic";
 

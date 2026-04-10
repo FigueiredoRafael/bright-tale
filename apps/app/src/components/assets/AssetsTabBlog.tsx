@@ -7,7 +7,7 @@ import { Loader2, Wand2, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ImageGenerationCard from "./ImageGenerationCard";
 import type { AssetRecord } from "@/components/images/ImageBankCard";
-import type { BlogOutput } from "@/types/agents";
+import type { BlogOutput } from "@brighttale/shared/types/agents";
 import {
     generateBlogFeaturedImagePrompt,
     generateBlogSectionImagePrompt,

@@ -5,9 +5,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { createSuccessResponse, createErrorResponse } from "@/lib/api/errors";
-import { createPodcastSchema, podcastQuerySchema } from "@/lib/schemas/podcasts";
+import { createPodcastSchema, podcastQuerySchema } from "@brighttale/shared/schemas/podcasts";
 import { z } from "zod";
 
 export async function GET(request: NextRequest) {

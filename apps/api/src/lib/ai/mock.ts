@@ -1,7 +1,7 @@
-import { validateDiscoveryOutput } from "@/lib/schemas/discovery";
+import { validateDiscoveryOutput } from "@brighttale/shared/schemas/discovery";
 import fixture from "../../../test/fixtures/ai/discovery.json";
 import type { AIAdapter } from "./adapter";
-import type { DiscoveryInput, DiscoveryOutput } from "@/lib/schemas/discovery";
+import type { DiscoveryInput, DiscoveryOutput } from "@brighttale/shared/schemas/discovery";
 
 export class MockAIAdapter implements AIAdapter {
   async generateDiscovery(_input: DiscoveryInput): Promise<DiscoveryOutput> {

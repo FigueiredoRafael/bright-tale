@@ -3,7 +3,7 @@ import { videoOutputSchema, type VideoModuleOutput } from "../schema";
 import { mapCanonicalCoreToVideoInput } from "../mapper";
 import { generateVideoMarkdownExport } from "../exporter";
 import { validateVideo, type VideoValidationResult } from "../validator";
-import type { CanonicalCore } from "@/types/agents";
+import type { CanonicalCore } from "@brighttale/shared/types/agents";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 

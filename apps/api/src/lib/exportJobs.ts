@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { randomUUID } from "crypto";
 
 type JobStatus = "pending" | "done" | "failed";

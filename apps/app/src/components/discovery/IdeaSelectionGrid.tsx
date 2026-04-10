@@ -5,7 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ProjectCreationModal from "@/components/projects/ProjectCreationModal";
-import type { DiscoveryOutput } from "@/lib/schemas/discovery";
+import type { DiscoveryOutput } from "@brighttale/shared/schemas/discovery";
 
 interface IdeaSelectionGridProps {
     ideas?: DiscoveryOutput["ideas"];

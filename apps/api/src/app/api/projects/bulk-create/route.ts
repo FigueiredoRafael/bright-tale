@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { validateBody } from "@/lib/api/validation";
-import { bulkCreateSchema } from "@/lib/schemas/discovery";
+import { bulkCreateSchema } from "@brighttale/shared/schemas/discovery";
 import {
   handleApiError,
   createSuccessResponse,

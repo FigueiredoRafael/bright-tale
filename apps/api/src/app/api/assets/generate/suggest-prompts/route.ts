@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { suggestPromptsRequestSchema } from "@/lib/schemas/imageGeneration";
+import { suggestPromptsRequestSchema } from "@brighttale/shared/schemas/imageGeneration";
 import {
   generateBlogFeaturedImagePrompt,
   generateBlogSectionImagePrompt,

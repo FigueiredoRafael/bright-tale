@@ -5,9 +5,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/crypto";
-import { updateImageGeneratorConfigSchema } from "@/lib/schemas/imageGeneration";
+import { updateImageGeneratorConfigSchema } from "@brighttale/shared/schemas/imageGeneration";
 
 export async function PUT(
   req: NextRequest,

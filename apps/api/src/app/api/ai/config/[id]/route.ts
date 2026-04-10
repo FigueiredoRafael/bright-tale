@@ -6,9 +6,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/crypto";
-import { updateAIConfigSchema } from "@/lib/schemas/ai";
+import { updateAIConfigSchema } from "@brighttale/shared/schemas/ai";
 
 export async function GET(
   req: NextRequest,

@@ -20,7 +20,7 @@ import {
     Clock,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { BlogOutput } from "@/types/agents";
+import type { BlogOutput } from "@brighttale/shared/types/agents";
 
 interface BlogDraft {
     id: string;

@@ -3,7 +3,7 @@
  * GET /api/agents - List all agent prompts
  */
 
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { handleApiError, createSuccessResponse } from "@/lib/api/errors";
 
 /**

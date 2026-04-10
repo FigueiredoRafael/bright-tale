@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import yaml from "js-yaml";
-import { discoveryInputSchema, DiscoveryInput, validateDiscoveryInput } from "@/lib/schemas/discovery";
+import { discoveryInputSchema, DiscoveryInput, validateDiscoveryInput } from "@brighttale/shared/schemas/discovery";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

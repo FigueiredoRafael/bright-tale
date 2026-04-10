@@ -1,5 +1,5 @@
 import { resolveTemplate } from "@/lib/queries/templates";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 
 describe("resolveTemplate", () => {
   it("resolves single template", async () => {

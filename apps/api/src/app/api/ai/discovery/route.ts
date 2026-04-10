@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { validateBody } from "@/lib/api/validation";
-import { discoveryInputSchema } from "@/lib/schemas/discovery";
+import { discoveryInputSchema } from "@brighttale/shared/schemas/discovery";
 import { getAIAdapter } from "@/lib/ai";
 import { createSuccessResponse, handleApiError } from "@/lib/api/errors";
 

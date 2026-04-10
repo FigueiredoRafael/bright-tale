@@ -1,4 +1,4 @@
-import type { DiscoveryInput, DiscoveryOutput } from "@/lib/schemas/discovery";
+import type { DiscoveryInput, DiscoveryOutput } from "@brighttale/shared/schemas/discovery";
 import type {
   BrainstormInput,
   BrainstormOutput,
@@ -8,7 +8,7 @@ import type {
   ProductionOutput,
   ReviewInput,
   ReviewOutput,
-} from "@/types/agents";
+} from "@brighttale/shared/types/agents";
 
 export interface AIAdapter {
   generateDiscovery(input: DiscoveryInput): Promise<DiscoveryOutput>;

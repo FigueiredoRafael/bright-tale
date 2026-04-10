@@ -7,8 +7,8 @@
 
 import type { AIProvider, AgentType } from "./provider";
 import type { AIAdapter } from "./adapter";
-import type { DiscoveryInput, DiscoveryOutput } from "@/lib/schemas/discovery";
-import { discoveryOutputSchema } from "@/lib/schemas/discovery";
+import type { DiscoveryInput, DiscoveryOutput } from "@brighttale/shared/schemas/discovery";
+import { discoveryOutputSchema } from "@brighttale/shared/schemas/discovery";
 import type {
   BrainstormInput,
   BrainstormOutput,
@@ -18,13 +18,13 @@ import type {
   ProductionOutput,
   ReviewInput,
   ReviewOutput,
-} from "@/types/agents";
+} from "@brighttale/shared/types/agents";
 import {
   brainstormOutputSchema,
   researchOutputSchema,
   productionOutputSchema,
   reviewOutputSchema,
-} from "@/lib/schemas/agents";
+} from "@brighttale/shared/schemas/agents";
 
 export class ProviderAIAdapter implements AIAdapter {
   constructor(private provider: AIProvider) {}

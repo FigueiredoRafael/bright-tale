@@ -33,7 +33,7 @@ import {
     Copy,
     Check,
 } from "lucide-react";
-import type { BlogOutput } from "@/types/agents";
+import type { BlogOutput } from "@brighttale/shared/types/agents";
 
 // Blog section for the outline builder
 interface OutlineSection {

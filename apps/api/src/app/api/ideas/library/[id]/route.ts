@@ -5,8 +5,8 @@ import {
   createSuccessResponse,
   createErrorResponse,
 } from "@/lib/api/errors";
-import { prisma } from "@/lib/prisma";
-import { updateIdeaSchema } from "@/lib/schemas/ideas";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { updateIdeaSchema } from "@brighttale/shared/schemas/ideas";
 
 interface RouteParams {
   params: Promise<{ id: string }>;

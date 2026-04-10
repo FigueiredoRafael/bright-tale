@@ -8,7 +8,7 @@ import {
   createSuccessResponse,
   ApiError,
 } from "@/lib/api/errors";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { deleteImageFile } from "@/lib/files/imageStorage";
 
 export async function DELETE(

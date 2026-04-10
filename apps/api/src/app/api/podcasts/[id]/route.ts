@@ -6,11 +6,11 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { createSuccessResponse, createErrorResponse } from "@/lib/api/errors";
-import { updatePodcastSchema } from "@/lib/schemas/podcasts";
+import { updatePodcastSchema } from "@brighttale/shared/schemas/podcasts";
 import { z } from "zod";
-import type { PodcastOutput } from "@/types/agents";
+import type { PodcastOutput } from "@brighttale/shared/types/agents";
 
 interface Params {
   params: Promise<{ id: string }>;

@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import { POST } from "@/app/api/export/jobs/route";
 import { GET } from "@/app/api/export/jobs/[id]/route";
 import { GET as downloadGET } from "@/app/api/export/jobs/[id]/download/route";

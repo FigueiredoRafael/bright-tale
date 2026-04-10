@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { VIDEO_TEMPLATES, type VideoStyleConfig } from "@/lib/schemas/videoStyle";
+import { VIDEO_TEMPLATES, type VideoStyleConfig } from "@brighttale/shared/schemas/videoStyle";
 
 interface VideoStyleSelectorProps {
   value: VideoStyleConfig;

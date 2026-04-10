@@ -4,14 +4,14 @@
  */
 
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
+// TODO-supabase: import { prisma } from "@/lib/prisma";
 import {
   handleApiError,
   createSuccessResponse,
   ApiError,
 } from "@/lib/api/errors";
 import { validateBody } from "@/lib/api/validation";
-import { markWinnerSchema } from "@/lib/schemas/projects";
+import { markWinnerSchema } from "@brighttale/shared/schemas/projects";
 
 /**
  * PUT /api/projects/[id]/winner
