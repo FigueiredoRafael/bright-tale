@@ -18,17 +18,16 @@ import {
   generateVideoHtmlExport,
   generateTeleprompterExport,
 } from '@/lib/exporters/videoExporter';
-import type { VideoOutput } from '@brighttale/shared/types/agents';
+import type { VideoOutput, VideoScript } from '@brighttale/shared/types/agents';
 
 // Calculate spoken word count from script sections
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function calculateVideoWordCount(script: Record<string, any>): number {
+function calculateVideoWordCount(script: VideoScript): number {
   const { hook, problem, teaser, chapters, affiliate_segment, outro } = script;
   const sections = [
     hook?.content,
     problem?.content,
     teaser?.content,
-    ...(chapters?.map((c: Record<string, string>) => c.content) ?? []),
+    ...(chapters?.map((c) => c.content) ?? []),
     affiliate_segment?.script,
     outro?.recap,
     outro?.cta,

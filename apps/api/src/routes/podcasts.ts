@@ -20,14 +20,17 @@ import {
 import type { PodcastOutput } from '@brighttale/shared/types/agents';
 
 // Calculate spoken word count from podcast fields
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function calculatePodcastWordCount(data: Record<string, any>): number {
+function calculatePodcastWordCount(data: {
+  intro_hook: string;
+  personal_angle?: string | null;
+  outro: string;
+  talking_points: Array<{ point: string; notes: string }>;
+}): number {
   return [
     data.intro_hook,
     data.personal_angle,
     data.outro,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ...(data.talking_points?.map((tp: any) => `${tp.point ?? ''} ${tp.notes ?? ''}`) ?? []),
+    ...data.talking_points.map((tp) => `${tp.point} ${tp.notes}`),
   ]
     .filter(Boolean)
     .join(' ')
