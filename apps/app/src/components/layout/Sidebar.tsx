@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
     Home, Layers, FileText, Database, Settings, Archive,
-    Lightbulb, PenLine, Video, Zap, Mic, Images, Wand2, Users,
+    Lightbulb, PenLine, Video, Zap, Mic, Images, Wand2,
 } from "lucide-react";
 
 const navItems = [
@@ -19,7 +19,6 @@ const navItems = [
     { href: "/templates", label: "Templates", icon: Database },
     { href: "/images", label: "Image Bank", icon: Images },
     { href: "/assets", label: "Assets", icon: Archive },
-    { href: "/users", label: "Users", icon: Users },
 ];
 
 const settingsItems = [
