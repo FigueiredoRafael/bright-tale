@@ -1144,7 +1144,7 @@ export default function Home() {
                 const aKey = `faq${n}_a` as keyof Dict;
                 const isOpen = openFaqs.has(i);
                 return (
-                  <div key={n} className={`faq-item anim${isOpen ? ' open' : ''}`}>
+                  <div key={n} className={`faq-item${isOpen ? ' open' : ''}`}>
                     <button className="faq-q" aria-expanded={isOpen} onClick={() => toggleFaq(i)}>
                       <span>{t(qKey)}</span>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
