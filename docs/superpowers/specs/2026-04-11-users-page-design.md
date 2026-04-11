@@ -56,26 +56,22 @@ WHERE p.id = a.id AND p.email IS NULL;
 ALTER TABLE user_profiles ALTER COLUMN email SET NOT NULL;
 ```
 
-### 1.2 Migration: Create `user_roles` (sparse — admin rows only)
+### 1.2 `user_roles` — Already exists (migration `20260411030000`)
+
+The table already exists with this schema:
 
 ```sql
+-- Already in 20260411030000_user_roles.sql — DO NOT recreate
 CREATE TABLE user_roles (
-  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id    uuid NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
-  role       text NOT NULL CHECK (role IN ('admin')),
+  id         bigserial PRIMARY KEY,
+  user_id    uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  role       text NOT NULL CHECK (role IN ('admin', 'user')),
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(user_id)
+  UNIQUE(user_id, role)
 );
-
-ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
-
-CREATE TRIGGER handle_updated_at
-  BEFORE UPDATE ON user_roles
-  FOR EACH ROW EXECUTE FUNCTION moddatetime(updated_at);
 ```
 
-**Convention:** Row present = admin. No row = regular user. Never insert role `'user'`.
+**Convention:** Only insert `role = 'admin'` rows. Absence of a row = regular user. The CHECK allows 'user' but we never insert it — query for admin presence instead.
 
 ### 1.3 RPCs for KPIs
 
