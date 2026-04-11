@@ -4,12 +4,12 @@
   "private": false,
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
     "./*": {
-      "types": "./src/*.ts",
-      "default": "./src/*.ts"
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
     }
   },
   "scripts": {
@@ -24,6 +24,6 @@
     "vitest": "^4.0.18"
   },
   "dependencies": {
-    "zod": "^4.3.6"
+    "zod": "^3.22.0"
   }
 }
