@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyCookie from '@fastify/cookie';
 import { healthRoutes } from './routes/health.js';
+import { authRoutes } from './routes/auth.js';
 
 export async function buildServer() {
   const fastify = Fastify({ logger: true });
@@ -19,7 +20,7 @@ export async function buildServer() {
   await fastify.register(fastifyCookie);
 
   await fastify.register(healthRoutes);
-  // Auth routes registered in Task 6
+  await fastify.register(authRoutes);
 
   return fastify;
 }
