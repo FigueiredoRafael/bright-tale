@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin';
+import { KpiCard, KpiSection } from '@tn-figueiredo/admin/client';
 import {
   User,
   UserPlus,
@@ -20,14 +21,6 @@ const STAGE_LABELS: Record<string, string> = {
   production: 'Production',
   review: 'Review',
   publish: 'Publish',
-};
-
-const STAGE_COLORS: Record<string, string> = {
-  brainstorm: 'blue',
-  research: 'blue',
-  production: 'amber',
-  review: 'purple',
-  publish: 'green',
 };
 
 const AVATAR_GRADIENTS = [
@@ -119,19 +112,22 @@ export default async function AdminDashboard() {
   return (
     <div className="flex flex-col gap-6">
       {/* ── Header ── */}
-      <div className="flex justify-between items-start">
+      <div className="flex justify-between items-start animate-fade-in-up">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-v-primary tracking-tight">
             Dashboard
           </h1>
-          <p className="text-sm text-slate-500 mt-1">Visão geral do BrightTale</p>
-          <div className="flex gap-4 mt-2.5 items-center">
+          <p className="text-sm text-slate-500 dark:text-v-secondary mt-1">
+            Visão geral do BrightTale
+          </p>
+          {/* Health strip */}
+          <div className="flex gap-4 mt-3 items-center text-xs">
             <HealthDot label="API" ok={data.health.api} />
             <HealthDot label="Supabase" ok={data.health.supabase} />
           </div>
         </div>
-        <div className="flex gap-2.5">
-          <div className="flex items-center gap-1.5 px-3.5 py-2 border border-slate-200 rounded-lg text-xs text-slate-500 bg-white shadow-sm">
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5 px-3.5 py-2 border border-slate-200 dark:border-dash-border rounded-lg text-xs text-slate-500 dark:text-v-secondary bg-white dark:bg-dash-card shadow-sm">
             <RefreshCw className="w-3.5 h-3.5" />
             Atualizado Agora
           </div>
@@ -142,201 +138,112 @@ export default async function AdminDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
         {/* Crescimento */}
-        <SectionCard color="green" title="Crescimento">
-          <div className="grid grid-cols-2 gap-3">
-            <KpiInnerCard color="green" icon={<User className="w-4 h-4 text-emerald-600" />} label="Usuários">
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-extrabold text-slate-900 tracking-tight leading-none">
-                  {data.users.total}
-                </span>
-                {data.users.week > 0 && (
-                  <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                    ↑ {data.users.week} sem
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-400 mt-1.5">{data.users.week} esta semana</p>
-              <Sparkline color="#10b981" />
-            </KpiInnerCard>
-            <KpiInnerCard color="green" icon={<UserPlus className="w-4 h-4 text-emerald-600" />} label="Novos hoje">
-              <span className="text-3xl font-extrabold text-slate-900 tracking-tight leading-none">
-                {data.users.today}
-              </span>
-              <p className="text-xs text-slate-400 mt-1.5">{data.users.week} nos últimos 7d</p>
-            </KpiInnerCard>
-          </div>
-        </SectionCard>
+        <div className="animate-fade-in-up-1">
+          <KpiSection title="Crescimento" color="green">
+            <KpiCard
+              label="Usuários"
+              value={data.users.total}
+              icon={<User className="w-4 h-4" />}
+              subText={`${data.users.week} esta semana`}
+              change={data.users.week > 0 ? data.users.week : undefined}
+              changeLabel="sem"
+            />
+            <KpiCard
+              label="Novos hoje"
+              value={data.users.today}
+              icon={<UserPlus className="w-4 h-4" />}
+              subText={`${data.users.week} nos últimos 7d`}
+            />
+          </KpiSection>
+        </div>
 
-        {/* Pipeline de Conteúdo */}
-        <SectionCard color="blue" title="Pipeline de Conteúdo">
-          <div className="grid grid-cols-2 gap-3">
-            <KpiInnerCard color="blue" icon={<Activity className="w-4 h-4 text-blue-600" />} label="Total Projetos">
-              <span className="text-3xl font-extrabold text-slate-900 tracking-tight leading-none">
-                {data.pipeline.total}
-              </span>
-              <p className="text-xs text-slate-400 mt-1.5">no pipeline</p>
-              <Sparkline color="#3b82f6" />
-            </KpiInnerCard>
-            <KpiInnerCard color="blue" icon={<CheckCircle className="w-4 h-4 text-blue-600" />} label="Publicados">
-              <span className="text-3xl font-extrabold text-slate-900 tracking-tight leading-none">
-                {data.pipeline.published}
-              </span>
-              <p className="text-xs text-slate-400 mt-1.5">winner=true</p>
-            </KpiInnerCard>
-          </div>
-          {stageEntries.length > 0 && (
-            <div className="flex gap-1.5 mt-4 flex-wrap">
-              {stageEntries.map(([stage, count]) => (
-                <StagePill key={stage} stage={stage} count={count} />
-              ))}
-            </div>
-          )}
-        </SectionCard>
+        {/* Pipeline */}
+        <div className="animate-fade-in-up-1">
+          <KpiSection title="Pipeline de Conteúdo" color="blue">
+            <KpiCard
+              label="Total Projetos"
+              value={data.pipeline.total}
+              icon={<Activity className="w-4 h-4" />}
+              subText="no pipeline"
+            />
+            <KpiCard
+              label="Publicados"
+              value={data.pipeline.published}
+              icon={<CheckCircle className="w-4 h-4" />}
+              subText="winner=true"
+            />
+            {stageEntries.map(([stage, count]) => (
+              <KpiCard
+                key={stage}
+                label={STAGE_LABELS[stage] ?? stage}
+                value={count}
+              />
+            ))}
+          </KpiSection>
+        </div>
 
         {/* Conteúdo */}
-        <SectionCard color="purple" title="Conteúdo">
-          <div className="grid grid-cols-3 gap-3">
-            <KpiInnerCard color="purple" icon={<Search className="w-4 h-4 text-purple-600" />} label="Research">
-              <span className="text-2xl font-extrabold text-slate-900 tracking-tight leading-none">
-                {data.content.research}
-              </span>
-              <p className="text-xs text-slate-400 mt-1.5">archives</p>
-            </KpiInnerCard>
-            <KpiInnerCard color="purple" icon={<FileEdit className="w-4 h-4 text-purple-600" />} label="Drafts">
-              <span className="text-2xl font-extrabold text-slate-900 tracking-tight leading-none">
-                {data.content.drafts}
-              </span>
-              <p className="text-xs text-slate-400 mt-1.5">blog drafts</p>
-            </KpiInnerCard>
-            <KpiInnerCard color="purple" icon={<Lightbulb className="w-4 h-4 text-purple-600" />} label="Ideas">
-              <span className="text-2xl font-extrabold text-slate-900 tracking-tight leading-none">
-                {data.content.ideas}
-              </span>
-              <p className="text-xs text-slate-400 mt-1.5">idea archives</p>
-            </KpiInnerCard>
-          </div>
-        </SectionCard>
+        <div className="animate-fade-in-up-2">
+          <KpiSection title="Conteúdo" color="purple">
+            <KpiCard
+              label="Research Archives"
+              value={data.content.research}
+              icon={<Search className="w-4 h-4" />}
+            />
+            <KpiCard
+              label="Blog Drafts"
+              value={data.content.drafts}
+              icon={<FileEdit className="w-4 h-4" />}
+            />
+            <KpiCard
+              label="Idea Archives"
+              value={data.content.ideas}
+              icon={<Lightbulb className="w-4 h-4" />}
+            />
+          </KpiSection>
+        </div>
 
         {/* Sistema */}
-        <SectionCard color="amber" title="Sistema">
-          <div className="grid grid-cols-2 gap-3">
-            <KpiInnerCard color="amber" icon={<Cpu className="w-4 h-4 text-amber-600" />} label="AI Providers">
-              <span className="text-3xl font-extrabold text-slate-900 tracking-tight leading-none">
-                {data.system.activeAI}
-              </span>
-              <p className="text-xs text-slate-400 mt-1.5">ativos</p>
-            </KpiInnerCard>
-            <KpiInnerCard color="amber" icon={<HeartPulse className="w-4 h-4 text-amber-600" />} label="Health">
-              <span className={`text-3xl font-extrabold tracking-tight leading-none ${allHealthy ? 'text-emerald-600' : 'text-red-600'}`}>
-                {allHealthy ? 'OK' : 'WARN'}
-              </span>
-              <p className="text-xs text-slate-400 mt-1.5">
-                {allHealthy ? 'todos os serviços' : [!data.health.api && 'API', !data.health.supabase && 'DB'].filter(Boolean).join(' + ') + ' down'}
-              </p>
-            </KpiInnerCard>
-          </div>
-        </SectionCard>
+        <div className="animate-fade-in-up-2">
+          <KpiSection title="Sistema" color="amber">
+            <KpiCard
+              label="AI Providers ativos"
+              value={data.system.activeAI}
+              icon={<Cpu className="w-4 h-4" />}
+            />
+            <KpiCard
+              label="Health"
+              value={allHealthy ? 'OK' : 'WARN'}
+              icon={<HeartPulse className="w-4 h-4" />}
+              subText={allHealthy ? 'todos os serviços' : [!data.health.api && 'API', !data.health.supabase && 'DB'].filter(Boolean).join(' + ') + ' down'}
+            />
+          </KpiSection>
+        </div>
       </div>
 
       {/* ── Cadastros Recentes ── */}
-      {data.users.recent.length > 0 && <RecentUsers users={data.users.recent} />}
+      {data.users.recent.length > 0 && (
+        <div className="animate-fade-in-up-3">
+          <RecentUsers users={data.users.recent} />
+        </div>
+      )}
     </div>
   );
 }
-
-/* ═══════════ Style maps ═══════════ */
-
-const SECTION_STYLES = {
-  green: {
-    card: 'border-l-emerald-500',
-    title: 'text-emerald-600',
-  },
-  blue: {
-    card: 'border-l-blue-500',
-    title: 'text-blue-600',
-  },
-  purple: {
-    card: 'border-l-purple-500',
-    title: 'text-purple-600',
-  },
-  amber: {
-    card: 'border-l-amber-500',
-    title: 'text-amber-600',
-  },
-} as const;
-
-type SectionColor = keyof typeof SECTION_STYLES;
-
-const INNER_CARD_STYLES = {
-  green: { icon: 'bg-emerald-50 text-emerald-600' },
-  blue: { icon: 'bg-blue-50 text-blue-600' },
-  purple: { icon: 'bg-purple-50 text-purple-600' },
-  amber: { icon: 'bg-amber-50 text-amber-600' },
-} as const;
 
 /* ═══════════ Sub-components ═══════════ */
 
-function SectionCard({ color, title, children }: { color: SectionColor; title: string; children: React.ReactNode }) {
-  const s = SECTION_STYLES[color];
-  return (
-    <div className={`rounded-xl p-5 bg-white border border-slate-200 border-l-[3px] shadow-sm ${s.card}`}>
-      <h2 className={`text-xs font-bold uppercase tracking-wide mb-4 ${s.title}`}>{title}</h2>
-      {children}
-    </div>
-  );
-}
-
-function KpiInnerCard({ color, icon, label, children }: { color: SectionColor; icon: React.ReactNode; label: string; children: React.ReactNode }) {
-  const s = INNER_CARD_STYLES[color];
-  return (
-    <div className="relative overflow-hidden bg-slate-50 border border-slate-100 rounded-lg p-4 transition-all duration-200 hover:shadow-md hover:-translate-y-px">
-      <div className="flex items-center gap-2 mb-3">
-        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${s.icon}`}>
-          {icon}
-        </div>
-        <span className="text-xs text-slate-500 font-medium">{label}</span>
-      </div>
-      {children}
-    </div>
-  );
-}
-
 function HealthDot({ label, ok }: { label: string; ok: boolean }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${ok ? 'text-emerald-600' : 'text-red-600'}`}>
-      <span className={`w-2 h-2 rounded-full inline-block ${ok ? 'bg-emerald-500' : 'bg-red-500'}`} />
+    <span className={`inline-flex items-center gap-1.5 font-medium ${ok ? 'text-emerald-600 dark:text-v-green' : 'text-red-600 dark:text-v-red'}`}>
+      <span
+        className={`w-2 h-2 rounded-full inline-block ${ok ? 'bg-emerald-500' : 'bg-red-500'}`}
+        style={{
+          animation: ok ? 'health-glow-green 2s ease infinite' : 'health-glow-red 2s ease infinite',
+          boxShadow: ok ? '0 0 6px rgba(16,185,129,0.4)' : '0 0 6px rgba(239,68,68,0.4)',
+        }}
+      />
       {label}
-    </span>
-  );
-}
-
-function Sparkline({ color }: { color: string }) {
-  const id = `sp-${color.replace('#', '')}`;
-  return (
-    <svg className="absolute bottom-0 right-0 opacity-20" width="90" height="44" viewBox="0 0 90 44">
-      <defs>
-        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.4" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <polygon fill={`url(#${id})`} points="0,38 14,34 26,28 38,32 50,20 62,24 74,14 90,10 90,44 0,44" />
-      <polyline fill="none" stroke={color} strokeWidth="2" points="0,38 14,34 26,28 38,32 50,20 62,24 74,14 90,10" />
-    </svg>
-  );
-}
-
-function StagePill({ stage, count }: { stage: string; count: number }) {
-  const colorKey = STAGE_COLORS[stage] ?? 'blue';
-  const styles: Record<string, string> = {
-    blue: 'text-blue-700 bg-blue-50 border-blue-200',
-    purple: 'text-purple-700 bg-purple-50 border-purple-200',
-    green: 'text-emerald-700 bg-emerald-50 border-emerald-200',
-    amber: 'text-amber-700 bg-amber-50 border-amber-200',
-  };
-  return (
-    <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full border ${styles[colorKey]}`}>
-      {STAGE_LABELS[stage] ?? stage} {count}
     </span>
   );
 }
@@ -346,10 +253,12 @@ function RecentUsers({ users }: { users: { id: string; first_name: string | null
   weekAgo.setDate(weekAgo.getDate() - 7);
 
   return (
-    <div className="rounded-xl p-5 bg-white border border-slate-200 shadow-sm">
+    <div className="rounded-xl p-5 bg-white dark:bg-dash-card border border-slate-200 dark:border-dash-border shadow-sm">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xs font-bold uppercase tracking-wide text-slate-500">Cadastros Recentes</h2>
-        <a href="/admin/users" className="text-xs text-blue-600 font-medium hover:text-blue-700 transition-colors">
+        <h2 className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-v-secondary">
+          Cadastros Recentes
+        </h2>
+        <a href="/admin/users" className="text-xs text-blue-600 dark:text-v-blue font-medium hover:underline transition-colors">
           Ver todos →
         </a>
       </div>
@@ -366,24 +275,24 @@ function RecentUsers({ users }: { users: { id: string; first_name: string | null
           return (
             <div
               key={u.id}
-              className={`flex justify-between items-center px-1 py-2.5 transition-colors hover:bg-slate-50 hover:rounded-lg ${i < users.length - 1 ? 'border-b border-slate-100' : ''}`}
+              className={`flex justify-between items-center px-1 py-2.5 transition-colors hover:bg-slate-50 dark:hover:bg-dash-surface rounded-lg ${i < users.length - 1 ? 'border-b border-slate-100 dark:border-dash-border' : ''}`}
             >
               <div className="flex items-center gap-3">
                 <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center text-xs font-semibold text-white`}>
                   {initials}
                 </div>
                 <div>
-                  <div className="text-sm text-slate-800 font-medium">
+                  <div className="text-sm text-slate-800 dark:text-v-primary font-medium">
                     {name}
                     {isNew && (
-                      <span className="ml-2 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                      <span className="ml-2 text-[10px] font-semibold text-emerald-700 dark:text-v-green bg-emerald-50 dark:bg-v-green/10 px-2 py-0.5 rounded-full">
                         novo
                       </span>
                     )}
                   </div>
                 </div>
               </div>
-              <span className="text-xs text-slate-400 font-medium">{date}</span>
+              <span className="text-xs text-slate-400 dark:text-v-dim font-medium">{date}</span>
             </div>
           );
         })}

@@ -3,23 +3,36 @@
 /* Scan admin package for Tailwind class names */
 @source "../../../../node_modules/@tn-figueiredo/admin/dist";
 
-/* ═══ Admin component tokens — required by @tn-figueiredo/admin ═══ */
+/* ═══ Admin component tokens — mirrors TôNaGarantia tailwind.config.ts ═══ */
 @theme {
-  /* Dashboard surface */
-  --color-dash-card: #1e293b;
-  --color-dash-border: #1e3a5f;
+  /* Dashboard surface palette (dark mode) */
+  --color-dash-bg: #0C1017;
+  --color-dash-sidebar: #0E1319;
+  --color-dash-card: #131A24;
+  --color-dash-border: #1C2635;
+  --color-dash-surface: #111820;
 
-  /* Text tokens for admin components */
-  --color-v-primary: #f0f4f8;
-  --color-v-secondary: #cbd5e1;
+  /* Text tokens (v-* namespace) */
+  --color-v-primary: #F1F5F9;
+  --color-v-secondary: #94A3B8;
+  --color-v-dim: #64748B;
+  --color-v-green: #00C853;
+  --color-v-teal: #2DD4BF;
+  --color-v-blue: #4A90D9;
+  --color-v-purple: #A78BFA;
+  --color-v-orange: #FF9F43;
+  --color-v-yellow: #FBBF24;
+  --color-v-red: #FF5252;
 
   /* Vivid accent colors (charts, badges, highlights) */
-  --color-vivid-green: #4ade80;
-  --color-vivid-orange: #ff8c42;
-  --color-vivid-purple: #a78bfa;
-  --color-vivid-blue: #60a5fa;
-  --color-vivid-teal: #2dd4bf;
-  --color-vivid-cyan: #22d3ee;
+  --color-vivid-green: #00C853;
+  --color-vivid-teal: #2DD4BF;
+  --color-vivid-blue: #4A90D9;
+  --color-vivid-purple: #A78BFA;
+  --color-vivid-orange: #FF9F43;
+  --color-vivid-yellow: #FBBF24;
+  --color-vivid-red: #FF5252;
+  --color-vivid-cyan: #22D3EE;
 }
 
 /* Health dot glow pulse — box-shadow based, not opacity */
@@ -31,6 +44,17 @@
   0%, 100% { box-shadow: 0 0 6px rgba(239,68,68,0.4); }
   50% { box-shadow: 0 0 12px rgba(239,68,68,0.7); }
 }
+
+/* Dashboard fade-in animations */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up { animation: fadeInUp 0.8s ease-out both; }
+.animate-fade-in-up-1 { animation: fadeInUp 0.8s ease-out 0.1s both; }
+.animate-fade-in-up-2 { animation: fadeInUp 0.8s ease-out 0.2s both; }
+.animate-fade-in-up-3 { animation: fadeInUp 0.8s ease-out 0.3s both; }
+.animate-fade-in-up-4 { animation: fadeInUp 0.8s ease-out 0.4s both; }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
