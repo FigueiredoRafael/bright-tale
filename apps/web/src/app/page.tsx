@@ -1151,7 +1151,7 @@ export default function Home() {
                         <path d="M12 5v14M5 12h14" />
                       </svg>
                     </button>
-                    <div className="faq-a">
+                    <div className="faq-a" style={{ maxHeight: isOpen ? '600px' : '0px' }}>
                       <div className="faq-a-inner">{t(aKey)}</div>
                     </div>
                   </div>

@@ -322,8 +322,7 @@ body { font-family: var(--font-body); background: var(--bg-deep); color: var(--t
 .faq-q:hover { background: var(--brand-glow-xs); }
 .faq-q svg { width: 20px; height: 20px; color: var(--text-muted); transition: transform 0.3s; flex-shrink: 0; }
 .faq-item.open .faq-q svg { transform: rotate(45deg); color: var(--brand-400); }
-.faq-a { max-height: 0; overflow: hidden; transition: max-height 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
-.faq-item.open .faq-a { max-height: 600px; }
+.faq-a { overflow: hidden; transition: max-height 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
 .faq-a-inner { padding: 16px 24px 24px; font-size: 15px; color: var(--text-secondary); line-height: 1.75; border-top: 1px solid var(--border); }
 
 .final-cta { padding: 120px 0; text-align: center; position: relative; overflow: hidden; }
