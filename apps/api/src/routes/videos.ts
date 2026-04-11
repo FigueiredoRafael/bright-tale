@@ -18,10 +18,11 @@ import {
   generateVideoHtmlExport,
   generateTeleprompterExport,
 } from '@/lib/exporters/videoExporter';
-import type { VideoOutput, VideoScript } from '@brighttale/shared/types/agents';
+import type { VideoOutput } from '@brighttale/shared/types/agents';
+import type { CreateVideoInput } from '@brighttale/shared/schemas/videos';
 
 // Calculate spoken word count from script sections
-function calculateVideoWordCount(script: VideoScript): number {
+function calculateVideoWordCount(script: CreateVideoInput['script']): number {
   const { hook, problem, teaser, chapters, affiliate_segment, outro } = script;
   const sections = [
     hook?.content,
