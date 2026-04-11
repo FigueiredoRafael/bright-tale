@@ -5,7 +5,7 @@ import { AdminShell } from '@tn-figueiredo/admin/client';
 import type { AdminLayoutConfig } from '@tn-figueiredo/admin';
 
 const config: AdminLayoutConfig = {
-  appName: 'BrightTale Admin',
+  appName: 'BrightTale',
   sections: [
     {
       group: 'Principal',
@@ -14,23 +14,9 @@ const config: AdminLayoutConfig = {
       ],
     },
     {
-      group: 'Usuários',
+      group: 'Gestão',
       items: [
         { label: 'Usuários', path: '/admin/users', icon: 'Users' },
-      ],
-    },
-    {
-      group: 'Conteúdo',
-      items: [
-        { label: 'Pipeline', path: '/admin/pipeline', icon: 'GitBranch' },
-        { label: 'Agent Prompts', path: '/admin/agents', icon: 'Bot' },
-      ],
-    },
-    {
-      group: 'Sistema',
-      items: [
-        { label: 'Configs AI', path: '/admin/ai', icon: 'Cpu' },
-        { label: 'WordPress', path: '/admin/wordpress', icon: 'Globe' },
       ],
     },
   ],

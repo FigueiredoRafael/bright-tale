@@ -1,7 +1,32 @@
 @import "tailwindcss";
 
 /* Scan admin package for Tailwind class names */
-@source "../../../node_modules/@tn-figueiredo/admin/dist";
+@source "../../../../node_modules/@tn-figueiredo/admin/dist";
+
+/* ═══ Admin component tokens — required by @tn-figueiredo/admin ═══ */
+@theme {
+  /* Dashboard surface */
+  --color-dash-card: #1e293b;
+  --color-dash-border: #1e3a5f;
+
+  /* Text tokens for admin components */
+  --color-v-primary: #f0f4f8;
+  --color-v-secondary: #cbd5e1;
+
+  /* Vivid accent colors (charts, badges, highlights) */
+  --color-vivid-green: #4ade80;
+  --color-vivid-orange: #ff8c42;
+  --color-vivid-purple: #a78bfa;
+  --color-vivid-blue: #60a5fa;
+  --color-vivid-teal: #2dd4bf;
+  --color-vivid-cyan: #22d3ee;
+}
+
+/* Health dot glow pulse — box-shadow based, not opacity */
+@keyframes health-glow {
+  0%, 100% { box-shadow: 0 0 6px rgba(16,185,129,0.4); }
+  50% { box-shadow: 0 0 12px rgba(16,185,129,0.7); }
+}
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
