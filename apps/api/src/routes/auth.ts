@@ -46,9 +46,20 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         // Create user_profiles row when a new user signs up via email/password.
         // Upsert with ignoreDuplicates: true makes this safe for email-confirm
         // resend flows (same userId, no error on second call).
+
+        // Retrieve email from auth.users (the callback may not include it)
+        let email: string | undefined;
+        const { data: authUser } = await supabase.auth.admin.getUserById(userId);
+        if (authUser?.user?.email) {
+          email = authUser.user.email;
+        }
+
         const { error } = await supabase
           .from('user_profiles')
-          .upsert({ id: userId }, { onConflict: 'id', ignoreDuplicates: true });
+          .upsert(
+            { id: userId, ...(email ? { email } : {}) },
+            { onConflict: 'id', ignoreDuplicates: true },
+          );
         if (error) {
           fastify.log.error({ err: error, userId }, 'onPostSignUp: failed to upsert user_profiles');
         }
