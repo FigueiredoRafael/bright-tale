@@ -131,7 +131,7 @@ export default async function AdminDashboard() {
           </div>
         </div>
         <div className="flex gap-2.5">
-          <div className="flex items-center gap-1.5 px-3.5 py-1.5 border border-slate-700/50 rounded-lg text-xs text-slate-400 bg-slate-900/40">
+          <div className="flex items-center gap-1.5 px-3.5 py-1.5 border border-slate-700 rounded-lg text-xs text-slate-400 bg-slate-800">
             <RefreshCw className="w-3.5 h-3.5" />
             Atualizado Agora
           </div>
@@ -139,7 +139,7 @@ export default async function AdminDashboard() {
       </div>
 
       {/* Divider */}
-      <div className="h-px bg-gradient-to-r from-transparent via-slate-700/40 to-transparent" />
+      <div className="h-px bg-slate-700" />
 
       {/* ── KPI Grid ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-[18px]">
@@ -251,19 +251,19 @@ export default async function AdminDashboard() {
 
 const SECTION_STYLES = {
   green: {
-    card: 'bg-gradient-to-br from-slate-800/45 to-green-900/[0.08] border-l-emerald-400',
+    card: 'bg-slate-800 border-l-emerald-400',
     title: 'text-emerald-400',
   },
   blue: {
-    card: 'bg-gradient-to-br from-slate-800/45 to-blue-900/[0.08] border-l-blue-400',
+    card: 'bg-slate-800 border-l-blue-400',
     title: 'text-blue-400',
   },
   purple: {
-    card: 'bg-gradient-to-br from-slate-800/45 to-violet-900/[0.08] border-l-violet-400',
+    card: 'bg-slate-800 border-l-violet-400',
     title: 'text-violet-400',
   },
   amber: {
-    card: 'bg-gradient-to-br from-slate-800/45 to-amber-900/[0.08] border-l-amber-400',
+    card: 'bg-slate-800 border-l-amber-400',
     title: 'text-amber-400',
   },
 } as const;
@@ -271,10 +271,10 @@ const SECTION_STYLES = {
 type SectionColor = keyof typeof SECTION_STYLES;
 
 const INNER_CARD_STYLES = {
-  green: { border: 'border-t-emerald-400/30', icon: 'bg-emerald-400/10 border-emerald-400/15' },
-  blue: { border: 'border-t-blue-400/30', icon: 'bg-blue-400/10 border-blue-400/15' },
-  purple: { border: 'border-t-violet-400/30', icon: 'bg-violet-400/10 border-violet-400/15' },
-  amber: { border: 'border-t-amber-400/30', icon: 'bg-amber-400/10 border-amber-400/15' },
+  green: { border: 'border-t-2 border-t-emerald-400/40', icon: 'bg-emerald-950 border border-emerald-400/20' },
+  blue: { border: 'border-t-2 border-t-blue-400/40', icon: 'bg-blue-950 border border-blue-400/20' },
+  purple: { border: 'border-t-2 border-t-violet-400/40', icon: 'bg-violet-950 border border-violet-400/20' },
+  amber: { border: 'border-t-2 border-t-amber-400/40', icon: 'bg-amber-950 border border-amber-400/20' },
 } as const;
 
 /* ═══════════ Sub-components ═══════════ */
@@ -282,7 +282,7 @@ const INNER_CARD_STYLES = {
 function SectionCard({ color, title, children }: { color: SectionColor; title: string; children: React.ReactNode }) {
   const s = SECTION_STYLES[color];
   return (
-    <div className={`rounded-[14px] p-5 border border-slate-700/35 border-l-[3px] shadow-[0_4px_16px_rgba(0,0,0,0.12),0_1px_3px_rgba(0,0,0,0.08)] ${s.card}`}>
+    <div className={`rounded-xl p-5 border border-slate-700 border-l-[3px] shadow-lg ${s.card}`}>
       <h2 className={`text-xs font-bold uppercase tracking-[0.06em] mb-4 ${s.title}`}>{title}</h2>
       {children}
     </div>
@@ -292,9 +292,9 @@ function SectionCard({ color, title, children }: { color: SectionColor; title: s
 function KpiInnerCard({ color, icon, label, children }: { color: SectionColor; icon: React.ReactNode; label: string; children: React.ReactNode }) {
   const s = INNER_CARD_STYLES[color];
   return (
-    <div className={`relative overflow-hidden bg-slate-950/50 border border-slate-700/25 border-t-2 ${s.border} rounded-[10px] p-4 transition-all duration-200 hover:bg-slate-900/60 hover:border-slate-700/40 hover:-translate-y-px`}>
+    <div className={`relative overflow-hidden bg-slate-900 border border-slate-700/50 ${s.border} rounded-lg p-4 transition-all duration-200 hover:bg-slate-900/80 hover:border-slate-600/50 hover:-translate-y-px`}>
       <div className="flex items-center gap-2 mb-3">
-        <div className={`w-[30px] h-[30px] rounded-lg flex items-center justify-center border ${s.icon}`}>
+        <div className={`w-[30px] h-[30px] rounded-lg flex items-center justify-center ${s.icon}`}>
           {icon}
         </div>
         <span className="text-xs text-slate-400 font-medium">{label}</span>
@@ -357,7 +357,7 @@ function RecentUsers({ users }: { users: { id: string; first_name: string | null
   weekAgo.setDate(weekAgo.getDate() - 7);
 
   return (
-    <div className="rounded-[14px] p-5 bg-slate-800/40 border border-slate-700/35 shadow-[0_4px_16px_rgba(0,0,0,0.12),0_1px_3px_rgba(0,0,0,0.08)]">
+    <div className="rounded-xl p-5 bg-slate-800 border border-slate-700 shadow-lg">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xs font-bold uppercase tracking-[0.06em] text-slate-400">Cadastros Recentes</h2>
         <a href="/admin/users" className="text-xs text-teal-400 font-medium hover:text-teal-300 transition-colors">
@@ -377,7 +377,7 @@ function RecentUsers({ users }: { users: { id: string; first_name: string | null
           return (
             <div
               key={u.id}
-              className={`flex justify-between items-center px-1 py-2.5 transition-colors hover:bg-slate-800/30 hover:rounded-lg ${i < users.length - 1 ? 'border-b border-slate-700/20' : ''}`}
+              className={`flex justify-between items-center px-1 py-2.5 transition-colors hover:bg-slate-700/50 hover:rounded-lg ${i < users.length - 1 ? 'border-b border-slate-700' : ''}`}
             >
               <div className="flex items-center gap-3">
                 <div className={`w-[34px] h-[34px] rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center text-xs font-semibold text-white`}>
