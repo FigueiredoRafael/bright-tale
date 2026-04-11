@@ -27,7 +27,7 @@
     "js-yaml": "^4.1.1",
     "marked": "^17.0.1",
     "openai": "^6.17.0",
-    "zod": "^4.3.6"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",

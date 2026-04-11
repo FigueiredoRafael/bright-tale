@@ -131,31 +131,27 @@ describe('Auth routes', () => {
   // ── POST /auth/signup ──────────────────────────────────────────────────────
 
   describe('POST /auth/signup', () => {
-    it('returns 4xx/5xx when body is missing required fields', async () => {
+    it('returns 400 when body is missing required fields', async () => {
       // signUpSchema requires: email, password, ageConfirmation
-      // Note: auth-fastify uses zod v3 for schemas but root workspace has zod v4,
-      // causing ZodError instanceof check to fail → returns 500 in this environment.
       const res = await app.inject({
         method: 'POST',
         url: '/auth/signup',
         payload: {},
       });
 
-      expect(res.statusCode).toBeGreaterThanOrEqual(400);
+      expect(res.statusCode).toBe(400);
       expect(res.json().success).toBe(false);
     });
 
-    it('returns 4xx/5xx when ageConfirmation is missing (required by signUpSchema)', async () => {
+    it('returns 400 when ageConfirmation is missing (required by signUpSchema)', async () => {
       // ageConfirmation: z.boolean() is NOT optional — omitting it fails validation.
-      // Note: auth-fastify uses zod v3 for schemas but root workspace has zod v4,
-      // causing ZodError instanceof check to fail → returns 500 in this environment.
       const res = await app.inject({
         method: 'POST',
         url: '/auth/signup',
         payload: { email: 'test@brighttale.io', password: 'Password123!' },
       });
 
-      expect(res.statusCode).toBeGreaterThanOrEqual(400);
+      expect(res.statusCode).toBe(400);
       expect(res.json().success).toBe(false);
     });
 
@@ -193,6 +189,32 @@ describe('Auth routes', () => {
       expect(mockUpsert).toHaveBeenCalledWith(
         { id: 'user-uuid-123' },
         { onConflict: 'id', ignoreDuplicates: true },
+      );
+    });
+
+    it('logs error when onPostSignUp upsert fails but still returns 200', async () => {
+      mockUpsert.mockResolvedValue({ data: null, error: { message: 'DB error', code: '500' } });
+      const logSpy = vi.spyOn(app.log, 'error');
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/auth/signup',
+        payload: {
+          email: 'test@brighttale.io',
+          password: 'Password123!',
+          ageConfirmation: true,
+        },
+      });
+
+      // Signup still succeeds — hook failure doesn't break the response
+      expect(res.statusCode).toBe(200);
+
+      // Wait for fire-and-forget hook to settle
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'user-uuid-123' }),
+        'onPostSignUp: failed to upsert user_profiles',
       );
     });
   });
