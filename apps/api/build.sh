@@ -14,8 +14,9 @@ node "$REPO_ROOT/node_modules/typescript/bin/tsc" -p "$REPO_ROOT/packages/shared
 
 echo "=== Copying shared to node_modules ==="
 rm -rf "$REPO_ROOT/node_modules/@brighttale/shared"
-mkdir -p "$REPO_ROOT/node_modules/@brighttale"
-cp -r "$REPO_ROOT/packages/shared" "$REPO_ROOT/node_modules/@brighttale/shared"
+mkdir -p "$REPO_ROOT/node_modules/@brighttale/shared"
+cp -r "$REPO_ROOT/packages/shared/dist" "$REPO_ROOT/node_modules/@brighttale/shared/dist"
+cp "$REPO_ROOT/packages/shared/package.json" "$REPO_ROOT/node_modules/@brighttale/shared/package.json"
 
-mkdir -p public && echo '{}' > public/.keep
+mkdir -p public && touch public/.keep
 echo "=== BUILD COMPLETE ==="
