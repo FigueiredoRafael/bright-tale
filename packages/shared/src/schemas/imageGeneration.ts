@@ -71,3 +71,4 @@ export const suggestPromptsRequestSchema = z.object({
 export type GenerateImageRequest = z.infer<typeof generateImageRequestSchema>;
 export type ImageGeneratorConfig = z.infer<typeof imageGeneratorConfigSchema>;
 export type SuggestPromptsRequest = z.infer<typeof suggestPromptsRequestSchema>;
+export type AgentImagePrompts = z.infer<typeof agentImagePromptsSchema>;

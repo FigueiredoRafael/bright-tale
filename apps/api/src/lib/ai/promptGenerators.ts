@@ -11,6 +11,8 @@
  *  - Aspect ratio hint in the prompt context (handled via API param, not text)
  */
 
+import type { AgentImagePrompts } from '@brighttale/shared/schemas/imageGeneration';
+
 export function generateBlogFeaturedImagePrompt(
   title: string,
   targetAudience?: string,
@@ -82,13 +84,7 @@ export function generateStandalonePrompt(
  * from the image_prompts object returned by the production agent.
  */
 export function extractAgentImagePrompt(
-  imagePrompts: {
-    featured?: string;
-    sections?: Array<{ heading: string; prompt: string }>;
-    thumbnail_option_1?: string;
-    thumbnail_option_2?: string;
-    chapters?: Array<{ chapter_title: string; prompt: string }>;
-  } | undefined,
+  imagePrompts: AgentImagePrompts | undefined,
   role: string,
 ): string | undefined {
   if (!imagePrompts) return undefined;
