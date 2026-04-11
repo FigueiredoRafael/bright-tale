@@ -116,11 +116,11 @@ export default function BlogsPage() {
             const res = await fetch(`/api/blogs?${params.toString()}`);
             const json = await res.json();
 
-            if (json.success) {
+            if (json.error) {
+                setError(json.error.message || "Failed to fetch blogs");
+            } else {
                 setBlogs(json.data.blogs);
                 setPagination(json.data.pagination);
-            } else {
-                setError(json.error?.message || "Failed to fetch blogs");
             }
         } catch (err) {
             setError("Failed to fetch blogs");

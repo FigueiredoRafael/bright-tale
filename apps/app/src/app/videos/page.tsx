@@ -64,7 +64,7 @@ export default function VideosPage() {
 
       const res = await fetch(`/api/videos?${params}`);
       const json = await res.json();
-      if (json.success) {
+      if (!json.error) {
         setVideos(json.data.videos);
         setTotalPages(json.data.pagination.total_pages);
         setTotal(json.data.pagination.total);

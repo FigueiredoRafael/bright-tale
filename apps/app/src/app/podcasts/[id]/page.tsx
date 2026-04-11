@@ -43,7 +43,7 @@ export default function PodcastDetailPage() {
     async function load() {
       const res = await fetch(`/api/podcasts/${id}`);
       const json = await res.json();
-      if (json.success) {
+      if (!json.error) {
         setData(json.data.podcast);
         setStatus(json.data.podcast.status);
       }

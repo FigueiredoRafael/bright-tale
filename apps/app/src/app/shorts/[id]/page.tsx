@@ -45,7 +45,7 @@ export default function ShortsDetailPage() {
     async function load() {
       const res = await fetch(`/api/shorts/${id}`);
       const json = await res.json();
-      if (json.success) {
+      if (!json.error) {
         setData(json.data.shorts);
         setStatus(json.data.shorts.status);
       }

@@ -37,7 +37,7 @@ export default function VideoDetailPage() {
     async function load() {
       const res = await fetch(`/api/videos/${id}`);
       const json = await res.json();
-      if (json.success) {
+      if (!json.error) {
         setVideo(json.data.video);
         setStatus(json.data.video.status);
       }

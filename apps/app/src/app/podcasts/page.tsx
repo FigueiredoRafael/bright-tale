@@ -62,7 +62,7 @@ export default function PodcastsPage() {
 
       const res = await fetch(`/api/podcasts?${params}`);
       const json = await res.json();
-      if (json.success) {
+      if (!json.error) {
         setPodcasts(json.data.podcasts);
         setTotalPages(json.data.pagination.total_pages);
         setTotal(json.data.pagination.total);

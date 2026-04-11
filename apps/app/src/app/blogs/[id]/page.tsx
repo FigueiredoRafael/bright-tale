@@ -101,10 +101,10 @@ export default function BlogDetailPage({
             try {
                 const res = await fetch(`/api/blogs/${id}`);
                 const json = await res.json();
-                if (json.success) {
-                    setBlog(json.data.blog);
+                if (json.error) {
+                    setError(json.error.message || "Failed to load blog");
                 } else {
-                    setError(json.error?.message || "Failed to load blog");
+                    setBlog(json.data.blog);
                 }
             } catch (err) {
                 setError("Failed to load blog");
@@ -125,7 +125,7 @@ export default function BlogDetailPage({
                 body: JSON.stringify(blogOutput),
             });
             const json = await res.json();
-            if (json.success) {
+            if (!json.error) {
                 // Refresh blog data
                 setBlog((prev) =>
                     prev
@@ -152,7 +152,7 @@ export default function BlogDetailPage({
                 body: JSON.stringify({ status: newStatus }),
             });
             const json = await res.json();
-            if (json.success && blog) {
+            if (!json.error && blog) {
                 setBlog({ ...blog, status: newStatus as BlogDraftFull["status"] });
             }
         } catch (err) {

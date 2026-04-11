@@ -54,7 +54,7 @@ export default function ShortsPage() {
 
       const res = await fetch(`/api/shorts?${params}`);
       const json = await res.json();
-      if (json.success) {
+      if (!json.error) {
         setShorts(json.data.shorts);
         setTotalPages(json.data.pagination.total_pages);
         setTotal(json.data.pagination.total);
