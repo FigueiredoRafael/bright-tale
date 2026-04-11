@@ -1,4 +1,4 @@
-import { buildServer } from './server.js';
+import { buildServer } from './fastify.js';
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
 
