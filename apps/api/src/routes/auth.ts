@@ -46,8 +46,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         // Create user_profiles row when a new user signs up via email/password.
         // Upsert with ignoreDuplicates: true makes this safe for email-confirm
         // resend flows (same userId, no error on second call).
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error } = await (supabase as any)
+        const { error } = await supabase
           .from('user_profiles')
           .upsert({ id: userId }, { onConflict: 'id', ignoreDuplicates: true });
         if (error) {

@@ -79,6 +79,7 @@ export type Database = {
           is_active: boolean
           provider: string
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           api_key: string
@@ -88,6 +89,7 @@ export type Database = {
           is_active?: boolean
           provider: string
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           api_key?: string
@@ -97,6 +99,7 @@ export type Database = {
           is_active?: boolean
           provider?: string
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -115,6 +118,7 @@ export type Database = {
           source: string
           source_url: string | null
           updated_at: string
+          user_id: string | null
           wordpress_id: number | null
           wordpress_url: string | null
         }
@@ -132,6 +136,7 @@ export type Database = {
           source: string
           source_url?: string | null
           updated_at?: string
+          user_id?: string | null
           wordpress_id?: number | null
           wordpress_url?: string | null
         }
@@ -149,6 +154,7 @@ export type Database = {
           source?: string
           source_url?: string | null
           updated_at?: string
+          user_id?: string | null
           wordpress_id?: number | null
           wordpress_url?: string | null
         }
@@ -175,6 +181,7 @@ export type Database = {
           status: string
           title: string
           updated_at: string
+          user_id: string | null
           word_count: number
           wordpress_post_id: number | null
           wordpress_url: string | null
@@ -199,6 +206,7 @@ export type Database = {
           status?: string
           title: string
           updated_at?: string
+          user_id?: string | null
           word_count?: number
           wordpress_post_id?: number | null
           wordpress_url?: string | null
@@ -223,6 +231,7 @@ export type Database = {
           status?: string
           title?: string
           updated_at?: string
+          user_id?: string | null
           word_count?: number
           wordpress_post_id?: number | null
           wordpress_url?: string | null
@@ -244,6 +253,7 @@ export type Database = {
           project_id: string | null
           thesis: string
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           affiliate_moment_json?: string | null
@@ -259,6 +269,7 @@ export type Database = {
           project_id?: string | null
           thesis: string
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           affiliate_moment_json?: string | null
@@ -274,6 +285,7 @@ export type Database = {
           project_id?: string | null
           thesis?: string
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -293,6 +305,7 @@ export type Database = {
           title: string
           updated_at: string
           usage_count: number
+          user_id: string | null
           verdict: string
         }
         Insert: {
@@ -310,6 +323,7 @@ export type Database = {
           title: string
           updated_at?: string
           usage_count?: number
+          user_id?: string | null
           verdict: string
         }
         Update: {
@@ -327,6 +341,7 @@ export type Database = {
           title?: string
           updated_at?: string
           usage_count?: number
+          user_id?: string | null
           verdict?: string
         }
         Relationships: []
@@ -374,6 +389,7 @@ export type Database = {
           model: string
           provider: string
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           api_key: string
@@ -384,6 +400,7 @@ export type Database = {
           model: string
           provider: string
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           api_key?: string
@@ -394,6 +411,7 @@ export type Database = {
           model?: string
           provider?: string
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -413,6 +431,7 @@ export type Database = {
           status: string
           talking_points_json: string
           updated_at: string
+          user_id: string | null
           word_count: number
         }
         Insert: {
@@ -430,6 +449,7 @@ export type Database = {
           status?: string
           talking_points_json: string
           updated_at?: string
+          user_id?: string | null
           word_count?: number
         }
         Update: {
@@ -447,6 +467,7 @@ export type Database = {
           status?: string
           talking_points_json?: string
           updated_at?: string
+          user_id?: string | null
           word_count?: number
         }
         Relationships: []
@@ -462,6 +483,7 @@ export type Database = {
           status: string
           title: string
           updated_at: string
+          user_id: string | null
           video_style_config: string | null
           winner: boolean
         }
@@ -475,6 +497,7 @@ export type Database = {
           status: string
           title: string
           updated_at?: string
+          user_id?: string | null
           video_style_config?: string | null
           winner?: boolean
         }
@@ -488,6 +511,7 @@ export type Database = {
           status?: string
           title?: string
           updated_at?: string
+          user_id?: string | null
           video_style_config?: string | null
           winner?: boolean
         }
@@ -510,6 +534,7 @@ export type Database = {
           theme: string
           title: string
           updated_at: string
+          user_id: string | null
           winners_count: number
         }
         Insert: {
@@ -520,6 +545,7 @@ export type Database = {
           theme: string
           title: string
           updated_at?: string
+          user_id?: string | null
           winners_count?: number
         }
         Update: {
@@ -530,6 +556,7 @@ export type Database = {
           theme?: string
           title?: string
           updated_at?: string
+          user_id?: string | null
           winners_count?: number
         }
         Relationships: []
@@ -621,6 +648,7 @@ export type Database = {
           status: string
           total_duration: string | null
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string
@@ -632,6 +660,7 @@ export type Database = {
           status?: string
           total_duration?: string | null
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string
@@ -643,6 +672,7 @@ export type Database = {
           status?: string
           total_duration?: string | null
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -690,6 +720,7 @@ export type Database = {
           parent_template_id: string | null
           type: string
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           config_json: string
@@ -699,6 +730,7 @@ export type Database = {
           parent_template_id?: string | null
           type: string
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           config_json?: string
@@ -708,6 +740,7 @@ export type Database = {
           parent_template_id?: string | null
           type?: string
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -718,6 +751,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          first_name: string | null
+          id: string
+          last_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          first_name?: string | null
+          id: string
+          last_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       video_drafts: {
         Row: {
@@ -732,6 +792,7 @@ export type Database = {
           title_options: string[]
           total_duration_estimate: string | null
           updated_at: string
+          user_id: string | null
           word_count: number
         }
         Insert: {
@@ -746,6 +807,7 @@ export type Database = {
           title_options?: string[]
           total_duration_estimate?: string | null
           updated_at?: string
+          user_id?: string | null
           word_count?: number
         }
         Update: {
@@ -760,6 +822,7 @@ export type Database = {
           title_options?: string[]
           total_duration_estimate?: string | null
           updated_at?: string
+          user_id?: string | null
           word_count?: number
         }
         Relationships: []
@@ -771,6 +834,7 @@ export type Database = {
           password: string
           site_url: string
           updated_at: string
+          user_id: string | null
           username: string
         }
         Insert: {
@@ -779,6 +843,7 @@ export type Database = {
           password: string
           site_url: string
           updated_at?: string
+          user_id?: string | null
           username: string
         }
         Update: {
@@ -787,6 +852,7 @@ export type Database = {
           password?: string
           site_url?: string
           updated_at?: string
+          user_id?: string | null
           username?: string
         }
         Relationships: []
