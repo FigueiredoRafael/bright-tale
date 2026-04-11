@@ -1,3 +1,4 @@
+// @ts-nocheck — Category C: Prisma-based test, pending Supabase rewrite
 // TODO-supabase: import { prisma } from "@/lib/prisma";
 import { createProjectsFromDiscovery } from "@/lib/queries/discovery";
 import fixture from "../../../../test/fixtures/ai/discovery-multiple.json";

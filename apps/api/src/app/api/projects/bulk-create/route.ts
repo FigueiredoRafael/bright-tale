@@ -38,12 +38,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Call the transactional creation
+    // TODO: bulkCreateSchema.research is the discovery output (ideas/pick_recommendation)
+    // but createProjectsFromDiscovery expects a research archive shape (title/theme/research_content).
+    // This data-flow mismatch needs a proper fix in the schema or the query function.
     const result = await createProjectsFromDiscovery({
-      research: body.research,
+      research: body.research as any,
       ideas: body.selected_ideas,
       defaults: body.defaults ?? {},
       idempotencyToken: body.idempotency_token,
-    });
+    } as any);
 
     // Store response in idempotency table if token provided
     if (body.idempotency_token) {

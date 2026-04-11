@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "plugins": [{ "name": "next" }],
+    "types": ["vitest/globals"],
     "paths": {
       "@/*": ["./src/*"],
       "@brighttale/shared": ["../../packages/shared/src"],
@@ -9,5 +10,5 @@
     }
   },
   "include": ["next-env.d.ts", "src/**/*", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", ".next"]
+  "exclude": ["node_modules", ".next", "**/*.stories.tsx", "**/*.stories.ts"]
 }

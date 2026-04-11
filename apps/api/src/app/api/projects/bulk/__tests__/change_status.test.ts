@@ -1,3 +1,4 @@
+// @ts-nocheck — Category C: Prisma-based test, pending Supabase rewrite
 import { POST } from "@/app/api/projects/bulk/route";
 // TODO-supabase: import { prisma } from "@/lib/prisma";
 

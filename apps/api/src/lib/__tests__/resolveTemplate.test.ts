@@ -1,3 +1,4 @@
+// @ts-nocheck — Category C: Prisma-based test, pending Supabase rewrite
 import { resolveTemplate } from "@/lib/queries/templates";
 // TODO-supabase: import { prisma } from "@/lib/prisma";
 
