@@ -1,66 +1,32 @@
 import { createAdminClient } from '@/lib/supabase/admin';
-import { KpiCard, KpiSection } from '@tn-figueiredo/admin/client';
-import { Users, FolderOpen, FileText, BookOpen } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
-async function fetchDashboardStats() {
+export default async function AdminDashboard() {
   const supabase = createAdminClient();
 
-  const [users, projects, drafts, archives] = await Promise.allSettled([
+  const [users, projects] = await Promise.allSettled([
     supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
     supabase.from('projects').select('id', { count: 'exact', head: true }),
-    supabase.from('blog_drafts').select('id', { count: 'exact', head: true }),
-    supabase.from('research_archives').select('id', { count: 'exact', head: true }),
   ]);
 
-  return {
-    totalUsers: users.status === 'fulfilled' ? (users.value.count ?? 0) : 0,
-    totalProjects: projects.status === 'fulfilled' ? (projects.value.count ?? 0) : 0,
-    totalDrafts: drafts.status === 'fulfilled' ? (drafts.value.count ?? 0) : 0,
-    totalArchives: archives.status === 'fulfilled' ? (archives.value.count ?? 0) : 0,
-  };
-}
-
-export default async function AdminDashboard() {
-  const stats = await fetchDashboardStats();
+  const totalUsers = users.status === 'fulfilled' ? (users.value.count ?? 0) : 0;
+  const totalProjects = projects.status === 'fulfilled' ? (projects.value.count ?? 0) : 0;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Dashboard</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Visão geral do BrightTale
-        </p>
-      </div>
+    <div>
+      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Dashboard</h1>
+      <p style={{ color: '#64748b', marginBottom: 32 }}>Visão geral do BrightTale</p>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <KpiSection title="Usuários" color="green">
-          <KpiCard
-            label="Total de usuários"
-            value={stats.totalUsers}
-            icon={<Users size={18} className="text-emerald-500" />}
-            subText="contas registradas"
-          />
-        </KpiSection>
-
-        <KpiSection title="Conteúdo" color="blue">
-          <KpiCard
-            label="Projetos"
-            value={stats.totalProjects}
-            icon={<FolderOpen size={18} className="text-blue-500" />}
-          />
-          <KpiCard
-            label="Drafts"
-            value={stats.totalDrafts}
-            icon={<FileText size={18} className="text-blue-500" />}
-          />
-          <KpiCard
-            label="Research Archives"
-            value={stats.totalArchives}
-            icon={<BookOpen size={18} className="text-blue-500" />}
-          />
-        </KpiSection>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
+        <div style={{ background: '#1e293b', borderRadius: 12, padding: 20 }}>
+          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>Usuários</div>
+          <div style={{ fontSize: 32, fontWeight: 700 }}>{totalUsers}</div>
+        </div>
+        <div style={{ background: '#1e293b', borderRadius: 12, padding: 20 }}>
+          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>Projetos</div>
+          <div style={{ fontSize: 32, fontWeight: 700 }}>{totalProjects}</div>
+        </div>
       </div>
     </div>
   );
