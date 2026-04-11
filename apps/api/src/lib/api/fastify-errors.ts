@@ -2,6 +2,18 @@ import type { FastifyReply } from 'fastify';
 import { ApiError, translateSupabaseError } from './errors';
 import { ZodError } from 'zod';
 
+function isZodError(error: unknown): error is ZodError {
+  // Use instanceof first (works when both sides are same zod version)
+  // Fall back to constructor name check to handle mixed Zod v3/v4 environments
+  return (
+    error instanceof ZodError ||
+    (error != null &&
+      typeof error === 'object' &&
+      (error as any).constructor?.name === 'ZodError' &&
+      Array.isArray((error as any).issues))
+  );
+}
+
 export function sendError(reply: FastifyReply, error: unknown): void {
   if (error instanceof ApiError) {
     reply.status(error.status).send({
@@ -11,11 +23,11 @@ export function sendError(reply: FastifyReply, error: unknown): void {
     return;
   }
 
-  if (error instanceof ZodError) {
+  if (isZodError(error)) {
     reply.status(400).send({
       data: null,
       error: {
-        message: 'Validation failed: ' + error.issues.map(i => i.message).join(', '),
+        message: 'Validation failed: ' + (error as any).issues.map((i: any) => i.message).join(', '),
         code: 'VALIDATION_ERROR',
       },
     });
