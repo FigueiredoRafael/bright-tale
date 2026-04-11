@@ -31,12 +31,8 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   if (!await isAdminUser(supabase, user.id)) redirect('/admin/login?error=unauthorized');
 
   return (
-    <>
-      {/* Remove landing-page class from body so admin gets clean light bg */}
-      <script dangerouslySetInnerHTML={{ __html: `document.body.classList.remove('landing-page')` }} />
-      <AdminShell config={config} userEmail={user.email!}>
-        {children}
-      </AdminShell>
-    </>
+    <AdminShell config={config} userEmail={user.email!}>
+      {children}
+    </AdminShell>
   );
 }

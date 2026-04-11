@@ -268,7 +268,7 @@ function PipelinePreviewCard() {
   }, [runAnimation]);
 
   return (
-    <div className="ppc">
+    <div className="ppc landing-page">
       <div className="ppc-header">
         <div className="ppc-title-row">
           <div className="ppc-favicon">
