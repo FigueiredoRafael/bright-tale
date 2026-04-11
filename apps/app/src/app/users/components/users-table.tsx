@@ -274,7 +274,9 @@ export function UsersTable({ users, sort, sortDir, onRefresh }: UsersTableProps)
                               const { updateUser } = await import("@/lib/api/users");
                               await updateUser(u.id, { isActive: !u.isActive });
                               onRefresh();
-                            } catch {}
+                            } catch (e: any) {
+                              alert(e.message || "Erro ao alterar status");
+                            }
                           }}
                         >
                           {u.isActive ? (
