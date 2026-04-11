@@ -4,5 +4,11 @@
     "noEmit": false,
     "outDir": "dist"
   },
-  "exclude": ["node_modules", "dist", "src/__tests__", "src/app"]
+  "include": [
+    "src/index.ts",
+    "src/routes/**/*",
+    "src/lib/supabase/**/*",
+    "api/**/*"
+  ],
+  "exclude": ["node_modules", "dist"]
 }
