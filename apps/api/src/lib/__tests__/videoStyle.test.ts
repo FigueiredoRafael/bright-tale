@@ -2,7 +2,7 @@
  * Tests for VideoStyleConfig type and Zod schema
  */
 import { describe, it, expect } from "vitest";
-import { videoStyleConfigSchema, type VideoStyleConfig, type VideoStyleConfigInput } from "../schemas/videoStyle";
+import { videoStyleConfigSchema, type VideoStyleConfig, type VideoStyleConfigInput } from "@brighttale/shared/schemas/videoStyle";
 
 describe("videoStyleConfigSchema — valid configs", () => {
   it("accepts talking_head_standard template with defaults", () => {

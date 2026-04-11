@@ -6,7 +6,7 @@ import { describe, it, expect } from "vitest";
 import {
   createCanonicalCoreSchema,
   updateCanonicalCoreSchema,
-} from "../schemas/canonicalCoreApi";
+} from "@brighttale/shared/schemas/canonicalCoreApi";
 
 const VALID_CREATE = {
   idea_id: "BC-IDEA-001",

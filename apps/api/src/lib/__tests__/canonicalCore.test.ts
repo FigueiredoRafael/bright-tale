@@ -6,7 +6,7 @@ import {
   canonicalCoreSchema,
   scoreCanonicalCore,
   type CanonicalCoreInput,
-} from "../schemas/canonicalCore";
+} from "@brighttale/shared/schemas/canonicalCore";
 
 const BASE_CORE: CanonicalCoreInput = {
   idea_id: "BC-IDEA-001",

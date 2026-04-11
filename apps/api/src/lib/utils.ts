@@ -27,30 +27,14 @@ export function markdownToHtml(markdown: string): string {
 
 /**
  * Safety check: returns true if the current environment is production
- * Checks DATABASE_URL and NODE_ENV to prevent destructive actions
+ * Checks SUPABASE_URL and NODE_ENV to prevent destructive actions
  */
 export function isProduction(): boolean {
-  const dbUrl = process.env.DATABASE_URL || "";
+  const supabaseUrl = process.env.SUPABASE_URL || "";
   const nodeEnv = process.env.NODE_ENV || "development";
 
   return (
     nodeEnv === "production" ||
-    dbUrl.includes("production") ||
-    dbUrl.includes("rds.amazonaws.com")
-  );
-}
-
-/**
- * Safety check: returns true if the current environment is production
- * Checks DATABASE_URL and NODE_ENV to prevent destructive actions
- */
-export function isProduction(): boolean {
-  const dbUrl = process.env.DATABASE_URL || "";
-  const nodeEnv = process.env.NODE_ENV || "development";
-
-  return (
-    nodeEnv === "production" ||
-    dbUrl.includes("production") ||
-    dbUrl.includes("rds.amazonaws.com")
+    supabaseUrl.includes("supabase.co") && !supabaseUrl.includes("localhost")
   );
 }

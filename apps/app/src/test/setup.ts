@@ -1,7 +1,18 @@
-import "dotenv/config";
-import "@testing-library/jest-dom";
-// Ensure fetch is available (Node 18+ has fetch, but keep for safety in jsdom tests)
+import '@testing-library/jest-dom';
 if (!globalThis.fetch) {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  globalThis.fetch = require("node-fetch");
+  globalThis.fetch = fetch;
+}
+
+// Provide a minimal localStorage stub for jsdom+forks pool
+if (typeof globalThis.localStorage === 'undefined' || typeof globalThis.localStorage.getItem !== 'function') {
+  const store: Record<string, string> = {};
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: {
+      getItem: (key: string) => store[key] ?? null,
+      setItem: (key: string, value: string) => { store[key] = value; },
+      removeItem: (key: string) => { delete store[key]; },
+      clear: () => { Object.keys(store).forEach(k => delete store[k]); },
+    },
+    writable: true,
+  });
 }

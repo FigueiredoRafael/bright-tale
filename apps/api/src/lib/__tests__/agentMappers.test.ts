@@ -2,7 +2,7 @@
  * Tests for agent mapping functions (Research → Production input)
  */
 import { describe, it, expect } from "vitest";
-import { mapResearchToProductionInput, type ResearchOutput } from "../../types/agents";
+import { mapResearchToProductionInput, type ResearchOutput } from "@brighttale/shared/types/agents";
 
 const baseResearch: ResearchOutput = {
   idea_id: "BC-IDEA-001",

@@ -3,7 +3,7 @@
  * Verifies that LLM output variants (wrong case, underscores) are normalized
  */
 import { describe, it, expect } from "vitest";
-import { productionShortsSchema, productionVideoSchema } from "../schemas/agents";
+import { productionShortsSchema, productionVideoSchema } from "@brighttale/shared/schemas/agents";
 
 describe("productionShortsSchema — visual_style coercion", () => {
   const baseShort = {
