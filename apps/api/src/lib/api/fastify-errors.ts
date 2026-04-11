@@ -45,8 +45,14 @@ export function sendError(reply: FastifyReply, error: unknown): void {
   }
 
   reply.log.error({ err: error }, 'Unhandled route error');
+  const err = error as { name?: string; message?: string; stack?: string } | null;
   reply.status(500).send({
     data: null,
-    error: { message: 'Internal server error', code: 'INTERNAL' },
+    error: {
+      message: err?.message ?? 'Internal server error',
+      code: 'INTERNAL',
+      name: err?.name,
+      stack: err?.stack?.split('\n').slice(0, 5).join('\n'),
+    },
   });
 }
