@@ -121,51 +121,48 @@ export default async function AdminDashboard() {
       {/* ── Header ── */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-slate-50 tracking-tight font-[family-name:var(--font-display)]">
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
             Dashboard
           </h1>
-          <p className="text-[13px] text-slate-500 mt-1">Visão geral do BrightTale</p>
-          <div className="flex gap-3.5 mt-2.5 items-center">
+          <p className="text-sm text-slate-500 mt-1">Visão geral do BrightTale</p>
+          <div className="flex gap-4 mt-2.5 items-center">
             <HealthDot label="API" ok={data.health.api} />
             <HealthDot label="Supabase" ok={data.health.supabase} />
           </div>
         </div>
         <div className="flex gap-2.5">
-          <div className="flex items-center gap-1.5 px-3.5 py-1.5 border border-slate-700 rounded-lg text-xs text-slate-400 bg-slate-800">
+          <div className="flex items-center gap-1.5 px-3.5 py-2 border border-slate-200 rounded-lg text-xs text-slate-500 bg-white shadow-sm">
             <RefreshCw className="w-3.5 h-3.5" />
             Atualizado Agora
           </div>
         </div>
       </div>
 
-      {/* Divider */}
-      <div className="h-px bg-slate-700" />
-
       {/* ── KPI Grid ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-[18px]">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
         {/* Crescimento */}
         <SectionCard color="green" title="Crescimento">
           <div className="grid grid-cols-2 gap-3">
-            <KpiInnerCard color="green" icon={<User className="w-3.5 h-3.5 text-emerald-400" />} label="Usuários">
-              <div className="flex items-baseline">
-                <span className="text-[30px] font-extrabold text-slate-50 tracking-tight leading-none [text-shadow:0_0_20px_rgba(74,222,128,0.15)]">
+            <KpiInnerCard color="green" icon={<User className="w-4 h-4 text-emerald-600" />} label="Usuários">
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-extrabold text-slate-900 tracking-tight leading-none">
                   {data.users.total}
                 </span>
                 {data.users.week > 0 && (
-                  <span className="ml-2 text-[11px] font-semibold text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-[10px]">
+                  <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
                     ↑ {data.users.week} sem
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-slate-500 mt-1.5">{data.users.week} esta semana</p>
-              <Sparkline color="#4ade80" />
+              <p className="text-xs text-slate-400 mt-1.5">{data.users.week} esta semana</p>
+              <Sparkline color="#10b981" />
             </KpiInnerCard>
-            <KpiInnerCard color="green" icon={<UserPlus className="w-3.5 h-3.5 text-emerald-400" />} label="Novos hoje">
-              <span className="text-[30px] font-extrabold text-slate-50 tracking-tight leading-none">
+            <KpiInnerCard color="green" icon={<UserPlus className="w-4 h-4 text-emerald-600" />} label="Novos hoje">
+              <span className="text-3xl font-extrabold text-slate-900 tracking-tight leading-none">
                 {data.users.today}
               </span>
-              <p className="text-[11px] text-slate-500 mt-1.5">{data.users.week} nos últimos 7d</p>
+              <p className="text-xs text-slate-400 mt-1.5">{data.users.week} nos últimos 7d</p>
             </KpiInnerCard>
           </div>
         </SectionCard>
@@ -173,22 +170,22 @@ export default async function AdminDashboard() {
         {/* Pipeline de Conteúdo */}
         <SectionCard color="blue" title="Pipeline de Conteúdo">
           <div className="grid grid-cols-2 gap-3">
-            <KpiInnerCard color="blue" icon={<Activity className="w-3.5 h-3.5 text-blue-400" />} label="Total Projetos">
-              <span className="text-[30px] font-extrabold text-slate-50 tracking-tight leading-none [text-shadow:0_0_20px_rgba(96,165,250,0.15)]">
+            <KpiInnerCard color="blue" icon={<Activity className="w-4 h-4 text-blue-600" />} label="Total Projetos">
+              <span className="text-3xl font-extrabold text-slate-900 tracking-tight leading-none">
                 {data.pipeline.total}
               </span>
-              <p className="text-[11px] text-slate-500 mt-1.5">no pipeline</p>
-              <Sparkline color="#60a5fa" />
+              <p className="text-xs text-slate-400 mt-1.5">no pipeline</p>
+              <Sparkline color="#3b82f6" />
             </KpiInnerCard>
-            <KpiInnerCard color="blue" icon={<CheckCircle className="w-3.5 h-3.5 text-blue-400" />} label="Publicados">
-              <span className="text-[30px] font-extrabold text-slate-50 tracking-tight leading-none">
+            <KpiInnerCard color="blue" icon={<CheckCircle className="w-4 h-4 text-blue-600" />} label="Publicados">
+              <span className="text-3xl font-extrabold text-slate-900 tracking-tight leading-none">
                 {data.pipeline.published}
               </span>
-              <p className="text-[11px] text-slate-500 mt-1.5">winner=true</p>
+              <p className="text-xs text-slate-400 mt-1.5">winner=true</p>
             </KpiInnerCard>
           </div>
           {stageEntries.length > 0 && (
-            <div className="flex gap-1.5 mt-3.5 flex-wrap">
+            <div className="flex gap-1.5 mt-4 flex-wrap">
               {stageEntries.map(([stage, count]) => (
                 <StagePill key={stage} stage={stage} count={count} />
               ))}
@@ -199,23 +196,23 @@ export default async function AdminDashboard() {
         {/* Conteúdo */}
         <SectionCard color="purple" title="Conteúdo">
           <div className="grid grid-cols-3 gap-3">
-            <KpiInnerCard color="purple" icon={<Search className="w-3.5 h-3.5 text-violet-400" />} label="Research">
-              <span className="text-[28px] font-extrabold text-slate-50 tracking-tight leading-none">
+            <KpiInnerCard color="purple" icon={<Search className="w-4 h-4 text-purple-600" />} label="Research">
+              <span className="text-2xl font-extrabold text-slate-900 tracking-tight leading-none">
                 {data.content.research}
               </span>
-              <p className="text-[11px] text-slate-500 mt-1.5">archives</p>
+              <p className="text-xs text-slate-400 mt-1.5">archives</p>
             </KpiInnerCard>
-            <KpiInnerCard color="purple" icon={<FileEdit className="w-3.5 h-3.5 text-violet-400" />} label="Drafts">
-              <span className="text-[28px] font-extrabold text-slate-50 tracking-tight leading-none">
+            <KpiInnerCard color="purple" icon={<FileEdit className="w-4 h-4 text-purple-600" />} label="Drafts">
+              <span className="text-2xl font-extrabold text-slate-900 tracking-tight leading-none">
                 {data.content.drafts}
               </span>
-              <p className="text-[11px] text-slate-500 mt-1.5">blog drafts</p>
+              <p className="text-xs text-slate-400 mt-1.5">blog drafts</p>
             </KpiInnerCard>
-            <KpiInnerCard color="purple" icon={<Lightbulb className="w-3.5 h-3.5 text-violet-400" />} label="Ideas">
-              <span className="text-[28px] font-extrabold text-slate-50 tracking-tight leading-none">
+            <KpiInnerCard color="purple" icon={<Lightbulb className="w-4 h-4 text-purple-600" />} label="Ideas">
+              <span className="text-2xl font-extrabold text-slate-900 tracking-tight leading-none">
                 {data.content.ideas}
               </span>
-              <p className="text-[11px] text-slate-500 mt-1.5">idea archives</p>
+              <p className="text-xs text-slate-400 mt-1.5">idea archives</p>
             </KpiInnerCard>
           </div>
         </SectionCard>
@@ -223,17 +220,17 @@ export default async function AdminDashboard() {
         {/* Sistema */}
         <SectionCard color="amber" title="Sistema">
           <div className="grid grid-cols-2 gap-3">
-            <KpiInnerCard color="amber" icon={<Cpu className="w-3.5 h-3.5 text-amber-400" />} label="AI Providers">
-              <span className="text-[30px] font-extrabold text-slate-50 tracking-tight leading-none">
+            <KpiInnerCard color="amber" icon={<Cpu className="w-4 h-4 text-amber-600" />} label="AI Providers">
+              <span className="text-3xl font-extrabold text-slate-900 tracking-tight leading-none">
                 {data.system.activeAI}
               </span>
-              <p className="text-[11px] text-slate-500 mt-1.5">ativos</p>
+              <p className="text-xs text-slate-400 mt-1.5">ativos</p>
             </KpiInnerCard>
-            <KpiInnerCard color="amber" icon={<HeartPulse className="w-3.5 h-3.5 text-amber-400" />} label="Health">
-              <span className={`text-[30px] font-extrabold tracking-tight leading-none ${allHealthy ? 'text-emerald-400 [text-shadow:0_0_20px_rgba(74,222,128,0.2)]' : 'text-red-400 [text-shadow:0_0_20px_rgba(239,68,68,0.2)]'}`}>
+            <KpiInnerCard color="amber" icon={<HeartPulse className="w-4 h-4 text-amber-600" />} label="Health">
+              <span className={`text-3xl font-extrabold tracking-tight leading-none ${allHealthy ? 'text-emerald-600' : 'text-red-600'}`}>
                 {allHealthy ? 'OK' : 'WARN'}
               </span>
-              <p className="text-[11px] text-slate-500 mt-1.5">
+              <p className="text-xs text-slate-400 mt-1.5">
                 {allHealthy ? 'todos os serviços' : [!data.health.api && 'API', !data.health.supabase && 'DB'].filter(Boolean).join(' + ') + ' down'}
               </p>
             </KpiInnerCard>
@@ -251,30 +248,30 @@ export default async function AdminDashboard() {
 
 const SECTION_STYLES = {
   green: {
-    card: 'bg-slate-800 border-l-emerald-400',
-    title: 'text-emerald-400',
+    card: 'border-l-emerald-500',
+    title: 'text-emerald-600',
   },
   blue: {
-    card: 'bg-slate-800 border-l-blue-400',
-    title: 'text-blue-400',
+    card: 'border-l-blue-500',
+    title: 'text-blue-600',
   },
   purple: {
-    card: 'bg-slate-800 border-l-violet-400',
-    title: 'text-violet-400',
+    card: 'border-l-purple-500',
+    title: 'text-purple-600',
   },
   amber: {
-    card: 'bg-slate-800 border-l-amber-400',
-    title: 'text-amber-400',
+    card: 'border-l-amber-500',
+    title: 'text-amber-600',
   },
 } as const;
 
 type SectionColor = keyof typeof SECTION_STYLES;
 
 const INNER_CARD_STYLES = {
-  green: { border: 'border-t-2 border-t-emerald-400/40', icon: 'bg-emerald-950 border border-emerald-400/20' },
-  blue: { border: 'border-t-2 border-t-blue-400/40', icon: 'bg-blue-950 border border-blue-400/20' },
-  purple: { border: 'border-t-2 border-t-violet-400/40', icon: 'bg-violet-950 border border-violet-400/20' },
-  amber: { border: 'border-t-2 border-t-amber-400/40', icon: 'bg-amber-950 border border-amber-400/20' },
+  green: { icon: 'bg-emerald-50 text-emerald-600' },
+  blue: { icon: 'bg-blue-50 text-blue-600' },
+  purple: { icon: 'bg-purple-50 text-purple-600' },
+  amber: { icon: 'bg-amber-50 text-amber-600' },
 } as const;
 
 /* ═══════════ Sub-components ═══════════ */
@@ -282,8 +279,8 @@ const INNER_CARD_STYLES = {
 function SectionCard({ color, title, children }: { color: SectionColor; title: string; children: React.ReactNode }) {
   const s = SECTION_STYLES[color];
   return (
-    <div className={`rounded-xl p-5 border border-slate-700 border-l-[3px] shadow-lg ${s.card}`}>
-      <h2 className={`text-xs font-bold uppercase tracking-[0.06em] mb-4 ${s.title}`}>{title}</h2>
+    <div className={`rounded-xl p-5 bg-white border border-slate-200 border-l-[3px] shadow-sm ${s.card}`}>
+      <h2 className={`text-xs font-bold uppercase tracking-wide mb-4 ${s.title}`}>{title}</h2>
       {children}
     </div>
   );
@@ -292,12 +289,12 @@ function SectionCard({ color, title, children }: { color: SectionColor; title: s
 function KpiInnerCard({ color, icon, label, children }: { color: SectionColor; icon: React.ReactNode; label: string; children: React.ReactNode }) {
   const s = INNER_CARD_STYLES[color];
   return (
-    <div className={`relative overflow-hidden bg-slate-900 border border-slate-700/50 ${s.border} rounded-lg p-4 transition-all duration-200 hover:bg-slate-900/80 hover:border-slate-600/50 hover:-translate-y-px`}>
+    <div className="relative overflow-hidden bg-slate-50 border border-slate-100 rounded-lg p-4 transition-all duration-200 hover:shadow-md hover:-translate-y-px">
       <div className="flex items-center gap-2 mb-3">
-        <div className={`w-[30px] h-[30px] rounded-lg flex items-center justify-center ${s.icon}`}>
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${s.icon}`}>
           {icon}
         </div>
-        <span className="text-xs text-slate-400 font-medium">{label}</span>
+        <span className="text-xs text-slate-500 font-medium">{label}</span>
       </div>
       {children}
     </div>
@@ -306,16 +303,8 @@ function KpiInnerCard({ color, icon, label, children }: { color: SectionColor; i
 
 function HealthDot({ label, ok }: { label: string; ok: boolean }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${ok ? 'text-emerald-400' : 'text-red-400'}`}>
-      <span
-        className={`w-1.5 h-1.5 rounded-full inline-block ${ok ? 'bg-emerald-500' : 'bg-red-500'}`}
-        style={{
-          animation: ok ? 'health-glow-green 2s ease infinite' : 'health-glow-red 2s ease infinite',
-          boxShadow: ok
-            ? '0 0 6px rgba(16,185,129,0.4)'
-            : '0 0 6px rgba(239,68,68,0.4)',
-        }}
-      />
+    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${ok ? 'text-emerald-600' : 'text-red-600'}`}>
+      <span className={`w-2 h-2 rounded-full inline-block ${ok ? 'bg-emerald-500' : 'bg-red-500'}`} />
       {label}
     </span>
   );
@@ -324,7 +313,7 @@ function HealthDot({ label, ok }: { label: string; ok: boolean }) {
 function Sparkline({ color }: { color: string }) {
   const id = `sp-${color.replace('#', '')}`;
   return (
-    <svg className="absolute bottom-[-2px] right-[-2px] opacity-[0.18]" width="90" height="44" viewBox="0 0 90 44">
+    <svg className="absolute bottom-0 right-0 opacity-20" width="90" height="44" viewBox="0 0 90 44">
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.4" />
@@ -340,13 +329,13 @@ function Sparkline({ color }: { color: string }) {
 function StagePill({ stage, count }: { stage: string; count: number }) {
   const colorKey = STAGE_COLORS[stage] ?? 'blue';
   const styles: Record<string, string> = {
-    blue: 'text-blue-400 bg-blue-400/10 border-blue-400/15',
-    purple: 'text-violet-400 bg-violet-400/10 border-violet-400/15',
-    green: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/15',
-    amber: 'text-amber-400 bg-amber-400/10 border-amber-400/15',
+    blue: 'text-blue-700 bg-blue-50 border-blue-200',
+    purple: 'text-purple-700 bg-purple-50 border-purple-200',
+    green: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+    amber: 'text-amber-700 bg-amber-50 border-amber-200',
   };
   return (
-    <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-[20px] border ${styles[colorKey]}`}>
+    <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full border ${styles[colorKey]}`}>
       {STAGE_LABELS[stage] ?? stage} {count}
     </span>
   );
@@ -357,10 +346,10 @@ function RecentUsers({ users }: { users: { id: string; first_name: string | null
   weekAgo.setDate(weekAgo.getDate() - 7);
 
   return (
-    <div className="rounded-xl p-5 bg-slate-800 border border-slate-700 shadow-lg">
+    <div className="rounded-xl p-5 bg-white border border-slate-200 shadow-sm">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xs font-bold uppercase tracking-[0.06em] text-slate-400">Cadastros Recentes</h2>
-        <a href="/admin/users" className="text-xs text-teal-400 font-medium hover:text-teal-300 transition-colors">
+        <h2 className="text-xs font-bold uppercase tracking-wide text-slate-500">Cadastros Recentes</h2>
+        <a href="/admin/users" className="text-xs text-blue-600 font-medium hover:text-blue-700 transition-colors">
           Ver todos →
         </a>
       </div>
@@ -377,24 +366,24 @@ function RecentUsers({ users }: { users: { id: string; first_name: string | null
           return (
             <div
               key={u.id}
-              className={`flex justify-between items-center px-1 py-2.5 transition-colors hover:bg-slate-700/50 hover:rounded-lg ${i < users.length - 1 ? 'border-b border-slate-700' : ''}`}
+              className={`flex justify-between items-center px-1 py-2.5 transition-colors hover:bg-slate-50 hover:rounded-lg ${i < users.length - 1 ? 'border-b border-slate-100' : ''}`}
             >
               <div className="flex items-center gap-3">
-                <div className={`w-[34px] h-[34px] rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center text-xs font-semibold text-white`}>
+                <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center text-xs font-semibold text-white`}>
                   {initials}
                 </div>
                 <div>
-                  <div className="text-[13px] text-slate-200 font-medium">
+                  <div className="text-sm text-slate-800 font-medium">
                     {name}
                     {isNew && (
-                      <span className="ml-2 text-[10px] font-semibold text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-[10px]">
+                      <span className="ml-2 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
                         novo
                       </span>
                     )}
                   </div>
                 </div>
               </div>
-              <span className="text-[11px] text-slate-500 font-medium">{date}</span>
+              <span className="text-xs text-slate-400 font-medium">{date}</span>
             </div>
           );
         })}
