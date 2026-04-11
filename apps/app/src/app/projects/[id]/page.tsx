@@ -345,15 +345,15 @@ export default function FocusedProjectView() {
                                 }}
                             />
                             <Button size="sm" variant="ghost" onClick={saveTitle}>
-                                <Check className="h-4 w-4 text-green-600" />
+                                <Check className="h-4 w-4 text-success" />
                             </Button>
                             <Button size="sm" variant="ghost" onClick={() => setEditingTitle(false)}>
-                                <X className="h-4 w-4 text-red-600" />
+                                <X className="h-4 w-4 text-destructive" />
                             </Button>
                         </div>
                     ) : (
                         <div className="flex items-center gap-2 group">
-                            <h1 className="text-2xl font-semibold">{project.title}</h1>
+                            <h1 className="text-heading-md">{project.title}</h1>
                             <button
                                 onClick={() => {
                                     setTitleInput(project.title);
@@ -407,8 +407,8 @@ export default function FocusedProjectView() {
                         <span className="text-sm">Auto-advance:</span>
                         <button
                             className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${project.auto_advance
-                                ? "bg-green-100 text-green-700"
-                                : "bg-gray-100 text-gray-500"
+                                ? "bg-success/10 text-success"
+                                : "bg-muted text-muted-foreground"
                                 }`}
                             onClick={toggleAutoAdvance}
                         >
@@ -433,7 +433,7 @@ export default function FocusedProjectView() {
             </div>
 
             {/* Stage Content */}
-            <div className="bg-white border rounded-lg">
+            <div className="bg-card border rounded-lg">
                 <div className="flex items-center justify-between p-4 border-b">
                     <h2 className="text-lg font-medium capitalize">
                         {currentStage} Stage
@@ -523,7 +523,7 @@ export default function FocusedProjectView() {
                 </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-between p-4 border-t bg-gray-50">
+                <div className="flex items-center justify-between p-4 border-t bg-muted">
                     <div className="text-sm text-muted-foreground">
                         {saving
                             ? "Saving..."

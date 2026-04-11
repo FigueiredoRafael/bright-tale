@@ -114,7 +114,7 @@ export function ResearchContentDisplay({ content }: ResearchContentDisplayProps)
             case "high": return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
             case "medium": return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
             case "low": return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
-            default: return "bg-gray-100 text-gray-800";
+            default: return "bg-muted text-foreground";
         }
     };
 
@@ -123,7 +123,7 @@ export function ResearchContentDisplay({ content }: ResearchContentDisplayProps)
             case "strong": return "bg-red-100 text-red-800";
             case "moderate": return "bg-yellow-100 text-yellow-800";
             case "weak": return "bg-green-100 text-green-800";
-            default: return "bg-gray-100 text-gray-800";
+            default: return "bg-muted text-foreground";
         }
     };
 
@@ -135,7 +135,7 @@ export function ResearchContentDisplay({ content }: ResearchContentDisplayProps)
                     <CardHeader className="pb-3">
                         <CardTitle className="text-lg flex items-center gap-2">
                             {parsed.idea_validation.core_claim_verified ? (
-                                <CheckCircle className="h-5 w-5 text-green-600" />
+                                <CheckCircle className="h-5 w-5 text-success" />
                             ) : (
                                 <XCircle className="h-5 w-5 text-red-600" />
                             )}

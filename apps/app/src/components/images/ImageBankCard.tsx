@@ -96,7 +96,7 @@ export default function ImageBankCard({
                         type="checkbox"
                         checked={selected}
                         onChange={(e) => onSelect(asset.id, e.target.checked)}
-                        className="h-4 w-4 rounded border-gray-300 cursor-pointer"
+                        className="h-4 w-4 rounded border-border cursor-pointer"
                     />
                 </div>
             )}
@@ -146,7 +146,7 @@ export default function ImageBankCard({
                 {/* Badges */}
                 <div className="flex flex-wrap gap-1">
                     {asset.content_type && (
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${contentTypeColors[asset.content_type] ?? "bg-gray-100 text-gray-800"}`}>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${contentTypeColors[asset.content_type] ?? "bg-muted text-foreground"}`}>
                             {asset.content_type}
                         </span>
                     )}

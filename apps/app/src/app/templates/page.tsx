@@ -39,7 +39,7 @@ export default function TemplateManagerPage() {
     return (
         <div>
             <div className="flex items-center justify-between mb-4">
-                <h1 className="text-2xl font-semibold">Templates</h1>
+                <h1 className="text-heading-md">Templates</h1>
                 <div>
                     <Button>Create Template</Button>
                 </div>

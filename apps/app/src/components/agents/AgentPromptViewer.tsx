@@ -118,7 +118,7 @@ export default function AgentPromptViewer({
                                     )}
                                 </Button>
                             </div>
-                            <pre className="text-xs bg-white dark:bg-gray-900 p-3 rounded border overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto">
+                            <pre className="text-xs bg-card p-3 rounded border overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto">
                                 {agent.instructions}
                             </pre>
                         </div>

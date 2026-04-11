@@ -81,10 +81,10 @@ interface Pagination {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-    draft: "bg-gray-100 text-gray-800",
-    review: "bg-yellow-100 text-yellow-800",
-    approved: "bg-green-100 text-green-800",
-    published: "bg-blue-100 text-blue-800",
+    draft: "bg-muted text-foreground",
+    review: "bg-warning/10 text-warning",
+    approved: "bg-success/10 text-success",
+    published: "bg-info/10 text-info",
 };
 
 export default function BlogsPage() {
@@ -272,8 +272,8 @@ export default function BlogsPage() {
 
             {/* Error */}
             {error && (
-                <Card className="mb-6 border-red-200 bg-red-50">
-                    <CardContent className="py-4 text-red-800">{error}</CardContent>
+                <Card className="mb-6 border-destructive/20 bg-destructive/5">
+                    <CardContent className="py-4 text-destructive">{error}</CardContent>
                 </Card>
             )}
 
@@ -344,7 +344,7 @@ export default function BlogsPage() {
                                                     rel="noopener noreferrer"
                                                     className="ml-2"
                                                 >
-                                                    <ExternalLink className="h-3 w-3 inline text-blue-600" />
+                                                    <ExternalLink className="h-3 w-3 inline text-info" />
                                                 </a>
                                             )}
                                         </TableCell>
@@ -397,7 +397,7 @@ export default function BlogsPage() {
                                                     </DropdownMenuItem>
                                                     <DropdownMenuSeparator />
                                                     <DropdownMenuItem
-                                                        className="text-red-600"
+                                                        className="text-destructive"
                                                         onClick={() => {
                                                             setBlogToDelete(blog);
                                                             setDeleteDialogOpen(true);
@@ -459,7 +459,7 @@ export default function BlogsPage() {
                         <AlertDialogAction
                             onClick={handleDelete}
                             disabled={deleting}
-                            className="bg-red-600 hover:bg-red-700"
+                            className="bg-destructive hover:bg-destructive/90"
                         >
                             {deleting ? "Deleting..." : "Delete"}
                         </AlertDialogAction>

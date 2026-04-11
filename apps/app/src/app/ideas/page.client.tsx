@@ -278,13 +278,13 @@ export default function IdeasPage() {
     const getVerdictColor = (verdict: string) => {
         switch (verdict) {
             case "viable":
-                return "bg-green-100 text-green-800 border-green-200";
+                return "bg-success/10 text-success border-success/20";
             case "experimental":
-                return "bg-yellow-100 text-yellow-800 border-yellow-200";
+                return "bg-warning/10 text-warning border-warning/20";
             case "weak":
-                return "bg-red-100 text-red-800 border-red-200";
+                return "bg-destructive/5 text-destructive border-destructive/20";
             default:
-                return "bg-gray-100 text-gray-800 border-gray-200";
+                return "bg-muted text-foreground border-border";
         }
     };
 
@@ -306,7 +306,7 @@ export default function IdeasPage() {
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
                 <div>
-                    <h1 className="text-2xl font-semibold flex items-center gap-2">
+                    <h1 className="text-heading-md flex items-center gap-2">
                         <Lightbulb className="h-6 w-6" />
                         Idea Library
                     </h1>
@@ -408,7 +408,7 @@ export default function IdeasPage() {
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                className="h-7 w-7 p-0 text-red-600 hover:text-red-700"
+                                                className="h-7 w-7 p-0 text-destructive hover:text-destructive/80"
                                                 onClick={() => setDeletingId(idea.id)}
                                             >
                                                 <Trash className="h-3.5 w-3.5" />
@@ -635,7 +635,7 @@ export default function IdeasPage() {
             <Dialog open={!!deletingId} onOpenChange={(open) => !open && setDeletingId(null)}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-red-600">
+                        <DialogTitle className="flex items-center gap-2 text-destructive">
                             <AlertTriangle className="h-5 w-5" />
                             Delete Idea
                         </DialogTitle>

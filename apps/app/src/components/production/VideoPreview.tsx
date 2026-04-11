@@ -52,8 +52,8 @@ function MusicBadge({ text }: { text: string }) {
 
 function VisualNotesBadge({ text }: { text: string }) {
   return (
-    <div className="flex items-start gap-2 mt-2 p-2 bg-gray-50 border border-gray-200 rounded text-xs text-gray-700">
-      <Film className="h-3 w-3 mt-0.5 shrink-0 text-gray-400" />
+    <div className="flex items-start gap-2 mt-2 p-2 bg-muted border border-border rounded text-xs text-foreground/80">
+      <Film className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground" />
       <span><span className="font-semibold">Visual:</span> {text}</span>
     </div>
   );
@@ -61,7 +61,7 @@ function VisualNotesBadge({ text }: { text: string }) {
 
 function ScriptContent({ content }: { content: string }) {
   return (
-    <p className="text-sm leading-relaxed whitespace-pre-line text-gray-800">
+    <p className="text-sm leading-relaxed whitespace-pre-line text-foreground">
       {content}
     </p>
   );
@@ -210,7 +210,7 @@ export default function VideoPreview({
 
               {/* Hook */}
               {video.script.hook && (
-                <AccordionItem value="hook" className="border-l-4 border-blue-400">
+                <AccordionItem value="hook" className="border-l-4 border-info">
                   <AccordionTrigger className="px-4 py-3 hover:no-underline">
                     <div className="flex items-center gap-2 text-sm font-semibold">
                       <span className="text-blue-600">🎬 HOOK</span>
@@ -264,10 +264,10 @@ export default function VideoPreview({
 
               {/* Chapters */}
               {video.script.chapters?.map((ch) => (
-                <AccordionItem key={ch.chapter_number} value={`chapter-${ch.chapter_number}`} className="border-l-4 border-gray-300">
+                <AccordionItem key={ch.chapter_number} value={`chapter-${ch.chapter_number}`} className="border-l-4 border-border">
                   <AccordionTrigger className="px-4 py-3 hover:no-underline">
                     <div className="flex items-center gap-2 text-sm font-semibold">
-                      <span className="text-gray-700">Ch. {ch.chapter_number}: {ch.title}</span>
+                      <span className="text-foreground/80">Ch. {ch.chapter_number}: {ch.title}</span>
                       <Badge variant="outline" className="font-mono text-xs">{ch.duration}</Badge>
                     </div>
                   </AccordionTrigger>
@@ -289,7 +289,7 @@ export default function VideoPreview({
                     )}
 
                     {ch.key_stat_or_quote && (
-                      <blockquote className="border-l-4 border-blue-300 pl-3 text-sm italic text-gray-700 bg-blue-50/50 py-2 pr-2 rounded-r">
+                      <blockquote className="border-l-4 border-info/50 pl-3 text-sm italic text-foreground/80 bg-info/5 py-2 pr-2 rounded-r">
                         {ch.key_stat_or_quote}
                       </blockquote>
                     )}
@@ -361,7 +361,7 @@ export default function VideoPreview({
                     {video.script.outro.end_screen_prompt && (
                       <div>
                         <p className="text-xs font-semibold text-muted-foreground mb-1">End Screen</p>
-                        <p className="text-sm text-gray-700">{video.script.outro.end_screen_prompt}</p>
+                        <p className="text-sm text-foreground/80">{video.script.outro.end_screen_prompt}</p>
                       </div>
                     )}
                     {video.script.outro.sound_effects && <SoundBadge text={video.script.outro.sound_effects} />}

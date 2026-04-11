@@ -281,7 +281,7 @@ function ResearchLibraryContent() {
             {!loading && !error && research.length === 0 && (
                 <div className="text-center py-16">
                     <div className="text-6xl mb-4">📚</div>
-                    <h3 className="text-2xl font-semibold mb-2">No research found</h3>
+                    <h3 className="text-heading-md mb-2">No research found</h3>
                     <p className="text-muted-foreground mb-6">
                         {searchQuery || theme !== "All"
                             ? "Try adjusting your search or filters"

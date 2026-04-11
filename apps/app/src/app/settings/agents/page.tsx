@@ -122,12 +122,12 @@ export default function AgentsSettingsPage() {
     const getStageColor = (stage: string) => {
         const colors: Record<string, string> = {
             brainstorm: "bg-purple-500",
-            research: "bg-blue-500",
-            production: "bg-green-500",
-            review: "bg-yellow-500",
-            publish: "bg-red-500",
+            research: "bg-info",
+            production: "bg-success",
+            review: "bg-warning",
+            publish: "bg-destructive",
         };
-        return colors[stage] || "bg-gray-500";
+        return colors[stage] || "bg-muted-foreground";
     };
 
     if (loading) {
@@ -141,9 +141,9 @@ export default function AgentsSettingsPage() {
     if (error) {
         return (
             <div className="p-6">
-                <Card className="border-red-200 bg-red-50">
+                <Card className="border-destructive/20 bg-destructive/5">
                     <CardContent className="pt-6">
-                        <div className="flex items-center gap-2 text-red-600">
+                        <div className="flex items-center gap-2 text-destructive">
                             <AlertCircle className="h-5 w-5" />
                             <span>{error}</span>
                         </div>
@@ -173,21 +173,21 @@ export default function AgentsSettingsPage() {
             </div>
 
             {/* Info Card */}
-            <Card className="border-blue-200 bg-blue-50/50">
+            <Card className="border-info/20 bg-info/5">
                 <CardContent className="pt-4">
                     <div className="flex gap-3">
-                        <div className="text-blue-600">
+                        <div className="text-info">
                             <AlertCircle className="h-5 w-5" />
                         </div>
                         <div className="space-y-1 text-sm">
-                            <p className="font-medium text-blue-900">
+                            <p className="font-medium text-foreground">
                                 About Agent Prompts
                             </p>
-                            <p className="text-blue-700">
+                            <p className="text-info">
                                 These prompts define how each AI agent behaves in the content creation workflow.
                                 Changes take effect immediately for new content generation.
                             </p>
-                            <div className="flex gap-4 mt-2 text-xs text-blue-600">
+                            <div className="flex gap-4 mt-2 text-xs text-info">
                                 <span><strong>Brainstorm:</strong> Generates ideas</span>
                                 <span><strong>Research:</strong> Validates & sources</span>
                                 <span><strong>Production:</strong> Creates content</span>
@@ -245,13 +245,13 @@ export default function AgentsSettingsPage() {
                                     </div>
                                     <div className="flex items-center gap-2">
                                         {saveStatus === "success" && (
-                                            <span className="text-green-600 flex items-center gap-1 text-sm">
+                                            <span className="text-success flex items-center gap-1 text-sm">
                                                 <Check className="h-4 w-4" />
                                                 Saved
                                             </span>
                                         )}
                                         {saveStatus === "error" && (
-                                            <span className="text-red-600 flex items-center gap-1 text-sm">
+                                            <span className="text-destructive flex items-center gap-1 text-sm">
                                                 <AlertCircle className="h-4 w-4" />
                                                 Failed
                                             </span>

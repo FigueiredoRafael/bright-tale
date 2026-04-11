@@ -387,7 +387,7 @@ export default function ImageGenerationSettingsPage() {
                                 </div>
                                 <CardDescription>
                                     {config.has_api_key ? (
-                                        <span className="flex items-center gap-1 text-green-600">
+                                        <span className="flex items-center gap-1 text-success">
                                             <CheckCircle2 className="h-3 w-3" />
                                             API key configured (encrypted)
                                         </span>
@@ -413,7 +413,7 @@ export default function ImageGenerationSettingsPage() {
             </div>
 
             {/* Info Card */}
-            <Card className="mt-6 border-blue-200 bg-blue-50/50">
+            <Card className="mt-6 border-info/20 bg-info/5">
                 <CardHeader>
                     <CardTitle className="text-sm">How Image Generation Works</CardTitle>
                 </CardHeader>
@@ -426,12 +426,12 @@ export default function ImageGenerationSettingsPage() {
                     <p>API keys are encrypted with AES-256-GCM before storage.</p>
                     <p>
                         Generated images are stored locally under{" "}
-                        <code className="bg-blue-100 px-1 py-0.5 rounded text-xs">public/generated-images/</code>{" "}
+                        <code className="bg-info/10 px-1 py-0.5 rounded text-xs">public/generated-images/</code>{" "}
                         and accessible from the global Image Bank.
                     </p>
                     <p>
-                        You can also set <code className="bg-blue-100 px-1 py-0.5 rounded text-xs">IMAGE_PROVIDER=gemini</code>{" "}
-                        and <code className="bg-blue-100 px-1 py-0.5 rounded text-xs">GEMINI_API_KEY</code>{" "}
+                        You can also set <code className="bg-info/10 px-1 py-0.5 rounded text-xs">IMAGE_PROVIDER=gemini</code>{" "}
+                        and <code className="bg-info/10 px-1 py-0.5 rounded text-xs">GEMINI_API_KEY</code>{" "}
                         in your environment to bypass database configuration.
                     </p>
                 </CardContent>

@@ -194,19 +194,19 @@ export default function SettingsPage() {
             </Card>
 
             {/* Info Card */}
-            <Card className="border-blue-200 bg-blue-50/50">
+            <Card className="border-info/20 bg-info/5">
                 <CardContent className="pt-6">
                     <div className="flex gap-3">
-                        <div className="text-blue-600">
+                        <div className="text-info">
                             <SettingsIcon className="h-5 w-5" />
                         </div>
                         <div className="space-y-1">
-                            <p className="text-sm font-medium text-blue-900">
+                            <p className="text-sm font-medium text-foreground">
                                 Platform Configuration
                             </p>
-                            <p className="text-sm text-blue-700">
+                            <p className="text-sm text-info">
                                 All API keys and credentials are encrypted using AES-256-GCM.
-                                Set your <code className="bg-blue-100 px-1 py-0.5 rounded text-xs">ENCRYPTION_SECRET</code> environment variable for secure storage.
+                                Set your <code className="bg-info/10 px-1 py-0.5 rounded text-xs">ENCRYPTION_SECRET</code> environment variable for secure storage.
                             </p>
                         </div>
                     </div>

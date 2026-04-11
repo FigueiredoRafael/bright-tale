@@ -389,7 +389,7 @@ export default function PublishingForm({
                                     onClick={() => setSelectedFeaturedImage(asset.id)}
                                     className={`relative aspect-square rounded-lg border-2 overflow-hidden transition-all ${selectedFeaturedImage === asset.id
                                         ? "border-green-500 ring-2 ring-green-200"
-                                        : "border-gray-200 hover:border-gray-300"
+                                        : "border-border hover:border-border"
                                         }`}
                                 >
                                     <img

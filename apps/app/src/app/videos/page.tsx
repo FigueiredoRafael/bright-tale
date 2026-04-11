@@ -39,7 +39,7 @@ interface VideoDraft {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-700",
+  draft: "bg-muted text-foreground/80",
   review: "bg-yellow-100 text-yellow-700",
   approved: "bg-green-100 text-green-700",
   published: "bg-blue-100 text-blue-700",
@@ -117,7 +117,7 @@ export default function VideosPage() {
           <Card key={s} className="shadow-sm border-muted/60">
             <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{s}</CardTitle>
-              <div className={`h-2 w-2 rounded-full ${s === 'published' ? 'bg-blue-500' : s === 'approved' ? 'bg-green-500' : s === 'review' ? 'bg-yellow-500' : 'bg-gray-400'}`} />
+              <div className={`h-2 w-2 rounded-full ${s === 'published' ? 'bg-info' : s === 'approved' ? 'bg-success' : s === 'review' ? 'bg-warning' : 'bg-muted-foreground'}`} />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{videos.filter((v) => v.status === s).length}</div>

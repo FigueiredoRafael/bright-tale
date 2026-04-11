@@ -290,9 +290,9 @@ export default function ReviewForm({
             approved: { icon: CheckCircle, color: "bg-green-100 text-green-800", label: "Approved" },
             revision_required: { icon: AlertTriangle, color: "bg-yellow-100 text-yellow-800", label: "Needs Revision" },
             rejected: { icon: XCircle, color: "bg-red-100 text-red-800", label: "Rejected" },
-            not_requested: { icon: AlertCircle, color: "bg-gray-100 text-gray-500", label: "Not Requested" },
+            not_requested: { icon: AlertCircle, color: "bg-muted text-muted-foreground", label: "Not Requested" },
         };
-        const v = verdict && variants[verdict] ? variants[verdict] : { icon: AlertCircle, color: "bg-gray-100 text-gray-500", label: "Unknown" };
+        const v = verdict && variants[verdict] ? variants[verdict] : { icon: AlertCircle, color: "bg-muted text-muted-foreground", label: "Unknown" };
         const Icon = v.icon;
         return (
             <Badge className={`${v.color} gap-1`}>
@@ -342,7 +342,7 @@ export default function ReviewForm({
 
             {/* Production Summary Card */}
             {productionOutput && (
-                <Card className="border-blue-200 bg-blue-50/50">
+                <Card className="border-blue-200 bg-info/5">
                     <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-medium">Production Content Summary</CardTitle>
                     </CardHeader>
@@ -395,14 +395,14 @@ export default function ReviewForm({
                             ) : (
                                 <div className="space-y-3">
                                     {selectedIdea && (
-                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                        <div className="p-3 bg-muted rounded-lg">
                                             <h4 className="font-medium text-sm">Original Idea</h4>
                                             <p className="text-sm text-muted-foreground">{selectedIdea.title}</p>
                                             <p className="text-xs text-muted-foreground mt-1">{selectedIdea.core_tension}</p>
                                         </div>
                                     )}
                                     {researchOutput && (
-                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                        <div className="p-3 bg-muted rounded-lg">
                                             <h4 className="font-medium text-sm">Research Validation</h4>
                                             <div className="flex items-center gap-2 mt-1">
                                                 {researchOutput.idea_validation?.core_claim_verified ? (
@@ -416,7 +416,7 @@ export default function ReviewForm({
                                             </div>
                                         </div>
                                     )}
-                                    <div className="p-3 bg-gray-50 rounded-lg">
+                                    <div className="p-3 bg-muted rounded-lg">
                                         <h4 className="font-medium text-sm">Content to Review</h4>
                                         <p className="text-sm text-muted-foreground">
                                             Blog, Video Script, {productionOutput.shorts?.length || 0} Shorts, Podcast
@@ -448,7 +448,7 @@ export default function ReviewForm({
                                     <Button variant="outline" size="sm" onClick={copyToClipboard} className="gap-2">
                                         {copied ? (
                                             <>
-                                                <Check className="h-4 w-4 text-green-600" />
+                                                <Check className="h-4 w-4 text-success" />
                                                 Copied!
                                             </>
                                         ) : (
@@ -461,7 +461,7 @@ export default function ReviewForm({
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <pre className="bg-white p-3 rounded-md text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto border">
+                                <pre className="bg-card p-3 rounded-md text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto border">
                                     {generatedYaml}
                                 </pre>
                             </CardContent>
@@ -510,7 +510,7 @@ export default function ReviewForm({
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-3">
                                             {parsedContent.overall_verdict === "approved" ? (
-                                                <CheckCircle className="h-8 w-8 text-green-600" />
+                                                <CheckCircle className="h-8 w-8 text-success" />
                                             ) : parsedContent.overall_verdict === "rejected" ? (
                                                 <XCircle className="h-8 w-8 text-red-600" />
                                             ) : (
@@ -606,12 +606,12 @@ export default function ReviewForm({
                                                         </div>
                                                     )}
                                                     {parsedContent.blog_review.seo_check && (
-                                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                                        <div className="p-3 bg-muted rounded-lg">
                                                             <Label className="text-xs text-muted-foreground">SEO Check</Label>
                                                             <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
                                                                 <div className="flex items-center gap-2">
                                                                     {parsedContent.blog_review.seo_check.title_optimized ? (
-                                                                        <CheckCircle className="h-4 w-4 text-green-600" />
+                                                                        <CheckCircle className="h-4 w-4 text-success" />
                                                                     ) : (
                                                                         <XCircle className="h-4 w-4 text-red-600" />
                                                                     )}
@@ -619,7 +619,7 @@ export default function ReviewForm({
                                                                 </div>
                                                                 <div className="flex items-center gap-2">
                                                                     {parsedContent.blog_review.seo_check.meta_description_optimized ? (
-                                                                        <CheckCircle className="h-4 w-4 text-green-600" />
+                                                                        <CheckCircle className="h-4 w-4 text-success" />
                                                                     ) : (
                                                                         <XCircle className="h-4 w-4 text-red-600" />
                                                                     )}
@@ -655,11 +655,11 @@ export default function ReviewForm({
                                                         </div>
                                                     )}
                                                     <div className="grid grid-cols-2 gap-4">
-                                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                                        <div className="p-3 bg-muted rounded-lg">
                                                             <Label className="text-xs text-muted-foreground">Hook Effectiveness</Label>
                                                             <p className="text-sm font-medium mt-1">{parsedContent.video_review.hook_effectiveness || "N/A"}</p>
                                                         </div>
-                                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                                        <div className="p-3 bg-muted rounded-lg">
                                                             <Label className="text-xs text-muted-foreground">Thumbnail Feedback</Label>
                                                             <p className="text-sm mt-1">{parsedContent.video_review.thumbnail_feedback || "N/A"}</p>
                                                         </div>
@@ -667,7 +667,7 @@ export default function ReviewForm({
                                                     {parsedContent.video_review.pacing_notes && (
                                                         <div>
                                                             <Label className="text-xs text-muted-foreground">Pacing Notes</Label>
-                                                            <p className="text-sm bg-gray-50 p-2 rounded mt-1">{parsedContent.video_review.pacing_notes}</p>
+                                                            <p className="text-sm bg-muted p-2 rounded mt-1">{parsedContent.video_review.pacing_notes}</p>
                                                         </div>
                                                     )}
                                                     {parsedContent.video_review.issues?.critical && parsedContent.video_review.issues.critical.length > 0 && (
@@ -745,7 +745,7 @@ export default function ReviewForm({
                                                     {parsedContent.podcast_review.notes && (
                                                         <div>
                                                             <Label className="text-xs text-muted-foreground">Notes</Label>
-                                                            <p className="text-sm bg-gray-50 p-2 rounded mt-1">{renderSafeText(parsedContent.podcast_review.notes)}</p>
+                                                            <p className="text-sm bg-muted p-2 rounded mt-1">{renderSafeText(parsedContent.podcast_review.notes)}</p>
                                                         </div>
                                                     )}
                                                     {parsedContent.podcast_review.issues && parsedContent.podcast_review.issues.length > 0 && (
@@ -787,7 +787,7 @@ export default function ReviewForm({
 
                                                     {/* Blog Schedule */}
                                                     {parsedContent.publication_plan.blog && (
-                                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                                        <div className="p-3 bg-muted rounded-lg">
                                                             <div className="flex items-center gap-2 mb-2">
                                                                 <FileText className="h-4 w-4" />
                                                                 <Label className="font-medium">Blog</Label>
@@ -815,7 +815,7 @@ export default function ReviewForm({
 
                                                     {/* YouTube Schedule */}
                                                     {parsedContent.publication_plan.youtube && (
-                                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                                        <div className="p-3 bg-muted rounded-lg">
                                                             <div className="flex items-center gap-2 mb-2">
                                                                 <Video className="h-4 w-4" />
                                                                 <Label className="font-medium">YouTube</Label>
@@ -836,7 +836,7 @@ export default function ReviewForm({
 
                                                     {/* Shorts Schedule */}
                                                     {parsedContent.publication_plan.shorts && parsedContent.publication_plan.shorts.length > 0 && (
-                                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                                        <div className="p-3 bg-muted rounded-lg">
                                                             <div className="flex items-center gap-2 mb-2">
                                                                 <Zap className="h-4 w-4" />
                                                                 <Label className="font-medium">Shorts Schedule</Label>
@@ -884,7 +884,7 @@ export default function ReviewForm({
                                                 <Label className="text-xs text-muted-foreground">Thumbnail Variants</Label>
                                                 <div className="grid grid-cols-2 gap-2 mt-1">
                                                     {parsedContent.ab_tests.thumbnail_variants.map((v, i) => (
-                                                        <div key={i} className="p-2 bg-gray-50 rounded text-sm">
+                                                        <div key={i} className="p-2 bg-muted rounded text-sm">
                                                             <span className="font-medium">{v.variant}:</span> {v.description}
                                                         </div>
                                                     ))}
@@ -896,7 +896,7 @@ export default function ReviewForm({
                                                 <Label className="text-xs text-muted-foreground">Title Variants</Label>
                                                 <ul className="mt-1 space-y-1">
                                                     {parsedContent.ab_tests.title_variants.map((v, i) => (
-                                                        <li key={i} className="text-sm p-2 bg-gray-50 rounded">
+                                                        <li key={i} className="text-sm p-2 bg-muted rounded">
                                                             <span className="font-medium">{v.variant}:</span> {v.title}
                                                         </li>
                                                     ))}

@@ -491,7 +491,7 @@ export default function BrainstormForm({
             case "weak":
                 return "bg-red-100 text-red-800 border-red-300";
             default:
-                return "bg-gray-100 text-gray-800 border-gray-300";
+                return "bg-muted text-foreground border-border";
         }
     };
 
@@ -720,7 +720,7 @@ export default function BrainstormForm({
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <pre className="bg-white p-3 rounded-md text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto border">
+                                <pre className="bg-card p-3 rounded-md text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto border">
                                     {generatedYaml}
                                 </pre>
                             </CardContent>
@@ -800,7 +800,7 @@ export default function BrainstormForm({
                                         key={idea.idea_id || idx}
                                         className={`cursor-pointer transition-all ${selectedIdea?.idea_id === idea.idea_id
                                             ? "ring-2 ring-blue-500 border-blue-300"
-                                            : "hover:border-gray-400"
+                                            : "hover:border-border"
                                             } ${recommendation?.pick === idea.idea_id ? "border-blue-200" : ""}`}
                                         onClick={() => handleIdeaSelect(idea)}
                                     >

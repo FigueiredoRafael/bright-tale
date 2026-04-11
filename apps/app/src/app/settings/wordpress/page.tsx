@@ -562,23 +562,23 @@ export default function WordPressSettingsPage() {
             </Card>
 
             {/* Info Card */}
-            <Card className="border-blue-200 bg-blue-50/50">
+            <Card className="border-info/20 bg-info/5">
                 <CardContent className="pt-4">
                     <div className="flex gap-3">
-                        <div className="text-blue-600">
+                        <div className="text-info">
                             <AlertCircle className="h-5 w-5" />
                         </div>
                         <div className="space-y-1 text-sm">
-                            <p className="font-medium text-blue-900">
+                            <p className="font-medium text-foreground">
                                 🔒 Encryption Required
                             </p>
-                            <p className="text-blue-700">
+                            <p className="text-info">
                                 WordPress passwords are encrypted using AES-256-GCM before storage.
-                                Make sure <code className="bg-blue-100 px-1 py-0.5 rounded text-xs">ENCRYPTION_SECRET</code> is
-                                set in your <code className="bg-blue-100 px-1 py-0.5 rounded text-xs">.env</code> file.
+                                Make sure <code className="bg-info/10 px-1 py-0.5 rounded text-xs">ENCRYPTION_SECRET</code> is
+                                set in your <code className="bg-info/10 px-1 py-0.5 rounded text-xs">.env</code> file.
                             </p>
-                            <p className="text-blue-600 text-xs mt-1">
-                                💡 Generate a secret: <code className="bg-blue-100 px-1 py-0.5 rounded">npm run generate:secret</code>
+                            <p className="text-info text-xs mt-1">
+                                💡 Generate a secret: <code className="bg-info/10 px-1 py-0.5 rounded">npm run generate:secret</code>
                             </p>
                         </div>
                     </div>
@@ -598,13 +598,13 @@ export default function WordPressSettingsPage() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <div className="flex items-start gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                            <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5" />
+                        <div className="flex items-start gap-3 p-3 bg-warning/5 border border-warning/20 rounded-lg">
+                            <AlertTriangle className="h-5 w-5 text-warning mt-0.5" />
                             <div className="space-y-1 text-sm">
-                                <p className="font-medium text-yellow-900">
+                                <p className="font-medium text-foreground">
                                     Test Post Will Be Created
                                 </p>
-                                <p className="text-yellow-700">
+                                <p className="text-warning">
                                     This test will create a draft post titled "<strong>[TEST - PLEASE DELETE]</strong>" in your WordPress site.
                                     You must manually delete it after reviewing the conversion results.
                                 </p>
@@ -663,10 +663,10 @@ export default function WordPressSettingsPage() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                        <ExternalLink className="h-4 w-4 text-blue-600" />
+                                    <div className="flex items-center gap-2 p-3 bg-info/5 border border-info/20 rounded-lg">
+                                        <ExternalLink className="h-4 w-4 text-info" />
                                         <div className="flex-1">
-                                            <p className="text-sm font-medium text-blue-900">
+                                            <p className="text-sm font-medium text-foreground">
                                                 WordPress Test Post Created
                                             </p>
                                             <div className="flex gap-3 mt-1">
@@ -674,7 +674,7 @@ export default function WordPressSettingsPage() {
                                                     href={markdownTestResult.post_url}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-xs text-blue-600 hover:underline"
+                                                    className="text-xs text-info hover:underline"
                                                 >
                                                     View Post →
                                                 </a>
@@ -682,7 +682,7 @@ export default function WordPressSettingsPage() {
                                                     href={markdownTestResult.edit_url}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-xs text-blue-600 hover:underline"
+                                                    className="text-xs text-info hover:underline"
                                                 >
                                                     Edit in WordPress →
                                                 </a>
@@ -704,13 +704,13 @@ export default function WordPressSettingsPage() {
                                                         >
                                                             <div className="mt-0.5">
                                                                 {feature.status === "pass" && (
-                                                                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                                                    <CheckCircle2 className="h-4 w-4 text-success" />
                                                                 )}
                                                                 {feature.status === "warning" && (
-                                                                    <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                                                                    <AlertTriangle className="h-4 w-4 text-warning" />
                                                                 )}
                                                                 {feature.status === "fail" && (
-                                                                    <XCircle className="h-4 w-4 text-red-600" />
+                                                                    <XCircle className="h-4 w-4 text-destructive" />
                                                                 )}
                                                             </div>
                                                             <div className="flex-1 space-y-1">

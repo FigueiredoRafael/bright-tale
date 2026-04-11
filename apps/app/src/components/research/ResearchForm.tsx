@@ -525,7 +525,7 @@ export default function ResearchForm({
 
             {/* Selected Idea Display */}
             {selectedIdea && (
-                <Card className="border-blue-200 bg-blue-50/50">
+                <Card className="border-blue-200 bg-info/5">
                     <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-medium text-blue-900">
                             <BookOpen className="h-4 w-4 inline mr-2" />
@@ -605,7 +605,7 @@ export default function ResearchForm({
                                     <Button variant="outline" size="sm" onClick={copyToClipboard} className="gap-2">
                                         {copied ? (
                                             <>
-                                                <Check className="h-4 w-4 text-green-600" />
+                                                <Check className="h-4 w-4 text-success" />
                                                 Copied!
                                             </>
                                         ) : (
@@ -618,7 +618,7 @@ export default function ResearchForm({
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <pre className="bg-white p-3 rounded-md text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto border">
+                                <pre className="bg-card p-3 rounded-md text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto border">
                                     {generatedYaml}
                                 </pre>
                             </CardContent>
@@ -661,7 +661,7 @@ export default function ResearchForm({
                                     <CardContent className="py-4">
                                         <div className="flex items-start gap-3">
                                             {parsedResearch.idea_validation.core_claim_verified ? (
-                                                <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
+                                                <CheckCircle className="h-5 w-5 text-success mt-0.5" />
                                             ) : (
                                                 <XCircle className="h-5 w-5 text-orange-600 mt-0.5" />
                                             )}
@@ -686,7 +686,7 @@ export default function ResearchForm({
 
                             {/* Refined Angle */}
                             {parsedResearch.refined_angle && (
-                                <Card className="border-blue-200 bg-blue-50/50">
+                                <Card className="border-blue-200 bg-info/5">
                                     <CardContent className="py-4">
                                         <div className="flex items-start gap-3">
                                             <Lightbulb className="h-5 w-5 text-blue-600 mt-0.5" />
@@ -735,7 +735,7 @@ export default function ResearchForm({
                                     <CardContent>
                                         <div className="space-y-2">
                                             {parsedResearch.sources.map((source) => (
-                                                <div key={source.source_id} className="text-sm p-3 bg-gray-50 rounded-lg">
+                                                <div key={source.source_id} className="text-sm p-3 bg-muted rounded-lg">
                                                     <div className="flex items-start justify-between">
                                                         <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
                                                             {source.title}
@@ -771,7 +771,7 @@ export default function ResearchForm({
                                     <CardContent>
                                         <div className="grid gap-2">
                                             {parsedResearch.statistics.map((stat) => (
-                                                <div key={stat.stat_id} className="text-sm p-2 bg-gray-50 rounded">
+                                                <div key={stat.stat_id} className="text-sm p-2 bg-muted rounded">
                                                     <div className="flex items-center gap-2">
                                                         <span className="font-semibold text-blue-600">{stat.figure}</span>
                                                         <span className="text-muted-foreground">—</span>
@@ -796,7 +796,7 @@ export default function ResearchForm({
                                     <CardContent>
                                         <div className="space-y-3">
                                             {parsedResearch.expert_quotes.map((q) => (
-                                                <div key={q.quote_id} className="text-sm p-3 bg-gray-50 rounded-lg border-l-4 border-blue-400">
+                                                <div key={q.quote_id} className="text-sm p-3 bg-muted rounded-lg border-l-4 border-info">
                                                     <p className="italic">"{q.quote}"</p>
                                                     <p className="text-xs text-muted-foreground mt-2">
                                                         — <strong>{q.author}</strong>, {q.credentials}

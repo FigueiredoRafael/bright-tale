@@ -385,7 +385,7 @@ export default function AISettingsPage() {
                                 </div>
                                 <CardDescription>
                                     {config.has_api_key ? (
-                                        <span className="flex items-center gap-1 text-green-600">
+                                        <span className="flex items-center gap-1 text-success">
                                             <CheckCircle2 className="h-3 w-3" />
                                             API key configured (encrypted)
                                         </span>
@@ -413,7 +413,7 @@ export default function AISettingsPage() {
             </div>
 
             {/* Info Card */}
-            <Card className="mt-6 border-blue-200 bg-blue-50">
+            <Card className="mt-6 border-info/20 bg-info/5">
                 <CardHeader>
                     <CardTitle className="text-sm">💡 How AI Providers Work</CardTitle>
                 </CardHeader>

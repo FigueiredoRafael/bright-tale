@@ -35,19 +35,19 @@ function markdownToHtml(markdown: string): string {
 
     // Add Tailwind classes for preview styling
     html = html
-        .replace(/<h1>/g, '<h1 class="text-2xl font-bold mt-4 mb-4 text-gray-900">')
-        .replace(/<h2>/g, '<h2 class="text-xl font-semibold mt-8 mb-3 text-gray-900">')
+        .replace(/<h1>/g, '<h1 class="text-2xl font-bold mt-4 mb-4 text-foreground">')
+        .replace(/<h2>/g, '<h2 class="text-xl font-semibold mt-8 mb-3 text-foreground">')
         .replace(/<h3>/g, '<h3 class="text-lg font-semibold mt-6 mb-2">')
         .replace(/<h4>/g, '<h4 class="text-base font-semibold mt-4 mb-2">')
-        .replace(/<p>/g, '<p class="my-4 text-gray-800 leading-relaxed">')
+        .replace(/<p>/g, '<p class="my-4 text-foreground leading-relaxed">')
         .replace(/<ul>/g, '<ul class="list-disc list-inside my-4 space-y-1">')
         .replace(/<ol>/g, '<ol class="list-decimal list-inside my-4 space-y-1">')
         .replace(/<li>/g, '<li class="ml-4">')
-        .replace(/<blockquote>/g, '<blockquote class="border-l-4 border-blue-500 pl-4 italic my-4 text-gray-700">')
-        .replace(/<code>/g, '<code class="bg-gray-100 px-1 py-0.5 rounded text-sm">')
-        .replace(/<pre>/g, '<pre class="bg-gray-100 p-3 rounded-md overflow-x-auto text-sm my-4">')
+        .replace(/<blockquote>/g, '<blockquote class="border-l-4 border-info pl-4 italic my-4 text-foreground/80">')
+        .replace(/<code>/g, '<code class="bg-muted px-1 py-0.5 rounded text-sm">')
+        .replace(/<pre>/g, '<pre class="bg-muted p-3 rounded-md overflow-x-auto text-sm my-4">')
         .replace(/<a /g, '<a class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer" ')
-        .replace(/<hr>/g, '<hr class="my-6 border-gray-300">');
+        .replace(/<hr>/g, '<hr class="my-6 border-border">');
 
     return html;
 }
@@ -157,7 +157,7 @@ export default function BlogPreview({
                         <p className="text-green-700 text-sm">
                             brightcurios.com › blog › {blog.slug}
                         </p>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-muted-foreground">
                             {blog.meta_description || "No meta description set."}
                         </p>
                     </div>
@@ -200,12 +200,12 @@ export default function BlogPreview({
                             </Badge>
                             <span className="text-muted-foreground">placement</span>
                         </div>
-                        <p className="bg-white p-2 rounded border">
+                        <p className="bg-card p-2 rounded border">
                             {blog.affiliate_integration.copy}
                         </p>
                         <p className="text-xs text-muted-foreground">
                             <strong>Link Placeholder:</strong>{" "}
-                            <code className="bg-gray-100 px-1">{blog.affiliate_integration.product_link_placeholder}</code>
+                            <code className="bg-muted px-1">{blog.affiliate_integration.product_link_placeholder}</code>
                         </p>
                         {blog.affiliate_integration.rationale && (
                             <p className="text-xs text-muted-foreground italic">

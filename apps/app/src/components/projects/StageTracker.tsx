@@ -114,7 +114,7 @@ export default function StageTracker({
                                     : isCompleted
                                         ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
                                         : isLocked
-                                            ? "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500"
+                                            ? "bg-muted text-muted-foreground dark:bg-secondary dark:text-muted-foreground"
                                             : "bg-muted text-muted-foreground hover:bg-muted/80"
                                 }
                                 ${isClickable ? "cursor-pointer hover:opacity-80" : "cursor-not-allowed"}

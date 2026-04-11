@@ -71,10 +71,10 @@ interface BlogDraftFull {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-    draft: "bg-gray-100 text-gray-800",
-    review: "bg-yellow-100 text-yellow-800",
-    approved: "bg-green-100 text-green-800",
-    published: "bg-blue-100 text-blue-800",
+    draft: "bg-muted text-foreground",
+    review: "bg-warning/10 text-warning",
+    approved: "bg-success/10 text-success",
+    published: "bg-info/10 text-info",
 };
 
 export default function BlogDetailPage({
@@ -202,7 +202,7 @@ export default function BlogDetailPage({
             <div className="container mx-auto py-12 text-center">
                 <Card className="max-w-md mx-auto">
                     <CardContent className="py-8">
-                        <p className="text-red-600 mb-4">{error || "Blog not found"}</p>
+                        <p className="text-destructive mb-4">{error || "Blog not found"}</p>
                         <Link href="/blogs">
                             <Button variant="outline">
                                 <ArrowLeft className="h-4 w-4 mr-2" />
@@ -290,7 +290,7 @@ export default function BlogDetailPage({
                 <div className="flex items-center gap-2">
                     <Button
                         variant="outline"
-                        className="text-red-600 hover:text-red-700 gap-2"
+                        className="text-destructive hover:text-destructive/80 gap-2"
                         onClick={() => setDeleteDialogOpen(true)}
                     >
                         <Trash2 className="h-4 w-4" />
@@ -340,7 +340,7 @@ export default function BlogDetailPage({
                         <AlertDialogAction
                             onClick={handleDelete}
                             disabled={deleting}
-                            className="bg-red-600 hover:bg-red-700"
+                            className="bg-destructive hover:bg-destructive/90"
                         >
                             {deleting ? "Deleting..." : "Delete"}
                         </AlertDialogAction>

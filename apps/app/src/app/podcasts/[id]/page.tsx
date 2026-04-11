@@ -17,7 +17,7 @@ import {
 import type { PodcastOutput } from "@brighttale/shared/types/agents";
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-700",
+  draft: "bg-muted text-foreground/80",
   review: "bg-yellow-100 text-yellow-700",
   approved: "bg-green-100 text-green-700",
   published: "bg-blue-100 text-blue-700",
@@ -138,7 +138,7 @@ export default function PodcastDetailPage() {
           <CardContent>
             <ol className="space-y-3">
               {data.talking_points.map((tp, i) => (
-                <li key={i} className="border-l-4 border-gray-200 pl-3">
+                <li key={i} className="border-l-4 border-border pl-3">
                   <p className="font-medium text-sm">{tp.point}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{tp.notes}</p>
                 </li>

@@ -634,7 +634,7 @@ export default function ProductionForm({
                     <CardContent>
                         <h3 className="font-semibold">{productionInput.selected_idea.title}</h3>
                         <p className="text-sm text-muted-foreground mt-1">{productionInput.selected_idea.core_tension}</p>
-                        <p className="text-sm text-green-600 italic mt-2">"{productionInput.selected_idea.scroll_stopper}"</p>
+                        <p className="text-sm text-success italic mt-2">"{productionInput.selected_idea.scroll_stopper}"</p>
                         <div className="flex gap-2 mt-3">
                             <Badge variant="outline" className="text-xs">{productionInput.selected_idea.target_audience}</Badge>
                             {productionInput.selected_idea.monetization?.affiliate_angle && (
@@ -649,7 +649,7 @@ export default function ProductionForm({
 
             {/* Research Summary */}
             {productionInput?.research && (
-                <Card className="border-blue-200 bg-blue-50/50">
+                <Card className="border-blue-200 bg-info/5">
                     <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-medium text-blue-900">Research Summary</CardTitle>
                     </CardHeader>
@@ -710,13 +710,13 @@ export default function ProductionForm({
                             ) : (
                                 <div className="space-y-3">
                                     {productionInput?.selected_idea && (
-                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                        <div className="p-3 bg-muted rounded-lg">
                                             <h4 className="font-medium text-sm">Selected Idea</h4>
                                             <p className="text-sm text-muted-foreground">{productionInput.selected_idea.title}</p>
                                         </div>
                                     )}
                                     {productionInput?.research && (
-                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                        <div className="p-3 bg-muted rounded-lg">
                                             <h4 className="font-medium text-sm">Research</h4>
                                             <p className="text-sm text-muted-foreground">
                                                 {productionInput.research.key_sources?.length || 0} sources, {productionInput.research.key_statistics?.length || 0} statistics, {productionInput.research.expert_quotes?.length || 0} quotes
@@ -750,11 +750,11 @@ export default function ProductionForm({
                                         onClick={() => setSelectedContentTypes(prev => ({ ...prev, [key]: !prev[key as keyof typeof prev] }))}
                                         className={`p-3 rounded-lg border-2 transition-all text-left ${selectedContentTypes[key as keyof typeof selectedContentTypes]
                                             ? "border-green-500 bg-green-50"
-                                            : "border-gray-200 hover:border-gray-300"
+                                            : "border-border hover:border-border"
                                             }`}
                                     >
                                         <div className="flex items-center gap-2 mb-1">
-                                            <Icon className={`h-4 w-4 ${selectedContentTypes[key as keyof typeof selectedContentTypes] ? "text-green-600" : "text-gray-400"}`} />
+                                            <Icon className={`h-4 w-4 ${selectedContentTypes[key as keyof typeof selectedContentTypes] ? "text-success" : "text-muted-foreground"}`} />
                                             <span className="font-medium text-sm">{label}</span>
                                         </div>
                                         <p className="text-xs text-muted-foreground">{description}</p>
@@ -809,7 +809,7 @@ export default function ProductionForm({
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <pre className="bg-gray-50 p-3 rounded-md text-xs font-mono overflow-x-auto max-h-96 overflow-y-auto border">
+                                    <pre className="bg-muted p-3 rounded-md text-xs font-mono overflow-x-auto max-h-96 overflow-y-auto border">
                                         {formToCoreInputYaml()}
                                     </pre>
                                 </CardContent>
@@ -857,7 +857,7 @@ export default function ProductionForm({
 
                             {savedCoreId && (
                                 <div className="flex items-center gap-2 text-sm text-green-700 pt-2">
-                                    <CheckCircle className="h-4 w-4 text-green-600" />
+                                    <CheckCircle className="h-4 w-4 text-success" />
                                     Core saved! Switch to "3. Format Inputs" to generate per-format agent inputs.
                                 </div>
                             )}
@@ -927,7 +927,7 @@ export default function ProductionForm({
                                                         onChange={setVideoStyleConfig}
                                                     />
                                                 )}
-                                                <pre className="bg-gray-50 p-3 rounded-md text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto border">
+                                                <pre className="bg-muted p-3 rounded-md text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto border">
                                                     {inputYaml}
                                                 </pre>
                                             </CardContent>
@@ -975,7 +975,7 @@ export default function ProductionForm({
                                                     <Icon className="h-3.5 w-3.5" />
                                                     {label}
                                                     {(key === "shorts" ? (parsedContent?.shorts?.length ?? 0) > 0 : !!parsedContent?.[key as keyof ProductionOutput]) && (
-                                                        <CheckCircle className="h-3 w-3 text-green-600" />
+                                                        <CheckCircle className="h-3 w-3 text-success" />
                                                     )}
                                                 </TabsTrigger>
                                             ))}
@@ -1033,7 +1033,7 @@ export default function ProductionForm({
                                                     {parsedContent.blog.full_draft && (
                                                         <div>
                                                             <Label className="text-xs text-muted-foreground">Full Draft</Label>
-                                                            <div className="mt-1 p-3 bg-gray-50 rounded-md max-h-64 overflow-y-auto">
+                                                            <div className="mt-1 p-3 bg-muted rounded-md max-h-64 overflow-y-auto">
                                                                 <pre className="text-sm whitespace-pre-wrap">{parsedContent.blog.full_draft}</pre>
                                                             </div>
                                                         </div>
@@ -1075,7 +1075,7 @@ export default function ProductionForm({
                                                 <div className="space-y-3 pt-3 border-t">
                                                     {savedVideoId && (
                                                         <div className="p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
-                                                            <Library className="h-4 w-4 text-green-600" />
+                                                            <Library className="h-4 w-4 text-success" />
                                                             <span className="text-sm text-green-700">Video saved to library!</span>
                                                         </div>
                                                     )}
@@ -1126,7 +1126,7 @@ export default function ProductionForm({
                                                     <div className="flex items-center justify-between">
                                                         {savedShortsId && (
                                                             <div className="flex items-center gap-2 text-sm text-green-700">
-                                                                <Library className="h-4 w-4 text-green-600" />
+                                                                <Library className="h-4 w-4 text-success" />
                                                                 Shorts saved to library!
                                                             </div>
                                                         )}
@@ -1190,13 +1190,13 @@ export default function ProductionForm({
                                                     <div><Label className="text-xs text-muted-foreground">Episode Title</Label><p className="font-semibold">{parsedContent.podcast.episode_title}</p></div>
                                                     <div><Label className="text-xs text-muted-foreground">Duration</Label><Badge variant="outline">{parsedContent.podcast.duration_estimate}</Badge></div>
                                                     <div><Label className="text-xs text-muted-foreground">Description</Label><p className="text-sm text-muted-foreground">{parsedContent.podcast.episode_description}</p></div>
-                                                    <div><Label className="text-xs text-muted-foreground">Intro Hook</Label><p className="text-sm bg-gray-50 p-2 rounded">{parsedContent.podcast.intro_hook}</p></div>
+                                                    <div><Label className="text-xs text-muted-foreground">Intro Hook</Label><p className="text-sm bg-muted p-2 rounded">{parsedContent.podcast.intro_hook}</p></div>
                                                     {parsedContent.podcast.talking_points?.length > 0 && (
                                                         <div>
                                                             <Label className="text-xs text-muted-foreground">Talking Points</Label>
                                                             <ul className="text-sm mt-1 space-y-2">
                                                                 {parsedContent.podcast.talking_points.map((item, idx: number) => (
-                                                                    <li key={idx} className="p-2 bg-gray-50 rounded">
+                                                                    <li key={idx} className="p-2 bg-muted rounded">
                                                                         <p className="font-medium">{item.point}</p>
                                                                         <p className="text-xs text-muted-foreground">{item.notes}</p>
                                                                     </li>
@@ -1204,10 +1204,10 @@ export default function ProductionForm({
                                                             </ul>
                                                         </div>
                                                     )}
-                                                    {parsedContent.podcast.personal_angle && <div><Label className="text-xs text-muted-foreground">Personal Angle</Label><p className="text-sm bg-gray-50 p-2 rounded">{parsedContent.podcast.personal_angle}</p></div>}
+                                                    {parsedContent.podcast.personal_angle && <div><Label className="text-xs text-muted-foreground">Personal Angle</Label><p className="text-sm bg-muted p-2 rounded">{parsedContent.podcast.personal_angle}</p></div>}
                                                     <div><Label className="text-xs text-muted-foreground">Outro</Label><p className="text-sm bg-blue-50 p-2 rounded">{parsedContent.podcast.outro}</p></div>
                                                     <div className="flex items-center justify-between pt-2 border-t">
-                                                        {savedPodcastId && <div className="flex items-center gap-2 text-sm text-green-700"><Library className="h-4 w-4 text-green-600" />Podcast saved!</div>}
+                                                        {savedPodcastId && <div className="flex items-center gap-2 text-sm text-green-700"><Library className="h-4 w-4 text-success" />Podcast saved!</div>}
                                                         <Button size="sm" variant="outline" onClick={handlePodcastSave} disabled={savingPodcast} className="ml-auto gap-2">
                                                             <Save className="h-4 w-4" />
                                                             {savingPodcast ? "Saving..." : savedPodcastId ? "Update in Library" : "Save to Library"}
@@ -1256,7 +1256,7 @@ export default function ProductionForm({
                                                             </div>
                                                         </CardHeader>
                                                         <CardContent>
-                                                            <p className="text-sm bg-gray-50 p-3 rounded">{parsedContent.engagement.pinned_comment}</p>
+                                                            <p className="text-sm bg-muted p-3 rounded">{parsedContent.engagement.pinned_comment}</p>
                                                             <p className="text-xs text-muted-foreground mt-1">{parsedContent.engagement.pinned_comment.length} / 500 chars</p>
                                                         </CardContent>
                                                     </Card>
@@ -1268,7 +1268,7 @@ export default function ProductionForm({
                                                             </div>
                                                         </CardHeader>
                                                         <CardContent>
-                                                            <pre className="text-sm bg-gray-50 p-3 rounded whitespace-pre-wrap">{parsedContent.engagement.community_post}</pre>
+                                                            <pre className="text-sm bg-muted p-3 rounded whitespace-pre-wrap">{parsedContent.engagement.community_post}</pre>
                                                         </CardContent>
                                                     </Card>
                                                     <Card>
@@ -1284,7 +1284,7 @@ export default function ProductionForm({
                                                                 <p className="text-sm">{parsedContent.engagement.twitter_thread.hook_tweet}</p>
                                                             </div>
                                                             {parsedContent.engagement.twitter_thread.thread_outline.map((tweet, idx) => (
-                                                                <div key={idx} className="p-3 bg-gray-50 rounded border">
+                                                                <div key={idx} className="p-3 bg-muted rounded border">
                                                                     <p className="text-xs font-medium text-muted-foreground mb-1">Tweet {idx + 2}</p>
                                                                     <p className="text-sm">{tweet}</p>
                                                                 </div>
@@ -1331,7 +1331,7 @@ export default function ProductionForm({
                         <>
                             {savedBlogId && (
                                 <div className="p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
-                                    <Library className="h-4 w-4 text-green-600" />
+                                    <Library className="h-4 w-4 text-success" />
                                     <span className="text-sm text-green-700">
                                         Blog saved to library! You can access it from the Blog Library page.
                                     </span>
