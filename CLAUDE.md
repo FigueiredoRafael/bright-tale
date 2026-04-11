@@ -58,7 +58,7 @@ npm run db:seed       # runs scripts/generate-seed.ts → seed.sql → supabase 
 
 ### Apps
 
-- **`apps/app`** — the main UI. All `/api/*` calls are rewritten (Next.js rewrites) to `apps/api` at runtime. Injects `X-Internal-Key` header automatically.
+- **`apps/app`** — the main UI. All `/api/*` calls are rewritten (Next.js rewrites) to `apps/api` at runtime. A Next.js middleware at `src/middleware.ts` intercepts `/api/*`, strips any client-supplied `x-internal-key` and `x-user-id` (anti-spoofing), injects the real `X-Internal-Key` from `process.env`, and adds a `x-request-id` for end-to-end tracing before the rewrite proxies the request.
 - **`apps/api`** — Route Handlers only (no pages). Guarded by middleware at `src/middleware.ts` that validates `X-Internal-Key` on every `/api/*` request. Uses Supabase `service_role` key — bypasses RLS.
 - **`apps/web`** — static landing page stub.
 
@@ -106,7 +106,9 @@ Helpers in `apps/api/src/lib/api/response.ts`: `ok()`, `fail()`.
 
 ### Security
 
-- `INTERNAL_API_KEY` shared secret between `apps/app` and `apps/api` — never exposed to browser.
+- `INTERNAL_API_KEY` shared secret between `apps/app` and `apps/api` — never exposed to browser. Injected by `apps/app/src/middleware.ts` on every `/api/*` request; validated by `apps/api/src/middleware/authenticate.ts`.
+- `apps/app` middleware also **strips** any browser-supplied `x-internal-key` and `x-user-id` before setting its own, preventing header-spoofing attacks even if the secret leaks.
+- In production, set both `API_URL` (e.g. `https://api.brighttale.io`) and `INTERNAL_API_KEY` on the Vercel project for `apps/app` — without them, Next.js rewrites target `localhost:3001` and Vercel blocks the request with `DNS_HOSTNAME_RESOLVED_PRIVATE` (404).
 - `SUPABASE_SERVICE_ROLE_KEY` — `apps/api` only, never in `apps/app`.
 - `NEXT_PUBLIC_SUPABASE_*` — anon key only, safe to expose (for future client-side auth).
 
