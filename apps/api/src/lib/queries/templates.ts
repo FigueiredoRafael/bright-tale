@@ -1,5 +1,5 @@
-import { createServiceClient } from '@/lib/supabase';
-import { SupabaseError } from '@/lib/api/errors';
+import { createServiceClient } from '../supabase/index.js';
+import { SupabaseError } from '../api/errors.js';
 
 function deepMerge(a: any, b: any): any {
   if (Array.isArray(a) && Array.isArray(b)) return b; // child overrides arrays

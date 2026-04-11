@@ -1,4 +1,4 @@
-import { createServiceClient } from '@/lib/supabase';
+import { createServiceClient } from './supabase/index.js';
 import { randomUUID } from "crypto";
 
 type JobStatus = "pending" | "done" | "failed";

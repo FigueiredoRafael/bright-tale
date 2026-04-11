@@ -6,12 +6,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import yaml from 'js-yaml';
-import { authenticate } from '@/middleware/authenticate';
-import { createServiceClient } from '@/lib/supabase';
-import { sendError } from '@/lib/api/fastify-errors';
-import { ApiError } from '@/lib/api/errors';
-import { encrypt, decrypt } from '@/lib/crypto';
-import { markdownToHtml } from '@/lib/utils';
+import { authenticate } from '../middleware/authenticate.js';
+import { createServiceClient } from '../lib/supabase/index.js';
+import { sendError } from '../lib/api/fastify-errors.js';
+import { ApiError } from '../lib/api/errors.js';
+import { encrypt, decrypt } from '../lib/crypto.js';
+import { markdownToHtml } from '../lib/utils.js';
 import {
   publishToWordPressSchema,
   fetchTagsQuerySchema,

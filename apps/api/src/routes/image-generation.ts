@@ -4,10 +4,10 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { authenticate } from '@/middleware/authenticate';
-import { createServiceClient } from '@/lib/supabase';
-import { sendError } from '@/lib/api/fastify-errors';
-import { encrypt } from '@/lib/crypto';
+import { authenticate } from '../middleware/authenticate.js';
+import { createServiceClient } from '../lib/supabase/index.js';
+import { sendError } from '../lib/api/fastify-errors.js';
+import { encrypt } from '../lib/crypto.js';
 import {
   imageGeneratorConfigSchema,
   updateImageGeneratorConfigSchema,

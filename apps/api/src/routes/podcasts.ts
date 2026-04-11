@@ -4,10 +4,10 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { authenticate } from '@/middleware/authenticate';
-import { createServiceClient } from '@/lib/supabase';
-import { sendError } from '@/lib/api/fastify-errors';
-import { ApiError } from '@/lib/api/errors';
+import { authenticate } from '../middleware/authenticate.js';
+import { createServiceClient } from '../lib/supabase/index.js';
+import { sendError } from '../lib/api/fastify-errors.js';
+import { ApiError } from '../lib/api/errors.js';
 import {
   createPodcastSchema,
   updatePodcastSchema,
@@ -17,7 +17,7 @@ import {
 import {
   generatePodcastMarkdownExport,
   generatePodcastHtmlExport,
-} from '@/lib/exporters/podcastExporter';
+} from '../lib/exporters/podcastExporter.js';
 import type { PodcastOutput } from '@brighttale/shared/types/agents';
 
 // Calculate spoken word count from podcast fields

@@ -12,8 +12,8 @@
 
 import { mockImageProvider } from "./providers/mock-imagen";
 import { GeminiImagenProvider } from "./providers/gemini-imagen";
-import { createServiceClient } from "@/lib/supabase";
-import { decrypt } from "@/lib/crypto";
+import { createServiceClient } from "../supabase/index.js";
+import { decrypt } from "../crypto.js";
 import type { ImageProvider } from "./imageProvider";
 
 export async function getImageProvider(): Promise<ImageProvider> {

@@ -4,11 +4,11 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { authenticate } from '@/middleware/authenticate';
-import { createServiceClient } from '@/lib/supabase';
-import { sendError } from '@/lib/api/fastify-errors';
-import { ApiError } from '@/lib/api/errors';
-import { resolveTemplate } from '@/lib/queries/templates';
+import { authenticate } from '../middleware/authenticate.js';
+import { createServiceClient } from '../lib/supabase/index.js';
+import { sendError } from '../lib/api/fastify-errors.js';
+import { ApiError } from '../lib/api/errors.js';
+import { resolveTemplate } from '../lib/queries/templates.js';
 import {
   createTemplateSchema,
   updateTemplateSchema,

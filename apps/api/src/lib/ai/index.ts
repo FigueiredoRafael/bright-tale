@@ -2,8 +2,8 @@ import mockAdapter from "./mock";
 import { ProviderAIAdapter } from "./providerAdapter";
 import { OpenAIProvider } from "./providers/openai";
 import { AnthropicProvider } from "./providers/anthropic";
-import { createServiceClient } from "@/lib/supabase";
-import { decrypt } from "@/lib/crypto";
+import { createServiceClient } from "../supabase/index.js";
+import { decrypt } from "../crypto.js";
 import type { AIAdapter } from "./adapter";
 
 /**

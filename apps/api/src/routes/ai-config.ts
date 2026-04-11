@@ -4,11 +4,11 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { authenticate } from '@/middleware/authenticate';
-import { createServiceClient } from '@/lib/supabase';
-import { sendError } from '@/lib/api/fastify-errors';
-import { encrypt } from '@/lib/crypto';
-import { getAIAdapter } from '@/lib/ai';
+import { authenticate } from '../middleware/authenticate.js';
+import { createServiceClient } from '../lib/supabase/index.js';
+import { sendError } from '../lib/api/fastify-errors.js';
+import { encrypt } from '../lib/crypto.js';
+import { getAIAdapter } from '../lib/ai/index.js';
 import { createAIConfigSchema, updateAIConfigSchema } from '@brighttale/shared/schemas/ai';
 import { discoveryInputSchema } from '@brighttale/shared/schemas/discovery';
 

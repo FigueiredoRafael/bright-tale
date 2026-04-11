@@ -4,7 +4,7 @@
  */
 
 import type { PodcastOutput } from "@brighttale/shared/types/agents";
-import { markdownToHtml } from "@/lib/utils";
+import { markdownToHtml } from "../utils.js";
 
 export function generatePodcastMarkdownExport(podcast: PodcastOutput): string {
   let md = `# Podcast Episode: ${podcast.episode_title}\n\n`;

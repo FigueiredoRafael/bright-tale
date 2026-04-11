@@ -8,8 +8,8 @@
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { authenticate } from '@/middleware/authenticate';
-import { createExportJob, getExportJob, getExportPayload } from '@/lib/exportJobs';
+import { authenticate } from '../middleware/authenticate.js';
+import { createExportJob, getExportJob, getExportPayload } from '../lib/exportJobs.js';
 
 const createJobSchema = z.object({
   project_ids: z.array(z.string().cuid()).min(1),

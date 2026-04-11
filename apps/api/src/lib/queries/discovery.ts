@@ -1,5 +1,5 @@
-import { createServiceClient } from '@/lib/supabase';
-import { SupabaseError } from '@/lib/api/errors';
+import { createServiceClient } from '../supabase/index.js';
+import { SupabaseError } from '../api/errors.js';
 
 type DiscoveryInput = {
   research: {

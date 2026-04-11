@@ -4,7 +4,7 @@
  */
 
 import type { ShortOutput } from "@brighttale/shared/types/agents";
-import { markdownToHtml } from "@/lib/utils";
+import { markdownToHtml } from "../utils.js";
 
 export function generateShortsMarkdownExport(shorts: ShortOutput[]): string {
   let md = `# Shorts Scripts\n\n`;

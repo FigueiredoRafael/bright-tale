@@ -5,10 +5,10 @@
 
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
-import { authenticate } from '@/middleware/authenticate';
-import { createServiceClient } from '@/lib/supabase';
-import { sendError } from '@/lib/api/fastify-errors';
-import { ApiError } from '@/lib/api/errors';
+import { authenticate } from '../middleware/authenticate.js';
+import { createServiceClient } from '../lib/supabase/index.js';
+import { sendError } from '../lib/api/fastify-errors.js';
+import { ApiError } from '../lib/api/errors.js';
 import {
   listIdeasQuerySchema,
   createIdeaSchema,

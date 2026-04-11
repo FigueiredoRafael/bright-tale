@@ -4,13 +4,13 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { authenticate } from '@/middleware/authenticate';
-import { createServiceClient } from '@/lib/supabase';
-import { sendError } from '@/lib/api/fastify-errors';
-import { ApiError } from '@/lib/api/errors';
-import { createKey, getKeyByToken, consumeKey } from '@/lib/idempotency';
-import { ENABLE_BULK_LIMITS, MAX_BULK_CREATE } from '@/lib/config';
-import { createProjectsFromDiscovery } from '@/lib/queries/discovery';
+import { authenticate } from '../middleware/authenticate.js';
+import { createServiceClient } from '../lib/supabase/index.js';
+import { sendError } from '../lib/api/fastify-errors.js';
+import { ApiError } from '../lib/api/errors.js';
+import { createKey, getKeyByToken, consumeKey } from '../lib/idempotency.js';
+import { ENABLE_BULK_LIMITS, MAX_BULK_CREATE } from '../lib/config.js';
+import { createProjectsFromDiscovery } from '../lib/queries/discovery.js';
 import {
   createProjectSchema,
   listProjectsQuerySchema,

@@ -4,7 +4,7 @@
  */
 
 import type { BlogModuleOutput } from "./schema";
-import { markdownToHtml } from "@/lib/utils";
+import { markdownToHtml } from "../../utils.js";
 
 export function generateBlogMarkdownExport(blog: BlogModuleOutput): string {
   let md = `# ${blog.title}\n\n`;

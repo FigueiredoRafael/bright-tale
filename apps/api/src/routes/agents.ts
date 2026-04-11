@@ -5,9 +5,9 @@
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { authenticate } from '@/middleware/authenticate';
-import { createServiceClient } from '@/lib/supabase';
-import { sendError } from '@/lib/api/fastify-errors';
+import { authenticate } from '../middleware/authenticate.js';
+import { createServiceClient } from '../lib/supabase/index.js';
+import { sendError } from '../lib/api/fastify-errors.js';
 
 const updateAgentSchema = z.object({
   name: z.string().min(1).max(100).optional(),

@@ -10,7 +10,7 @@ import {
   generateVideoMarkdownExport as _md,
   generateVideoHtmlExport as _html,
   generateTeleprompterExport as _teleprompter,
-} from "@/lib/exporters/videoExporter";
+} from "../../exporters/videoExporter.js";
 
 // VideoModuleOutput is structurally compatible with VideoOutput — cast directly.
 function toVideoOutput(video: VideoModuleOutput): VideoOutput {

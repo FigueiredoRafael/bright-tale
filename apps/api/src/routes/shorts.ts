@@ -4,10 +4,10 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { authenticate } from '@/middleware/authenticate';
-import { createServiceClient } from '@/lib/supabase';
-import { sendError } from '@/lib/api/fastify-errors';
-import { ApiError } from '@/lib/api/errors';
+import { authenticate } from '../middleware/authenticate.js';
+import { createServiceClient } from '../lib/supabase/index.js';
+import { sendError } from '../lib/api/fastify-errors.js';
+import { ApiError } from '../lib/api/errors.js';
 import {
   createShortsSchema,
   updateShortsSchema,
@@ -16,7 +16,7 @@ import {
 import {
   generateShortsMarkdownExport,
   generateShortsHtmlExport,
-} from '@/lib/exporters/shortsExporter';
+} from '../lib/exporters/shortsExporter.js';
 import type { ShortOutput } from '@brighttale/shared/types/agents';
 
 export async function shortsRoutes(fastify: FastifyInstance): Promise<void> {

@@ -4,7 +4,7 @@
  */
 
 import type { VideoOutput } from "@brighttale/shared/types/agents";
-import { markdownToHtml } from "@/lib/utils";
+import { markdownToHtml } from "../utils.js";
 
 // ─── Markdown Export ────────────────────────────────────────────────────────
 

@@ -1,4 +1,4 @@
-import { createServiceClient } from '@/lib/supabase';
+import { createServiceClient } from './supabase/index.js';
 
 export interface IdempotencyRecord {
   id: string;

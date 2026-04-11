@@ -7,17 +7,17 @@ import type { FastifyInstance } from 'fastify';
 import path from 'path';
 import fs from 'fs';
 import archiver from 'archiver';
-import { authenticate } from '@/middleware/authenticate';
-import { createServiceClient } from '@/lib/supabase';
-import { sendError } from '@/lib/api/fastify-errors';
-import { ApiError } from '@/lib/api/errors';
+import { authenticate } from '../middleware/authenticate.js';
+import { createServiceClient } from '../lib/supabase/index.js';
+import { sendError } from '../lib/api/fastify-errors.js';
+import { ApiError } from '../lib/api/errors.js';
 import { saveAssetSchema, searchUnsplashQuerySchema } from '@brighttale/shared/schemas/assets';
 import {
   generateImageRequestSchema,
   suggestPromptsRequestSchema,
 } from '@brighttale/shared/schemas/imageGeneration';
-import { getImageProvider } from '@/lib/ai/imageIndex';
-import { saveImageLocally, deleteImageFile } from '@/lib/files/imageStorage';
+import { getImageProvider } from '../lib/ai/imageIndex.js';
+import { saveImageLocally, deleteImageFile } from '../lib/files/imageStorage.js';
 import {
   generateBlogFeaturedImagePrompt,
   generateBlogSectionImagePrompt,
@@ -25,7 +25,7 @@ import {
   generateVideoChapterImagePrompt,
   generateStandalonePrompt,
   extractAgentImagePrompt,
-} from '@/lib/ai/promptGenerators';
+} from '../lib/ai/promptGenerators.js';
 
 export async function assetsRoutes(fastify: FastifyInstance): Promise<void> {
   /**
