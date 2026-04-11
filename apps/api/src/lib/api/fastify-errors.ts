@@ -1,6 +1,9 @@
+// DEBUG BUILD TAG: bright-tale-debug-v3 (force new deploy)
 import type { FastifyReply } from 'fastify';
 import { ApiError, translateSupabaseError } from './errors.js';
 import { ZodError } from 'zod';
+
+const DEBUG_BUILD_TAG = 'v3';
 
 function isZodError(error: unknown): error is ZodError {
   // Use instanceof first (works when both sides are same zod version)
@@ -42,6 +45,7 @@ export function sendError(reply: FastifyReply, error: unknown): void {
       error: {
         message: err.message,
         code,
+        debug_build: DEBUG_BUILD_TAG,
         debug_branch: 'supabase-like',
         debug_origCode: err.code,
         debug_details: err.details,
@@ -65,6 +69,7 @@ export function sendError(reply: FastifyReply, error: unknown): void {
       code: 'INTERNAL',
       name: err?.name,
       stack: err?.stack?.split('\n').slice(0, 5).join('\n'),
+      debug_build: DEBUG_BUILD_TAG,
       debug_branch: 'fallback',
       debug_str: String(error),
       debug_keys: error && typeof error === 'object' ? Object.keys(error as object) : undefined,
