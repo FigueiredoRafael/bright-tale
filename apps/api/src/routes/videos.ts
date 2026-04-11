@@ -18,12 +18,11 @@ import {
   generateVideoHtmlExport,
   generateTeleprompterExport,
 } from '@/lib/exporters/videoExporter';
-import type { VideoOutput } from '@brighttale/shared/types/agents';
+import type { VideoOutput, VideoScript } from '@brighttale/shared/types/agents';
 
 // Calculate spoken word count from script sections
-function calculateVideoWordCount(video: VideoOutput): number {
-  if (!video.script) return 0;
-  const { hook, problem, teaser, chapters, affiliate_segment, outro } = video.script;
+function calculateVideoWordCount(script: VideoScript): number {
+  const { hook, problem, teaser, chapters, affiliate_segment, outro } = script;
   const sections = [
     hook?.content,
     problem?.content,
@@ -118,16 +117,8 @@ export async function videosRoutes(fastify: FastifyInstance): Promise<void> {
       const sb = createServiceClient();
       const data = createVideoSchema.parse(request.body);
 
-      // Build video output for word count calculation
-      const videoOutput: VideoOutput = {
-        title_options: data.title_options,
-        thumbnail: data.thumbnail,
-        script: data.script,
-        total_duration_estimate: data.total_duration_estimate,
-      };
-
       // Calculate spoken word count from script sections
-      const wordCount = data.word_count ?? calculateVideoWordCount(videoOutput);
+      const wordCount = data.word_count ?? calculateVideoWordCount(data.script);
 
       const { data: video, error } = await sb
         .from('video_drafts')
