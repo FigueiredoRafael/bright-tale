@@ -23,9 +23,13 @@
 }
 
 /* Health dot glow pulse — box-shadow based, not opacity */
-@keyframes health-glow {
+@keyframes health-glow-green {
   0%, 100% { box-shadow: 0 0 6px rgba(16,185,129,0.4); }
   50% { box-shadow: 0 0 12px rgba(16,185,129,0.7); }
+}
+@keyframes health-glow-red {
+  0%, 100% { box-shadow: 0 0 6px rgba(239,68,68,0.4); }
+  50% { box-shadow: 0 0 12px rgba(239,68,68,0.7); }
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

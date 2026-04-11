@@ -310,7 +310,7 @@ function HealthDot({ label, ok }: { label: string; ok: boolean }) {
       <span
         className={`w-1.5 h-1.5 rounded-full inline-block ${ok ? 'bg-emerald-500' : 'bg-red-500'}`}
         style={{
-          animation: 'health-glow 2s ease infinite',
+          animation: ok ? 'health-glow-green 2s ease infinite' : 'health-glow-red 2s ease infinite',
           boxShadow: ok
             ? '0 0 6px rgba(16,185,129,0.4)'
             : '0 0 6px rgba(239,68,68,0.4)',
@@ -322,7 +322,7 @@ function HealthDot({ label, ok }: { label: string; ok: boolean }) {
 }
 
 function Sparkline({ color }: { color: string }) {
-  const id = `sp-${color.replace('#', '')}-${Math.random().toString(36).slice(2, 6)}`;
+  const id = `sp-${color.replace('#', '')}`;
   return (
     <svg className="absolute bottom-[-2px] right-[-2px] opacity-[0.18]" width="90" height="44" viewBox="0 0 90 44">
       <defs>
