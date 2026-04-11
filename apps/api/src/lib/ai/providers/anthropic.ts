@@ -5,7 +5,7 @@
  * Parses YAML responses and validates with schema
  */
 
-import Anthropic from "@anthropic-ai/sdk";
+import { Anthropic } from "@anthropic-ai/sdk";
 import yaml from "js-yaml";
 import type { AIProvider, GenerateContentParams, AgentType } from "../provider.js";
 

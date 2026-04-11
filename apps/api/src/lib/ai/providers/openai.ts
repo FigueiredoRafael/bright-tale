@@ -5,7 +5,7 @@
  * Supports structured JSON output with schema validation
  */
 
-import OpenAI from "openai";
+import { OpenAI } from "openai";
 import yaml from "js-yaml";
 import type { AIProvider, GenerateContentParams, AgentType } from "../provider.js";
 
