@@ -11,13 +11,15 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@tailwindcss/postcss": "4.2.2",
     "@tn-figueiredo/admin": "0.1.1",
     "@tn-figueiredo/auth-nextjs": "2.0.0",
     "lucide-react": "0.563.0",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "recharts": "3.8.1"
+    "recharts": "3.8.1",
+    "tailwindcss": "4.2.2"
   },
   "devDependencies": {
     "@types/node": "^20",

@@ -1,3 +1,8 @@
+@import "tailwindcss";
+
+/* Scan admin package for Tailwind class names */
+@source "../../../node_modules/@tn-figueiredo/admin/dist";
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
