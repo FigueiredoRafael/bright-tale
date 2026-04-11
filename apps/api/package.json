@@ -2,10 +2,11 @@
   "name": "@brighttale/api",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "node --env-file=.env.local --import tsx/esm --watch src/index.ts",
     "build": "tsc --noEmit",
-    "start": "tsx src/index.ts",
+    "start": "node --env-file=.env.local --import tsx/esm src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --reporter verbose",
     "test:watch": "vitest"
