@@ -2,86 +2,58 @@
 
 ## Problem
 
-Vercel's `@vercel/node` runtime runs its own TypeScript check after `build.sh`. This check produces incorrect Zod type inference — all schema fields appear as optional — causing build failures. Our own `tsc --noEmit` passes (verified via build.sh diagnostics on Vercel), but we cannot control `@vercel/node`'s compilation.
+Vercel's `@vercel/node` runtime runs its own TypeScript check after `build.sh`. This check produces incorrect Zod type inference — all schema fields appear as optional — causing build failures across `videos.ts`, `podcasts.ts`, `assets.ts`, and potentially more routes.
 
-The root cause is a mismatch between the API's tsconfig (`moduleResolution: "Bundler"` via base) and how `@vercel/node` resolves modules. The working reference project (TôNaGarantia `apps/api`) uses `moduleResolution: "NodeNext"` and builds successfully.
+## Root Cause (verified locally)
 
-## Reference
+The shared package declares `"zod": "^4.3.6"` in `packages/shared/package.json`. No stable Zod v4 exists on npm (only `4.0.0-beta.*` prereleases). This invalid specifier causes npm to resolve Zod inconsistently on Vercel's build environment, producing incorrect type inference when `@vercel/node` processes the compiled `.d.ts` files from `node_modules/@brighttale/shared/dist/`.
 
-TôNaGarantia (`~/Workspace/tonagarantia/apps/api`) — same architecture (Fastify + Vercel serverless), builds and deploys correctly. Key differences identified via comparison:
+**Proof:** Locally, switching the zod dependency to `"^3.24.0"` and running `tsc --noEmit` WITHOUT the tsconfig `@brighttale/shared/*` path aliases (simulating Vercel's resolution through `node_modules`) produces **zero TypeScript errors**. With `"^4.3.6"`, the same check produces the exact type mismatch errors seen on Vercel.
 
-| Setting | TôNaGarantia (works) | bright-tale (broken) |
-|---|---|---|
-| `moduleResolution` | `NodeNext` | `Bundler` |
-| `module` | `NodeNext` | `ESNext` |
-| tsconfig `paths` for shared | None | Points to source |
-| `vercel.json` `outputDirectory` | `"public"` | Missing |
-| `build.sh` | `tsc -p tsconfig.build.json` | esbuild bundle hack |
-| shared `zod` dep | Valid | `^4.3.6` (invalid) |
+## Rejected Approach: NodeNext Migration
+
+The initial design proposed switching `moduleResolution` from `"Bundler"` to `"NodeNext"` to match the TôNaGarantia reference project. This was rejected after testing revealed **242 TypeScript errors**:
+- 94 `@/*` path resolution failures (NodeNext requires extensions even for path aliases)
+- 59 missing `.js` extension errors on relative imports
+- 33 `'unknown'` type errors (stricter catch clause typing)
+- 3 JSON import attribute errors
+
+This would be a multi-day migration for a problem that has a one-line fix.
 
 ## Solution
 
-Align the API's build configuration with the TôNaGarantia pattern.
+### 1. Fix zod dependency (the actual fix)
 
-### 1. API tsconfig.json — standalone, NodeNext
-
-Replace `apps/api/tsconfig.json` (currently extends `../../tsconfig.base.json`):
-
-```json
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "lib": ["ES2022"],
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "declaration": true,
-    "sourceMap": true,
-    "noEmit": true,
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/__tests__"]
-}
+`packages/shared/package.json`:
+```diff
+-    "zod": "^4.3.6"
++    "zod": "^3.24.0"
 ```
 
-Key changes:
-- `module`/`moduleResolution` → `NodeNext` (matches @vercel/node)
-- Remove `@brighttale/shared/*` paths — resolve through `node_modules` only
-- Remove `api/**/*` from `include` — entry point doesn't need type checking
-- Keep `@/*` for internal imports (works with `paths` in NodeNext for type checking; `tsx` handles it at dev runtime)
-- No longer extends base tsconfig — standalone to avoid inheriting `Bundler` settings
+Then run `npm install` to update the lockfile.
 
-### 2. API tsconfig.build.json
+### 2. Revert workarounds
 
-```json
-{
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "noEmit": false,
-    "declaration": true
-  },
-  "exclude": ["node_modules", "dist", "src/__tests__"]
-}
-```
+Remove all symptom-level fixes applied during debugging:
+- `apps/api/build.sh` — remove esbuild bundling step, remove diagnostics, restore to simple shared-build + copy
+- `apps/api/.gitignore` — remove (was added for esbuild output)
+- `apps/api/api/index.mjs` — delete (esbuild bundle artifact)
+- `packages/shared/package.json` exports — revert to `"./src/*.ts"` if that was the original, or keep `"./dist/*.d.ts"` (both work once zod is fixed)
+- `apps/api/src/routes/videos.ts` — restore proper `VideoScript` type on `calculateVideoWordCount`
+- `apps/api/src/routes/podcasts.ts` — restore proper typed parameter on `calculatePodcastWordCount`
 
-Used by `build.sh` for compilation. The `@/*` paths remain in output — @vercel/node handles bundling for the serverless function, so `dist/` is mainly a sanity check.
+### 3. Clean up dead code (opportunistic)
 
-### 3. Shared package fixes
+Verified via import chain analysis:
+- `src/lib/api/response.ts` — completely dead (not imported anywhere). Delete.
+- `src/lib/api/errors.ts` — live code, but has dead `import { NextResponse } from 'next/server'` and 3 unused exported functions (`createSuccessResponse`, `createErrorResponse`, `handleApiError`). Remove the dead import and exports.
+- `src/lib/utils.ts` — `cn()` function is dead (frontend utility). Remove `cn()` and its `clsx`/`tailwind-merge` imports. Keep `markdownToHtml()` and `isProduction()`.
 
-**`packages/shared/package.json`:**
-- Fix `"zod": "^4.3.6"` → `"zod": "^3.24.0"`
-- Exports map already correct: `"./*": { "types": "./dist/*.d.ts", "default": "./dist/*.js" }`
+### 4. Clear Vercel build cache
 
-### 4. build.sh — match TôNaGarantia
+Set `VERCEL_FORCE_NO_BUILD_CACHE=1` as a one-time environment variable for the first deployment after the fix, to ensure no stale cached types interfere.
+
+### 5. Restore build.sh to clean state
 
 ```sh
 #!/bin/sh
@@ -94,58 +66,26 @@ node "$REPO_ROOT/node_modules/typescript/bin/tsc" -p "$REPO_ROOT/packages/shared
 
 echo "=== Copying shared to node_modules ==="
 rm -rf "$REPO_ROOT/node_modules/@brighttale/shared"
-cp -r "$REPO_ROOT/packages/shared" "$REPO_ROOT/node_modules/@brighttale/shared"
+mkdir -p "$REPO_ROOT/node_modules/@brighttale/shared"
+cp -r "$REPO_ROOT/packages/shared/dist" "$REPO_ROOT/node_modules/@brighttale/shared/dist"
+cp -r "$REPO_ROOT/packages/shared/src" "$REPO_ROOT/node_modules/@brighttale/shared/src"
+cp "$REPO_ROOT/packages/shared/package.json" "$REPO_ROOT/node_modules/@brighttale/shared/package.json"
 
-echo "=== Building API ==="
-cd "$REPO_ROOT/apps/api"
-node "$REPO_ROOT/node_modules/typescript/bin/tsc" -p tsconfig.build.json
-
-mkdir -p public && echo '{}' > public/.keep
 echo "=== BUILD COMPLETE ==="
 ```
 
-Changes: remove esbuild hack, add real `tsc` compilation, create `public/` for outputDirectory.
-
-### 5. vercel.json
-
-Add `outputDirectory`:
-```json
-{
-  "buildCommand": "sh build.sh",
-  "outputDirectory": "public",
-  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
-}
-```
-
-### 6. Import extension fixes
-
-With `NodeNext`, relative imports need `.js` extensions. Current audit:
-- 85 `@/*` path imports — no extension needed (resolved via `paths`)
-- 2 relative imports missing `.js` extension in `src/lib/api/` — must add `.js`
-
-### 7. Dead import cleanup
-
-Remove leftover Next.js imports that don't exist in the API's dependencies:
-- `src/lib/api/errors.ts` — `import from 'next/server'`
-- `src/lib/api/response.ts` — `import from 'next/server'`
-- `src/lib/utils.ts` — `import from 'clsx'`, `import from 'tailwind-merge'`
-
-These files may be dead code entirely; if still referenced, the Next.js-specific imports must be removed or replaced.
-
-### 8. Cleanup
-
-- Remove `apps/api/.gitignore` (added for esbuild output)
-- Remove `api/index.mjs` if present
-- Revert any `Record<string, any>` workarounds in route utility functions
+No esbuild, no diagnostics. Copy both `dist/` and `src/` so both the exports map and path aliases work.
 
 ## Verification
 
-1. `tsc --noEmit -p apps/api/tsconfig.json` passes locally
-2. `npm run test:api` passes (652 tests)
-3. Vercel build succeeds (no TypeScript errors from @vercel/node)
-4. API responds correctly on deployed URL
+1. Locally: `tsc --noEmit` passes for all workspaces
+2. Locally (Vercel simulation): `tsc --noEmit` WITHOUT `@brighttale/shared/*` paths passes — confirms node_modules resolution works
+3. `npm run test:api` passes (652 tests)
+4. Vercel build succeeds
+5. API responds correctly on deployed URL
 
-## Risk
+## Why This Works
 
-- `@/*` path alias: works for type checking (tsconfig `paths` supported in `NodeNext`) and dev runtime (`tsx`). @vercel/node bundles the serverless function and resolves `@/*` via tsconfig paths. If @vercel/node doesn't support `paths`, we fall back to converting 85 imports to relative paths — mechanical but safe.
-- Shared package `.d.ts` types: if Zod inference is still wrong through compiled types under `NodeNext`, we add `tsc-alias` or export Zod-inferred types instead of manual interfaces. TôNaGarantia's success with the same pattern suggests this won't be needed.
+With `"zod": "^3.24.0"`, npm resolves to the installed `3.25.76` (matching the lockfile). The compiled `.d.ts` files in `dist/` reference `z.ZodObject<Shape, UnknownKeys, Catchall, Output, Input>` where the `Output` type parameter has the correct required/optional field markers. When @vercel/node's TypeScript reads these `.d.ts` types and resolves `zod` from `node_modules/zod@3.25.76`, the generic types match perfectly and `z.infer` produces the correct output type.
+
+With `"^4.3.6"` (invalid range), npm's resolution behavior is undefined — it may produce phantom type conflicts, duplicate type trees, or resolve the Zod types in a way that makes the generic parameters misalign.
