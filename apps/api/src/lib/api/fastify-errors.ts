@@ -35,11 +35,19 @@ export function sendError(reply: FastifyReply, error: unknown): void {
   }
 
   if (error && typeof error === 'object' && 'code' in error && 'message' in error) {
-    const err = error as { code?: string; message: string };
+    const err = error as { code?: string; message: string; details?: string; hint?: string };
     const { code, status } = translateSupabaseError(err);
     reply.status(status).send({
       data: null,
-      error: { message: err.message, code },
+      error: {
+        message: err.message,
+        code,
+        debug_origCode: err.code,
+        debug_details: err.details,
+        debug_hint: err.hint,
+        debug_keys: Object.keys(err as object),
+        debug_str: String(error),
+      },
     });
     return;
   }
@@ -53,6 +61,8 @@ export function sendError(reply: FastifyReply, error: unknown): void {
       code: 'INTERNAL',
       name: err?.name,
       stack: err?.stack?.split('\n').slice(0, 5).join('\n'),
+      debug_str: String(error),
+      debug_keys: error && typeof error === 'object' ? Object.keys(error as object) : undefined,
     },
   });
 }
