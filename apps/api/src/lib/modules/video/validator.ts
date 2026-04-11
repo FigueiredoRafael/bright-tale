@@ -3,7 +3,7 @@
  * Business-logic invariants beyond Zod structural validation.
  */
 
-import type { VideoModuleOutput } from "./schema";
+import type { VideoModuleOutput } from "./schema.js";
 
 export interface VideoValidationResult {
   valid: boolean;

@@ -7,7 +7,7 @@
  *   - imagen-3.0-generate-002: High-quality image-only generation via generateImages
  */
 
-import type { ImageProvider, GenerateImageParams, GeneratedImageResult } from "../imageProvider";
+import type { ImageProvider, GenerateImageParams, GeneratedImageResult } from "../imageProvider.js";
 
 export class GeminiImagenProvider implements ImageProvider {
   readonly name = "gemini";

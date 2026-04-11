@@ -3,12 +3,12 @@
  * Wraps the existing shortsExporter functions to accept ShortsModuleOutput.
  */
 
-import type { ShortsModuleOutput } from "./schema";
+import type { ShortsModuleOutput } from "./schema.js";
 import type { ShortOutput } from "@brighttale/shared/types/agents";
 import {
   generateShortsMarkdownExport as _md,
   generateShortsHtmlExport as _html,
-} from "../../exporters/shortsExporter";
+} from "../../exporters/shortsExporter.js";
 
 function toShortOutputArray(shorts: ShortsModuleOutput): ShortOutput[] {
   return shorts as unknown as ShortOutput[];

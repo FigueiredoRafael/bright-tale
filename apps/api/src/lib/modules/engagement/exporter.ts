@@ -4,7 +4,7 @@
  * No prior exporter existed for this format — this is the first.
  */
 
-import type { EngagementModuleOutput } from "./schema";
+import type { EngagementModuleOutput } from "./schema.js";
 
 export function generateEngagementMarkdownExport(engagement: EngagementModuleOutput): string {
   let md = `# Engagement Content\n\n`;

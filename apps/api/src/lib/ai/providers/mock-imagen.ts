@@ -3,7 +3,7 @@
  * Returns a 1x1 transparent PNG encoded as base64
  */
 
-import type { ImageProvider, GenerateImageParams, GeneratedImageResult } from "../imageProvider";
+import type { ImageProvider, GenerateImageParams, GeneratedImageResult } from "../imageProvider.js";
 
 // Minimal 1×1 transparent PNG (67 bytes)
 const MOCK_PNG_BASE64 =

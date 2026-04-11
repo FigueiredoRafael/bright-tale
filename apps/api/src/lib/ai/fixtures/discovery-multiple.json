@@ -1,0 +1,95 @@
+{
+    "ideas": [
+        {
+            "idea_id": "BC-IDEA-001",
+            "title": "Grow your audience with viral short-form hooks",
+            "core_tension": "Creators want fast growth but lack consistent, repeatable hooks that scale.",
+            "target_audience": "Indie creators and small marketing teams",
+            "search_intent": "informational",
+            "primary_keyword": {
+                "keyword": "grow audience",
+                "difficulty": "low",
+                "basis": "search volume and intent"
+            },
+            "mrbeast_hook": "Start with an outrageous promise and deliver a simple repeatable framework",
+            "monetization": {
+                "affiliate_angle": "Recommend tools for repurposing content"
+            },
+            "why_it_wins": "High interest topic with clear repurposing into blog, video, and shorts",
+            "repurpose_map": {
+                "blog": "Long-form guide and case study",
+                "video": "Explainer + montage",
+                "shorts": [
+                    "Hook number one that is long",
+                    "Hook number two that is long"
+                ],
+                "podcast": "Interview with creators"
+            },
+            "risk_flags": [],
+            "verdict": "viable"
+        },
+        {
+            "idea_id": "BC-IDEA-002",
+            "title": "Low budget travel hacks for families",
+            "core_tension": "Families want affordable ways to travel without sacrificing experience.",
+            "target_audience": "Budget-conscious families",
+            "search_intent": "investigational",
+            "primary_keyword": {
+                "keyword": "budget travel tips",
+                "difficulty": "medium",
+                "basis": "competitive landscape"
+            },
+            "mrbeast_hook": "How one family traveled the world for under $2000",
+            "monetization": {
+                "affiliate_angle": "Travel gear recommendations"
+            },
+            "why_it_wins": "Practical advice with high affiliate potential",
+            "repurpose_map": {
+                "blog": "Top 10 budget travel itineraries",
+                "video": "Guide + packing list",
+                "shorts": [
+                    "Quick tip to pack lighter for family trips",
+                    "Money-saving hack for cheaper flights"
+                ],
+                "podcast": "Interview with travel bloggers"
+            },
+            "risk_flags": [
+                "seasonal demand"
+            ],
+            "verdict": "weak"
+        },
+        {
+            "idea_id": "BC-IDEA-003",
+            "title": "Experimental AI art forms for game designers",
+            "core_tension": "Game designers want new ways to prototype art that are fast and inexpensive.",
+            "target_audience": "Indie game developers",
+            "search_intent": "informational",
+            "primary_keyword": {
+                "keyword": "ai game art",
+                "difficulty": "high",
+                "basis": "emerging topic"
+            },
+            "mrbeast_hook": "Generate entire levels with AI in minutes",
+            "monetization": {
+                "affiliate_angle": "Recommend AI art tools"
+            },
+            "why_it_wins": "Innovative angle with potential viral interest",
+            "repurpose_map": {
+                "blog": "Tool comparisons",
+                "video": "Timelapse of generation",
+                "shorts": [
+                    "Before & After"
+                ],
+                "podcast": "Roundtable"
+            },
+            "risk_flags": [
+                "fast-moving tech"
+            ],
+            "verdict": "experimental"
+        }
+    ],
+    "pick_recommendation": {
+        "best_choice": "BC-IDEA-001",
+        "why": "Strong repurpose potential and low competition"
+    }
+}

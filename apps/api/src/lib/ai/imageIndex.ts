@@ -10,11 +10,11 @@
  * 4. Fallback → mock provider with console warning
  */
 
-import { mockImageProvider } from "./providers/mock-imagen";
-import { GeminiImagenProvider } from "./providers/gemini-imagen";
+import { mockImageProvider } from "./providers/mock-imagen.js";
+import { GeminiImagenProvider } from "./providers/gemini-imagen.js";
 import { createServiceClient } from "../supabase/index.js";
 import { decrypt } from "../crypto.js";
-import type { ImageProvider } from "./imageProvider";
+import type { ImageProvider } from "./imageProvider.js";
 
 export async function getImageProvider(): Promise<ImageProvider> {
   const envProvider = process.env.IMAGE_PROVIDER;

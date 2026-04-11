@@ -1,10 +1,10 @@
-import mockAdapter from "./mock";
-import { ProviderAIAdapter } from "./providerAdapter";
-import { OpenAIProvider } from "./providers/openai";
-import { AnthropicProvider } from "./providers/anthropic";
+import mockAdapter from "./mock.js";
+import { ProviderAIAdapter } from "./providerAdapter.js";
+import { OpenAIProvider } from "./providers/openai.js";
+import { AnthropicProvider } from "./providers/anthropic.js";
 import { createServiceClient } from "../supabase/index.js";
 import { decrypt } from "../crypto.js";
-import type { AIAdapter } from "./adapter";
+import type { AIAdapter } from "./adapter.js";
 
 /**
  * Get AI Adapter based on environment or database config

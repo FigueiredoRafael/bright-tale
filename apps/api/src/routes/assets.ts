@@ -359,7 +359,7 @@ export async function assetsRoutes(fastify: FastifyInstance): Promise<void> {
         );
       }
 
-      const responseData = await response.json();
+      const responseData = await response.json() as any;
 
       const results = responseData.results.map(
         (photo: {

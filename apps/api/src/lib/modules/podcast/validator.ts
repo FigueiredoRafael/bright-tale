@@ -3,7 +3,7 @@
  * Business-logic invariants beyond Zod structural validation.
  */
 
-import type { PodcastModuleOutput } from "./schema";
+import type { PodcastModuleOutput } from "./schema.js";
 
 export interface PodcastValidationResult {
   valid: boolean;

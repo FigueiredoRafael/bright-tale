@@ -7,7 +7,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import yaml from "js-yaml";
-import type { AIProvider, GenerateContentParams, AgentType } from "../provider";
+import type { AIProvider, GenerateContentParams, AgentType } from "../provider.js";
 
 export class AnthropicProvider implements AIProvider {
   name = "anthropic";

@@ -1,5 +1,5 @@
 import type { FastifyReply } from 'fastify';
-import { ApiError, translateSupabaseError } from './errors';
+import { ApiError, translateSupabaseError } from './errors.js';
 import { ZodError } from 'zod';
 
 function isZodError(error: unknown): error is ZodError {

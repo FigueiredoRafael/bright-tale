@@ -3,7 +3,7 @@
  * Business-logic invariants beyond Zod structural validation.
  */
 
-import type { ShortsModuleOutput } from "./schema";
+import type { ShortsModuleOutput } from "./schema.js";
 
 export interface ShortsValidationResult {
   valid: boolean;

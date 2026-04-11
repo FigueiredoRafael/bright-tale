@@ -1,6 +1,6 @@
 import { validateDiscoveryOutput } from "@brighttale/shared/schemas/discovery";
-import fixture from "../../../test/fixtures/ai/discovery.json";
-import type { AIAdapter } from "./adapter";
+import fixture from "./fixtures/discovery.json" with { type: "json" };
+import type { AIAdapter } from "./adapter.js";
 import type { DiscoveryInput, DiscoveryOutput } from "@brighttale/shared/schemas/discovery";
 
 export class MockAIAdapter implements AIAdapter {

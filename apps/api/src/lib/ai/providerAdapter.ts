@@ -5,8 +5,8 @@
  * for all 4 agent stages: Brainstorm → Research → Production → Review
  */
 
-import type { AIProvider, AgentType } from "./provider";
-import type { AIAdapter } from "./adapter";
+import type { AIProvider, AgentType } from "./provider.js";
+import type { AIAdapter } from "./adapter.js";
 import type { DiscoveryInput, DiscoveryOutput } from "@brighttale/shared/schemas/discovery";
 import { discoveryOutputSchema } from "@brighttale/shared/schemas/discovery";
 import type {

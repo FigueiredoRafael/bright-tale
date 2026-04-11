@@ -4,7 +4,7 @@
  * The underlying export logic lives in src/lib/exporters/videoExporter.ts.
  */
 
-import type { VideoModuleOutput } from "./schema";
+import type { VideoModuleOutput } from "./schema.js";
 import type { VideoOutput } from "@brighttale/shared/types/agents";
 import {
   generateVideoMarkdownExport as _md,

@@ -3,7 +3,7 @@
  * Business-logic invariants beyond Zod structural validation.
  */
 
-import type { EngagementModuleOutput } from "./schema";
+import type { EngagementModuleOutput } from "./schema.js";
 
 export interface EngagementValidationResult {
   valid: boolean;

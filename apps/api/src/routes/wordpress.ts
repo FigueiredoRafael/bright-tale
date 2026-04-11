@@ -70,7 +70,7 @@ async function uploadImageToWordPress(
     );
   }
 
-  const mediaData = await uploadResponse.json();
+  const mediaData = await uploadResponse.json() as any;
 
   // Set alt text
   if (altText) {
@@ -114,7 +114,7 @@ async function resolveCategories(
       );
     }
 
-    const existingCategories = response.ok ? await response.json() : [];
+    const existingCategories = (response.ok ? await response.json() : []) as any[];
     const categoryIds: number[] = [];
 
     for (const name of names) {
@@ -140,13 +140,13 @@ async function resolveCategories(
         });
 
         if (createResponse.ok) {
-          const newCategory = await createResponse.json();
+          const newCategory = await createResponse.json() as any;
           console.log(
             `[WP Publish] Successfully created category: ${trimmedName} (ID: ${newCategory.id})`,
           );
           categoryIds.push(newCategory.id);
         } else {
-          const errorData = await createResponse.json().catch(() => ({}));
+          const errorData = (await createResponse.json().catch(() => ({}))) as any;
           console.error(`[WP Publish] Failed to create category "${trimmedName}":`, errorData);
         }
       }
@@ -186,7 +186,7 @@ async function resolveTags(
       );
     }
 
-    const existingTags = response.ok ? await response.json() : [];
+    const existingTags = (response.ok ? await response.json() : []) as any[];
     const tagIds: number[] = [];
 
     for (const name of names) {
@@ -212,13 +212,13 @@ async function resolveTags(
         });
 
         if (createResponse.ok) {
-          const newTag = await createResponse.json();
+          const newTag = await createResponse.json() as any;
           console.log(
             `[WP Publish] Successfully created tag: ${trimmedName} (ID: ${newTag.id})`,
           );
           tagIds.push(newTag.id);
         } else {
-          const errorData = await createResponse.json().catch(() => ({}));
+          const errorData = (await createResponse.json().catch(() => ({}))) as any;
           console.error(`[WP Publish] Failed to create tag "${trimmedName}":`, errorData);
         }
       }
@@ -653,7 +653,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
             { headers },
           );
           if (mediaResponse.ok) {
-            const mediaData = await mediaResponse.json();
+            const mediaData = await mediaResponse.json() as any;
             const imgTag = `<img src="${mediaData.source_url}" alt="${asset.alt_text || ''}" class="wp-image-${wpMediaId}" />`;
 
             // Update asset with WordPress URL
@@ -713,7 +713,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         );
       }
 
-      const wordpressPost = await response.json();
+      const wordpressPost = await response.json() as any;
 
       // Update project status
       await sb
@@ -801,7 +801,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         );
       }
 
-      const tags = await response.json();
+      const tags = await response.json() as any;
 
       return reply.send({
         data: {
@@ -881,7 +881,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         );
       }
 
-      const categories = await response.json();
+      const categories = await response.json() as any;
 
       return reply.send({
         data: {

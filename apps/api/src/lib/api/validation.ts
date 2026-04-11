@@ -3,7 +3,7 @@
  */
 
 import { z } from "zod";
-import { ApiError } from "./errors";
+import { ApiError } from "./errors.js";
 
 export async function validateBody<T extends z.ZodType>(
   request: Request,

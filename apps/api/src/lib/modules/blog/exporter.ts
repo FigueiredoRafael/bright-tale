@@ -3,7 +3,7 @@
  * Generates markdown and HTML from a BlogModuleOutput.
  */
 
-import type { BlogModuleOutput } from "./schema";
+import type { BlogModuleOutput } from "./schema.js";
 import { markdownToHtml } from "../../utils.js";
 
 export function generateBlogMarkdownExport(blog: BlogModuleOutput): string {

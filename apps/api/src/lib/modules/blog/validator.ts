@@ -3,7 +3,7 @@
  * Business-logic invariants that go beyond Zod structural validation.
  */
 
-import type { BlogModuleOutput } from "./schema";
+import type { BlogModuleOutput } from "./schema.js";
 
 export interface BlogValidationResult {
   valid: boolean;
