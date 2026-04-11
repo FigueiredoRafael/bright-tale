@@ -96,7 +96,12 @@ set email = a.email
 from auth.users a
 where p.id = a.id and p.email is null;
 
--- After backfill, enforce NOT NULL
+-- Delete orphaned user_profiles with no auth.users match (can't have email)
+delete from public.user_profiles
+where email is null
+  and not exists (select 1 from auth.users a where a.id = public.user_profiles.id);
+
+-- After backfill + cleanup, enforce NOT NULL
 alter table public.user_profiles alter column email set not null;
 ```
 
@@ -541,6 +546,8 @@ git commit -m "feat(shared): add userRowToListItem mapper with tests"
 
 Create `apps/api/src/routes/users.ts`:
 
+**IMPORTANT:** `user_profiles` and `user_roles` both reference `auth.users(id)` but have NO direct FK between them. PostgREST cannot infer a relationship, so `.select('*, user_roles(role)')` would fail with a 400 error. Instead, we fetch admin IDs separately and merge in JS.
+
 ```typescript
 import type { FastifyInstance } from 'fastify';
 import { authenticate } from '@/middleware/authenticate';
@@ -554,6 +561,12 @@ import {
 } from '@brighttale/shared/schemas/users';
 import { userRowToListItem } from '@brighttale/shared/mappers/users';
 
+/** Fetch all admin user IDs as a Set */
+async function getAdminIds(sb: ReturnType<typeof createServiceClient>): Promise<Set<string>> {
+  const { data } = await sb.from('user_roles').select('user_id').eq('role', 'admin');
+  return new Set((data ?? []).map((r) => r.user_id));
+}
+
 export async function usersRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * GET / — List users with filters, pagination, and KPIs
@@ -566,22 +579,23 @@ export async function usersRoutes(fastify: FastifyInstance): Promise<void> {
 
       const { page, limit, search, premium, active, role, sort, sortDir } = query;
 
-      // Fetch KPIs, sparklines, growth in parallel
+      // Fetch KPIs, sparklines, growth, and admin IDs in parallel
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      const [kpisRes, sparklinesRes, growthRes] = await Promise.all([
+      const [kpisRes, sparklinesRes, growthRes, adminIds] = await Promise.all([
         sb.rpc('users_page_kpis'),
         sb.rpc('users_page_sparklines'),
         sb.rpc('users_page_growth', {
           p_from: thirtyDaysAgo.toISOString(),
           p_to: new Date().toISOString(),
         }),
+        getAdminIds(sb),
       ]);
 
       // Build user list queries (count + data in parallel)
       let countQuery = sb.from('user_profiles').select('*', { count: 'exact', head: true });
-      let dataQuery = sb.from('user_profiles').select('*, user_roles(role)');
+      let dataQuery = sb.from('user_profiles').select('*');
 
       // Apply filters to both queries
       if (search) {
@@ -598,8 +612,23 @@ export async function usersRoutes(fastify: FastifyInstance): Promise<void> {
         dataQuery = dataQuery.eq('is_active', active === 'true');
       }
       if (role === 'admin') {
-        countQuery = countQuery.not('user_roles', 'is', null);
-        dataQuery = dataQuery.not('user_roles', 'is', null);
+        // Filter by admin IDs (from the separate user_roles query)
+        const ids = Array.from(adminIds);
+        if (ids.length === 0) {
+          // No admins — return empty result immediately
+          return reply.send({
+            data: {
+              data: [],
+              kpis: kpisRes.data ?? {},
+              sparklines: sparklinesRes.data ?? { total: [], premium: [], signups: [] },
+              growth: growthRes.data ?? [],
+              pagination: { page, pageSize: limit, totalItems: 0, totalPages: 0 },
+            },
+            error: null,
+          });
+        }
+        countQuery = countQuery.in('id', ids);
+        dataQuery = dataQuery.in('id', ids);
       }
 
       const [{ count: total, error: countErr }, { data: rows, error: dataErr }] =
@@ -613,12 +642,10 @@ export async function usersRoutes(fastify: FastifyInstance): Promise<void> {
       if (countErr) throw countErr;
       if (dataErr) throw dataErr;
 
-      const users = (rows ?? []).map((row: any) => {
-        const roleRow = Array.isArray(row.user_roles) ? row.user_roles[0] : row.user_roles;
-        const userRole = roleRow?.role === 'admin' ? 'admin' as const : 'user' as const;
-        const { user_roles: _, ...profileRow } = row;
-        return userRowToListItem(profileRow, userRole);
-      });
+      // Merge role from adminIds Set (no FK join needed)
+      const users = (rows ?? []).map((row: any) =>
+        userRowToListItem(row, adminIds.has(row.id) ? 'admin' : 'user'),
+      );
 
       return reply.send({
         data: {
@@ -649,21 +676,18 @@ export async function usersRoutes(fastify: FastifyInstance): Promise<void> {
       const sb = createServiceClient();
       const { id } = request.params as { id: string };
 
-      const { data: row, error } = await sb
-        .from('user_profiles')
-        .select('*, user_roles(role)')
-        .eq('id', id)
-        .maybeSingle();
+      const [{ data: row, error }, { data: roleRow }] = await Promise.all([
+        sb.from('user_profiles').select('*').eq('id', id).maybeSingle(),
+        sb.from('user_roles').select('role').eq('user_id', id).eq('role', 'admin').maybeSingle(),
+      ]);
 
       if (error) throw error;
       if (!row) throw new ApiError(404, 'User not found', 'NOT_FOUND');
 
-      const roleRow = Array.isArray(row.user_roles) ? row.user_roles[0] : row.user_roles;
-      const userRole = roleRow?.role === 'admin' ? 'admin' as const : 'user' as const;
-      const { user_roles: _, ...profileRow } = row;
+      const userRole = roleRow ? 'admin' as const : 'user' as const;
 
       return reply.send({
-        data: userRowToListItem(profileRow as any, userRole),
+        data: userRowToListItem(row as any, userRole),
         error: null,
       });
     } catch (error) {
@@ -862,16 +886,26 @@ onPostSignUp: async ({ userId }) => {
 
 With:
 ```typescript
-onPostSignUp: async ({ userId, email }) => {
+onPostSignUp: async ({ userId }) => {
+  // Retrieve email from auth.users (the callback may not include it)
+  let email: string | undefined;
+  const { data: authUser } = await supabase.auth.admin.getUserById(userId);
+  if (authUser?.user?.email) {
+    email = authUser.user.email;
+  }
+
   // Create user_profiles row when a new user signs up via email/password.
   // Upsert with ignoreDuplicates: true makes this safe for email-confirm
   // resend flows (same userId, no error on second call).
   const { error } = await supabase
     .from('user_profiles')
-    .upsert({ id: userId, email }, { onConflict: 'id', ignoreDuplicates: true });
+    .upsert(
+      { id: userId, ...(email ? { email } : {}) },
+      { onConflict: 'id', ignoreDuplicates: true },
+    );
 ```
 
-**Note:** Verify that the `onPostSignUp` callback receives `email`. Check the `@tn-figueiredo/auth` library signature. If `email` is not available in the callback args, retrieve it via `supabase.auth.admin.getUserById(userId)` instead.
+**Why `auth.admin.getUserById`:** The `@tn-figueiredo/auth` `onPostSignUp` callback signature may not include `email`. Fetching from `auth.admin` is the safest approach since the API already has `service_role` access. The spread `...(email ? { email } : {})` ensures we don't set email to undefined if the lookup somehow fails.
 
 - [ ] **Step 3: Verify typecheck**
 
@@ -1015,7 +1049,7 @@ import { Users, UserCheck, Crown, Shield, UserPlus, UserX } from "lucide-react";
 import type { UsersKpis, UsersSparklines } from "@brighttale/shared/types/users";
 
 function MiniSparkline({ data, color }: { data: number[]; color: string }) {
-  if (!data.length) return null;
+  if (data.length < 2) return null;
   const max = Math.max(...data);
   const min = Math.min(...data);
   const range = max - min || 1;
@@ -1455,15 +1489,17 @@ export function UserEditModal({ user, open, onClose, onSaved }: UserEditModalPro
     setSaving(true);
     setError("");
     try {
+      // Append T23:59:59 to date-only string to avoid timezone off-by-one
+      const expiresIso = isPremium && premiumExpiresAt
+        ? new Date(`${premiumExpiresAt}T23:59:59`).toISOString()
+        : undefined;
+
       await updateUser(user.id, {
         firstName: firstName || undefined,
         lastName: lastName || undefined,
         isPremium,
         ...(isPremium
-          ? {
-              premiumPlan,
-              premiumExpiresAt: new Date(premiumExpiresAt).toISOString(),
-            }
+          ? { premiumPlan, premiumExpiresAt: expiresIso }
           : {}),
         isActive,
       });
@@ -2012,7 +2048,13 @@ export function UsersTable({ users, sort, sortDir, onRefresh }: UsersTableProps)
                           {u.role === "admin" ? "Remover Admin" : "Promover Admin"}
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => setEditUser({ ...u, _toggleActive: true } as any)}
+                          onClick={async () => {
+                            try {
+                              const { updateUser } = await import("@/lib/api/users");
+                              await updateUser(u.id, { isActive: !u.isActive });
+                              onRefresh();
+                            } catch {}
+                          }}
                         >
                           {u.isActive ? (
                             <>
