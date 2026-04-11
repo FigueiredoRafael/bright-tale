@@ -8,6 +8,9 @@ import { authenticate } from '@/middleware/authenticate';
 import { createServiceClient } from '@/lib/supabase';
 import { sendError } from '@/lib/api/fastify-errors';
 import { ApiError } from '@/lib/api/errors';
+import { createKey, getKeyByToken, consumeKey } from '@/lib/idempotency';
+import { ENABLE_BULK_LIMITS, MAX_BULK_CREATE } from '@/lib/config';
+import { createProjectsFromDiscovery } from '@/lib/queries/discovery';
 import {
   createProjectSchema,
   listProjectsQuerySchema,
@@ -514,7 +517,6 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
 
       // If idempotency token provided, check previous result
       if (body.idempotency_token) {
-        const { getKeyByToken, createKey, consumeKey } = await import('@/lib/idempotency');
         const existing = await getKeyByToken(body.idempotency_token);
         if (existing && existing.consumed && existing.response) {
           return reply.send({ data: existing.response, error: null });
@@ -525,7 +527,6 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       // Enforce optional bulk limits if enabled
-      const { ENABLE_BULK_LIMITS, MAX_BULK_CREATE } = await import('@/lib/config');
       if (ENABLE_BULK_LIMITS && body.selected_ideas.length > MAX_BULK_CREATE) {
         throw new ApiError(
           413,
@@ -533,8 +534,6 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
           'BULK_CREATE_LIMIT_EXCEEDED',
         );
       }
-
-      const { createProjectsFromDiscovery } = await import('@/lib/queries/discovery');
 
       const result = await createProjectsFromDiscovery({
         research: body.research as any,
@@ -545,7 +544,6 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
 
       // Store response in idempotency table if token provided
       if (body.idempotency_token) {
-        const { consumeKey } = await import('@/lib/idempotency');
         await consumeKey(body.idempotency_token, result);
       }
 

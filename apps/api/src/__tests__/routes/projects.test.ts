@@ -16,10 +16,60 @@ mockChain.maybeSingle = vi.fn();
 vi.mock('@/lib/supabase', () => ({
   createServiceClient: () => mockChain,
 }));
+vi.mock('@/middleware/authenticate', () => ({
+  authenticate: vi.fn(async (request: any, reply: any) => {
+    const key = request.headers['x-internal-key'];
+    if (!key || key !== process.env.INTERNAL_API_KEY) {
+      return reply.status(401).send({
+        data: null,
+        error: { message: 'Unauthorized', code: 'UNAUTHORIZED' },
+      });
+    }
+    const userId = request.headers['x-user-id'];
+    request.userId = typeof userId === 'string' ? userId : undefined;
+  }),
+}));
+vi.mock('@/lib/api/fastify-errors', () => ({
+  sendError: vi.fn(async (reply: any, error: any) => {
+    if (error && error.statusCode) {
+      return reply.status(error.statusCode).send({
+        data: null,
+        error: { message: error.message, code: error.code },
+      });
+    }
+    if (error && error.name === 'ZodError') {
+      return reply.status(400).send({
+        data: null,
+        error: { message: 'Validation error', code: 'VALIDATION_ERROR' },
+      });
+    }
+    return reply.status(500).send({
+      data: null,
+      error: { message: 'Internal server error', code: 'INTERNAL_ERROR' },
+    });
+  }),
+}));
+vi.mock('@/lib/api/errors', () => ({
+  ApiError: class ApiError extends Error {
+    statusCode: number;
+    code: string;
+    constructor(statusCode: number, message: string, code: string) {
+      super(message);
+      this.statusCode = statusCode;
+      this.code = code;
+    }
+  },
+}));
 vi.mock('@/lib/idempotency', () => ({
   createKey: vi.fn(),
   getKeyByToken: vi.fn().mockResolvedValue(null),
   consumeKey: vi.fn(),
+}));
+vi.mock('@/lib/config', () => ({
+  ENABLE_BULK_LIMITS: false,
+  MAX_BULK_CREATE: 50,
+  AI_PROVIDER: 'mock',
+  IDEMPOTENCY_TOKEN_TTL_SECONDS: 3600,
 }));
 vi.mock('@/lib/queries/discovery', () => ({
   createProjectsFromDiscovery: vi.fn().mockResolvedValue({ success: true }),
