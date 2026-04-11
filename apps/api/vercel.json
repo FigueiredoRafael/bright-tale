@@ -1,7 +1,7 @@
 {
   "buildCommand": "sh build.sh",
+  "outputDirectory": "public",
   "rewrites": [
-    { "source": "/", "destination": "/api" },
-    { "source": "/:path*", "destination": "/api" }
+    { "source": "/(.*)", "destination": "/api" }
   ]
 }

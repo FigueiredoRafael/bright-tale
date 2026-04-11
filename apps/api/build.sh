@@ -18,4 +18,8 @@ mkdir -p "$REPO_ROOT/node_modules/@brighttale/shared"
 cp -r "$REPO_ROOT/packages/shared/dist" "$REPO_ROOT/node_modules/@brighttale/shared/dist"
 cp "$REPO_ROOT/packages/shared/package.json" "$REPO_ROOT/node_modules/@brighttale/shared/package.json"
 
+echo "=== Building API ==="
+node "$REPO_ROOT/node_modules/typescript/bin/tsc" -p tsconfig.build.json
+
+mkdir -p public && echo '{}' > public/.keep
 echo "=== BUILD COMPLETE ==="
