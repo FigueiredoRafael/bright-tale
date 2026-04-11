@@ -42,11 +42,15 @@ export function sendError(reply: FastifyReply, error: unknown): void {
       error: {
         message: err.message,
         code,
+        debug_branch: 'supabase-like',
         debug_origCode: err.code,
         debug_details: err.details,
         debug_hint: err.hint,
         debug_keys: Object.keys(err as object),
+        debug_allProps: Object.getOwnPropertyNames(err as object),
+        debug_proto: Object.getPrototypeOf(err as object)?.constructor?.name,
         debug_str: String(error),
+        debug_json: safeStringify(error),
       },
     });
     return;
@@ -61,8 +65,20 @@ export function sendError(reply: FastifyReply, error: unknown): void {
       code: 'INTERNAL',
       name: err?.name,
       stack: err?.stack?.split('\n').slice(0, 5).join('\n'),
+      debug_branch: 'fallback',
       debug_str: String(error),
       debug_keys: error && typeof error === 'object' ? Object.keys(error as object) : undefined,
+      debug_allProps: error && typeof error === 'object' ? Object.getOwnPropertyNames(error as object) : undefined,
+      debug_proto: error && typeof error === 'object' ? Object.getPrototypeOf(error as object)?.constructor?.name : undefined,
+      debug_json: safeStringify(error),
     },
   });
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value, Object.getOwnPropertyNames(value as object));
+  } catch {
+    return '<unstringifiable>';
+  }
 }
