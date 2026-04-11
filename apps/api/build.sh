@@ -18,5 +18,4 @@ mkdir -p "$REPO_ROOT/node_modules/@brighttale/shared"
 cp -r "$REPO_ROOT/packages/shared/dist" "$REPO_ROOT/node_modules/@brighttale/shared/dist"
 cp "$REPO_ROOT/packages/shared/package.json" "$REPO_ROOT/node_modules/@brighttale/shared/package.json"
 
-mkdir -p public && touch public/.keep
 echo "=== BUILD COMPLETE ==="

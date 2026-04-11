@@ -1,6 +1,10 @@
 {
   "buildCommand": "sh build.sh",
-  "outputDirectory": "public",
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 30
+    }
+  },
   "rewrites": [
     { "source": "/(.*)", "destination": "/api" }
   ]
