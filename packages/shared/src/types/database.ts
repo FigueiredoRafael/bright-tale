@@ -754,28 +754,67 @@ export type Database = {
       }
       user_profiles: {
         Row: {
-          avatar_url: string | null
-          created_at: string
-          first_name: string | null
           id: string
+          first_name: string | null
           last_name: string | null
+          avatar_url: string | null
+          email: string
+          is_premium: boolean
+          premium_plan: string | null
+          premium_started_at: string | null
+          premium_expires_at: string | null
+          is_active: boolean
+          created_at: string
           updated_at: string
         }
         Insert: {
-          avatar_url?: string | null
-          created_at?: string
-          first_name?: string | null
           id: string
+          first_name?: string | null
           last_name?: string | null
+          avatar_url?: string | null
+          email?: string
+          is_premium?: boolean
+          premium_plan?: string | null
+          premium_started_at?: string | null
+          premium_expires_at?: string | null
+          is_active?: boolean
+          created_at?: string
           updated_at?: string
         }
         Update: {
-          avatar_url?: string | null
-          created_at?: string
-          first_name?: string | null
           id?: string
+          first_name?: string | null
           last_name?: string | null
+          avatar_url?: string | null
+          email?: string
+          is_premium?: boolean
+          premium_plan?: string | null
+          premium_started_at?: string | null
+          premium_expires_at?: string | null
+          is_active?: boolean
+          created_at?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: number
+          user_id: string
+          role: string
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          user_id: string
+          role: string
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          user_id?: string
+          role?: string
+          created_at?: string
         }
         Relationships: []
       }
@@ -862,7 +901,21 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      users_page_kpis: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      users_page_sparklines: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      users_page_growth: {
+        Args: {
+          p_from: string
+          p_to: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

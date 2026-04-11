@@ -19,6 +19,7 @@ import { aiConfigRoutes } from './routes/ai-config.js';
 import { imageGenerationRoutes } from './routes/image-generation.js';
 import { wordpressRoutes } from './routes/wordpress.js';
 import { exportRoutes } from './routes/export.js';
+import { usersRoutes } from './routes/users.js';
 
 export async function buildServer() {
   const fastify = Fastify({ logger: true });
@@ -53,6 +54,7 @@ export async function buildServer() {
   await fastify.register(imageGenerationRoutes, { prefix: '/image-generation' });
   await fastify.register(wordpressRoutes, { prefix: '/wordpress' });
   await fastify.register(exportRoutes, { prefix: '/export' });
+  await fastify.register(usersRoutes, { prefix: '/users' });
 
   return fastify;
 }
