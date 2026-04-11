@@ -12,6 +12,7 @@ import {
   createPodcastSchema,
   updatePodcastSchema,
   podcastQuerySchema,
+  type TalkingPoint,
 } from '@brighttale/shared/schemas/podcasts';
 import {
   generatePodcastMarkdownExport,
@@ -24,7 +25,7 @@ function calculatePodcastWordCount(data: {
   intro_hook: string;
   personal_angle?: string | null;
   outro: string;
-  talking_points: Array<{ point: string; notes: string }>;
+  talking_points: TalkingPoint[];
 }): number {
   return [
     data.intro_hook,

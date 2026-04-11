@@ -8,6 +8,7 @@ export const talkingPointSchema = z.object({
   point: z.string(),
   notes: z.string(),
 });
+export type TalkingPoint = z.infer<typeof talkingPointSchema>;
 
 export const createPodcastSchema = z.object({
   episode_title: z.string().min(3).max(300),
