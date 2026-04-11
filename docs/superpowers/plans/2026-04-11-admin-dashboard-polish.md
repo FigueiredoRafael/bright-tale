@@ -6,10 +6,15 @@
 
 **Architecture:** 4 files changed — add Tailwind color tokens to globals.css, add `dark` class to root layout, simplify sidebar config in layout.tsx, full rewrite of dashboard page.tsx with proper Tailwind classes and visual components.
 
-**Tech Stack:** Next.js 16 (App Router), Tailwind CSS v4, `@tn-figueiredo/admin` (KpiSection, KpiCard), Supabase, lucide-react icons.
+**Tech Stack:** Next.js 16 (App Router), Tailwind CSS v4, `@tn-figueiredo/admin` (AdminShell only — sidebar/shell), Supabase, lucide-react icons.
 
 **Spec:** `docs/superpowers/specs/2026-04-11-admin-dashboard-polish-design.md`
 **Mockup:** `.superpowers/brainstorm/62926-1775917039/content/dark-polish-v5.html`
+
+**Verified facts:**
+- `user_profiles` columns: `id`, `avatar_url`, `created_at`, `first_name`, `last_name`, `updated_at` — NO `email` column
+- Landing page uses zero `dark:` Tailwind variants — adding `dark` class to `<html>` is safe
+- `globals.css` has no `@theme` block yet — Tailwind v4 `@theme` coexists with `:root` CSS custom properties
 
 ---
 
@@ -17,23 +22,21 @@
 
 | File | Action | Responsibility |
 |------|--------|----------------|
-| `apps/web/src/app/globals.css` | Modify (line 1-4) | Add `@theme` block with admin color tokens |
+| `apps/web/src/app/globals.css` | Modify (after line 4) | Add `@theme` block with admin color tokens + health dot keyframe |
 | `apps/web/src/app/layout.tsx` | Modify (line 46) | Add `dark` class to `<html>` element |
 | `apps/web/src/app/admin/(protected)/layout.tsx` | Modify (lines 7-38) | Simplify sidebar to Dashboard + Usuários |
-| `apps/web/src/app/admin/(protected)/page.tsx` | Rewrite (all) | Polished dashboard with KPI sections, sparklines, health dots, recent users |
+| `apps/web/src/app/admin/(protected)/page.tsx` | Rewrite (all) | Polished dashboard with custom KPI components |
 
 ---
 
-### Task 1: Add Tailwind color tokens to globals.css
+### Task 1: Add Tailwind color tokens and health dot animation to globals.css
 
 **Files:**
-- Modify: `apps/web/src/app/globals.css:1-4`
+- Modify: `apps/web/src/app/globals.css:1-6`
 
-These tokens are required by the `@tn-figueiredo/admin` compiled Tailwind classes (`bg-dash-card`, `text-v-primary`, `text-vivid-green`, etc.). Without them, the admin components render with missing colors.
+- [ ] **Step 1: Add `@theme` block after the `@source` directive (line 4)**
 
-- [ ] **Step 1: Add `@theme` block after the `@source` directive**
-
-Insert this block between line 4 (`@source ...`) and line 6 (`*, *::before`):
+Insert between line 4 (`@source ...`) and line 6 (`*, *::before`):
 
 ```css
 /* ═══ Admin component tokens — required by @tn-figueiredo/admin ═══ */
@@ -56,16 +59,28 @@ Insert this block between line 4 (`@source ...`) and line 6 (`*, *::before`):
 }
 ```
 
-- [ ] **Step 2: Verify Tailwind generates the utility classes**
+- [ ] **Step 2: Add health dot pulse keyframe after the `@theme` block**
+
+Tailwind's `animate-pulse` fades opacity, but the mockup needs a `box-shadow` glow pulse. Add this after the `@theme` block:
+
+```css
+/* Health dot glow pulse — box-shadow based, not opacity */
+@keyframes health-glow {
+  0%, 100% { box-shadow: 0 0 6px rgba(16,185,129,0.4); }
+  50% { box-shadow: 0 0 12px rgba(16,185,129,0.7); }
+}
+```
+
+- [ ] **Step 3: Verify typecheck**
 
 Run: `npm run typecheck`
-Expected: PASS (no type errors — CSS-only change)
+Expected: PASS (CSS-only change)
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add apps/web/src/app/globals.css
-git commit -m "feat(web): add Tailwind color tokens for admin dashboard components"
+git commit -m "feat(web): add Tailwind color tokens and health-glow keyframe for admin"
 ```
 
 ---
@@ -75,7 +90,9 @@ git commit -m "feat(web): add Tailwind color tokens for admin dashboard componen
 **Files:**
 - Modify: `apps/web/src/app/layout.tsx:46`
 
-The `@tn-figueiredo/admin` components use Tailwind's `dark:` variant extensively. The `useDarkModeGuard()` hook checks for the `dark` class on `document.documentElement`. Without it, all `dark:*` styles are ignored.
+The `@tn-figueiredo/admin` components use Tailwind's `dark:` variant. The `useDarkModeGuard()` hook checks for the `dark` class on `document.documentElement`. Without it, all `dark:*` styles are ignored.
+
+Verified: the landing page uses zero `dark:` Tailwind variants — only CSS custom properties in `:root`. This change is safe.
 
 - [ ] **Step 1: Add `dark` class to `<html>` element**
 
@@ -151,20 +168,19 @@ git commit -m "feat(web): simplify admin sidebar to Dashboard + Usuários only"
 
 ---
 
-### Task 4: Rewrite dashboard page — data layer (keep unchanged)
+### Task 4: Rewrite dashboard — imports, constants, and data fetching
 
 **Files:**
-- Modify: `apps/web/src/app/admin/(protected)/page.tsx`
+- Modify: `apps/web/src/app/admin/(protected)/page.tsx` (replace lines 1-86)
 
-This task rewrites the page. The data fetching layer (`fetchDashboardData`, `STAGE_LABELS`) stays identical — only the rendering changes. We split the rewrite into this task (skeleton + data) and Task 5 (full UI).
+This task replaces the top half of the file: imports, constants, and `fetchDashboardData()`. The data layer is mostly preserved but cleaned up (removed non-existent `email` column from query).
 
-- [ ] **Step 1: Rewrite the page file with the complete polished dashboard**
+- [ ] **Step 1: Replace imports, constants, and fetchDashboardData**
 
-Replace the entire contents of `apps/web/src/app/admin/(protected)/page.tsx` with:
+Replace the entire file with just this top section (the render function and sub-components come in Task 5):
 
 ```tsx
 import { createAdminClient } from '@/lib/supabase/admin';
-import { KpiCard, KpiSection } from '@tn-figueiredo/admin/client';
 import {
   User,
   UserPlus,
@@ -176,7 +192,6 @@ import {
   Cpu,
   HeartPulse,
   RefreshCw,
-  Calendar,
 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -230,7 +245,7 @@ async function fetchDashboardData() {
     db.from('user_profiles').select('id', { count: 'exact', head: true }),
     db.from('user_profiles').select('id', { count: 'exact', head: true }).gte('created_at', today.toISOString()),
     db.from('user_profiles').select('id', { count: 'exact', head: true }).gte('created_at', weekAgo.toISOString()),
-    db.from('user_profiles').select('id, first_name, last_name, email, created_at').order('created_at', { ascending: false }).limit(8),
+    db.from('user_profiles').select('id, first_name, last_name, created_at').order('created_at', { ascending: false }).limit(8),
     db.from('projects').select('id', { count: 'exact', head: true }),
     db.from('projects').select('current_stage'),
     db.from('projects').select('id', { count: 'exact', head: true }).eq('winner', true),
@@ -277,10 +292,31 @@ async function fetchDashboardData() {
     },
   };
 }
+```
 
+Note: this is incomplete — the file won't typecheck yet because the render function is missing. That comes in the next step.
+
+- [ ] **Step 2: Verify no syntax errors in the data section**
+
+Run: `npx tsc --noEmit 2>&1 | head -5`
+Expected: Error about missing default export (expected — we add it in Task 5)
+
+---
+
+### Task 5: Rewrite dashboard — main render function
+
+**Files:**
+- Modify: `apps/web/src/app/admin/(protected)/page.tsx` (append after Task 4 code)
+
+- [ ] **Step 1: Add the `AdminDashboard` component after `fetchDashboardData`**
+
+Append this directly after the closing `}` of `fetchDashboardData()`:
+
+```tsx
 export default async function AdminDashboard() {
   const data = await fetchDashboardData();
   const stageEntries = Object.entries(data.pipeline.byStage);
+  const allHealthy = data.health.api && data.health.supabase;
 
   return (
     <div className="flex flex-col gap-6">
@@ -318,7 +354,7 @@ export default async function AdminDashboard() {
                 <span className="text-[30px] font-extrabold text-slate-50 tracking-tight leading-none [text-shadow:0_0_20px_rgba(74,222,128,0.15)]">
                   {data.users.total}
                 </span>
-                {data.users.total > 0 && (
+                {data.users.week > 0 && (
                   <span className="ml-2 text-[11px] font-semibold text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-[10px]">
                     ↑ {data.users.week} sem
                   </span>
@@ -331,7 +367,7 @@ export default async function AdminDashboard() {
               <span className="text-[30px] font-extrabold text-slate-50 tracking-tight leading-none">
                 {data.users.today}
               </span>
-              <p className="text-[11px] text-slate-500 mt-1.5">{data.users.today} nos últimos 7d</p>
+              <p className="text-[11px] text-slate-500 mt-1.5">{data.users.week} nos últimos 7d</p>
             </KpiInnerCard>
           </div>
         </SectionCard>
@@ -396,10 +432,12 @@ export default async function AdminDashboard() {
               <p className="text-[11px] text-slate-500 mt-1.5">ativos</p>
             </KpiInnerCard>
             <KpiInnerCard color="amber" icon={<HeartPulse className="w-3.5 h-3.5 text-amber-400" />} label="Health">
-              <span className="text-[30px] font-extrabold tracking-tight leading-none text-emerald-400 [text-shadow:0_0_20px_rgba(74,222,128,0.2)]">
-                OK
+              <span className={`text-[30px] font-extrabold tracking-tight leading-none ${allHealthy ? 'text-emerald-400 [text-shadow:0_0_20px_rgba(74,222,128,0.2)]' : 'text-red-400 [text-shadow:0_0_20px_rgba(239,68,68,0.2)]'}`}>
+                {allHealthy ? 'OK' : 'WARN'}
               </span>
-              <p className="text-[11px] text-slate-500 mt-1.5">todos os serviços</p>
+              <p className="text-[11px] text-slate-500 mt-1.5">
+                {allHealthy ? 'todos os serviços' : [!data.health.api && 'API', !data.health.supabase && 'DB'].filter(Boolean).join(' + ') + ' down'}
+              </p>
             </KpiInnerCard>
           </div>
         </SectionCard>
@@ -410,8 +448,23 @@ export default async function AdminDashboard() {
     </div>
   );
 }
+```
 
-/* ═══════════ Sub-components ═══════════ */
+Note: this step won't typecheck yet — the sub-components come in the next step.
+
+---
+
+### Task 6: Rewrite dashboard — sub-components (SectionCard, KpiInnerCard, helpers)
+
+**Files:**
+- Modify: `apps/web/src/app/admin/(protected)/page.tsx` (append after Task 5 code)
+
+- [ ] **Step 1: Add style maps and SectionCard**
+
+Append after the `AdminDashboard` component:
+
+```tsx
+/* ═══════════ Style maps ═══════════ */
 
 const SECTION_STYLES = {
   green: {
@@ -434,6 +487,15 @@ const SECTION_STYLES = {
 
 type SectionColor = keyof typeof SECTION_STYLES;
 
+const INNER_CARD_STYLES = {
+  green: { border: 'border-t-emerald-400/30', icon: 'bg-emerald-400/10 border-emerald-400/15' },
+  blue: { border: 'border-t-blue-400/30', icon: 'bg-blue-400/10 border-blue-400/15' },
+  purple: { border: 'border-t-violet-400/30', icon: 'bg-violet-400/10 border-violet-400/15' },
+  amber: { border: 'border-t-amber-400/30', icon: 'bg-amber-400/10 border-amber-400/15' },
+} as const;
+
+/* ═══════════ Sub-components ═══════════ */
+
 function SectionCard({ color, title, children }: { color: SectionColor; title: string; children: React.ReactNode }) {
   const s = SECTION_STYLES[color];
   return (
@@ -443,13 +505,6 @@ function SectionCard({ color, title, children }: { color: SectionColor; title: s
     </div>
   );
 }
-
-const INNER_CARD_STYLES = {
-  green: { border: 'border-t-emerald-400/30', icon: 'bg-emerald-400/10 border-emerald-400/15' },
-  blue: { border: 'border-t-blue-400/30', icon: 'bg-blue-400/10 border-blue-400/15' },
-  purple: { border: 'border-t-violet-400/30', icon: 'bg-violet-400/10 border-violet-400/15' },
-  amber: { border: 'border-t-amber-400/30', icon: 'bg-amber-400/10 border-amber-400/15' },
-} as const;
 
 function KpiInnerCard({ color, icon, label, children }: { color: SectionColor; icon: React.ReactNode; label: string; children: React.ReactNode }) {
   const s = INNER_CARD_STYLES[color];
@@ -465,12 +520,24 @@ function KpiInnerCard({ color, icon, label, children }: { color: SectionColor; i
     </div>
   );
 }
+```
 
+- [ ] **Step 2: Add HealthDot, Sparkline, StagePill, and RecentUsers**
+
+Append after `KpiInnerCard`:
+
+```tsx
 function HealthDot({ label, ok }: { label: string; ok: boolean }) {
   return (
     <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${ok ? 'text-emerald-400' : 'text-red-400'}`}>
       <span
-        className={`w-1.5 h-1.5 rounded-full inline-block ${ok ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]'}`}
+        className={`w-1.5 h-1.5 rounded-full inline-block ${ok ? 'bg-emerald-500' : 'bg-red-500'}`}
+        style={{
+          animation: 'health-glow 2s ease infinite',
+          boxShadow: ok
+            ? '0 0 6px rgba(16,185,129,0.4)'
+            : '0 0 6px rgba(239,68,68,0.4)',
+        }}
       />
       {label}
     </span>
@@ -478,7 +545,7 @@ function HealthDot({ label, ok }: { label: string; ok: boolean }) {
 }
 
 function Sparkline({ color }: { color: string }) {
-  const id = `sp-${color.replace('#', '')}`;
+  const id = `sp-${color.replace('#', '')}-${Math.random().toString(36).slice(2, 6)}`;
   return (
     <svg className="absolute bottom-[-2px] right-[-2px] opacity-[0.18]" width="90" height="44" viewBox="0 0 90 44">
       <defs>
@@ -508,7 +575,7 @@ function StagePill({ stage, count }: { stage: string; count: number }) {
   );
 }
 
-function RecentUsers({ users }: { users: { id: string; first_name: string | null; last_name: string | null; email?: string | null; created_at: string }[] }) {
+function RecentUsers({ users }: { users: { id: string; first_name: string | null; last_name: string | null; created_at: string }[] }) {
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
 
@@ -523,7 +590,7 @@ function RecentUsers({ users }: { users: { id: string; first_name: string | null
       <div className="flex flex-col">
         {users.map((u, i) => {
           const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || `…${u.id.slice(-6)}`;
-          const initials = name === `…${u.id.slice(-6)}`
+          const initials = name.startsWith('…')
             ? '??'
             : name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
           const date = new Date(u.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
@@ -548,7 +615,6 @@ function RecentUsers({ users }: { users: { id: string; first_name: string | null
                       </span>
                     )}
                   </div>
-                  {u.email && <div className="text-[11px] text-slate-500">{u.email}</div>}
                 </div>
               </div>
               <span className="text-[11px] text-slate-500 font-medium">{date}</span>
@@ -561,28 +627,27 @@ function RecentUsers({ users }: { users: { id: string; first_name: string | null
 }
 ```
 
-- [ ] **Step 2: Verify typecheck**
+- [ ] **Step 3: Verify typecheck**
 
 Run: `npm run typecheck`
-Expected: PASS
+Expected: PASS — all imports used, all components defined, types match `user_profiles` schema
 
-Note: The `email` field is added to the Supabase select query (line with `recentUsers`). The `user_profiles` table has an `email` column — verify by checking `packages/shared/src/types/database.ts` if unsure.
-
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add apps/web/src/app/admin/(protected)/page.tsx
 git commit -m "feat(web): rewrite admin dashboard with polished dark theme
 
-Replaces inline styles with Tailwind classes. Adds KPI section cards
-with colored borders, sparklines, stage pills, health dots with pulse
-animation, and recent users with avatar initials and 'novo' badges.
+Replaces inline styles with Tailwind classes. Custom SectionCard and
+KpiInnerCard components with colored borders, sparklines, health dots
+with box-shadow glow pulse, stage breakdown pills, and recent users
+with gradient avatar initials and 'novo' badges.
 Matches approved mockup v5."
 ```
 
 ---
 
-### Task 5: Visual verification
+### Task 7: Visual verification and landing page regression check
 
 **Files:** None (read-only verification)
 
@@ -591,44 +656,44 @@ Matches approved mockup v5."
 Run: `npm run dev:web`
 Expected: Server starts on http://localhost:3002
 
-- [ ] **Step 2: Verify in browser**
+- [ ] **Step 2: Verify landing page is unaffected**
+
+Open `http://localhost:3002` and confirm:
+- Landing page renders correctly with its dark theme
+- No visual regressions from adding `dark` class to `<html>`
+
+- [ ] **Step 3: Verify admin dashboard**
 
 Open `http://localhost:3002/admin` and check:
 
 1. Sidebar shows only "Dashboard" (active) and "Usuários"
-2. Header has "Dashboard" title, subtitle, pulsing health dots, "Atualizado Agora" button
-3. KPI grid renders 4 sections in 2-column layout:
-   - Crescimento (green left border, green icons/accents)
-   - Pipeline (blue left border, stage pills below cards)
-   - Conteúdo (purple, 3-column inner grid)
-   - Sistema (amber, "OK" in green with glow)
-4. Each inner KPI card has: colored icon box, label, large value, subtext
-5. Sparklines visible on Usuários and Total Projetos cards
-6. Cadastros Recentes shows users with gradient avatars, "novo" badges, "Ver todos" link
-7. Hover states work on KPI cards (subtle lift)
+2. Header: title, subtitle, pulsing green health dots, "Atualizado Agora" button
+3. KPI grid in 2-column layout with 4 sections:
+   - Crescimento (green): users count with change badge + sparkline, new today
+   - Pipeline (blue): total projects with sparkline, published, stage pills
+   - Conteúdo (purple): research/drafts/ideas in 3-column grid
+   - Sistema (amber): AI providers count, health status (OK/WARN dynamic)
+4. Each inner KPI card: colored icon box, label, large bold value, subtext
+5. Hover on KPI cards: subtle lift (-1px) and brighter border
+6. Cadastros Recentes: gradient avatars, "novo" badges on recent users, "Ver todos" link
 
-- [ ] **Step 3: Check responsive behavior**
+- [ ] **Step 4: Check responsive behavior**
 
-Resize browser to narrow width. The `lg:grid-cols-2` should collapse to single column on smaller screens.
+Resize browser to narrow width. Verify:
+- KPI grid collapses to single column below `lg` breakpoint
+- Content sections inner grids remain readable
+- Sidebar from AdminShell handles mobile correctly
 
-- [ ] **Step 4: Verify typecheck passes clean**
+- [ ] **Step 5: Verify typecheck passes clean**
 
 Run: `npm run typecheck`
 Expected: PASS with no errors
 
-- [ ] **Step 5: Final commit if any adjustments needed**
+- [ ] **Step 6: Commit any adjustments**
 
-If visual verification revealed any issues that needed fixing, commit the fixes:
+If visual verification revealed issues:
 
 ```bash
-git add -A
+git add apps/web/src/app/admin/(protected)/page.tsx
 git commit -m "fix(web): admin dashboard visual adjustments from browser testing"
 ```
-
----
-
-## Notes
-
-- The `KpiSection` and `KpiCard` imports from `@tn-figueiredo/admin/client` are kept in the import list but **not used in the final render** — the custom `SectionCard` and `KpiInnerCard` components provide more control over the visual design matching the mockup. Remove the unused imports if typecheck warns about them.
-- The `email` field in the recent users query may not exist on `user_profiles`. If the query fails, fall back to omitting `email` from the select and the render.
-- The `dark` class on `<html>` affects the entire web app. Since the landing page already uses a dark theme via CSS custom properties (not Tailwind `dark:` variant), this should be safe. Verify the landing page still looks correct after Task 2.
