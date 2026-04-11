@@ -5,14 +5,13 @@
  * Supports content generation with schema validation
  */
 
-import { z } from "zod";
-
 export type AgentType = "brainstorm" | "research" | "production" | "review";
 
 export interface GenerateContentParams {
   agentType: AgentType;
   input: any;
-  schema: z.ZodSchema;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  schema: any;
   systemPrompt?: string;
 }
 
