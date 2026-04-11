@@ -30,8 +30,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
   const authService = new SupabaseAuthService({ supabaseUrl: url, supabaseServiceKey: key });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = createServiceClient() as any;
+  const supabase = createServiceClient();
 
   registerAuthRoutes(fastify, {
     authService,
@@ -47,9 +46,13 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         // Create user_profiles row when a new user signs up via email/password.
         // Upsert with ignoreDuplicates: true makes this safe for email-confirm
         // resend flows (same userId, no error on second call).
-        await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error } = await (supabase as any)
           .from('user_profiles')
           .upsert({ id: userId }, { onConflict: 'id', ignoreDuplicates: true });
+        if (error) {
+          fastify.log.error({ err: error, userId }, 'onPostSignUp: failed to upsert user_profiles');
+        }
       },
     },
   });
