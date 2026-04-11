@@ -2,27 +2,11 @@
  * BrightTale API
  *
  * Application entry point.
- * Initializes Fastify and registers plugins and routes.
+ * Initializes Fastify via buildServer() and starts listening (non-Vercel).
  */
-import Fastify from 'fastify';
-import fastifyCors from '@fastify/cors';
-import fastifyCookie from '@fastify/cookie';
-import { healthRoutes } from './routes/health.js';
-import { authRoutes } from './routes/auth.js';
+import { buildServer } from './server.js';
 
-const server = Fastify({ logger: true });
-
-server.register(fastifyCors, {
-  origin: [
-    'http://localhost:3000',
-    process.env.APP_ORIGIN ?? 'https://app.brighttale.io',
-  ],
-  credentials: true,
-});
-
-server.register(fastifyCookie);
-server.register(healthRoutes);
-server.register(authRoutes);
+const server = await buildServer();
 
 if (!process.env.VERCEL) {
   const PORT = parseInt(process.env.PORT ?? '3001', 10);
