@@ -1,0 +1,45 @@
+name: AI Drift Check
+
+on:
+  schedule:
+    - cron: "0 4 * * 0" # weekly on Sunday at 04:00 UTC
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+
+jobs:
+  fixture-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bright-curios-workflow
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install
+        run: npm ci
+      - name: Run AI drift check (mock)
+        run: npx tsx scripts/ai_drift_check.ts
+
+  openai-check:
+    if: ${{ secrets.OPENAI_API_KEY != '' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bright-curios-workflow
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install
+        run: npm ci
+      - name: OpenAI API quick check
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          node -e "(async()=>{const res=await fetch('https://api.openai.com/v1/models',{headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY}});if(!res.ok){console.error('OpenAI check failed',await res.text());process.exit(2);}console.log('OpenAI reachable');})();"

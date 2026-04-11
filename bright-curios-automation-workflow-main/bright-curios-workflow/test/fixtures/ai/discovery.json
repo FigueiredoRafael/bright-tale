@@ -1,0 +1,36 @@
+{
+    "ideas": [
+        {
+            "idea_id": "BC-IDEA-001",
+            "title": "Grow your audience with viral short-form hooks",
+            "core_tension": "Creators want fast growth but lack consistent, repeatable hooks that scale.",
+            "target_audience": "Indie creators and small marketing teams",
+            "search_intent": "informational",
+            "primary_keyword": {
+                "keyword": "grow audience",
+                "difficulty": "low",
+                "basis": "search volume and intent"
+            },
+            "mrbeast_hook": "Start with an outrageous promise and deliver a simple repeatable framework",
+            "monetization": {
+                "affiliate_angle": "Recommend tools for repurposing content"
+            },
+            "why_it_wins": "High interest topic with clear repurposing into blog, video, and shorts",
+            "repurpose_map": {
+                "blog": "Long-form guide and case study",
+                "video": "Explainer + montage",
+                "shorts": [
+                    "Hook number one that is long",
+                    "Hook number two that is long"
+                ],
+                "podcast": "Interview with creators"
+            },
+            "risk_flags": [],
+            "verdict": "viable"
+        }
+    ],
+    "pick_recommendation": {
+        "best_choice": "BC-IDEA-001",
+        "why": "Strong repurpose potential and low competition"
+    }
+}

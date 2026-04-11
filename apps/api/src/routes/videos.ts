@@ -12,13 +12,14 @@ import {
   createVideoSchema,
   updateVideoSchema,
   videoQuerySchema,
+  type VideoScript,
 } from '@brighttale/shared/schemas/videos';
 import {
   generateVideoMarkdownExport,
   generateVideoHtmlExport,
   generateTeleprompterExport,
 } from '@/lib/exporters/videoExporter';
-import type { VideoOutput, VideoScript } from '@brighttale/shared/types/agents';
+import type { VideoOutput } from '@brighttale/shared/types/agents';
 
 // Calculate spoken word count from script sections
 function calculateVideoWordCount(script: VideoScript): number {

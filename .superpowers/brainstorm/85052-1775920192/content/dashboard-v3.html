@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard v3 — Bright Curios</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&family=JetBrains+Mono:wght@400&display=swap');
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0A1017; color:#F0F4F8; font-family:'Inter',system-ui,sans-serif; font-size:13px; overflow-x:hidden; }
+
+  .app { display:flex; min-height:100vh; position:relative; }
+
+  /* Ambient orb — subtle brand glow top-right */
+  .app::before {
+    content:''; position:fixed; top:-180px; right:-100px;
+    width:500px; height:500px; border-radius:50%;
+    background:radial-gradient(circle,rgba(45,212,168,0.04) 0%,transparent 70%);
+    pointer-events:none; z-index:0;
+  }
+
+  /* ═══ SIDEBAR ═══ */
+  .sidebar {
+    width:248px; background:#0F1620; border-right:1px solid #1E2E40;
+    display:flex; flex-direction:column; padding:0 14px 16px;
+    position:sticky; top:0; height:100vh; overflow-y:auto; z-index:5;
+  }
+  /* Brand gradient strip at top of sidebar */
+  .sidebar::before {
+    content:''; display:block; height:3px; margin:0 -14px 0;
+    background:linear-gradient(90deg,#2DD4A8,#14967A,#0D7A65);
+    flex-shrink:0;
+  }
+  .sidebar-logo {
+    display:flex; align-items:center; gap:10px; padding:20px 10px 0;
+    margin-bottom:28px; text-decoration:none; color:inherit;
+  }
+  .logo-badge {
+    width:34px; height:34px; border-radius:10px;
+    background:linear-gradient(135deg,#2DD4A8 0%,#0D7A65 100%);
+    display:flex; align-items:center; justify-content:center;
+    color:white; font-size:12px; font-weight:800; font-family:'Plus Jakarta Sans';
+    box-shadow:0 0 20px rgba(45,212,168,0.25);
+    flex-shrink:0;
+  }
+  .logo-text {
+    font-family:'Plus Jakarta Sans'; font-size:17px; font-weight:700;
+    letter-spacing:-0.3px;
+  }
+  .logo-text span { color:#2DD4A8; }
+
+  .nav { display:flex; flex-direction:column; gap:1px; flex:1; padding:0 2px; }
+  .nav-item {
+    display:flex; align-items:center; gap:10px; padding:9px 12px;
+    border-radius:8px; color:#64748B; text-decoration:none; position:relative;
+    transition:all 0.2s; font-size:13px;
+  }
+  .nav-item:hover { color:#94A3B8; background:rgba(255,255,255,0.03); }
+  .nav-item.active {
+    background:rgba(45,212,168,0.08); color:#2DD4A8; font-weight:500;
+  }
+  .nav-item.active::before {
+    content:''; position:absolute; left:-2px; top:7px; bottom:7px;
+    width:3px; border-radius:0 4px 4px 0; background:#2DD4A8;
+    box-shadow:0 0 8px rgba(45,212,168,0.5);
+  }
+  .nav-icon { width:18px; height:18px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .nav-icon svg { width:16px; height:16px; stroke:currentColor; stroke-width:2; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+
+  .nav-section { margin-top:16px; padding-top:16px; border-top:1px solid rgba(30,46,64,0.5); }
+  .nav-section-label {
+    font-size:10px; font-weight:600; color:#475569; text-transform:uppercase;
+    letter-spacing:0.08em; padding:0 12px; margin-bottom:6px;
+  }
+  .sidebar-footer {
+    padding:14px 12px 4px; border-top:1px solid rgba(30,46,64,0.5);
+    margin-top:12px; color:#475569; font-size:11px; font-family:'JetBrains Mono',monospace;
+  }
+
+  /* ═══ MAIN ═══ */
+  .main { flex:1; display:flex; flex-direction:column; min-width:0; position:relative; z-index:1; }
+
+  /* Topbar */
+  .topbar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 28px; border-bottom:1px solid #1E2E40;
+    background:rgba(10,16,23,0.85); backdrop-filter:blur(16px);
+    position:sticky; top:0; z-index:10;
+  }
+  .topbar-title { font-family:'Plus Jakarta Sans'; font-size:17px; font-weight:700; letter-spacing:-0.3px; }
+  .topbar-right { display:flex; align-items:center; gap:10px; }
+  .search-box {
+    display:flex; align-items:center; gap:8px; padding:7px 14px;
+    border:1px solid #1E2E40; border-radius:9px; color:#475569; font-size:12px;
+    background:rgba(15,22,32,0.6); width:200px; transition:all 0.2s;
+  }
+  .search-box:hover { border-color:#2D3F55; }
+  .search-box svg { width:14px; height:14px; stroke:#475569; stroke-width:2; fill:none; flex-shrink:0; }
+  .btn-accent {
+    padding:8px 18px;
+    background:linear-gradient(135deg,#FF6B35 0%,#E85D2C 100%);
+    color:white; border:none; border-radius:9px; font-size:12px; font-weight:600;
+    cursor:pointer; font-family:'Inter'; transition:all 0.2s;
+    box-shadow:0 2px 12px rgba(255,107,53,0.25);
+  }
+  .btn-accent:hover { box-shadow:0 4px 20px rgba(255,107,53,0.4); transform:translateY(-1px); }
+  .icon-btn {
+    width:34px; height:34px; border-radius:9px; border:1px solid #1E2E40;
+    background:transparent; color:#64748B; display:flex; align-items:center;
+    justify-content:center; cursor:pointer; transition:all 0.15s;
+  }
+  .icon-btn:hover { border-color:#2D3F55; color:#94A3B8; }
+  .icon-btn svg { width:15px; height:15px; stroke:currentColor; stroke-width:2; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .avatar {
+    width:34px; height:34px; border-radius:50%;
+    background:rgba(45,212,168,0.1); border:1px solid rgba(45,212,168,0.15);
+    display:flex; align-items:center; justify-content:center;
+    color:#2DD4A8; font-size:12px; font-weight:600;
+  }
+
+  /* ═══ CONTENT ═══ */
+  .content { padding:28px; max-width:1140px; }
+
+  /* Stats */
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px; }
+  .stat-card {
+    background:#141E2A; border:1px solid #1E2E40; border-radius:14px;
+    padding:20px; display:flex; justify-content:space-between; align-items:flex-start;
+    transition:all 0.3s;
+  }
+  .stat-card:hover {
+    border-color:rgba(45,212,168,0.15);
+    box-shadow:0 0 30px rgba(45,212,168,0.04);
+    transform:translateY(-1px);
+  }
+  .stat-label { color:#64748B; font-size:11px; font-weight:500; margin-bottom:8px; letter-spacing:0.02em; }
+  .stat-value {
+    color:#F0F4F8; font-size:32px; font-weight:800; font-family:'Plus Jakarta Sans';
+    letter-spacing:-1px; line-height:1;
+  }
+  .stat-sub { display:flex; align-items:center; gap:4px; margin-top:8px; font-size:11px; font-weight:500; }
+  .stat-sub.up { color:#4ADE80; }
+  .stat-sub.neutral { color:#64748B; }
+  .stat-sub svg { width:12px; height:12px; stroke:currentColor; stroke-width:2.5; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .stat-icon {
+    width:42px; height:42px; border-radius:12px; display:flex;
+    align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .stat-icon svg { width:20px; height:20px; stroke:currentColor; stroke-width:1.8; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+
+  /* ═══ PIPELINE ═══ */
+  .pipeline-card {
+    background:#141E2A; border:1px solid #1E2E40; border-radius:14px;
+    padding:22px 24px; margin-bottom:20px; position:relative; overflow:hidden;
+  }
+  /* Subtle glow at top of pipeline card */
+  .pipeline-card::before {
+    content:''; position:absolute; top:-60px; left:50%; transform:translateX(-50%);
+    width:400px; height:100px;
+    background:radial-gradient(ellipse,rgba(45,212,168,0.03),transparent);
+    pointer-events:none;
+  }
+  .pipeline-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; position:relative; }
+  .section-title {
+    font-family:'Plus Jakarta Sans'; font-size:15px; font-weight:600;
+    letter-spacing:-0.2px;
+  }
+  .pipeline-subtitle { color:#475569; font-size:11px; }
+
+  .pipeline-track { position:relative; padding:0 8px; }
+  /* Connecting track line behind stages */
+  .pipeline-track::before {
+    content:''; position:absolute; top:22px; left:48px; right:48px;
+    height:2px; background:#1E2E40; border-radius:1px;
+  }
+  .pipeline-stages { display:flex; align-items:flex-start; position:relative; z-index:1; }
+  .pipeline-stage {
+    flex:1; display:flex; flex-direction:column; align-items:center;
+    gap:8px; padding:0 4px; cursor:default;
+  }
+  .stage-bubble {
+    width:44px; height:44px; border-radius:12px; display:flex;
+    align-items:center; justify-content:center; font-size:18px; font-weight:700;
+    font-family:'Plus Jakarta Sans'; transition:all 0.2s;
+    border:2px solid transparent;
+  }
+  .pipeline-stage:hover .stage-bubble { transform:scale(1.08); }
+  .stage-label { color:#64748B; font-size:11px; font-weight:500; text-align:center; }
+
+  /* Progress bar with legend */
+  .pipeline-footer { display:flex; align-items:center; justify-content:space-between; margin-top:18px; padding-top:14px; border-top:1px solid rgba(30,46,64,0.4); }
+  .pipeline-bar { display:flex; height:6px; border-radius:6px; overflow:hidden; gap:2px; flex:1; margin-right:16px; }
+  .pipeline-seg { border-radius:3px; transition:all 0.3s; }
+  .pipeline-legend { display:flex; gap:12px; flex-shrink:0; }
+  .legend-item { display:flex; align-items:center; gap:4px; font-size:10px; color:#64748B; }
+  .legend-dot { width:6px; height:6px; border-radius:50%; }
+
+  /* ═══ TWO COLUMNS ═══ */
+  .two-col { display:grid; grid-template-columns:1.6fr 1fr; gap:16px; }
+  .card { background:#141E2A; border:1px solid #1E2E40; border-radius:14px; padding:22px 24px; }
+  .card-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+  .card-link { color:#2DD4A8; font-size:12px; text-decoration:none; font-weight:500; display:flex; align-items:center; gap:4px; transition:color 0.15s; }
+  .card-link:hover { color:#4ADE80; }
+  .card-link svg { width:12px; height:12px; stroke:currentColor; stroke-width:2; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+
+  /* Project list */
+  .project-list { display:flex; flex-direction:column; gap:4px; }
+  .project-item {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 12px; border-radius:10px; border:1px solid transparent;
+    transition:all 0.2s; cursor:pointer;
+  }
+  .project-item:hover {
+    background:rgba(255,255,255,0.015);
+    border-color:rgba(45,212,168,0.08);
+  }
+  .project-left { display:flex; align-items:center; gap:12px; min-width:0; }
+  .project-icon {
+    width:36px; height:36px; border-radius:9px; display:flex;
+    align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .project-icon svg { width:16px; height:16px; stroke:currentColor; stroke-width:2; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .project-info { min-width:0; }
+  .project-name { color:#F0F4F8; font-weight:500; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .project-meta { display:flex; align-items:center; gap:8px; margin-top:3px; }
+  .badge {
+    display:inline-flex; align-items:center; padding:2px 8px;
+    border-radius:6px; font-size:10px; font-weight:600; letter-spacing:0.02em;
+  }
+  .badge-discovery { background:rgba(167,139,250,0.12); color:#A78BFA; }
+  .badge-research { background:rgba(96,165,250,0.12); color:#60A5FA; }
+  .badge-production { background:rgba(255,133,85,0.12); color:#FF8555; }
+  .badge-review { background:rgba(251,191,36,0.12); color:#FBBF24; }
+  .badge-publish { background:rgba(74,222,128,0.12); color:#4ADE80; }
+  .time-ago { color:#475569; font-size:11px; }
+  .project-arrow svg { width:14px; height:14px; stroke:#2D3F55; stroke-width:2; fill:none; stroke-linecap:round; stroke-linejoin:round; transition:all 0.15s; }
+  .project-item:hover .project-arrow svg { stroke:#2DD4A8; }
+
+  /* Quick actions */
+  .action-list { display:flex; flex-direction:column; gap:6px; }
+  .action-btn {
+    display:flex; align-items:center; gap:10px; padding:10px 14px;
+    border-radius:9px; font-size:12px; font-weight:500;
+    border:1px solid #1E2E40; color:#94A3B8; background:transparent;
+    cursor:pointer; transition:all 0.2s; width:100%; text-align:left; font-family:'Inter';
+  }
+  .action-btn:hover { border-color:#2D3F55; color:#F0F4F8; background:rgba(255,255,255,0.02); }
+  .action-btn.primary {
+    background:linear-gradient(135deg,#FF6B35 0%,#E85D2C 100%);
+    border-color:transparent; color:white; font-weight:600;
+    box-shadow:0 2px 12px rgba(255,107,53,0.2);
+  }
+  .action-btn.primary:hover { box-shadow:0 4px 20px rgba(255,107,53,0.35); transform:translateY(-1px); }
+  .action-btn svg { width:16px; height:16px; stroke:currentColor; stroke-width:2; fill:none; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
+
+  /* Activity feed */
+  .activity-card { padding:22px 24px; }
+  .activity-list { display:flex; flex-direction:column; gap:14px; }
+  .activity-item { display:flex; align-items:start; gap:10px; }
+  .activity-dot-wrap { position:relative; flex-shrink:0; margin-top:4px; }
+  .activity-dot {
+    width:8px; height:8px; border-radius:50%;
+  }
+  .activity-dot-glow {
+    position:absolute; inset:-3px; border-radius:50%; opacity:0.3; filter:blur(3px);
+  }
+  .activity-text { color:#94A3B8; font-size:12px; line-height:1.5; }
+  .activity-text strong { color:#E2E8F0; font-weight:500; }
+  .activity-time { color:#475569; font-size:11px; margin-top:1px; }
+
+  /* Animations */
+  @keyframes fadeInUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+  .stats { animation:fadeInUp 0.4s ease both; }
+  .pipeline-card { animation:fadeInUp 0.4s ease both 0.05s; }
+  .two-col { animation:fadeInUp 0.4s ease both 0.1s; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- ═══ SIDEBAR ═══ -->
+  <div class="sidebar">
+    <a class="sidebar-logo" href="#">
+      <div class="logo-badge">BC</div>
+      <div class="logo-text"><span>Bright</span> Curios</div>
+    </a>
+
+    <div class="nav">
+      <a class="nav-item active" href="#">
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>
+        Dashboard
+      </a>
+      <a class="nav-item" href="#">
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></span>
+        Projects
+      </a>
+      <a class="nav-item" href="#">
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg></span>
+        Ideas
+      </a>
+      <a class="nav-item" href="#">
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+        Research
+      </a>
+      <a class="nav-item" href="#">
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg></span>
+        Blogs
+      </a>
+      <a class="nav-item" href="#">
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></span>
+        Videos
+      </a>
+      <a class="nav-item" href="#">
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
+        Shorts
+      </a>
+      <a class="nav-item" href="#">
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span>
+        Podcasts
+      </a>
+      <a class="nav-item" href="#">
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span>
+        Templates
+      </a>
+      <a class="nav-item" href="#">
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></span>
+        Image Bank
+      </a>
+      <a class="nav-item" href="#">
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5" rx="1"/><line x1="10" y1="12" x2="14" y2="12"/></svg></span>
+        Assets
+      </a>
+
+      <div class="nav-section">
+        <div class="nav-section-label">Settings</div>
+        <a class="nav-item" href="#">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></span>
+          All Settings
+        </a>
+        <a class="nav-item" href="#">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></span>
+          Image Generation
+        </a>
+      </div>
+    </div>
+
+    <div class="sidebar-footer">v0.1</div>
+  </div>
+
+  <!-- ═══ MAIN ═══ -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title">Dashboard</div>
+      <div class="topbar-right">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:#475569;stroke-width:2;fill:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span>Search...</span>
+        </div>
+        <button class="btn-accent">Start Workflow</button>
+        <button class="icon-btn">
+          <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+        </button>
+        <div class="avatar">U</div>
+      </div>
+    </div>
+
+    <div class="content">
+      <!-- ═══ STATS ═══ -->
+      <div class="stats">
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Total Projects</div>
+            <div class="stat-value">12</div>
+            <div class="stat-sub up">
+              <svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+              +3 this week
+            </div>
+          </div>
+          <div class="stat-icon" style="background:rgba(45,212,168,0.08);color:#2DD4A8;">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Active Now</div>
+            <div class="stat-value">5</div>
+            <div class="stat-sub up">
+              <svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+              +2 this week
+            </div>
+          </div>
+          <div class="stat-icon" style="background:rgba(52,211,153,0.08);color:#34D399;">
+            <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Ideas</div>
+            <div class="stat-value">28</div>
+            <div class="stat-sub neutral">14 viable</div>
+          </div>
+          <div class="stat-icon" style="background:rgba(167,139,250,0.08);color:#A78BFA;">
+            <svg viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Templates</div>
+            <div class="stat-value">6</div>
+            <div class="stat-sub neutral">2 active</div>
+          </div>
+          <div class="stat-icon" style="background:rgba(34,211,238,0.08);color:#22D3EE;">
+            <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ PIPELINE ═══ -->
+      <div class="pipeline-card">
+        <div class="pipeline-header">
+          <div class="section-title">Pipeline</div>
+          <div class="pipeline-subtitle">12 projects across 5 stages</div>
+        </div>
+        <div class="pipeline-track">
+          <div class="pipeline-stages">
+            <div class="pipeline-stage">
+              <div class="stage-bubble" style="background:rgba(167,139,250,0.12);color:#A78BFA;border-color:rgba(167,139,250,0.2);">3</div>
+              <div class="stage-label">Discovery</div>
+            </div>
+            <div class="pipeline-stage">
+              <div class="stage-bubble" style="background:rgba(96,165,250,0.12);color:#60A5FA;border-color:rgba(96,165,250,0.2);">2</div>
+              <div class="stage-label">Research</div>
+            </div>
+            <div class="pipeline-stage">
+              <div class="stage-bubble" style="background:rgba(255,133,85,0.12);color:#FF8555;border-color:rgba(255,133,85,0.2);">4</div>
+              <div class="stage-label">Production</div>
+            </div>
+            <div class="pipeline-stage">
+              <div class="stage-bubble" style="background:rgba(251,191,36,0.12);color:#FBBF24;border-color:rgba(251,191,36,0.2);">2</div>
+              <div class="stage-label">Review</div>
+            </div>
+            <div class="pipeline-stage">
+              <div class="stage-bubble" style="background:rgba(74,222,128,0.12);color:#4ADE80;border-color:rgba(74,222,128,0.2);">1</div>
+              <div class="stage-label">Publish</div>
+            </div>
+          </div>
+        </div>
+        <div class="pipeline-footer">
+          <div class="pipeline-bar">
+            <div class="pipeline-seg" style="flex:3;background:#A78BFA;"></div>
+            <div class="pipeline-seg" style="flex:2;background:#60A5FA;"></div>
+            <div class="pipeline-seg" style="flex:4;background:#FF8555;"></div>
+            <div class="pipeline-seg" style="flex:2;background:#FBBF24;"></div>
+            <div class="pipeline-seg" style="flex:1;background:#4ADE80;"></div>
+          </div>
+          <div class="pipeline-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#A78BFA;"></div>Disc</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#60A5FA;"></div>Res</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#FF8555;"></div>Prod</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#FBBF24;"></div>Rev</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#4ADE80;"></div>Pub</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ TWO COLUMNS ═══ -->
+      <div class="two-col">
+        <!-- Recent Projects -->
+        <div class="card">
+          <div class="card-header">
+            <div class="section-title">Recent Projects</div>
+            <a class="card-link" href="#">View all <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></a>
+          </div>
+          <div class="project-list">
+            <div class="project-item">
+              <div class="project-left">
+                <div class="project-icon" style="background:rgba(255,133,85,0.08);color:#FF8555;">
+                  <svg viewBox="0 0 24 24"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>
+                </div>
+                <div class="project-info">
+                  <div class="project-name">How to Build a Morning Routine</div>
+                  <div class="project-meta">
+                    <span class="badge badge-production">production</span>
+                    <span class="time-ago">2h ago</span>
+                  </div>
+                </div>
+              </div>
+              <span class="project-arrow"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
+            </div>
+            <div class="project-item">
+              <div class="project-left">
+                <div class="project-icon" style="background:rgba(251,191,36,0.08);color:#FBBF24;">
+                  <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </div>
+                <div class="project-info">
+                  <div class="project-name">The Science of Deep Work</div>
+                  <div class="project-meta">
+                    <span class="badge badge-review">review</span>
+                    <span class="time-ago">5h ago</span>
+                  </div>
+                </div>
+              </div>
+              <span class="project-arrow"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
+            </div>
+            <div class="project-item">
+              <div class="project-left">
+                <div class="project-icon" style="background:rgba(167,139,250,0.08);color:#A78BFA;">
+                  <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </div>
+                <div class="project-info">
+                  <div class="project-name">Minimalism for Beginners</div>
+                  <div class="project-meta">
+                    <span class="badge badge-discovery">discovery</span>
+                    <span class="time-ago">1d ago</span>
+                  </div>
+                </div>
+              </div>
+              <span class="project-arrow"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
+            </div>
+            <div class="project-item">
+              <div class="project-left">
+                <div class="project-icon" style="background:rgba(96,165,250,0.08);color:#60A5FA;">
+                  <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                </div>
+                <div class="project-info">
+                  <div class="project-name">AI Tools for Content Creators</div>
+                  <div class="project-meta">
+                    <span class="badge badge-research">research</span>
+                    <span class="time-ago">2d ago</span>
+                  </div>
+                </div>
+              </div>
+              <span class="project-arrow"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
+            </div>
+            <div class="project-item">
+              <div class="project-left">
+                <div class="project-icon" style="background:rgba(74,222,128,0.08);color:#4ADE80;">
+                  <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <div class="project-info">
+                  <div class="project-name">Stoicism in Modern Life</div>
+                  <div class="project-meta">
+                    <span class="badge badge-publish">published</span>
+                    <span class="time-ago">3d ago</span>
+                  </div>
+                </div>
+              </div>
+              <span class="project-arrow"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column -->
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          <!-- Quick Actions -->
+          <div class="card">
+            <div class="section-title" style="margin-bottom:12px;">Quick Actions</div>
+            <div class="action-list">
+              <button class="action-btn primary">
+                <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Start New Workflow
+              </button>
+              <button class="action-btn">
+                <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                View All Projects
+              </button>
+              <button class="action-btn">
+                <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                Manage Templates
+              </button>
+              <button class="action-btn">
+                <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Research Library
+              </button>
+            </div>
+          </div>
+
+          <!-- Activity Feed -->
+          <div class="card activity-card" style="flex:1;">
+            <div class="card-header" style="margin-bottom:14px;">
+              <div class="section-title">Recent Activity</div>
+              <a class="card-link" href="#">View all <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></a>
+            </div>
+            <div class="activity-list">
+              <div class="activity-item">
+                <div class="activity-dot-wrap">
+                  <div class="activity-dot" style="background:#4ADE80;"></div>
+                  <div class="activity-dot-glow" style="background:#4ADE80;"></div>
+                </div>
+                <div>
+                  <div class="activity-text"><strong>Morning Routine</strong> moved to production</div>
+                  <div class="activity-time">2 hours ago</div>
+                </div>
+              </div>
+              <div class="activity-item">
+                <div class="activity-dot-wrap">
+                  <div class="activity-dot" style="background:#FBBF24;"></div>
+                  <div class="activity-dot-glow" style="background:#FBBF24;"></div>
+                </div>
+                <div>
+                  <div class="activity-text"><strong>Deep Work</strong> review completed</div>
+                  <div class="activity-time">5 hours ago</div>
+                </div>
+              </div>
+              <div class="activity-item">
+                <div class="activity-dot-wrap">
+                  <div class="activity-dot" style="background:#A78BFA;"></div>
+                  <div class="activity-dot-glow" style="background:#A78BFA;"></div>
+                </div>
+                <div>
+                  <div class="activity-text"><strong>Minimalism</strong> project created</div>
+                  <div class="activity-time">1 day ago</div>
+                </div>
+              </div>
+              <div class="activity-item">
+                <div class="activity-dot-wrap">
+                  <div class="activity-dot" style="background:#60A5FA;"></div>
+                  <div class="activity-dot-glow" style="background:#60A5FA;"></div>
+                </div>
+                <div>
+                  <div class="activity-text"><strong>AI Tools</strong> research started</div>
+                  <div class="activity-time">2 days ago</div>
+                </div>
+              </div>
+              <div class="activity-item">
+                <div class="activity-dot-wrap">
+                  <div class="activity-dot" style="background:#2DD4A8;"></div>
+                  <div class="activity-dot-glow" style="background:#2DD4A8;"></div>
+                </div>
+                <div>
+                  <div class="activity-text"><strong>Stoicism</strong> published to WordPress</div>
+                  <div class="activity-time">3 days ago</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

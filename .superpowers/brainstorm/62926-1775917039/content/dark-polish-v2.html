@@ -1,0 +1,252 @@
+<h2>Admin Dashboard — v2 (melhorias aplicadas)</h2>
+<p class="subtitle">Ícones, tipografia, sparklines, profundidade, espaçamento</p>
+
+<div class="mockup">
+  <div class="mockup-header">Dashboard Dark v2 — score target: 85+</div>
+  <div class="mockup-body" style="background:#0b1120;padding:0;overflow:hidden;">
+    <div style="display:flex;min-height:620px;font-family:'Inter',system-ui,sans-serif;color:#e2e8f0;">
+
+      <!-- Sidebar -->
+      <div style="width:240px;background:#0f172a;border-right:1px solid rgba(45,63,85,0.6);padding:20px 0;flex-shrink:0;display:flex;flex-direction:column;">
+        <div style="padding:0 20px 24px;display:flex;align-items:center;gap:10px;">
+          <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#2dd4bf,#0d9488);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:#fff;">B</div>
+          <span style="font-weight:700;font-size:15px;color:#f1f5f9;letter-spacing:-0.01em;">BrightTale</span>
+        </div>
+
+        <div style="padding:0 12px;flex:1;">
+          <div style="font-size:10px;text-transform:uppercase;color:#475569;padding:4px 8px 6px;letter-spacing:0.08em;font-weight:600;">Principal</div>
+          <div style="background:linear-gradient(90deg,rgba(45,212,191,0.12),transparent);border-left:3px solid #2dd4bf;border-radius:0 8px 8px 0;padding:9px 12px;font-size:13px;color:#f1f5f9;font-weight:500;display:flex;align-items:center;gap:10px;margin-bottom:2px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            Dashboard
+          </div>
+
+          <div style="font-size:10px;text-transform:uppercase;color:#475569;padding:4px 8px 6px;margin-top:16px;letter-spacing:0.08em;font-weight:600;">Usuários</div>
+          <div style="border-radius:8px;padding:9px 12px;font-size:13px;color:#94a3b8;display:flex;align-items:center;gap:10px;transition:all 0.15s;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Usuários
+          </div>
+
+          <div style="font-size:10px;text-transform:uppercase;color:#475569;padding:4px 8px 6px;margin-top:16px;letter-spacing:0.08em;font-weight:600;">Conteúdo</div>
+          <div style="border-radius:8px;padding:9px 12px;font-size:13px;color:#94a3b8;display:flex;align-items:center;gap:10px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+            Pipeline
+          </div>
+          <div style="border-radius:8px;padding:9px 12px;font-size:13px;color:#94a3b8;display:flex;align-items:center;gap:10px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>
+            Agent Prompts
+          </div>
+
+          <div style="font-size:10px;text-transform:uppercase;color:#475569;padding:4px 8px 6px;margin-top:16px;letter-spacing:0.08em;font-weight:600;">Sistema</div>
+          <div style="border-radius:8px;padding:9px 12px;font-size:13px;color:#94a3b8;display:flex;align-items:center;gap:10px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
+            Configs AI
+          </div>
+          <div style="border-radius:8px;padding:9px 12px;font-size:13px;color:#94a3b8;display:flex;align-items:center;gap:10px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            WordPress
+          </div>
+        </div>
+
+        <!-- User pill at bottom -->
+        <div style="padding:12px 16px;border-top:1px solid rgba(45,63,85,0.6);margin-top:auto;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:30px;height:30px;border-radius:50%;background:#1e293b;border:1px solid #2d3f55;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#94a3b8;">TF</div>
+            <div>
+              <div style="font-size:12px;color:#cbd5e1;font-weight:500;">admin@brighttale.io</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main content -->
+      <div style="flex:1;background:#0b1120;padding:28px 36px;overflow-y:auto;">
+        <!-- Header row -->
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;">
+          <div>
+            <h1 style="font-size:24px;font-weight:700;color:#f1f5f9;margin:0;letter-spacing:-0.02em;">Dashboard</h1>
+            <p style="font-size:13px;color:#64748b;margin-top:4px;">Visão geral do BrightTale</p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <!-- Health badges -->
+            <span style="display:inline-flex;align-items:center;gap:6px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:20px;padding:5px 14px;font-size:11px;color:#4ade80;font-weight:500;">
+              <span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;box-shadow:0 0 6px rgba(16,185,129,0.5);"></span> API
+            </span>
+            <span style="display:inline-flex;align-items:center;gap:6px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:20px;padding:5px 14px;font-size:11px;color:#4ade80;font-weight:500;">
+              <span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;box-shadow:0 0 6px rgba(16,185,129,0.5);"></span> Supabase
+            </span>
+          </div>
+        </div>
+
+        <!-- KPI Grid -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+
+          <!-- CRESCIMENTO -->
+          <div style="background:rgba(30,41,59,0.5);border:1px solid rgba(45,63,85,0.5);border-radius:14px;padding:20px;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#4ade80;margin-bottom:16px;">Crescimento</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <!-- Usuários -->
+              <div style="background:rgba(15,23,42,0.6);border:1px solid rgba(45,63,85,0.3);border-radius:10px;padding:16px;position:relative;overflow:hidden;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                  <div style="width:28px;height:28px;border-radius:8px;background:rgba(74,222,128,0.1);display:flex;align-items:center;justify-content:center;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                  </div>
+                  <span style="font-size:12px;color:#94a3b8;font-weight:500;">Usuários</span>
+                </div>
+                <div style="display:flex;align-items:baseline;gap:8px;">
+                  <span style="font-size:28px;font-weight:800;color:#f1f5f9;letter-spacing:-0.02em;">5</span>
+                  <span style="font-size:11px;color:#4ade80;font-weight:600;background:rgba(74,222,128,0.1);padding:2px 7px;border-radius:10px;">+40%</span>
+                </div>
+                <div style="font-size:11px;color:#64748b;margin-top:4px;">2 esta semana</div>
+                <!-- Mini sparkline -->
+                <svg style="position:absolute;bottom:0;right:0;opacity:0.15;" width="80" height="40" viewBox="0 0 80 40"><polyline fill="none" stroke="#4ade80" stroke-width="2" points="0,35 15,30 25,25 35,28 45,18 55,22 65,12 80,8"/><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4ade80" stop-opacity="0.3"/><stop offset="100%" stop-color="#4ade80" stop-opacity="0"/></linearGradient><polygon fill="url(#g1)" points="0,35 15,30 25,25 35,28 45,18 55,22 65,12 80,8 80,40 0,40"/></svg>
+              </div>
+              <!-- Novos hoje -->
+              <div style="background:rgba(15,23,42,0.6);border:1px solid rgba(45,63,85,0.3);border-radius:10px;padding:16px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                  <div style="width:28px;height:28px;border-radius:8px;background:rgba(74,222,128,0.1);display:flex;align-items:center;justify-content:center;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                  </div>
+                  <span style="font-size:12px;color:#94a3b8;font-weight:500;">Novos hoje</span>
+                </div>
+                <div style="font-size:28px;font-weight:800;color:#f1f5f9;letter-spacing:-0.02em;">0</div>
+                <div style="font-size:11px;color:#64748b;margin-top:4px;">0 nos últimos 7d</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- PIPELINE -->
+          <div style="background:rgba(30,41,59,0.5);border:1px solid rgba(45,63,85,0.5);border-radius:14px;padding:20px;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#60a5fa;margin-bottom:16px;">Pipeline de Conteúdo</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div style="background:rgba(15,23,42,0.6);border:1px solid rgba(45,63,85,0.3);border-radius:10px;padding:16px;position:relative;overflow:hidden;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                  <div style="width:28px;height:28px;border-radius:8px;background:rgba(96,165,250,0.1);display:flex;align-items:center;justify-content:center;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                  </div>
+                  <span style="font-size:12px;color:#94a3b8;font-weight:500;">Projetos</span>
+                </div>
+                <span style="font-size:28px;font-weight:800;color:#f1f5f9;letter-spacing:-0.02em;">12</span>
+                <div style="font-size:11px;color:#64748b;margin-top:4px;">total no pipeline</div>
+                <svg style="position:absolute;bottom:0;right:0;opacity:0.12;" width="80" height="40" viewBox="0 0 80 40"><polyline fill="none" stroke="#60a5fa" stroke-width="2" points="0,32 12,28 24,30 36,22 48,18 60,20 72,10 80,14"/><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#60a5fa" stop-opacity="0.3"/><stop offset="100%" stop-color="#60a5fa" stop-opacity="0"/></linearGradient><polygon fill="url(#g2)" points="0,32 12,28 24,30 36,22 48,18 60,20 72,10 80,14 80,40 0,40"/></svg>
+              </div>
+              <div style="background:rgba(15,23,42,0.6);border:1px solid rgba(45,63,85,0.3);border-radius:10px;padding:16px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                  <div style="width:28px;height:28px;border-radius:8px;background:rgba(96,165,250,0.1);display:flex;align-items:center;justify-content:center;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <span style="font-size:12px;color:#94a3b8;font-weight:500;">Publicados</span>
+                </div>
+                <span style="font-size:28px;font-weight:800;color:#f1f5f9;letter-spacing:-0.02em;">3</span>
+                <div style="font-size:11px;color:#64748b;margin-top:4px;">winner=true</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CONTEÚDO -->
+          <div style="background:rgba(30,41,59,0.5);border:1px solid rgba(45,63,85,0.5);border-radius:14px;padding:20px;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#a78bfa;margin-bottom:16px;">Conteúdo</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+              <div style="background:rgba(15,23,42,0.6);border:1px solid rgba(45,63,85,0.3);border-radius:10px;padding:16px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                  <div style="width:28px;height:28px;border-radius:8px;background:rgba(167,139,250,0.1);display:flex;align-items:center;justify-content:center;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  </div>
+                  <span style="font-size:12px;color:#94a3b8;font-weight:500;">Research</span>
+                </div>
+                <span style="font-size:28px;font-weight:800;color:#f1f5f9;letter-spacing:-0.02em;">8</span>
+              </div>
+              <div style="background:rgba(15,23,42,0.6);border:1px solid rgba(45,63,85,0.3);border-radius:10px;padding:16px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                  <div style="width:28px;height:28px;border-radius:8px;background:rgba(167,139,250,0.1);display:flex;align-items:center;justify-content:center;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </div>
+                  <span style="font-size:12px;color:#94a3b8;font-weight:500;">Drafts</span>
+                </div>
+                <span style="font-size:28px;font-weight:800;color:#f1f5f9;letter-spacing:-0.02em;">5</span>
+              </div>
+              <div style="background:rgba(15,23,42,0.6);border:1px solid rgba(45,63,85,0.3);border-radius:10px;padding:16px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                  <div style="width:28px;height:28px;border-radius:8px;background:rgba(167,139,250,0.1);display:flex;align-items:center;justify-content:center;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 0 14 18.469V19a2 2 0 1 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                  </div>
+                  <span style="font-size:12px;color:#94a3b8;font-weight:500;">Ideas</span>
+                </div>
+                <span style="font-size:28px;font-weight:800;color:#f1f5f9;letter-spacing:-0.02em;">14</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- SISTEMA -->
+          <div style="background:rgba(30,41,59,0.5);border:1px solid rgba(45,63,85,0.5);border-radius:14px;padding:20px;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#fbbf24;margin-bottom:16px;">Sistema</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div style="background:rgba(15,23,42,0.6);border:1px solid rgba(45,63,85,0.3);border-radius:10px;padding:16px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                  <div style="width:28px;height:28px;border-radius:8px;background:rgba(251,191,36,0.1);display:flex;align-items:center;justify-content:center;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
+                  </div>
+                  <span style="font-size:12px;color:#94a3b8;font-weight:500;">AI Providers</span>
+                </div>
+                <span style="font-size:28px;font-weight:800;color:#f1f5f9;letter-spacing:-0.02em;">2</span>
+                <div style="font-size:11px;color:#64748b;margin-top:4px;">ativos</div>
+              </div>
+              <div style="background:rgba(15,23,42,0.6);border:1px solid rgba(45,63,85,0.3);border-radius:10px;padding:16px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                  <div style="width:28px;height:28px;border-radius:8px;background:rgba(251,191,36,0.1);display:flex;align-items:center;justify-content:center;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                  </div>
+                  <span style="font-size:12px;color:#94a3b8;font-weight:500;">Health</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span style="font-size:28px;font-weight:800;color:#4ade80;letter-spacing:-0.02em;">OK</span>
+                </div>
+                <div style="font-size:11px;color:#64748b;margin-top:4px;">todos os serviços</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Cadastros Recentes -->
+        <div style="margin-top:18px;background:rgba(30,41,59,0.5);border:1px solid rgba(45,63,85,0.5);border-radius:14px;padding:20px;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8;">Cadastros Recentes</div>
+            <a style="font-size:12px;color:#2dd4bf;text-decoration:none;font-weight:500;">Ver todos →</a>
+          </div>
+          <div style="display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(45,63,85,0.3);">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#a78bfa,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#fff;">MS</div>
+                <div>
+                  <div style="font-size:13px;color:#e2e8f0;font-weight:500;">Maria Silva</div>
+                  <div style="font-size:11px;color:#64748b;">maria@example.com</div>
+                </div>
+              </div>
+              <span style="font-size:11px;color:#64748b;font-weight:500;">10 abr</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(45,63,85,0.3);">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#60a5fa,#2563eb);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#fff;">JS</div>
+                <div>
+                  <div style="font-size:13px;color:#e2e8f0;font-weight:500;">João Santos</div>
+                  <div style="font-size:11px;color:#64748b;">joao@example.com</div>
+                </div>
+              </div>
+              <span style="font-size:11px;color:#64748b;font-weight:500;">09 abr</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#4ade80,#16a34a);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#fff;">AC</div>
+                <div>
+                  <div style="font-size:13px;color:#e2e8f0;font-weight:500;">Ana Costa</div>
+                  <div style="font-size:11px;color:#64748b;">ana@example.com</div>
+                </div>
+              </div>
+              <span style="font-size:11px;color:#64748b;font-weight:500;">08 abr</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -22,7 +22,6 @@ echo "=== Copying shared to node_modules ==="
 rm -rf "$REPO_ROOT/node_modules/@brighttale/shared"
 mkdir -p "$REPO_ROOT/node_modules/@brighttale/shared"
 cp -r "$REPO_ROOT/packages/shared/dist" "$REPO_ROOT/node_modules/@brighttale/shared/dist"
-cp -r "$REPO_ROOT/packages/shared/src" "$REPO_ROOT/node_modules/@brighttale/shared/src"
 cp "$REPO_ROOT/packages/shared/package.json" "$REPO_ROOT/node_modules/@brighttale/shared/package.json"
 
 echo "=== BUILD COMPLETE ==="

@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard v5</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Inter',system-ui,sans-serif; background:#080e1a; color:#e2e8f0; }
+  .dashboard { display:flex; min-height:100vh; }
+
+  /* ─── Sidebar ─── */
+  .sidebar {
+    width:248px; background:linear-gradient(180deg,#0f172a 0%,#0c1322 100%);
+    border-right:1px solid rgba(45,63,85,0.5); padding:20px 0;
+    flex-shrink:0; display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0;
+  }
+  .sidebar-logo { padding:0 20px 28px; display:flex; align-items:center; gap:10px; }
+  .sidebar-logo-icon {
+    width:34px; height:34px; border-radius:9px;
+    background:linear-gradient(135deg,#2dd4bf,#0d9488);
+    display:flex; align-items:center; justify-content:center;
+    font-weight:800; font-size:15px; color:#fff;
+    box-shadow:0 2px 10px rgba(45,212,191,0.3);
+  }
+  .sidebar-logo-text { font-weight:700; font-size:15px; color:#f1f5f9; letter-spacing:-0.01em; }
+  .sidebar-logo-sub { font-size:10px; color:#475569; font-weight:500; }
+
+  .nav-group-label {
+    font-size:10px; text-transform:uppercase; color:#475569;
+    padding:4px 20px 6px; letter-spacing:0.08em; font-weight:600; margin-top:18px;
+  }
+  .nav-group-label:first-child { margin-top:0; }
+
+  .nav-item {
+    display:flex; align-items:center; gap:10px; padding:9px 16px;
+    margin:1px 12px; border-radius:8px; font-size:13px; color:#94a3b8;
+    text-decoration:none; transition:all 0.15s; cursor:pointer;
+  }
+  .nav-item:hover { background:rgba(30,41,59,0.5); color:#cbd5e1; }
+  .nav-item.active {
+    background:linear-gradient(90deg,rgba(45,212,191,0.12),transparent);
+    border-left:3px solid #2dd4bf; border-radius:0 8px 8px 0;
+    color:#f1f5f9; font-weight:500; margin-left:9px;
+  }
+  .nav-item.active svg { stroke:#2dd4bf; }
+
+  .sidebar-user {
+    padding:14px 16px; border-top:1px solid rgba(45,63,85,0.5); margin-top:auto;
+    display:flex; align-items:center; gap:10px;
+  }
+  .sidebar-avatar {
+    width:32px; height:32px; border-radius:50%;
+    background:linear-gradient(135deg,#2dd4bf,#0d9488);
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:700; color:#fff;
+  }
+  .sidebar-email { font-size:12px; color:#cbd5e1; font-weight:500; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* ─── Main ─── */
+  .main { flex:1; margin-left:248px; padding:28px 36px; background:linear-gradient(180deg,#080e1a 0%,#0b1222 100%); min-height:100vh; }
+
+  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:24px; }
+  .header h1 { font-size:24px; font-weight:700; color:#f1f5f9; letter-spacing:-0.02em; font-family:'Plus Jakarta Sans',sans-serif; }
+  .header-sub { font-size:13px; color:#64748b; margin-top:4px; }
+  .health-row { display:flex; gap:14px; margin-top:10px; align-items:center; }
+  .health-dot { display:inline-flex; align-items:center; gap:5px; font-size:11px; color:#4ade80; font-weight:500; }
+  .health-dot span { width:6px; height:6px; border-radius:50%; background:#10b981; display:inline-block; box-shadow:0 0 8px rgba(16,185,129,0.6); animation:pulse-dot 2s ease infinite; }
+  @keyframes pulse-dot { 0%,100%{box-shadow:0 0 6px rgba(16,185,129,0.4)} 50%{box-shadow:0 0 12px rgba(16,185,129,0.7)} }
+
+  .header-actions { display:flex; gap:10px; }
+  .header-btn {
+    display:flex; align-items:center; gap:6px; padding:7px 14px;
+    border:1px solid rgba(45,63,85,0.5); border-radius:8px;
+    font-size:12px; color:#94a3b8; background:rgba(15,23,42,0.4);
+    transition:all 0.15s; cursor:pointer;
+  }
+  .header-btn:hover { background:rgba(30,41,59,0.5); border-color:rgba(45,63,85,0.7); }
+  .header-btn.period { color:#cbd5e1; font-weight:500; }
+  .header-divider { height:1px; background:linear-gradient(90deg,transparent,rgba(45,63,85,0.4),transparent); margin-bottom:24px; }
+
+  .kpi-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+
+  .section-card {
+    border-radius:14px; padding:20px;
+    box-shadow:0 4px 16px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.08);
+    border:1px solid rgba(45,63,85,0.35); position:relative; overflow:hidden;
+  }
+  .section-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; }
+  .section-card.green { background:linear-gradient(135deg,rgba(30,41,59,0.45),rgba(20,83,45,0.08)); }
+  .section-card.green::before { background:#4ade80; }
+  .section-card.blue { background:linear-gradient(135deg,rgba(30,41,59,0.45),rgba(30,64,175,0.08)); }
+  .section-card.blue::before { background:#60a5fa; }
+  .section-card.purple { background:linear-gradient(135deg,rgba(30,41,59,0.45),rgba(91,33,182,0.08)); }
+  .section-card.purple::before { background:#a78bfa; }
+  .section-card.amber { background:linear-gradient(135deg,rgba(30,41,59,0.45),rgba(146,64,14,0.08)); }
+  .section-card.amber::before { background:#fbbf24; }
+
+  .section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:16px; }
+  .section-card.green .section-title { color:#4ade80; }
+  .section-card.blue .section-title { color:#60a5fa; }
+  .section-card.purple .section-title { color:#a78bfa; }
+  .section-card.amber .section-title { color:#fbbf24; }
+
+  .kpi-inner-grid { display:grid; gap:12px; }
+  .kpi-inner-grid.cols-2 { grid-template-columns:1fr 1fr; }
+  .kpi-inner-grid.cols-3 { grid-template-columns:1fr 1fr 1fr; }
+
+  .kpi-card {
+    background:rgba(15,23,42,0.5); border:1px solid rgba(45,63,85,0.25);
+    border-radius:10px; padding:16px; position:relative; overflow:hidden;
+    transition:all 0.2s;
+  }
+  .kpi-card:hover { background:rgba(20,30,50,0.6); border-color:rgba(45,63,85,0.4); transform:translateY(-1px); }
+  .kpi-card.green { border-top:2px solid rgba(74,222,128,0.3); }
+  .kpi-card.blue { border-top:2px solid rgba(96,165,250,0.3); }
+  .kpi-card.purple { border-top:2px solid rgba(167,139,250,0.3); }
+  .kpi-card.amber { border-top:2px solid rgba(251,191,36,0.3); }
+
+  .kpi-icon-row { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+  .kpi-icon { width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center; }
+  .kpi-icon.green { background:rgba(74,222,128,0.1); border:1px solid rgba(74,222,128,0.15); }
+  .kpi-icon.blue { background:rgba(96,165,250,0.1); border:1px solid rgba(96,165,250,0.15); }
+  .kpi-icon.purple { background:rgba(167,139,250,0.1); border:1px solid rgba(167,139,250,0.15); }
+  .kpi-icon.amber { background:rgba(251,191,36,0.1); border:1px solid rgba(251,191,36,0.15); }
+
+  .kpi-label { font-size:12px; color:#94a3b8; font-weight:500; }
+  .kpi-value { font-size:30px; font-weight:800; color:#f1f5f9; letter-spacing:-0.03em; line-height:1; }
+  .kpi-value.glow-green { text-shadow:0 0 20px rgba(74,222,128,0.15); }
+  .kpi-value.glow-blue { text-shadow:0 0 20px rgba(96,165,250,0.15); }
+  .kpi-change { font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; display:inline-flex; align-items:center; gap:3px; margin-left:8px; }
+  .kpi-change.up { color:#4ade80; background:rgba(74,222,128,0.1); }
+  .kpi-sub { font-size:11px; color:#64748b; margin-top:6px; }
+  .sparkline { position:absolute; bottom:-2px; right:-2px; opacity:0.18; }
+
+  .stage-pills { display:flex; gap:6px; margin-top:14px; flex-wrap:wrap; }
+  .stage-pill { font-size:10px; font-weight:600; padding:3px 10px; border-radius:20px; }
+  .stage-pill.blue { color:#60a5fa; background:rgba(96,165,250,0.1); border:1px solid rgba(96,165,250,0.15); }
+  .stage-pill.purple { color:#a78bfa; background:rgba(167,139,250,0.1); border:1px solid rgba(167,139,250,0.15); }
+  .stage-pill.green { color:#4ade80; background:rgba(74,222,128,0.1); border:1px solid rgba(74,222,128,0.15); }
+  .stage-pill.amber { color:#fbbf24; background:rgba(251,191,36,0.1); border:1px solid rgba(251,191,36,0.15); }
+
+  .recent-section {
+    margin-top:18px; border-radius:14px; padding:20px;
+    background:rgba(30,41,59,0.4); border:1px solid rgba(45,63,85,0.35);
+    box-shadow:0 4px 16px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .recent-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+  .recent-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#94a3b8; }
+  .recent-link { font-size:12px; color:#2dd4bf; text-decoration:none; font-weight:500; }
+  .recent-link:hover { color:#5eead4; }
+  .user-row {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 4px; border-bottom:1px solid rgba(45,63,85,0.2); transition:background 0.15s;
+  }
+  .user-row:last-child { border-bottom:none; }
+  .user-row:hover { background:rgba(30,41,59,0.3); border-radius:8px; }
+  .user-info { display:flex; align-items:center; gap:12px; }
+  .user-avatar { width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; color:#fff; }
+  .user-name { font-size:13px; color:#e2e8f0; font-weight:500; }
+  .user-email { font-size:11px; color:#64748b; }
+  .user-date { font-size:11px; color:#64748b; font-weight:500; }
+  .user-badge { font-size:10px; padding:2px 8px; border-radius:10px; font-weight:600; margin-left:8px; }
+  .user-badge.new { color:#4ade80; background:rgba(74,222,128,0.1); }
+</style>
+</head>
+<body>
+<div class="dashboard">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-icon">B</div>
+      <div>
+        <div class="sidebar-logo-text">BrightTale</div>
+        <div class="sidebar-logo-sub">Admin Panel</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="nav-group-label" style="margin-top:0">Principal</div>
+      <a class="nav-item active">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+
+      <div class="nav-group-label">Gestão</div>
+      <a class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Usuários
+      </a>
+    </div>
+
+    <div class="sidebar-user">
+      <div class="sidebar-avatar">TF</div>
+      <div class="sidebar-email">admin@brighttale.io</div>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="header">
+      <div>
+        <h1>Dashboard</h1>
+        <div class="header-sub">Visão geral do BrightTale</div>
+        <div class="health-row">
+          <div class="health-dot"><span></span> API</div>
+          <div class="health-dot"><span></span> Supabase</div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div class="header-btn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          Atualizado Agora
+        </div>
+        <div class="header-btn period">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Últimos 30 dias
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="header-divider"></div>
+
+    <div class="kpi-grid">
+      <!-- CRESCIMENTO -->
+      <div class="section-card green">
+        <div class="section-title">Crescimento</div>
+        <div class="kpi-inner-grid cols-2">
+          <div class="kpi-card green">
+            <div class="kpi-icon-row">
+              <div class="kpi-icon green"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div>
+              <span class="kpi-label">Usuários</span>
+            </div>
+            <div style="display:flex;align-items:baseline;">
+              <span class="kpi-value glow-green">5</span>
+              <span class="kpi-change up">↑ +40%</span>
+            </div>
+            <div class="kpi-sub">2 esta semana</div>
+            <svg class="sparkline" width="90" height="44" viewBox="0 0 90 44"><defs><linearGradient id="sg1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4ade80" stop-opacity="0.4"/><stop offset="100%" stop-color="#4ade80" stop-opacity="0"/></linearGradient></defs><polygon fill="url(#sg1)" points="0,38 14,34 26,28 38,32 50,20 62,24 74,14 90,10 90,44 0,44"/><polyline fill="none" stroke="#4ade80" stroke-width="2" points="0,38 14,34 26,28 38,32 50,20 62,24 74,14 90,10"/></svg>
+          </div>
+          <div class="kpi-card green">
+            <div class="kpi-icon-row">
+              <div class="kpi-icon green"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div>
+              <span class="kpi-label">Novos hoje</span>
+            </div>
+            <span class="kpi-value">0</span>
+            <div class="kpi-sub">0 nos últimos 7d</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PIPELINE -->
+      <div class="section-card blue">
+        <div class="section-title">Pipeline de Conteúdo</div>
+        <div class="kpi-inner-grid cols-2">
+          <div class="kpi-card blue">
+            <div class="kpi-icon-row">
+              <div class="kpi-icon blue"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+              <span class="kpi-label">Total Projetos</span>
+            </div>
+            <span class="kpi-value glow-blue">12</span>
+            <div class="kpi-sub">no pipeline</div>
+            <svg class="sparkline" width="90" height="44" viewBox="0 0 90 44"><defs><linearGradient id="sb1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#60a5fa" stop-opacity="0.4"/><stop offset="100%" stop-color="#60a5fa" stop-opacity="0"/></linearGradient></defs><polygon fill="url(#sb1)" points="0,36 14,30 26,34 38,24 50,20 62,22 74,12 90,16 90,44 0,44"/><polyline fill="none" stroke="#60a5fa" stroke-width="2" points="0,36 14,30 26,34 38,24 50,20 62,22 74,12 90,16"/></svg>
+          </div>
+          <div class="kpi-card blue">
+            <div class="kpi-icon-row">
+              <div class="kpi-icon blue"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+              <span class="kpi-label">Publicados</span>
+            </div>
+            <span class="kpi-value">3</span>
+            <div class="kpi-sub">winner=true</div>
+          </div>
+        </div>
+        <div class="stage-pills">
+          <span class="stage-pill blue">Brainstorm 4</span>
+          <span class="stage-pill blue">Research 3</span>
+          <span class="stage-pill amber">Production 2</span>
+          <span class="stage-pill purple">Review 2</span>
+          <span class="stage-pill green">Publish 1</span>
+        </div>
+      </div>
+
+      <!-- CONTEÚDO -->
+      <div class="section-card purple">
+        <div class="section-title">Conteúdo</div>
+        <div class="kpi-inner-grid cols-3">
+          <div class="kpi-card purple">
+            <div class="kpi-icon-row">
+              <div class="kpi-icon purple"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+              <span class="kpi-label">Research</span>
+            </div>
+            <span class="kpi-value">8</span>
+            <div class="kpi-sub">archives</div>
+          </div>
+          <div class="kpi-card purple">
+            <div class="kpi-icon-row">
+              <div class="kpi-icon purple"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></div>
+              <span class="kpi-label">Drafts</span>
+            </div>
+            <span class="kpi-value">5</span>
+            <div class="kpi-sub">blog drafts</div>
+          </div>
+          <div class="kpi-card purple">
+            <div class="kpi-icon-row">
+              <div class="kpi-icon purple"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 0 14 18.469V19a2 2 0 1 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg></div>
+              <span class="kpi-label">Ideas</span>
+            </div>
+            <span class="kpi-value">14</span>
+            <div class="kpi-sub">idea archives</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SISTEMA -->
+      <div class="section-card amber">
+        <div class="section-title">Sistema</div>
+        <div class="kpi-inner-grid cols-2">
+          <div class="kpi-card amber">
+            <div class="kpi-icon-row">
+              <div class="kpi-icon amber"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/></svg></div>
+              <span class="kpi-label">AI Providers</span>
+            </div>
+            <span class="kpi-value">2</span>
+            <div class="kpi-sub">ativos</div>
+          </div>
+          <div class="kpi-card amber">
+            <div class="kpi-icon-row">
+              <div class="kpi-icon amber"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+              <span class="kpi-label">Health</span>
+            </div>
+            <span class="kpi-value" style="color:#4ade80;text-shadow:0 0 20px rgba(74,222,128,0.2);">OK</span>
+            <div class="kpi-sub">todos os serviços</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CADASTROS RECENTES -->
+    <div class="recent-section">
+      <div class="recent-header">
+        <div class="recent-title">Cadastros Recentes</div>
+        <a class="recent-link" href="#">Ver todos →</a>
+      </div>
+      <div class="user-row">
+        <div class="user-info">
+          <div class="user-avatar" style="background:linear-gradient(135deg,#a78bfa,#7c3aed);">MS</div>
+          <div>
+            <div class="user-name">Maria Silva <span class="user-badge new">novo</span></div>
+            <div class="user-email">maria@example.com</div>
+          </div>
+        </div>
+        <div class="user-date">10 abr</div>
+      </div>
+      <div class="user-row">
+        <div class="user-info">
+          <div class="user-avatar" style="background:linear-gradient(135deg,#60a5fa,#2563eb);">JS</div>
+          <div>
+            <div class="user-name">João Santos <span class="user-badge new">novo</span></div>
+            <div class="user-email">joao@example.com</div>
+          </div>
+        </div>
+        <div class="user-date">09 abr</div>
+      </div>
+      <div class="user-row">
+        <div class="user-info">
+          <div class="user-avatar" style="background:linear-gradient(135deg,#4ade80,#16a34a);">AC</div>
+          <div>
+            <div class="user-name">Ana Costa</div>
+            <div class="user-email">ana@example.com</div>
+          </div>
+        </div>
+        <div class="user-date">08 abr</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

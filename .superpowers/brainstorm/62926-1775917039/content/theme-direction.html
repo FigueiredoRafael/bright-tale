@@ -1,0 +1,64 @@
+<h2>Qual direção de tema para o Admin?</h2>
+<p class="subtitle">O admin atual herda o tema dark da landing page. Precisamos de um tema próprio para o admin.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Light Theme (estilo TôNaGarantia)</h3>
+      <p>Fundo branco/cinza claro, cards brancos com bordas sutis, sidebar branca, tipografia escura. Exatamente como o dashboard do TôNaGarantia na Image #2. Usar os tokens de <code>apps/app/globals.css</code> que já existem (<code>--background: #F7F9FC</code>, <code>--card: #FFFFFF</code>, etc.).</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul>
+          <li>Tokens já existem no projeto (apps/app)</li>
+          <li>Referência visual clara (TôNaGarantia)</li>
+          <li>Mais legível para dashboards com muitos dados</li>
+          <li>Consistente com shadcn/ui defaults</li>
+        </ul></div>
+        <div class="cons"><h4>Cons</h4><ul>
+          <li>Precisa isolar CSS do admin vs landing page</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Dark Theme Polished</h3>
+      <p>Manter dark mas corrigir: ajustar contraste, bordas, espaçamento, tipografia. Usar os tokens dark da landing page mas aplicados com mais cuidado no admin.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul>
+          <li>Menos mudança — mesma paleta</li>
+          <li>Visualmente "moderno" para alguns</li>
+        </ul></div>
+        <div class="cons"><h4>Cons</h4><ul>
+          <li>Difícil igualar qualidade da referência (TôNaGarantia é light)</li>
+          <li>Dark dashboards precisam de muito mais cuidado com contraste</li>
+          <li>A referência visual (Image #2) é light — difícil traduzir</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Light + Dark Toggle</h3>
+      <p>Implementar ambos os temas com toggle (o AdminShell já tem <code>features: { darkMode: true }</code>). Light como default, dark como opção.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul>
+          <li>Máxima flexibilidade</li>
+          <li>AdminShell já suporta dark mode toggle</li>
+        </ul></div>
+        <div class="cons"><h4>Cons</h4><ul>
+          <li>Mais trabalho — precisa manter 2 conjuntos de tokens</li>
+          <li>Escopo maior para o que é essencialmente um fix de UI</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <p class="subtitle"><strong>Minha recomendação:</strong> Opção A (Light Theme). A referência é light, os tokens já existem em <code>apps/app</code>, e é o caminho mais direto para chegar na qualidade da Image #2. O admin precisa de CSS isolado da landing page — isso é uma mudança no <code>globals.css</code> do web app para o escopo <code>/admin</code>.</p>
+</div>

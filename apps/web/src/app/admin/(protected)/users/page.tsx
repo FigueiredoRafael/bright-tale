@@ -33,7 +33,19 @@ async function fetchUsersPageData(rawParams: Record<string, string | string[] | 
     db.from('user_roles').select('user_id').eq('role', 'admin'),
   ]);
 
-  const kpis = (kpisRes.data ?? {}) as UsersKpis;
+  // RPC returns snake_case, our types use camelCase
+  const rawKpis = (kpisRes.data ?? {}) as Record<string, number>;
+  const kpis: UsersKpis = {
+    totalUsers: rawKpis.total_users ?? 0,
+    activeUsers: rawKpis.active_users ?? 0,
+    inactiveUsers: rawKpis.inactive_users ?? 0,
+    premiumCount: rawKpis.premium_count ?? 0,
+    adminCount: rawKpis.admin_count ?? 0,
+    freeCount: rawKpis.free_count ?? 0,
+    newToday: rawKpis.new_today ?? 0,
+    newThisWeek: rawKpis.new_this_week ?? 0,
+    newThisMonth: rawKpis.new_this_month ?? 0,
+  };
   const adminIds = new Set<string>(
     ((adminIdsRes.data ?? []) as { user_id: string }[]).map((r) => r.user_id),
   );

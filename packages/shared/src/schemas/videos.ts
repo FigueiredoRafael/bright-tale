@@ -4,15 +4,16 @@
 
 import { z } from "zod";
 
-const videoScriptSectionSchema = z.object({
+export const videoScriptSectionSchema = z.object({
   duration: z.string(),
   content: z.string(),
   visual_notes: z.string(),
   sound_effects: z.string().optional(),
   background_music: z.string().optional(),
 });
+export type VideoScriptSection = z.infer<typeof videoScriptSectionSchema>;
 
-const videoChapterSchema = z.object({
+export const videoChapterSchema = z.object({
   chapter_number: z.number(),
   title: z.string(),
   duration: z.string(),
@@ -22,8 +23,9 @@ const videoChapterSchema = z.object({
   sound_effects: z.string().optional(),
   background_music: z.string().optional(),
 });
+export type VideoChapter = z.infer<typeof videoChapterSchema>;
 
-const videoScriptSchema = z.object({
+export const videoScriptSchema = z.object({
   hook: videoScriptSectionSchema,
   problem: videoScriptSectionSchema,
   teaser: videoScriptSectionSchema,
@@ -46,6 +48,7 @@ const videoScriptSchema = z.object({
     background_music: z.string().optional(),
   }).optional(),
 });
+export type VideoScript = z.infer<typeof videoScriptSchema>;
 
 const thumbnailSchema = z.object({
   visual_concept: z.string(),

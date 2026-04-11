@@ -1,0 +1,171 @@
+BC_REVIEW_OUTPUT:
+  idea_id: "BC-IDEA-051"
+
+  # CONTENT REVIEW
+  overall_verdict: "approved"
+  overall_notes: |
+    Excellent execution across all requested formats. The content successfully bridges the gap between high-level FIRE philosophy and technical security implementation. The "Invisible Wealth" branding is sticky and high-intent.
+
+  blog_review:
+    verdict: "approved"
+    score: 95
+    strengths:
+      - "Strong use of Michael Bazzell's expert perspective to build authority."
+      - "The 3-pillar structure makes a complex topic (security) feel approachable and actionable."
+      - "Excellent conversion of statistics into high-tension narrative."
+    issues:
+      critical: []
+      minor:
+        - location: "Pillar 1: Hardware Keys section"
+          issue: "Assumes readers know what 'SIM-swapped' means without a brief 5-word definition."
+          suggested_fix: "Add '(where a thief hijacks your phone number)' after SIM-swapped."
+    seo_check:
+      title_optimized: true
+      meta_description_optimized: true
+      keyword_usage: "good"
+      readability_score: "moderate"
+    notes: "The word count is healthy for an evergreen guide."
+
+  video_review:
+    verdict: "approved"
+    score: 92
+    strengths:
+      - "The 'Beach vs. Target' split-screen concept is a high-CTR visual."
+      - "Good pacing and transition into the affiliate segment."
+    issues:
+      critical: []
+      minor:
+        - location: "0:15-0:45 (Problem section)"
+          issue: "Visual notes are a bit generic."
+          suggested_fix: "Overlay a rolling 'Ticker' showing crypto loss amounts to increase urgency."
+    hook_effectiveness: "strong"
+    pacing_notes: "Strong early retention potential; the 60-second teaser is well-placed."
+    thumbnail_feedback: " Intrigue-based thumbnail is perfect for this niche."
+    notes: "Duration is optimal for mid-roll ad placement if the channel grows."
+
+  shorts_review:
+    verdict: "approved"
+    individual_reviews:
+      - short_number: 1
+        verdict: "approved"
+        hook_strength: "strong"
+        notes: "Direct confrontation with the viewer's current state (carrying the laptop)."
+      - short_number: 2
+        verdict: "approved"
+        hook_strength: "strong"
+        notes: "Urgency is high."
+      - short_number: 3
+        verdict: "approved"
+        hook_strength: "moderate"
+        notes: "Good 'behind the scenes' feel."
+    notes: "All 3 shorts follow the 'loop' best practices."
+
+  podcast_review:
+    verdict: "approved"
+    score: 88
+    strengths:
+      - "The personal angle (Medellin cafe) adds necessary flavor to a technical topic."
+      - "Guest questions are high-value."
+    issues:
+      - issue: "Talking point 3 (Henderson's Legal Pause) is quite complex for audio."
+        suggested_fix: "Simplify to: 'Why your lawyers can't help you once you cross the border.'"
+    notes: "Good duration estimate for a deep-dive episode."
+
+  engagement_review:
+    pinned_comment_verdict: "approved"
+    pinned_comment_notes: "Engagement question directly tests the 'pillars' concept."
+    community_post_verdict: "approved"
+    community_post_notes: "Clear value prop."
+
+  # PUBLICATION STRATEGY
+  publication_plan:
+    ready_to_publish: true
+
+    blog:
+      recommended_publish_date: "2026-03-02"
+      publish_time: "10:00 UTC"
+      final_seo:
+        title: "The ‘Invisible Wealth’ Protocol: How to Carry a $1M Portfolio in a $10/Day Neighborhood"
+        meta_description: "Learn the 3-pillar protocol for nomad asset protection: Digital security, physical decoys, and the 60-second theft kill-switch."
+        slug: "invisible-wealth-protocol-mobile-asset-protection"
+      internal_links:
+        - anchor_text: "why savings rate beats almost everything for FIRE"
+          target_url: "/blog/savings-rate-math"
+      categories:
+        - "Lifestyle Optimization"
+        - "Security"
+      tags:
+        - "Digital Nomad"
+        - "FIRE"
+        - "Asset Protection"
+        - "Privacy"
+
+    youtube:
+      recommended_publish_date: "2026-03-02"
+      publish_time: "15:00 UTC"
+      final_title: "The Invisible Wealth Protocol: Asset Protection for Nomads"
+      description: |
+        You spent a decade building a portfolio to free your time. Don't let a 30-second theft reset your FIRE clock.
+        
+        Timestamps:
+        0:00 - The Wealth-Visibility Gap
+        1:00 - Pillar 1: Digital Vaults
+        3:00 - Why I use YubiKeys
+        4:30 - Pillar 2: Grey Man Camouflage
+        6:00 - Pillar 3: The 60-Second Kill Switch
+        
+        Links:
+        YubiKey 5 Series: [AFFILIATE_LINK]
+        NordVPN: [AFFILIATE_LINK]
+      tags:
+        - "digital nomad security"
+        - "asset protection"
+        - "FIRE movement"
+        - "privacy"
+      cards_and_endscreens:
+        - type: "card"
+          timestamp: "5:50"
+          target: "Geoarbitrage Safety Guide"
+        - type: "endscreen"
+          timestamp: "6:50"
+          target: "Most Recent Upload"
+      pinned_comment: |
+        Which security pillar are you missing? 1. Digital Vault, 2. Physical Decoys, or 3. The Kill Switch? Let me know below.
+
+    shorts:
+      - short_number: 1
+        publish_date: "2026-03-03"
+        publish_time: "12:00 UTC"
+        platform: "all"
+      - short_number: 2
+        publish_date: "2026-03-05"
+        publish_time: "12:00 UTC"
+        platform: "all"
+      - short_number: 3
+        publish_date: "2026-03-07"
+        publish_time: "12:00 UTC"
+        platform: "all"
+
+    podcast:
+      recommended_publish_date: "2026-03-04"
+      episode_number: "042"
+
+    cross_promotion:
+      twitter_thread_date: "2026-03-02"
+      community_post_date: "2026-03-03"
+      newsletter_mention: "2026-03-08"
+
+  # A/B TESTING SUGGESTIONS
+
+  ab_tests:
+    thumbnail_variants:
+      - variant: "A"
+        description: "Intrigue: Split screen Beach vs. Danger Icon"
+      - variant: "B"
+        description: "Fear/Utility: Close up of a hardware key with text 'UNHACKABLE NOMAD'"
+    title_variants:
+      - variant: "A"
+        title: "The Invisible Wealth Protocol: Asset Protection for Nomads"
+      - variant: "B"
+        title: "I carry a $1M portfolio in my backpack. Here is how."
+    testing_notes: "Variant B for the title is aggressive; use it for the first 24 hours to see if CTR spikes."
