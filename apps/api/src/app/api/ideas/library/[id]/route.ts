@@ -5,7 +5,7 @@ import {
   createSuccessResponse,
   createErrorResponse,
 } from "@/lib/api/errors";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { updateIdeaSchema } from "@brighttale/shared/schemas/ideas";
 
 interface RouteParams {
@@ -18,11 +18,11 @@ interface RouteParams {
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
 
-    const idea = await prisma.ideaArchive.findUnique({
-      where: { id },
-    });
+    const { data: idea, error } = await sb.from('idea_archives').select('*').eq('id', id).maybeSingle();
+    if (error) throw error;
 
     if (!idea) {
       return createErrorResponse("Idea not found", 404);
@@ -40,35 +40,29 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  */
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
     const data = await validateBody(request, updateIdeaSchema);
 
-    // Check if idea exists
-    const existing = await prisma.ideaArchive.findUnique({
-      where: { id },
-    });
+    const { data: existing, error: findErr } = await sb.from('idea_archives').select('id').eq('id', id).maybeSingle();
+    if (findErr) throw findErr;
 
     if (!existing) {
       return createErrorResponse("Idea not found", 404);
     }
 
-    const idea = await prisma.ideaArchive.update({
-      where: { id },
-      data: {
-        ...(data.title && { title: data.title }),
-        ...(data.core_tension && { core_tension: data.core_tension }),
-        ...(data.target_audience && { target_audience: data.target_audience }),
-        ...(data.verdict && { verdict: data.verdict }),
-        ...(data.discovery_data !== undefined && {
-          discovery_data: data.discovery_data,
-        }),
-        ...(data.tags && { tags: data.tags }),
-        ...(data.is_public !== undefined && { is_public: data.is_public }),
-        ...(data.markdown_content !== undefined && {
-          markdown_content: data.markdown_content,
-        }),
-      },
-    });
+    const updateData: Record<string, unknown> = {};
+    if (data.title) updateData.title = data.title;
+    if (data.core_tension) updateData.core_tension = data.core_tension;
+    if (data.target_audience) updateData.target_audience = data.target_audience;
+    if (data.verdict) updateData.verdict = data.verdict;
+    if (data.discovery_data !== undefined) updateData.discovery_data = data.discovery_data;
+    if (data.tags) updateData.tags = data.tags;
+    if (data.is_public !== undefined) updateData.is_public = data.is_public;
+    if (data.markdown_content !== undefined) updateData.markdown_content = data.markdown_content;
+
+    const { data: idea, error } = await sb.from('idea_archives').update(updateData as any).eq('id', id).select().single();
+    if (error) throw error;
 
     return createSuccessResponse({ idea });
   } catch (error) {
@@ -82,20 +76,18 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
 
-    // Check if idea exists
-    const existing = await prisma.ideaArchive.findUnique({
-      where: { id },
-    });
+    const { data: existing, error: findErr } = await sb.from('idea_archives').select('id').eq('id', id).maybeSingle();
+    if (findErr) throw findErr;
 
     if (!existing) {
       return createErrorResponse("Idea not found", 404);
     }
 
-    await prisma.ideaArchive.delete({
-      where: { id },
-    });
+    const { error } = await sb.from('idea_archives').delete().eq('id', id);
+    if (error) throw error;
 
     return createSuccessResponse({ deleted: true });
   } catch (error) {

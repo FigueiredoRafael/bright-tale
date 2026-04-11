@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { createSuccessResponse, createErrorResponse } from "@/lib/api/errors";
 import { createVideoSchema, videoQuerySchema } from "@brighttale/shared/schemas/videos";
 import { z } from "zod";
@@ -13,49 +13,35 @@ import type { VideoOutput } from "@brighttale/shared/types/agents";
 
 export async function GET(request: NextRequest) {
   try {
+    const sb = createServiceClient();
     const { searchParams } = new URL(request.url);
     const query = videoQuerySchema.parse(Object.fromEntries(searchParams));
 
     const { status, project_id, idea_id, search, page = 1, limit = 20 } = query;
 
-    const where: Record<string, unknown> = {};
-    if (status) where.status = status;
-    if (project_id) where.project_id = project_id;
-    if (idea_id) where.idea_id = idea_id;
-    if (search) {
-      where.OR = [
-        { title: { contains: search, mode: "insensitive" } },
-      ];
-    }
+    let countQuery = sb.from('video_drafts').select('*', { count: 'exact', head: true });
+    let dataQuery = sb.from('video_drafts').select('id, title, title_options, total_duration_estimate, word_count, status, project_id, idea_id, created_at, updated_at');
 
-    const total = await prisma.videoDraft.count({ where });
+    if (status) { countQuery = countQuery.eq('status', status); dataQuery = dataQuery.eq('status', status); }
+    if (project_id) { countQuery = countQuery.eq('project_id', project_id); dataQuery = dataQuery.eq('project_id', project_id); }
+    if (idea_id) { countQuery = countQuery.eq('idea_id', idea_id); dataQuery = dataQuery.eq('idea_id', idea_id); }
+    if (search) { countQuery = countQuery.ilike('title', `%${search}%`); dataQuery = dataQuery.ilike('title', `%${search}%`); }
 
-    const videos = await prisma.videoDraft.findMany({
-      where,
-      orderBy: { updated_at: "desc" },
-      skip: (page - 1) * limit,
-      take: limit,
-      select: {
-        id: true,
-        title: true,
-        title_options: true,
-        total_duration_estimate: true,
-        word_count: true,
-        status: true,
-        project_id: true,
-        idea_id: true,
-        created_at: true,
-        updated_at: true,
-      },
-    });
+    const [{ count: total, error: countErr }, { data: videos, error: dataErr }] = await Promise.all([
+      countQuery,
+      dataQuery.order('updated_at', { ascending: false }).range((page - 1) * limit, page * limit - 1),
+    ]);
+
+    if (countErr) throw countErr;
+    if (dataErr) throw dataErr;
 
     return createSuccessResponse({
       videos,
       pagination: {
         page,
         limit,
-        total,
-        total_pages: Math.ceil(total / limit),
+        total: total ?? 0,
+        total_pages: Math.ceil((total ?? 0) / limit),
       },
     });
   } catch (error) {
@@ -74,6 +60,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const sb = createServiceClient();
     const body = await request.json();
     const data = createVideoSchema.parse(body);
 
@@ -88,19 +75,19 @@ export async function POST(request: NextRequest) {
     // Calculate spoken word count from script sections
     const wordCount = data.word_count ?? calculateVideoWordCount(videoOutput);
 
-    const video = await prisma.videoDraft.create({
-      data: {
-        title: data.title,
-        title_options: data.title_options,
-        thumbnail_json: data.thumbnail ? JSON.stringify(data.thumbnail) : null,
-        script_json: JSON.stringify(data.script),
-        total_duration_estimate: data.total_duration_estimate,
-        word_count: wordCount,
-        status: data.status,
-        project_id: data.project_id,
-        idea_id: data.idea_id,
-      },
-    });
+    const { data: video, error } = await sb.from('video_drafts').insert({
+      title: data.title,
+      title_options: data.title_options,
+      thumbnail_json: data.thumbnail ? JSON.stringify(data.thumbnail) : null,
+      script_json: JSON.stringify(data.script),
+      total_duration_estimate: data.total_duration_estimate,
+      word_count: wordCount,
+      status: data.status,
+      project_id: data.project_id,
+      idea_id: data.idea_id,
+    }).select().single();
+
+    if (error) throw error;
 
     return createSuccessResponse({ video }, 201);
   } catch (error) {

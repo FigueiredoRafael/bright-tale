@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { createErrorResponse } from "@/lib/api/errors";
 import {
   generatePodcastMarkdownExport,
@@ -18,11 +18,13 @@ interface Params {
 
 export async function GET(request: NextRequest, { params }: Params) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const format = searchParams.get("format") || "markdown";
 
-    const draft = await prisma.podcastDraft.findUnique({ where: { id } });
+    const { data: draft, error } = await sb.from('podcast_drafts').select('*').eq('id', id).maybeSingle();
+    if (error) throw error;
 
     if (!draft) {
       return NextResponse.json(createErrorResponse("Podcast not found", 404), { status: 404 });

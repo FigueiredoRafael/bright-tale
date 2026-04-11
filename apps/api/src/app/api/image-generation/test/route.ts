@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GeminiImagenProvider } from "@/lib/ai/providers/gemini-imagen";
 import { decrypt } from "@/lib/crypto";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,7 +18,13 @@ export async function POST(req: NextRequest) {
     let provider: GeminiImagenProvider;
 
     if (id) {
-      const config = await prisma.imageGeneratorConfig.findUnique({ where: { id } });
+      const sb = createServiceClient();
+      const { data: config, error } = await sb
+        .from('image_generator_configs')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      if (error) throw error;
       if (!config) {
         return NextResponse.json({ error: "Config not found" }, { status: 404 });
       }

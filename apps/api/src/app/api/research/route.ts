@@ -5,7 +5,7 @@
  */
 
 import { NextRequest } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { handleApiError, createSuccessResponse } from "@/lib/api/errors";
 import { validateBody, validateQueryParams } from "@/lib/api/validation";
 import {
@@ -19,6 +19,7 @@ import {
  */
 export async function POST(request: NextRequest) {
   try {
+    const sb = createServiceClient();
     const data = await validateBody(request, createResearchSchema);
 
     // If idea_id is provided, embed it in the research_content JSON
@@ -29,7 +30,6 @@ export async function POST(request: NextRequest) {
         parsed.idea_id = data.idea_id;
         researchContent = JSON.stringify(parsed);
       } catch {
-        // If research_content isn't valid JSON, wrap it
         researchContent = JSON.stringify({
           idea_id: data.idea_id,
           content: data.research_content,
@@ -37,16 +37,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const research = await prisma.researchArchive.create({
-      data: {
+    const { data: research, error } = await sb
+      .from('research_archives')
+      .insert({
         title: data.title,
         theme: data.theme,
         research_content: researchContent,
-      },
-      include: {
-        sources: true,
-      },
-    });
+      })
+      .select('*, sources:research_sources(*)')
+      .single();
+
+    if (error) throw error;
 
     return createSuccessResponse(research, 201);
   } catch (error) {
@@ -60,77 +61,46 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
+    const sb = createServiceClient();
     const url = new URL(request.url);
     const params = validateQueryParams(url, listResearchQuerySchema);
 
     const page = params.page || 1;
     const limit = params.limit || 20;
-    const skip = (page - 1) * limit;
+    const sortField = params.sort || "created_at";
+    const sortOrder = params.order || "desc";
 
-    // Build where clause
-    const where: {
-      theme?: { contains: string; mode: "insensitive" };
-      OR?: Array<{
-        title?: { contains: string; mode: "insensitive" };
-        research_content?: { contains: string; mode: "insensitive" };
-      }>;
-    } = {};
+    let countQuery = sb.from('research_archives').select('*', { count: 'exact', head: true });
+    let dataQuery = sb.from('research_archives').select('*, sources:research_sources(*), projects(count)');
 
     if (params.theme) {
-      where.theme = {
-        contains: params.theme,
-        mode: "insensitive",
-      };
+      countQuery = countQuery.ilike('theme', `%${params.theme}%`);
+      dataQuery = dataQuery.ilike('theme', `%${params.theme}%`);
     }
 
     if (params.search) {
-      where.OR = [
-        {
-          title: {
-            contains: params.search,
-            mode: "insensitive",
-          },
-        },
-        {
-          research_content: {
-            contains: params.search,
-            mode: "insensitive",
-          },
-        },
-      ];
+      const searchFilter = `title.ilike.%${params.search}%,research_content.ilike.%${params.search}%`;
+      countQuery = countQuery.or(searchFilter);
+      dataQuery = dataQuery.or(searchFilter);
     }
 
-    // Build orderBy clause
-    const orderBy: Record<string, "asc" | "desc"> = {};
-    orderBy[params.sort || "created_at"] = params.order || "desc";
-
-    // Execute query with pagination
-    const [research, total] = await Promise.all([
-      prisma.researchArchive.findMany({
-        where,
-        orderBy,
-        skip,
-        take: limit,
-        include: {
-          sources: true,
-          _count: {
-            select: {
-              projects: true,
-              sources: true,
-            },
-          },
-        },
-      }),
-      prisma.researchArchive.count({ where }),
+    const [{ count: total, error: countErr }, { data: research, error: dataErr }] = await Promise.all([
+      countQuery,
+      dataQuery
+        .order(sortField, { ascending: sortOrder === "asc" })
+        .range((page - 1) * limit, page * limit - 1),
     ]);
+
+    if (countErr) throw countErr;
+    if (dataErr) throw dataErr;
 
     return createSuccessResponse({
       data: research,
       pagination: {
         page,
         limit,
-        total,
-        totalPages: Math.ceil(total / limit),
+        total: total ?? 0,
+        totalPages: Math.ceil((total ?? 0) / limit),
       },
     });
   } catch (error) {

@@ -6,7 +6,7 @@
  */
 
 import { NextRequest } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import {
   handleApiError,
   createSuccessResponse,
@@ -24,32 +24,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
-    const project = await prisma.project.findUnique({
-      where: { id },
-      include: {
-        research: {
-          include: {
-            sources: true,
-          },
-        },
-        stages: {
-          orderBy: { created_at: "desc" },
-          include: {
-            _count: {
-              select: {
-                revisions: true,
-              },
-            },
-          },
-        },
-        _count: {
-          select: {
-            stages: true,
-          },
-        },
-      },
-    });
+    const { data: project, error } = await sb
+      .from('projects')
+      .select('*, research:research_archives!research_id(*, sources:research_sources(*)), stages(*, revisions(count)), stages(count)')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) throw error;
 
     if (!project) {
       throw new ApiError(404, "Project not found", "NOT_FOUND");
@@ -70,13 +53,18 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
     const data = await validateBody(request, updateProjectSchema);
 
     // Check if project exists
-    const existing = await prisma.project.findUnique({
-      where: { id },
-    });
+    const { data: existing, error: findErr } = await sb
+      .from('projects')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findErr) throw findErr;
 
     if (!existing) {
       throw new ApiError(404, "Project not found", "NOT_FOUND");
@@ -85,21 +73,29 @@ export async function PUT(
     // Handle clearing research_id (setting to null)
     if (data.research_id === null && existing.research_id) {
       // Decrement old research count
-      await prisma.researchArchive
-        .update({
-          where: { id: existing.research_id },
-          data: { projects_count: { decrement: 1 } },
-        })
-        .catch(() => {
-          // Ignore error if research no longer exists (orphaned reference)
-        });
+      const { data: oldRes } = await sb
+        .from('research_archives')
+        .select('projects_count')
+        .eq('id', existing.research_id)
+        .maybeSingle();
+
+      if (oldRes) {
+        await sb
+          .from('research_archives')
+          .update({ projects_count: Math.max(0, (oldRes.projects_count ?? 0) - 1) })
+          .eq('id', existing.research_id);
+      }
     }
 
     // If research_id is being updated to a new value, verify it exists
     if (data.research_id !== undefined && data.research_id !== null) {
-      const research = await prisma.researchArchive.findUnique({
-        where: { id: data.research_id },
-      });
+      const { data: research, error: resErr } = await sb
+        .from('research_archives')
+        .select('id, projects_count')
+        .eq('id', data.research_id)
+        .maybeSingle();
+
+      if (resErr) throw resErr;
 
       if (!research) {
         throw new ApiError(404, "Research not found", "RESEARCH_NOT_FOUND");
@@ -109,72 +105,77 @@ export async function PUT(
       if (existing.research_id !== data.research_id) {
         // Decrement old research count
         if (existing.research_id) {
-          await prisma.researchArchive
-            .update({
-              where: { id: existing.research_id },
-              data: { projects_count: { decrement: 1 } },
-            })
-            .catch(() => {
-              // Ignore error if research no longer exists
-            });
+          const { data: oldRes } = await sb
+            .from('research_archives')
+            .select('projects_count')
+            .eq('id', existing.research_id)
+            .maybeSingle();
+
+          if (oldRes) {
+            await sb
+              .from('research_archives')
+              .update({ projects_count: Math.max(0, (oldRes.projects_count ?? 0) - 1) })
+              .eq('id', existing.research_id);
+          }
         }
 
         // Increment new research count
-        await prisma.researchArchive.update({
-          where: { id: data.research_id },
-          data: { projects_count: { increment: 1 } },
-        });
+        await sb
+          .from('research_archives')
+          .update({ projects_count: (research.projects_count ?? 0) + 1 })
+          .eq('id', data.research_id);
       }
     }
 
     // If winner status is being updated to true, increment winners_count
     if (data.winner === true && !existing.winner && existing.research_id) {
-      await prisma.researchArchive.update({
-        where: { id: existing.research_id },
-        data: { winners_count: { increment: 1 } },
-      });
+      const { data: res } = await sb
+        .from('research_archives')
+        .select('winners_count')
+        .eq('id', existing.research_id)
+        .maybeSingle();
+
+      if (res) {
+        await sb
+          .from('research_archives')
+          .update({ winners_count: (res.winners_count ?? 0) + 1 })
+          .eq('id', existing.research_id);
+      }
     }
 
     // If winner status is being updated to false, decrement winners_count
     if (data.winner === false && existing.winner && existing.research_id) {
-      await prisma.researchArchive.update({
-        where: { id: existing.research_id },
-        data: { winners_count: { decrement: 1 } },
-      });
+      const { data: res } = await sb
+        .from('research_archives')
+        .select('winners_count')
+        .eq('id', existing.research_id)
+        .maybeSingle();
+
+      if (res) {
+        await sb
+          .from('research_archives')
+          .update({ winners_count: Math.max(0, (res.winners_count ?? 0) - 1) })
+          .eq('id', existing.research_id);
+      }
     }
 
-    const project = await prisma.project.update({
-      where: { id },
-      data: {
-        ...(data.title && { title: data.title }),
-        ...(data.research_id !== undefined && {
-          research_id: data.research_id,
-        }),
-        ...(data.current_stage && { current_stage: data.current_stage }),
-        ...(data.auto_advance !== undefined && {
-          auto_advance: data.auto_advance,
-        }),
-        ...(data.status && { status: data.status }),
-        ...(data.winner !== undefined && { winner: data.winner }),
-        ...(data.completed_stages !== undefined && {
-          completed_stages: data.completed_stages,
-        }),
-      },
-      include: {
-        research: {
-          select: {
-            id: true,
-            title: true,
-            theme: true,
-          },
-        },
-        _count: {
-          select: {
-            stages: true,
-          },
-        },
-      },
-    });
+    const updateData: Record<string, unknown> = {};
+    if (data.title) updateData.title = data.title;
+    if (data.research_id !== undefined) updateData.research_id = data.research_id;
+    if (data.current_stage) updateData.current_stage = data.current_stage;
+    if (data.auto_advance !== undefined) updateData.auto_advance = data.auto_advance;
+    if (data.status) updateData.status = data.status;
+    if (data.winner !== undefined) updateData.winner = data.winner;
+    if (data.completed_stages !== undefined) updateData.completed_stages = data.completed_stages;
+
+    const { data: project, error } = await sb
+      .from('projects')
+      .update(updateData as any)
+      .eq('id', id)
+      .select('*, research:research_archives!research_id(id, title, theme), stages(count)')
+      .single();
+
+    if (error) throw error;
 
     return createSuccessResponse(project);
   } catch (error) {
@@ -202,11 +203,17 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
+
     // Check if project exists
-    const existing = await prisma.project.findUnique({
-      where: { id },
-    });
+    const { data: existing, error: findErr } = await sb
+      .from('projects')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findErr) throw findErr;
 
     if (!existing) {
       throw new ApiError(404, "Project not found", "NOT_FOUND");
@@ -214,29 +221,29 @@ export async function DELETE(
 
     // Decrement research counts
     if (existing.research_id) {
-      const updates: {
-        projects_count: { decrement: number };
-        winners_count?: { decrement: number };
-      } = {
-        projects_count: { decrement: 1 },
-      };
-      if (existing.winner) {
-        updates.winners_count = { decrement: 1 };
-      }
+      const { data: res } = await sb
+        .from('research_archives')
+        .select('projects_count, winners_count')
+        .eq('id', existing.research_id)
+        .maybeSingle();
 
-      await prisma.researchArchive
-        .update({
-          where: { id: existing.research_id },
-          data: updates,
-        })
-        .catch(() => {
-          // Ignore error if research no longer exists
-        });
+      if (res) {
+        const updateData: Record<string, number> = {
+          projects_count: Math.max(0, (res.projects_count ?? 0) - 1),
+        };
+        if (existing.winner) {
+          updateData.winners_count = Math.max(0, (res.winners_count ?? 0) - 1);
+        }
+
+        await sb
+          .from('research_archives')
+          .update(updateData as any)
+          .eq('id', existing.research_id);
+      }
     }
 
-    await prisma.project.delete({
-      where: { id },
-    });
+    const { error } = await sb.from('projects').delete().eq('id', id);
+    if (error) throw error;
 
     return createSuccessResponse({
       success: true,

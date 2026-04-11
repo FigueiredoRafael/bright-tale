@@ -7,10 +7,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getImageProvider } from "@/lib/ai/imageIndex";
 import { saveImageLocally } from "@/lib/files/imageStorage";
 import { generateImageRequestSchema } from "@brighttale/shared/schemas/imageGeneration";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 
 export async function POST(req: NextRequest) {
   try {
+    const sb = createServiceClient();
     const body = await req.json();
     const validated = generateImageRequestSchema.parse(body);
 
@@ -36,19 +37,20 @@ export async function POST(req: NextRequest) {
           validated.project_id,
         );
 
-        return prisma.asset.create({
-          data: {
-            project_id: validated.project_id ?? null,
-            asset_type: "image",
-            source: "generated",
-            source_url: publicUrl,
-            local_path: localPath,
-            prompt: validated.prompt,
-            role: validated.role ?? null,
-            content_type: validated.content_type ?? null,
-            content_id: validated.content_id ?? null,
-          },
-        });
+        const { data, error } = await sb.from('assets').insert({
+          project_id: validated.project_id ?? null,
+          asset_type: "image",
+          source: "generated",
+          source_url: publicUrl,
+          local_path: localPath,
+          prompt: validated.prompt,
+          role: validated.role ?? null,
+          content_type: validated.content_type ?? null,
+          content_id: validated.content_id ?? null,
+        }).select().single();
+
+        if (error) throw error;
+        return data;
       }),
     );
 

@@ -5,7 +5,7 @@
  */
 
 import { NextRequest } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { handleApiError, createSuccessResponse } from "@/lib/api/errors";
 import { z } from "zod";
 
@@ -26,11 +26,16 @@ interface RouteParams {
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
+    const sb = createServiceClient();
     const { slug } = await params;
 
-    const agent = await prisma.agentPrompt.findUnique({
-      where: { slug },
-    });
+    const { data: agent, error } = await sb
+      .from('agent_prompts')
+      .select('*')
+      .eq('slug', slug)
+      .maybeSingle();
+
+    if (error) throw error;
 
     if (!agent) {
       return createSuccessResponse(
@@ -56,15 +61,20 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
+    const sb = createServiceClient();
     const { slug } = await params;
     const body = await request.json();
 
     const data = updateAgentSchema.parse(body);
 
     // Check if agent exists
-    const existing = await prisma.agentPrompt.findUnique({
-      where: { slug },
-    });
+    const { data: existing, error: findErr } = await sb
+      .from('agent_prompts')
+      .select('id')
+      .eq('slug', slug)
+      .maybeSingle();
+
+    if (findErr) throw findErr;
 
     if (!existing) {
       return createSuccessResponse(
@@ -78,13 +88,17 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const agent = await prisma.agentPrompt.update({
-      where: { slug },
-      data: {
+    const { data: agent, error: updateErr } = await sb
+      .from('agent_prompts')
+      .update({
         ...data,
-        updated_at: new Date(),
-      },
-    });
+        updated_at: new Date().toISOString(),
+      })
+      .eq('slug', slug)
+      .select()
+      .single();
+
+    if (updateErr) throw updateErr;
 
     return createSuccessResponse({ agent });
   } catch (error) {

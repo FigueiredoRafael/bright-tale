@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { createErrorResponse } from "@/lib/api/errors";
 import {
   generateVideoMarkdownExport,
@@ -19,11 +19,13 @@ interface Params {
 
 export async function GET(request: NextRequest, { params }: Params) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const format = searchParams.get("format") || "markdown";
 
-    const video = await prisma.videoDraft.findUnique({ where: { id } });
+    const { data: video, error } = await sb.from('video_drafts').select('*').eq('id', id).maybeSingle();
+    if (error) throw error;
 
     if (!video) {
       return NextResponse.json(createErrorResponse("Video not found", 404), { status: 404 });

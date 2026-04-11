@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { createSuccessResponse, createErrorResponse } from "@/lib/api/errors";
 import { z } from "zod";
 
@@ -60,58 +60,50 @@ const createBlogSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
+    const sb = createServiceClient();
     const { searchParams } = new URL(request.url);
     const query = listQuerySchema.parse(Object.fromEntries(searchParams));
 
     const { status, project_id, idea_id, search, page, limit } = query;
 
-    // Build where clause
-    const where: Record<string, unknown> = {};
-    if (status) where.status = status;
-    if (project_id) where.project_id = project_id;
-    if (idea_id) where.idea_id = idea_id;
+    let countQuery = sb.from('blog_drafts').select('*', { count: 'exact', head: true });
+    let dataQuery = sb.from('blog_drafts').select('id, title, slug, meta_description, word_count, status, primary_keyword, project_id, idea_id, wordpress_post_id, wordpress_url, published_at, created_at, updated_at');
+
+    if (status) {
+      countQuery = countQuery.eq('status', status);
+      dataQuery = dataQuery.eq('status', status);
+    }
+    if (project_id) {
+      countQuery = countQuery.eq('project_id', project_id);
+      dataQuery = dataQuery.eq('project_id', project_id);
+    }
+    if (idea_id) {
+      countQuery = countQuery.eq('idea_id', idea_id);
+      dataQuery = dataQuery.eq('idea_id', idea_id);
+    }
     if (search) {
-      where.OR = [
-        { title: { contains: search, mode: "insensitive" } },
-        { slug: { contains: search, mode: "insensitive" } },
-        { primary_keyword: { contains: search, mode: "insensitive" } },
-      ];
+      const searchFilter = `title.ilike.%${search}%,slug.ilike.%${search}%,primary_keyword.ilike.%${search}%`;
+      countQuery = countQuery.or(searchFilter);
+      dataQuery = dataQuery.or(searchFilter);
     }
 
-    // Get total count
-    const total = await prisma.blogDraft.count({ where });
+    const [{ count: total, error: countErr }, { data: blogs, error: dataErr }] = await Promise.all([
+      countQuery,
+      dataQuery
+        .order('updated_at', { ascending: false })
+        .range((page - 1) * limit, page * limit - 1),
+    ]);
 
-    // Get blogs with pagination
-    const blogs = await prisma.blogDraft.findMany({
-      where,
-      orderBy: { updated_at: "desc" },
-      skip: (page - 1) * limit,
-      take: limit,
-      select: {
-        id: true,
-        title: true,
-        slug: true,
-        meta_description: true,
-        word_count: true,
-        status: true,
-        primary_keyword: true,
-        project_id: true,
-        idea_id: true,
-        wordpress_post_id: true,
-        wordpress_url: true,
-        published_at: true,
-        created_at: true,
-        updated_at: true,
-      },
-    });
+    if (countErr) throw countErr;
+    if (dataErr) throw dataErr;
 
     return createSuccessResponse({
       blogs,
       pagination: {
         page,
         limit,
-        total,
-        total_pages: Math.ceil(total / limit),
+        total: total ?? 0,
+        total_pages: Math.ceil((total ?? 0) / limit),
       },
     });
   } catch (error) {
@@ -130,11 +122,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const sb = createServiceClient();
     const body = await request.json();
     const data = createBlogSchema.parse(body);
 
-    // Prepare data for database
-    const blogData = {
+    const { data: blog, error } = await sb.from('blog_drafts').insert({
       title: data.title,
       slug: data.slug,
       meta_description: data.meta_description,
@@ -153,11 +145,9 @@ export async function POST(request: NextRequest) {
       status: data.status,
       project_id: data.project_id,
       idea_id: data.idea_id,
-    };
+    }).select().single();
 
-    const blog = await prisma.blogDraft.create({
-      data: blogData,
-    });
+    if (error) throw error;
 
     return createSuccessResponse({ blog }, 201);
   } catch (error) {

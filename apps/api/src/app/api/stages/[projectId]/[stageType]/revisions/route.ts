@@ -4,7 +4,7 @@
  */
 
 import { NextRequest } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import {
   handleApiError,
   createSuccessResponse,
@@ -22,6 +22,7 @@ export async function POST(
   { params }: { params: Promise<{ projectId: string; stageType: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { projectId, stageType } = await params;
     const data = await validateBody(request, createRevisionSchema);
 
@@ -36,21 +37,27 @@ export async function POST(
     }
 
     // Verify project exists
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-    });
+    const { data: project, error: projErr } = await sb
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .maybeSingle();
+
+    if (projErr) throw projErr;
 
     if (!project) {
       throw new ApiError(404, "Project not found", "PROJECT_NOT_FOUND");
     }
 
     // Get the stage
-    const stage = await prisma.stage.findFirst({
-      where: {
-        project_id: projectId,
-        stage_type: stageType,
-      },
-    });
+    const { data: stage, error: stageErr } = await sb
+      .from('stages')
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('stage_type', stageType)
+      .maybeSingle();
+
+    if (stageErr) throw stageErr;
 
     if (!stage) {
       throw new ApiError(
@@ -61,27 +68,28 @@ export async function POST(
     }
 
     // Create revision with the current stage content
-    const revision = await prisma.revision.create({
-      data: {
+    const { data: revision, error: revErr } = await sb
+      .from('revisions')
+      .insert({
         stage_id: stage.id,
         yaml_artifact: data.yaml_artifact,
         version: stage.version,
         created_by: data.created_by,
         change_notes: data.change_notes,
-      },
-    });
+      })
+      .select()
+      .single();
+
+    if (revErr) throw revErr;
 
     // Get updated stage with revision count
-    const updatedStage = await prisma.stage.findUnique({
-      where: { id: stage.id },
-      include: {
-        _count: {
-          select: {
-            revisions: true,
-          },
-        },
-      },
-    });
+    const { data: updatedStage, error: updErr } = await sb
+      .from('stages')
+      .select('*, revisions(count)')
+      .eq('id', stage.id)
+      .single();
+
+    if (updErr) throw updErr;
 
     return createSuccessResponse(
       {

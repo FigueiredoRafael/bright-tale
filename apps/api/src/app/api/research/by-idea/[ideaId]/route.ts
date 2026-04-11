@@ -4,7 +4,7 @@
  */
 
 import { NextRequest } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { handleApiError, createSuccessResponse } from "@/lib/api/errors";
 
 interface RouteParams {
@@ -18,6 +18,7 @@ interface RouteParams {
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
+    const sb = createServiceClient();
     const { ideaId } = await params;
 
     if (!ideaId) {
@@ -28,47 +29,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Search for research entries where research_content contains the idea_id
-    // The idea_id can be stored either as a direct field or within the JSON content
-    const research = await prisma.researchArchive.findMany({
-      where: {
-        OR: [
-          // Search in research_content JSON for idea_id field
-          {
-            research_content: {
-              contains: `"idea_id":"${ideaId}"`,
-            },
-          },
-          // Also search with different JSON formatting (spaces after colon)
-          {
-            research_content: {
-              contains: `"idea_id": "${ideaId}"`,
-            },
-          },
-          // Search in title if idea title was used
-          {
-            title: {
-              contains: ideaId,
-              mode: "insensitive",
-            },
-          },
-        ],
-      },
-      orderBy: {
-        created_at: "desc",
-      },
-      include: {
-        sources: true,
-        _count: {
-          select: {
-            projects: true,
-          },
-        },
-      },
-    });
+    // Use multiple OR conditions via Supabase
+    const { data: research, error } = await sb
+      .from('research_archives')
+      .select('*, sources:research_sources(*), projects(count)')
+      .or(`research_content.cs."idea_id":"${ideaId}",research_content.cs."idea_id": "${ideaId}",title.ilike.%${ideaId}%`)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
 
     return createSuccessResponse({
       idea_id: ideaId,
-      count: research.length,
+      count: (research ?? []).length,
       research,
     });
   } catch (error) {

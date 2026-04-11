@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { createSuccessResponse, createErrorResponse } from "@/lib/api/errors";
 import { updateShortsSchema } from "@brighttale/shared/schemas/shorts";
 import { z } from "zod";
@@ -18,8 +18,10 @@ interface Params {
 
 export async function GET(request: NextRequest, { params }: Params) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
-    const draft = await prisma.shortsDraft.findUnique({ where: { id } });
+    const { data: draft, error } = await sb.from('shorts_drafts').select('*').eq('id', id).maybeSingle();
+    if (error) throw error;
 
     if (!draft) {
       return NextResponse.json(createErrorResponse("Shorts not found", 404), { status: 404 });
@@ -48,11 +50,13 @@ export async function GET(request: NextRequest, { params }: Params) {
 
 export async function PUT(request: NextRequest, { params }: Params) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
     const body = await request.json();
     const data = updateShortsSchema.parse(body);
 
-    const existing = await prisma.shortsDraft.findUnique({ where: { id } });
+    const { data: existing, error: findErr } = await sb.from('shorts_drafts').select('id').eq('id', id).maybeSingle();
+    if (findErr) throw findErr;
     if (!existing) {
       return NextResponse.json(createErrorResponse("Shorts not found", 404), { status: 404 });
     }
@@ -67,7 +71,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
     if (data.project_id !== undefined) updateData.project_id = data.project_id;
     if (data.idea_id !== undefined) updateData.idea_id = data.idea_id;
 
-    const updated = await prisma.shortsDraft.update({ where: { id }, data: updateData });
+    const { data: updated, error } = await sb.from('shorts_drafts').update(updateData as any).eq('id', id).select().single();
+    if (error) throw error;
     return createSuccessResponse({ shorts: updated });
   } catch (error) {
     console.error("Failed to update shorts:", error);
@@ -83,12 +88,15 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
-    const existing = await prisma.shortsDraft.findUnique({ where: { id } });
+    const { data: existing, error: findErr } = await sb.from('shorts_drafts').select('id').eq('id', id).maybeSingle();
+    if (findErr) throw findErr;
     if (!existing) {
       return NextResponse.json(createErrorResponse("Shorts not found", 404), { status: 404 });
     }
-    await prisma.shortsDraft.delete({ where: { id } });
+    const { error } = await sb.from('shorts_drafts').delete().eq('id', id);
+    if (error) throw error;
     return createSuccessResponse({ deleted: true });
   } catch (error) {
     console.error("Failed to delete shorts:", error);

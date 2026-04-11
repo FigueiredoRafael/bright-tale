@@ -5,47 +5,40 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { encrypt } from "@/lib/crypto";
 import { createAIConfigSchema } from "@brighttale/shared/schemas/ai";
 
 export async function POST(req: NextRequest) {
   try {
+    const sb = createServiceClient();
     const body = await req.json();
     const validated = createAIConfigSchema.parse(body);
 
-    // Check if encryption is available
     if (!process.env.ENCRYPTION_SECRET) {
       return NextResponse.json(
         {
           error: "Server configuration error",
-          message:
-            "ENCRYPTION_SECRET environment variable is not set. Please configure it in your .env file.",
+          message: "ENCRYPTION_SECRET environment variable is not set. Please configure it in your .env file.",
         },
         { status: 500 },
       );
     }
 
-    // Encrypt API key
     const encryptedKey = encrypt(validated.api_key);
 
-    // If setting as active, deactivate all others
     if (validated.is_active) {
-      await prisma.aIProviderConfig.updateMany({
-        where: { is_active: true },
-        data: { is_active: false },
-      });
+      await sb.from('ai_provider_configs').update({ is_active: false }).eq('is_active', true);
     }
 
-    // Create config
-    const config = await prisma.aIProviderConfig.create({
-      data: {
-        provider: validated.provider,
-        api_key: encryptedKey,
-        is_active: validated.is_active,
-        config_json: validated.config_json,
-      },
-    });
+    const { data: config, error } = await sb.from('ai_provider_configs').insert({
+      provider: validated.provider,
+      api_key: encryptedKey,
+      is_active: validated.is_active,
+      config_json: validated.config_json,
+    }).select().single();
+
+    if (error) throw error;
 
     return NextResponse.json({
       id: config.id,
@@ -66,12 +59,15 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
-    const configs = await prisma.aIProviderConfig.findMany({
-      orderBy: { updated_at: "desc" },
-    });
+    const sb = createServiceClient();
+    const { data: configs, error } = await sb
+      .from('ai_provider_configs')
+      .select('*')
+      .order('updated_at', { ascending: false });
 
-    // Don't return encrypted API keys
-    const safeConfigs = configs.map(config => ({
+    if (error) throw error;
+
+    const safeConfigs = (configs ?? []).map((config: any) => ({
       id: config.id,
       provider: config.provider,
       is_active: config.is_active,

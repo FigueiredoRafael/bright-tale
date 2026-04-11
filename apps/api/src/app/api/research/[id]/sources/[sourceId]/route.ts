@@ -4,7 +4,7 @@
  */
 
 import { NextRequest } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import {
   handleApiError,
   createSuccessResponse,
@@ -20,11 +20,17 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; sourceId: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id, sourceId } = await params;
+
     // Check if source exists and belongs to the research
-    const source = await prisma.researchSource.findUnique({
-      where: { id: sourceId },
-    });
+    const { data: source, error: findErr } = await sb
+      .from('research_sources')
+      .select('*')
+      .eq('id', sourceId)
+      .maybeSingle();
+
+    if (findErr) throw findErr;
 
     if (!source) {
       throw new ApiError(404, "Source not found", "NOT_FOUND");
@@ -38,9 +44,8 @@ export async function DELETE(
       );
     }
 
-    await prisma.researchSource.delete({
-      where: { id: sourceId },
-    });
+    const { error } = await sb.from('research_sources').delete().eq('id', sourceId);
+    if (error) throw error;
 
     return createSuccessResponse({
       success: true,

@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { encrypt } from "@/lib/crypto";
 import { updateAIConfigSchema } from "@brighttale/shared/schemas/ai";
 
@@ -15,11 +15,16 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
 
-    const config = await prisma.aIProviderConfig.findUnique({
-      where: { id },
-    });
+    const { data: config, error } = await sb
+      .from('ai_provider_configs')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) throw error;
 
     if (!config) {
       return NextResponse.json({ error: "Config not found" }, { status: 404 });
@@ -49,14 +54,19 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
     const body = await req.json();
     const validated = updateAIConfigSchema.parse(body);
 
     // Check if config exists
-    const existing = await prisma.aIProviderConfig.findUnique({
-      where: { id },
-    });
+    const { data: existing, error: findErr } = await sb
+      .from('ai_provider_configs')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findErr) throw findErr;
 
     if (!existing) {
       return NextResponse.json({ error: "Config not found" }, { status: 404 });
@@ -84,13 +94,11 @@ export async function PUT(
 
       // If setting as active, deactivate all others
       if (validated.is_active) {
-        await prisma.aIProviderConfig.updateMany({
-          where: {
-            id: { not: id },
-            is_active: true,
-          },
-          data: { is_active: false },
-        });
+        await sb
+          .from('ai_provider_configs')
+          .update({ is_active: false })
+          .neq('id', id)
+          .eq('is_active', true);
       }
     }
 
@@ -99,10 +107,14 @@ export async function PUT(
     }
 
     // Update config
-    const config = await prisma.aIProviderConfig.update({
-      where: { id },
-      data: updateData,
-    });
+    const { data: config, error } = await sb
+      .from('ai_provider_configs')
+      .update(updateData as any)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
 
     return NextResponse.json({
       id: config.id,
@@ -126,11 +138,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
 
-    await prisma.aIProviderConfig.delete({
-      where: { id },
-    });
+    const { error } = await sb.from('ai_provider_configs').delete().eq('id', id);
+    if (error) throw error;
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

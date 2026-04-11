@@ -6,7 +6,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { encrypt } from "@/lib/crypto";
 import { handleApiError, createSuccessResponse } from "@/lib/api/errors";
 import { validateBody } from "@/lib/api/validation";
@@ -19,6 +19,7 @@ const createConfigSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    const sb = createServiceClient();
     const body = await validateBody(request, createConfigSchema);
     // Check if encryption is available
     if (!process.env.ENCRYPTION_SECRET) {
@@ -34,13 +35,13 @@ export async function POST(request: NextRequest) {
     // Encrypt password before storing
     const encryptedPassword = encrypt(body.password);
 
-    const config = await prisma.wordPressConfig.create({
-      data: {
-        site_url: body.site_url,
-        username: body.username,
-        password: encryptedPassword,
-      },
-    });
+    const { data: config, error } = await sb.from('wordpress_configs').insert({
+      site_url: body.site_url,
+      username: body.username,
+      password: encryptedPassword,
+    }).select().single();
+
+    if (error) throw error;
 
     console.log("WordPress config created:", config.id);
 
@@ -60,12 +61,16 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    const configs = await prisma.wordPressConfig.findMany({
-      orderBy: { created_at: "desc" },
-    });
+    const sb = createServiceClient();
+    const { data: configs, error } = await sb
+      .from('wordpress_configs')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
 
     // Mask passwords in response
-    const maskedConfigs = configs.map(c => ({
+    const maskedConfigs = (configs ?? []).map((c: any) => ({
       id: c.id,
       site_url: c.site_url,
       username: c.username,

@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { createSuccessResponse, createErrorResponse } from "@/lib/api/errors";
 import { updatePodcastSchema } from "@brighttale/shared/schemas/podcasts";
 import { z } from "zod";
@@ -18,8 +18,10 @@ interface Params {
 
 export async function GET(request: NextRequest, { params }: Params) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
-    const draft = await prisma.podcastDraft.findUnique({ where: { id } });
+    const { data: draft, error } = await sb.from('podcast_drafts').select('*').eq('id', id).maybeSingle();
+    if (error) throw error;
 
     if (!draft) {
       return NextResponse.json(createErrorResponse("Podcast not found", 404), { status: 404 });
@@ -56,11 +58,13 @@ export async function GET(request: NextRequest, { params }: Params) {
 
 export async function PUT(request: NextRequest, { params }: Params) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
     const body = await request.json();
     const data = updatePodcastSchema.parse(body);
 
-    const existing = await prisma.podcastDraft.findUnique({ where: { id } });
+    const { data: existing, error: findErr } = await sb.from('podcast_drafts').select('id').eq('id', id).maybeSingle();
+    if (findErr) throw findErr;
     if (!existing) {
       return NextResponse.json(createErrorResponse("Podcast not found", 404), { status: 404 });
     }
@@ -79,7 +83,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
     if (data.project_id !== undefined) updateData.project_id = data.project_id;
     if (data.idea_id !== undefined) updateData.idea_id = data.idea_id;
 
-    const updated = await prisma.podcastDraft.update({ where: { id }, data: updateData });
+    const { data: updated, error } = await sb.from('podcast_drafts').update(updateData as any).eq('id', id).select().single();
+    if (error) throw error;
     return createSuccessResponse({ podcast: updated });
   } catch (error) {
     console.error("Failed to update podcast:", error);
@@ -95,12 +100,15 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
-    const existing = await prisma.podcastDraft.findUnique({ where: { id } });
+    const { data: existing, error: findErr } = await sb.from('podcast_drafts').select('id').eq('id', id).maybeSingle();
+    if (findErr) throw findErr;
     if (!existing) {
       return NextResponse.json(createErrorResponse("Podcast not found", 404), { status: 404 });
     }
-    await prisma.podcastDraft.delete({ where: { id } });
+    const { error } = await sb.from('podcast_drafts').delete().eq('id', id);
+    if (error) throw error;
     return createSuccessResponse({ deleted: true });
   } catch (error) {
     console.error("Failed to delete podcast:", error);

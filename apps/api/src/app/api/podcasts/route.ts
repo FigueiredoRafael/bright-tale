@@ -5,51 +5,37 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { createSuccessResponse, createErrorResponse } from "@/lib/api/errors";
 import { createPodcastSchema, podcastQuerySchema } from "@brighttale/shared/schemas/podcasts";
 import { z } from "zod";
 
 export async function GET(request: NextRequest) {
   try {
+    const sb = createServiceClient();
     const { searchParams } = new URL(request.url);
     const query = podcastQuerySchema.parse(Object.fromEntries(searchParams));
     const { status, project_id, idea_id, search, page = 1, limit = 20 } = query;
 
-    const where: Record<string, unknown> = {};
-    if (status) where.status = status;
-    if (project_id) where.project_id = project_id;
-    if (idea_id) where.idea_id = idea_id;
-    if (search) {
-      where.OR = [
-        { episode_title: { contains: search, mode: "insensitive" } },
-      ];
-    }
+    let countQuery = sb.from('podcast_drafts').select('*', { count: 'exact', head: true });
+    let dataQuery = sb.from('podcast_drafts').select('id, episode_title, episode_description, duration_estimate, word_count, status, project_id, idea_id, created_at, updated_at');
 
-    const total = await prisma.podcastDraft.count({ where });
+    if (status) { countQuery = countQuery.eq('status', status); dataQuery = dataQuery.eq('status', status); }
+    if (project_id) { countQuery = countQuery.eq('project_id', project_id); dataQuery = dataQuery.eq('project_id', project_id); }
+    if (idea_id) { countQuery = countQuery.eq('idea_id', idea_id); dataQuery = dataQuery.eq('idea_id', idea_id); }
+    if (search) { countQuery = countQuery.ilike('episode_title', `%${search}%`); dataQuery = dataQuery.ilike('episode_title', `%${search}%`); }
 
-    const podcasts = await prisma.podcastDraft.findMany({
-      where,
-      orderBy: { updated_at: "desc" },
-      skip: (page - 1) * limit,
-      take: limit,
-      select: {
-        id: true,
-        episode_title: true,
-        episode_description: true,
-        duration_estimate: true,
-        word_count: true,
-        status: true,
-        project_id: true,
-        idea_id: true,
-        created_at: true,
-        updated_at: true,
-      },
-    });
+    const [{ count: total, error: countErr }, { data: podcasts, error: dataErr }] = await Promise.all([
+      countQuery,
+      dataQuery.order('updated_at', { ascending: false }).range((page - 1) * limit, page * limit - 1),
+    ]);
+
+    if (countErr) throw countErr;
+    if (dataErr) throw dataErr;
 
     return createSuccessResponse({
       podcasts,
-      pagination: { page, limit, total, total_pages: Math.ceil(total / limit) },
+      pagination: { page, limit, total: total ?? 0, total_pages: Math.ceil((total ?? 0) / limit) },
     });
   } catch (error) {
     console.error("Failed to list podcasts:", error);
@@ -62,10 +48,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const sb = createServiceClient();
     const body = await request.json();
     const data = createPodcastSchema.parse(body);
 
-    // Calculate word count from spoken content
     const wordCount = data.word_count ?? [
       data.intro_hook,
       data.personal_angle,
@@ -76,22 +62,22 @@ export async function POST(request: NextRequest) {
       .split(/\s+/)
       .filter((w) => w.length > 0).length;
 
-    const podcast = await prisma.podcastDraft.create({
-      data: {
-        episode_title: data.episode_title,
-        episode_description: data.episode_description,
-        intro_hook: data.intro_hook,
-        talking_points_json: JSON.stringify(data.talking_points),
-        personal_angle: data.personal_angle,
-        guest_questions: data.guest_questions,
-        outro: data.outro,
-        duration_estimate: data.duration_estimate,
-        word_count: wordCount,
-        status: data.status,
-        project_id: data.project_id,
-        idea_id: data.idea_id,
-      },
-    });
+    const { data: podcast, error } = await sb.from('podcast_drafts').insert({
+      episode_title: data.episode_title,
+      episode_description: data.episode_description,
+      intro_hook: data.intro_hook,
+      talking_points_json: JSON.stringify(data.talking_points),
+      personal_angle: data.personal_angle,
+      guest_questions: data.guest_questions,
+      outro: data.outro,
+      duration_estimate: data.duration_estimate,
+      word_count: wordCount,
+      status: data.status,
+      project_id: data.project_id,
+      idea_id: data.idea_id,
+    }).select().single();
+
+    if (error) throw error;
 
     return createSuccessResponse({ podcast }, 201);
   } catch (error) {

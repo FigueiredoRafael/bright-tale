@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { createSuccessResponse, createErrorResponse } from "@/lib/api/errors";
 import { updateVideoSchema } from "@brighttale/shared/schemas/videos";
 import { z } from "zod";
@@ -18,14 +18,14 @@ interface Params {
 
 export async function GET(request: NextRequest, { params }: Params) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
 
-    const video = await prisma.videoDraft.findUnique({ where: { id } });
+    const { data: video, error } = await sb.from('video_drafts').select('*').eq('id', id).maybeSingle();
+    if (error) throw error;
 
     if (!video) {
-      return NextResponse.json(createErrorResponse("Video not found", 404), {
-        status: 404,
-      });
+      return NextResponse.json(createErrorResponse("Video not found", 404), { status: 404 });
     }
 
     const videoOutput: VideoOutput = {
@@ -50,23 +50,21 @@ export async function GET(request: NextRequest, { params }: Params) {
     });
   } catch (error) {
     console.error("Failed to get video:", error);
-    return NextResponse.json(createErrorResponse("Failed to get video", 500), {
-      status: 500,
-    });
+    return NextResponse.json(createErrorResponse("Failed to get video", 500), { status: 500 });
   }
 }
 
 export async function PUT(request: NextRequest, { params }: Params) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
     const body = await request.json();
     const data = updateVideoSchema.parse(body);
 
-    const existing = await prisma.videoDraft.findUnique({ where: { id } });
+    const { data: existing, error: findErr } = await sb.from('video_drafts').select('id').eq('id', id).maybeSingle();
+    if (findErr) throw findErr;
     if (!existing) {
-      return NextResponse.json(createErrorResponse("Video not found", 404), {
-        status: 404,
-      });
+      return NextResponse.json(createErrorResponse("Video not found", 404), { status: 404 });
     }
 
     const updateData: Record<string, unknown> = {};
@@ -80,7 +78,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
     if (data.project_id !== undefined) updateData.project_id = data.project_id;
     if (data.idea_id !== undefined) updateData.idea_id = data.idea_id;
 
-    const video = await prisma.videoDraft.update({ where: { id }, data: updateData });
+    const { data: video, error } = await sb.from('video_drafts').update(updateData as any).eq('id', id).select().single();
+    if (error) throw error;
 
     return createSuccessResponse({ video });
   } catch (error) {
@@ -97,14 +96,17 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
 
-    const existing = await prisma.videoDraft.findUnique({ where: { id } });
+    const { data: existing, error: findErr } = await sb.from('video_drafts').select('id').eq('id', id).maybeSingle();
+    if (findErr) throw findErr;
     if (!existing) {
       return NextResponse.json(createErrorResponse("Video not found", 404), { status: 404 });
     }
 
-    await prisma.videoDraft.delete({ where: { id } });
+    const { error } = await sb.from('video_drafts').delete().eq('id', id);
+    if (error) throw error;
     return createSuccessResponse({ deleted: true });
   } catch (error) {
     console.error("Failed to delete video:", error);

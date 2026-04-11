@@ -6,7 +6,7 @@
  */
 
 import { NextRequest } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import {
   handleApiError,
   createSuccessResponse,
@@ -24,33 +24,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
-    const template = await prisma.template.findUnique({
-      where: { id },
-      include: {
-        parent: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
-            config_json: true,
-          },
-        },
-        children: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
-            created_at: true,
-          },
-        },
-        _count: {
-          select: {
-            children: true,
-          },
-        },
-      },
-    });
+    const { data: template, error } = await sb
+      .from('templates')
+      .select('*, parent:parent_template_id(id, name, type, config_json), children:templates!parent_template_id(id, name, type, created_at)')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) throw error;
 
     if (!template) {
       throw new ApiError(404, "Template not found", "NOT_FOUND");
@@ -83,13 +65,18 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
     const data = await validateBody(request, updateTemplateSchema);
 
     // Check if template exists
-    const existing = await prisma.template.findUnique({
-      where: { id },
-    });
+    const { data: existing, error: findErr } = await sb
+      .from('templates')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findErr) throw findErr;
 
     if (!existing) {
       throw new ApiError(404, "Template not found", "NOT_FOUND");
@@ -109,35 +96,25 @@ export async function PUT(
       data.parent_template_id !== undefined &&
       data.parent_template_id !== null
     ) {
-      // Prevent self-reference
       if (data.parent_template_id === id) {
-        throw new ApiError(
-          400,
-          "Template cannot be its own parent",
-          "SELF_REFERENCE",
-        );
+        throw new ApiError(400, "Template cannot be its own parent", "SELF_REFERENCE");
       }
 
-      const parentTemplate = await prisma.template.findUnique({
-        where: { id: data.parent_template_id },
-      });
+      const { data: parentTemplate, error: parentErr } = await sb
+        .from('templates')
+        .select('id, type')
+        .eq('id', data.parent_template_id)
+        .maybeSingle();
+
+      if (parentErr) throw parentErr;
 
       if (!parentTemplate) {
-        throw new ApiError(
-          404,
-          "Parent template not found",
-          "PARENT_NOT_FOUND",
-        );
+        throw new ApiError(404, "Parent template not found", "PARENT_NOT_FOUND");
       }
 
-      // Ensure parent template is same type (if type is not being changed)
       const newType = data.type || existing.type;
       if (parentTemplate.type !== newType) {
-        throw new ApiError(
-          400,
-          "Parent template must be of the same type",
-          "TYPE_MISMATCH",
-        );
+        throw new ApiError(400, "Parent template must be of the same type", "TYPE_MISMATCH");
       }
 
       // Prevent circular inheritance
@@ -146,49 +123,34 @@ export async function PUT(
 
       while (checkParentId) {
         if (visited.has(checkParentId)) {
-          throw new ApiError(
-            400,
-            "Circular template inheritance detected",
-            "CIRCULAR_INHERITANCE",
-          );
+          throw new ApiError(400, "Circular template inheritance detected", "CIRCULAR_INHERITANCE");
         }
         visited.add(checkParentId);
 
-        const parentCheck: { parent_template_id: string | null } | null =
-          await prisma.template.findUnique({
-            where: { id: checkParentId },
-            select: { parent_template_id: true },
-          });
+        const { data: parentCheck } = await sb
+          .from('templates')
+          .select('parent_template_id')
+          .eq('id', checkParentId)
+          .maybeSingle() as { data: { parent_template_id: string | null } | null };
 
         checkParentId = parentCheck?.parent_template_id || null;
       }
     }
 
-    const template = await prisma.template.update({
-      where: { id },
-      data: {
-        ...(data.name && { name: data.name }),
-        ...(data.type && { type: data.type }),
-        ...(data.config_json && { config_json: data.config_json }),
-        ...(data.parent_template_id !== undefined && {
-          parent_template_id: data.parent_template_id,
-        }),
-      },
-      include: {
-        parent: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
-          },
-        },
-        _count: {
-          select: {
-            children: true,
-          },
-        },
-      },
-    });
+    const updateData: Record<string, unknown> = {};
+    if (data.name) updateData.name = data.name;
+    if (data.type) updateData.type = data.type;
+    if (data.config_json) updateData.config_json = data.config_json;
+    if (data.parent_template_id !== undefined) updateData.parent_template_id = data.parent_template_id;
+
+    const { data: template, error } = await sb
+      .from('templates')
+      .update(updateData as any)
+      .eq('id', id)
+      .select('*, parent:parent_template_id(id, name, type)')
+      .single();
+
+    if (error) throw error;
 
     return createSuccessResponse(template);
   } catch (error) {
@@ -205,35 +167,34 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
-    // Check if template exists
-    const existing = await prisma.template.findUnique({
-      where: { id },
-      include: {
-        _count: {
-          select: {
-            children: true,
-          },
-        },
-      },
-    });
+
+    // Check if template exists and has children
+    const { data: existing, error: findErr } = await sb
+      .from('templates')
+      .select('id, children:templates!parent_template_id(count)')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findErr) throw findErr;
 
     if (!existing) {
       throw new ApiError(404, "Template not found", "NOT_FOUND");
     }
 
     // Check if template has children
-    if (existing._count.children > 0) {
+    const childCount = (existing as any).children?.[0]?.count ?? 0;
+    if (childCount > 0) {
       throw new ApiError(
         400,
-        `Cannot delete template that has ${existing._count.children} child template(s)`,
+        `Cannot delete template that has ${childCount} child template(s)`,
         "HAS_CHILDREN",
       );
     }
 
-    await prisma.template.delete({
-      where: { id },
-    });
+    const { error } = await sb.from('templates').delete().eq('id', id);
+    if (error) throw error;
 
     return createSuccessResponse({
       success: true,

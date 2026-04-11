@@ -1,4 +1,5 @@
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
+import { SupabaseError } from '@/lib/api/errors';
 
 function deepMerge(a: any, b: any): any {
   if (Array.isArray(a) && Array.isArray(b)) return b; // child overrides arrays
@@ -16,11 +17,17 @@ export async function resolveTemplate(
   templateId: string,
   seen = new Set<string>(),
 ): Promise<any | null> {
-  const template = await prisma.template.findUnique({
-    where: { id: templateId },
-    include: { parent: true },
-  });
+  const sb = createServiceClient();
+  const { data: template, error } = await sb
+    .from('templates')
+    .select('*, parent:parent_template_id(*)')
+    .eq('id', templateId)
+    .single();
 
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw new SupabaseError(error);
+  }
   if (!template) return null;
 
   if (seen.has(templateId))
@@ -30,7 +37,7 @@ export async function resolveTemplate(
   const config = JSON.parse(template.config_json || "{}");
 
   if (template.parent) {
-    const parentResolved = await resolveTemplate(template.parent.id, seen);
+    const parentResolved = await resolveTemplate((template.parent as any).id, seen);
     return deepMerge(parentResolved || {}, config);
   }
 

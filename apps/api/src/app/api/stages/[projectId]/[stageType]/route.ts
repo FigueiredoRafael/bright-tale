@@ -4,7 +4,7 @@
  */
 
 import { NextRequest } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import {
   handleApiError,
   createSuccessResponse,
@@ -21,6 +21,7 @@ export async function GET(
   { params }: { params: Promise<{ projectId: string; stageType: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { projectId, stageType } = await params;
 
     // Check if valid stage type
@@ -36,50 +37,41 @@ export async function GET(
     const normalizedType = normalizeStageType(stageType);
 
     // Verify project exists
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-    });
+    const { data: project, error: projErr } = await sb
+      .from('projects')
+      .select('id, current_stage')
+      .eq('id', projectId)
+      .maybeSingle();
+
+    if (projErr) throw projErr;
 
     if (!project) {
       throw new ApiError(404, "Project not found", "PROJECT_NOT_FOUND");
     }
 
     // Get the stage (try normalized first, then original)
-    let stage = await prisma.stage.findFirst({
-      where: {
-        project_id: projectId,
-        stage_type: normalizedType,
-      },
-      include: {
-        revisions: {
-          orderBy: { created_at: "desc" },
-        },
-        _count: {
-          select: {
-            revisions: true,
-          },
-        },
-      },
-    });
+    let { data: stage, error: stageErr } = await sb
+      .from('stages')
+      .select('*, revisions(*)')
+      .eq('project_id', projectId)
+      .eq('stage_type', normalizedType)
+      .order('created_at', { referencedTable: 'revisions', ascending: false })
+      .maybeSingle();
+
+    if (stageErr) throw stageErr;
 
     // If not found with normalized, try original
     if (!stage && normalizedType !== stageType) {
-      stage = await prisma.stage.findFirst({
-        where: {
-          project_id: projectId,
-          stage_type: stageType,
-        },
-        include: {
-          revisions: {
-            orderBy: { created_at: "desc" },
-          },
-          _count: {
-            select: {
-              revisions: true,
-            },
-          },
-        },
-      });
+      const { data: stageAlt, error: stageAltErr } = await sb
+        .from('stages')
+        .select('*, revisions(*)')
+        .eq('project_id', projectId)
+        .eq('stage_type', stageType)
+        .order('created_at', { referencedTable: 'revisions', ascending: false })
+        .maybeSingle();
+
+      if (stageAltErr) throw stageAltErr;
+      stage = stageAlt;
     }
 
     if (!stage) {

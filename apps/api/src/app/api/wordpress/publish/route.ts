@@ -12,35 +12,44 @@ import {
   ApiError,
 } from "@/lib/api/errors";
 import { validateBody } from "@/lib/api/validation";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { decrypt } from "@/lib/crypto";
 
 export async function POST(request: NextRequest) {
   try {
+    const sb = createServiceClient();
     const body = await validateBody(request, publishToWordPressSchema);
 
     // Get the project with its production stage
-    const project = await prisma.project.findUnique({
-      where: { id: body.project_id },
-      include: {
-        stages: {
-          where: { stage_type: "production" },
-          orderBy: { version: "desc" },
-          take: 1,
-        },
-      },
-    });
+    const { data: project, error: projErr } = await sb
+      .from('projects')
+      .select('*')
+      .eq('id', body.project_id)
+      .maybeSingle();
+
+    if (projErr) throw projErr;
 
     if (!project) {
       throw new ApiError(404, "Project not found");
     }
 
-    if (!project.stages || project.stages.length === 0) {
+    // Get the latest production stage
+    const { data: stages, error: stageErr } = await sb
+      .from('stages')
+      .select('*')
+      .eq('project_id', body.project_id)
+      .eq('stage_type', 'production')
+      .order('version', { ascending: false })
+      .limit(1);
+
+    if (stageErr) throw stageErr;
+
+    if (!stages || stages.length === 0) {
       throw new ApiError(400, "No production content found for this project");
     }
 
     // Parse production YAML to get blog content
-    const productionStage = project.stages[0];
+    const productionStage = stages[0];
     const yamlContent = productionStage.yaml_artifact;
     const productionData = yaml.load(yamlContent) as any;
 
@@ -58,9 +67,13 @@ export async function POST(request: NextRequest) {
 
     if (body.config_id) {
       // Use stored config
-      const config = await prisma.wordPressConfig.findUnique({
-        where: { id: body.config_id },
-      });
+      const { data: config, error: cfgErr } = await sb
+        .from('wordpress_configs')
+        .select('*')
+        .eq('id', body.config_id)
+        .maybeSingle();
+
+      if (cfgErr) throw cfgErr;
 
       if (!config) {
         throw new ApiError(404, "WordPress config not found");
@@ -89,14 +102,17 @@ export async function POST(request: NextRequest) {
     };
 
     // Get all project assets for image replacement
-    const assets = await prisma.asset.findMany({
-      where: { project_id: body.project_id },
-    });
+    const { data: assets, error: assetsErr } = await sb
+      .from('assets')
+      .select('*')
+      .eq('project_id', body.project_id);
+
+    if (assetsErr) throw assetsErr;
 
     // Upload featured image to WordPress if specified
     let featuredMediaId: number | null = null;
     if (body.featured_image_asset_id) {
-      const featuredAsset = assets.find(
+      const featuredAsset = (assets ?? []).find(
         a => a.id === body.featured_image_asset_id,
       );
       if (featuredAsset) {
@@ -108,10 +124,10 @@ export async function POST(request: NextRequest) {
         );
 
         // Update asset with WordPress media ID
-        await prisma.asset.update({
-          where: { id: featuredAsset.id },
-          data: { wordpress_id: featuredMediaId },
-        });
+        await sb
+          .from('assets')
+          .update({ wordpress_id: featuredMediaId })
+          .eq('id', featuredAsset.id);
       }
     }
 
@@ -122,7 +138,7 @@ export async function POST(request: NextRequest) {
 
     for (const match of matches) {
       const [fullMatch, assetId] = match;
-      const asset = assets.find(a => a.id === assetId);
+      const asset = (assets ?? []).find(a => a.id === assetId);
 
       if (asset) {
         // Upload image to WordPress if not already uploaded
@@ -136,10 +152,10 @@ export async function POST(request: NextRequest) {
           );
 
           // Update asset with WordPress media ID
-          await prisma.asset.update({
-            where: { id: asset.id },
-            data: { wordpress_id: wpMediaId },
-          });
+          await sb
+            .from('assets')
+            .update({ wordpress_id: wpMediaId })
+            .eq('id', asset.id);
         }
 
         // Get WordPress media details to get URL
@@ -152,10 +168,10 @@ export async function POST(request: NextRequest) {
           const imgTag = `<img src="${mediaData.source_url}" alt="${asset.alt_text || ""}" class="wp-image-${wpMediaId}" />`;
 
           // Update asset with WordPress URL
-          await prisma.asset.update({
-            where: { id: asset.id },
-            data: { wordpress_url: mediaData.source_url },
-          });
+          await sb
+            .from('assets')
+            .update({ wordpress_url: mediaData.source_url })
+            .eq('id', asset.id);
 
           // Replace placeholder with img tag
           processedContent = processedContent.replace(fullMatch, imgTag);
@@ -215,12 +231,12 @@ export async function POST(request: NextRequest) {
     const wordpressPost = await response.json();
 
     // Update project status
-    await prisma.project.update({
-      where: { id: body.project_id },
-      data: {
+    await sb
+      .from('projects')
+      .update({
         status: body.status === "publish" ? "completed" : project.status,
-      },
-    });
+      })
+      .eq('id', body.project_id);
 
     return NextResponse.json(
       createSuccessResponse({
@@ -301,10 +317,10 @@ async function resolveCategories(
   headers: Record<string, string>,
 ): Promise<number[]> {
   // Normalize input to array
-  const names = Array.isArray(categoryNames) 
-    ? categoryNames 
-    : typeof categoryNames === 'string' 
-      ? [categoryNames] 
+  const names = Array.isArray(categoryNames)
+    ? categoryNames
+    : typeof categoryNames === 'string'
+      ? [categoryNames]
       : [];
 
   if (names.length === 0) return [];
@@ -317,18 +333,17 @@ async function resolveCategories(
       `${siteUrl}/wp-json/wp/v2/categories?per_page=100`,
       { headers },
     );
-    
+
     if (!response.ok) {
       console.error(`[WP Publish] Failed to fetch existing categories: ${response.status} ${response.statusText}`);
-      // Continue anyway, try to create them
     }
-    
+
     const existingCategories = response.ok ? await response.json() : [];
     const categoryIds: number[] = [];
 
     for (const name of names) {
       if (!name || typeof name !== 'string') continue;
-      
+
       const trimmedName = name.trim();
       if (!trimmedName) continue;
 
@@ -376,10 +391,10 @@ async function resolveTags(
   headers: Record<string, string>,
 ): Promise<number[]> {
   // Normalize input to array
-  const names = Array.isArray(tagNames) 
-    ? tagNames 
-    : typeof tagNames === 'string' 
-      ? [tagNames] 
+  const names = Array.isArray(tagNames)
+    ? tagNames
+    : typeof tagNames === 'string'
+      ? [tagNames]
       : [];
 
   if (names.length === 0) return [];
@@ -391,17 +406,17 @@ async function resolveTags(
     const response = await fetch(`${siteUrl}/wp-json/wp/v2/tags?per_page=100`, {
       headers,
     });
-    
+
     if (!response.ok) {
       console.error(`[WP Publish] Failed to fetch existing tags: ${response.status} ${response.statusText}`);
     }
-    
+
     const existingTags = response.ok ? await response.json() : [];
     const tagIds: number[] = [];
 
     for (const name of names) {
       if (!name || typeof name !== 'string') continue;
-      
+
       const trimmedName = name.trim();
       if (!trimmedName) continue;
 

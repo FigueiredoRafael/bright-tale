@@ -5,7 +5,7 @@
  */
 
 import { NextRequest } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { handleApiError, createSuccessResponse } from "@/lib/api/errors";
 import { validateBody, validateQueryParams } from "@/lib/api/validation";
 import {
@@ -19,13 +19,18 @@ import {
  */
 export async function POST(request: NextRequest) {
   try {
+    const sb = createServiceClient();
     const data = await validateBody(request, createProjectSchema);
 
     // If research_id is provided, verify it exists
     if (data.research_id) {
-      const research = await prisma.researchArchive.findUnique({
-        where: { id: data.research_id },
-      });
+      const { data: research, error: resErr } = await sb
+        .from('research_archives')
+        .select('id, projects_count')
+        .eq('id', data.research_id)
+        .maybeSingle();
+
+      if (resErr) throw resErr;
 
       if (!research) {
         return createSuccessResponse(
@@ -40,36 +45,26 @@ export async function POST(request: NextRequest) {
       }
 
       // Increment projects_count for the research
-      await prisma.researchArchive.update({
-        where: { id: data.research_id },
-        data: { projects_count: { increment: 1 } },
-      });
+      await sb
+        .from('research_archives')
+        .update({ projects_count: (research.projects_count ?? 0) + 1 })
+        .eq('id', data.research_id);
     }
 
-    const project = await prisma.project.create({
-      data: {
+    const { data: project, error } = await sb
+      .from('projects')
+      .insert({
         title: data.title,
         research_id: data.research_id,
         current_stage: data.current_stage,
         auto_advance: data.auto_advance,
         status: data.status,
         winner: data.winner,
-      },
-      include: {
-        research: {
-          select: {
-            id: true,
-            title: true,
-            theme: true,
-          },
-        },
-        _count: {
-          select: {
-            stages: true,
-          },
-        },
-      },
-    });
+      })
+      .select('*, research:research_archives!research_id(id, title, theme), stages(count)')
+      .single();
+
+    if (error) throw error;
 
     return createSuccessResponse(project, 201);
   } catch (error) {
@@ -83,81 +78,60 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
+    const sb = createServiceClient();
     const url = new URL(request.url);
     const params = validateQueryParams(url, listProjectsQuerySchema);
 
     const page = params.page || 1;
     const limit = params.limit || 20;
-    const skip = (page - 1) * limit;
+    const sortField = params.sort || "created_at";
+    const sortOrder = params.order || "desc";
 
-    // Build where clause
-    const where: {
-      status?: string;
-      current_stage?: string;
-      winner?: boolean;
-      research_id?: string;
-      title?: { contains: string; mode: "insensitive" };
-    } = {};
+    let countQuery = sb.from('projects').select('*', { count: 'exact', head: true });
+    let dataQuery = sb.from('projects').select('*, research:research_archives!research_id(id, title, theme), stages(count)');
 
     if (params.status) {
-      where.status = params.status;
+      countQuery = countQuery.eq('status', params.status);
+      dataQuery = dataQuery.eq('status', params.status);
     }
 
     if (params.current_stage) {
-      where.current_stage = params.current_stage;
+      countQuery = countQuery.eq('current_stage', params.current_stage);
+      dataQuery = dataQuery.eq('current_stage', params.current_stage);
     }
 
     if (params.winner !== undefined) {
-      where.winner = params.winner;
+      countQuery = countQuery.eq('winner', params.winner);
+      dataQuery = dataQuery.eq('winner', params.winner);
     }
 
     if (params.research_id) {
-      where.research_id = params.research_id;
+      countQuery = countQuery.eq('research_id', params.research_id);
+      dataQuery = dataQuery.eq('research_id', params.research_id);
     }
 
     if (params.search) {
-      where.title = {
-        contains: params.search,
-        mode: "insensitive",
-      };
+      countQuery = countQuery.ilike('title', `%${params.search}%`);
+      dataQuery = dataQuery.ilike('title', `%${params.search}%`);
     }
 
-    // Build orderBy clause
-    const orderBy: Record<string, "asc" | "desc"> = {};
-    orderBy[params.sort || "created_at"] = params.order || "desc";
-
-    // Execute query with pagination
-    const [projects, total] = await Promise.all([
-      prisma.project.findMany({
-        where,
-        orderBy,
-        skip,
-        take: limit,
-        include: {
-          research: {
-            select: {
-              id: true,
-              title: true,
-              theme: true,
-            },
-          },
-          _count: {
-            select: {
-              stages: true,
-            },
-          },
-        },
-      }),
-      prisma.project.count({ where }),
+    const [{ count: total, error: countErr }, { data: projects, error: dataErr }] = await Promise.all([
+      countQuery,
+      dataQuery
+        .order(sortField, { ascending: sortOrder === "asc" })
+        .range((page - 1) * limit, page * limit - 1),
     ]);
+
+    if (countErr) throw countErr;
+    if (dataErr) throw dataErr;
 
     return createSuccessResponse({
       projects,
       pagination: {
         page,
         limit,
-        total,
-        totalPages: Math.ceil(total / limit),
+        total: total ?? 0,
+        totalPages: Math.ceil((total ?? 0) / limit),
       },
     });
   } catch (error) {

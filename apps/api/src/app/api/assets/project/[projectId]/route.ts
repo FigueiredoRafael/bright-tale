@@ -8,34 +8,42 @@ import {
   createSuccessResponse,
   ApiError,
 } from "@/lib/api/errors";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { projectId } = await params;
 
     // Verify project exists
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-    });
+    const { data: project, error: projErr } = await sb
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .maybeSingle();
+
+    if (projErr) throw projErr;
 
     if (!project) {
       throw new ApiError(404, "Project not found");
     }
 
     // Get all assets for the project
-    const assets = await prisma.asset.findMany({
-      where: { project_id: projectId },
-      orderBy: { created_at: "desc" },
-    });
+    const { data: assets, error } = await sb
+      .from('assets')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
 
     return NextResponse.json(
       createSuccessResponse({
         assets,
-        count: assets.length,
+        count: (assets ?? []).length,
       }),
       { status: 200 },
     );

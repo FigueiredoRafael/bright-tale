@@ -6,16 +6,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
 
-    const asset = await prisma.asset.findUnique({ where: { id } });
+    const { data: asset, error } = await sb.from('assets').select('*').eq('id', id).maybeSingle();
+    if (error) throw error;
     if (!asset) {
       return NextResponse.json({ error: "Asset not found" }, { status: 404 });
     }

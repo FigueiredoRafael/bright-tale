@@ -9,25 +9,28 @@ import path from "path";
 import fs from "fs";
 import archiver from "archiver";
 import { Readable } from "stream";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 
 export async function GET(req: NextRequest) {
   try {
+    const sb = createServiceClient();
     const { searchParams } = new URL(req.url);
     const idsParam = searchParams.get("ids");
     const projectId = searchParams.get("projectId");
 
-    const where: Record<string, unknown> = { source: "generated" };
+    let query = sb.from('assets').select('*').eq('source', 'generated');
 
     if (idsParam) {
-      where.id = { in: idsParam.split(",").map(s => s.trim()).filter(Boolean) };
+      const ids = idsParam.split(",").map(s => s.trim()).filter(Boolean);
+      query = query.in('id', ids);
     } else if (projectId) {
-      where.project_id = projectId;
+      query = query.eq('project_id', projectId);
     }
 
-    const assets = await prisma.asset.findMany({ where });
+    const { data: assets, error } = await query;
+    if (error) throw error;
 
-    const validAssets = assets.filter(a => a.local_path && fs.existsSync(path.resolve(process.cwd(), a.local_path)));
+    const validAssets = (assets ?? []).filter((a: any) => a.local_path && fs.existsSync(path.resolve(process.cwd(), a.local_path)));
 
     if (validAssets.length === 0) {
       return NextResponse.json({ error: "No downloadable assets found" }, { status: 404 });

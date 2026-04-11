@@ -4,7 +4,7 @@
  */
 
 import { NextRequest } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import {
   handleApiError,
   createSuccessResponse,
@@ -20,34 +20,36 @@ export async function GET(
   { params }: { params: Promise<{ projectId: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { projectId } = await params;
+
     // Verify project exists
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-    });
+    const { data: project, error: projErr } = await sb
+      .from('projects')
+      .select('id, current_stage')
+      .eq('id', projectId)
+      .maybeSingle();
+
+    if (projErr) throw projErr;
 
     if (!project) {
       throw new ApiError(404, "Project not found", "PROJECT_NOT_FOUND");
     }
 
     // Get all stages for the project
-    const stages = await prisma.stage.findMany({
-      where: { project_id: projectId },
-      orderBy: { created_at: "asc" },
-      include: {
-        _count: {
-          select: {
-            revisions: true,
-          },
-        },
-      },
-    });
+    const { data: stages, error } = await sb
+      .from('stages')
+      .select('*, revisions(count)')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
 
     return createSuccessResponse({
       project_id: projectId,
       current_stage: project.current_stage,
       stages,
-      stages_count: stages.length,
+      stages_count: (stages ?? []).length,
     });
   } catch (error) {
     return handleApiError(error);

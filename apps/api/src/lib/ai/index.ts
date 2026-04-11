@@ -2,7 +2,7 @@ import mockAdapter from "./mock";
 import { ProviderAIAdapter } from "./providerAdapter";
 import { OpenAIProvider } from "./providers/openai";
 import { AnthropicProvider } from "./providers/anthropic";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from "@/lib/supabase";
 import { decrypt } from "@/lib/crypto";
 import type { AIAdapter } from "./adapter";
 
@@ -52,10 +52,19 @@ export async function getAIAdapter(): Promise<AIAdapter> {
 
   // Fetch from database
   try {
-    const config = await prisma.aIProviderConfig.findFirst({
-      where: { is_active: true },
-      orderBy: { updated_at: "desc" },
-    });
+    const sb = createServiceClient();
+    const { data: config, error } = await sb
+      .from('ai_provider_configs')
+      .select('*')
+      .eq('is_active', true)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("Error fetching AI provider config:", error.message);
+      return mockAdapter;
+    }
 
     if (!config) {
       console.warn(

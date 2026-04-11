@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { createErrorResponse } from "@/lib/api/errors";
 import { markdownToHtml } from "@/lib/utils";
 import type { BlogOutput } from "@brighttale/shared/types/agents";
@@ -107,13 +107,18 @@ function generateMarkdownExport(blog: BlogOutput): string {
 
 export async function GET(request: NextRequest, { params }: Params) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const format = searchParams.get("format") || "markdown";
 
-    const blog = await prisma.blogDraft.findUnique({
-      where: { id },
-    });
+    const { data: blog, error } = await sb
+      .from('blog_drafts')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) throw error;
 
     if (!blog) {
       return NextResponse.json(createErrorResponse("Blog not found", 404), {

@@ -6,7 +6,7 @@
  */
 
 import { NextRequest } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { createSuccessResponse, createErrorResponse } from "@/lib/api/errors";
 import { z } from "zod";
 import { updateCanonicalCoreSchema } from "@brighttale/shared/schemas/canonicalCoreApi";
@@ -16,8 +16,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
-    const core = await prisma.canonicalCore.findUnique({ where: { id } });
+    const { data: core, error } = await sb.from('canonical_core').select('*').eq('id', id).maybeSingle();
+    if (error) throw error;
     if (!core) return createErrorResponse("Canonical core not found", 404);
     return createSuccessResponse({ canonical_core: core });
   } catch (error) {
@@ -31,39 +33,34 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
     const body = await request.json();
     const data = updateCanonicalCoreSchema.parse(body);
 
-    const existing = await prisma.canonicalCore.findUnique({ where: { id } });
+    const { data: existing, error: findErr } = await sb.from('canonical_core').select('id').eq('id', id).maybeSingle();
+    if (findErr) throw findErr;
     if (!existing) return createErrorResponse("Canonical core not found", 404);
 
-    const updated = await prisma.canonicalCore.update({
-      where: { id },
-      data: {
-        ...(data.project_id !== undefined && { project_id: data.project_id }),
-        ...(data.thesis !== undefined && { thesis: data.thesis }),
-        ...(data.argument_chain !== undefined && {
-          argument_chain_json: JSON.stringify(data.argument_chain),
-        }),
-        ...(data.emotional_arc !== undefined && {
-          emotional_arc_json: JSON.stringify(data.emotional_arc),
-        }),
-        ...(data.key_stats !== undefined && {
-          key_stats_json: JSON.stringify(data.key_stats),
-        }),
-        ...(data.key_quotes !== undefined && {
-          key_quotes_json: JSON.stringify(data.key_quotes),
-        }),
-        ...(data.affiliate_moment !== undefined && {
-          affiliate_moment_json: JSON.stringify(data.affiliate_moment),
-        }),
-        ...(data.cta_subscribe !== undefined && { cta_subscribe: data.cta_subscribe }),
-        ...(data.cta_comment_prompt !== undefined && {
-          cta_comment_prompt: data.cta_comment_prompt,
-        }),
-      },
-    });
+    const updateData: Record<string, unknown> = {};
+    if (data.project_id !== undefined) updateData.project_id = data.project_id;
+    if (data.thesis !== undefined) updateData.thesis = data.thesis;
+    if (data.argument_chain !== undefined) updateData.argument_chain_json = JSON.stringify(data.argument_chain);
+    if (data.emotional_arc !== undefined) updateData.emotional_arc_json = JSON.stringify(data.emotional_arc);
+    if (data.key_stats !== undefined) updateData.key_stats_json = JSON.stringify(data.key_stats);
+    if (data.key_quotes !== undefined) updateData.key_quotes_json = JSON.stringify(data.key_quotes);
+    if (data.affiliate_moment !== undefined) updateData.affiliate_moment_json = JSON.stringify(data.affiliate_moment);
+    if (data.cta_subscribe !== undefined) updateData.cta_subscribe = data.cta_subscribe;
+    if (data.cta_comment_prompt !== undefined) updateData.cta_comment_prompt = data.cta_comment_prompt;
+
+    const { data: updated, error } = await sb
+      .from('canonical_core')
+      .update(updateData as any)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
 
     return createSuccessResponse({ canonical_core: updated });
   } catch (error) {
@@ -80,11 +77,14 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
-    const existing = await prisma.canonicalCore.findUnique({ where: { id } });
+    const { data: existing, error: findErr } = await sb.from('canonical_core').select('id').eq('id', id).maybeSingle();
+    if (findErr) throw findErr;
     if (!existing) return createErrorResponse("Canonical core not found", 404);
 
-    await prisma.canonicalCore.delete({ where: { id } });
+    const { error } = await sb.from('canonical_core').delete().eq('id', id);
+    if (error) throw error;
     return createSuccessResponse({ deleted: true });
   } catch (error) {
     console.error("Failed to delete canonical core:", error);

@@ -7,7 +7,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { encrypt } from "@/lib/crypto";
 import {
   handleApiError,
@@ -26,8 +26,10 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
+    const sb = createServiceClient();
     const { id } = await context.params;
-    const config = await prisma.wordPressConfig.findUnique({ where: { id } });
+    const { data: config, error } = await sb.from('wordpress_configs').select('*').eq('id', id).maybeSingle();
+    if (error) throw error;
 
     if (!config) {
       throw new ApiError(404, "WordPress config not found", "NOT_FOUND");
@@ -47,10 +49,12 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
 export async function PUT(request: NextRequest, context: RouteContext) {
   try {
+    const sb = createServiceClient();
     const { id } = await context.params;
     const body = await validateBody(request, updateConfigSchema);
 
-    const existing = await prisma.wordPressConfig.findUnique({ where: { id } });
+    const { data: existing, error: findErr } = await sb.from('wordpress_configs').select('id').eq('id', id).maybeSingle();
+    if (findErr) throw findErr;
     if (!existing) {
       throw new ApiError(404, "WordPress config not found", "NOT_FOUND");
     }
@@ -73,10 +77,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       updateData.password = encrypt(body.password);
     }
 
-    const updated = await prisma.wordPressConfig.update({
-      where: { id },
-      data: updateData,
-    });
+    const { data: updated, error } = await sb.from('wordpress_configs').update(updateData as any).eq('id', id).select().single();
+    if (error) throw error;
 
     console.log("WordPress config updated:", id);
 
@@ -93,13 +95,16 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 
 export async function DELETE(_request: NextRequest, context: RouteContext) {
   try {
+    const sb = createServiceClient();
     const { id } = await context.params;
-    const existing = await prisma.wordPressConfig.findUnique({ where: { id } });
+    const { data: existing, error: findErr } = await sb.from('wordpress_configs').select('id').eq('id', id).maybeSingle();
+    if (findErr) throw findErr;
     if (!existing) {
       throw new ApiError(404, "WordPress config not found", "NOT_FOUND");
     }
 
-    await prisma.wordPressConfig.delete({ where: { id } });
+    const { error } = await sb.from('wordpress_configs').delete().eq('id', id);
+    if (error) throw error;
 
     console.log("WordPress config deleted:", id);
 

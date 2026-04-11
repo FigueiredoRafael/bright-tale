@@ -5,12 +5,13 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { encrypt } from "@/lib/crypto";
 import { imageGeneratorConfigSchema } from "@brighttale/shared/schemas/imageGeneration";
 
 export async function POST(req: NextRequest) {
   try {
+    const sb = createServiceClient();
     const body = await req.json();
     const validated = imageGeneratorConfigSchema.parse(body);
 
@@ -27,21 +28,20 @@ export async function POST(req: NextRequest) {
     const encryptedKey = encrypt(validated.api_key);
 
     if (validated.is_active) {
-      await prisma.imageGeneratorConfig.updateMany({
-        where: { is_active: true },
-        data: { is_active: false },
-      });
+      await sb.from('image_generator_configs')
+        .update({ is_active: false })
+        .eq('is_active', true);
     }
 
-    const config = await prisma.imageGeneratorConfig.create({
-      data: {
-        provider: validated.provider,
-        api_key: encryptedKey,
-        model: validated.model,
-        is_active: validated.is_active,
-        config_json: validated.config_json,
-      },
-    });
+    const { data: config, error } = await sb.from('image_generator_configs').insert({
+      provider: validated.provider,
+      api_key: encryptedKey,
+      model: validated.model,
+      is_active: validated.is_active,
+      config_json: validated.config_json,
+    }).select().single();
+
+    if (error) throw error;
 
     return NextResponse.json({
       id: config.id,
@@ -61,11 +61,15 @@ export async function POST(req: NextRequest) {
 
 export async function GET() {
   try {
-    const configs = await prisma.imageGeneratorConfig.findMany({
-      orderBy: { updated_at: "desc" },
-    });
+    const sb = createServiceClient();
+    const { data: configs, error } = await sb
+      .from('image_generator_configs')
+      .select('*')
+      .order('updated_at', { ascending: false });
 
-    const safeConfigs = configs.map(config => ({
+    if (error) throw error;
+
+    const safeConfigs = (configs ?? []).map((config: any) => ({
       id: config.id,
       provider: config.provider,
       model: config.model,

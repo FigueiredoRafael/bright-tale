@@ -4,7 +4,7 @@
  */
 
 import { NextRequest } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import {
   handleApiError,
   createSuccessResponse,
@@ -19,16 +19,18 @@ import { bulkOperationSchema } from "@brighttale/shared/schemas/projects";
  */
 export async function POST(request: NextRequest) {
   try {
+    const sb = createServiceClient();
     const data = await validateBody(request, bulkOperationSchema);
 
     // Verify all projects exist
-    const projects = await prisma.project.findMany({
-      where: {
-        id: { in: data.project_ids },
-      },
-    });
+    const { data: projects, error: findErr } = await sb
+      .from('projects')
+      .select('*')
+      .in('id', data.project_ids);
 
-    if (projects.length !== data.project_ids.length) {
+    if (findErr) throw findErr;
+
+    if ((projects ?? []).length !== data.project_ids.length) {
       throw new ApiError(
         400,
         "Some project IDs are invalid",
@@ -36,84 +38,77 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let result: { count: number } | { ids: string[] };
-
     switch (data.operation) {
-      case "delete":
+      case "delete": {
         // Decrement research counts before deletion
-        for (const project of projects) {
+        for (const project of projects ?? []) {
           if (project.research_id) {
-            const updates: {
-              projects_count: { decrement: number };
-              winners_count?: { decrement: number };
-            } = {
-              projects_count: { decrement: 1 },
-            };
-            if (project.winner) {
-              updates.winners_count = { decrement: 1 };
-            }
+            const { data: res } = await sb
+              .from('research_archives')
+              .select('projects_count, winners_count')
+              .eq('id', project.research_id)
+              .maybeSingle();
 
-            await prisma.researchArchive.update({
-              where: { id: project.research_id },
-              data: updates,
-            });
+            if (res) {
+              const updateData: Record<string, number> = {
+                projects_count: Math.max(0, (res.projects_count ?? 0) - 1),
+              };
+              if (project.winner) {
+                updateData.winners_count = Math.max(0, (res.winners_count ?? 0) - 1);
+              }
+
+              await sb
+                .from('research_archives')
+                .update(updateData as any)
+                .eq('id', project.research_id);
+            }
           }
         }
 
-        result = await prisma.project.deleteMany({
-          where: {
-            id: { in: data.project_ids },
-          },
+        const { error: delErr } = await sb
+          .from('projects')
+          .delete()
+          .in('id', data.project_ids);
+
+        if (delErr) throw delErr;
+
+        return createSuccessResponse({
+          success: true,
+          operation: data.operation,
+          affected: data.project_ids.length,
+          message: `Successfully performed delete on ${data.project_ids.length} project(s)`,
         });
-        break;
+      }
 
       case "archive":
-        result = await prisma.project.updateMany({
-          where: {
-            id: { in: data.project_ids },
-          },
-          data: {
-            status: "archived",
-          },
-        });
-        break;
-
       case "activate":
-        result = await prisma.project.updateMany({
-          where: {
-            id: { in: data.project_ids },
-          },
-          data: {
-            status: "active",
-          },
-        });
-        break;
-
       case "pause":
-        result = await prisma.project.updateMany({
-          where: {
-            id: { in: data.project_ids },
-          },
-          data: {
-            status: "paused",
-          },
-        });
-        break;
+      case "complete": {
+        const statusMap: Record<string, string> = {
+          archive: "archived",
+          activate: "active",
+          pause: "paused",
+          complete: "completed",
+        };
 
-      case "complete":
-        result = await prisma.project.updateMany({
-          where: {
-            id: { in: data.project_ids },
-          },
-          data: {
-            status: "completed",
-          },
+        const { error: upErr } = await sb
+          .from('projects')
+          .update({ status: statusMap[data.operation] })
+          .in('id', data.project_ids);
+
+        if (upErr) throw upErr;
+
+        return createSuccessResponse({
+          success: true,
+          operation: data.operation,
+          affected: data.project_ids.length,
+          message: `Successfully performed ${data.operation} on ${data.project_ids.length} project(s)`,
         });
-        break;
+      }
 
       case "export": {
-        // Return projects data as JSON (optionally could be zipped in future)
-        const exportData = projects.map(p => ({
+        // Return projects data as JSON
+        const exportData = (projects ?? []).map(p => ({
           id: p.id,
           title: p.title,
           current_stage: p.current_stage,
@@ -143,14 +138,16 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        const result = await prisma.project.updateMany({
-          where: { id: { in: data.project_ids } },
-          data: { status: data.new_status },
-        });
+        const { error: upErr } = await sb
+          .from('projects')
+          .update({ status: data.new_status })
+          .in('id', data.project_ids);
+
+        if (upErr) throw upErr;
 
         return createSuccessResponse({
           success: true,
-          affected: result.count,
+          affected: data.project_ids.length,
           message: `Updated status to ${data.new_status}`,
         });
       }
@@ -158,13 +155,6 @@ export async function POST(request: NextRequest) {
       default:
         throw new ApiError(400, "Invalid operation", "INVALID_OPERATION");
     }
-
-    return createSuccessResponse({
-      success: true,
-      operation: data.operation,
-      affected: result.count,
-      message: `Successfully performed ${data.operation} on ${result.count} project(s)`,
-    });
   } catch (error) {
     return handleApiError(error);
   }

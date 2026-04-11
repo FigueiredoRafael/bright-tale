@@ -1,4 +1,4 @@
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { randomUUID } from "crypto";
 
 type JobStatus = "pending" | "done" | "failed";
@@ -26,11 +26,16 @@ export async function createExportJob(projectIds: string[]) {
 
   // Synchronously generate JSON export for simplicity (can be made async later)
   try {
-    const projects = await prisma.project.findMany({
-      where: { id: { in: projectIds } },
-    });
+    const sb = createServiceClient();
+    const { data: projects, error } = await sb
+      .from('projects')
+      .select('*')
+      .in('id', projectIds);
+
+    if (error) throw error;
+
     job.payload = {
-      projects: projects.map(p => ({
+      projects: (projects ?? []).map((p: any) => ({
         id: p.id,
         title: p.title,
         current_stage: p.current_stage,

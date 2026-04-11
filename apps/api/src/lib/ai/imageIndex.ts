@@ -12,7 +12,7 @@
 
 import { mockImageProvider } from "./providers/mock-imagen";
 import { GeminiImagenProvider } from "./providers/gemini-imagen";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from "@/lib/supabase";
 import { decrypt } from "@/lib/crypto";
 import type { ImageProvider } from "./imageProvider";
 
@@ -35,10 +35,19 @@ export async function getImageProvider(): Promise<ImageProvider> {
 
   // Fetch from database
   try {
-    const config = await prisma.imageGeneratorConfig.findFirst({
-      where: { is_active: true },
-      orderBy: { updated_at: "desc" },
-    });
+    const sb = createServiceClient();
+    const { data: config, error } = await sb
+      .from('image_generator_configs')
+      .select('*')
+      .eq('is_active', true)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("Error fetching image provider config:", error.message);
+      return mockImageProvider;
+    }
 
     if (!config) {
       console.warn("No active ImageGeneratorConfig found in database, falling back to mock");

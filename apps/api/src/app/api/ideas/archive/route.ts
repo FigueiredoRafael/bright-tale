@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { validateBody } from "@/lib/api/validation";
 import { handleApiError, createSuccessResponse } from "@/lib/api/errors";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 
 const archiveSchema = z.object({
   ideas: z
@@ -21,9 +21,10 @@ const archiveSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    const sb = createServiceClient();
     const body = await validateBody(request, archiveSchema);
 
-    // Bulk insert, skip duplicates
+    // Bulk insert, skip duplicates via upsert
     const items = body.ideas.map(i => ({
       idea_id: i.idea_id,
       title: i.title,
@@ -33,12 +34,14 @@ export async function POST(request: NextRequest) {
       discovery_data: i.discovery_data ?? "",
     }));
 
-    const result = await prisma.ideaArchive.createMany({
-      data: items,
-      skipDuplicates: true,
-    });
+    const { data, error } = await sb
+      .from('idea_archives')
+      .upsert(items, { onConflict: 'idea_id', ignoreDuplicates: true })
+      .select();
 
-    return createSuccessResponse({ archived: result.count }, 200);
+    if (error) throw error;
+
+    return createSuccessResponse({ archived: (data ?? []).length }, 200);
   } catch (error) {
     return handleApiError(error);
   }

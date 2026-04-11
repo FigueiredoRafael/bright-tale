@@ -1,6 +1,4 @@
-import { prisma } from "./prisma";
-
-const db = prisma as any; // Prisma client will be regenerated after running migrations
+import { createServiceClient } from '@/lib/supabase';
 
 export interface IdempotencyRecord {
   id: string;
@@ -14,39 +12,57 @@ export interface IdempotencyRecord {
 }
 
 export async function getKeyByToken(token: string) {
-  return db.idempotencyKey.findUnique({ where: { token } });
+  const sb = createServiceClient();
+  const { data, error } = await sb
+    .from('idempotency_keys')
+    .select('*')
+    .eq('token', token)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
 }
 
 export async function createKey(
   token: string,
   opts?: { purpose?: string; request_hash?: string; expiresAt?: Date },
 ) {
-  try {
-    const rec = await db.idempotencyKey.create({
-      data: {
-        token,
-        purpose: opts?.purpose,
-        request_hash: opts?.request_hash,
-        expires_at: opts?.expiresAt ?? null,
-      },
-    });
-    return rec;
-  } catch (error) {
-    // If token already exists, return existing
-    return db.idempotencyKey.findUnique({ where: { token } });
+  const sb = createServiceClient();
+  const { data, error } = await sb
+    .from('idempotency_keys')
+    .insert({
+      token,
+      purpose: opts?.purpose,
+      request_hash: opts?.request_hash,
+      expires_at: opts?.expiresAt?.toISOString() ?? null,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    // If token already exists (conflict), return existing
+    if (error.code === '23505') {
+      return getKeyByToken(token);
+    }
+    throw error;
   }
+  return data;
 }
 
 export async function consumeKey(token: string, response: any) {
-  return db.idempotencyKey.update({
-    where: { token },
-    data: { consumed: true, response },
-  });
+  const sb = createServiceClient();
+  const { error } = await sb
+    .from('idempotency_keys')
+    .update({ consumed: true, response })
+    .eq('token', token);
+  if (error) throw error;
 }
 
 export async function cleanupExpired() {
-  const now = new Date();
-  return db.idempotencyKey.deleteMany({
-    where: { expires_at: { lt: now } },
-  });
+  const sb = createServiceClient();
+  const now = new Date().toISOString();
+  const { error } = await sb
+    .from('idempotency_keys')
+    .delete()
+    .lt('expires_at', now);
+  if (error) throw error;
 }

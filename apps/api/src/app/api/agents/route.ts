@@ -3,7 +3,7 @@
  * GET /api/agents - List all agent prompts
  */
 
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { handleApiError, createSuccessResponse } from "@/lib/api/errors";
 
 /**
@@ -12,22 +12,13 @@ import { handleApiError, createSuccessResponse } from "@/lib/api/errors";
  */
 export async function GET() {
   try {
-    const agents = await prisma.agentPrompt.findMany({
-      orderBy: {
-        stage: "asc",
-      },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        stage: true,
-        instructions: true,
-        input_schema: true,
-        output_schema: true,
-        created_at: true,
-        updated_at: true,
-      },
-    });
+    const sb = createServiceClient();
+    const { data: agents, error } = await sb
+      .from('agent_prompts')
+      .select('id, name, slug, stage, instructions, input_schema, output_schema, created_at, updated_at')
+      .order('stage', { ascending: true });
+
+    if (error) throw error;
 
     return createSuccessResponse({ agents });
   } catch (error) {

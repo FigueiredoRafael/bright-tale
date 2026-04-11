@@ -8,7 +8,7 @@ import {
   createSuccessResponse,
   ApiError,
 } from "@/lib/api/errors";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { deleteImageFile } from "@/lib/files/imageStorage";
 
 export async function DELETE(
@@ -16,9 +16,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
 
-    const asset = await prisma.asset.findUnique({ where: { id } });
+    const { data: asset, error } = await sb.from('assets').select('*').eq('id', id).maybeSingle();
+    if (error) throw error;
 
     if (!asset) {
       throw new ApiError(404, "Asset not found");
@@ -29,7 +31,8 @@ export async function DELETE(
       await deleteImageFile(asset.local_path);
     }
 
-    await prisma.asset.delete({ where: { id } });
+    const { error: delErr } = await sb.from('assets').delete().eq('id', id);
+    if (delErr) throw delErr;
 
     return NextResponse.json(
       createSuccessResponse({ deleted: true, asset_id: id, message: "Asset deleted successfully" }),

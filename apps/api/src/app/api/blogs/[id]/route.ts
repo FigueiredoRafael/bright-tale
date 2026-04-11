@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { createSuccessResponse, createErrorResponse } from "@/lib/api/errors";
 import { z } from "zod";
 import type { BlogOutput } from "@brighttale/shared/types/agents";
@@ -59,11 +59,16 @@ interface Params {
 
 export async function GET(request: NextRequest, { params }: Params) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
 
-    const blog = await prisma.blogDraft.findUnique({
-      where: { id },
-    });
+    const { data: blog, error } = await sb
+      .from('blog_drafts')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) throw error;
 
     if (!blog) {
       return NextResponse.json(createErrorResponse("Blog not found", 404), {
@@ -118,12 +123,20 @@ export async function GET(request: NextRequest, { params }: Params) {
 
 export async function PUT(request: NextRequest, { params }: Params) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
     const body = await request.json();
     const data = updateBlogSchema.parse(body);
 
     // Check if blog exists
-    const existing = await prisma.blogDraft.findUnique({ where: { id } });
+    const { data: existing, error: findErr } = await sb
+      .from('blog_drafts')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findErr) throw findErr;
+
     if (!existing) {
       return NextResponse.json(createErrorResponse("Blog not found", 404), {
         status: 404,
@@ -154,7 +167,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       updateData.wordpress_url = data.wordpress_url;
     if (data.published_at !== undefined) {
       updateData.published_at = data.published_at
-        ? new Date(data.published_at)
+        ? new Date(data.published_at).toISOString()
         : null;
     }
 
@@ -182,10 +195,14 @@ export async function PUT(request: NextRequest, { params }: Params) {
       );
     }
 
-    const blog = await prisma.blogDraft.update({
-      where: { id },
-      data: updateData,
-    });
+    const { data: blog, error } = await sb
+      .from('blog_drafts')
+      .update(updateData as any)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
 
     return createSuccessResponse({ blog });
   } catch (error) {
@@ -208,17 +225,26 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
 
     // Check if blog exists
-    const existing = await prisma.blogDraft.findUnique({ where: { id } });
+    const { data: existing, error: findErr } = await sb
+      .from('blog_drafts')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findErr) throw findErr;
+
     if (!existing) {
       return NextResponse.json(createErrorResponse("Blog not found", 404), {
         status: 404,
       });
     }
 
-    await prisma.blogDraft.delete({ where: { id } });
+    const { error } = await sb.from('blog_drafts').delete().eq('id', id);
+    if (error) throw error;
 
     return createSuccessResponse({ deleted: true });
   } catch (error) {

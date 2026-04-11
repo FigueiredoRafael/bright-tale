@@ -7,7 +7,7 @@ import { z } from "zod";
 import { handleApiError, ApiError } from "@/lib/api/errors";
 import { validateBody } from "@/lib/api/validation";
 import { markdownToHtml } from "@/lib/utils";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { decrypt } from "@/lib/crypto";
 
 const testMarkdownSchema = z.object({
@@ -89,7 +89,7 @@ print(f"Result: {result}")
 > This is a simple blockquote.
 
 > This is a blockquote with **bold text** and *italic text*.
-> 
+>
 > It can span multiple paragraphs.
 
 > Nested quotes:
@@ -148,7 +148,7 @@ Empty lines:
 
 Multiple empty lines above.
 
-Trailing spaces at line end:  
+Trailing spaces at line end:
 Should create line break.
 
 Unicode: 你好 مرحبا שלום
@@ -176,6 +176,7 @@ If this renders correctly in WordPress, the markdown conversion is working prope
 
 export async function POST(request: NextRequest) {
   try {
+    const sb = createServiceClient();
     const body = await validateBody(request, testMarkdownSchema);
 
     // Get WordPress credentials
@@ -185,9 +186,13 @@ export async function POST(request: NextRequest) {
 
     if (body.config_id) {
       // Use stored config
-      const config = await prisma.wordPressConfig.findUnique({
-        where: { id: body.config_id },
-      });
+      const { data: config, error: cfgErr } = await sb
+        .from('wordpress_configs')
+        .select('*')
+        .eq('id', body.config_id)
+        .maybeSingle();
+
+      if (cfgErr) throw cfgErr;
 
       if (!config) {
         throw new ApiError(404, "WordPress config not found");

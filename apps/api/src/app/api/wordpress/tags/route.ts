@@ -10,7 +10,7 @@ import {
   ApiError,
 } from "@/lib/api/errors";
 import { validateQueryParams } from "@/lib/api/validation";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { decrypt } from "@/lib/crypto";
 
 export async function GET(request: NextRequest) {
@@ -23,10 +23,14 @@ export async function GET(request: NextRequest) {
     let password: string;
 
     if (params.config_id) {
-      // Use stored config
-      const config = await prisma.wordPressConfig.findUnique({
-        where: { id: params.config_id },
-      });
+      const sb = createServiceClient();
+      const { data: config, error } = await sb
+        .from('wordpress_configs')
+        .select('*')
+        .eq('id', params.config_id)
+        .maybeSingle();
+
+      if (error) throw error;
 
       if (!config) {
         throw new ApiError(404, "WordPress config not found");

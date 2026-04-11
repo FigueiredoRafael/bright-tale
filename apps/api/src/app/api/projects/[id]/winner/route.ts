@@ -4,7 +4,7 @@
  */
 
 import { NextRequest } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import {
   handleApiError,
   createSuccessResponse,
@@ -22,13 +22,18 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
     const data = await validateBody(request, markWinnerSchema);
 
     // Check if project exists
-    const existing = await prisma.project.findUnique({
-      where: { id },
-    });
+    const { data: existing, error: findErr } = await sb
+      .from('projects')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findErr) throw findErr;
 
     if (!existing) {
       throw new ApiError(404, "Project not found", "NOT_FOUND");
@@ -36,38 +41,40 @@ export async function PUT(
 
     // Only update research winners_count if project has research
     if (existing.research_id) {
-      // If marking as winner and wasn't before, increment
       if (data.winner && !existing.winner) {
-        await prisma.researchArchive.update({
-          where: { id: existing.research_id },
-          data: { winners_count: { increment: 1 } },
-        });
-      }
-      // If unmarking as winner and was before, decrement
-      else if (!data.winner && existing.winner) {
-        await prisma.researchArchive.update({
-          where: { id: existing.research_id },
-          data: { winners_count: { decrement: 1 } },
-        });
+        // Increment winners_count via RPC or read-modify-write
+        const { data: research } = await sb
+          .from('research_archives')
+          .select('winners_count')
+          .eq('id', existing.research_id)
+          .single();
+        if (research) {
+          await sb.from('research_archives')
+            .update({ winners_count: (research.winners_count ?? 0) + 1 })
+            .eq('id', existing.research_id);
+        }
+      } else if (!data.winner && existing.winner) {
+        const { data: research } = await sb
+          .from('research_archives')
+          .select('winners_count')
+          .eq('id', existing.research_id)
+          .single();
+        if (research) {
+          await sb.from('research_archives')
+            .update({ winners_count: Math.max(0, (research.winners_count ?? 0) - 1) })
+            .eq('id', existing.research_id);
+        }
       }
     }
 
-    const project = await prisma.project.update({
-      where: { id },
-      data: {
-        winner: data.winner,
-      },
-      include: {
-        research: {
-          select: {
-            id: true,
-            title: true,
-            theme: true,
-            winners_count: true,
-          },
-        },
-      },
-    });
+    const { data: project, error: updateErr } = await sb
+      .from('projects')
+      .update({ winner: data.winner })
+      .eq('id', id)
+      .select('*, research:research_id(id, title, theme, winners_count)')
+      .single();
+
+    if (updateErr) throw updateErr;
 
     return createSuccessResponse({
       success: true,

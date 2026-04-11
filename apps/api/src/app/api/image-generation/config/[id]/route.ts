@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import { encrypt } from "@/lib/crypto";
 import { updateImageGeneratorConfigSchema } from "@brighttale/shared/schemas/imageGeneration";
 
@@ -14,11 +14,17 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
     const body = await req.json();
     const validated = updateImageGeneratorConfigSchema.parse(body);
 
-    const existing = await prisma.imageGeneratorConfig.findUnique({ where: { id } });
+    const { data: existing, error: findErr } = await sb
+      .from('image_generator_configs')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle();
+    if (findErr) throw findErr;
     if (!existing) {
       return NextResponse.json({ error: "Config not found" }, { status: 404 });
     }
@@ -41,17 +47,21 @@ export async function PUT(
     if (validated.is_active !== undefined) {
       updateData.is_active = validated.is_active;
       if (validated.is_active) {
-        await prisma.imageGeneratorConfig.updateMany({
-          where: { id: { not: id }, is_active: true },
-          data: { is_active: false },
-        });
+        await sb.from('image_generator_configs')
+          .update({ is_active: false })
+          .neq('id', id)
+          .eq('is_active', true);
       }
     }
 
-    const config = await prisma.imageGeneratorConfig.update({
-      where: { id },
-      data: updateData,
-    });
+    const { data: config, error } = await sb
+      .from('image_generator_configs')
+      .update(updateData as any)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
 
     return NextResponse.json({
       id: config.id,
@@ -74,8 +84,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
-    await prisma.imageGeneratorConfig.delete({ where: { id } });
+    const { error } = await sb.from('image_generator_configs').delete().eq('id', id);
+    if (error) throw error;
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error deleting image generator config:", error);

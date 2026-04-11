@@ -4,7 +4,7 @@
  */
 
 import { NextRequest } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import {
   handleApiError,
   createSuccessResponse,
@@ -19,79 +19,71 @@ import { createStageSchema, normalizeStageType } from "@brighttale/shared/schema
  */
 export async function POST(request: NextRequest) {
   try {
+    const sb = createServiceClient();
     const data = await validateBody(request, createStageSchema);
 
     // Normalize stage type to canonical name
     const stageType = normalizeStageType(data.stage_type);
 
     // Verify project exists
-    const project = await prisma.project.findUnique({
-      where: { id: data.project_id },
-    });
+    const { data: project, error: projErr } = await sb
+      .from('projects')
+      .select('id')
+      .eq('id', data.project_id)
+      .maybeSingle();
+
+    if (projErr) throw projErr;
 
     if (!project) {
       throw new ApiError(404, "Project not found", "PROJECT_NOT_FOUND");
     }
 
-    // Check if stage already exists for this project and type (check both normalized and original)
-    let existingStage = await prisma.stage.findFirst({
-      where: {
-        project_id: data.project_id,
-        stage_type: stageType,
-      },
-      include: {
-        _count: {
-          select: {
-            revisions: true,
-          },
-        },
-      },
-    });
+    // Check if stage already exists for this project and type
+    let { data: existingStage, error: stageErr } = await sb
+      .from('stages')
+      .select('*, revisions(count)')
+      .eq('project_id', data.project_id)
+      .eq('stage_type', stageType)
+      .maybeSingle();
+
+    if (stageErr) throw stageErr;
 
     // Also check with original stage type if different
     if (!existingStage && stageType !== data.stage_type) {
-      existingStage = await prisma.stage.findFirst({
-        where: {
-          project_id: data.project_id,
-          stage_type: data.stage_type,
-        },
-        include: {
-          _count: {
-            select: {
-              revisions: true,
-            },
-          },
-        },
-      });
+      const { data: altStage, error: altErr } = await sb
+        .from('stages')
+        .select('*, revisions(count)')
+        .eq('project_id', data.project_id)
+        .eq('stage_type', data.stage_type)
+        .maybeSingle();
+
+      if (altErr) throw altErr;
+      existingStage = altStage;
     }
 
     if (existingStage) {
       // Create revision for the old version
-      await prisma.revision.create({
-        data: {
-          stage_id: existingStage.id,
-          yaml_artifact: existingStage.yaml_artifact,
-          version: existingStage.version,
-          created_by: "system",
-          change_notes: "Auto-archived before update",
-        },
+      const { error: revErr } = await sb.from('revisions').insert({
+        stage_id: existingStage.id,
+        yaml_artifact: existingStage.yaml_artifact,
+        version: existingStage.version,
+        created_by: "system",
+        change_notes: "Auto-archived before update",
       });
+      if (revErr) throw revErr;
 
       // Update stage with new artifact and increment version
-      const updatedStage = await prisma.stage.update({
-        where: { id: existingStage.id },
-        data: {
+      const { data: updatedStage, error: updateErr } = await sb
+        .from('stages')
+        .update({
           yaml_artifact: data.yaml_artifact,
-          version: { increment: 1 },
-        },
-        include: {
-          _count: {
-            select: {
-              revisions: true,
-            },
-          },
-        },
-      });
+          version: existingStage.version + 1,
+        })
+        .eq('id', existingStage.id)
+        .select('*, revisions(count)')
+        .single();
+
+      if (updateErr) throw updateErr;
 
       return createSuccessResponse({
         stage: updatedStage,
@@ -100,27 +92,26 @@ export async function POST(request: NextRequest) {
       });
     } else {
       // Create new stage with normalized stage type
-      const newStage = await prisma.stage.create({
-        data: {
+      const { data: newStage, error: createErr } = await sb
+        .from('stages')
+        .insert({
           project_id: data.project_id,
           stage_type: stageType,
           yaml_artifact: data.yaml_artifact,
           version: 1,
-        },
-        include: {
-          _count: {
-            select: {
-              revisions: true,
-            },
-          },
-        },
-      });
+        })
+        .select('*, revisions(count)')
+        .single();
+
+      if (createErr) throw createErr;
 
       // Update project's current_stage with normalized stage type
-      await prisma.project.update({
-        where: { id: data.project_id },
-        data: { current_stage: stageType },
-      });
+      const { error: projUpdateErr } = await sb
+        .from('projects')
+        .update({ current_stage: stageType })
+        .eq('id', data.project_id);
+
+      if (projUpdateErr) throw projUpdateErr;
 
       return createSuccessResponse(
         {

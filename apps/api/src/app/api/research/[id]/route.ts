@@ -6,7 +6,7 @@
  */
 
 import { NextRequest } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import {
   handleApiError,
   createSuccessResponse,
@@ -24,31 +24,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
-    const research = await prisma.researchArchive.findUnique({
-      where: { id },
-      include: {
-        sources: {
-          orderBy: { created_at: "desc" },
-        },
-        projects: {
-          select: {
-            id: true,
-            title: true,
-            status: true,
-            winner: true,
-            created_at: true,
-          },
-          orderBy: { created_at: "desc" },
-        },
-        _count: {
-          select: {
-            sources: true,
-            projects: true,
-          },
-        },
-      },
-    });
+    const { data: research, error } = await sb
+      .from('research_archives')
+      .select('*, sources:research_sources(*, count:id), projects(id, title, status, winner, created_at)')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) throw error;
 
     if (!research) {
       throw new ApiError(404, "Research not found", "NOT_FOUND");
@@ -69,37 +53,36 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
     const data = await validateBody(request, updateResearchSchema);
 
     // Check if research exists
-    const existing = await prisma.researchArchive.findUnique({
-      where: { id },
-    });
+    const { data: existing, error: findErr } = await sb
+      .from('research_archives')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findErr) throw findErr;
 
     if (!existing) {
       throw new ApiError(404, "Research not found", "NOT_FOUND");
     }
 
-    const research = await prisma.researchArchive.update({
-      where: { id },
-      data: {
-        ...(data.title && { title: data.title }),
-        ...(data.theme && { theme: data.theme }),
-        ...(data.research_content && {
-          research_content: data.research_content,
-        }),
-      },
-      include: {
-        sources: true,
-        _count: {
-          select: {
-            sources: true,
-            projects: true,
-          },
-        },
-      },
-    });
+    const updateData: Record<string, unknown> = {};
+    if (data.title) updateData.title = data.title;
+    if (data.theme) updateData.theme = data.theme;
+    if (data.research_content) updateData.research_content = data.research_content;
+
+    const { data: research, error } = await sb
+      .from('research_archives')
+      .update(updateData as any)
+      .eq('id', id)
+      .select('*, sources:research_sources(*)')
+      .single();
+
+    if (error) throw error;
 
     return createSuccessResponse(research);
   } catch (error) {
@@ -116,33 +99,34 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
-    // Check if research exists
-    const existing = await prisma.researchArchive.findUnique({
-      where: { id },
-      include: {
-        _count: {
-          select: { projects: true },
-        },
-      },
-    });
+
+    // Check if research exists and get project count
+    const { data: existing, error: findErr } = await sb
+      .from('research_archives')
+      .select('id, projects(count)')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findErr) throw findErr;
 
     if (!existing) {
       throw new ApiError(404, "Research not found", "NOT_FOUND");
     }
 
     // Check if research is used by any projects
-    if (existing._count.projects > 0) {
+    const projectCount = (existing as any).projects?.[0]?.count ?? 0;
+    if (projectCount > 0) {
       throw new ApiError(
         400,
-        `Cannot delete research that is used by ${existing._count.projects} project(s)`,
+        `Cannot delete research that is used by ${projectCount} project(s)`,
         "RESEARCH_IN_USE",
       );
     }
 
-    await prisma.researchArchive.delete({
-      where: { id },
-    });
+    const { error } = await sb.from('research_archives').delete().eq('id', id);
+    if (error) throw error;
 
     return createSuccessResponse({
       success: true,

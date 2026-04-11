@@ -4,7 +4,7 @@
  */
 
 import { NextRequest } from "next/server";
-// TODO-supabase: import { prisma } from "@/lib/prisma";
+import { createServiceClient } from '@/lib/supabase';
 import {
   handleApiError,
   createSuccessResponse,
@@ -22,27 +22,36 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const sb = createServiceClient();
     const { id } = await params;
     const data = await validateBody(request, addSourceSchema);
 
     // Check if research exists
-    const research = await prisma.researchArchive.findUnique({
-      where: { id },
-    });
+    const { data: research, error: findErr } = await sb
+      .from('research_archives')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findErr) throw findErr;
 
     if (!research) {
       throw new ApiError(404, "Research not found", "NOT_FOUND");
     }
 
-    const source = await prisma.researchSource.create({
-      data: {
+    const { data: source, error } = await sb
+      .from('research_sources')
+      .insert({
         research_id: id,
         url: data.url,
         title: data.title,
         author: data.author,
-        date: data.date ? new Date(data.date) : null,
-      },
-    });
+        date: data.date ? new Date(data.date).toISOString() : null,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
 
     return createSuccessResponse(source, 201);
   } catch (error) {
