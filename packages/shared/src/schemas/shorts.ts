@@ -38,8 +38,13 @@ export const createShortsSchema = z.object({
 
 export type CreateShortsInput = z.infer<typeof createShortsSchema>;
 
-export const updateShortsSchema = createShortsSchema.partial().omit({ status: true }).extend({
+export const updateShortsSchema = z.object({
+  shorts: z.array(shortItemSchema).min(1).max(10).optional(),
+  short_count: z.number().int().min(1).optional(),
+  total_duration: z.string().optional(),
   status: z.enum(["draft", "review", "approved", "published"]).optional(),
+  project_id: z.string().cuid().optional(),
+  idea_id: z.string().optional(),
 });
 
 export type UpdateShortsInput = z.infer<typeof updateShortsSchema>;

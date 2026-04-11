@@ -26,40 +26,46 @@ export const updateImageGeneratorConfigSchema = imageGeneratorConfigSchema.parti
   is_active: z.boolean().optional(),
 });
 
+const outlineItemSchema = z.object({
+  h2: z.string(),
+  key_points: z.array(z.string()).optional(),
+});
+
+const chapterItemSchema = z.object({
+  title: z.string(),
+});
+
+const thumbnailHintSchema = z.object({
+  visual_concept: z.string().optional(),
+  emotion: z.string().optional(),
+});
+
+const agentSectionPromptSchema = z.object({
+  heading: z.string(),
+  prompt: z.string(),
+});
+
+const agentChapterPromptSchema = z.object({
+  chapter_title: z.string(),
+  prompt: z.string(),
+});
+
+const agentImagePromptsSchema = z.object({
+  featured: z.string().optional(),
+  sections: z.array(agentSectionPromptSchema).optional(),
+  thumbnail_option_1: z.string().optional(),
+  thumbnail_option_2: z.string().optional(),
+  chapters: z.array(agentChapterPromptSchema).optional(),
+});
+
 export const suggestPromptsRequestSchema = z.object({
   content_type: z.enum(["blog", "video", "shorts", "podcast", "standalone"]),
   title: z.string().optional(),
   role: z.string(), // "featured" | "section_1" | "thumbnail_option_1" | "chapter_1"
-  outline: z
-    .array(
-      z.object({
-        h2: z.string(),
-        key_points: z.array(z.string()).optional(),
-      }),
-    )
-    .optional(),
-  chapters: z
-    .array(
-      z.object({
-        title: z.string(),
-      }),
-    )
-    .optional(),
-  thumbnail: z
-    .object({
-      visual_concept: z.string().optional(),
-      emotion: z.string().optional(),
-    })
-    .optional(),
-  agent_image_prompts: z
-    .object({
-      featured: z.string().optional(),
-      sections: z.array(z.object({ heading: z.string(), prompt: z.string() })).optional(),
-      thumbnail_option_1: z.string().optional(),
-      thumbnail_option_2: z.string().optional(),
-      chapters: z.array(z.object({ chapter_title: z.string(), prompt: z.string() })).optional(),
-    })
-    .optional(),
+  outline: z.array(outlineItemSchema).optional(),
+  chapters: z.array(chapterItemSchema).optional(),
+  thumbnail: thumbnailHintSchema.optional(),
+  agent_image_prompts: agentImagePromptsSchema.optional(),
 });
 
 export type GenerateImageRequest = z.infer<typeof generateImageRequestSchema>;

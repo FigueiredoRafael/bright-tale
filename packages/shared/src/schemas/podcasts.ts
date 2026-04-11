@@ -26,8 +26,19 @@ export const createPodcastSchema = z.object({
 
 export type CreatePodcastInput = z.infer<typeof createPodcastSchema>;
 
-export const updatePodcastSchema = createPodcastSchema.partial().omit({ status: true }).extend({
+export const updatePodcastSchema = z.object({
+  episode_title: z.string().min(3).max(300).optional(),
+  episode_description: z.string().min(10).optional(),
+  intro_hook: z.string().optional(),
+  talking_points: z.array(talkingPointSchema).min(1).optional(),
+  personal_angle: z.string().optional(),
+  guest_questions: z.array(z.string()).optional(),
+  outro: z.string().optional(),
+  duration_estimate: z.string().optional(),
+  word_count: z.number().int().min(0).optional(),
   status: z.enum(["draft", "review", "approved", "published"]).optional(),
+  project_id: z.string().cuid().optional(),
+  idea_id: z.string().optional(),
 });
 
 export type UpdatePodcastInput = z.infer<typeof updatePodcastSchema>;

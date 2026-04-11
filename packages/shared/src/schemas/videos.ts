@@ -78,8 +78,16 @@ export const createVideoSchema = z.object({
 
 export type CreateVideoInput = z.infer<typeof createVideoSchema>;
 
-export const updateVideoSchema = createVideoSchema.partial().omit({ status: true }).extend({
+export const updateVideoSchema = z.object({
+  title: z.string().min(3).max(300).optional(),
+  title_options: z.array(z.string()).min(1).optional(),
+  thumbnail: thumbnailSchema.optional(),
+  script: videoScriptSchema.optional(),
+  total_duration_estimate: z.string().optional(),
+  word_count: z.number().int().min(0).optional(),
   status: z.enum(["draft", "review", "approved", "published"]).optional(),
+  project_id: z.string().cuid().optional(),
+  idea_id: z.string().optional(),
 });
 
 export type UpdateVideoInput = z.infer<typeof updateVideoSchema>;
