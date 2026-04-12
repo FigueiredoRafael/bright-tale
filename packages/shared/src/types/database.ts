@@ -764,6 +764,8 @@ export type Database = {
           premium_started_at: string | null
           premium_expires_at: string | null
           is_active: boolean
+          onboarding_completed: boolean
+          onboarding_step: string | null
           created_at: string
           updated_at: string
         }
@@ -778,6 +780,8 @@ export type Database = {
           premium_started_at?: string | null
           premium_expires_at?: string | null
           is_active?: boolean
+          onboarding_completed?: boolean
+          onboarding_step?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -792,6 +796,8 @@ export type Database = {
           premium_started_at?: string | null
           premium_expires_at?: string | null
           is_active?: boolean
+          onboarding_completed?: boolean
+          onboarding_step?: string | null
           created_at?: string
           updated_at?: string
         }
