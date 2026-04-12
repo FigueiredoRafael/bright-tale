@@ -12,6 +12,7 @@ import {
     ChevronRight,
     Sparkles,
     Link as LinkIcon,
+    Users,
 } from "lucide-react";
 
 interface SettingsCard {
@@ -25,6 +26,14 @@ interface SettingsCard {
 
 export default function SettingsPage() {
     const settingsCards: SettingsCard[] = [
+        {
+            title: "Team",
+            description: "Manage organization members, invite new team members, and configure roles and permissions.",
+            href: "/settings/team",
+            icon: <Users className="h-6 w-6" />,
+            badge: "Active",
+            badgeVariant: "default",
+        },
         {
             title: "Agent Prompts",
             description: "Configure AI agent instructions, input/output schemas, and behavior for the 4-agent workflow system.",
