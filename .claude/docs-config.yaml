@@ -1,0 +1,463 @@
+# Documentation Configuration
+# Maps source code locations to documentation paths
+
+# =============================================================================
+# FEATURE MAPPINGS
+# =============================================================================
+
+feature_mappings:
+
+  # ---------------------------------------------------------------------------
+  # APP (Next.js UI — apps/app)
+  # ---------------------------------------------------------------------------
+
+  app/dashboard:
+    sources:
+      - apps/app/src/app/page.tsx
+      - apps/app/src/components/dashboard/**
+    tables:
+      - projects
+      - stages
+    edge_functions: []
+
+  app/projects:
+    sources:
+      - apps/app/src/app/projects/**
+      - apps/app/src/components/projects/**
+    tables:
+      - projects
+      - stages
+      - revisions
+    edge_functions: []
+
+  app/discovery:
+    sources:
+      - apps/app/src/app/projects/*/discovery/**
+      - apps/app/src/components/discovery/**
+    tables:
+      - projects
+      - idea_archives
+      - agent_prompts
+    edge_functions: []
+
+  app/research:
+    sources:
+      - apps/app/src/app/research/**
+      - apps/app/src/components/research/**
+    tables:
+      - research_archives
+      - research_sources
+    edge_functions: []
+
+  app/ideas:
+    sources:
+      - apps/app/src/app/ideas/**
+      - apps/app/src/components/ideas/**
+    tables:
+      - idea_archives
+    edge_functions: []
+
+  app/blogs:
+    sources:
+      - apps/app/src/app/blogs/**
+      - apps/app/src/components/production/Blog*
+    tables:
+      - blog_drafts
+      - canonical_core
+    edge_functions: []
+
+  app/videos:
+    sources:
+      - apps/app/src/app/videos/**
+      - apps/app/src/components/production/Video*
+    tables:
+      - video_drafts
+      - canonical_core
+    edge_functions: []
+
+  app/podcasts:
+    sources:
+      - apps/app/src/app/podcasts/**
+    tables:
+      - podcast_drafts
+      - canonical_core
+    edge_functions: []
+
+  app/shorts:
+    sources:
+      - apps/app/src/app/shorts/**
+    tables:
+      - shorts_drafts
+      - canonical_core
+    edge_functions: []
+
+  app/images:
+    sources:
+      - apps/app/src/app/images/**
+      - apps/app/src/components/assets/**
+    tables:
+      - assets
+    edge_functions: []
+
+  app/templates:
+    sources:
+      - apps/app/src/app/templates/**
+      - apps/app/src/components/templates/**
+    tables:
+      - templates
+    edge_functions: []
+
+  app/settings:
+    sources:
+      - apps/app/src/app/settings/**
+      - apps/app/src/components/agents/**
+    tables:
+      - ai_provider_configs
+      - image_generator_configs
+      - wordpress_configs
+      - agent_prompts
+    edge_functions: []
+
+  # ---------------------------------------------------------------------------
+  # API (Next.js Route Handlers — apps/api)
+  # ---------------------------------------------------------------------------
+
+  api/projects:
+    sources:
+      - apps/api/src/routes/projects/**
+    tables:
+      - projects
+      - stages
+    edge_functions: []
+
+  api/research:
+    sources:
+      - apps/api/src/routes/research/**
+    tables:
+      - research_archives
+      - research_sources
+    edge_functions: []
+
+  api/ideas:
+    sources:
+      - apps/api/src/routes/ideas/**
+    tables:
+      - idea_archives
+    edge_functions: []
+
+  api/blogs:
+    sources:
+      - apps/api/src/routes/blogs/**
+    tables:
+      - blog_drafts
+    edge_functions: []
+
+  api/videos:
+    sources:
+      - apps/api/src/routes/videos/**
+    tables:
+      - video_drafts
+    edge_functions: []
+
+  api/podcasts:
+    sources:
+      - apps/api/src/routes/podcasts/**
+    tables:
+      - podcast_drafts
+    edge_functions: []
+
+  api/shorts:
+    sources:
+      - apps/api/src/routes/shorts/**
+    tables:
+      - shorts_drafts
+    edge_functions: []
+
+  api/stages:
+    sources:
+      - apps/api/src/routes/stages/**
+    tables:
+      - stages
+      - revisions
+    edge_functions: []
+
+  api/canonical-core:
+    sources:
+      - apps/api/src/routes/canonical-core/**
+    tables:
+      - canonical_core
+    edge_functions: []
+
+  api/assets:
+    sources:
+      - apps/api/src/routes/assets/**
+    tables:
+      - assets
+    edge_functions: []
+
+  api/ai:
+    sources:
+      - apps/api/src/routes/ai/**
+      - apps/api/src/lib/ai/**
+    tables:
+      - ai_provider_configs
+    edge_functions: []
+
+  api/wordpress:
+    sources:
+      - apps/api/src/routes/wordpress/**
+    tables:
+      - wordpress_configs
+      - blog_drafts
+    edge_functions: []
+
+  api/users:
+    sources:
+      - apps/api/src/routes/users/**
+    tables:
+      - user_profiles
+      - user_roles
+    edge_functions: []
+
+  api/auth:
+    sources:
+      - apps/api/src/routes/auth/**
+      - apps/api/src/middleware/**
+      - apps/app/src/middleware.ts
+    tables:
+      - user_profiles
+    edge_functions: []
+
+  # ---------------------------------------------------------------------------
+  # SHARED PACKAGE
+  # ---------------------------------------------------------------------------
+
+  shared/schemas:
+    sources:
+      - packages/shared/src/schemas/**
+    tables: []
+    edge_functions: []
+
+  shared/types:
+    sources:
+      - packages/shared/src/types/**
+    tables: []
+    edge_functions: []
+
+  shared/mappers:
+    sources:
+      - packages/shared/src/mappers/**
+    tables: []
+    edge_functions: []
+
+  # ---------------------------------------------------------------------------
+  # DATABASE
+  # ---------------------------------------------------------------------------
+
+  database/schema:
+    sources:
+      - supabase/migrations/**
+      - packages/shared/src/types/database.ts
+    tables: []
+    edge_functions: []
+
+# =============================================================================
+# FILE TYPE TO DOCUMENTATION SECTION MAPPING
+# =============================================================================
+
+file_type_to_section:
+  # Next.js App Router patterns
+  "*/page.tsx":
+    - index.md
+    - components.md
+  "*/layout.tsx":
+    - index.md
+  "*/route.ts":
+    - api.md
+  "**/api/**/*.ts":
+    - api.md
+
+  # Components
+  "**/components/**/*.tsx":
+    - components.md
+
+  # State & data
+  "**/hooks/**/*.ts":
+    - data-flow.md
+  "**/lib/**/*.ts":
+    - data-flow.md
+
+  # Schemas & types
+  "**/schemas/**/*.ts":
+    - api.md
+    - schema.md
+  "**/types/**/*.ts":
+    - schema.md
+
+  # Database
+  "migrations/*.sql":
+    - schema.md
+  "**/migrations/*.sql":
+    - schema.md
+
+  # Business logic
+  "**/modules/**/*.ts":
+    - business-logic.md
+  "**/lib/ai/**/*.ts":
+    - business-logic.md
+
+# =============================================================================
+# CROSS-CUTTING PATHS
+# =============================================================================
+
+cross_cutting_paths:
+  - path: supabase/migrations/
+    action: update_all_features_using_tables
+    also_update:
+      - database/schema
+
+  - path: packages/shared/src/types/
+    action: update_all_features_using_types
+    also_update:
+      - database/schema
+
+  - path: packages/shared/src/schemas/
+    action: update_all_features_using_schemas
+    also_update:
+      - shared/schemas
+
+  - path: apps/api/src/middleware/
+    action: update_specific_features
+    features:
+      - api/auth
+    also_update: []
+
+  - path: apps/app/src/middleware.ts
+    action: update_specific_features
+    features:
+      - api/auth
+    also_update: []
+
+# =============================================================================
+# TABLE TO FEATURE REVERSE MAPPING
+# =============================================================================
+
+table_to_features:
+  projects:
+    - app/projects
+    - app/dashboard
+    - api/projects
+
+  stages:
+    - app/projects
+    - api/stages
+
+  revisions:
+    - api/stages
+
+  research_archives:
+    - app/research
+    - api/research
+
+  research_sources:
+    - app/research
+    - api/research
+
+  idea_archives:
+    - app/ideas
+    - app/discovery
+    - api/ideas
+
+  blog_drafts:
+    - app/blogs
+    - api/blogs
+    - api/wordpress
+
+  video_drafts:
+    - app/videos
+    - api/videos
+
+  podcast_drafts:
+    - app/podcasts
+    - api/podcasts
+
+  shorts_drafts:
+    - app/shorts
+    - api/shorts
+
+  canonical_core:
+    - app/blogs
+    - app/videos
+    - app/podcasts
+    - app/shorts
+    - api/canonical-core
+
+  templates:
+    - app/templates
+
+  agent_prompts:
+    - app/settings
+    - app/discovery
+
+  ai_provider_configs:
+    - app/settings
+    - api/ai
+
+  image_generator_configs:
+    - app/settings
+    - api/ai
+
+  assets:
+    - app/images
+    - api/assets
+
+  wordpress_configs:
+    - app/settings
+    - api/wordpress
+
+  user_profiles:
+    - api/users
+    - api/auth
+
+  user_roles:
+    - api/users
+
+  idempotency_keys:
+    - api/projects
+
+# =============================================================================
+# DOCUMENTATION STRUCTURE
+# =============================================================================
+
+standard_sections:
+  - name: _meta.ts
+    required: true
+    description: Sidebar navigation order (Nextra format)
+
+  - name: index.md
+    required: true
+    description: Overview, routes, permissions, file structure
+
+  - name: components.md
+    required: false
+    description: Component tree, props, state
+
+  - name: data-flow.md
+    required: false
+    description: State management, data fetching patterns
+
+  - name: api.md
+    required: false
+    description: API routes, request/response schemas
+
+  - name: schema.md
+    required: false
+    description: Database tables, relationships
+
+  - name: business-logic.md
+    required: false
+    description: Validation rules, agent contracts, modules
+
+  - name: known-issues.md
+    required: false
+    description: Current limitations and bugs

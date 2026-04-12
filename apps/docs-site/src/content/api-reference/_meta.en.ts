@@ -1,0 +1,17 @@
+export default {
+  index: 'Overview',
+  projects: 'Projects',
+  research: 'Research',
+  ideas: 'Ideas',
+  stages: 'Stages',
+  blogs: 'Blogs',
+  videos: 'Videos',
+  podcasts: 'Podcasts',
+  shorts: 'Shorts',
+  'canonical-core': 'Canonical Core',
+  templates: 'Templates',
+  assets: 'Assets',
+  wordpress: 'WordPress',
+  ai: 'AI Config',
+  users: 'Users (Admin)',
+}

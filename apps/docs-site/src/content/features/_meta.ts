@@ -1,0 +1,18 @@
+export default {
+  index: 'Visão Geral',
+  '---1': { type: 'separator', title: 'Conteúdo' },
+  projects: 'Projetos',
+  research: 'Pesquisa',
+  ideas: 'Ideias',
+  '---2': { type: 'separator', title: 'Formatos' },
+  blogs: 'Blogs',
+  videos: 'Vídeos',
+  shorts: 'Shorts',
+  podcasts: 'Podcasts',
+  '---3': { type: 'separator', title: 'Mídia & Publicação' },
+  'image-bank': 'Image Bank',
+  wordpress: 'WordPress',
+  '---4': { type: 'separator', title: 'Config' },
+  templates: 'Templates',
+  settings: 'Settings',
+}

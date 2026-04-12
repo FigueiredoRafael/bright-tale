@@ -1,0 +1,184 @@
+# Fase 5 — Publicação
+
+**Objetivo:** YouTube upload, custom endpoints (webhooks), notificações de referências e affiliate system.
+
+**Specs:** `docs/specs/v2-simplified-flow.md` + `docs/specs/onboarding-channels.md`
+
+**Depende de:** Fase 4 (mídia gerada)
+
+**Progresso:** 0/9 concluídos
+
+---
+
+## Cards
+
+### F5-001 — YouTube upload: OAuth + API
+🔲 **Não iniciado**
+
+**Escopo:**
+- OAuth 2.0 flow para conectar canal YouTube
+- `POST /api/publish/youtube` — upload vídeo + metadata
+- Metadata: title, description, tags, thumbnail, category, privacy
+- Agendar publicação (scheduled publish)
+- Salvar youtube_video_id no draft
+
+**Critérios de aceite:**
+- [ ] OAuth conecta canal do usuário
+- [ ] Upload de vídeo funciona
+- [ ] Metadata (title, desc, tags, thumbnail) aplicados
+- [ ] Scheduled publish funciona
+
+**Concluído em:** —
+
+---
+
+### F5-002 — UI: Step 5 — Publicação
+🔲 **Não iniciado**
+
+**Escopo:**
+- Após aprovar mídia, mostrar destinos:
+  - 📝 Blog → WordPress / Custom endpoint
+  - 🎬 Vídeo → YouTube
+  - 📱 Shorts → YouTube
+- Botão "Publicar Tudo" (todos os destinos de uma vez)
+- Status de cada publicação (pending, published, failed)
+
+**Critérios de aceite:**
+- [ ] Publicar em WordPress funciona (já existe, integrar no novo flow)
+- [ ] Publicar no YouTube funciona
+- [ ] "Publicar Tudo" funciona
+- [ ] Status por destino
+
+**Concluído em:** —
+
+---
+
+### F5-003 — Custom endpoints (webhooks genéricos)
+🔲 **Não iniciado**
+
+**Escopo:**
+- Config por canal: URL, headers de auth, field mapping
+- `POST /api/publish/custom` — envia conteúdo para endpoint do usuário
+- Field mapping: qual campo BrightTale → qual campo do endpoint
+- Test connection (dry run)
+- Limites por plano (Creator: 3, Pro: ∞)
+
+**Critérios de aceite:**
+- [ ] Configurar endpoint custom funciona
+- [ ] Enviar conteúdo para endpoint funciona
+- [ ] Field mapping personalizável
+- [ ] Test connection funciona
+- [ ] Respeita limites do plano
+
+**Concluído em:** —
+
+---
+
+### F5-004 — UI: Config de destinos de publicação
+🔲 **Não iniciado**
+
+**Escopo:**
+- Em channel settings: seção "Publishing Destinations"
+- Lista de destinos configurados (WordPress, YouTube, Custom)
+- Modal para adicionar/editar destino custom
+- Test connection button
+- Badge de status (conectado/desconectado)
+
+**Critérios de aceite:**
+- [ ] Lista destinos com status
+- [ ] Adicionar custom endpoint funciona
+- [ ] Test connection funciona
+- [ ] Editar/remover funciona
+
+**Concluído em:** —
+
+---
+
+### F5-005 — Notificações de referências
+🔲 **Não iniciado**
+
+**Escopo:**
+- Cron job (semanal): buscar novos vídeos das referências
+- Se novo vídeo com engagement alto → criar notificação
+- `GET /api/channels/:id/notifications`
+- UI: banner/card "Ali Abdaal postou X que fez 450K views — modelar?"
+- Botão "Modelar" → pré-preenche brainstorm com referência
+
+**Critérios de aceite:**
+- [ ] Cron detecta novos vídeos
+- [ ] Notificação aparece no dashboard do canal
+- [ ] "Modelar" inicia brainstorm com dados da referência
+
+**Concluído em:** —
+
+---
+
+### F5-006 — Email transacional: setup Resend
+🔲 **Não iniciado**
+
+**Escopo:**
+- Integrar Resend para emails
+- Templates: welcome, invite, credit alerts, payment receipt, video ready, trial ending
+- Email sender: noreply@brighttale.io
+- Configurar domínio no Resend (DNS records)
+
+**Critérios de aceite:**
+- [ ] Welcome email enviado no signup
+- [ ] Invite email com magic link funciona
+- [ ] Credit alert (95%) enviado
+- [ ] Payment receipt após invoice.paid
+
+**Concluído em:** —
+
+---
+
+### F5-007 — Tabela publishing_destinations + migration
+🔲 **Não iniciado**
+
+**Escopo:**
+- Criar tabela `publishing_destinations`
+- Campos: channel_id, type (wordpress/youtube/custom), config_json, status
+- Migration + Zod schemas
+
+**Critérios de aceite:**
+- [ ] Migration roda
+- [ ] Tipos gerados
+
+**Concluído em:** —
+
+---
+
+### F5-008 — Affiliate system: tabelas base
+🔲 **Não iniciado**
+
+**Escopo:**
+- Criar tabelas: `affiliate_codes`, `affiliate_referrals`, `affiliate_commissions`
+- Gerar código único por org
+- Tracking: signup com código → referral → conversão (pagamento)
+- Dashboard básico: cliques, signups, conversões, comissão
+
+**Critérios de aceite:**
+- [ ] Código de referral gerado por org
+- [ ] Signup com código tracked
+- [ ] Conversão detectada no webhook de pagamento
+- [ ] Dashboard mostra métricas
+
+**Concluído em:** —
+
+---
+
+### F5-009 — UI: Dashboard de afiliado
+🔲 **Não iniciado**
+
+**Escopo:**
+- Página `/settings/affiliate`
+- Mostra: código, link de referral, QR code
+- Métricas: cliques, signups, conversões, comissão acumulada
+- Copiar link com 1 clique
+
+**Critérios de aceite:**
+- [ ] Link de referral copiável
+- [ ] Métricas atualizadas
+- [ ] Disponível para Starter+
+
+**Concluído em:** —
