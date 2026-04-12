@@ -1,4 +1,4 @@
-import IdeasPage from "@/app/ideas/page.client";
+import IdeasPage from "@/app/(app)/ideas/page.client";
 
 export const metadata = {
     title: "Idea Library | BrightCurios",

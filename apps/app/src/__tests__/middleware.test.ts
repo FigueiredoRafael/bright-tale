@@ -1,5 +1,19 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 import { buildProxyHeaders, middleware } from '@/middleware';
+
+// Mock the Supabase middleware client so tests don't require real Supabase
+vi.mock('@/lib/supabase/middleware', () => ({
+  createMiddlewareClient: vi.fn().mockReturnValue({
+    supabase: {
+      auth: {
+        getUser: vi.fn().mockResolvedValue({ data: { user: null } }),
+      },
+    },
+    response: vi.fn().mockReturnValue({
+      headers: new Headers(),
+    }),
+  }),
+}));
 
 describe('buildProxyHeaders', () => {
   it('injects x-internal-key', () => {
@@ -17,6 +31,11 @@ describe('buildProxyHeaders', () => {
     const input = new Headers({ 'x-user-id': 'attacker-uuid' });
     const headers = buildProxyHeaders(input, 'real-key');
     expect(headers.has('x-user-id')).toBe(false);
+  });
+
+  it('injects x-user-id when userId is provided', () => {
+    const headers = buildProxyHeaders(new Headers(), 'key', 'user-123');
+    expect(headers.get('x-user-id')).toBe('user-123');
   });
 
   it('generates x-request-id when absent', () => {
@@ -40,28 +59,42 @@ describe('buildProxyHeaders', () => {
 
 describe('middleware()', () => {
   const originalKey = process.env.INTERNAL_API_KEY;
+  const originalSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const originalSupabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  beforeEach(() => {
+    // Disable Supabase auth checks in API proxy tests
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  });
 
   afterEach(() => {
     if (originalKey === undefined) delete process.env.INTERNAL_API_KEY;
     else process.env.INTERNAL_API_KEY = originalKey;
+    if (originalSupabaseUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    else process.env.NEXT_PUBLIC_SUPABASE_URL = originalSupabaseUrl;
+    if (originalSupabaseKey === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = originalSupabaseKey;
   });
 
-  it('returns 500 MIDDLEWARE_MISCONFIGURED when INTERNAL_API_KEY is missing', async () => {
+  it('returns 500 MIDDLEWARE_MISCONFIGURED when INTERNAL_API_KEY is missing for /api routes', async () => {
     delete process.env.INTERNAL_API_KEY;
     const request = new Request('http://localhost:3000/api/projects') as unknown as Parameters<typeof middleware>[0];
-    const response = middleware(request);
+    (request as unknown as { nextUrl: URL }).nextUrl = new URL('http://localhost:3000/api/projects');
+    const response = await middleware(request);
     expect(response.status).toBe(500);
     const body = await response.json();
     expect(body.error.code).toBe('MIDDLEWARE_MISCONFIGURED');
     expect(body.data).toBeNull();
   });
 
-  it('returns NextResponse with injected headers when env is set', () => {
+  it('returns NextResponse with injected headers when env is set for /api routes', async () => {
     process.env.INTERNAL_API_KEY = 'test-secret';
     const request = new Request('http://localhost:3000/api/projects', {
       headers: { 'x-internal-key': 'forged', 'x-user-id': 'attacker' },
     }) as unknown as Parameters<typeof middleware>[0];
-    const response = middleware(request);
+    (request as unknown as { nextUrl: URL }).nextUrl = new URL('http://localhost:3000/api/projects');
+    const response = await middleware(request);
     // NextResponse.next({ request: { headers } }) serialises overrides via
     // x-middleware-override-headers + x-middleware-request-<name> headers.
     const overrides = response.headers.get('x-middleware-override-headers') ?? '';

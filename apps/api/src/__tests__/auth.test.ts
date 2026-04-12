@@ -79,6 +79,13 @@ vi.mock('@tn-figueiredo/auth-supabase', () => ({
 vi.mock('@/lib/supabase/index', () => ({
   createServiceClient: vi.fn().mockReturnValue({
     from: vi.fn().mockReturnValue({ upsert: mockUpsert }),
+    auth: {
+      admin: {
+        getUserById: vi.fn().mockResolvedValue({
+          data: { user: { id: 'user-uuid-123', email: 'test@brighttale.io' } },
+        }),
+      },
+    },
   }),
 }));
 
@@ -187,7 +194,7 @@ describe('Auth routes', () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       expect(mockUpsert).toHaveBeenCalledWith(
-        { id: 'user-uuid-123' },
+        { id: 'user-uuid-123', email: 'test@brighttale.io' },
         { onConflict: 'id', ignoreDuplicates: true },
       );
     });
