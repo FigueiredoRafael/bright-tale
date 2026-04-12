@@ -4,11 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
     Home, Layers, FileText, Database, Settings, Archive,
-    Lightbulb, PenLine, Video, Zap, Mic, Images, Wand2,
+    Lightbulb, PenLine, Video, Zap, Mic, Images, Wand2, Radio,
 } from "lucide-react";
 
 const navItems = [
     { href: "/", label: "Dashboard", icon: Home, exact: true },
+    { href: "/channels", label: "Channels", icon: Radio },
     { href: "/projects", label: "Projects", icon: Layers },
     { href: "/ideas", label: "Ideas", icon: Lightbulb },
     { href: "/research", label: "Research", icon: FileText },
