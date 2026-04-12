@@ -6,13 +6,13 @@ Tracking de progresso do desenvolvimento. Cada fase tem cards independentes. Mar
 
 | Fase | Nome | Cards | Concluídos | Status |
 |---|---|---:|---:|---|
-| [1](/milestones/phase-1-foundation) | **Fundação** | 12 | 0 | 🔲 Não iniciado |
-| [2](/milestones/phase-2-core) | **Core** | 14 | 0 | 🔲 Não iniciado |
+| [1](/milestones/phase-1-foundation) | **Fundação** | 12 | 12 | ✅ Concluído |
+| [2](/milestones/phase-2-core) | **Core** | 14 | 0 | 🟡 Em progresso |
 | [3](/milestones/phase-3-monetization) | **Monetização** | 10 | 0 | 🔲 Não iniciado |
 | [4](/milestones/phase-4-media) | **Mídia** | 11 | 0 | 🔲 Não iniciado |
 | [5](/milestones/phase-5-publishing) | **Publicação** | 9 | 0 | 🔲 Não iniciado |
 | [6](/milestones/phase-6-polish) | **Polish** | 8 | 0 | 🔲 Não iniciado |
-| | **Total** | **64** | **0** | |
+| | **Total** | **64** | **12** | |
 
 ## Legenda
 

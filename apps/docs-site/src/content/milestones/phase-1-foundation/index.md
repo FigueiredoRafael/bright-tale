@@ -4,14 +4,14 @@
 
 **Spec:** `docs/specs/auth-teams.md` + `docs/specs/infrastructure.md`
 
-**Progresso:** 0/12 concluídos
+**Progresso:** 12/12 concluídos ✅
 
 ---
 
 ## Cards
 
 ### F1-001 — Supabase Auth: signup + login
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - Configurar Supabase Auth (magic link + Google OAuth)
@@ -32,12 +32,12 @@
 - [ ] Rotas protegidas redirecionam para login
 - [ ] Session persiste entre reloads
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F1-002 — Tabela organizations + migration
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - Criar migration `organizations`
@@ -59,12 +59,12 @@
 - [ ] Signup cria org + membership (owner) automaticamente
 - [ ] `npm run db:types` gera tipos corretos
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F1-003 — API: CRUD de organizations
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - `GET /api/org` — org atual do usuário
@@ -77,12 +77,12 @@
 - [ ] Permissões por role funcionam
 - [ ] Owner pode deletar, admin/member não
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F1-004 — API: Team management (membros + convites)
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - `GET /api/org/members` — listar membros
@@ -98,12 +98,12 @@
 - [ ] Owner pode mudar roles, admin não
 - [ ] Member removido perde acesso imediato
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F1-005 — UI: Settings > Team
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - Página `/settings/team` com lista de membros
@@ -116,12 +116,12 @@
 - [ ] Modal de convite funciona
 - [ ] Ações respeitam permissões do role atual
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F1-006 — Adicionar org_id em todas as tabelas existentes
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - Migration adicionando `org_id` em: projects, channels, research_archives, idea_archives, blog_drafts, video_drafts, shorts_drafts, podcast_drafts, canonical_core, templates, assets, wordpress_configs, ai_provider_configs
@@ -135,12 +135,12 @@
 - [ ] Queries filtram por org_id do usuário logado
 - [ ] Cross-org access bloqueado
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F1-007 — Supabase Storage: buckets + policies
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - Criar buckets: `images`, `audio`, `video`, `thumbnails`, `exports`
@@ -156,12 +156,12 @@
 - [ ] Imagens existentes migradas
 - [ ] CDN URL funciona
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F1-008 — Tabela credit_usage + migration
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - Criar tabela `credit_usage`
@@ -174,12 +174,12 @@
 - [ ] Free plan: 1000 créditos por padrão
 - [ ] Tipos gerados
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F1-009 — Middleware de créditos (check + debit)
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - `checkCredits(orgId, userId, cost)` — verifica saldo antes de ação
@@ -194,12 +194,12 @@
 - [ ] Respeita member limit se configurado
 - [ ] Log em credit_usage
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F1-010 — UI: Dashboard de créditos
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - Widget no dashboard mostrando: saldo, % usado, data de reset
@@ -214,12 +214,12 @@
 - [ ] Uso por categoria funciona
 - [ ] Admin vê uso por membro
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F1-011 — Rate limiting
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - Integrar Upstash Redis para rate limiting
@@ -232,12 +232,12 @@
 - [ ] Headers corretos na response
 - [ ] 429 retorna tempo até reset
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F1-012 — Sentry + logs estruturados
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - Integrar Sentry no apps/app e apps/api
@@ -250,4 +250,4 @@
 - [ ] Logs têm org_id e request_id
 - [ ] Alerta de email no Sentry para erros novos
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12

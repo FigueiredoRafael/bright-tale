@@ -158,3 +158,17 @@ export {
   type UpdateMemberRole,
   type UpdateMemberCreditLimit,
 } from "./organizations";
+
+// Channels schemas
+export {
+  channelTypeSchema,
+  modelTierSchema,
+  createChannelSchema,
+  updateChannelSchema,
+  listChannelsQuerySchema,
+  type ChannelType,
+  type ModelTier,
+  type CreateChannel,
+  type UpdateChannel,
+  type ListChannelsQuery,
+} from "./channels";

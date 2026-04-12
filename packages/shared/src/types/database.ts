@@ -797,6 +797,96 @@ export type Database = {
         }
         Relationships: []
       }
+      channels: {
+        Row: {
+          id: string
+          org_id: string
+          user_id: string
+          name: string
+          niche: string | null
+          niche_tags: string[] | null
+          market: string
+          language: string
+          channel_type: string
+          is_evergreen: boolean
+          youtube_url: string | null
+          youtube_channel_id: string | null
+          blog_url: string | null
+          wordpress_config_id: string | null
+          voice_provider: string | null
+          voice_id: string | null
+          voice_speed: number
+          voice_style: string | null
+          model_tier: string
+          custom_model_config_json: Record<string, unknown> | null
+          tone: string | null
+          template_id: string | null  // text FK, not uuid
+          youtube_subs: number | null
+          youtube_monthly_views: number | null
+          estimated_revenue_brl: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          user_id: string
+          name: string
+          niche?: string | null
+          niche_tags?: string[] | null
+          market?: string
+          language?: string
+          channel_type?: string
+          is_evergreen?: boolean
+          youtube_url?: string | null
+          youtube_channel_id?: string | null
+          blog_url?: string | null
+          wordpress_config_id?: string | null
+          voice_provider?: string | null
+          voice_id?: string | null
+          voice_speed?: number
+          voice_style?: string | null
+          model_tier?: string
+          custom_model_config_json?: Record<string, unknown> | null
+          tone?: string | null
+          template_id?: string | null
+          youtube_subs?: number | null
+          youtube_monthly_views?: number | null
+          estimated_revenue_brl?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          user_id?: string
+          name?: string
+          niche?: string | null
+          niche_tags?: string[] | null
+          market?: string
+          language?: string
+          channel_type?: string
+          is_evergreen?: boolean
+          youtube_url?: string | null
+          youtube_channel_id?: string | null
+          blog_url?: string | null
+          wordpress_config_id?: string | null
+          voice_provider?: string | null
+          voice_id?: string | null
+          voice_speed?: number
+          voice_style?: string | null
+          model_tier?: string
+          custom_model_config_json?: Record<string, unknown> | null
+          tone?: string | null
+          template_id?: string | null
+          youtube_subs?: number | null
+          youtube_monthly_views?: number | null
+          estimated_revenue_brl?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       credit_usage: {
         Row: {
           id: string

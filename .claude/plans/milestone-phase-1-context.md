@@ -8,7 +8,7 @@ Auth, organizations, storage, and credit system. Nothing else works without this
 - `docs/superpowers/specs/2026-04-10-fastify-foundation-design.md` (SP1 — Fastify migration)
 - `docs/superpowers/plans/2026-04-10-fastify-foundation.md` (SP1 implementation plan)
 
-## Progress: 0/12 cards + SP1 prerequisite
+## Progress: 12/12 cards COMPLETE + SP1 prerequisite (was already done)
 
 ### Prerequisite: SP1 — Fastify Foundation
 **Status:** Not started
