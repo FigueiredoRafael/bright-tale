@@ -28,6 +28,8 @@ import { imageGenerationRoutes } from './routes/image-generation.js';
 import { wordpressRoutes } from './routes/wordpress.js';
 import { exportRoutes } from './routes/export.js';
 import { usersRoutes } from './routes/users.js';
+import { orgRoutes } from './routes/org.js';
+import { orgMembersRoutes } from './routes/org-members.js';
 
 const server = Fastify({ logger: true });
 
@@ -62,6 +64,8 @@ server.register(imageGenerationRoutes, { prefix: '/image-generation' });
 server.register(wordpressRoutes, { prefix: '/wordpress' });
 server.register(exportRoutes, { prefix: '/export' });
 server.register(usersRoutes, { prefix: '/users' });
+server.register(orgRoutes, { prefix: '/org' });
+server.register(orgMembersRoutes, { prefix: '/org' });
 
 if (!process.env.VERCEL) {
   const PORT = parseInt(process.env.PORT ?? '3001', 10);

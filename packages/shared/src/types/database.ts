@@ -797,6 +797,144 @@ export type Database = {
         }
         Relationships: []
       }
+      organizations: {
+        Row: {
+          id: string
+          name: string
+          slug: string
+          logo_url: string | null
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          plan: string
+          billing_cycle: string | null
+          plan_started_at: string | null
+          plan_expires_at: string | null
+          credits_total: number
+          credits_used: number
+          credits_reset_at: string | null
+          credits_addon: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          slug: string
+          logo_url?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          plan?: string
+          billing_cycle?: string | null
+          plan_started_at?: string | null
+          plan_expires_at?: string | null
+          credits_total?: number
+          credits_used?: number
+          credits_reset_at?: string | null
+          credits_addon?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          slug?: string
+          logo_url?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          plan?: string
+          billing_cycle?: string | null
+          plan_started_at?: string | null
+          plan_expires_at?: string | null
+          credits_total?: number
+          credits_used?: number
+          credits_reset_at?: string | null
+          credits_addon?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      org_memberships: {
+        Row: {
+          id: string
+          org_id: string
+          user_id: string
+          role: string
+          credit_limit: number | null
+          credits_used_cycle: number
+          invited_by: string | null
+          invited_at: string | null
+          accepted_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          user_id: string
+          role?: string
+          credit_limit?: number | null
+          credits_used_cycle?: number
+          invited_by?: string | null
+          invited_at?: string | null
+          accepted_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          user_id?: string
+          role?: string
+          credit_limit?: number | null
+          credits_used_cycle?: number
+          invited_by?: string | null
+          invited_at?: string | null
+          accepted_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      org_invites: {
+        Row: {
+          id: string
+          org_id: string
+          email: string
+          role: string
+          invited_by: string
+          token: string
+          status: string
+          expires_at: string
+          accepted_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          email: string
+          role?: string
+          invited_by: string
+          token: string
+          status?: string
+          expires_at: string
+          accepted_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          email?: string
+          role?: string
+          invited_by?: string
+          token?: string
+          status?: string
+          expires_at?: string
+          accepted_at?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           id: number
