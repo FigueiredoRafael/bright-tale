@@ -797,6 +797,42 @@ export type Database = {
         }
         Relationships: []
       }
+      credit_usage: {
+        Row: {
+          id: string
+          org_id: string
+          user_id: string
+          action: string
+          category: string
+          cost: number
+          source: string
+          metadata_json: Record<string, unknown> | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          user_id: string
+          action: string
+          category: string
+          cost: number
+          source?: string
+          metadata_json?: Record<string, unknown> | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          user_id?: string
+          action?: string
+          category?: string
+          cost?: number
+          source?: string
+          metadata_json?: Record<string, unknown> | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       organizations: {
         Row: {
           id: string

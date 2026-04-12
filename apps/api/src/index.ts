@@ -30,6 +30,7 @@ import { exportRoutes } from './routes/export.js';
 import { usersRoutes } from './routes/users.js';
 import { orgRoutes } from './routes/org.js';
 import { orgMembersRoutes } from './routes/org-members.js';
+import { creditsRoutes } from './routes/credits.js';
 
 const server = Fastify({ logger: true });
 
@@ -66,6 +67,7 @@ server.register(exportRoutes, { prefix: '/export' });
 server.register(usersRoutes, { prefix: '/users' });
 server.register(orgRoutes, { prefix: '/org' });
 server.register(orgMembersRoutes, { prefix: '/org' });
+server.register(creditsRoutes, { prefix: '/credits' });
 
 if (!process.env.VERCEL) {
   const PORT = parseInt(process.env.PORT ?? '3001', 10);
