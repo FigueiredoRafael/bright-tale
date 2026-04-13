@@ -202,7 +202,7 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
         : (FORMAT_COSTS[type] ?? 200) + CANONICAL_CORE_COST;
 
       if (totalCost > 0) await checkCredits(orgId, request.userId, totalCost);
-      await emitJobEvent(id, 'production', 'queued', 'Na fila, começando já…');
+      await emitJobEvent(id, 'production', 'queued', 'Iniciando…');
 
       // Override params from this call take precedence over the ones saved on
       // the draft. If new params come in, persist so future "Refazer" without

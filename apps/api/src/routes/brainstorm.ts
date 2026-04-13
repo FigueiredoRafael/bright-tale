@@ -90,7 +90,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       if (insertErr || !session) throw insertErr ?? new ApiError(500, 'Failed to create session', 'DB_ERROR');
 
       // Seed a "queued" event so the SSE stream has something to show immediately.
-      await emitJobEvent(session.id, 'brainstorm', 'queued', 'Na fila, começando já…');
+      await emitJobEvent(session.id, 'brainstorm', 'queued', 'Iniciando…');
 
       // Fire-and-forget: Inngest runs the job in the background.
       await inngest.send({

@@ -121,7 +121,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
       if (insertErr || !session) throw insertErr ?? new ApiError(500, 'Failed to create session', 'INTERNAL');
 
-      await emitJobEvent(session.id, 'research', 'queued', 'Na fila, começando já…');
+      await emitJobEvent(session.id, 'research', 'queued', 'Iniciando…');
 
       await inngest.send({
         name: 'research/generate',
