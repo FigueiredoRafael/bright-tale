@@ -643,6 +643,7 @@ export type Database = {
           id: string
           idea_id: string | null
           org_id: string
+          production_params: Json | null
           published_at: string | null
           published_url: string | null
           research_session_id: string | null
@@ -662,6 +663,7 @@ export type Database = {
           id?: string
           idea_id?: string | null
           org_id: string
+          production_params?: Json | null
           published_at?: string | null
           published_url?: string | null
           research_session_id?: string | null
@@ -681,6 +683,7 @@ export type Database = {
           id?: string
           idea_id?: string | null
           org_id?: string
+          production_params?: Json | null
           published_at?: string | null
           published_url?: string | null
           research_session_id?: string | null

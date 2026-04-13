@@ -37,6 +37,7 @@ interface ProductionGenerateEvent {
     modelTier: string;
     provider?: 'gemini' | 'openai' | 'anthropic' | 'ollama';
     model?: string;
+    productionParams?: Record<string, unknown> | null;
   };
 }
 
@@ -47,7 +48,7 @@ export const productionGenerate = inngest.createFunction(
     triggers: [{ event: 'production/generate' }],
   },
   async ({ event, step }: { event: ProductionGenerateEvent; step: { run: (name: string, fn: () => Promise<unknown>) => Promise<unknown> } }) => {
-    const { draftId, orgId, userId, type, modelTier, provider, model } = event.data;
+    const { draftId, orgId, userId, type, modelTier, provider, model, productionParams } = event.data;
     const sb = createServiceClient();
     const cost = applyProviderDiscount(FORMAT_COSTS[type] ?? 200, provider);
     const coreCost = applyProviderDiscount(CANONICAL_CORE_COST, provider);
@@ -96,6 +97,7 @@ export const productionGenerate = inngest.createFunction(
               title: draft.title,
               ideaId: draft.idea_id,
               researchCards: approvedCards,
+              production_params: productionParams ?? null,
             },
             schema: null,
             systemPrompt: coreSystemPrompt ?? undefined,
@@ -140,6 +142,7 @@ export const productionGenerate = inngest.createFunction(
               title: draft.title,
               canonicalCore,
               researchSessionId: draft.research_session_id,
+              production_params: productionParams ?? null,
             },
             schema: null,
             systemPrompt: produceSystemPrompt ?? undefined,

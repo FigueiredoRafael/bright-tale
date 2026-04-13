@@ -34,12 +34,14 @@ const createSchema = z.object({
   type: z.enum(['blog', 'video', 'shorts', 'podcast']),
   title: z.string().optional(),
   modelTier: z.string().default('standard'),
+  productionParams: z.record(z.unknown()).optional(),
 });
 
 const providerOverrideSchema = z.object({
   provider: z.enum(['gemini', 'openai', 'anthropic', 'ollama']).optional(),
   model: z.string().optional(),
   modelTier: z.string().optional(),
+  productionParams: z.record(z.unknown()).optional(),
 });
 
 const updateSchema = z.object({
@@ -98,6 +100,7 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
           type: body.type,
           title: body.title ?? null,
           status: 'draft',
+          production_params: body.productionParams ?? null,
         })
         .select()
         .single();
@@ -201,6 +204,19 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
       if (totalCost > 0) await checkCredits(orgId, request.userId, totalCost);
       await emitJobEvent(id, 'production', 'queued', 'Na fila, começando já…');
 
+      // Override params from this call take precedence over the ones saved on
+      // the draft. If new params come in, persist so future "Refazer" without
+      // params remembers the latest choice.
+      const params = override.productionParams ?? (draft.production_params as Record<string, unknown> | null) ?? null;
+      if (override.productionParams) {
+        const sb = createServiceClient();
+        await (sb.from('content_drafts') as unknown as {
+          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+        })
+          .update({ production_params: override.productionParams })
+          .eq('id', id);
+      }
+
       await inngest.send({
         name: 'production/generate',
         data: {
@@ -211,6 +227,7 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
           modelTier: override.modelTier ?? (draft.model_tier as string) ?? 'standard',
           provider: override.provider,
           model: override.model,
+          productionParams: params,
         },
       });
 

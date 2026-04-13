@@ -38,6 +38,9 @@ export default function NewDraftPage() {
     const [editingTitle, setEditingTitle] = useState(false);
     const [provider, setProvider] = useState<ProviderId>("ollama");
     const [model, setModel] = useState<string>("qwen2.5:7b");
+    const [targetWords, setTargetWords] = useState<number>(700);
+    const [targetMinutes, setTargetMinutes] = useState<number>(8);
+    const [targetShortsSeconds, setTargetShortsSeconds] = useState<number>(30);
 
     // If query has researchSessionId, fetch and prefill.
     useEffect(() => {
@@ -90,6 +93,12 @@ export default function NewDraftPage() {
             toast.error("Informe um título");
             return;
         }
+        // Build production_params based on the chosen format.
+        const productionParams: Record<string, unknown> = {};
+        if (type === "blog") productionParams.target_word_count = targetWords;
+        if (type === "video" || type === "podcast") productionParams.target_duration_minutes = targetMinutes;
+        if (type === "shorts") productionParams.target_duration_minutes = targetShortsSeconds / 60;
+
         const draft = await runStep("criar draft", () =>
             fetch("/api/content-drafts", {
                 method: "POST",
@@ -100,6 +109,7 @@ export default function NewDraftPage() {
                     researchSessionId: research.id,
                     type,
                     title,
+                    productionParams,
                 }),
             }),
         );
@@ -260,6 +270,62 @@ export default function NewDraftPage() {
                             })}
                         </div>
                     </div>
+
+                    {/* Per-type target length picker */}
+                    {type === "blog" && (
+                        <div className="space-y-2">
+                            <Label>Tamanho do post</Label>
+                            <div className="grid grid-cols-4 gap-2">
+                                {[300, 500, 700, 1000, 1500, 2000].slice(0, 4).map((n) => (
+                                    <button
+                                        key={n}
+                                        onClick={() => setTargetWords(n)}
+                                        className={`p-2 rounded-md border text-sm ${
+                                            targetWords === n ? "border-primary bg-primary/5 text-primary font-medium" : "border-border hover:border-muted-foreground/30"
+                                        }`}
+                                    >
+                                        {n}<span className="text-xs text-muted-foreground"> palavras</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {(type === "video" || type === "podcast") && (
+                        <div className="space-y-2">
+                            <Label>Duração alvo</Label>
+                            <div className="grid grid-cols-5 gap-2">
+                                {(type === "video" ? [3, 5, 8, 10, 15] : [10, 20, 30, 45, 60]).map((m) => (
+                                    <button
+                                        key={m}
+                                        onClick={() => setTargetMinutes(m)}
+                                        className={`p-2 rounded-md border text-sm ${
+                                            targetMinutes === m ? "border-primary bg-primary/5 text-primary font-medium" : "border-border hover:border-muted-foreground/30"
+                                        }`}
+                                    >
+                                        {m}<span className="text-xs text-muted-foreground">min</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {type === "shorts" && (
+                        <div className="space-y-2">
+                            <Label>Duração</Label>
+                            <div className="grid grid-cols-3 gap-2">
+                                {[15, 30, 60].map((s) => (
+                                    <button
+                                        key={s}
+                                        onClick={() => setTargetShortsSeconds(s)}
+                                        className={`p-2 rounded-md border text-sm ${
+                                            targetShortsSeconds === s ? "border-primary bg-primary/5 text-primary font-medium" : "border-border hover:border-muted-foreground/30"
+                                        }`}
+                                    >
+                                        {s}<span className="text-xs text-muted-foreground">s</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     <ModelPicker
                         provider={provider}
