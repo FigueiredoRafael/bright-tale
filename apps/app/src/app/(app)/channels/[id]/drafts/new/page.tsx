@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Loader2, Sparkles, FileText, Video, Zap, Mic, ArrowLeft, Check, BookOpen, Pencil } from "lucide-react";
 import { ResearchPickerModal, type ResearchOption } from "@/components/research/ResearchPickerModal";
+import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
+import { friendlyAiError } from "@/lib/ai/error-message";
 
 type DraftType = "blog" | "video" | "shorts" | "podcast";
 
@@ -32,6 +34,8 @@ export default function NewDraftPage() {
     const [type, setType] = useState<DraftType>("blog");
     const [title, setTitle] = useState("");
     const [editingTitle, setEditingTitle] = useState(false);
+    const [provider, setProvider] = useState<ProviderId>("ollama");
+    const [model, setModel] = useState<string>("qwen2.5:7b");
 
     // If query has researchSessionId, fetch and prefill.
     useEffect(() => {
@@ -61,7 +65,8 @@ export default function NewDraftPage() {
             const res = await fn();
             const json = await res.json();
             if (json.error) {
-                toast.error(`${label}: ${json.error.message}`);
+                const friendly = friendlyAiError(json.error.message ?? "");
+                toast.error(`${label}: ${friendly.title}`, { description: friendly.hint });
                 return null;
             }
             return json.data;
@@ -100,14 +105,23 @@ export default function NewDraftPage() {
         setDraftId((draft as { id: string }).id);
         setStep("core");
 
+        const aiBody = JSON.stringify({ provider, model });
         const core = await runStep("canonical core", () =>
-            fetch(`/api/content-drafts/${(draft as { id: string }).id}/canonical-core`, { method: "POST" }),
+            fetch(`/api/content-drafts/${(draft as { id: string }).id}/canonical-core`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: aiBody,
+            }),
         );
         if (!core) return;
         setStep("produce");
 
         const produced = await runStep("produção", () =>
-            fetch(`/api/content-drafts/${(draft as { id: string }).id}/produce`, { method: "POST" }),
+            fetch(`/api/content-drafts/${(draft as { id: string }).id}/produce`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: aiBody,
+            }),
         );
         if (!produced) return;
         setOutput((produced as { draft_json?: unknown }).draft_json);
@@ -222,6 +236,17 @@ export default function NewDraftPage() {
                             })}
                         </div>
                     </div>
+
+                    <ModelPicker
+                        provider={provider}
+                        model={model}
+                        recommended={{ provider: null, model: null }}
+                        onProviderChange={(p) => {
+                            setProvider(p);
+                            setModel(MODELS_BY_PROVIDER[p][0].id);
+                        }}
+                        onModelChange={setModel}
+                    />
 
                     <Button onClick={handleStart} disabled={busy || step !== "setup" || !research}>
                         {busy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}

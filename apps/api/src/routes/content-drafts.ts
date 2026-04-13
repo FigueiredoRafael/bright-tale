@@ -34,6 +34,12 @@ const createSchema = z.object({
   modelTier: z.string().default('standard'),
 });
 
+const providerOverrideSchema = z.object({
+  provider: z.enum(['gemini', 'openai', 'anthropic', 'ollama']).optional(),
+  model: z.string().optional(),
+  modelTier: z.string().optional(),
+});
+
 const updateSchema = z.object({
   title: z.string().optional(),
   draftJson: z.record(z.unknown()).optional(),
@@ -181,6 +187,7 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
       if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
       const sb = createServiceClient();
       const { id } = request.params as { id: string };
+      const override = providerOverrideSchema.parse(request.body ?? {});
       const draft = await loadDraft(id) as Record<string, unknown>;
       const orgId = await getOrgId(request.userId);
 
@@ -202,7 +209,7 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
 
       const { result } = await generateWithFallback(
         'production',
-        (draft.model_tier as string) ?? 'standard',
+        override.modelTier ?? (draft.model_tier as string) ?? 'standard',
         {
           agentType: 'production',
           input: {
@@ -215,6 +222,7 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
           schema: null,
           systemPrompt,
         },
+        { provider: override.provider, model: override.model },
       );
 
       const { data: updated, error } = await (sb.from('content_drafts') as unknown as {
@@ -249,6 +257,7 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
       if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
       const sb = createServiceClient();
       const { id } = request.params as { id: string };
+      const override = providerOverrideSchema.parse(request.body ?? {});
       const draft = await loadDraft(id) as Record<string, unknown>;
       const orgId = await getOrgId(request.userId);
 
@@ -261,7 +270,7 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
 
       const { result } = await generateWithFallback(
         'production',
-        (draft.model_tier as string) ?? 'standard',
+        override.modelTier ?? (draft.model_tier as string) ?? 'standard',
         {
           agentType: 'production',
           input: {
@@ -274,6 +283,7 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
           schema: null,
           systemPrompt,
         },
+        { provider: override.provider, model: override.model },
       );
 
       const { data: updated, error } = await (sb.from('content_drafts') as unknown as {
