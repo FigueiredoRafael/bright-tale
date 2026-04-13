@@ -65,7 +65,7 @@ describe("Shorts and Video Schema Resilience", () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         const issue = result.error.issues[0];
-        expect(issue.code).toBe("invalid_value");
+        expect(issue.code).toBe("invalid_enum_value");
       }
     });
   });

@@ -11,8 +11,8 @@ Tracking de progresso do desenvolvimento. Cada fase tem cards independentes. Mar
 | [3](/milestones/phase-3-monetization) | **Monetização** | 10 | 0 | 🔲 Não iniciado |
 | [4](/milestones/phase-4-media) | **Mídia** | 11 | 0 | 🔲 Não iniciado |
 | [5](/milestones/phase-5-publishing) | **Publicação** | 9 | 0 | 🔲 Não iniciado |
-| [6](/milestones/phase-6-polish) | **Polish** | 8 | 0 | 🔲 Não iniciado |
-| | **Total** | **64** | **26** | |
+| [6](/milestones/phase-6-polish) | **Polish** | 9 | 0 | 🔲 Não iniciado |
+| | **Total** | **65** | **26** | |
 
 ## Legenda
 

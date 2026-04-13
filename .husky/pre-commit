@@ -10,6 +10,9 @@ npm run typecheck
 echo "→ Lint all workspaces..."
 npm run lint
 
+echo "→ Run tests in all workspaces..."
+npm run test --workspaces --if-present
+
 echo "→ Build all workspaces (same as Vercel)..."
 npm run build --workspaces --if-present
 

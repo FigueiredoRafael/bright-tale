@@ -6,7 +6,7 @@
 
 **Depende de:** Fases 1-5 (tudo funcional)
 
-**Progresso:** 0/8 concluídos
+**Progresso:** 0/9 concluídos
 
 > ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
 > Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
@@ -167,5 +167,39 @@
 - [ ] Database Schema corresponde ao banco real
 - [ ] Features corresponde ao app real
 - [ ] Zero drift detectado
+
+**Concluído em:** —
+
+---
+
+### F6-009 — Deprecar `projects` e `stages` (simplificar para channel → idea → draft)
+🔲 **Não iniciado**
+
+**Contexto:**
+No V1 o modelo era `projects` como ticket que atravessava um pipeline manual (discovery → research → production → review → publish). No V2 o pipeline é automático (Inngest) e a unidade natural virou **Channel → Idea → Draft**. `projects` e `stages` viraram camada de indireção desnecessária.
+
+**Escopo:**
+- Migration: `blog_drafts`, `video_drafts`, `shorts_drafts`, `podcast_drafts` ganham `idea_id` direto (FK para `idea_archives`)
+- Migration: backfill `idea_id` a partir de `project_id` → `stages` (onde possível)
+- Remover páginas `/projects` do `apps/app` (usuário final) — artefato V1
+- `Ideas` vira o "dashboard de produção" do user (lista de ideias com drafts vinculados)
+- Manter `projects` + `stages` no banco apenas como legacy (read-only) para compat
+- Admin (`apps/web`) pode manter visão projects pra debug de dados históricos
+- Atualizar Inngest job `content-generate` pra linkar drafts a `idea_id`, não criar project
+- Atualizar sidebar: remover link de Projects no user app
+
+**Critérios de aceite:**
+- [ ] Migration adiciona `idea_id` nas 4 tabelas de drafts
+- [ ] Backfill preserva rastreabilidade de dados antigos
+- [ ] `/projects` não aparece mais no user app
+- [ ] Ideas page mostra drafts vinculados a cada idea
+- [ ] Inngest job cria drafts com `idea_id` direto (sem criar project)
+- [ ] Admin web mantém leitura de projects legacy
+
+**Testes obrigatórios:**
+- [ ] Migration roda sem erro e backfill funciona
+- [ ] Drafts criados via flow novo tem `idea_id` populado
+- [ ] Query `SELECT * FROM blog_drafts WHERE idea_id = ?` retorna todos drafts da idea
+- [ ] Admin web ainda renderiza projects legacy sem erro
 
 **Concluído em:** —
