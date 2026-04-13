@@ -31,7 +31,7 @@ export default function Sidebar() {
             label: "Principal",
             items: [
                 { href: "/", label: "Dashboard", icon: Home, exact: true },
-                { href: "/channels", label: "Channels", icon: Radio },
+                { href: "/channels", label: "Content Channels", icon: Radio },
             ],
         },
         {
@@ -43,7 +43,7 @@ export default function Sidebar() {
                     { href: "/research", label: "Research", icon: FileText },
                 ]
                 : [
-                    { href: "/onboarding", label: "Create Channel First", icon: Sparkles },
+                    { href: "/onboarding", label: "Create Content Channel", icon: Sparkles },
                 ],
         },
         {

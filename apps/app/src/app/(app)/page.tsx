@@ -1,6 +1,5 @@
 "use client";
 
-import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -60,7 +59,7 @@ export default function Home() {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <>
         <div className="space-y-4">
           <div className="h-10 w-64 bg-muted animate-pulse rounded" />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -68,14 +67,14 @@ export default function Home() {
             <div className="h-32 bg-muted animate-pulse rounded-lg" />
           </div>
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   // No channels → redirecting to onboarding (brief flicker)
   if (channels.length === 0) {
     return (
-      <DashboardLayout>
+      <>
         <Card className="max-w-lg mx-auto mt-20">
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
@@ -90,13 +89,13 @@ export default function Home() {
             </Button>
           </CardContent>
         </Card>
-      </DashboardLayout>
+      </>
     );
   }
 
   // Has channels — show dashboard
   return (
-    <DashboardLayout>
+    <>
       <div className="space-y-5 animate-[fadeInUp_0.4s_ease_both]">
         {/* Header with active channel */}
         <div className="flex items-center justify-between">
@@ -115,7 +114,7 @@ export default function Home() {
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
-          <StatCard label="Channels" value={channels.length} icon={Radio} />
+          <StatCard label="Content Channels" value={channels.length} icon={Radio} />
           <StatCard label="Ideas" value="—" icon={Lightbulb} />
           <StatCard label="Drafts" value="—" icon={PenLine} />
           <StatCard label="Published" value="—" icon={ChevronRight} />
@@ -206,6 +205,6 @@ export default function Home() {
           </div>
         )}
       </div>
-    </DashboardLayout>
+    </>
   );
 }

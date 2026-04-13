@@ -25,6 +25,7 @@ import {
   ArrowLeft,
   RefreshCw,
 } from 'lucide-react';
+import { NichePicker } from '@/components/channels/NichePicker';
 
 interface Channel {
   id: string;
@@ -187,7 +188,7 @@ export default function ChannelDetailPage() {
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="sm" onClick={() => router.push('/channels')}>
-          <ArrowLeft className="h-4 w-4 mr-1" /> Channels
+          <ArrowLeft className="h-4 w-4 mr-1" /> Content Channels
         </Button>
         <h1 className="text-2xl font-bold">{channel.name}</h1>
       </div>
@@ -206,7 +207,7 @@ export default function ChannelDetailPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Settings className="h-5 w-5" /> Channel Settings
+            <Settings className="h-5 w-5" /> Content Channel Settings
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -215,9 +216,9 @@ export default function ChannelDetailPage() {
               <Label>Name</Label>
               <Input value={name} onChange={(e) => setName(e.target.value)} />
             </div>
-            <div className="space-y-2">
-              <Label>Niche</Label>
-              <Input value={niche} onChange={(e) => setNiche(e.target.value)} placeholder="e.g. Produtividade" />
+            <div className="space-y-2 col-span-2">
+              <Label>Nicho</Label>
+              <NichePicker value={niche} onChange={setNiche} />
             </div>
             <div className="space-y-2">
               <Label>Market</Label>

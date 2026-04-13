@@ -88,7 +88,7 @@ export default function ChannelsPage() {
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
               <Sparkles className="h-8 w-8 text-primary" />
             </div>
-            <h2 className="text-xl font-bold mb-2">Create your first channel</h2>
+            <h2 className="text-xl font-bold mb-2">Create your first content channel</h2>
             <p className="text-muted-foreground text-sm mb-6 max-w-sm">
               A channel is a content project — YouTube, blog, or both.
               Set up your niche, language, and style to start producing content.
@@ -107,14 +107,14 @@ export default function ChannelsPage() {
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Channels</h1>
+          <h1 className="text-2xl font-bold">Content Channels</h1>
           <p className="text-muted-foreground text-sm">
-            {channels.length} channel{channels.length !== 1 ? 's' : ''}
+            {channels.length} content channel{channels.length !== 1 ? 's' : ''}
           </p>
         </div>
         <Button onClick={() => router.push('/onboarding')}>
           <Plus className="h-4 w-4 mr-2" />
-          New Channel
+          New Content Channel
         </Button>
       </div>
 

@@ -35,7 +35,7 @@ export function ChannelSwitcher() {
             <Plus className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <div className="text-xs font-medium text-foreground">Create channel</div>
+            <div className="text-xs font-medium text-foreground">Create content channel</div>
             <div className="text-[10px] text-muted-foreground">Get started</div>
           </div>
         </div>
@@ -54,7 +54,7 @@ export function ChannelSwitcher() {
               </div>
               <div className="min-w-0">
                 <div className="text-xs font-medium text-foreground truncate">
-                  {activeChannel?.name ?? 'Select channel'}
+                  {activeChannel?.name ?? 'Select content channel'}
                 </div>
                 <div className="text-[10px] text-muted-foreground truncate">
                   {activeChannel?.niche ?? activeChannel?.channel_type ?? '—'}
@@ -66,7 +66,7 @@ export function ChannelSwitcher() {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56" sideOffset={4}>
           <div className="px-2 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-            Your Channels
+            Your Content Channels
           </div>
           {channels.map((c) => (
             <DropdownMenuItem
@@ -88,7 +88,7 @@ export function ChannelSwitcher() {
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => router.push('/onboarding')} className="cursor-pointer">
             <Plus className="h-3.5 w-3.5 mr-2" />
-            <span className="text-xs">Create new channel</span>
+            <span className="text-xs">Create new content channel</span>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => router.push('/channels')} className="cursor-pointer">
             <Radio className="h-3.5 w-3.5 mr-2" />
