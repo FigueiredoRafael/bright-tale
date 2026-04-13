@@ -61,9 +61,9 @@ export default function NewResearchPage() {
         if (!ideaIdParam) return;
         (async () => {
             try {
-                const res = await fetch(`/api/ideas/${ideaIdParam}`);
+                const res = await fetch(`/api/ideas/library/${ideaIdParam}`);
                 const json = await res.json();
-                if (json?.data?.title) setTopic(json.data.title);
+                if (json?.data?.idea?.title) setTopic(json.data.idea.title);
             } catch {
                 // silent
             }

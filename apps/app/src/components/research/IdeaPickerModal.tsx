@@ -31,9 +31,9 @@ export function IdeaPickerModal({ open, channelId, onSelect, onClose }: Props) {
         setLoading(true);
         (async () => {
             try {
-                const res = await fetch(`/api/ideas?channel_id=${channelId}&limit=100`);
+                const res = await fetch(`/api/ideas/library?channel_id=${channelId}&limit=100`);
                 const json = await res.json();
-                setIdeas(json?.data?.items ?? []);
+                setIdeas(json?.data?.ideas ?? json?.data?.items ?? []);
             } catch {
                 setIdeas([]);
             } finally {
