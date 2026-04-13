@@ -9,10 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, Lightbulb, Sparkles, ArrowLeft, ArrowRight } from "lucide-react";
+import { Loader2, Lightbulb, Sparkles, ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
 import { friendlyAiError } from "@/lib/ai/error-message";
 import { GenerationProgressModal } from "@/components/generation/GenerationProgressModal";
+import { ConfirmRegenerateModal } from "@/components/generation/ConfirmRegenerateModal";
 import { WizardStepper } from "@/components/generation/WizardStepper";
 
 type Mode = "blind" | "fine_tuned" | "reference_guided";
@@ -63,6 +64,7 @@ export default function NewBrainstormPage() {
     const [running, setRunning] = useState(false);
     const [ideas, setIdeas] = useState<Idea[]>([]);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+    const [confirmRegen, setConfirmRegen] = useState(false);
 
     // Fetch the brainstorm agent's recommended provider/model so we can render
     // the "Recommended" badge and prefill the picker.
@@ -175,6 +177,20 @@ export default function NewBrainstormPage() {
 
     return (
         <div className="p-6 max-w-4xl mx-auto space-y-6">
+            <ConfirmRegenerateModal
+                open={confirmRegen}
+                title="Refazer brainstorm?"
+                description="Vai gerar um novo conjunto de ideias com o tema atual. As ideias anteriores ficam salvas no histórico."
+                initialProvider={provider}
+                initialModel={model}
+                onConfirm={async (p, m) => {
+                    setProvider(p);
+                    setModel(m);
+                    setConfirmRegen(false);
+                    await handleRun();
+                }}
+                onClose={() => setConfirmRegen(false)}
+            />
             {activeSessionId && (
                 <GenerationProgressModal
                     open={!!activeSessionId}
@@ -303,8 +319,13 @@ export default function NewBrainstormPage() {
             {ideas.length > 0 && (
                 <Card>
                     <CardHeader>
-                        <CardTitle className="text-base flex items-center gap-2">
-                            Ideias geradas <Badge variant="secondary" className="text-[10px]">{ideas.length}</Badge>
+                        <CardTitle className="text-base flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-2">
+                                Ideias geradas <Badge variant="secondary" className="text-[10px]">{ideas.length}</Badge>
+                            </span>
+                            <Button onClick={() => setConfirmRegen(true)} variant="outline" size="sm" disabled={running}>
+                                <RefreshCw className="h-4 w-4 mr-1.5" /> Refazer
+                            </Button>
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">

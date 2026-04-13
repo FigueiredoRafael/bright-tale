@@ -11,9 +11,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Loader2, Search, ArrowLeft, ArrowRight, Check, Lightbulb } from "lucide-react";
+import { Loader2, Search, ArrowLeft, ArrowRight, Check, Lightbulb, RefreshCw } from "lucide-react";
 import { IdeaPickerModal, type IdeaOption } from "@/components/research/IdeaPickerModal";
 import { GenerationProgressModal } from "@/components/generation/GenerationProgressModal";
+import { ConfirmRegenerateModal } from "@/components/generation/ConfirmRegenerateModal";
 import { WizardStepper } from "@/components/generation/WizardStepper";
 
 type Level = "surface" | "medium" | "deep";
@@ -90,6 +91,7 @@ export default function NewResearchPage() {
     }, []);
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+    const [confirmRegen, setConfirmRegen] = useState(false);
     const [cards, setCards] = useState<Card[]>([]);
     const [approved, setApproved] = useState<Set<number>>(new Set());
 
@@ -217,6 +219,20 @@ export default function NewResearchPage() {
                     onClose={() => { setActiveSessionId(null); setRunning(false); }}
                 />
             )}
+            <ConfirmRegenerateModal
+                open={confirmRegen}
+                title="Refazer pesquisa?"
+                description="Vai gerar novos cards de pesquisa com o mesmo tema/level. Os cards anteriores ficam salvos no histórico."
+                initialProvider={provider}
+                initialModel={model}
+                onConfirm={async (p, m) => {
+                    setProvider(p);
+                    setModel(m);
+                    setConfirmRegen(false);
+                    await handleRun();
+                }}
+                onClose={() => setConfirmRegen(false)}
+            />
             <div>
                 <button
                     onClick={() => router.back()}
@@ -314,7 +330,12 @@ export default function NewResearchPage() {
                     <CardHeader>
                         <CardTitle className="text-base flex items-center justify-between">
                             <span>Cards de pesquisa <Badge variant="secondary" className="text-[10px] ml-1">{cards.length}</Badge></span>
-                            <span className="text-xs text-muted-foreground font-normal">{approved.size} aprovados</span>
+                            <div className="flex items-center gap-3">
+                                <span className="text-xs text-muted-foreground font-normal">{approved.size} aprovados</span>
+                                <Button onClick={() => setConfirmRegen(true)} variant="outline" size="sm" disabled={running}>
+                                    <RefreshCw className="h-4 w-4 mr-1.5" /> Refazer
+                                </Button>
+                            </div>
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">

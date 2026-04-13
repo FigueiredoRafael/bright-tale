@@ -7,10 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
     ArrowLeft, FileText, Video, Zap, Mic, Loader2, Sparkles, Code2, MessageSquare, Trash2,
-    Check, ThumbsUp, AlertCircle, Lightbulb, Hash, Globe, Star,
+    Check, ThumbsUp, AlertCircle, Lightbulb, Hash, Globe, Star, RefreshCw,
 } from "lucide-react";
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
 import { GenerationProgressModal } from "@/components/generation/GenerationProgressModal";
+import { ConfirmRegenerateModal } from "@/components/generation/ConfirmRegenerateModal";
 import { friendlyAiError } from "@/lib/ai/error-message";
 import { toast } from "sonner";
 
@@ -134,6 +135,7 @@ export default function DraftViewPage() {
     const [provider, setProvider] = useState<ProviderId>("ollama");
     const [model, setModel] = useState<string>("qwen2.5:7b");
     const [generating, setGenerating] = useState(false);
+    const [confirmRegen, setConfirmRegen] = useState(false);
     const [editingBody, setEditingBody] = useState(false);
     const [bodyDraft, setBodyDraft] = useState("");
     const [savingBody, setSavingBody] = useState(false);
@@ -145,7 +147,7 @@ export default function DraftViewPage() {
     }
 
     const inFlightRef = useRef(false);
-    async function startGeneration() {
+    async function startGeneration(useProvider?: ProviderId, useModel?: string) {
         // Refs update synchronously — React state has a render-cycle delay,
         // so two clicks in the same tick can both pass a state-only guard.
         if (inFlightRef.current || generating) return;
@@ -155,7 +157,7 @@ export default function DraftViewPage() {
             const res = await fetch(`/api/content-drafts/${draftId}/generate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ provider, model }),
+                body: JSON.stringify({ provider: useProvider ?? provider, model: useModel ?? model }),
             });
             const json = await res.json();
             if (json?.error) {
@@ -376,6 +378,20 @@ export default function DraftViewPage() {
                 </div>
             </div>
 
+            <ConfirmRegenerateModal
+                open={confirmRegen}
+                title={`Refazer ${meta.label.toLowerCase()}?`}
+                description="Roda canonical core + produção + revisão de novo. O conteúdo atual vai ser substituído."
+                initialProvider={provider}
+                initialModel={model}
+                onConfirm={async (p, m) => {
+                    setProvider(p);
+                    setModel(m);
+                    setConfirmRegen(false);
+                    await startGeneration(p, m);
+                }}
+                onClose={() => setConfirmRegen(false)}
+            />
             {generating && (
                 <GenerationProgressModal
                     open={generating}
@@ -413,7 +429,7 @@ export default function DraftViewPage() {
                             onModelChange={setModel}
                         />
                         <div className="flex justify-center">
-                            <Button onClick={startGeneration} disabled={generating}>
+                            <Button onClick={() => startGeneration()} disabled={generating}>
                                 <Sparkles className="h-4 w-4 mr-2" />
                                 {draft.status === "failed" ? "Tentar de novo" : "Gerar agora"}
                             </Button>
@@ -647,6 +663,14 @@ export default function DraftViewPage() {
                             {isPublished ? "Publicado" : isApproved ? "Aprovado, pronto pra publicar" : "Em revisão — aprove pra publicar"}
                         </div>
                         <div className="flex items-center gap-2">
+                            <Button
+                                onClick={() => setConfirmRegen(true)}
+                                variant="outline"
+                                size="sm"
+                                disabled={actionBusy || generating || isPublished}
+                            >
+                                <RefreshCw className="h-4 w-4 mr-1.5" /> Refazer
+                            </Button>
                             {!isApproved && (
                                 <Button onClick={handleApprove} variant="outline" size="sm" disabled={actionBusy}>
                                     {actionBusy ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Check className="h-4 w-4 mr-1.5" />}
