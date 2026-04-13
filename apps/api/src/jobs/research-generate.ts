@@ -8,6 +8,7 @@ import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
 import { debitCredits } from '../lib/credits.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
+import { logUsage } from '../lib/ai/usage-log.js';
 
 const LEVEL_COSTS: Record<'surface' | 'medium' | 'deep', number> = {
   surface: 60,
@@ -103,7 +104,7 @@ export const researchGenerate = inngest.createFunction(
       })) as Record<string, unknown> | null;
 
       const result = (await step.run('call-provider', async () => {
-        const { result } = await generateWithFallback(
+        const call = await generateWithFallback(
           'research',
           modelTier,
           {
@@ -114,7 +115,14 @@ export const researchGenerate = inngest.createFunction(
           },
           { provider, model },
         );
-        return result;
+        await logUsage({
+          orgId, userId, channelId,
+          stage: 'research', subStage: level,
+          sessionId, sessionType: 'research',
+          provider: call.providerName, model: call.model,
+          usage: call.usage,
+        });
+        return call.result;
       })) as unknown;
 
       await step.run('emit-parsing', async () => {

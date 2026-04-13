@@ -40,6 +40,7 @@ import { contentRoutes } from './routes/content.js';
 import { brainstormRoutes } from './routes/brainstorm.js';
 import { researchSessionsRoutes } from './routes/research-sessions.js';
 import { contentDraftsRoutes } from './routes/content-drafts.js';
+import { usageRoutes } from './routes/usage.js';
 
 const server = Fastify({ logger: true });
 
@@ -86,6 +87,7 @@ server.register(contentRoutes, { prefix: '/content' });
 server.register(brainstormRoutes, { prefix: '/brainstorm' });
 server.register(researchSessionsRoutes, { prefix: '/research-sessions' });
 server.register(contentDraftsRoutes, { prefix: '/content-drafts' });
+server.register(usageRoutes, { prefix: '/usage' });
 
 if (!process.env.VERCEL) {
   // Surface async errors that would otherwise crash the dev process silently

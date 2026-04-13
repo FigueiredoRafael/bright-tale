@@ -5,10 +5,11 @@
  */
 import { GoogleGenAI } from '@google/genai';
 import yaml from 'js-yaml';
-import type { AIProvider, GenerateContentParams, AgentType } from '../provider.js';
+import type { AIProvider, GenerateContentParams, AgentType, TokenUsage } from '../provider.js';
 
 export class GeminiProvider implements AIProvider {
   readonly name = 'gemini';
+  lastUsage?: TokenUsage;
   private client: GoogleGenAI;
   private model: string;
   private temperature: number;
@@ -36,6 +37,12 @@ export class GeminiProvider implements AIProvider {
         responseMimeType: 'application/json',
       },
     });
+
+    const meta = (response as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } }).usageMetadata;
+    this.lastUsage = {
+      inputTokens: meta?.promptTokenCount,
+      outputTokens: meta?.candidatesTokenCount,
+    };
 
     const text = response.text;
     if (!text) throw new Error('No content generated from Gemini');

@@ -4,10 +4,11 @@
  * and works offline. Best paired with llama3.1:8b or qwen2.5:7b for JSON output.
  */
 import yaml from 'js-yaml';
-import type { AIProvider, GenerateContentParams, AgentType } from '../provider.js';
+import type { AIProvider, GenerateContentParams, AgentType, TokenUsage } from '../provider.js';
 
 export class OllamaProvider implements AIProvider {
   readonly name = 'ollama';
+  lastUsage?: TokenUsage;
   private model: string;
   private baseUrl: string;
   private temperature: number;
@@ -46,7 +47,15 @@ export class OllamaProvider implements AIProvider {
       throw new Error(`Ollama ${res.status}: ${body || res.statusText}`);
     }
 
-    const data = (await res.json()) as { message?: { content?: string } };
+    const data = (await res.json()) as {
+      message?: { content?: string };
+      prompt_eval_count?: number;
+      eval_count?: number;
+    };
+    this.lastUsage = {
+      inputTokens: data.prompt_eval_count,
+      outputTokens: data.eval_count,
+    };
     const text = data.message?.content;
     if (!text) throw new Error('No content generated from Ollama');
 

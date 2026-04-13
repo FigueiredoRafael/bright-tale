@@ -9,6 +9,7 @@ import {
     ChevronRight,
     Users,
     User,
+    TrendingUp,
 } from "lucide-react";
 
 interface SettingsCard {
@@ -42,6 +43,12 @@ export default function SettingsPage() {
             description: "Conecte o site WordPress pra publicar posts direto da plataforma. Sem isso, dá pra marcar como publicado manualmente.",
             href: "/settings/wordpress",
             icon: <Globe className="h-6 w-6" />,
+        },
+        {
+            title: "Uso & custo",
+            description: "Tokens gastos e custo estimado por mês, provider e formato. Ollama local é free; Gemini/Anthropic/OpenAI usam preços públicos.",
+            href: "/settings/usage",
+            icon: <TrendingUp className="h-6 w-6" />,
         },
     ];
 

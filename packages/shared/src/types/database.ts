@@ -1663,6 +1663,72 @@ export type Database = {
           },
         ]
       }
+      usage_events: {
+        Row: {
+          channel_id: string | null
+          cost_usd: number
+          created_at: string
+          id: string
+          input_tokens: number
+          model: string
+          org_id: string
+          output_tokens: number
+          provider: string
+          session_id: string | null
+          session_type: string | null
+          stage: string
+          sub_stage: string | null
+          user_id: string | null
+        }
+        Insert: {
+          channel_id?: string | null
+          cost_usd?: number
+          created_at?: string
+          id?: string
+          input_tokens?: number
+          model: string
+          org_id: string
+          output_tokens?: number
+          provider: string
+          session_id?: string | null
+          session_type?: string | null
+          stage: string
+          sub_stage?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          channel_id?: string | null
+          cost_usd?: number
+          created_at?: string
+          id?: string
+          input_tokens?: number
+          model?: string
+          org_id?: string
+          output_tokens?: number
+          provider?: string
+          session_id?: string | null
+          session_type?: string | null
+          stage?: string
+          sub_stage?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usage_events_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "usage_events_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_profiles: {
         Row: {
           avatar_url: string | null

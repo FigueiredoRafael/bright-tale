@@ -8,6 +8,7 @@ import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
 import { debitCredits } from '../lib/credits.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
+import { logUsage } from '../lib/ai/usage-log.js';
 
 const FORMAT_COSTS: Record<string, number> = {
   blog: 200,
@@ -96,7 +97,7 @@ export const productionGenerate = inngest.createFunction(
       });
 
       const canonicalCore = await step.run('generate-core', async () => {
-        const { result } = await generateWithFallback(
+        const call = await generateWithFallback(
           'production',
           modelTier,
           {
@@ -115,7 +116,14 @@ export const productionGenerate = inngest.createFunction(
           },
           { provider, model },
         );
-        return result;
+        await logUsage({
+          orgId, userId, channelId: (draft.channel_id as string | null) ?? null,
+          stage: 'production', subStage: 'canonical-core',
+          sessionId: draftId, sessionType: 'production',
+          provider: call.providerName, model: call.model,
+          usage: call.usage,
+        });
+        return call.result;
       });
 
       await step.run('save-core', async () => {
@@ -142,7 +150,7 @@ export const productionGenerate = inngest.createFunction(
       });
 
       const draftJson = await step.run('generate-produce', async () => {
-        const { result } = await generateWithFallback(
+        const call = await generateWithFallback(
           'production',
           modelTier,
           {
@@ -161,7 +169,14 @@ export const productionGenerate = inngest.createFunction(
           },
           { provider, model },
         );
-        return result;
+        await logUsage({
+          orgId, userId, channelId: (draft.channel_id as string | null) ?? null,
+          stage: 'production', subStage: `produce-${type}`,
+          sessionId: draftId, sessionType: 'production',
+          provider: call.providerName, model: call.model,
+          usage: call.usage,
+        });
+        return call.result;
       });
 
       await step.run('emit-saving', async () => {
@@ -191,7 +206,7 @@ export const productionGenerate = inngest.createFunction(
         })) as string | null;
 
         const reviewResult = await step.run('generate-review', async () => {
-          const { result } = await generateWithFallback(
+          const call = await generateWithFallback(
             'review',
             modelTier,
             {
@@ -202,7 +217,14 @@ export const productionGenerate = inngest.createFunction(
             },
             { provider, model },
           );
-          return result;
+          await logUsage({
+            orgId, userId, channelId: (draft.channel_id as string | null) ?? null,
+            stage: 'review',
+            sessionId: draftId, sessionType: 'production',
+            provider: call.providerName, model: call.model,
+            usage: call.usage,
+          });
+          return call.result;
         });
 
         await step.run('save-review', async () => {
