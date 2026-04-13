@@ -23,8 +23,8 @@ import {
   Eye,
   ThumbsUp,
   Plus,
-  Trash2,
   Youtube,
+  Lightbulb,
 } from 'lucide-react';
 
 type Step = 'research' | 'select' | 'generate' | 'done';
@@ -43,6 +43,16 @@ interface TopVideo {
 interface NicheAnalysis {
   id: string;
   top_videos_json: TopVideo[] | null;
+}
+
+interface ChannelIdea {
+  id: string;
+  idea_id: string;
+  title: string;
+  core_tension: string | null;
+  target_audience: string | null;
+  verdict: string;
+  created_at: string;
 }
 
 const FORMATS = [
@@ -86,7 +96,11 @@ export default function CreateContentPage() {
   const [newRefUrl, setNewRefUrl] = useState('');
   const [addingRef, setAddingRef] = useState(false);
 
-  // Load references for the channel
+  // Existing ideas for this channel
+  const [channelIdeas, setChannelIdeas] = useState<ChannelIdea[]>([]);
+  const [ideasLoading, setIdeasLoading] = useState(true);
+
+  // Load references + ideas for the channel
   useEffect(() => {
     (async () => {
       try {
@@ -99,7 +113,24 @@ export default function CreateContentPage() {
         setRefsLoading(false);
       }
     })();
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/ideas/library?channel_id=${channelId}&limit=20`);
+        const json = await res.json();
+        if (json.data?.ideas) setChannelIdeas(json.data.ideas);
+      } catch {
+        // silent
+      } finally {
+        setIdeasLoading(false);
+      }
+    })();
   }, [channelId]);
+
+  function pickIdea(idea: ChannelIdea) {
+    setTopic(idea.title);
+    setStep('select');
+  }
 
   async function addReference() {
     if (!newRefUrl.trim()) return;
@@ -128,15 +159,20 @@ export default function CreateContentPage() {
   // Step 1: Research
   async function handleResearch(e: React.FormEvent) {
     e.preventDefault();
-    if (!topic.trim()) return;
+    const hasTopic = topic.trim().length > 0;
+    const hasRefs = references.length > 0;
+    if (!hasTopic && !hasRefs) {
+      toast.error('Informe um tópico ou adicione canais de referência');
+      return;
+    }
     setResearching(true);
 
     try {
-      if (useYouTube) {
+      if (useYouTube && hasTopic) {
         const res = await fetch('/api/youtube/analyze-niche', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ keyword: topic }),
+          body: JSON.stringify({ keyword: topic, channelId }),
         });
         const json = await res.json();
         if (json.error) {
@@ -220,6 +256,50 @@ export default function CreateContentPage() {
         ))}
       </div>
 
+      {/* Step 1: Channel Ideas (if any) */}
+      {step === 'research' && !ideasLoading && channelIdeas.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Lightbulb className="h-4 w-4" /> Suas ideias geradas
+              <Badge variant="secondary" className="ml-1 text-[10px]">{channelIdeas.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1.5 max-h-72 overflow-y-auto">
+              {channelIdeas.map((idea) => (
+                <button
+                  key={idea.id}
+                  onClick={() => pickIdea(idea)}
+                  className="w-full text-left p-3 rounded-lg border border-border hover:border-primary/50 hover:bg-muted/30 transition-colors"
+                >
+                  <div className="flex items-start gap-2">
+                    <Badge
+                      variant={idea.verdict === 'viable' ? 'default' : idea.verdict === 'weak' ? 'destructive' : 'secondary'}
+                      className="text-[10px] shrink-0"
+                    >
+                      {idea.verdict}
+                    </Badge>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium">{idea.title}</div>
+                      {idea.target_audience && (
+                        <div className="text-xs text-muted-foreground truncate mt-0.5">
+                          {idea.target_audience}
+                        </div>
+                      )}
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                  </div>
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-3">
+              Clique numa ideia pra continuar, ou crie uma nova abaixo.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Step 1: Research */}
       {step === 'research' && (
         <Card>
@@ -231,7 +311,12 @@ export default function CreateContentPage() {
           <CardContent>
             <form onSubmit={handleResearch} className="space-y-4">
               <div className="space-y-2">
-                <Label>Topic or keyword</Label>
+                <Label>
+                  Tópico ou keyword{' '}
+                  {references.length > 0 && (
+                    <span className="text-xs font-normal text-muted-foreground">(opcional — sem tópico, vai usar suas referências)</span>
+                  )}
+                </Label>
                 <Input
                   placeholder="e.g. Deep work for developers, AI productivity tips"
                   value={topic}
@@ -320,11 +405,11 @@ export default function CreateContentPage() {
                 )}
               </div>
 
-              <Button type="submit" disabled={researching || !topic.trim()}>
+              <Button type="submit" disabled={researching || (!topic.trim() && references.length === 0)}>
                 {researching ? (
                   <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Researching...</>
                 ) : (
-                  <><Search className="h-4 w-4 mr-2" /> Research</>
+                  <><Search className="h-4 w-4 mr-2" /> {topic.trim() ? 'Research' : 'Vasculhar referências'}</>
                 )}
               </Button>
             </form>

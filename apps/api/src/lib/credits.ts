@@ -144,6 +144,6 @@ export async function debitCredits(
     category,
     cost,
     source,
-    metadata_json: metadata ?? null,
+    metadata_json: (metadata ?? null) as never,
   });
 }

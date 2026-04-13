@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
   await supabase
     .from('user_profiles')
     .upsert(
-      { id: data.user.id, email: data.user.email },
+      { id: data.user.id, email: data.user.email } as never,
       { onConflict: 'id', ignoreDuplicates: true },
     );
 

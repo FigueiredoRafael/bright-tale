@@ -154,6 +154,72 @@ export async function referencesRoutes(fastify: FastifyInstance): Promise<void> 
   });
 
   /**
+   * GET /channels/:channelId/references/top-videos — Top videos across all references
+   * Returns videos sorted by engagement (views desc).
+   */
+  fastify.get<{ Params: { channelId: string }; Querystring: { limit?: string } }>(
+    '/:channelId/references/top-videos',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        const sb = createServiceClient();
+        if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
+
+        const { orgId } = await getOrgContext(request.userId);
+        const { channelId } = request.params;
+        const limit = Math.min(parseInt(request.query.limit ?? '20', 10), 50);
+
+        // Get reference IDs for this channel (scoped by org)
+        const { data: refs } = await sb
+          .from('channel_references')
+          .select('id, name, url, external_id, platform')
+          .eq('channel_id', channelId)
+          .eq('org_id', orgId);
+
+        if (!refs || refs.length === 0) {
+          return reply.send({ data: { videos: [] }, error: null });
+        }
+
+        const refIds = refs.map((r) => r.id);
+        const refMap = new Map(refs.map((r) => [r.id, r]));
+
+        // Fetch top videos across all references
+        const { data: videos, error } = await sb
+          .from('reference_content')
+          .select('*')
+          .in('reference_id', refIds)
+          .order('view_count', { ascending: false })
+          .limit(limit);
+
+        if (error) throw error;
+
+        const enriched = (videos ?? []).map((v) => {
+          const ref = refMap.get(v.reference_id);
+          return {
+            id: v.id,
+            title: v.title,
+            url: v.url,
+            thumbnail: null,
+            videoId: v.external_id,
+            views: v.view_count ?? 0,
+            likes: v.like_count ?? 0,
+            comments: v.comment_count ?? 0,
+            duration: v.duration_seconds ?? 0,
+            engagementRate: v.engagement_rate ?? 0,
+            publishedAt: v.published_at,
+            referenceName: ref?.name ?? null,
+            referenceUrl: ref?.url ?? null,
+          };
+        });
+
+        return reply.send({ data: { videos: enriched }, error: null });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  /**
    * POST /channels/:channelId/references/analyze — Analyze all references
    * Fetches top videos from each reference and stores them.
    */

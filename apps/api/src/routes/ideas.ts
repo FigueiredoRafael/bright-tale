@@ -20,6 +20,7 @@ import {
 const SIMILARITY_THRESHOLD = 80;
 
 const archiveSchema = z.object({
+  channel_id: z.string().uuid().optional(),
   ideas: z
     .array(
       z.object({
@@ -50,6 +51,7 @@ export async function ideasRoutes(fastify: FastifyInstance): Promise<void> {
         target_audience: i.target_audience,
         verdict: i.verdict,
         discovery_data: i.discovery_data ?? '',
+        channel_id: body.channel_id ?? null,
         user_id: request.userId ?? null,
       }));
 
@@ -99,6 +101,11 @@ export async function ideasRoutes(fastify: FastifyInstance): Promise<void> {
       if (query.is_public !== undefined) {
         countQuery = countQuery.eq('is_public', query.is_public);
         dataQuery = dataQuery.eq('is_public', query.is_public);
+      }
+
+      if (query.channel_id) {
+        countQuery = countQuery.eq('channel_id', query.channel_id);
+        dataQuery = dataQuery.eq('channel_id', query.channel_id);
       }
 
       if (query.tags) {
@@ -210,6 +217,7 @@ export async function ideasRoutes(fastify: FastifyInstance): Promise<void> {
           tags: data.tags ?? [],
           is_public: data.is_public ?? true,
           markdown_content: data.markdown_content,
+          channel_id: data.channel_id ?? null,
           user_id: request.userId ?? null,
         })
         .select()

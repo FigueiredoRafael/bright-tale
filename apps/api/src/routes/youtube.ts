@@ -155,10 +155,10 @@ export async function youtubeRoutes(fastify: FastifyInstance): Promise<void> {
           market: market ?? 'br',
           language: language ?? 'pt-BR',
           top_videos_json: topVideos as unknown as Record<string, unknown>,
-          reference_channels_json: null, // TODO: aggregate from top videos
-          opportunities_json: null, // TODO: AI analysis
-          saturated_topics_json: null, // TODO: AI analysis
-        })
+          reference_channels_json: null,
+          opportunities_json: null,
+          saturated_topics_json: null,
+        } as never)
         .select()
         .single();
 

@@ -7,30 +7,10 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -41,6 +21,7 @@ export type Database = {
           input_schema: string | null
           instructions: string
           name: string
+          org_id: string | null
           output_schema: string | null
           slug: string
           stage: string
@@ -52,6 +33,7 @@ export type Database = {
           input_schema?: string | null
           instructions: string
           name: string
+          org_id?: string | null
           output_schema?: string | null
           slug: string
           stage: string
@@ -63,12 +45,21 @@ export type Database = {
           input_schema?: string | null
           instructions?: string
           name?: string
+          org_id?: string | null
           output_schema?: string | null
           slug?: string
           stage?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "agent_prompts_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ai_provider_configs: {
         Row: {
@@ -77,6 +68,7 @@ export type Database = {
           created_at: string
           id: string
           is_active: boolean
+          org_id: string | null
           provider: string
           updated_at: string
           user_id: string | null
@@ -87,6 +79,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          org_id?: string | null
           provider: string
           updated_at?: string
           user_id?: string | null
@@ -97,11 +90,20 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          org_id?: string | null
           provider?: string
           updated_at?: string
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ai_provider_configs_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       assets: {
         Row: {
@@ -112,6 +114,7 @@ export type Database = {
           created_at: string
           id: string
           local_path: string | null
+          org_id: string | null
           project_id: string | null
           prompt: string | null
           role: string | null
@@ -130,6 +133,7 @@ export type Database = {
           created_at?: string
           id?: string
           local_path?: string | null
+          org_id?: string | null
           project_id?: string | null
           prompt?: string | null
           role?: string | null
@@ -148,6 +152,7 @@ export type Database = {
           created_at?: string
           id?: string
           local_path?: string | null
+          org_id?: string | null
           project_id?: string | null
           prompt?: string | null
           role?: string | null
@@ -158,7 +163,15 @@ export type Database = {
           wordpress_id?: number | null
           wordpress_url?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "assets_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       blog_drafts: {
         Row: {
@@ -172,6 +185,7 @@ export type Database = {
           idea_id: string | null
           internal_links_json: string | null
           meta_description: string
+          org_id: string | null
           outline_json: string | null
           primary_keyword: string | null
           project_id: string | null
@@ -197,6 +211,7 @@ export type Database = {
           idea_id?: string | null
           internal_links_json?: string | null
           meta_description: string
+          org_id?: string | null
           outline_json?: string | null
           primary_keyword?: string | null
           project_id?: string | null
@@ -222,6 +237,7 @@ export type Database = {
           idea_id?: string | null
           internal_links_json?: string | null
           meta_description?: string
+          org_id?: string | null
           outline_json?: string | null
           primary_keyword?: string | null
           project_id?: string | null
@@ -236,7 +252,15 @@ export type Database = {
           wordpress_post_id?: number | null
           wordpress_url?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "blog_drafts_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       canonical_core: {
         Row: {
@@ -250,6 +274,7 @@ export type Database = {
           idea_id: string
           key_quotes_json: string | null
           key_stats_json: string
+          org_id: string | null
           project_id: string | null
           thesis: string
           updated_at: string
@@ -266,6 +291,7 @@ export type Database = {
           idea_id: string
           key_quotes_json?: string | null
           key_stats_json: string
+          org_id?: string | null
           project_id?: string | null
           thesis: string
           updated_at?: string
@@ -282,15 +308,256 @@ export type Database = {
           idea_id?: string
           key_quotes_json?: string | null
           key_stats_json?: string
+          org_id?: string | null
           project_id?: string | null
           thesis?: string
           updated_at?: string
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "canonical_core_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      channel_references: {
+        Row: {
+          analyzed_at: string | null
+          channel_id: string
+          created_at: string
+          external_id: string | null
+          id: string
+          monthly_views: number | null
+          name: string | null
+          org_id: string
+          patterns_json: Json | null
+          platform: string
+          subscribers: number | null
+          updated_at: string
+          url: string
+          video_count: number | null
+        }
+        Insert: {
+          analyzed_at?: string | null
+          channel_id: string
+          created_at?: string
+          external_id?: string | null
+          id?: string
+          monthly_views?: number | null
+          name?: string | null
+          org_id: string
+          patterns_json?: Json | null
+          platform?: string
+          subscribers?: number | null
+          updated_at?: string
+          url: string
+          video_count?: number | null
+        }
+        Update: {
+          analyzed_at?: string | null
+          channel_id?: string
+          created_at?: string
+          external_id?: string | null
+          id?: string
+          monthly_views?: number | null
+          name?: string | null
+          org_id?: string
+          patterns_json?: Json | null
+          platform?: string
+          subscribers?: number | null
+          updated_at?: string
+          url?: string
+          video_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_references_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_references_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      channels: {
+        Row: {
+          blog_url: string | null
+          channel_type: string
+          created_at: string
+          custom_model_config_json: Json | null
+          estimated_revenue_brl: number | null
+          id: string
+          is_evergreen: boolean
+          language: string
+          logo_url: string | null
+          market: string
+          media_types: string[]
+          model_tier: string
+          name: string
+          niche: string | null
+          niche_tags: string[] | null
+          org_id: string
+          template_id: string | null
+          tone: string | null
+          updated_at: string
+          user_id: string
+          video_style: string | null
+          voice_id: string | null
+          voice_provider: string | null
+          voice_speed: number
+          voice_style: string | null
+          wordpress_config_id: string | null
+          youtube_channel_id: string | null
+          youtube_monthly_views: number | null
+          youtube_subs: number | null
+          youtube_url: string | null
+        }
+        Insert: {
+          blog_url?: string | null
+          channel_type?: string
+          created_at?: string
+          custom_model_config_json?: Json | null
+          estimated_revenue_brl?: number | null
+          id?: string
+          is_evergreen?: boolean
+          language?: string
+          logo_url?: string | null
+          market?: string
+          media_types?: string[]
+          model_tier?: string
+          name: string
+          niche?: string | null
+          niche_tags?: string[] | null
+          org_id: string
+          template_id?: string | null
+          tone?: string | null
+          updated_at?: string
+          user_id: string
+          video_style?: string | null
+          voice_id?: string | null
+          voice_provider?: string | null
+          voice_speed?: number
+          voice_style?: string | null
+          wordpress_config_id?: string | null
+          youtube_channel_id?: string | null
+          youtube_monthly_views?: number | null
+          youtube_subs?: number | null
+          youtube_url?: string | null
+        }
+        Update: {
+          blog_url?: string | null
+          channel_type?: string
+          created_at?: string
+          custom_model_config_json?: Json | null
+          estimated_revenue_brl?: number | null
+          id?: string
+          is_evergreen?: boolean
+          language?: string
+          logo_url?: string | null
+          market?: string
+          media_types?: string[]
+          model_tier?: string
+          name?: string
+          niche?: string | null
+          niche_tags?: string[] | null
+          org_id?: string
+          template_id?: string | null
+          tone?: string | null
+          updated_at?: string
+          user_id?: string
+          video_style?: string | null
+          voice_id?: string | null
+          voice_provider?: string | null
+          voice_speed?: number
+          voice_style?: string | null
+          wordpress_config_id?: string | null
+          youtube_channel_id?: string | null
+          youtube_monthly_views?: number | null
+          youtube_subs?: number | null
+          youtube_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channels_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channels_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channels_wordpress_config_id_fkey"
+            columns: ["wordpress_config_id"]
+            isOneToOne: false
+            referencedRelation: "wordpress_configs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_usage: {
+        Row: {
+          action: string
+          category: string
+          cost: number
+          created_at: string
+          id: string
+          metadata_json: Json | null
+          org_id: string
+          source: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          category: string
+          cost: number
+          created_at?: string
+          id?: string
+          metadata_json?: Json | null
+          org_id: string
+          source?: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          category?: string
+          cost?: number
+          created_at?: string
+          id?: string
+          metadata_json?: Json | null
+          org_id?: string
+          source?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_usage_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       idea_archives: {
         Row: {
+          channel_id: string | null
           core_tension: string
           created_at: string
           discovery_data: string
@@ -298,6 +565,7 @@ export type Database = {
           idea_id: string
           is_public: boolean
           markdown_content: string | null
+          org_id: string | null
           source_project_id: string | null
           source_type: string
           tags: string[]
@@ -309,6 +577,7 @@ export type Database = {
           verdict: string
         }
         Insert: {
+          channel_id?: string | null
           core_tension: string
           created_at?: string
           discovery_data: string
@@ -316,6 +585,7 @@ export type Database = {
           idea_id: string
           is_public?: boolean
           markdown_content?: string | null
+          org_id?: string | null
           source_project_id?: string | null
           source_type?: string
           tags?: string[]
@@ -327,6 +597,7 @@ export type Database = {
           verdict: string
         }
         Update: {
+          channel_id?: string | null
           core_tension?: string
           created_at?: string
           discovery_data?: string
@@ -334,6 +605,7 @@ export type Database = {
           idea_id?: string
           is_public?: boolean
           markdown_content?: string | null
+          org_id?: string | null
           source_project_id?: string | null
           source_type?: string
           tags?: string[]
@@ -344,7 +616,22 @@ export type Database = {
           user_id?: string | null
           verdict?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "idea_archives_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "idea_archives_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       idempotency_keys: {
         Row: {
@@ -387,6 +674,7 @@ export type Database = {
           id: string
           is_active: boolean
           model: string
+          org_id: string | null
           provider: string
           updated_at: string
           user_id: string | null
@@ -398,6 +686,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           model: string
+          org_id?: string | null
           provider: string
           updated_at?: string
           user_id?: string | null
@@ -409,9 +698,172 @@ export type Database = {
           id?: string
           is_active?: boolean
           model?: string
+          org_id?: string | null
           provider?: string
           updated_at?: string
           user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "image_generator_configs_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      org_invites: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string
+          org_id: string
+          role: string
+          status: string
+          token: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          email: string
+          expires_at: string
+          id?: string
+          invited_by: string
+          org_id: string
+          role?: string
+          status?: string
+          token: string
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string
+          org_id?: string
+          role?: string
+          status?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_invites_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      org_memberships: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          credit_limit: number | null
+          credits_used_cycle: number
+          id: string
+          invited_at: string | null
+          invited_by: string | null
+          org_id: string
+          role: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          credit_limit?: number | null
+          credits_used_cycle?: number
+          id?: string
+          invited_at?: string | null
+          invited_by?: string | null
+          org_id: string
+          role?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          credit_limit?: number | null
+          credits_used_cycle?: number
+          id?: string
+          invited_at?: string | null
+          invited_by?: string | null
+          org_id?: string
+          role?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_memberships_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organizations: {
+        Row: {
+          billing_cycle: string | null
+          created_at: string
+          credits_addon: number
+          credits_reset_at: string | null
+          credits_total: number
+          credits_used: number
+          id: string
+          logo_url: string | null
+          name: string
+          plan: string
+          plan_expires_at: string | null
+          plan_started_at: string | null
+          slug: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          billing_cycle?: string | null
+          created_at?: string
+          credits_addon?: number
+          credits_reset_at?: string | null
+          credits_total?: number
+          credits_used?: number
+          id?: string
+          logo_url?: string | null
+          name: string
+          plan?: string
+          plan_expires_at?: string | null
+          plan_started_at?: string | null
+          slug: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          billing_cycle?: string | null
+          created_at?: string
+          credits_addon?: number
+          credits_reset_at?: string | null
+          credits_total?: number
+          credits_used?: number
+          id?: string
+          logo_url?: string | null
+          name?: string
+          plan?: string
+          plan_expires_at?: string | null
+          plan_started_at?: string | null
+          slug?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -425,6 +877,7 @@ export type Database = {
           id: string
           idea_id: string | null
           intro_hook: string
+          org_id: string | null
           outro: string
           personal_angle: string
           project_id: string | null
@@ -443,6 +896,7 @@ export type Database = {
           id?: string
           idea_id?: string | null
           intro_hook: string
+          org_id?: string | null
           outro: string
           personal_angle: string
           project_id?: string | null
@@ -461,6 +915,7 @@ export type Database = {
           id?: string
           idea_id?: string | null
           intro_hook?: string
+          org_id?: string | null
           outro?: string
           personal_angle?: string
           project_id?: string | null
@@ -470,15 +925,25 @@ export type Database = {
           user_id?: string | null
           word_count?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "podcast_drafts_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       projects: {
         Row: {
           auto_advance: boolean
+          channel_id: string | null
           completed_stages: string[]
           created_at: string
           current_stage: string
           id: string
+          org_id: string | null
           research_id: string | null
           status: string
           title: string
@@ -489,10 +954,12 @@ export type Database = {
         }
         Insert: {
           auto_advance?: boolean
+          channel_id?: string | null
           completed_stages?: string[]
           created_at?: string
           current_stage: string
           id?: string
+          org_id?: string | null
           research_id?: string | null
           status: string
           title: string
@@ -503,10 +970,12 @@ export type Database = {
         }
         Update: {
           auto_advance?: boolean
+          channel_id?: string | null
           completed_stages?: string[]
           created_at?: string
           current_stage?: string
           id?: string
+          org_id?: string | null
           research_id?: string | null
           status?: string
           title?: string
@@ -517,6 +986,20 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "projects_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "projects_research_id_fkey"
             columns: ["research_id"]
             isOneToOne: false
@@ -525,10 +1008,73 @@ export type Database = {
           },
         ]
       }
+      reference_content: {
+        Row: {
+          comment_count: number | null
+          created_at: string
+          description: string | null
+          duration_seconds: number | null
+          engagement_rate: number | null
+          external_id: string
+          id: string
+          like_count: number | null
+          published_at: string | null
+          reference_id: string
+          tags: string[] | null
+          title: string
+          transcript: string | null
+          url: string | null
+          view_count: number | null
+        }
+        Insert: {
+          comment_count?: number | null
+          created_at?: string
+          description?: string | null
+          duration_seconds?: number | null
+          engagement_rate?: number | null
+          external_id: string
+          id?: string
+          like_count?: number | null
+          published_at?: string | null
+          reference_id: string
+          tags?: string[] | null
+          title: string
+          transcript?: string | null
+          url?: string | null
+          view_count?: number | null
+        }
+        Update: {
+          comment_count?: number | null
+          created_at?: string
+          description?: string | null
+          duration_seconds?: number | null
+          engagement_rate?: number | null
+          external_id?: string
+          id?: string
+          like_count?: number | null
+          published_at?: string | null
+          reference_id?: string
+          tags?: string[] | null
+          title?: string
+          transcript?: string | null
+          url?: string | null
+          view_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reference_content_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "channel_references"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       research_archives: {
         Row: {
           created_at: string
           id: string
+          org_id: string | null
           projects_count: number
           research_content: string
           theme: string
@@ -540,6 +1086,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          org_id?: string | null
           projects_count?: number
           research_content: string
           theme: string
@@ -551,6 +1098,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          org_id?: string | null
           projects_count?: number
           research_content?: string
           theme?: string
@@ -559,7 +1107,15 @@ export type Database = {
           user_id?: string | null
           winners_count?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "research_archives_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       research_sources: {
         Row: {
@@ -642,6 +1198,7 @@ export type Database = {
           created_at: string
           id: string
           idea_id: string | null
+          org_id: string | null
           project_id: string | null
           short_count: number
           shorts_json: string
@@ -654,6 +1211,7 @@ export type Database = {
           created_at?: string
           id?: string
           idea_id?: string | null
+          org_id?: string | null
           project_id?: string | null
           short_count?: number
           shorts_json: string
@@ -666,6 +1224,7 @@ export type Database = {
           created_at?: string
           id?: string
           idea_id?: string | null
+          org_id?: string | null
           project_id?: string | null
           short_count?: number
           shorts_json?: string
@@ -674,7 +1233,15 @@ export type Database = {
           updated_at?: string
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "shorts_drafts_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       stages: {
         Row: {
@@ -717,6 +1284,7 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          org_id: string | null
           parent_template_id: string | null
           type: string
           updated_at: string
@@ -727,6 +1295,7 @@ export type Database = {
           created_at?: string
           id?: string
           name: string
+          org_id?: string | null
           parent_template_id?: string | null
           type: string
           updated_at?: string
@@ -737,12 +1306,20 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+          org_id?: string | null
           parent_template_id?: string | null
           type?: string
           updated_at?: string
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "templates_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "templates_parent_template_id_fkey"
             columns: ["parent_template_id"]
@@ -754,364 +1331,73 @@ export type Database = {
       }
       user_profiles: {
         Row: {
-          id: string
-          first_name: string | null
-          last_name: string | null
           avatar_url: string | null
+          created_at: string
           email: string
-          is_premium: boolean
-          premium_plan: string | null
-          premium_started_at: string | null
-          premium_expires_at: string | null
+          first_name: string | null
+          id: string
           is_active: boolean
+          is_premium: boolean
+          last_name: string | null
           onboarding_completed: boolean
           onboarding_step: string | null
-          created_at: string
+          premium_expires_at: string | null
+          premium_plan: string | null
+          premium_started_at: string | null
           updated_at: string
         }
         Insert: {
-          id: string
-          first_name?: string | null
-          last_name?: string | null
           avatar_url?: string | null
-          email?: string
-          is_premium?: boolean
-          premium_plan?: string | null
-          premium_started_at?: string | null
-          premium_expires_at?: string | null
+          created_at?: string
+          email: string
+          first_name?: string | null
+          id: string
           is_active?: boolean
+          is_premium?: boolean
+          last_name?: string | null
           onboarding_completed?: boolean
           onboarding_step?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          first_name?: string | null
-          last_name?: string | null
-          avatar_url?: string | null
-          email?: string
-          is_premium?: boolean
+          premium_expires_at?: string | null
           premium_plan?: string | null
           premium_started_at?: string | null
-          premium_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string
+          first_name?: string | null
+          id?: string
           is_active?: boolean
+          is_premium?: boolean
+          last_name?: string | null
           onboarding_completed?: boolean
           onboarding_step?: string | null
-          created_at?: string
+          premium_expires_at?: string | null
+          premium_plan?: string | null
+          premium_started_at?: string | null
           updated_at?: string
-        }
-        Relationships: []
-      }
-      channel_references: {
-        Row: { id: string; channel_id: string; org_id: string; url: string; platform: string; name: string | null; external_id: string | null; subscribers: number | null; monthly_views: number | null; video_count: number | null; patterns_json: Record<string, unknown> | null; analyzed_at: string | null; created_at: string; updated_at: string }
-        Insert: { id?: string; channel_id: string; org_id: string; url: string; platform?: string; name?: string | null; external_id?: string | null; subscribers?: number | null; monthly_views?: number | null; video_count?: number | null; patterns_json?: Record<string, unknown> | null; analyzed_at?: string | null; created_at?: string; updated_at?: string }
-        Update: { id?: string; channel_id?: string; org_id?: string; url?: string; platform?: string; name?: string | null; external_id?: string | null; subscribers?: number | null; monthly_views?: number | null; video_count?: number | null; patterns_json?: Record<string, unknown> | null; analyzed_at?: string | null; created_at?: string; updated_at?: string }
-        Relationships: []
-      }
-      reference_content: {
-        Row: { id: string; reference_id: string; external_id: string; title: string; url: string | null; published_at: string | null; view_count: number | null; like_count: number | null; comment_count: number | null; duration_seconds: number | null; engagement_rate: number | null; description: string | null; tags: string[] | null; transcript: string | null; created_at: string }
-        Insert: { id?: string; reference_id: string; external_id: string; title: string; url?: string | null; published_at?: string | null; view_count?: number | null; like_count?: number | null; comment_count?: number | null; duration_seconds?: number | null; engagement_rate?: number | null; description?: string | null; tags?: string[] | null; transcript?: string | null; created_at?: string }
-        Update: { id?: string; reference_id?: string; external_id?: string; title?: string; url?: string | null; published_at?: string | null; view_count?: number | null; like_count?: number | null; comment_count?: number | null; duration_seconds?: number | null; engagement_rate?: number | null; description?: string | null; tags?: string[] | null; transcript?: string | null; created_at?: string }
-        Relationships: []
-      }
-      youtube_niche_analyses: {
-        Row: { id: string; channel_id: string | null; org_id: string; user_id: string; niche: string; market: string; language: string; reference_channels_json: Json | null; top_videos_json: Json | null; opportunities_json: Json | null; saturated_topics_json: Json | null; optimal_duration: string | null; optimal_posting_schedule: string | null; analyzed_at: string; expires_at: string; created_at: string }
-        Insert: { id?: string; channel_id?: string | null; org_id: string; user_id: string; niche: string; market: string; language: string; reference_channels_json?: Record<string, unknown> | null; top_videos_json?: Record<string, unknown> | null; opportunities_json?: Record<string, unknown> | null; saturated_topics_json?: Record<string, unknown> | null; optimal_duration?: string | null; optimal_posting_schedule?: string | null; analyzed_at?: string; expires_at?: string; created_at?: string }
-        Update: { id?: string; channel_id?: string | null; org_id?: string; user_id?: string; niche?: string; market?: string; language?: string; reference_channels_json?: Record<string, unknown> | null; top_videos_json?: Record<string, unknown> | null; opportunities_json?: Record<string, unknown> | null; saturated_topics_json?: Record<string, unknown> | null; optimal_duration?: string | null; optimal_posting_schedule?: string | null; analyzed_at?: string; expires_at?: string; created_at?: string }
-        Relationships: []
-      }
-      channels: {
-        Row: {
-          id: string
-          org_id: string
-          user_id: string
-          name: string
-          niche: string | null
-          niche_tags: string[] | null
-          market: string
-          language: string
-          channel_type: string
-          media_types: string[]
-          video_style: string | null
-          logo_url: string | null
-          is_evergreen: boolean
-          youtube_url: string | null
-          youtube_channel_id: string | null
-          blog_url: string | null
-          wordpress_config_id: string | null
-          voice_provider: string | null
-          voice_id: string | null
-          voice_speed: number
-          voice_style: string | null
-          model_tier: string
-          custom_model_config_json: Record<string, unknown> | null
-          tone: string | null
-          template_id: string | null  // text FK, not uuid
-          youtube_subs: number | null
-          youtube_monthly_views: number | null
-          estimated_revenue_brl: number | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          org_id: string
-          user_id: string
-          name: string
-          niche?: string | null
-          niche_tags?: string[] | null
-          market?: string
-          language?: string
-          channel_type?: string
-          media_types?: string[]
-          video_style?: string | null
-          logo_url?: string | null
-          is_evergreen?: boolean
-          youtube_url?: string | null
-          youtube_channel_id?: string | null
-          blog_url?: string | null
-          wordpress_config_id?: string | null
-          voice_provider?: string | null
-          voice_id?: string | null
-          voice_speed?: number
-          voice_style?: string | null
-          model_tier?: string
-          custom_model_config_json?: Record<string, unknown> | null
-          tone?: string | null
-          template_id?: string | null
-          youtube_subs?: number | null
-          youtube_monthly_views?: number | null
-          estimated_revenue_brl?: number | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          org_id?: string
-          user_id?: string
-          name?: string
-          niche?: string | null
-          niche_tags?: string[] | null
-          market?: string
-          language?: string
-          channel_type?: string
-          media_types?: string[]
-          video_style?: string | null
-          logo_url?: string | null
-          is_evergreen?: boolean
-          youtube_url?: string | null
-          youtube_channel_id?: string | null
-          blog_url?: string | null
-          wordpress_config_id?: string | null
-          voice_provider?: string | null
-          voice_id?: string | null
-          voice_speed?: number
-          voice_style?: string | null
-          model_tier?: string
-          custom_model_config_json?: Record<string, unknown> | null
-          tone?: string | null
-          template_id?: string | null
-          youtube_subs?: number | null
-          youtube_monthly_views?: number | null
-          estimated_revenue_brl?: number | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      credit_usage: {
-        Row: {
-          id: string
-          org_id: string
-          user_id: string
-          action: string
-          category: string
-          cost: number
-          source: string
-          metadata_json: Record<string, unknown> | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          org_id: string
-          user_id: string
-          action: string
-          category: string
-          cost: number
-          source?: string
-          metadata_json?: Record<string, unknown> | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          org_id?: string
-          user_id?: string
-          action?: string
-          category?: string
-          cost?: number
-          source?: string
-          metadata_json?: Record<string, unknown> | null
-          created_at?: string
-        }
-        Relationships: []
-      }
-      organizations: {
-        Row: {
-          id: string
-          name: string
-          slug: string
-          logo_url: string | null
-          stripe_customer_id: string | null
-          stripe_subscription_id: string | null
-          plan: string
-          billing_cycle: string | null
-          plan_started_at: string | null
-          plan_expires_at: string | null
-          credits_total: number
-          credits_used: number
-          credits_reset_at: string | null
-          credits_addon: number
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          name: string
-          slug: string
-          logo_url?: string | null
-          stripe_customer_id?: string | null
-          stripe_subscription_id?: string | null
-          plan?: string
-          billing_cycle?: string | null
-          plan_started_at?: string | null
-          plan_expires_at?: string | null
-          credits_total?: number
-          credits_used?: number
-          credits_reset_at?: string | null
-          credits_addon?: number
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          name?: string
-          slug?: string
-          logo_url?: string | null
-          stripe_customer_id?: string | null
-          stripe_subscription_id?: string | null
-          plan?: string
-          billing_cycle?: string | null
-          plan_started_at?: string | null
-          plan_expires_at?: string | null
-          credits_total?: number
-          credits_used?: number
-          credits_reset_at?: string | null
-          credits_addon?: number
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      org_memberships: {
-        Row: {
-          id: string
-          org_id: string
-          user_id: string
-          role: string
-          credit_limit: number | null
-          credits_used_cycle: number
-          invited_by: string | null
-          invited_at: string | null
-          accepted_at: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          org_id: string
-          user_id: string
-          role?: string
-          credit_limit?: number | null
-          credits_used_cycle?: number
-          invited_by?: string | null
-          invited_at?: string | null
-          accepted_at?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          org_id?: string
-          user_id?: string
-          role?: string
-          credit_limit?: number | null
-          credits_used_cycle?: number
-          invited_by?: string | null
-          invited_at?: string | null
-          accepted_at?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      org_invites: {
-        Row: {
-          id: string
-          org_id: string
-          email: string
-          role: string
-          invited_by: string
-          token: string
-          status: string
-          expires_at: string
-          accepted_at: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          org_id: string
-          email: string
-          role?: string
-          invited_by: string
-          token: string
-          status?: string
-          expires_at: string
-          accepted_at?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          org_id?: string
-          email?: string
-          role?: string
-          invited_by?: string
-          token?: string
-          status?: string
-          expires_at?: string
-          accepted_at?: string | null
-          created_at?: string
         }
         Relationships: []
       }
       user_roles: {
         Row: {
-          id: number
-          user_id: string
-          role: string
           created_at: string
+          id: number
+          role: string
+          user_id: string
         }
         Insert: {
-          id?: number
-          user_id: string
-          role: string
           created_at?: string
+          id?: number
+          role: string
+          user_id: string
         }
         Update: {
-          id?: number
-          user_id?: string
-          role?: string
           created_at?: string
+          id?: number
+          role?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -1120,6 +1406,7 @@ export type Database = {
           created_at: string
           id: string
           idea_id: string | null
+          org_id: string | null
           project_id: string | null
           script_json: string | null
           status: string
@@ -1135,6 +1422,7 @@ export type Database = {
           created_at?: string
           id?: string
           idea_id?: string | null
+          org_id?: string | null
           project_id?: string | null
           script_json?: string | null
           status?: string
@@ -1150,6 +1438,7 @@ export type Database = {
           created_at?: string
           id?: string
           idea_id?: string | null
+          org_id?: string | null
           project_id?: string | null
           script_json?: string | null
           status?: string
@@ -1161,12 +1450,21 @@ export type Database = {
           user_id?: string | null
           word_count?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "video_drafts_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       wordpress_configs: {
         Row: {
           created_at: string
           id: string
+          org_id: string | null
           password: string
           site_url: string
           updated_at: string
@@ -1176,6 +1474,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          org_id?: string | null
           password: string
           site_url: string
           updated_at?: string
@@ -1185,34 +1484,108 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          org_id?: string | null
           password?: string
           site_url?: string
           updated_at?: string
           user_id?: string | null
           username?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "wordpress_configs_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      youtube_niche_analyses: {
+        Row: {
+          analyzed_at: string
+          channel_id: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          language: string
+          market: string
+          niche: string
+          opportunities_json: Json | null
+          optimal_duration: string | null
+          optimal_posting_schedule: string | null
+          org_id: string
+          reference_channels_json: Json | null
+          saturated_topics_json: Json | null
+          top_videos_json: Json | null
+          user_id: string
+        }
+        Insert: {
+          analyzed_at?: string
+          channel_id?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          language: string
+          market: string
+          niche: string
+          opportunities_json?: Json | null
+          optimal_duration?: string | null
+          optimal_posting_schedule?: string | null
+          org_id: string
+          reference_channels_json?: Json | null
+          saturated_topics_json?: Json | null
+          top_videos_json?: Json | null
+          user_id: string
+        }
+        Update: {
+          analyzed_at?: string
+          channel_id?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          language?: string
+          market?: string
+          niche?: string
+          opportunities_json?: Json | null
+          optimal_duration?: string | null
+          optimal_posting_schedule?: string | null
+          org_id?: string
+          reference_channels_json?: Json | null
+          saturated_topics_json?: Json | null
+          top_videos_json?: Json | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "youtube_niche_analyses_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "youtube_niche_analyses_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      users_page_kpis: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
-      }
-      users_page_sparklines: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
-      }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
       users_page_growth: {
-        Args: {
-          p_from: string
-          p_to: string
-        }
+        Args: { p_from: string; p_to: string }
         Returns: Json
       }
+      users_page_kpis: { Args: never; Returns: Json }
+      users_page_sparklines: { Args: never; Returns: Json }
     }
     Enums: {
       [_ in never]: never
@@ -1341,11 +1714,7 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },
 } as const
-

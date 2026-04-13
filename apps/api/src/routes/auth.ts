@@ -57,7 +57,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         const { error } = await supabase
           .from('user_profiles')
           .upsert(
-            { id: userId, ...(email ? { email } : {}) },
+            { id: userId, ...(email ? { email } : {}) } as never,
             { onConflict: 'id', ignoreDuplicates: true },
           );
         if (error) {

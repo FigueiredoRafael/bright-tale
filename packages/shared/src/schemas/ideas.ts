@@ -20,6 +20,7 @@ export const listIdeasQuerySchema = z.object({
   tags: z.string().optional(), // comma-separated
   search: z.string().optional(),
   is_public: z.coerce.boolean().optional(),
+  channel_id: z.string().uuid().optional(),
   page: z.coerce.number().int().positive().default(1).optional(),
   limit: z.coerce.number().int().positive().max(100).default(20).optional(),
 });
@@ -39,6 +40,7 @@ export const createIdeaSchema = z.object({
   discovery_data: z.string().optional().default(""),
   source_type: z.enum(ideaSourceTypes).default("manual"),
   source_project_id: z.string().optional(),
+  channel_id: z.string().uuid().optional(),
   tags: z.array(z.string()).optional().default([]),
   is_public: z.boolean().optional().default(true),
   markdown_content: z.string().optional(),
