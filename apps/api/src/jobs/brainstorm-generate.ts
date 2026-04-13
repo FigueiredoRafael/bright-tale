@@ -84,13 +84,23 @@ export const brainstormGenerate = inngest.createFunction(
         await emitJobEvent(sessionId, 'brainstorm', 'calling_provider', `Conversando com ${label}…`, { provider, model });
       });
 
+      const channelContext = (await step.run('load-channel', async () => {
+        if (!channelId) return null;
+        const { data } = await sb
+          .from('channels')
+          .select('name, niche, language, tone, presentation_style')
+          .eq('id', channelId as string)
+          .maybeSingle();
+        return data;
+      })) as Record<string, unknown> | null;
+
       const result = (await step.run('call-provider', async () => {
         const { result } = await generateWithFallback(
           'brainstorm',
           modelTier,
           {
             agentType: 'brainstorm',
-            input: inputJson,
+            input: { ...inputJson, channel: channelContext },
             schema: null,
             systemPrompt: systemPrompt ?? undefined,
           },

@@ -92,13 +92,23 @@ export const researchGenerate = inngest.createFunction(
         await emitJobEvent(sessionId, 'research', 'calling_provider', `Pesquisando com ${label}…`, { provider, model, level });
       });
 
+      const channelContext = (await step.run('load-channel', async () => {
+        if (!channelId) return null;
+        const { data } = await sb
+          .from('channels')
+          .select('name, niche, language, tone, presentation_style')
+          .eq('id', channelId as string)
+          .maybeSingle();
+        return data;
+      })) as Record<string, unknown> | null;
+
       const result = (await step.run('call-provider', async () => {
         const { result } = await generateWithFallback(
           'research',
           modelTier,
           {
             agentType: 'research',
-            input: inputJson,
+            input: { ...inputJson, channel: channelContext },
             schema: null,
             systemPrompt,
           },

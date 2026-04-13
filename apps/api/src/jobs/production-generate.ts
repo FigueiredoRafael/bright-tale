@@ -76,6 +76,16 @@ export const productionGenerate = inngest.createFunction(
         return data?.approved_cards_json ?? data?.cards_json ?? null;
       })) as unknown;
 
+      const channelContext = (await step.run('load-channel', async () => {
+        if (!draft.channel_id) return null;
+        const { data } = await sb
+          .from('channels')
+          .select('name, niche, language, tone, presentation_style')
+          .eq('id', draft.channel_id as string)
+          .maybeSingle();
+        return data;
+      })) as Record<string, unknown> | null;
+
       const coreSystemPrompt = (await step.run('load-core-prompt', async () => {
         return (await loadAgentPrompt('content-core')) ?? (await loadAgentPrompt('production')) ?? null;
       })) as string | null;
@@ -98,6 +108,7 @@ export const productionGenerate = inngest.createFunction(
               ideaId: draft.idea_id,
               researchCards: approvedCards,
               production_params: productionParams ?? null,
+              channel: channelContext,
             },
             schema: null,
             systemPrompt: coreSystemPrompt ?? undefined,
@@ -143,6 +154,7 @@ export const productionGenerate = inngest.createFunction(
               canonicalCore,
               researchSessionId: draft.research_session_id,
               production_params: productionParams ?? null,
+              channel: channelContext,
             },
             schema: null,
             systemPrompt: produceSystemPrompt ?? undefined,

@@ -687,6 +687,40 @@ Ao escolher uma pesquisa, o title da pesquisa virou o título do conteúdo. Não
 
 ---
 
+### F2-048 — Contexto do canal nos agentes (idioma, tom, presentation_style)
+✅ **Concluído**
+
+Antes: vídeo de canal pt-BR saía em inglês. Agentes não tinham contexto do canal.
+
+- Nova coluna `channels.presentation_style` (talking_head | voiceover | mixed)
+- Todos os jobs (brainstorm/research/production) buscam o canal e injetam
+  `channel: { name, niche, language, tone, presentation_style }` no input do agente
+- Migration do prompt exige: output NO idioma do channel.language; tom adaptado;
+  talking_head usa cues `[lean forward]`, voiceover/faceless produz prosa limpa
+  estilo audiobook (vírgulas pra breath, reticências pra pausa) — pronta pra
+  ElevenLabs TTS sem pós-processamento
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-049 — Token usage tracking & cost dashboard
+🔲 **Não iniciado**
+
+Pra precificar plano ($ da assinatura) precisamos saber quanto custa em tokens
+gerar cada tipo de conteúdo. Esse card cria:
+- Tabela `usage_events (user_id, org_id, provider, model, input_tokens, output_tokens, cost_usd, stage, draft_id, created_at)`
+- Capturar `usage` das respostas dos providers (Anthropic/OpenAI/Gemini retornam input_tokens/output_tokens; Ollama é zero)
+- Map de preço por modelo (tabela `provider_pricing` ou constante no código)
+- Dashboard `/settings/usage` mostrando custo agregado por mês, por canal, por formato
+- Alerta quando passar X% da quota do plano
+
+Dados reais vão sustentar a decisão de preço da assinatura (a heurística do Rafael: ~R$100/mês mínimo dada a quantidade de prompts).
+
+**Concluído em:** —
+
+---
+
 ### F2-045 — Vídeo: roteiro de teleprompt + roteiro do editor
 ✅ **Concluído**
 
