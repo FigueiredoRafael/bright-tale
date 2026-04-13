@@ -75,6 +75,15 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
       const orgId = await getOrgId(request.userId);
       const body = createChannelSchema.parse(request.body);
 
+      // Derive legacy channel_type from media_types + video_style for backward compat
+      const hasBlog = body.mediaTypes.includes('blog');
+      const hasVideo = body.mediaTypes.includes('video');
+      const legacyType =
+        hasBlog && hasVideo ? 'hybrid' :
+        hasVideo && body.videoStyle ? body.videoStyle :
+        hasVideo ? 'face' :
+        'text';
+
       const { data: channel, error } = await sb
         .from('channels')
         .insert({
@@ -85,7 +94,9 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
           niche_tags: body.nicheTags ?? null,
           market: body.market,
           language: body.language,
-          channel_type: body.channelType,
+          channel_type: body.channelType ?? legacyType,
+          media_types: body.mediaTypes,
+          video_style: body.videoStyle ?? null,
           is_evergreen: body.isEvergreen,
           youtube_url: body.youtubeUrl ?? null,
           blog_url: body.blogUrl ?? null,
@@ -154,6 +165,8 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
           ...(body.market !== undefined && { market: body.market }),
           ...(body.language !== undefined && { language: body.language }),
           ...(body.channelType !== undefined && { channel_type: body.channelType }),
+          ...(body.mediaTypes !== undefined && { media_types: body.mediaTypes }),
+          ...(body.videoStyle !== undefined && { video_style: body.videoStyle }),
           ...(body.isEvergreen !== undefined && { is_evergreen: body.isEvergreen }),
           ...(body.youtubeUrl !== undefined && { youtube_url: body.youtubeUrl }),
           ...(body.blogUrl !== undefined && { blog_url: body.blogUrl }),

@@ -33,6 +33,8 @@ interface Channel {
   market: string;
   language: string;
   channel_type: string;
+  media_types: string[];
+  video_style: string | null;
   is_evergreen: boolean;
   youtube_url: string | null;
   voice_provider: string | null;
@@ -67,7 +69,8 @@ export default function ChannelDetailPage() {
   const [niche, setNiche] = useState('');
   const [market, setMarket] = useState('br');
   const [language, setLanguage] = useState('pt-BR');
-  const [channelType, setChannelType] = useState('text');
+  const [mediaTypes, setMediaTypes] = useState<string[]>(['blog']);
+  const [videoStyle, setVideoStyle] = useState<string>('face');
   const [modelTier, setModelTier] = useState('standard');
   const [tone, setTone] = useState('informative');
 
@@ -87,7 +90,8 @@ export default function ChannelDetailPage() {
         setNiche(c.niche ?? '');
         setMarket(c.market);
         setLanguage(c.language);
-        setChannelType(c.channel_type);
+        setMediaTypes(c.media_types ?? ['blog']);
+        setVideoStyle(c.video_style ?? 'face');
         setModelTier(c.model_tier);
         setTone(c.tone ?? 'informative');
       }
@@ -112,7 +116,11 @@ export default function ChannelDetailPage() {
       const res = await fetch(`/api/channels/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, niche: niche || undefined, market, language, channelType, modelTier, tone }),
+        body: JSON.stringify({
+          name, niche: niche || undefined, market, language, modelTier, tone,
+          mediaTypes,
+          videoStyle: mediaTypes.includes('video') || mediaTypes.includes('shorts') ? videoStyle : null,
+        }),
       });
       const json = await res.json();
       if (json.error) toast.error(json.error.message);
@@ -235,18 +243,43 @@ export default function ChannelDetailPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>Channel Type</Label>
-              <Select value={channelType} onValueChange={setChannelType}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="text">Text Only</SelectItem>
-                  <SelectItem value="face">Com Rosto</SelectItem>
-                  <SelectItem value="dark">Dark Channel</SelectItem>
-                  <SelectItem value="hybrid">Hybrid</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="space-y-2 col-span-2">
+              <Label>Mídias produzidas</Label>
+              <div className="flex flex-wrap gap-2">
+                {(['blog', 'video', 'shorts', 'podcast'] as const).map((m) => {
+                  const selected = mediaTypes.includes(m);
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => {
+                        setMediaTypes((prev) =>
+                          prev.includes(m)
+                            ? prev.length > 1 ? prev.filter((x) => x !== m) : prev
+                            : [...prev, m],
+                        );
+                      }}
+                      className={`px-3 py-1.5 rounded-md border text-sm transition-all ${selected ? 'border-primary bg-primary/10 text-primary font-medium' : 'border-border text-muted-foreground hover:border-muted-foreground/50'}`}
+                    >
+                      {m}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
+            {(mediaTypes.includes('video') || mediaTypes.includes('shorts')) && (
+              <div className="space-y-2">
+                <Label>Estilo de vídeo</Label>
+                <Select value={videoStyle} onValueChange={setVideoStyle}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="face">Com Rosto</SelectItem>
+                    <SelectItem value="dark">Dark Channel</SelectItem>
+                    <SelectItem value="hybrid">Híbrido</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>AI Model Tier</Label>
               <Select value={modelTier} onValueChange={setModelTier}>

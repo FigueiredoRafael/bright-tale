@@ -162,11 +162,15 @@ export {
 // Channels schemas
 export {
   channelTypeSchema,
+  mediaTypeSchema,
+  videoStyleSchema,
   modelTierSchema,
   createChannelSchema,
   updateChannelSchema,
   listChannelsQuerySchema,
   type ChannelType,
+  type MediaType,
+  type VideoStyle,
   type ModelTier,
   type CreateChannel,
   type UpdateChannel,

@@ -832,6 +832,8 @@ export type Database = {
           market: string
           language: string
           channel_type: string
+          media_types: string[]
+          video_style: string | null
           is_evergreen: boolean
           youtube_url: string | null
           youtube_channel_id: string | null
@@ -861,6 +863,8 @@ export type Database = {
           market?: string
           language?: string
           channel_type?: string
+          media_types?: string[]
+          video_style?: string | null
           is_evergreen?: boolean
           youtube_url?: string | null
           youtube_channel_id?: string | null
@@ -890,6 +894,8 @@ export type Database = {
           market?: string
           language?: string
           channel_type?: string
+          media_types?: string[]
+          video_style?: string | null
           is_evergreen?: boolean
           youtube_url?: string | null
           youtube_channel_id?: string | null
