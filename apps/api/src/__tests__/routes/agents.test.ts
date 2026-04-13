@@ -191,6 +191,12 @@ describe('GET /agents/:slug', () => {
 });
 
 describe('PUT /agents/:slug', () => {
+  // F2-026: PUT requires admin role. Tests set x-user-id and mock user_roles
+  // lookup first, then agent lookup.
+  const ADMIN_AUTH = { ...AUTH, 'x-user-id': 'admin-user' };
+  const mockAdminRole = () =>
+    mockChain.maybeSingle.mockResolvedValueOnce({ data: { role: 'admin' }, error: null });
+
   it('returns 401 without auth key', async () => {
     const res = await app.inject({
       method: 'PUT',
@@ -200,25 +206,38 @@ describe('PUT /agents/:slug', () => {
     expect(res.statusCode).toBe(401);
   });
 
+  it('returns 403 when user is not admin', async () => {
+    mockChain.maybeSingle.mockResolvedValueOnce({ data: null, error: null });
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/agents/brainstorm',
+      headers: ADMIN_AUTH,
+      payload: { instructions: 'Updated instructions' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('FORBIDDEN');
+  });
+
   it('returns 404 when agent not found with special response shape', async () => {
+    mockAdminRole();
     mockChain.maybeSingle.mockResolvedValueOnce({ data: null, error: null });
 
     const res = await app.inject({
       method: 'PUT',
       url: '/agents/nonexistent',
-      headers: AUTH,
+      headers: ADMIN_AUTH,
       payload: { instructions: 'Updated instructions' },
     });
 
     expect(res.statusCode).toBe(404);
     const body = res.json();
-    // Matches original pattern: { data: { error: { message, code } }, error: null }
     expect(body.error).toBeNull();
     expect(body.data.error).toBeDefined();
     expect(body.data.error.code).toBe('AGENT_NOT_FOUND');
   });
 
   it('updates agent and returns 200', async () => {
+    mockAdminRole();
     mockChain.maybeSingle.mockResolvedValueOnce({ data: { id: 'agent-1' }, error: null });
     mockChain.single.mockResolvedValueOnce({
       data: { ...mockAgent, instructions: 'Updated instructions' },
@@ -228,7 +247,7 @@ describe('PUT /agents/:slug', () => {
     const res = await app.inject({
       method: 'PUT',
       url: '/agents/brainstorm',
-      headers: AUTH,
+      headers: ADMIN_AUTH,
       payload: { instructions: 'Updated instructions' },
     });
 
@@ -239,13 +258,14 @@ describe('PUT /agents/:slug', () => {
   });
 
   it('includes updated_at timestamp in update', async () => {
+    mockAdminRole();
     mockChain.maybeSingle.mockResolvedValueOnce({ data: { id: 'agent-1' }, error: null });
     mockChain.single.mockResolvedValueOnce({ data: mockAgent, error: null });
 
     await app.inject({
       method: 'PUT',
       url: '/agents/brainstorm',
-      headers: AUTH,
+      headers: ADMIN_AUTH,
       payload: { instructions: 'Updated instructions' },
     });
 
@@ -255,11 +275,12 @@ describe('PUT /agents/:slug', () => {
   });
 
   it('returns 400 for invalid body (name too long)', async () => {
+    mockAdminRole();
     const res = await app.inject({
       method: 'PUT',
       url: '/agents/brainstorm',
-      headers: AUTH,
-      payload: { name: 'a'.repeat(101) }, // exceeds max(100)
+      headers: ADMIN_AUTH,
+      payload: { name: 'a'.repeat(101) },
     });
 
     expect(res.statusCode).toBe(400);

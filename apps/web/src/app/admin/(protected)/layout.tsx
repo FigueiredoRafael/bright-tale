@@ -18,6 +18,7 @@ const config: AdminLayoutConfig = {
       items: [
         { label: 'Usuários', path: '/admin/users', icon: 'Users' },
         { label: 'Organizations', path: '/admin/orgs', icon: 'Building2' },
+        { label: 'Agentes', path: '/admin/agents', icon: 'Bot' },
       ],
     },
   ],

@@ -73,6 +73,23 @@ export async function agentsRoutes(fastify: FastifyInstance): Promise<void> {
     try {
       const sb = createServiceClient();
       const { slug } = request.params as { slug: string };
+
+      // F2-026: editing agent prompts is admin-only. Non-admin users see the
+      // prompts read-only in the app; the web/admin console is the single
+      // source of truth for edits.
+      if (!request.userId) {
+        return reply.status(401).send({ data: null, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } });
+      }
+      const { data: role } = await sb
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', request.userId)
+        .eq('role', 'admin')
+        .maybeSingle();
+      if (!role) {
+        return reply.status(403).send({ data: null, error: { code: 'FORBIDDEN', message: 'Admin role required' } });
+      }
+
       const data = updateAgentSchema.parse(request.body);
 
       // Check if agent exists

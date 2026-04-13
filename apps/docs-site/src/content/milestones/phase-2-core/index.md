@@ -6,7 +6,7 @@
 
 **Depende de:** Fase 1 (auth, orgs, storage, créditos)
 
-**Progresso:** 11/29 concluídos (F2-001 a F2-009 ✅ · F2-015 ✅ · F2-027 ✅ · F2-010 a F2-014 em andamento)
+**Progresso:** 12/29 concluídos (F2-001 a F2-009 ✅ · F2-015 ✅ · F2-026 ✅ · F2-027 ✅ · F2-025 🟡 · F2-010 a F2-014 em andamento)
 
 > ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
 > Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
@@ -476,35 +476,38 @@
 ---
 
 ### F2-025 — Admin UI: agentes (web/admin)
-🔲 **Não iniciado**
+🟡 **Parcial — versionamento e dry-run pendentes**
 
-**Escopo:**
-- Nova página `apps/web/admin/(protected)/agents/` — lista + editor por agente
-- CRUD sobre `agent_prompts` via `GET/PUT /api/agents` (já existem)
-- Editor: `instructions`, `input_schema`, `output_schema` (Monaco ou textarea com syntax)
-- Versionamento simples: salvar histórico de versões (nova tabela `agent_prompt_versions` ou coluna `previous_instructions_json[]`)
-- Preview: rodar um dry-run com input de teste
+**Escopo entregue:**
+- Nova rota `apps/web/admin/(protected)/agents/` — lista todos os agentes
+- Página de edição por slug com server action (`actions.ts`) que escreve direto via admin client
+- Editor com textarea para `instructions`, `input_schema`, `output_schema`
+- Item "Agentes" adicionado ao sidebar do admin shell
+- Mensagem confirma que cache de 5min será respeitado (F2-027)
 
-**Critérios de aceite:**
-- [ ] Lista todos os 10 agentes do seed
-- [ ] Editar + salvar persiste no DB
-- [ ] Histórico de versões acessível
-- [ ] Dry-run executa sem debitar créditos
+**Pendente (próximo passo):**
+- [ ] Versionamento (`agent_prompt_versions` ou snapshot em coluna)
+- [ ] Dry-run sem debitar créditos
+- [ ] Editor com syntax highlight (Monaco)
+
+**Concluído em:** 2026-04-13 (parcial)
 
 ---
 
 ### F2-026 — App: remover edição de agentes (só visualização)
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
-- Auditar `apps/app/src/app/(app)/settings/agents/` — edição de prompt deve ser admin-only
-- Opções: remover página completamente OU deixar read-only ("Veja as instruções do agente que gera esse conteúdo")
-- Decisão de produto: read-only para transparência
+- `/settings/agents` no app reescrito como read-only (lista + viewer com lock)
+- `PUT /api/agents/:slug` agora exige role `admin` (consulta `user_roles` antes de aplicar update)
+- Testes do PUT cobrem: sem auth → 401, sem role admin → 403, admin → 200
 
 **Critérios de aceite:**
-- [ ] Usuário final não consegue alterar instructions via app
-- [ ] Se read-only, dados vêm via `GET /api/agents` sem expor schemas internos
-- [ ] Teste de autorização
+- [x] Usuário final não consegue alterar instructions via app (UI sem botão de salvar)
+- [x] Backend bloqueia (403) se chamar PUT sem role admin
+- [x] Testes 13/13 passing em `apps/api/src/__tests__/routes/agents.test.ts`
+
+**Concluído em:** 2026-04-13
 
 ---
 
