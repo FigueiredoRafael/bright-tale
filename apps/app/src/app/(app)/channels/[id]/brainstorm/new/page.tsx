@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Loader2, Lightbulb, Sparkles, ArrowLeft, ArrowRight } from "lucide-react";
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
 import { friendlyAiError } from "@/lib/ai/error-message";
+import { GenerationProgressModal } from "@/components/generation/GenerationProgressModal";
 
 type Mode = "blind" | "fine_tuned" | "reference_guided";
 
@@ -59,6 +60,7 @@ export default function NewBrainstormPage() {
 
     const [running, setRunning] = useState(false);
     const [ideas, setIdeas] = useState<Idea[]>([]);
+    const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
     // Fetch the brainstorm agent's recommended provider/model so we can render
     // the "Recommended" badge and prefill the picker.
@@ -111,36 +113,57 @@ export default function NewBrainstormPage() {
                 body: JSON.stringify(body),
             });
 
-            // Some 5xx responses might not be JSON — handle that gracefully.
-            let json: { data?: { ideas?: Idea[] }; error?: { message?: string; code?: string } } | null = null;
+            let json: { data?: { sessionId?: string }; error?: { message?: string; code?: string } } | null = null;
             try {
                 json = await res.json();
             } catch {
                 toast.error(`Servidor retornou ${res.status} sem JSON`);
+                setRunning(false);
                 return;
             }
 
             if (json?.error) {
                 const friendly = friendlyAiError(json.error.message ?? "");
                 toast.error(friendly.title, { description: friendly.hint });
+                setRunning(false);
                 return;
             }
-            const generatedIdeas = json?.data?.ideas ?? [];
-            setIdeas(generatedIdeas);
-            if (generatedIdeas.length === 0) {
-                toast.warning("Nenhuma ideia reconhecida no output", {
-                    description: "A IA respondeu mas o formato não bateu. Tente outro modelo ou re-execute.",
-                });
+
+            if (json?.data?.sessionId) {
+                setActiveSessionId(json.data.sessionId);
+                // running stays true; modal will flip it off on complete/fail.
             } else {
-                toast.success(`${generatedIdeas.length} ideias geradas`);
+                setRunning(false);
             }
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             const friendly = friendlyAiError(message);
             toast.error(friendly.title, { description: friendly.hint });
-        } finally {
             setRunning(false);
         }
+    }
+
+    async function onJobComplete() {
+        if (!activeSessionId) return;
+        try {
+            const res = await fetch(`/api/brainstorm/sessions/${activeSessionId}`);
+            const json = await res.json();
+            const generatedIdeas: Idea[] = json?.data?.ideas ?? [];
+            setIdeas(generatedIdeas);
+            toast.success(`${generatedIdeas.length} ideias geradas`);
+        } catch {
+            toast.error("Ideias geradas mas falha ao carregar");
+        } finally {
+            setRunning(false);
+            setActiveSessionId(null);
+        }
+    }
+
+    function onJobFailed(message: string) {
+        const friendly = friendlyAiError(message);
+        toast.error(friendly.title, { description: friendly.hint });
+        setRunning(false);
+        setActiveSessionId(null);
     }
 
     function pickIdea(_idea: Idea) {
@@ -151,6 +174,16 @@ export default function NewBrainstormPage() {
 
     return (
         <div className="p-6 max-w-4xl mx-auto space-y-6">
+            {activeSessionId && (
+                <GenerationProgressModal
+                    open={!!activeSessionId}
+                    sessionId={activeSessionId}
+                    sseUrl={`/api/brainstorm/sessions/${activeSessionId}/events`}
+                    onComplete={onJobComplete}
+                    onFailed={onJobFailed}
+                    onClose={() => { setActiveSessionId(null); setRunning(false); }}
+                />
+            )}
             <div>
                 <button
                     onClick={() => router.push(`/channels/${channelId}`)}

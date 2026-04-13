@@ -14,6 +14,7 @@ export interface ModelOption {
 
 export const MODELS_BY_PROVIDER: Record<ProviderId, ModelOption[]> = {
     ollama: [
+        { id: "llama3.2:3b", label: "Llama 3.2 3B", note: "local · leve, roda em qualquer Mac" },
         { id: "llama3.1:8b", label: "Llama 3.1 8B", note: "local · zero custo" },
         { id: "qwen2.5:7b", label: "Qwen 2.5 7B", note: "local · bom JSON" },
         { id: "mistral-nemo:12b", label: "Mistral Nemo 12B", note: "local · qualidade" },

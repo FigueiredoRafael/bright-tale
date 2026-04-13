@@ -62,6 +62,12 @@ vi.mock('@/lib/ai/router', () => ({
     attempts: 1,
   })),
 }));
+vi.mock('@/jobs/client', () => ({
+  inngest: { send: vi.fn(async () => ({ ids: ['evt-1'] })) },
+}));
+vi.mock('@/jobs/emitter', () => ({
+  emitJobEvent: vi.fn(async () => undefined),
+}));
 
 import { brainstormRoutes } from '@/routes/brainstorm';
 
@@ -124,13 +130,14 @@ describe('POST /brainstorm/sessions', () => {
       payload: { inputMode: 'blind', topic: 'ai productivity' },
     });
 
-    expect(res.statusCode).toBe(200);
+    // F2-036: POST now enqueues the job and returns 202 with just the sessionId.
+    // The actual ideas are produced asynchronously by the Inngest function and
+    // streamed via GET /sessions/:id/events (SSE).
+    expect(res.statusCode).toBe(202);
     const body = res.json();
     expect(body.error).toBeNull();
     expect(body.data.sessionId).toBe('session-1');
-    expect(Array.isArray(body.data.ideas)).toBe(true);
-    expect(body.data.ideas).toHaveLength(2);
-    expect(body.data.ideas[0].title).toBe('Mock idea A');
+    expect(body.data.status).toBe('queued');
   });
 
   it('accepts reference_guided without topic when URL provided', async () => {
@@ -148,6 +155,6 @@ describe('POST /brainstorm/sessions', () => {
       },
     });
 
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(202);
   });
 });

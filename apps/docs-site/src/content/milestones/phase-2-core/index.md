@@ -573,3 +573,127 @@ Substituído pelas páginas dedicadas: `/channels/[id]/brainstorm/new` (F2-016),
 - README reescrito do zero: prerequisites, env files, db push, Ollama models, AI provider matrix, troubleshooting
 
 **Concluído em:** 2026-04-13
+
+---
+
+### F2-036 — Geração assíncrona com modal de progresso em tempo real
+✅ **Concluído (brainstorm) — research/production pendentes**
+
+Implementado pra brainstorm end-to-end (validado com Ollama local qwen2.5:7b — 5 ideias geradas):
+- Migration `job_events` + helper `emitJobEvent`
+- Inngest function `brainstormGenerate` (step-by-step com eventos)
+- `POST /brainstorm/sessions` retorna 202 em ~1s (enfileira)
+- `GET /brainstorm/sessions/:id/events` — SSE stream
+- Hook `useJobEvents` + componente `GenerationProgressModal` (checklist animada + timer)
+
+Research + production replicam o mesmo padrão — ticket separado quando prioridade subir.
+
+**Concluído em:** 2026-04-13
+
+Escopo original abaixo 👇
+
+---
+
+### F2-036 (descrição original)
+🔲 **Não iniciado**
+
+**Problema atual:**
+Geração de brainstorm/research/produção é síncrona. Quando o provider é lento (Ollama local leva 60-180s, ou Anthropic em horário de pico), o proxy do Next.js dá `socket hang up` (ECONNRESET) antes da resposta chegar. Frontend mostra erro 500 mas a geração completa no servidor (orfã). Sem feedback de progresso o usuário fica travado em spinner mudo sem saber se vai funcionar.
+
+**Escopo:**
+- **Backend:** transformar `POST /brainstorm/sessions`, `/research-sessions`, `/content-drafts` em jobs Inngest. Endpoint retorna `{ sessionId, status: 'queued' }` imediatamente (não bloqueia).
+- **Eventos de progresso:** cada estágio do job emite eventos persistidos (tabela `job_events` com `session_id`, `stage`, `message`, `created_at`). Estágios típicos:
+  - `queued` — "Na fila…"
+  - `loading_prompt` — "Carregando agente…"
+  - `calling_provider` — "Conversando com {provider}…"
+  - `parsing_output` — "Processando resposta…"
+  - `analyzing_youtube` — "Analisando top vídeos do nicho…" (research)
+  - `generating_ideas` — "Gerando ideias…"
+  - `saving` — "Salvando no banco…"
+  - `completed` / `failed`
+- **Streaming pro frontend:** `GET /sessions/:id/events` com SSE (Server-Sent Events) — stream em tempo real dos eventos. Fallback: long-polling se SSE não rolar.
+- **Modal de progresso (UI):** novo componente `<GenerationProgressModal>` mostra:
+  - Checklist animada dos estágios (✅ feito, ⏳ em andamento, ⬜ pendente)
+  - Mensagem do estágio atual + tempo decorrido
+  - Botão "Cancelar" (envia DELETE → marca job pra abort)
+  - Ao terminar: redireciona pra resultado ou mostra ideias inline
+- **Persistência:** se o usuário fechar o navegador, ao voltar pode ver o status do job (lista de jobs em andamento).
+
+**Arquivos novos/alterados:**
+- `supabase/migrations/YYYYMMDDHHMMSS_job_events.sql` (nova tabela)
+- `apps/api/src/lib/jobs/emitter.ts` — helper `emitJobEvent(sessionId, stage, message)`
+- `apps/api/src/inngest/functions/brainstorm.ts` (novo)
+- `apps/api/src/inngest/functions/research.ts` (novo)
+- `apps/api/src/inngest/functions/production.ts` (novo)
+- `apps/api/src/routes/brainstorm.ts` — refactor: enfileira job, retorna sessionId
+- `apps/api/src/routes/sessions.ts` (novo) — `GET /sessions/:id/events` (SSE)
+- `apps/app/src/components/generation/GenerationProgressModal.tsx` (novo)
+- `apps/app/src/hooks/useJobEvents.ts` (novo) — consome SSE
+- Páginas brainstorm/research/drafts new — substituem `try/await fetch` por enfileirar + abrir modal
+
+**Critérios de aceite:**
+- [ ] POST retorna em <500ms com `{sessionId, status: 'queued'}`
+- [ ] Modal abre imediatamente com primeira mensagem
+- [ ] Cada estágio aparece em tempo real no modal (SSE)
+- [ ] Geração com Ollama 7B (>2min) completa sem timeout
+- [ ] Botão cancelar para o job (não debita créditos se cancelado antes de `calling_provider`)
+- [ ] Erros do provider chegam no modal com mensagem amigável (`friendlyAiError`)
+- [ ] Refresh do navegador no meio da geração: modal reabre e continua mostrando progresso
+- [ ] Lista "Jobs em andamento" no header (badge com contador)
+- [ ] Testes: unit do emitter, integration do SSE stream, e2e do modal
+
+**Dependências:** Inngest já está rodando (F2-035). Usa infraestrutura existente.
+
+**Estimativa:** 2-3 dias
+
+**Concluído em:** —
+
+---
+
+### F2-037 — Brainstorm: contagem fixa, idempotência e seleção de ideias
+🔲 **Não iniciado**
+
+**Problemas atuais (descobertos em 2026-04-13):**
+
+1. **Volume descontrolado:** prompt diz "Be thorough" sem cap → modelo gera 15-20 ideias quando o usuário só queria ~5. Polui banco e UI.
+2. **Idempotência ausente:** se o request é retentado (proxy timeout, fallback chain, F5 do navegador), múltiplos batches são persistidos pra mesma sessão. Vimos 25+ ideias salvas após 1 click + erro de quota.
+3. **Sem seleção:** todas as ideias geradas vão direto pro `idea_archives`. Usuário não pode escolher só as 3-5 que interessam — tem que deletar uma a uma.
+4. **Erro mascarado:** quando o provider falha mas o fallback parcial salva algo, o frontend mostra erro "INTERNAL" sem revelar que houve dados gerados.
+
+**Escopo:**
+
+- **Cap de ideias:** UI tem campo `Quantas ideias gerar?` (default 5, range 3-10). Backend valida e injeta no prompt: `"Generate exactly ${count} ideas. Do not generate more or fewer."`
+- **Idempotência:**
+  - Frontend gera `idempotencyKey` (UUID) por click, manda no header `X-Idempotency-Key`
+  - Backend: tabela `brainstorm_runs(idempotency_key UNIQUE, session_id, status, result_json)` — se a key já existe, retorna o resultado anterior em vez de re-rodar
+  - Mesmo com retries internos do `generateWithFallback`, só 1 batch é persistido (deduplicação por key)
+- **Modo "draft" antes de salvar:**
+  - Geração nova vai pra `brainstorm_drafts` (tabela temporária, não em `idea_archives`)
+  - UI mostra ideias como cards com checkbox; usuário marca quais quer salvar
+  - Botão "Salvar selecionadas (N)" → move só as marcadas pra `idea_archives`
+  - "Descartar tudo" → limpa o draft, devolve créditos NÃO (já gastou IA)
+  - Drafts expiram em 24h
+- **Erro coerente:** se geração teve sucesso parcial, retorna `{data: {ideas, partial: true}, error: {message, code: 'PARTIAL_SUCCESS'}}` — frontend mostra ideias E aviso ("Geramos só 3 das 5 pedidas — quota Gemini")
+
+**Arquivos novos/alterados:**
+- `supabase/migrations/YYYYMMDDHHMMSS_brainstorm_drafts_and_runs.sql`
+- `packages/shared/src/schemas/brainstorm.ts` — adicionar `count?: number` (3-10)
+- `apps/api/src/lib/idempotency.ts` (novo) — middleware de idempotency-key
+- `apps/api/src/routes/brainstorm.ts` — usar drafts + idempotency
+- `apps/api/src/routes/brainstorm-drafts.ts` (novo) — endpoints `GET/POST/DELETE`
+- `apps/app/src/app/(app)/channels/[id]/brainstorm/new/page.tsx` — campo count + idempotency-key
+- `apps/app/src/components/brainstorm/IdeasDraftPicker.tsx` (novo) — checkbox UI
+
+**Critérios de aceite:**
+- [ ] UI tem campo "Quantas ideias?" (slider ou input, 3-10)
+- [ ] Backend gera exatamente N (±1 tolerância) ideias
+- [ ] Mesma idempotency-key chamada 2x retorna o mesmo resultado, sem re-rodar IA
+- [ ] Ideias geradas vão pra draft, não pra `idea_archives`
+- [ ] Usuário seleciona com checkbox e clica "Salvar selecionadas"
+- [ ] Drafts expiram em 24h (cron Inngest)
+- [ ] Sucesso parcial mostra ideias + aviso amigável
+- [ ] Testes: idempotency, cap de count, draft → archive flow
+
+**Estimativa:** 1-2 dias
+
+**Concluído em:** —

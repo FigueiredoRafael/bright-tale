@@ -94,13 +94,41 @@ npm run db:seed
 
 ### 4. Local AI (Ollama, optional but recommended)
 
+**Recommended for testing the full pipeline locally without burning API quota:**
+
 ```bash
-ollama pull llama3.2:3b      # smallest, ~2GB, fast on any Mac
-# or
-ollama pull qwen2.5:7b       # better JSON output, ~4.4GB
-# or
-ollama pull llama3.1:8b      # better quality, ~4.7GB
+ollama pull qwen2.5:7b       # ~4.4GB — best balance for our use case
 ```
+
+Why `qwen2.5:7b`? It follows structured output (JSON/YAML) reliably, which is what
+brainstorm/research/production stages need. Llama 3.2 3B is too small for structured
+output and will produce "0 ideas recognized" errors. Anything larger doesn't pay off
+locally — for real quality, hit Gemini/Claude.
+
+**RAM guidance:**
+
+| Mac RAM | Recommended local model |
+|---|---|
+| 8GB | skip Ollama, use Gemini Flash (free tier) |
+| 16GB | `qwen2.5:7b` (~4.4GB) |
+| 24GB+ | `qwen2.5:7b` or `mistral-nemo:12b` (~7GB) |
+
+**Quality ranking (for our content workflow):**
+
+| Model | Quality | Cost | Notes |
+|---|---|---|---|
+| Claude Sonnet 4.5 | ⭐⭐⭐⭐⭐ | $$$ | best pt-BR writing, use for production content |
+| Gemini 2.5 Pro | ⭐⭐⭐⭐⭐ | $$ | strong all-around |
+| Gemini 2.5 Flash | ⭐⭐⭐⭐ | **free tier** | great default for dev + many prod cases |
+| GPT-4o | ⭐⭐⭐⭐ | $$ | solid, slightly worse pt-BR than Claude |
+| Claude Haiku 4.5 | ⭐⭐⭐ | $ | fast + cheap |
+| Qwen 2.5 7B (local) | ⭐⭐ | free | dev/testing only — pipeline works, output is meh |
+| Llama 3.2 3B (local) | ⭐ | free | too small for structured output, avoid |
+
+**Suggested workflow:**
+- **Dev / pipeline testing:** Ollama (`qwen2.5:7b`) — zero cost, offline-friendly
+- **Daily use:** Gemini 2.5 Flash — free tier covers a lot
+- **Production content:** Claude Sonnet 4.5 — best quality where it matters
 
 `npm run dev` will start `ollama serve` automatically; if you already run it as a service or skip this step, the script just logs and moves on.
 

@@ -935,6 +935,36 @@ export type Database = {
           },
         ]
       }
+      job_events: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          metadata: Json | null
+          session_id: string
+          session_type: string
+          stage: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          metadata?: Json | null
+          session_id: string
+          session_type: string
+          stage: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          metadata?: Json | null
+          session_id?: string
+          session_type?: string
+          stage?: string
+        }
+        Relationships: []
+      }
       org_invites: {
         Row: {
           accepted_at: string | null
