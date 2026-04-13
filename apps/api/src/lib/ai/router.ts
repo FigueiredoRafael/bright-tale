@@ -99,10 +99,14 @@ interface ProviderRoute {
 }
 
 interface ChainOptions {
-  /** Explicit provider override (highest priority). Falls back to FALLBACK_ORDER if it errors. */
+  /** Explicit provider override. By default the chain is JUST this provider (no
+   *  paid fallbacks) so a user who picks a free tier doesn't accidentally get
+   *  charged on another provider. Set `allowFallback: true` to re-enable. */
   provider?: string;
   /** Explicit model — only used together with provider override. */
   model?: string;
+  /** When provider is set, allow falling back to other providers on errors. */
+  allowFallback?: boolean;
 }
 
 /**
@@ -121,13 +125,18 @@ export function getProviderChain(
   const routeTable = ROUTE_TABLE[tier] ?? ROUTE_TABLE.standard;
   const tierPrimary = routeTable[stage];
 
-  // Start the chain with the explicit override (if any), then the tier primary,
-  // then the tier primary's standard fallback order.
+  // Build the provider order:
+  // - If user picked a provider WITHOUT allowFallback: chain is just that one.
+  // - Otherwise: tier primary first, then its fallback chain.
   const order: string[] = [];
-  if (options.provider) order.push(options.provider);
-  order.push(tierPrimary.provider);
-  for (const fb of FALLBACK_ORDER[options.provider ?? tierPrimary.provider] ?? []) {
-    order.push(fb);
+  if (options.provider && !options.allowFallback) {
+    order.push(options.provider);
+  } else {
+    if (options.provider) order.push(options.provider);
+    order.push(tierPrimary.provider);
+    for (const fb of FALLBACK_ORDER[options.provider ?? tierPrimary.provider] ?? []) {
+      order.push(fb);
+    }
   }
 
   const seen = new Set<string>();
@@ -171,10 +180,18 @@ export function getRouteForStage(stage: AgentType, tier: string = 'standard'): P
  */
 function isRetryableError(err: unknown): boolean {
   const msg = String((err as { message?: string })?.message ?? err ?? '').toLowerCase();
+  // Rate-limit / quota / capacity
   if (msg.includes('429')) return true;
   if (msg.includes('quota')) return true;
   if (msg.includes('rate limit')) return true;
   if (msg.includes('overloaded')) return true;
+  // Billing / account-level money issues — caller's account is out of funds
+  // on this provider, but the next provider in the chain may still work.
+  if (msg.includes('credit balance')) return true;
+  if (msg.includes('insufficient_quota')) return true;
+  if (msg.includes('insufficient credits')) return true;
+  if (msg.includes('billing')) return true;
+  // Server/network
   if (/\b5\d{2}\b/.test(msg)) return true;
   if (msg.includes('econn') || msg.includes('etimedout') || msg.includes('network')) return true;
   return false;
@@ -205,8 +222,14 @@ export async function generateWithFallback(
       return { result, providerName: route.providerName, model: route.model, attempts: i + 1 };
     } catch (err) {
       lastErr = err;
+      const message = String((err as { message?: string })?.message ?? err);
+      const retryable = isRetryableError(err);
+      // Log so devs can see why we fell through providers in dev/server logs.
+      console.warn(
+        `[ai-router] provider=${route.providerName} model=${route.model} failed: ${message} (retryable=${retryable})`,
+      );
       if (i === chain.length - 1) break;
-      if (!isRetryableError(err)) break;
+      if (!retryable) break;
     }
   }
   throw lastErr;
