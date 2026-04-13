@@ -30,6 +30,30 @@ Tracking de progresso do desenvolvimento. Cada fase tem cards independentes. Mar
 3. Quando terminar, mude para ✅ e adicione data
 4. Use Claude Code com `/grab-card` referenciando o card ID (ex: `F1-001`)
 
+## ⚠️ Regra obrigatória: Testes automatizados
+
+**Todo card DEVE incluir testes automatizados antes de ser marcado como concluído.**
+
+Um card só é considerado "pronto" quando:
+- [ ] Código implementado + typecheck passa
+- [ ] **Testes unitários/integração cobrindo o escopo do card**
+- [ ] Build de produção (Vercel) passa
+- [ ] Critérios de aceite validados
+
+### Cobertura mínima esperada por tipo de card
+
+| Tipo de card | Cobertura mínima |
+|---|---|
+| **API route** | Testes de sucesso + erro + autorização + validação de schema |
+| **DB migration** | Teste que valida schema + RLS policies + triggers |
+| **UI page/component** | Render test + interaction test (ao menos o happy path) |
+| **Lib/helper** | Testes unitários com edge cases |
+| **Integration (ex. YouTube, Stripe)** | Testes com mocks + teste E2E se possível |
+
+Stack de testes: **Vitest** (unit/integration) + **Playwright** (E2E, quando aplicável).
+
+**Não é opcional.** Cards sem testes não avançam. Se a complexidade do teste exceder o esforço do card, quebrar em dois cards (um de implementação + um de testes).
+
 ## Specs de referência
 
 Cada card referencia o spec relevante em `docs/specs/`:
@@ -43,3 +67,4 @@ Cada card referencia o spec relevante em `docs/specs/`:
 | Pricing + Créditos | `docs/specs/pricing-plans.md` |
 | Payments | `docs/specs/payments-stripe.md` |
 | Infrastructure | `docs/specs/infrastructure.md` |
+| **Testing (MANDATORY)** | **`docs/specs/testing-requirements.md`** |

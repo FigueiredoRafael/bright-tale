@@ -8,6 +8,9 @@
 
 **Progresso:** 0/8 concluídos
 
+> ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
+> Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
+
 ---
 
 ## Cards
