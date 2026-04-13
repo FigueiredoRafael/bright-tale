@@ -28,12 +28,13 @@ interface Props {
     open: boolean;
     sessionId: string;
     sseUrl: string;
+    title?: string;
     onComplete?: () => void;
     onFailed?: (message: string) => void;
     onClose: () => void;
 }
 
-export function GenerationProgressModal({ open, sessionId, sseUrl, onComplete, onFailed, onClose }: Props) {
+export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gerando ideias", onComplete, onFailed, onClose }: Props) {
     const { events, status } = useJobEvents(open ? sseUrl : "");
     const [elapsed, setElapsed] = useState(0);
 
@@ -69,7 +70,7 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, onComplete, o
                         ) : (
                             <Loader2 className="h-5 w-5 animate-spin text-primary" />
                         )}
-                        Gerando ideias
+                        {title}
                     </DialogTitle>
                     <DialogDescription>
                         {currentMessage}

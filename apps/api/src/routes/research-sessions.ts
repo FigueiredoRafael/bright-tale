@@ -9,9 +9,9 @@ import { authenticate } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
-import { generateWithFallback } from '../lib/ai/router.js';
-import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
-import { checkCredits, debitCredits } from '../lib/credits.js';
+import { checkCredits } from '../lib/credits.js';
+import { inngest } from '../jobs/client.js';
+import { emitJobEvent } from '../jobs/emitter.js';
 
 const LEVEL_COSTS: Record<'surface' | 'medium' | 'deep', number> = {
   surface: 60,
@@ -52,16 +52,6 @@ function buildLevelInstruction(level: 'surface' | 'medium' | 'deep', focusTags: 
   if (level === 'surface') return `Provide top 3 sources, basic statistics. ${focus}`;
   if (level === 'medium') return `Provide 5–8 sources, expert quotes, and supporting data. ${focus}`;
   return `Provide 10+ sources, contra-arguments, validated processes, and cross-references. ${focus}`;
-}
-
-function normalizeCards(raw: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(raw)) return raw as Array<Record<string, unknown>>;
-  if (raw && typeof raw === 'object') {
-    const obj = raw as Record<string, unknown>;
-    if (Array.isArray(obj.cards)) return obj.cards as Array<Record<string, unknown>>;
-    if (Array.isArray(obj.results)) return obj.results as Array<Record<string, unknown>>;
-  }
-  return [];
 }
 
 export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<void> {
@@ -109,47 +99,84 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
       if (insertErr || !session) throw insertErr ?? new ApiError(500, 'Failed to create session', 'INTERNAL');
 
-      try {
-        const baseSystem = (await loadAgentPrompt('research')) ?? '';
-        const systemPrompt = `${baseSystem}\n\nLevel directive: ${inputJson.instruction}`.trim();
+      await emitJobEvent(session.id, 'research', 'queued', 'Na fila, começando já…');
 
-        const { result } = await generateWithFallback(
-          'research',
-          body.modelTier,
-          {
-            agentType: 'research',
-            input: inputJson,
-            schema: null,
-            systemPrompt,
-          },
-          { provider: body.provider, model: body.model },
-        );
+      await inngest.send({
+        name: 'research/generate',
+        data: {
+          sessionId: session.id,
+          orgId,
+          userId: request.userId,
+          channelId: body.channelId ?? null,
+          ideaId: body.ideaId ?? null,
+          level: body.level,
+          inputJson,
+          modelTier: body.modelTier,
+          provider: body.provider,
+          model: body.model,
+        },
+      });
 
-        const cards = normalizeCards(result);
-
-        await (sb.from('research_sessions') as unknown as {
-          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        })
-          .update({ status: 'completed', cards_json: cards })
-          .eq('id', session.id);
-
-        await debitCredits(orgId, request.userId, `research-${body.level}`, 'text', cost, {
-          channelId: body.channelId,
-          ideaId: body.ideaId,
-        });
-
-        return reply.send({ data: { sessionId: session.id, level: body.level, cards }, error: null });
-      } catch (err) {
-        await (sb.from('research_sessions') as unknown as {
-          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        })
-          .update({ status: 'failed', error_message: (err as Error)?.message?.slice(0, 500) })
-          .eq('id', session.id);
-        throw err;
-      }
+      return reply.status(202).send({
+        data: { sessionId: session.id, level: body.level, status: 'queued' },
+        error: null,
+      });
     } catch (error) {
       return sendError(reply, error);
     }
+  });
+
+  /**
+   * GET /:id/events — SSE stream of progress events for the research job.
+   */
+  fastify.get('/:id/events', { preHandler: [authenticate] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const sb = createServiceClient();
+
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    let lastCreatedAt = '1970-01-01T00:00:00Z';
+    let closed = false;
+    request.raw.on('close', () => { closed = true; });
+
+    const poll = async (): Promise<void> => {
+      while (!closed) {
+        const { data: events } = await (sb
+          .from('job_events')
+          .select('*')
+          .eq('session_id', id)
+          .gt('created_at', lastCreatedAt)
+          .order('created_at', { ascending: true })) as unknown as {
+          data: Array<{ id: string; stage: string; message: string; metadata: unknown; created_at: string }> | null;
+        };
+
+        if (events && events.length > 0) {
+          for (const ev of events) {
+            reply.raw.write(`data: ${JSON.stringify(ev)}\n\n`);
+            lastCreatedAt = ev.created_at;
+            if (ev.stage === 'completed' || ev.stage === 'failed') {
+              reply.raw.end();
+              return;
+            }
+          }
+        } else {
+          reply.raw.write(': ping\n\n');
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    };
+
+    void poll().catch((err) => {
+      fastify.log.error({ err }, 'SSE poll failed');
+      reply.raw.end();
+    });
+
+    return reply;
   });
 
   /**

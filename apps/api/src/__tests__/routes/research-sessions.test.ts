@@ -57,6 +57,12 @@ vi.mock('@/lib/ai/router', () => ({
     attempts: 1,
   })),
 }));
+vi.mock('@/jobs/client', () => ({
+  inngest: { send: vi.fn(async () => ({ ids: ['evt-1'] })) },
+}));
+vi.mock('@/jobs/emitter', () => ({
+  emitJobEvent: vi.fn(async () => undefined),
+}));
 
 import { researchSessionsRoutes } from '@/routes/research-sessions';
 
@@ -83,7 +89,7 @@ describe('POST /research-sessions', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it('runs research and returns cards', async () => {
+  it('enqueues research and returns 202 with session id', async () => {
     mockChain.single
       .mockResolvedValueOnce({ data: { org_id: 'org-1' }, error: null }) // org lookup
       .mockResolvedValueOnce({ data: { id: 'rs-1' }, error: null }); // insert session
@@ -95,11 +101,12 @@ describe('POST /research-sessions', () => {
       payload: { level: 'medium', topic: 'deep work', focusTags: ['stats'] },
     });
 
-    expect(res.statusCode).toBe(200);
+    // F2-036: research now runs async via Inngest; cards arrive via SSE.
+    expect(res.statusCode).toBe(202);
     const body = res.json();
     expect(body.data.sessionId).toBe('rs-1');
     expect(body.data.level).toBe('medium');
-    expect(body.data.cards).toHaveLength(2);
+    expect(body.data.status).toBe('queued');
   });
 });
 

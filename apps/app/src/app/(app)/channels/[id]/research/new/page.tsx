@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Loader2, Search, ArrowLeft, ArrowRight, Check, Lightbulb } from "lucide-react";
 import { IdeaPickerModal, type IdeaOption } from "@/components/research/IdeaPickerModal";
+import { GenerationProgressModal } from "@/components/generation/GenerationProgressModal";
 
 type Level = "surface" | "medium" | "deep";
 
@@ -87,6 +88,7 @@ export default function NewResearchPage() {
         })();
     }, []);
     const [sessionId, setSessionId] = useState<string | null>(null);
+    const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [cards, setCards] = useState<Card[]>([]);
     const [approved, setApproved] = useState<Set<number>>(new Set());
 
@@ -118,19 +120,47 @@ export default function NewResearchPage() {
             if (json.error) {
                 const friendly = friendlyAiError(json.error.message ?? "");
                 toast.error(friendly.title, { description: friendly.hint });
+                setRunning(false);
                 return;
             }
-            setSessionId(json.data.sessionId);
-            setCards(json.data.cards ?? []);
-            setApproved(new Set((json.data.cards ?? []).map((_: Card, i: number) => i)));
-            toast.success(`${json.data.cards?.length ?? 0} cards de pesquisa`);
+            if (json.data?.sessionId) {
+                setActiveSessionId(json.data.sessionId);
+                // running stays true until modal completes/fails
+            } else {
+                setRunning(false);
+            }
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             const friendly = friendlyAiError(message);
             toast.error(friendly.title, { description: friendly.hint });
-        } finally {
             setRunning(false);
         }
+    }
+
+    async function onJobComplete() {
+        if (!activeSessionId) return;
+        try {
+            const res = await fetch(`/api/research-sessions/${activeSessionId}`);
+            const json = await res.json();
+            const session = json?.data;
+            const loadedCards: Card[] = session?.cards_json ?? [];
+            setSessionId(activeSessionId);
+            setCards(loadedCards);
+            setApproved(new Set(loadedCards.map((_: Card, i: number) => i)));
+            toast.success(`${loadedCards.length} cards de pesquisa`);
+        } catch {
+            toast.error("Pesquisa gerada mas falha ao carregar");
+        } finally {
+            setRunning(false);
+            setActiveSessionId(null);
+        }
+    }
+
+    function onJobFailed(message: string) {
+        const friendly = friendlyAiError(message);
+        toast.error(friendly.title, { description: friendly.hint });
+        setRunning(false);
+        setActiveSessionId(null);
     }
 
     function toggleApproval(i: number) {
@@ -174,6 +204,17 @@ export default function NewResearchPage() {
                 }}
                 onClose={() => setPickerOpen(false)}
             />
+            {activeSessionId && (
+                <GenerationProgressModal
+                    open={!!activeSessionId}
+                    sessionId={activeSessionId}
+                    sseUrl={`/api/research-sessions/${activeSessionId}/events`}
+                    title="Pesquisando"
+                    onComplete={onJobComplete}
+                    onFailed={onJobFailed}
+                    onClose={() => { setActiveSessionId(null); setRunning(false); }}
+                />
+            )}
             <div>
                 <button
                     onClick={() => router.back()}
