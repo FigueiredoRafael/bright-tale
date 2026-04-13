@@ -178,22 +178,35 @@ export function getRouteForStage(stage: AgentType, tier: string = 'standard'): P
  * Validation/auth errors (400/401/403) are NOT retryable — the caller's input
  * is the problem, not the provider.
  */
-function isRetryableError(err: unknown): boolean {
+/** Should we try a different provider after this error? */
+function isProviderFailover(err: unknown): boolean {
   const msg = String((err as { message?: string })?.message ?? err ?? '').toLowerCase();
-  // Rate-limit / quota / capacity
+  // Quota / rate-limit / billing — this provider is unusable right now,
+  // try the next one.
   if (msg.includes('429')) return true;
   if (msg.includes('quota')) return true;
+  if (msg.includes('resource_exhausted')) return true;
   if (msg.includes('rate limit')) return true;
-  if (msg.includes('overloaded')) return true;
-  if (msg.includes('unavailable')) return true;
-  if (msg.includes('high demand')) return true;
-  // Billing / account-level money issues — caller's account is out of funds
-  // on this provider, but the next provider in the chain may still work.
   if (msg.includes('credit balance')) return true;
   if (msg.includes('insufficient_quota')) return true;
   if (msg.includes('insufficient credits')) return true;
   if (msg.includes('billing')) return true;
-  // Server/network
+  // Capacity / network issues — also worth trying a different provider.
+  if (msg.includes('overloaded')) return true;
+  if (msg.includes('unavailable')) return true;
+  if (msg.includes('high demand')) return true;
+  if (/\b5\d{2}\b/.test(msg)) return true;
+  if (msg.includes('econn') || msg.includes('etimedout') || msg.includes('network')) return true;
+  return false;
+}
+
+/** Worth retrying the SAME provider+model? Only for transient capacity blips,
+ *  NOT for quota errors (those are hard limits — retrying just burns more). */
+function shouldRetrySameProvider(err: unknown): boolean {
+  const msg = String((err as { message?: string })?.message ?? err ?? '').toLowerCase();
+  if (msg.includes('overloaded')) return true;
+  if (msg.includes('unavailable')) return true;
+  if (msg.includes('high demand')) return true;
   if (/\b5\d{2}\b/.test(msg)) return true;
   if (msg.includes('econn') || msg.includes('etimedout') || msg.includes('network')) return true;
   return false;
@@ -235,11 +248,13 @@ export async function generateWithFallback(
       } catch (err) {
         lastErr = err;
         const message = String((err as { message?: string })?.message ?? err);
-        const retryable = isRetryableError(err);
+        const retrySame = shouldRetrySameProvider(err);
         console.warn(
-          `[ai-router] provider=${route.providerName} model=${route.model} attempt=${attempt + 1}: ${message} (retryable=${retryable})`,
+          `[ai-router] provider=${route.providerName} model=${route.model} attempt=${attempt + 1}: ${message} (retrySame=${retrySame})`,
         );
-        if (!retryable) break;
+        // Quota/billing errors short-circuit the per-provider retry loop —
+        // retrying just burns more tokens against the same hard limit.
+        if (!retrySame) break;
         if (attempt < SAME_PROVIDER_RETRIES) {
           await sleep(baseDelayMs * Math.pow(2, attempt));
           attempt++;
@@ -249,7 +264,7 @@ export async function generateWithFallback(
       }
     }
     if (i === chain.length - 1) break;
-    if (!isRetryableError(lastErr)) break;
+    if (!isProviderFailover(lastErr)) break;
   }
   throw lastErr;
 }
