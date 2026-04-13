@@ -99,8 +99,7 @@ export default function CreateContentPage() {
     })();
   }, [channelId]);
 
-  async function addReference(e: React.FormEvent) {
-    e.preventDefault();
+  async function addReference() {
     if (!newRefUrl.trim()) return;
     setAddingRef(true);
     try {
@@ -286,17 +285,30 @@ export default function CreateContentPage() {
                   </div>
                 )}
 
-                <form onSubmit={addReference} className="flex gap-2 pl-6">
+                <div className="flex gap-2 pl-6">
                   <Input
                     placeholder="https://youtube.com/@youtuber-referencia"
                     value={newRefUrl}
                     onChange={(e) => setNewRefUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addReference();
+                      }
+                    }}
                     className="h-8 text-xs"
                   />
-                  <Button type="submit" size="sm" variant="outline" disabled={addingRef || !newRefUrl.trim()} className="h-8 px-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={addingRef || !newRefUrl.trim()}
+                    onClick={addReference}
+                    className="h-8 px-2"
+                  >
                     {addingRef ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
                   </Button>
-                </form>
+                </div>
 
                 {references.length === 0 && !refsLoading && (
                   <p className="text-[10px] text-muted-foreground pl-6">
