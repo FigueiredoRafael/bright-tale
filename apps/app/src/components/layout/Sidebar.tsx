@@ -30,10 +30,12 @@ export default function Sidebar() {
     // If no active channel, show all (user-friendly default).
     const channelMedia = activeChannel?.media_types ?? ['blog', 'video', 'shorts', 'podcast'];
     const libraryItems: NavItem[] = [];
-    if (channelMedia.includes('blog')) libraryItems.push({ href: "/blogs", label: "Blogs", icon: PenLine });
-    if (channelMedia.includes('video')) libraryItems.push({ href: "/videos", label: "Videos", icon: Video });
-    if (channelMedia.includes('shorts')) libraryItems.push({ href: "/shorts", label: "Shorts", icon: Zap });
-    if (channelMedia.includes('podcast')) libraryItems.push({ href: "/podcasts", label: "Podcasts", icon: Mic });
+    // Biblioteca = content_drafts filtered by type. Reuses the /content page
+    // so we have a single source of truth for the new pipeline output.
+    if (channelMedia.includes('blog')) libraryItems.push({ href: "/content?type=blog", label: "Blogs", icon: PenLine });
+    if (channelMedia.includes('video')) libraryItems.push({ href: "/content?type=video", label: "Vídeos", icon: Video });
+    if (channelMedia.includes('shorts')) libraryItems.push({ href: "/content?type=shorts", label: "Shorts", icon: Zap });
+    if (channelMedia.includes('podcast')) libraryItems.push({ href: "/content?type=podcast", label: "Podcasts", icon: Mic });
 
     const sections: NavSection[] = [
         {

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -26,9 +26,20 @@ const TYPE_META: Record<ContentDraft["type"], { label: string; icon: typeof File
     podcast: { label: "Podcast", icon: Mic, color: "text-rose-500" },
 };
 
-export default function ContentPage() {
+export default function ContentPageWrapper() {
+    return (
+        <Suspense fallback={<div className="p-12 flex justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}>
+            <ContentPage />
+        </Suspense>
+    );
+}
+
+function ContentPage() {
     const router = useRouter();
-    const { activeChannelId } = useActiveChannel();
+    const searchParams = useSearchParams();
+    const typeParam = searchParams.get("type") as ContentDraft["type"] | null;
+    const { activeChannelId, activeChannel } = useActiveChannel();
+    const channelMedia: string[] = (activeChannel?.media_types as string[] | undefined) ?? ["blog", "video", "shorts", "podcast"];
     const [drafts, setDrafts] = useState<ContentDraft[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
@@ -53,6 +64,12 @@ export default function ContentPage() {
         if (!term) return drafts;
         return drafts.filter((d) => (d.title ?? "").toLowerCase().includes(term));
     }, [drafts, search]);
+
+    // Only show tabs for content types this channel actually produces.
+    const visibleTypes = useMemo(
+        () => (["blog", "video", "shorts", "podcast"] as const).filter((t) => channelMedia.includes(t)),
+        [channelMedia],
+    );
 
     const counts = useMemo(() => {
         const c = { all: filtered.length, blog: 0, video: 0, shorts: 0, podcast: 0 };
@@ -112,19 +129,25 @@ export default function ContentPage() {
                     </CardContent>
                 </Card>
             ) : (
-                <Tabs defaultValue="all" className="w-full">
-                    <TabsList className="grid w-full grid-cols-5">
+                <Tabs defaultValue={typeParam ?? "all"} className="w-full">
+                    <TabsList className={`grid w-full`} style={{ gridTemplateColumns: `repeat(${1 + visibleTypes.length}, minmax(0, 1fr))` }}>
                         <TabsTrigger value="all">Todos <Badge variant="secondary" className="text-[10px] ml-1">{counts.all}</Badge></TabsTrigger>
-                        <TabsTrigger value="blog" className="gap-1.5"><FileText className="h-3.5 w-3.5" /> Blog <Badge variant="secondary" className="text-[10px] ml-1">{counts.blog}</Badge></TabsTrigger>
-                        <TabsTrigger value="video" className="gap-1.5"><Video className="h-3.5 w-3.5" /> Vídeo <Badge variant="secondary" className="text-[10px] ml-1">{counts.video}</Badge></TabsTrigger>
-                        <TabsTrigger value="shorts" className="gap-1.5"><Zap className="h-3.5 w-3.5" /> Shorts <Badge variant="secondary" className="text-[10px] ml-1">{counts.shorts}</Badge></TabsTrigger>
-                        <TabsTrigger value="podcast" className="gap-1.5"><Mic className="h-3.5 w-3.5" /> Podcast <Badge variant="secondary" className="text-[10px] ml-1">{counts.podcast}</Badge></TabsTrigger>
+                        {visibleTypes.map((t) => {
+                            const m = TYPE_META[t];
+                            const Icon = m.icon;
+                            return (
+                                <TabsTrigger key={t} value={t} className="gap-1.5">
+                                    <Icon className="h-3.5 w-3.5" /> {m.label}
+                                    <Badge variant="secondary" className="text-[10px] ml-1">{counts[t]}</Badge>
+                                </TabsTrigger>
+                            );
+                        })}
                     </TabsList>
 
                     <TabsContent value="all" className="mt-4">
                         <DraftList items={filtered} onClick={gotoDraft} onDelete={deleteDraft} />
                     </TabsContent>
-                    {(["blog", "video", "shorts", "podcast"] as const).map((t) => (
+                    {visibleTypes.map((t) => (
                         <TabsContent key={t} value={t} className="mt-4">
                             <DraftList items={filtered.filter((d) => d.type === t)} onClick={gotoDraft} onDelete={deleteDraft} />
                         </TabsContent>
