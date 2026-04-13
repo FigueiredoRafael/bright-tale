@@ -12,6 +12,7 @@ import { Loader2, Sparkles, FileText, Video, Zap, Mic, ArrowLeft, Check, BookOpe
 import { ResearchPickerModal, type ResearchOption } from "@/components/research/ResearchPickerModal";
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
 import { friendlyAiError } from "@/lib/ai/error-message";
+import { GenerationProgressModal } from "@/components/generation/GenerationProgressModal";
 
 type DraftType = "blog" | "video" | "shorts" | "podcast";
 
@@ -55,9 +56,8 @@ export default function NewDraftPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [researchSessionIdParam]);
     const [draftId, setDraftId] = useState<string | null>(null);
-    const [step, setStep] = useState<"setup" | "core" | "produce" | "done">("setup");
+    const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
-    const [output, setOutput] = useState<unknown>(null);
 
     async function runStep(label: string, fn: () => Promise<Response>) {
         setBusy(true);
@@ -102,31 +102,31 @@ export default function NewDraftPage() {
             }),
         );
         if (!draft) return;
-        setDraftId((draft as { id: string }).id);
-        setStep("core");
+        const newDraftId = (draft as { id: string }).id;
+        setDraftId(newDraftId);
 
-        const aiBody = JSON.stringify({ provider, model });
-        const core = await runStep("canonical core", () =>
-            fetch(`/api/content-drafts/${(draft as { id: string }).id}/canonical-core`, {
+        // Enqueue the full pipeline (canonical-core + produce) and watch progress via SSE.
+        const enqueued = await runStep("iniciar produção", () =>
+            fetch(`/api/content-drafts/${newDraftId}/generate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: aiBody,
+                body: JSON.stringify({ provider, model }),
             }),
         );
-        if (!core) return;
-        setStep("produce");
+        if (!enqueued) return;
+        setActiveDraftId(newDraftId);
+    }
 
-        const produced = await runStep("produção", () =>
-            fetch(`/api/content-drafts/${(draft as { id: string }).id}/produce`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: aiBody,
-            }),
-        );
-        if (!produced) return;
-        setOutput((produced as { draft_json?: unknown }).draft_json);
-        setStep("done");
+    function onJobComplete() {
+        if (!draftId) return;
         toast.success("Conteúdo gerado");
+        router.push(`/channels/${channelId}/drafts/${draftId}`);
+    }
+
+    function onJobFailed(message: string) {
+        const friendly = friendlyAiError(message);
+        toast.error(friendly.title, { description: friendly.hint });
+        setActiveDraftId(null);
     }
 
     return (
@@ -140,6 +140,17 @@ export default function NewDraftPage() {
                 }}
                 onClose={() => setPickerOpen(false)}
             />
+            {activeDraftId && (
+                <GenerationProgressModal
+                    open={!!activeDraftId}
+                    sessionId={activeDraftId}
+                    sseUrl={`/api/content-drafts/${activeDraftId}/events`}
+                    title={`Gerando ${type}`}
+                    onComplete={onJobComplete}
+                    onFailed={onJobFailed}
+                    onClose={() => { setActiveDraftId(null); }}
+                />
+            )}
             <div>
                 <button
                     onClick={() => router.back()}
@@ -248,7 +259,7 @@ export default function NewDraftPage() {
                         onModelChange={setModel}
                     />
 
-                    <Button onClick={handleStart} disabled={busy || step !== "setup" || !research}>
+                    <Button onClick={handleStart} disabled={busy || !!activeDraftId || !research}>
                         {busy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
                         Gerar
                     </Button>
@@ -260,51 +271,6 @@ export default function NewDraftPage() {
                 </CardContent>
             </Card>
 
-            {step !== "setup" && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-base">Pipeline</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                        <PipelineStep label="Draft criado" done={!!draftId} active={step === "core" && busy} />
-                        <PipelineStep label="Canonical core (agent-3a)" done={step === "produce" || step === "done"} active={step === "core" && busy} />
-                        <PipelineStep label={`Produção (agent-3b-${type})`} done={step === "done"} active={step === "produce" && busy} />
-                    </CardContent>
-                </Card>
-            )}
-
-            {step === "done" && output !== null && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-base">Output</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <pre className="text-xs bg-muted/40 rounded-md p-4 overflow-x-auto whitespace-pre-wrap">
-                            {JSON.stringify(output, null, 2)}
-                        </pre>
-                        {draftId && (
-                            <p className="text-xs text-muted-foreground mt-2">
-                                Draft id: <span className="font-mono">{draftId}</span> · Status: in_review
-                            </p>
-                        )}
-                    </CardContent>
-                </Card>
-            )}
-        </div>
-    );
-}
-
-function PipelineStep({ label, done, active }: { label: string; done: boolean; active: boolean }) {
-    return (
-        <div className="flex items-center gap-2 text-sm">
-            {done ? (
-                <Check className="h-4 w-4 text-green-500" />
-            ) : active ? (
-                <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            ) : (
-                <div className="h-4 w-4 rounded-full border border-muted-foreground/30" />
-            )}
-            <span className={done ? "text-foreground" : active ? "text-foreground" : "text-muted-foreground"}>{label}</span>
         </div>
     );
 }

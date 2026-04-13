@@ -16,6 +16,8 @@ import { ApiError } from '../lib/api/errors.js';
 import { generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
 import { checkCredits, debitCredits } from '../lib/credits.js';
+import { inngest } from '../jobs/client.js';
+import { emitJobEvent } from '../jobs/emitter.js';
 
 const FORMAT_COSTS: Record<string, number> = {
   blog: 200,
@@ -177,6 +179,98 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
     } catch (error) {
       return sendError(reply, error);
     }
+  });
+
+  /**
+   * POST /:id/generate — F2-036. Enqueue full production pipeline (canonical-core + produce)
+   * as one Inngest job. Returns 202 immediately. Stream progress via /:id/events.
+   */
+  fastify.post('/:id/generate', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const { id } = request.params as { id: string };
+      const override = providerOverrideSchema.parse(request.body ?? {});
+      const draft = await loadDraft(id) as Record<string, unknown>;
+      const orgId = await getOrgId(request.userId);
+      const type = (draft.type as 'blog' | 'video' | 'shorts' | 'podcast') ?? 'blog';
+      const cost = (FORMAT_COSTS[type] ?? 200) + CANONICAL_CORE_COST;
+
+      await checkCredits(orgId, request.userId, cost);
+      await emitJobEvent(id, 'production', 'queued', 'Na fila, começando já…');
+
+      await inngest.send({
+        name: 'production/generate',
+        data: {
+          draftId: id,
+          orgId,
+          userId: request.userId,
+          type,
+          modelTier: override.modelTier ?? (draft.model_tier as string) ?? 'standard',
+          provider: override.provider,
+          model: override.model,
+        },
+      });
+
+      return reply.status(202).send({
+        data: { draftId: id, status: 'queued' },
+        error: null,
+      });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * GET /:id/events — SSE stream of production progress events.
+   */
+  fastify.get('/:id/events', { preHandler: [authenticate] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const sb = createServiceClient();
+
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    let lastCreatedAt = '1970-01-01T00:00:00Z';
+    let closed = false;
+    request.raw.on('close', () => { closed = true; });
+
+    const poll = async (): Promise<void> => {
+      while (!closed) {
+        const { data: events } = await (sb
+          .from('job_events')
+          .select('*')
+          .eq('session_id', id)
+          .gt('created_at', lastCreatedAt)
+          .order('created_at', { ascending: true })) as unknown as {
+          data: Array<{ id: string; stage: string; message: string; metadata: unknown; created_at: string }> | null;
+        };
+
+        if (events && events.length > 0) {
+          for (const ev of events) {
+            reply.raw.write(`data: ${JSON.stringify(ev)}\n\n`);
+            lastCreatedAt = ev.created_at;
+            if (ev.stage === 'completed' || ev.stage === 'failed') {
+              reply.raw.end();
+              return;
+            }
+          }
+        } else {
+          reply.raw.write(': ping\n\n');
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    };
+
+    void poll().catch((err) => {
+      fastify.log.error({ err }, 'SSE poll failed');
+      reply.raw.end();
+    });
+
+    return reply;
   });
 
   /**
