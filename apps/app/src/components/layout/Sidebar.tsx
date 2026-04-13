@@ -50,6 +50,7 @@ export default function Sidebar() {
                     { href: `/channels/${activeChannelId}/create`, label: "Create Content", icon: Sparkles },
                     { href: "/ideas", label: "Ideas", icon: Lightbulb },
                     { href: "/research", label: "Research", icon: FileText },
+                    { href: "/content", label: "Conteúdo", icon: PenLine },
                 ]
                 : [
                     { href: "/onboarding", label: "Create Content Channel", icon: Sparkles },
