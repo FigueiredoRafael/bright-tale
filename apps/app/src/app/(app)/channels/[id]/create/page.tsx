@@ -52,13 +52,15 @@ const FORMATS = [
   { id: 'podcast', label: 'Podcast Script', icon: Mic, credits: 110 },
 ];
 
-function formatNumber(n: number): string {
+function formatNumber(n: number | null | undefined): string {
+  if (n === null || n === undefined || Number.isNaN(n)) return '—';
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return n.toString();
 }
 
-function formatDuration(seconds: number): string {
+function formatDuration(seconds: number | null | undefined): string {
+  if (!seconds || Number.isNaN(seconds)) return '—';
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;

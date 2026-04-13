@@ -121,20 +121,28 @@ export async function youtubeRoutes(fastify: FastifyInstance): Promise<void> {
       const videoDetails = await getVideoDetails(videoIds);
 
       // Build top videos data
-      const topVideos = videoDetails.map((v) => ({
-        title: v.snippet.title,
-        videoId: v.id,
-        channelTitle: v.snippet.channelTitle,
-        views: parseInt(v.statistics.viewCount, 10),
-        likes: parseInt(v.statistics.likeCount, 10),
-        comments: parseInt(v.statistics.commentCount, 10),
-        duration: parseDuration(v.contentDetails.duration),
-        publishedAt: v.snippet.publishedAt,
-        thumbnail: v.snippet.thumbnails.medium.url,
-        engagementRate: parseInt(v.statistics.viewCount, 10) > 0
-          ? ((parseInt(v.statistics.likeCount, 10) + parseInt(v.statistics.commentCount, 10)) / parseInt(v.statistics.viewCount, 10)) * 100
-          : 0,
-      })).sort((a, b) => b.views - a.views);
+      const safeInt = (s: string | undefined): number => {
+        const n = parseInt(s ?? '0', 10);
+        return Number.isNaN(n) ? 0 : n;
+      };
+
+      const topVideos = videoDetails.map((v) => {
+        const views = safeInt(v.statistics?.viewCount);
+        const likes = safeInt(v.statistics?.likeCount);
+        const comments = safeInt(v.statistics?.commentCount);
+        return {
+          title: v.snippet.title,
+          videoId: v.id,
+          channelTitle: v.snippet.channelTitle,
+          views,
+          likes,
+          comments,
+          duration: parseDuration(v.contentDetails?.duration ?? ''),
+          publishedAt: v.snippet.publishedAt,
+          thumbnail: v.snippet.thumbnails?.medium?.url ?? null,
+          engagementRate: views > 0 ? ((likes + comments) / views) * 100 : 0,
+        };
+      }).sort((a, b) => b.views - a.views);
 
       // Save analysis
       const { data: analysis, error } = await sb
