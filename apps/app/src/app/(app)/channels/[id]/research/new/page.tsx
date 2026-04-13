@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { Loader2, Search, ArrowLeft, ArrowRight, Check, Lightbulb } from "lucide-react";
 import { IdeaPickerModal, type IdeaOption } from "@/components/research/IdeaPickerModal";
 import { GenerationProgressModal } from "@/components/generation/GenerationProgressModal";
+import { WizardStepper } from "@/components/generation/WizardStepper";
 
 type Level = "surface" | "medium" | "deep";
 
@@ -186,8 +187,9 @@ export default function NewResearchPage() {
                 toast.error(json.error.message);
                 return;
             }
-            toast.success(`${approvedCards.length} cards aprovados`);
-            router.push(`/channels/${channelId}/create`);
+            toast.success(`${approvedCards.length} cards aprovados — agora escolhe o formato`);
+            // Continue the wizard: research → drafts/new with this research preselected.
+            router.push(`/channels/${channelId}/drafts/new?researchSessionId=${sessionId}`);
         } catch {
             toast.error("Falha ao salvar review");
         }
@@ -222,6 +224,7 @@ export default function NewResearchPage() {
                 >
                     <ArrowLeft className="h-3 w-3" /> Voltar
                 </button>
+                <div className="mt-2"><WizardStepper current="research" /></div>
                 <h1 className="text-2xl font-bold mt-2 flex items-center gap-2">
                     <Search className="h-5 w-5" /> Nova Pesquisa
                 </h1>

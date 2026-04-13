@@ -687,6 +687,22 @@ Ao escolher uma pesquisa, o title da pesquisa virou o título do conteúdo. Não
 
 ---
 
+### F2-044 — Wizard de criação contínuo (Brainstorm → Pesquisa → Conteúdo)
+✅ **Concluído (v1: nav contínua + stepper)**
+
+Antes: depois do brainstorm voltava pra Create Content (perdia contexto). Depois da pesquisa, idem. Usuário tinha que recomeçar o setup do próximo passo manualmente.
+
+Agora:
+- **Brainstorm** → clicar numa ideia leva pra `/research/new?ideaId=X` (idea pré-selecionada)
+- **Pesquisa** → "Aprovar cards" leva pra `/drafts/new?researchSessionId=X` (research pré-selecionada)
+- **Stepper visual** no topo das 3 páginas mostra Ideia → Pesquisa → Conteúdo, com check verde nos completos
+
+v2 (futuro): wizard single-page com state shared entre os steps (sem navegação) pra permitir voltar/editar steps anteriores.
+
+**Concluído em:** 2026-04-13
+
+---
+
 ### F2-042 — Drafts: imagens do post (hero + inline) + posicionamento visual
 🔲 **Não iniciado**
 

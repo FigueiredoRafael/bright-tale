@@ -13,10 +13,12 @@ import { Loader2, Lightbulb, Sparkles, ArrowLeft, ArrowRight } from "lucide-reac
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
 import { friendlyAiError } from "@/lib/ai/error-message";
 import { GenerationProgressModal } from "@/components/generation/GenerationProgressModal";
+import { WizardStepper } from "@/components/generation/WizardStepper";
 
 type Mode = "blind" | "fine_tuned" | "reference_guided";
 
 interface Idea {
+    id: string;
     idea_id: string;
     title: string;
     target_audience: string;
@@ -166,10 +168,9 @@ export default function NewBrainstormPage() {
         setActiveSessionId(null);
     }
 
-    function pickIdea(_idea: Idea) {
-        // Ideas were persisted with channel_id, so the Create Content page
-        // will surface them in its "Suas ideias geradas" section.
-        router.push(`/channels/${channelId}/create`);
+    function pickIdea(idea: Idea) {
+        // Continue the wizard flow: idea → research with this idea preselected.
+        router.push(`/channels/${channelId}/research/new?ideaId=${encodeURIComponent(idea.id)}`);
     }
 
     return (
@@ -191,6 +192,7 @@ export default function NewBrainstormPage() {
                 >
                     <ArrowLeft className="h-3 w-3" /> Voltar pro canal
                 </button>
+                <div className="mt-2"><WizardStepper current="brainstorm" /></div>
                 <h1 className="text-2xl font-bold mt-2 flex items-center gap-2">
                     <Lightbulb className="h-5 w-5" /> Brainstorm
                 </h1>

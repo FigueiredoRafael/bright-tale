@@ -13,6 +13,7 @@ import { ResearchPickerModal, type ResearchOption } from "@/components/research/
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
 import { friendlyAiError } from "@/lib/ai/error-message";
 import { GenerationProgressModal } from "@/components/generation/GenerationProgressModal";
+import { WizardStepper } from "@/components/generation/WizardStepper";
 
 type DraftType = "blog" | "video" | "shorts" | "podcast";
 
@@ -169,6 +170,7 @@ export default function NewDraftPage() {
                 >
                     <ArrowLeft className="h-3 w-3" /> Voltar
                 </button>
+                <div className="mt-2"><WizardStepper current="drafts" /></div>
                 <h1 className="text-2xl font-bold mt-2 flex items-center gap-2">
                     <Sparkles className="h-5 w-5" /> Novo conteúdo
                 </h1>
