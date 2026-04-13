@@ -650,6 +650,36 @@ Geração de brainstorm/research/produção é síncrona. Quando o provider é l
 
 ---
 
+### F2-038 — Research: picker de ideias existentes + pré-preenchimento
+✅ **Concluído**
+
+- Novo componente `IdeaPickerModal` (lista filtrável por título/público, badges de verdict)
+- Link "Escolher ideia existente" ao lado do label Tema
+- Seleção → preenche topic + guarda `selectedIdeaId` no payload
+- Query param `?ideaId=X` agora faz fetch da ideia e pré-preenche Tema
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-039 — Research: sinais de decisão (Google Trends + YouTube Intelligence)
+🔲 **Não iniciado**
+
+Pesquisa hoje volta texto corrido. Pra decidir se vale produzir o conteúdo, usuário precisa de sinais quantitativos. Adicionar card "Sinais do nicho" no output do research (Medium/Deep):
+- 📈 **Google Trends** 12m (subindo/estável/caindo + gráfico sparkline) via `google-trends-api` (free)
+- 🎥 **YouTube Intelligence** — top 3 vídeos, avg views/likes, tópicos recorrentes (`/api/youtube/analyze-niche` já existe)
+- 🔥 Queries relacionadas (do Google Trends)
+- 💡 Recomendação: "Momento ideal" vs "Nicho saturado" baseado em trend + competição YouTube
+
+**Arquivos:**
+- `apps/api/src/lib/signals/trends.ts` (novo) — wrapper Google Trends
+- `apps/api/src/routes/research-sessions.ts` — chamar trends + youtube em paralelo
+- `apps/app/src/components/research/NicheSignalsCard.tsx` (novo)
+
+**Concluído em:** —
+
+---
+
 ### F2-037 — Brainstorm: contagem fixa, idempotência e seleção de ideias
 🔲 **Não iniciado**
 

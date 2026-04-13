@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Loader2, Search, ArrowLeft, ArrowRight, Check } from "lucide-react";
+import { Loader2, Search, ArrowLeft, ArrowRight, Check, Lightbulb } from "lucide-react";
+import { IdeaPickerModal, type IdeaOption } from "@/components/research/IdeaPickerModal";
 
 type Level = "surface" | "medium" | "deep";
 
@@ -45,6 +46,8 @@ export default function NewResearchPage() {
     const searchParams = useSearchParams();
     const ideaIdParam = searchParams.get("ideaId") ?? undefined;
 
+    const [selectedIdeaId, setSelectedIdeaId] = useState<string | undefined>(ideaIdParam);
+    const [pickerOpen, setPickerOpen] = useState(false);
     const [topic, setTopic] = useState("");
     const [level, setLevel] = useState<Level>("medium");
     const [focusTags, setFocusTags] = useState<string[]>(["stats"]);
@@ -52,6 +55,20 @@ export default function NewResearchPage() {
     const [model, setModel] = useState<string>("gemini-2.5-flash");
     const [recommended, setRecommended] = useState<{ provider: string | null; model: string | null }>({ provider: null, model: null });
     const [running, setRunning] = useState(false);
+
+    // Pre-fill topic from the idea passed via ?ideaId= query param.
+    useEffect(() => {
+        if (!ideaIdParam) return;
+        (async () => {
+            try {
+                const res = await fetch(`/api/ideas/${ideaIdParam}`);
+                const json = await res.json();
+                if (json?.data?.title) setTopic(json.data.title);
+            } catch {
+                // silent
+            }
+        })();
+    }, [ideaIdParam]);
 
     useEffect(() => {
         (async () => {
@@ -78,8 +95,8 @@ export default function NewResearchPage() {
     }
 
     async function handleRun() {
-        if (!topic.trim() && !ideaIdParam) {
-            toast.error("Informe um tema ou venha de uma ideia");
+        if (!topic.trim() && !selectedIdeaId) {
+            toast.error("Informe um tema ou escolha uma ideia");
             return;
         }
         setRunning(true);
@@ -89,7 +106,7 @@ export default function NewResearchPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     channelId,
-                    ideaId: ideaIdParam,
+                    ideaId: selectedIdeaId,
                     topic: topic.trim() || undefined,
                     level,
                     focusTags,
@@ -148,6 +165,15 @@ export default function NewResearchPage() {
 
     return (
         <div className="p-6 max-w-4xl mx-auto space-y-6">
+            <IdeaPickerModal
+                open={pickerOpen}
+                channelId={channelId}
+                onSelect={(idea: IdeaOption) => {
+                    setTopic(idea.title);
+                    setSelectedIdeaId(idea.id);
+                }}
+                onClose={() => setPickerOpen(false)}
+            />
             <div>
                 <button
                     onClick={() => router.back()}
@@ -166,8 +192,17 @@ export default function NewResearchPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="space-y-2">
-                        <Label>Tema {ideaIdParam && <span className="text-xs text-muted-foreground">(opcional — vindo de uma ideia)</span>}</Label>
-                        <Input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. deep work techniques" />
+                        <div className="flex items-center justify-between">
+                            <Label>Tema {selectedIdeaId && <span className="text-xs text-muted-foreground">(vindo de uma ideia)</span>}</Label>
+                            <button
+                                type="button"
+                                onClick={() => setPickerOpen(true)}
+                                className="text-xs text-primary hover:underline flex items-center gap-1"
+                            >
+                                <Lightbulb className="h-3 w-3" /> Escolher ideia existente
+                            </button>
+                        </div>
+                        <Input value={topic} onChange={(e) => { setTopic(e.target.value); setSelectedIdeaId(undefined); }} placeholder="e.g. deep work techniques" />
                     </div>
 
                     <div className="space-y-2">
