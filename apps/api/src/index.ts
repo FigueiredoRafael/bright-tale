@@ -35,6 +35,7 @@ import { channelsRoutes } from './routes/channels.js';
 import { onboardingRoutes } from './routes/onboarding.js';
 import { youtubeRoutes } from './routes/youtube.js';
 import { referencesRoutes } from './routes/references.js';
+import { inngestRoutes } from './routes/inngest.js';
 
 const server = Fastify({ logger: true });
 
@@ -76,6 +77,7 @@ server.register(channelsRoutes, { prefix: '/channels' });
 server.register(onboardingRoutes, { prefix: '/onboarding' });
 server.register(youtubeRoutes, { prefix: '/youtube' });
 server.register(referencesRoutes, { prefix: '/channels' });
+server.register(inngestRoutes, { prefix: '/inngest' });
 
 if (!process.env.VERCEL) {
   const PORT = parseInt(process.env.PORT ?? '3001', 10);

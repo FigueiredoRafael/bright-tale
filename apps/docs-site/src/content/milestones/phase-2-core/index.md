@@ -6,7 +6,7 @@
 
 **Depende de:** Fase 1 (auth, orgs, storage, créditos)
 
-**Progresso:** 9/14 concluídos
+**Progresso:** 11/14 concluídos
 
 ---
 
