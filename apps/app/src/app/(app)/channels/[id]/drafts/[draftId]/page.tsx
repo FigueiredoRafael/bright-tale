@@ -337,7 +337,10 @@ export default function DraftViewPage() {
 
     const meta = TYPE_META[draft.type];
     const Icon = meta.icon;
-    const body = draft.draft_json ? findContent(draft.draft_json) : null;
+    const teleprompter = draft.draft_json ? findScalar(draft.draft_json, ["teleprompter_script"]) : null;
+    const editorScript = draft.draft_json ? findScalar(draft.draft_json, ["editor_script"]) : null;
+    // For non-video formats, keep the generic body extractor.
+    const body = teleprompter ?? (draft.draft_json ? findContent(draft.draft_json) : null);
     const metaDescription = draft.draft_json ? findScalar(draft.draft_json, ["meta_description", "summary", "description", "hook"]) : null;
     // SEO/keywords often live in the produced draft AND in the review.
     const draftKeywords = (draft.draft_json ? findArray(draft.draft_json, ["keywords", "seo_keywords", "tags", "key_terms"]) : null) as string[] | null;
@@ -476,6 +479,23 @@ export default function DraftViewPage() {
                     <CardContent>
                         <pre className="text-xs bg-muted/40 rounded-md p-4 overflow-x-auto whitespace-pre-wrap">
                             {JSON.stringify(draft.draft_json, null, 2)}
+                        </pre>
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* Video editor's script (A-roll/B-roll/effects/music guidance) */}
+            {editorScript && (draft.type === "video" || draft.type === "shorts") && (
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-base flex items-center gap-2">
+                            <Video className="h-4 w-4 text-purple-500" /> Roteiro pro editor
+                            <Badge variant="outline" className="text-[10px]">A-roll · B-roll · efeitos · música</Badge>
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <pre className="text-xs bg-muted/40 rounded-md p-4 whitespace-pre-wrap leading-relaxed font-mono">
+                            {editorScript}
                         </pre>
                     </CardContent>
                 </Card>

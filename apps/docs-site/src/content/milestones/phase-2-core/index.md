@@ -687,6 +687,19 @@ Ao escolher uma pesquisa, o title da pesquisa virou o título do conteúdo. Não
 
 ---
 
+### F2-045 — Vídeo: roteiro de teleprompt + roteiro do editor
+✅ **Concluído**
+
+Output do agente de vídeo era um JSON solto sem separação clara. Atualizado:
+- `teleprompter_script`: roteiro limpo, só falas (sem cues), pronto pra teleprompter
+- `editor_script`: briefing pra editor com A-roll, B-roll com timestamps, lower-thirds, SFX, BGM, efeitos visuais, transições, pacing, color — escrito como um chief editor guiando um editor júnior
+- Migration `20260413080000_video_agent_dual_script.sql` apenda a directive ao prompt existente
+- Página do draft renderiza ambos: teleprompter como artigo legível, editor_script em card próprio com font-mono
+
+**Concluído em:** 2026-04-13
+
+---
+
 ### F2-044 — Wizard de criação contínuo (Brainstorm → Pesquisa → Conteúdo)
 ✅ **Concluído (v1: nav contínua + stepper)**
 
