@@ -185,6 +185,8 @@ function isRetryableError(err: unknown): boolean {
   if (msg.includes('quota')) return true;
   if (msg.includes('rate limit')) return true;
   if (msg.includes('overloaded')) return true;
+  if (msg.includes('unavailable')) return true;
+  if (msg.includes('high demand')) return true;
   // Billing / account-level money issues — caller's account is out of funds
   // on this provider, but the next provider in the chain may still work.
   if (msg.includes('credit balance')) return true;
@@ -214,23 +216,40 @@ export async function generateWithFallback(
     );
   }
 
+  // Per-provider in-place retries with exponential backoff. Catches transient
+  // capacity errors (UNAVAILABLE, 503, brief 429 bursts) without forcing a
+  // provider switch — important when the user explicitly picked a provider.
+  const SAME_PROVIDER_RETRIES = 2;
+  // 0 in tests, 800ms in prod. Tests can also set AI_RETRY_BASE_MS=0.
+  const baseDelayMs = Number(process.env.AI_RETRY_BASE_MS ?? (process.env.NODE_ENV === 'test' ? 0 : 800));
+  const sleep = (ms: number) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve());
+
   let lastErr: unknown;
   for (let i = 0; i < chain.length; i++) {
     const route = chain[i];
-    try {
-      const result = await route.provider.generateContent(params);
-      return { result, providerName: route.providerName, model: route.model, attempts: i + 1 };
-    } catch (err) {
-      lastErr = err;
-      const message = String((err as { message?: string })?.message ?? err);
-      const retryable = isRetryableError(err);
-      // Log so devs can see why we fell through providers in dev/server logs.
-      console.warn(
-        `[ai-router] provider=${route.providerName} model=${route.model} failed: ${message} (retryable=${retryable})`,
-      );
-      if (i === chain.length - 1) break;
-      if (!retryable) break;
+    let attempt = 0;
+    while (attempt <= SAME_PROVIDER_RETRIES) {
+      try {
+        const result = await route.provider.generateContent(params);
+        return { result, providerName: route.providerName, model: route.model, attempts: i + 1 };
+      } catch (err) {
+        lastErr = err;
+        const message = String((err as { message?: string })?.message ?? err);
+        const retryable = isRetryableError(err);
+        console.warn(
+          `[ai-router] provider=${route.providerName} model=${route.model} attempt=${attempt + 1}: ${message} (retryable=${retryable})`,
+        );
+        if (!retryable) break;
+        if (attempt < SAME_PROVIDER_RETRIES) {
+          await sleep(baseDelayMs * Math.pow(2, attempt));
+          attempt++;
+          continue;
+        }
+        break;
+      }
     }
+    if (i === chain.length - 1) break;
+    if (!isRetryableError(lastErr)) break;
   }
   throw lastErr;
 }

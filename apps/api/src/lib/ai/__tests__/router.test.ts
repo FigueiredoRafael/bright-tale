@@ -36,6 +36,7 @@ beforeEach(() => {
   process.env.OPENAI_API_KEY = 'sk-test';
   process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
   process.env.GOOGLE_AI_KEY = 'AIz-test';
+  process.env.AI_RETRY_BASE_MS = '0';
   openaiCalls.length = 0;
   anthropicCalls.length = 0;
   geminiCalls.length = 0;
@@ -72,31 +73,31 @@ describe('generateWithFallback', () => {
     expect(anthropicImpl).not.toHaveBeenCalled();
   });
 
-  it('falls back to next provider on 429 quota error', async () => {
-    geminiImpl.mockRejectedValueOnce(new Error('429 quota exceeded'));
+  it('falls back to next provider after exhausting retries on 429', async () => {
+    geminiImpl.mockRejectedValue(new Error('429 quota exceeded'));
     const out = await generateWithFallback('brainstorm', 'standard', params);
     expect(out.providerName).toBe('anthropic');
     expect(out.attempts).toBe(2);
   });
 
   it('falls back through multiple providers on cascading failures', async () => {
-    geminiImpl.mockRejectedValueOnce(new Error('500 server error'));
-    anthropicImpl.mockRejectedValueOnce(new Error('rate limit hit'));
+    geminiImpl.mockRejectedValue(new Error('500 server error'));
+    anthropicImpl.mockRejectedValue(new Error('rate limit hit'));
     const out = await generateWithFallback('brainstorm', 'standard', params);
     expect(out.providerName).toBe('openai');
     expect(out.attempts).toBe(3);
   });
 
   it('does NOT fall back on non-retryable error (validation)', async () => {
-    geminiImpl.mockRejectedValueOnce(new Error('400 bad request: invalid input'));
+    geminiImpl.mockRejectedValue(new Error('400 bad request: invalid input'));
     await expect(generateWithFallback('brainstorm', 'standard', params)).rejects.toThrow(/400/);
     expect(anthropicImpl).not.toHaveBeenCalled();
   });
 
   it('rethrows last error if all providers fail with retryable errors', async () => {
-    geminiImpl.mockRejectedValueOnce(new Error('429'));
-    anthropicImpl.mockRejectedValueOnce(new Error('429'));
-    openaiImpl.mockRejectedValueOnce(new Error('429 final'));
+    geminiImpl.mockRejectedValue(new Error('429'));
+    anthropicImpl.mockRejectedValue(new Error('429'));
+    openaiImpl.mockRejectedValue(new Error('429 final'));
     await expect(generateWithFallback('brainstorm', 'standard', params)).rejects.toThrow(/429 final/);
   });
 });
