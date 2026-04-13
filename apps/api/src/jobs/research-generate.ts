@@ -31,14 +31,40 @@ interface ResearchGenerateEvent {
   };
 }
 
+/**
+ * Recursive search for the cards array. Agents nest output in arbitrary keys
+ * (BC_RESEARCH_OUTPUT.cards, output.cards, sources, citations, etc.) — small
+ * local models in particular love to invent wrappers. Find the first array
+ * whose items look like research cards (have title/quote/claim/url/source).
+ */
 function normalizeCards(raw: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(raw)) return raw as Array<Record<string, unknown>>;
-  if (raw && typeof raw === 'object') {
-    const obj = raw as Record<string, unknown>;
-    if (Array.isArray(obj.cards)) return obj.cards as Array<Record<string, unknown>>;
-    if (Array.isArray(obj.results)) return obj.results as Array<Record<string, unknown>>;
+  function looksLikeCard(item: unknown): boolean {
+    if (!item || typeof item !== 'object') return false;
+    const o = item as Record<string, unknown>;
+    return (
+      typeof o.title === 'string' ||
+      typeof o.quote === 'string' ||
+      typeof o.claim === 'string' ||
+      typeof o.url === 'string' ||
+      typeof o.source === 'string' ||
+      typeof o.author === 'string'
+    );
   }
-  return [];
+  function find(node: unknown, depth = 0): Array<Record<string, unknown>> | null {
+    if (depth > 6) return null;
+    if (Array.isArray(node)) {
+      if (node.length > 0 && node.some(looksLikeCard)) return node as Array<Record<string, unknown>>;
+      return null;
+    }
+    if (node && typeof node === 'object') {
+      for (const v of Object.values(node as Record<string, unknown>)) {
+        const found = find(v, depth + 1);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+  return find(raw) ?? [];
 }
 
 export const researchGenerate = inngest.createFunction(
