@@ -662,21 +662,19 @@ Geração de brainstorm/research/produção é síncrona. Quando o provider é l
 
 ---
 
-### F2-040 — Create Content hub: tabs + cards visuais por formato
-🔲 **Não iniciado**
+### F2-040 — Create Content hub: tabs + arquivamento de itens usados
+✅ **Concluído (v1)**
 
-A página `/channels/[id]/create` hoje só lista "Suas ideias geradas". Pesquisas e drafts somem. Refatorar:
-- 3 abas: **Ideias** (brainstorm) · **Pesquisas** (research_sessions completed) · **Conteúdo** (content_drafts)
-- Contadores em cada aba
-- Aba Conteúdo agrupada por formato (Blog / Vídeo / Shorts / Podcast)
-- Cards visuais distintos por tipo:
-  - Blog → mostra hero text + meta description
-  - Vídeo → thumb + duração
-  - Shorts → mini-preview vertical
-  - Podcast → ondinha + duração
-- Cada card tem actions contextuais (Continuar, Publicar, Duplicar)
+`/channels/[id]/create` agora tem 3 abas: **Ideias** · **Pesquisas** · **Conteúdo**.
 
-**Concluído em:** —
+- Cada aba tem busca por título/tema
+- Ideias e pesquisas que já viraram `content_drafts` são automaticamente **arquivadas** (ocultas por padrão), com toggle "Mostrar arquivadas (N)" — evita gerar conteúdo duplicado
+- Aba Conteúdo agrupada por formato (Blog/Vídeo/Shorts/Podcast) com ícone e cor por tipo
+- Cards de conteúdo levam pra `/drafts/:id` (página dedicada)
+
+Cards visuais ricos por formato (hero blog, thumb vídeo, ondinha podcast, etc.) ficam pra v2 quando essas pages forem polidas.
+
+**Concluído em:** 2026-04-13
 
 ---
 
