@@ -4,7 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles } from "lucide-react";
 
-export type ProviderId = "gemini" | "openai" | "anthropic";
+export type ProviderId = "gemini" | "openai" | "anthropic" | "ollama";
 
 export interface ModelOption {
     id: string;
@@ -13,6 +13,11 @@ export interface ModelOption {
 }
 
 export const MODELS_BY_PROVIDER: Record<ProviderId, ModelOption[]> = {
+    ollama: [
+        { id: "llama3.1:8b", label: "Llama 3.1 8B", note: "local · zero custo" },
+        { id: "qwen2.5:7b", label: "Qwen 2.5 7B", note: "local · bom JSON" },
+        { id: "mistral-nemo:12b", label: "Mistral Nemo 12B", note: "local · qualidade" },
+    ],
     gemini: [
         { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", note: "free tier · rápido" },
         { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", note: "qualidade alta" },
@@ -30,6 +35,7 @@ export const MODELS_BY_PROVIDER: Record<ProviderId, ModelOption[]> = {
 };
 
 const PROVIDER_LABELS: Record<ProviderId, string> = {
+    ollama: "Local (Ollama)",
     gemini: "Gemini",
     openai: "OpenAI",
     anthropic: "Anthropic",
@@ -50,7 +56,7 @@ export function ModelPicker({ provider, model, recommended, onProviderChange, on
         <div className="space-y-3 pt-3 border-t">
             <div className="space-y-2">
                 <Label className="text-xs">Provider</Label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                     {(Object.keys(MODELS_BY_PROVIDER) as ProviderId[]).map((p) => {
                         const isRecommended = recommended?.provider === p;
                         return (

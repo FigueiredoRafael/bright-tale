@@ -13,14 +13,22 @@ import type { AgentType, AIProvider, GenerateContentParams } from './provider.js
 import { OpenAIProvider } from './providers/openai.js';
 import { AnthropicProvider } from './providers/anthropic.js';
 import { GeminiProvider } from './providers/gemini.js';
+import { OllamaProvider } from './providers/ollama.js';
 
 interface ModelConfig {
   provider: string;
   model: string;
 }
 
-// Tier × stage → primary route. Free tier uses Gemini (generous free quota).
+// Tier × stage → primary route. Free tier uses Gemini (generous free quota);
+// `local` uses Ollama (zero cost, runs offline).
 const ROUTE_TABLE: Record<string, Record<AgentType, ModelConfig>> = {
+  local: {
+    brainstorm: { provider: 'ollama', model: 'llama3.1:8b' },
+    research: { provider: 'ollama', model: 'llama3.1:8b' },
+    production: { provider: 'ollama', model: 'llama3.1:8b' },
+    review: { provider: 'ollama', model: 'llama3.1:8b' },
+  },
   free: {
     brainstorm: { provider: 'gemini', model: 'gemini-2.5-flash' },
     research: { provider: 'gemini', model: 'gemini-2.5-flash' },
@@ -48,11 +56,12 @@ const ROUTE_TABLE: Record<string, Record<AgentType, ModelConfig>> = {
 };
 
 // Runtime fallback order: when the primary provider errors at call time,
-// try these next (in order). Always try Gemini last because it's free.
+// try these next (in order). Ollama is local-only (no fallback to/from paid).
 const FALLBACK_ORDER: Record<string, string[]> = {
   openai: ['anthropic', 'gemini'],
   anthropic: ['openai', 'gemini'],
   gemini: ['anthropic', 'openai'],
+  ollama: [],
 };
 
 // Default model per provider when we fall back from a different provider.
@@ -60,6 +69,7 @@ const DEFAULT_MODELS: Record<string, string> = {
   openai: 'gpt-4o-mini',
   anthropic: 'claude-sonnet-4-5-20250514',
   gemini: 'gemini-2.5-flash',
+  ollama: 'llama3.1:8b',
 };
 
 // Credit costs per stage (debited per call; runtime fallback does NOT double-debit).
@@ -86,6 +96,13 @@ function createProvider(providerName: string, model: string): AIProvider | null 
       const key = process.env.GOOGLE_AI_KEY ?? process.env.GEMINI_API_KEY;
       if (!key) return null;
       return new GeminiProvider(key, { model });
+    }
+    case 'ollama': {
+      // No API key required — assumes a local Ollama server. We can't probe it
+      // here without a network call, so we always return a provider; if the
+      // server isn't running, generateContent will surface a network error
+      // (which is retryable in the fallback chain).
+      return new OllamaProvider({ model });
     }
     default:
       return null;

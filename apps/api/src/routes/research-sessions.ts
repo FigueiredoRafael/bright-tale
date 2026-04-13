@@ -26,7 +26,7 @@ const createSchema = z.object({
   level: z.enum(['surface', 'medium', 'deep']),
   focusTags: z.array(z.string()).default([]),
   modelTier: z.string().default('standard'),
-  provider: z.enum(['gemini', 'openai', 'anthropic']).optional(),
+  provider: z.enum(['gemini', 'openai', 'anthropic', 'ollama']).optional(),
   model: z.string().optional(),
 });
 

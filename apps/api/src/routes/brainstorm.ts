@@ -28,7 +28,7 @@ const brainstormBodySchema = z.object({
     .optional(),
   referenceUrl: z.string().url().optional(),
   modelTier: z.string().default('standard'),
-  provider: z.enum(['gemini', 'openai', 'anthropic']).optional(),
+  provider: z.enum(['gemini', 'openai', 'anthropic', 'ollama']).optional(),
   model: z.string().optional(),
 });
 
