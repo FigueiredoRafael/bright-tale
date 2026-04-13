@@ -79,6 +79,7 @@ export default function NewDraftPage() {
     }
 
     async function handleStart() {
+        if (busy || activeDraftId) return; // prevent double-click during in-flight POST
         if (!research) {
             toast.error("Escolha (ou crie) uma pesquisa antes de gerar conteúdo");
             setPickerOpen(true);

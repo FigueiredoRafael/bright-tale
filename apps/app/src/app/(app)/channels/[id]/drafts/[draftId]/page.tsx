@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -81,7 +81,13 @@ export default function DraftViewPage() {
         if (json?.data) setDraft(json.data as Draft);
     }
 
+    const inFlightRef = useRef(false);
     async function startGeneration() {
+        // Refs update synchronously — React state has a render-cycle delay,
+        // so two clicks in the same tick can both pass a state-only guard.
+        if (inFlightRef.current || generating) return;
+        inFlightRef.current = true;
+        setGenerating(true);
         try {
             const res = await fetch(`/api/content-drafts/${draftId}/generate`, {
                 method: "POST",
@@ -92,11 +98,14 @@ export default function DraftViewPage() {
             if (json?.error) {
                 const f = friendlyAiError(json.error.message ?? "");
                 toast.error(f.title, { description: f.hint });
+                setGenerating(false);
+                inFlightRef.current = false;
                 return;
             }
-            setGenerating(true);
         } catch {
             toast.error("Não consegui iniciar a geração");
+            setGenerating(false);
+            inFlightRef.current = false;
         }
     }
 
@@ -190,9 +199,9 @@ export default function DraftViewPage() {
                     sessionId={draftId as string}
                     sseUrl={`/api/content-drafts/${draftId}/events`}
                     title={`Gerando ${meta.label.toLowerCase()}`}
-                    onComplete={async () => { setGenerating(false); await refetch(); toast.success("Conteúdo gerado"); }}
-                    onFailed={(msg) => { setGenerating(false); const f = friendlyAiError(msg); toast.error(f.title, { description: f.hint }); }}
-                    onClose={() => setGenerating(false)}
+                    onComplete={async () => { setGenerating(false); inFlightRef.current = false; await refetch(); toast.success("Conteúdo gerado"); }}
+                    onFailed={(msg) => { setGenerating(false); inFlightRef.current = false; const f = friendlyAiError(msg); toast.error(f.title, { description: f.hint }); }}
+                    onClose={() => { setGenerating(false); inFlightRef.current = false; }}
                 />
             )}
 
