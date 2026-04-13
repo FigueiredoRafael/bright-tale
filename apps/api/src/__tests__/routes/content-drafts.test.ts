@@ -45,14 +45,11 @@ vi.mock('@/lib/ai/promptLoader', () => ({
 }));
 vi.mock('@/lib/ai/router', () => ({
   STAGE_COSTS: { brainstorm: 50, research: 100, production: 200, review: 50 },
-  getRouteForStage: vi.fn(() => ({
-    provider: {
-      generateContent: vi.fn(async ({ input }: any) => ({
-        stage: input.stage,
-        produced: true,
-        body: 'fake content',
-      })),
-    },
+  generateWithFallback: vi.fn(async (_stage: any, _tier: any, params: any) => ({
+    result: { stage: params.input.stage, produced: true, body: 'fake content' },
+    providerName: 'mock',
+    model: 'mock',
+    attempts: 1,
   })),
 }));
 

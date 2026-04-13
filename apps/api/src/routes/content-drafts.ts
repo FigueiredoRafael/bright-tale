@@ -13,7 +13,7 @@ import { authenticate } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
-import { getRouteForStage } from '../lib/ai/router.js';
+import { generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
 import { checkCredits, debitCredits } from '../lib/credits.js';
 
@@ -197,22 +197,25 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
         approvedCards = rs?.approved_cards_json ?? rs?.cards_json ?? null;
       }
 
-      const { provider } = getRouteForStage('production', (draft.model_tier as string) ?? 'standard');
       const systemPrompt =
         (await loadAgentPrompt('content-core')) ?? (await loadAgentPrompt('production')) ?? undefined;
 
-      const result = await provider.generateContent({
-        agentType: 'production',
-        input: {
-          stage: 'canonical-core',
-          type: draft.type,
-          title: draft.title,
-          ideaId: draft.idea_id,
-          researchCards: approvedCards,
+      const { result } = await generateWithFallback(
+        'production',
+        (draft.model_tier as string) ?? 'standard',
+        {
+          agentType: 'production',
+          input: {
+            stage: 'canonical-core',
+            type: draft.type,
+            title: draft.title,
+            ideaId: draft.idea_id,
+            researchCards: approvedCards,
+          },
+          schema: null,
+          systemPrompt,
         },
-        schema: null,
-        systemPrompt,
-      });
+      );
 
       const { data: updated, error } = await (sb.from('content_drafts') as unknown as {
         update: (row: Record<string, unknown>) => {
@@ -253,22 +256,25 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
       const cost = FORMAT_COSTS[type] ?? 200;
       await checkCredits(orgId, request.userId, cost);
 
-      const { provider } = getRouteForStage('production', (draft.model_tier as string) ?? 'standard');
       const systemPrompt =
         (await loadAgentPrompt(type)) ?? (await loadAgentPrompt('production')) ?? undefined;
 
-      const result = await provider.generateContent({
-        agentType: 'production',
-        input: {
-          stage: 'produce',
-          type,
-          title: draft.title,
-          canonicalCore: draft.canonical_core_json,
-          researchSessionId: draft.research_session_id,
+      const { result } = await generateWithFallback(
+        'production',
+        (draft.model_tier as string) ?? 'standard',
+        {
+          agentType: 'production',
+          input: {
+            stage: 'produce',
+            type,
+            title: draft.title,
+            canonicalCore: draft.canonical_core_json,
+            researchSessionId: draft.research_session_id,
+          },
+          schema: null,
+          systemPrompt,
         },
-        schema: null,
-        systemPrompt,
-      });
+      );
 
       const { data: updated, error } = await (sb.from('content_drafts') as unknown as {
         update: (row: Record<string, unknown>) => {

@@ -9,7 +9,7 @@ import { authenticate } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
-import { getRouteForStage } from '../lib/ai/router.js';
+import { generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
 import { checkCredits, debitCredits } from '../lib/credits.js';
 
@@ -108,11 +108,10 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       if (insertErr || !session) throw insertErr ?? new ApiError(500, 'Failed to create session', 'INTERNAL');
 
       try {
-        const { provider } = getRouteForStage('research', body.modelTier);
         const baseSystem = (await loadAgentPrompt('research')) ?? '';
         const systemPrompt = `${baseSystem}\n\nLevel directive: ${inputJson.instruction}`.trim();
 
-        const result = await provider.generateContent({
+        const { result } = await generateWithFallback('research', body.modelTier, {
           agentType: 'research',
           input: inputJson,
           schema: null,

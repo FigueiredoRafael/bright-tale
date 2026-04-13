@@ -9,7 +9,7 @@ import { authenticate } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
-import { getRouteForStage, STAGE_COSTS } from '../lib/ai/router.js';
+import { STAGE_COSTS, generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
 import { checkCredits, debitCredits } from '../lib/credits.js';
 
@@ -105,10 +105,9 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       if (insertErr || !session) throw insertErr ?? new ApiError(500, 'Failed to create session', 'DB_ERROR');
 
       try {
-        const { provider } = getRouteForStage('brainstorm', body.modelTier);
         const systemPrompt = (await loadAgentPrompt('brainstorm')) ?? undefined;
 
-        const result = await provider.generateContent({
+        const { result } = await generateWithFallback('brainstorm', body.modelTier, {
           agentType: 'brainstorm',
           input: inputJson,
           schema: null,

@@ -1,33 +1,37 @@
 /**
- * Smart Model Router (F2-012)
+ * Smart Model Router (F2-012, F2-029).
  *
  * Routes AI calls to the best provider/model based on:
- * - Stage (brainstorm → fast/cheap, production → high quality)
- * - Model tier (standard, premium, ultra)
- * - Provider availability (fallback if one fails)
- *
- * Model tiers:
- *   standard  → cheapest suitable model per stage
- *   premium   → balanced quality/cost
- *   ultra     → best available model
+ * - Stage (brainstorm/research → cheap+fast, production → high quality)
+ * - Tier (free, standard, premium, ultra)
+ * - Provider availability (skip if API key missing)
+ * - Runtime fallback: getProviderChain returns an ordered list so callers can
+ *   retry on 429/5xx without losing context.
  */
 
-import type { AgentType, AIProvider } from './provider.js';
+import type { AgentType, AIProvider, GenerateContentParams } from './provider.js';
 import { OpenAIProvider } from './providers/openai.js';
 import { AnthropicProvider } from './providers/anthropic.js';
+import { GeminiProvider } from './providers/gemini.js';
 
 interface ModelConfig {
   provider: string;
   model: string;
 }
 
-// Model routing table: [tier][stage] → { provider, model }
+// Tier × stage → primary route. Free tier uses Gemini (generous free quota).
 const ROUTE_TABLE: Record<string, Record<AgentType, ModelConfig>> = {
+  free: {
+    brainstorm: { provider: 'gemini', model: 'gemini-2.5-flash' },
+    research: { provider: 'gemini', model: 'gemini-2.5-flash' },
+    production: { provider: 'gemini', model: 'gemini-2.5-flash' },
+    review: { provider: 'gemini', model: 'gemini-2.5-flash' },
+  },
   standard: {
-    brainstorm: { provider: 'openai', model: 'gpt-4o-mini' },
-    research: { provider: 'openai', model: 'gpt-4o-mini' },
+    brainstorm: { provider: 'gemini', model: 'gemini-2.5-flash' },
+    research: { provider: 'gemini', model: 'gemini-2.5-flash' },
     production: { provider: 'anthropic', model: 'claude-sonnet-4-5-20250514' },
-    review: { provider: 'openai', model: 'gpt-4o-mini' },
+    review: { provider: 'gemini', model: 'gemini-2.5-flash' },
   },
   premium: {
     brainstorm: { provider: 'openai', model: 'gpt-4o' },
@@ -43,13 +47,22 @@ const ROUTE_TABLE: Record<string, Record<AgentType, ModelConfig>> = {
   },
 };
 
-// Fallback order per provider
+// Runtime fallback order: when the primary provider errors at call time,
+// try these next (in order). Always try Gemini last because it's free.
 const FALLBACK_ORDER: Record<string, string[]> = {
-  anthropic: ['openai'],
-  openai: ['anthropic'],
+  openai: ['anthropic', 'gemini'],
+  anthropic: ['openai', 'gemini'],
+  gemini: ['anthropic', 'openai'],
 };
 
-// Credit costs per stage
+// Default model per provider when we fall back from a different provider.
+const DEFAULT_MODELS: Record<string, string> = {
+  openai: 'gpt-4o-mini',
+  anthropic: 'claude-sonnet-4-5-20250514',
+  gemini: 'gemini-2.5-flash',
+};
+
+// Credit costs per stage (debited per call; runtime fallback does NOT double-debit).
 export const STAGE_COSTS: Record<AgentType, number> = {
   brainstorm: 10,
   research: 30,
@@ -69,42 +82,103 @@ function createProvider(providerName: string, model: string): AIProvider | null 
       if (!key) return null;
       return new AnthropicProvider(key, { model });
     }
+    case 'gemini': {
+      const key = process.env.GOOGLE_AI_KEY ?? process.env.GEMINI_API_KEY;
+      if (!key) return null;
+      return new GeminiProvider(key, { model });
+    }
     default:
       return null;
   }
 }
 
-/**
- * Get the best AI provider for a given stage and tier.
- * Falls back to other providers if the primary one isn't configured.
- */
-export function getRouteForStage(
-  stage: AgentType,
-  tier: string = 'standard',
-): { provider: AIProvider; model: string; providerName: string } {
-  const routeTable = ROUTE_TABLE[tier] ?? ROUTE_TABLE.standard;
-  const route = routeTable[stage];
+interface ProviderRoute {
+  provider: AIProvider;
+  model: string;
+  providerName: string;
+}
 
-  // Try primary provider
-  const primary = createProvider(route.provider, route.model);
-  if (primary) {
-    return { provider: primary, model: route.model, providerName: route.provider };
+/**
+ * Returns the ordered list of provider routes to try for a (stage, tier).
+ * Filters out providers without an API key configured.
+ */
+export function getProviderChain(stage: AgentType, tier: string = 'standard'): ProviderRoute[] {
+  const routeTable = ROUTE_TABLE[tier] ?? ROUTE_TABLE.standard;
+  const primary = routeTable[stage];
+  const order = [primary.provider, ...(FALLBACK_ORDER[primary.provider] ?? [])];
+  const seen = new Set<string>();
+  const chain: ProviderRoute[] = [];
+
+  for (const name of order) {
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const model = name === primary.provider ? primary.model : DEFAULT_MODELS[name];
+    if (!model) continue;
+    const provider = createProvider(name, model);
+    if (provider) chain.push({ provider, model, providerName: name });
   }
 
-  // Try fallbacks
-  const fallbacks = FALLBACK_ORDER[route.provider] ?? [];
-  for (const fallbackName of fallbacks) {
-    // Use the fallback's model for the same tier/stage
-    const fallbackRoute = ROUTE_TABLE[tier]?.[stage];
-    const fallbackModel = fallbackRoute?.provider === fallbackName
-      ? fallbackRoute.model
-      : ROUTE_TABLE.standard[stage].model;
+  return chain;
+}
 
-    const fallback = createProvider(fallbackName, fallbackModel);
-    if (fallback) {
-      return { provider: fallback, model: fallbackModel, providerName: fallbackName };
+/**
+ * Backwards-compatible single-provider getter. Returns the FIRST configured
+ * route in the chain; throws if none.
+ */
+export function getRouteForStage(stage: AgentType, tier: string = 'standard'): ProviderRoute {
+  const chain = getProviderChain(stage, tier);
+  if (chain.length === 0) {
+    throw new Error(
+      `No AI provider available for stage=${stage}, tier=${tier}. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_AI_KEY.`,
+    );
+  }
+  return chain[0];
+}
+
+/**
+ * Errors that should trigger a fallback to the next provider.
+ * Quota/rate-limit (429), server errors (5xx), and network errors are retryable.
+ * Validation/auth errors (400/401/403) are NOT retryable — the caller's input
+ * is the problem, not the provider.
+ */
+function isRetryableError(err: unknown): boolean {
+  const msg = String((err as { message?: string })?.message ?? err ?? '').toLowerCase();
+  if (msg.includes('429')) return true;
+  if (msg.includes('quota')) return true;
+  if (msg.includes('rate limit')) return true;
+  if (msg.includes('overloaded')) return true;
+  if (/\b5\d{2}\b/.test(msg)) return true;
+  if (msg.includes('econn') || msg.includes('etimedout') || msg.includes('network')) return true;
+  return false;
+}
+
+/**
+ * Run generateContent with runtime fallback through the provider chain.
+ * Stops at the first success; rethrows the LAST error if every provider fails.
+ */
+export async function generateWithFallback(
+  stage: AgentType,
+  tier: string,
+  params: GenerateContentParams,
+): Promise<{ result: unknown; providerName: string; model: string; attempts: number }> {
+  const chain = getProviderChain(stage, tier);
+  if (chain.length === 0) {
+    throw new Error(
+      `No AI provider available for stage=${stage}, tier=${tier}. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_AI_KEY.`,
+    );
+  }
+
+  let lastErr: unknown;
+  for (let i = 0; i < chain.length; i++) {
+    const route = chain[i];
+    try {
+      const result = await route.provider.generateContent(params);
+      return { result, providerName: route.providerName, model: route.model, attempts: i + 1 };
+    } catch (err) {
+      lastErr = err;
+      if (i === chain.length - 1) break;
+      if (!isRetryableError(err)) break;
     }
   }
-
-  throw new Error(`No AI provider available for stage=${stage}, tier=${tier}. Set OPENAI_API_KEY or ANTHROPIC_API_KEY.`);
+  throw lastErr;
 }

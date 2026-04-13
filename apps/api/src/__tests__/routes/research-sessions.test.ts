@@ -45,15 +45,16 @@ vi.mock('@/lib/ai/promptLoader', () => ({
 }));
 vi.mock('@/lib/ai/router', () => ({
   STAGE_COSTS: { brainstorm: 50, research: 100, production: 200, review: 50 },
-  getRouteForStage: vi.fn(() => ({
-    provider: {
-      generateContent: vi.fn(async () => ({
-        cards: [
-          { type: 'source', title: 'A study', url: 'https://x', relevance: 9 },
-          { type: 'quote', author: 'Expert', quote: 'wow' },
-        ],
-      })),
+  generateWithFallback: vi.fn(async () => ({
+    result: {
+      cards: [
+        { type: 'source', title: 'A study', url: 'https://x', relevance: 9 },
+        { type: 'quote', author: 'Expert', quote: 'wow' },
+      ],
     },
+    providerName: 'mock',
+    model: 'mock',
+    attempts: 1,
   })),
 }));
 
