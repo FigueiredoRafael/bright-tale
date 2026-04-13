@@ -58,6 +58,28 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
   /**
    * POST / — start a research session for an idea.
    */
+  /**
+   * GET / — list research sessions (optionally filtered by channel + status).
+   */
+  fastify.get('/', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      const q = request.query as { channel_id?: string; status?: string; limit?: string };
+      let query = sb
+        .from('research_sessions')
+        .select('id, channel_id, idea_id, level, status, input_json, cards_json, created_at')
+        .order('created_at', { ascending: false })
+        .limit(Math.min(Number(q.limit ?? 50), 200));
+      if (q.channel_id) query = query.eq('channel_id', q.channel_id);
+      if (q.status) query = query.eq('status', q.status);
+      const { data, error } = await query;
+      if (error) throw error;
+      return reply.send({ data: { sessions: data ?? [] }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
   fastify.post('/', { preHandler: [authenticate] }, async (request, reply) => {
     try {
       if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');

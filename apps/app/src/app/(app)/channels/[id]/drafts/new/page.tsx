@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, Sparkles, FileText, Video, Zap, Mic, ArrowLeft, Check } from "lucide-react";
+import { Loader2, Sparkles, FileText, Video, Zap, Mic, ArrowLeft, Check, BookOpen } from "lucide-react";
+import { ResearchPickerModal, type ResearchOption } from "@/components/research/ResearchPickerModal";
 
 type DraftType = "blog" | "video" | "shorts" | "podcast";
 
@@ -24,10 +25,30 @@ export default function NewDraftPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const ideaIdParam = searchParams.get("ideaId") ?? undefined;
-    const researchSessionId = searchParams.get("researchSessionId") ?? undefined;
+    const researchSessionIdParam = searchParams.get("researchSessionId") ?? undefined;
 
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const [research, setResearch] = useState<ResearchOption | null>(null);
     const [type, setType] = useState<DraftType>("blog");
     const [title, setTitle] = useState("");
+
+    // If query has researchSessionId, fetch and prefill.
+    useEffect(() => {
+        if (!researchSessionIdParam) return;
+        (async () => {
+            try {
+                const res = await fetch(`/api/research-sessions/${researchSessionIdParam}`);
+                const json = await res.json();
+                if (json?.data) {
+                    setResearch(json.data as ResearchOption);
+                    if (!title && json.data.input_json?.topic) setTitle(json.data.input_json.topic);
+                }
+            } catch {
+                // silent
+            }
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [researchSessionIdParam]);
     const [draftId, setDraftId] = useState<string | null>(null);
     const [step, setStep] = useState<"setup" | "core" | "produce" | "done">("setup");
     const [busy, setBusy] = useState(false);
@@ -52,6 +73,11 @@ export default function NewDraftPage() {
     }
 
     async function handleStart() {
+        if (!research) {
+            toast.error("Escolha (ou crie) uma pesquisa antes de gerar conteúdo");
+            setPickerOpen(true);
+            return;
+        }
         if (!title.trim()) {
             toast.error("Informe um título");
             return;
@@ -63,7 +89,7 @@ export default function NewDraftPage() {
                 body: JSON.stringify({
                     channelId,
                     ideaId: ideaIdParam,
-                    researchSessionId,
+                    researchSessionId: research.id,
                     type,
                     title,
                 }),
@@ -90,6 +116,15 @@ export default function NewDraftPage() {
 
     return (
         <div className="p-6 max-w-3xl mx-auto space-y-6">
+            <ResearchPickerModal
+                open={pickerOpen}
+                channelId={channelId}
+                onSelect={(r) => {
+                    setResearch(r);
+                    if (!title && r.input_json?.topic) setTitle(r.input_json.topic);
+                }}
+                onClose={() => setPickerOpen(false)}
+            />
             <div>
                 <button
                     onClick={() => router.back()}
@@ -101,6 +136,39 @@ export default function NewDraftPage() {
                     <Sparkles className="h-5 w-5" /> Novo conteúdo
                 </h1>
             </div>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                        <BookOpen className="h-4 w-4" /> Pesquisa base
+                        <Badge variant="outline" className="text-[10px] ml-1">obrigatório</Badge>
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {research ? (
+                        <div className="flex items-start justify-between gap-3 p-3 rounded-lg border bg-muted/20">
+                            <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium line-clamp-2">
+                                    {research.input_json?.topic ?? "Sem tema"}
+                                </div>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <Badge variant="outline" className="text-[10px] capitalize">{research.level}</Badge>
+                                    <Badge variant="secondary" className="text-[10px]">
+                                        {Array.isArray(research.cards_json) ? research.cards_json.length : 0} cards
+                                    </Badge>
+                                </div>
+                            </div>
+                            <Button variant="ghost" size="sm" onClick={() => setPickerOpen(true)}>
+                                Trocar
+                            </Button>
+                        </div>
+                    ) : (
+                        <Button variant="outline" onClick={() => setPickerOpen(true)} className="w-full">
+                            <BookOpen className="h-4 w-4 mr-2" /> Escolher ou criar pesquisa
+                        </Button>
+                    )}
+                </CardContent>
+            </Card>
 
             <Card>
                 <CardHeader>
@@ -134,10 +202,15 @@ export default function NewDraftPage() {
                         </div>
                     </div>
 
-                    <Button onClick={handleStart} disabled={busy || step !== "setup"}>
+                    <Button onClick={handleStart} disabled={busy || step !== "setup" || !research}>
                         {busy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
                         Gerar
                     </Button>
+                    {!research && (
+                        <p className="text-xs text-muted-foreground">
+                            Selecione uma pesquisa primeiro — produção sem pesquisa fica fraca.
+                        </p>
+                    )}
                 </CardContent>
             </Card>
 
