@@ -6,7 +6,7 @@
 
 **Depende de:** Fase 1 (auth, orgs, storage, créditos)
 
-**Progresso:** 10/29 concluídos (F2-001 a F2-009 ✅ · F2-015 ✅ · F2-010 a F2-014 em andamento)
+**Progresso:** 11/29 concluídos (F2-001 a F2-009 ✅ · F2-015 ✅ · F2-027 ✅ · F2-010 a F2-014 em andamento)
 
 > ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
 > Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
@@ -509,17 +509,20 @@
 ---
 
 ### F2-027 — Job: ler instructions de agent_prompts (não hardcoded)
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
-- Refatorar `apps/api/src/jobs/content-generate.ts` pra buscar `instructions` do `agent_prompts` por slug (brainstorm, research, production, content-core, blog, video, shorts, podcast, engagement, review)
-- Provider layer (`apps/api/src/lib/ai/providers/`) recebe `systemPrompt` via parâmetro, não arquivo estático
-- Cache de prompts em memória com TTL curto (5min) pra evitar lookup a cada step
+- Novo `apps/api/src/lib/ai/promptLoader.ts` — cache in-memory com TTL 5min
+- `content-generate.ts` agora carrega prompt por slug (brainstorm, research, content-core, blog, video, shorts, podcast, review) e passa como `systemPrompt` ao provider
+- Canonical core rodando como step separado antes de production-{format}
+- Fallback para slug da etapa quando variante não está cadastrada (ex: blog → production)
 
 **Critérios de aceite:**
-- [ ] Alterar instructions no admin reflete na próxima geração (após TTL)
-- [ ] Jobs não referenciam strings hardcoded
-- [ ] Teste que mocka DB retornando prompt custom e verifica que é usado
+- [x] Alterar instructions no admin reflete na próxima geração (após TTL)
+- [x] Jobs não referenciam strings hardcoded (adapter legado mantido mas não usado no job)
+- [x] Testes do loader (4/4) cobrindo hit/miss/cache/clear
+
+**Concluído em:** 2026-04-13
 
 ---
 

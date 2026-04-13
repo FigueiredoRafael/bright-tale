@@ -7,6 +7,7 @@
 
 import { inngest } from './client.js';
 import { getRouteForStage, STAGE_COSTS } from '../lib/ai/router.js';
+import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
 import { checkCredits, debitCredits } from '../lib/credits.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 
@@ -42,10 +43,12 @@ export const contentGenerate = inngest.createFunction(
     // Step 2: Brainstorm
     const brainstormResult = await step.run('brainstorm', async () => {
       const { provider } = getRouteForStage('brainstorm', tier);
+      const systemPrompt = (await loadAgentPrompt('brainstorm')) ?? undefined;
       const result = await provider.generateContent({
         agentType: 'brainstorm',
         input: { topic, channelId },
         schema: null,
+        systemPrompt,
       });
       await debitCredits(orgId, userId, 'brainstorm', 'text', STAGE_COSTS.brainstorm, { channelId, topic });
       return result;
@@ -54,24 +57,41 @@ export const contentGenerate = inngest.createFunction(
     // Step 3: Research
     const researchResult = await step.run('research', async () => {
       const { provider } = getRouteForStage('research', tier);
+      const systemPrompt = (await loadAgentPrompt('research')) ?? undefined;
       const result = await provider.generateContent({
         agentType: 'research',
         input: { topic, brainstormData: brainstormResult },
         schema: null,
+        systemPrompt,
       });
       await debitCredits(orgId, userId, 'research', 'text', STAGE_COSTS.research, { channelId, topic });
       return result;
     });
 
-    // Step 4: Production (per format)
+    // Step 4: Production — canonical core first, then per-format output
+    const canonicalCore = await step.run('canonical-core', async () => {
+      const { provider } = getRouteForStage('production', tier);
+      const systemPrompt =
+        (await loadAgentPrompt('content-core')) ?? (await loadAgentPrompt('production')) ?? undefined;
+      return provider.generateContent({
+        agentType: 'production',
+        input: { researchData: researchResult, brainstormData: brainstormResult },
+        schema: null,
+        systemPrompt,
+      });
+    });
+
     const productionResults: Record<string, unknown> = {};
     for (const format of formats) {
       productionResults[format] = await step.run(`production-${format}`, async () => {
         const { provider } = getRouteForStage('production', tier);
+        const systemPrompt =
+          (await loadAgentPrompt(format)) ?? (await loadAgentPrompt('production')) ?? undefined;
         const result = await provider.generateContent({
           agentType: 'production',
-          input: { format, researchData: researchResult, brainstormData: brainstormResult },
+          input: { format, canonicalCore, researchData: researchResult, brainstormData: brainstormResult },
           schema: null,
+          systemPrompt,
         });
         await debitCredits(orgId, userId, `production-${format}`, 'text', STAGE_COSTS.production, { channelId, format });
         return result;
@@ -81,10 +101,12 @@ export const contentGenerate = inngest.createFunction(
     // Step 5: Review
     await step.run('review', async () => {
       const { provider } = getRouteForStage('review', tier);
+      const systemPrompt = (await loadAgentPrompt('review')) ?? undefined;
       const result = await provider.generateContent({
         agentType: 'review',
         input: { productionResults },
         schema: null,
+        systemPrompt,
       });
       await debitCredits(orgId, userId, 'review', 'text', STAGE_COSTS.review, { channelId });
       return result;
