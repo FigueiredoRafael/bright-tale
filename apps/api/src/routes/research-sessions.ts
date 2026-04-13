@@ -86,9 +86,9 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       const body = createSchema.parse(request.body);
       const orgId = await getOrgId(request.userId);
       const sb = createServiceClient();
-      const cost = LEVEL_COSTS[body.level];
-
-      await checkCredits(orgId, request.userId, cost);
+      // Local Ollama runs cost us nothing → no internal credit charge.
+      const cost = body.provider === 'ollama' ? 0 : LEVEL_COSTS[body.level];
+      if (cost > 0) await checkCredits(orgId, request.userId, cost);
 
       const inputJson = {
         topic: body.topic ?? null,

@@ -124,10 +124,14 @@ export const researchGenerate = inngest.createFunction(
           .update({ status: 'completed', cards_json: cards })
           .eq('id', sessionId);
 
-        await debitCredits(orgId, userId, `research-${level}`, 'text', LEVEL_COSTS[level], {
-          channelId,
-          ideaId,
-        });
+        const charge = provider === 'ollama' ? 0 : LEVEL_COSTS[level];
+        if (charge > 0) {
+          await debitCredits(orgId, userId, `research-${level}`, 'text', charge, {
+            channelId,
+            ideaId,
+            provider,
+          });
+        }
       });
 
       await emitJobEvent(

@@ -58,7 +58,9 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       const orgId = await getOrgId(request.userId);
       const sb = createServiceClient();
 
-      await checkCredits(orgId, request.userId, STAGE_COSTS.brainstorm);
+      // Local Ollama runs cost us nothing → no internal credit charge.
+      const cost = body.provider === 'ollama' ? 0 : STAGE_COSTS.brainstorm;
+      if (cost > 0) await checkCredits(orgId, request.userId, cost);
 
       const inputJson: Record<string, unknown> = {
         topic: body.topic ?? null,

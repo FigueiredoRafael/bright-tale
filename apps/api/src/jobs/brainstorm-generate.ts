@@ -146,10 +146,14 @@ export const brainstormGenerate = inngest.createFunction(
           .update({ status: 'completed' })
           .eq('id', sessionId);
 
-        await debitCredits(orgId, userId, 'brainstorm', 'text', STAGE_COSTS.brainstorm, {
-          channelId,
-          mode: event.data.inputMode,
-        });
+        const charge = provider === 'ollama' ? 0 : STAGE_COSTS.brainstorm;
+        if (charge > 0) {
+          await debitCredits(orgId, userId, 'brainstorm', 'text', charge, {
+            channelId,
+            mode: event.data.inputMode,
+            provider,
+          });
+        }
 
         return ideaRows.length;
       });
