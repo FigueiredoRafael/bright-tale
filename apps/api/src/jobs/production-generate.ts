@@ -201,13 +201,18 @@ export const productionGenerate = inngest.createFunction(
       await emitJobEvent(draftId, 'production', 'completed', `${type === 'blog' ? 'Post' : type === 'video' ? 'Vídeo' : type === 'shorts' ? 'Shorts' : 'Podcast'} pronto!`, { draftId, type });
       return { success: true, draftId };
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      const rawMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+      // Tag the message with which provider actually failed so the user can act
+      // on the right account (e.g. "Anthropic: credit balance" vs the user's
+      // selected "Ollama: ECONNREFUSED").
+      const providerLabel = provider ? `[${provider}${model ? `/${model}` : ''}] ` : '';
+      const message = `${providerLabel}${rawMessage}`;
       await (sb.from('content_drafts') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
       })
         .update({ status: 'failed' })
         .eq('id', draftId);
-      await emitJobEvent(draftId, 'production', 'failed', message.slice(0, 200), { error: message });
+      await emitJobEvent(draftId, 'production', 'failed', message.slice(0, 240), { error: rawMessage, provider, model });
       throw err;
     }
   },

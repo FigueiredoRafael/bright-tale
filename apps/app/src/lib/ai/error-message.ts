@@ -24,11 +24,19 @@ export function friendlyAiError(raw: string): FriendlyError {
         };
     }
 
-    // Anthropic / OpenAI billing
-    if (lower.includes('credit balance') || lower.includes('insufficient') || lower.includes('billing')) {
+    // Anthropic / OpenAI billing — be specific so we don't accidentally catch
+    // Ollama's "insufficient memory" and friends.
+    if (
+        lower.includes('credit balance') ||
+        lower.includes('billing') ||
+        lower.includes('insufficient_quota') ||
+        lower.includes('insufficient credits') ||
+        lower.includes('insufficient funds') ||
+        lower.includes('payment required')
+    ) {
         return {
             title: 'Conta sem saldo nesse provider',
-            hint: 'Adicione crédito na conta ou troque pra outro provider (Gemini é grátis).',
+            hint: 'Adicione crédito na conta ou troque pra outro provider (Gemini Flash é grátis, Ollama é local).',
         };
     }
 
