@@ -1,28 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { CheckCircle2, Loader2, XCircle, Circle } from "lucide-react";
-import { useJobEvents, type JobEvent } from "@/hooks/useJobEvents";
-
-const STAGE_ORDER: JobEvent["stage"][] = [
-    "queued",
-    "loading_prompt",
-    "calling_provider",
-    "parsing_output",
-    "saving",
-    "completed",
-];
-
-const STAGE_LABELS: Record<JobEvent["stage"], string> = {
-    queued: "Na fila",
-    loading_prompt: "Carregando agente",
-    calling_provider: "Conversando com a IA",
-    parsing_output: "Processando resposta",
-    saving: "Salvando no banco",
-    completed: "Concluído",
-    failed: "Falhou",
-};
+import { CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { useJobEvents } from "@/hooks/useJobEvents";
 
 interface Props {
     open: boolean;
@@ -54,8 +35,6 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gera
         }
     }, [status, events, onComplete, onFailed]);
 
-    const reachedStages = useMemo(() => new Set(events.map((e) => e.stage)), [events]);
-    const currentStage = events[events.length - 1]?.stage;
     const currentMessage = events[events.length - 1]?.message ?? "Iniciando…";
 
     return (
@@ -78,26 +57,41 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gera
                     </DialogDescription>
                 </DialogHeader>
 
-                <ul className="space-y-2 py-2">
-                    {STAGE_ORDER.filter((s) => s !== "queued" || reachedStages.has("queued")).map((stage) => {
-                        const reached = reachedStages.has(stage);
-                        const isCurrent = currentStage === stage && status === "streaming";
-                        const done = reached && !isCurrent;
+                {/* Chronological event log — every emitJobEvent shows up here in
+                    order. Better than a fixed checklist for multi-stage jobs
+                    (production = canonical-core + produce + review, which all
+                    emit the same `calling_provider` stage with different msgs). */}
+                <ul className="space-y-2 py-2 max-h-[280px] overflow-y-auto">
+                    {events.map((ev, i) => {
+                        const isLast = i === events.length - 1;
+                        const isLive = isLast && status === "streaming";
+                        const isFailed = ev.stage === "failed";
                         return (
-                            <li key={stage} className="flex items-center gap-3 text-sm">
-                                {done ? (
-                                    <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                                ) : isCurrent ? (
-                                    <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                            <li key={ev.id} className="flex items-start gap-3 text-sm">
+                                {isFailed ? (
+                                    <XCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                                ) : isLive ? (
+                                    <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0 mt-0.5" />
                                 ) : (
-                                    <Circle className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+                                    <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
                                 )}
-                                <span className={done ? "text-foreground" : isCurrent ? "text-foreground font-medium" : "text-muted-foreground"}>
-                                    {STAGE_LABELS[stage]}
+                                <span className={
+                                    isFailed
+                                        ? "text-red-600 dark:text-red-400"
+                                        : isLive
+                                            ? "text-foreground font-medium"
+                                            : "text-muted-foreground"
+                                }>
+                                    {ev.message}
                                 </span>
                             </li>
                         );
                     })}
+                    {events.length === 0 && status === "streaming" && (
+                        <li className="flex items-center gap-3 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" /> Iniciando…
+                        </li>
+                    )}
                 </ul>
 
                 {status === "failed" && (
