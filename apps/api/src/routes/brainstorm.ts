@@ -43,13 +43,31 @@ interface RawIdea {
 }
 
 function normalizeIdeas(raw: unknown): RawIdea[] {
-  if (Array.isArray(raw)) return raw as RawIdea[];
-  if (raw && typeof raw === 'object') {
-    const obj = raw as Record<string, unknown>;
-    if (Array.isArray(obj.ideas)) return obj.ideas as RawIdea[];
-    if (Array.isArray(obj.output)) return obj.output as RawIdea[];
+  // Recursive search: agents often nest the array inside arbitrary keys
+  // (BC_BRAINSTORM_OUTPUT.ideas, output.ideas, results, etc.). Find the first
+  // array whose items look like ideas (have a string "title" or "idea_id").
+  function looksLikeIdea(item: unknown): boolean {
+    if (!item || typeof item !== 'object') return false;
+    const o = item as Record<string, unknown>;
+    return typeof o.title === 'string' || typeof o.idea_id === 'string' || typeof o.angle === 'string';
   }
-  return [];
+
+  function find(node: unknown, depth = 0): RawIdea[] | null {
+    if (depth > 6) return null;
+    if (Array.isArray(node)) {
+      if (node.length > 0 && node.some(looksLikeIdea)) return node as RawIdea[];
+      return null;
+    }
+    if (node && typeof node === 'object') {
+      for (const v of Object.values(node as Record<string, unknown>)) {
+        const found = find(v, depth + 1);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  return find(raw) ?? [];
 }
 
 async function getOrgId(userId: string): Promise<string> {
@@ -122,6 +140,14 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         );
 
         const ideas = normalizeIdeas(result);
+        if (ideas.length === 0) {
+          // Log the raw result so we can see what shape the agent returned and
+          // teach normalizeIdeas about it next time.
+          fastify.log.warn(
+            { rawResult: result },
+            'brainstorm returned 0 ideas — agent output shape may be unrecognized',
+          );
+        }
 
         // Persist ideas with auto-generated idea_id (BC-IDEA-NNN).
         const { count } = await sb

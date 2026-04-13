@@ -109,15 +109,30 @@ export default function NewBrainstormPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),
             });
-            const json = await res.json();
-            if (json.error) {
-                toast.error(json.error.message);
+
+            // Some 5xx responses might not be JSON — handle that gracefully.
+            let json: { data?: { ideas?: Idea[] }; error?: { message?: string; code?: string } } | null = null;
+            try {
+                json = await res.json();
+            } catch {
+                toast.error(`Servidor retornou ${res.status} sem JSON`);
                 return;
             }
-            setIdeas(json.data.ideas ?? []);
-            toast.success(`${json.data.ideas?.length ?? 0} ideias geradas`);
-        } catch {
-            toast.error("Falha ao gerar ideias");
+
+            if (json?.error) {
+                toast.error(`${json.error.code ?? "Erro"}: ${json.error.message ?? "desconhecido"}`);
+                return;
+            }
+            const generatedIdeas = json?.data?.ideas ?? [];
+            setIdeas(generatedIdeas);
+            if (generatedIdeas.length === 0) {
+                toast.warning("A IA respondeu mas não retornou ideias reconhecíveis. Tente outro modelo ou re-execute.");
+            } else {
+                toast.success(`${generatedIdeas.length} ideias geradas`);
+            }
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            toast.error(`Falha ao gerar ideias: ${message}`);
         } finally {
             setRunning(false);
         }
