@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,6 +44,17 @@ type Step = 'welcome' | 'has-channel' | 'connect' | 'market' | 'media' | 'video-
 export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>('welcome');
+  const [hasExistingChannels, setHasExistingChannels] = useState(false);
+
+  // Check if user already has channels — if so, allow skip/cancel
+  useEffect(() => {
+    fetch('/api/channels')
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.data?.items?.length > 0) setHasExistingChannels(true);
+      })
+      .catch(() => { /* silent */ });
+  }, []);
   const [hasChannel, setHasChannel] = useState<boolean | null>(null);
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [selectedNiches, setSelectedNiches] = useState<string[]>([]);
@@ -139,7 +150,17 @@ export default function OnboardingPage() {
   const needsVideoStyle = mediaTypes.includes('video') || mediaTypes.includes('shorts');
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center px-4 py-8">
+    <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center px-4 py-8 relative">
+      {/* Cancel button — only if user has channels already */}
+      {hasExistingChannels && (
+        <button
+          onClick={() => router.push('/channels')}
+          className="absolute top-6 right-6 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Cancelar e voltar ←
+        </button>
+      )}
+
       {step !== 'welcome' && (
         <div className="w-full max-w-lg mb-8">
           <div className="h-1.5 bg-muted rounded-full overflow-hidden">

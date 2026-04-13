@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ChevronsUpDown, Plus, Check, Radio } from 'lucide-react';
+import { ChannelLogo } from '@/components/channels/ChannelLogo';
 
 export function ChannelSwitcher() {
   const router = useRouter();
@@ -49,9 +50,7 @@ export function ChannelSwitcher() {
         <DropdownMenuTrigger asChild>
           <button className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border border-border hover:border-primary/30 hover:bg-white/[0.02] transition-all text-left">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
-                <Radio className="h-3.5 w-3.5 text-primary" />
-              </div>
+              <ChannelLogo logoUrl={activeChannel?.logo_url} name={activeChannel?.name ?? '?'} size="sm" />
               <div className="min-w-0">
                 <div className="text-xs font-medium text-foreground truncate">
                   {activeChannel?.name ?? 'Select content channel'}
@@ -77,7 +76,7 @@ export function ChannelSwitcher() {
               }}
               className="flex items-center gap-2 cursor-pointer"
             >
-              <Radio className="h-3.5 w-3.5 text-muted-foreground" />
+              <ChannelLogo logoUrl={c.logo_url} name={c.name} size="xs" />
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-medium truncate">{c.name}</div>
                 <div className="text-[10px] text-muted-foreground">{c.niche ?? c.channel_type}</div>

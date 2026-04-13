@@ -14,6 +14,7 @@ import {
   listChannelsQuerySchema,
 } from '@brighttale/shared/schemas/channels';
 import { ensureOrgId } from '../lib/orgs.js';
+import { uploadFile } from '../lib/storage.js';
 
 /** Helper: get user's org_id */
 async function getOrgId(userId: string): Promise<string> {
@@ -102,6 +103,7 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
           is_evergreen: body.isEvergreen,
           youtube_url: body.youtubeUrl ?? null,
           blog_url: body.blogUrl ?? null,
+          logo_url: body.logoUrl ?? null,
           voice_provider: body.voiceProvider ?? null,
           voice_id: body.voiceId ?? null,
           voice_speed: body.voiceSpeed ?? 1.0,
@@ -172,6 +174,7 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
           ...(body.isEvergreen !== undefined && { is_evergreen: body.isEvergreen }),
           ...(body.youtubeUrl !== undefined && { youtube_url: body.youtubeUrl }),
           ...(body.blogUrl !== undefined && { blog_url: body.blogUrl }),
+          ...(body.logoUrl !== undefined && { logo_url: body.logoUrl }),
           ...(body.voiceProvider !== undefined && { voice_provider: body.voiceProvider }),
           ...(body.voiceId !== undefined && { voice_id: body.voiceId }),
           ...(body.voiceSpeed !== undefined && { voice_speed: body.voiceSpeed }),
@@ -188,6 +191,74 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
       if (!channel) throw new ApiError(404, 'Channel not found', 'NOT_FOUND');
 
       return reply.send({ data: channel, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * POST /:id/logo — Upload a logo for the channel.
+   * Body: { filename: string, contentType: string, dataBase64: string }
+   * Returns: { url: string } (public CDN URL)
+   */
+  fastify.post<{ Params: { id: string } }>('/:id/logo', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
+
+      const orgId = await ensureOrgId(request.userId);
+      const { id } = request.params;
+
+      const { filename, contentType, dataBase64 } = request.body as {
+        filename: string;
+        contentType: string;
+        dataBase64: string;
+      };
+
+      if (!filename || !contentType || !dataBase64) {
+        throw new ApiError(400, 'filename, contentType, and dataBase64 are required', 'VALIDATION_ERROR');
+      }
+
+      if (!contentType.startsWith('image/')) {
+        throw new ApiError(400, 'Only images are allowed for channel logos', 'VALIDATION_ERROR');
+      }
+
+      const buffer = Buffer.from(dataBase64, 'base64');
+      if (buffer.byteLength > 5 * 1024 * 1024) {
+        throw new ApiError(413, 'Logo must be under 5MB', 'TOO_LARGE');
+      }
+
+      // Verify the channel belongs to the org
+      const { data: existing } = await sb
+        .from('channels')
+        .select('id')
+        .eq('id', id)
+        .eq('org_id', orgId)
+        .single();
+
+      if (!existing) throw new ApiError(404, 'Channel not found', 'NOT_FOUND');
+
+      // Upload to thumbnails (public bucket) with unique name
+      const ext = filename.split('.').pop()?.toLowerCase() ?? 'png';
+      const ts = Date.now();
+      const path = `channels/${id}/logo-${ts}.${ext}`;
+
+      const result = await uploadFile({
+        bucket: 'thumbnails',
+        orgId,
+        path,
+        file: buffer,
+        contentType,
+        upsert: true,
+      });
+
+      const url = result.publicUrl ?? result.signedUrl;
+      if (!url) throw new ApiError(500, 'Failed to get logo URL', 'UPLOAD_FAILED');
+
+      // Persist on channel
+      await sb.from('channels').update({ logo_url: url }).eq('id', id).eq('org_id', orgId);
+
+      return reply.send({ data: { url }, error: null });
     } catch (error) {
       return sendError(reply, error);
     }

@@ -6,7 +6,7 @@
 
 **Depende de:** Fase 1 (orgs + créditos base)
 
-**Progresso:** 0/10 concluídos
+**Progresso:** 0/12 concluídos
 
 > ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
 > Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
@@ -204,5 +204,55 @@
 - [ ] Tabela de comparação lista todas as features
 - [ ] FAQ tem 10 perguntas
 - [ ] CTAs linkam para checkout
+
+**Concluído em:** —
+
+---
+
+### F3-011 — Cupons de desconto no checkout
+🔲 **Não iniciado**
+
+**Escopo:**
+- Criar tabela `discount_coupons` (code, percentage, fixed_amount, expires_at, max_uses, uses_count, valid_plans[])
+- Admin endpoint para criar/listar/revogar cupons
+- Aplicar cupom no checkout Stripe (coupon/promo code objects)
+- Suportar múltiplos métodos de pagamento no futuro (BR pode usar PIX/Boleto via Mercado Pago ou similar — inicialmente Stripe)
+- Admin UI em `apps/web` para gerir cupons
+
+**Critérios de aceite:**
+- [ ] Admin cria cupom (10% off em plano Starter, 30 dias)
+- [ ] User aplica cupom no checkout e vê desconto
+- [ ] Uso do cupom incrementa uses_count
+- [ ] Cupom expirado não é aceito
+- [ ] Admin lista cupons com status (ativos/expirados/esgotados)
+
+**Concluído em:** —
+
+---
+
+### F3-012 — Plano VIP (Gold) — pay-as-you-go, cost-price, invite-only
+🔲 **Não iniciado**
+
+**Contexto:**
+Plano especial para o próprio Rafael + pessoas convidadas (amigos, beta testers, parceiros). Sem mensalidade, sem markup. Stripe só cobra o custo real de tokens consumidos (pay-as-you-go at cost).
+
+**Escopo:**
+- Novo plano `vip` em `organizations.plan`
+- Criar tabela `vip_invites` (super admin → user) com rastreamento
+- Super admin endpoint: `POST /api/admin/vip-invites` (create), `GET /list`, `DELETE`
+- VIP não tem `credits_total` fixo — em vez disso, debita direto no final do mês
+- Stripe: usage-based billing (metered subscription com price = $0 + invoice items por uso real)
+- Tabela de custo real por ação: `cost_prices` (provider, model, tokens_per_usd, cost_per_action)
+- Sobrescreve o sistema de créditos: VIP não usa `credits_used`, usa `actual_usage_cost_cents`
+- UI admin em `apps/web`: lista VIPs, uso no ciclo, total a cobrar no fim do mês
+- User VIP no app não vê "Créditos restantes" — vê "Uso este mês: R$ 42.30"
+
+**Critérios de aceite:**
+- [ ] Super admin convida por email
+- [ ] User convidado recebe link, vira VIP com stripe customer
+- [ ] Ações debitam em `actual_usage_cost_cents` (custo real, sem markup)
+- [ ] Fim do mês: Stripe invoice automático com valor = soma do custo
+- [ ] Admin vê total acumulado por VIP no ciclo
+- [ ] VIP não pode se auto-upgradear pra plano normal (o reverso sim)
 
 **Concluído em:** —

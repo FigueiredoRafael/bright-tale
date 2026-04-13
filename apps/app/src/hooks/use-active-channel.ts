@@ -3,12 +3,16 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 
 const STORAGE_KEY = 'brighttale:active-channel-id';
+const ACTIVE_CHANGE_EVENT = 'brighttale:active-channel-change';
 
 export interface Channel {
   id: string;
   name: string;
   niche: string | null;
   channel_type: string;
+  media_types: string[];
+  video_style: string | null;
+  logo_url: string | null;
   language: string;
   market: string;
 }
@@ -22,15 +26,25 @@ interface UseActiveChannelResult {
   refetch: () => Promise<void>;
 }
 
-// Module-level cache — shared across all hook instances, survives re-mounts
+// Module-level state — shared across all hook instances
 let channelsCache: Channel[] | null = null;
 let cacheTimestamp = 0;
 let inflightFetch: Promise<Channel[]> | null = null;
+let activeIdCache: string | null = null;
 const CACHE_TTL_MS = 30_000;
-const subscribers = new Set<(list: Channel[]) => void>();
+
+const channelListSubscribers = new Set<(list: Channel[]) => void>();
+const activeIdSubscribers = new Set<(id: string | null) => void>();
+
+function notifyChannelList(list: Channel[]) {
+  channelListSubscribers.forEach((cb) => cb(list));
+}
+
+function notifyActiveId(id: string | null) {
+  activeIdSubscribers.forEach((cb) => cb(id));
+}
 
 async function fetchChannelsFromApi(): Promise<Channel[]> {
-  // Deduplicate concurrent fetches
   if (inflightFetch) return inflightFetch;
 
   inflightFetch = (async () => {
@@ -40,7 +54,7 @@ async function fetchChannelsFromApi(): Promise<Channel[]> {
       const list: Channel[] = json.data?.items ?? [];
       channelsCache = list;
       cacheTimestamp = Date.now();
-      subscribers.forEach((cb) => cb(list));
+      notifyChannelList(list);
       return list;
     } finally {
       inflightFetch = null;
@@ -63,16 +77,17 @@ function resolveActiveId(list: Channel[]): string | null {
 
 /**
  * Hook to access the user's channels + active channel.
- *
- * Uses a module-level cache (30s TTL) so navigating between pages doesn't
- * flicker through "Create Channel First" while the API call is in flight.
+ * All hook instances share a module-level cache and subscribe to updates,
+ * so switching channel in one component immediately updates all others.
  */
 export function useActiveChannel(): UseActiveChannelResult {
   const [channels, setChannels] = useState<Channel[]>(() => channelsCache ?? []);
-  const [activeChannelId, setActiveChannelIdState] = useState<string | null>(() =>
-    channelsCache ? resolveActiveId(channelsCache) : null,
-  );
-  // Only show loading if we have no cache at all
+  const [activeChannelId, setActiveChannelIdState] = useState<string | null>(() => {
+    if (activeIdCache) return activeIdCache;
+    const resolved = channelsCache ? resolveActiveId(channelsCache) : null;
+    activeIdCache = resolved;
+    return resolved;
+  });
   const [loading, setLoading] = useState(channelsCache === null);
   const mountedRef = useRef(false);
 
@@ -80,7 +95,12 @@ export function useActiveChannel(): UseActiveChannelResult {
     try {
       const list = await fetchChannelsFromApi();
       setChannels(list);
-      setActiveChannelIdState(resolveActiveId(list));
+      const newActive = resolveActiveId(list);
+      if (newActive !== activeIdCache) {
+        activeIdCache = newActive;
+        notifyActiveId(newActive);
+      }
+      setActiveChannelIdState(newActive);
     } finally {
       setLoading(false);
     }
@@ -90,40 +110,53 @@ export function useActiveChannel(): UseActiveChannelResult {
     if (mountedRef.current) return;
     mountedRef.current = true;
 
-    // Subscribe to cache updates from other instances
-    const handler = (list: Channel[]) => {
+    // Subscribe to channel list changes (refetch)
+    const listHandler = (list: Channel[]) => {
       setChannels(list);
-      setActiveChannelIdState(resolveActiveId(list));
+      const newActive = resolveActiveId(list);
+      if (newActive !== activeIdCache) {
+        activeIdCache = newActive;
+      }
+      setActiveChannelIdState(newActive);
     };
-    subscribers.add(handler);
+    channelListSubscribers.add(listHandler);
+
+    // Subscribe to active-id changes (switcher)
+    const activeHandler = (id: string | null) => {
+      setActiveChannelIdState(id);
+    };
+    activeIdSubscribers.add(activeHandler);
 
     const cacheFresh = channelsCache !== null && Date.now() - cacheTimestamp < CACHE_TTL_MS;
 
     if (cacheFresh && channelsCache) {
-      // Cache hit — instant render, no network call
       setChannels(channelsCache);
-      setActiveChannelIdState(resolveActiveId(channelsCache));
+      setActiveChannelIdState(activeIdCache ?? resolveActiveId(channelsCache));
       setLoading(false);
     } else {
-      // Stale or empty — kick off fetch. If we have stale cache, show it meanwhile.
       if (channelsCache !== null) {
         setChannels(channelsCache);
-        setActiveChannelIdState(resolveActiveId(channelsCache));
+        setActiveChannelIdState(activeIdCache ?? resolveActiveId(channelsCache));
         setLoading(false);
       }
       refetch();
     }
 
     return () => {
-      subscribers.delete(handler);
+      channelListSubscribers.delete(listHandler);
+      activeIdSubscribers.delete(activeHandler);
     };
   }, [refetch]);
 
   const setActiveChannelId = useCallback((id: string) => {
+    activeIdCache = id;
     setActiveChannelIdState(id);
     if (typeof window !== 'undefined') {
       localStorage.setItem(STORAGE_KEY, id);
+      // Notify other tabs too
+      window.dispatchEvent(new CustomEvent(ACTIVE_CHANGE_EVENT, { detail: id }));
     }
+    notifyActiveId(id);
   }, []);
 
   const activeChannel = channels.find((c) => c.id === activeChannelId) ?? null;

@@ -26,6 +26,8 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { NichePicker } from '@/components/channels/NichePicker';
+import { LogoUpload } from '@/components/channels/LogoUpload';
+import { invalidateChannelCache } from '@/hooks/use-active-channel';
 
 interface Channel {
   id: string;
@@ -36,6 +38,7 @@ interface Channel {
   channel_type: string;
   media_types: string[];
   video_style: string | null;
+  logo_url: string | null;
   is_evergreen: boolean;
   youtube_url: string | null;
   voice_provider: string | null;
@@ -211,6 +214,18 @@ export default function ChannelDetailPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="pb-2 border-b">
+            <Label className="mb-2 block">Logo</Label>
+            <LogoUpload
+              channelId={channel.id}
+              channelName={channel.name}
+              currentLogoUrl={channel.logo_url}
+              onUploaded={(url) => {
+                setChannel({ ...channel, logo_url: url || null });
+                invalidateChannelCache();
+              }}
+            />
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Name</Label>

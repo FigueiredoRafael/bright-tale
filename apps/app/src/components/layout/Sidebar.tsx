@@ -24,7 +24,16 @@ interface NavSection {
 
 export default function Sidebar() {
     const pathname = usePathname();
-    const { activeChannelId } = useActiveChannel();
+    const { activeChannelId, activeChannel } = useActiveChannel();
+
+    // Dynamic library: only show media types the active channel actually produces.
+    // If no active channel, show all (user-friendly default).
+    const channelMedia = activeChannel?.media_types ?? ['blog', 'video', 'shorts', 'podcast'];
+    const libraryItems: NavItem[] = [];
+    if (channelMedia.includes('blog')) libraryItems.push({ href: "/blogs", label: "Blogs", icon: PenLine });
+    if (channelMedia.includes('video')) libraryItems.push({ href: "/videos", label: "Videos", icon: Video });
+    if (channelMedia.includes('shorts')) libraryItems.push({ href: "/shorts", label: "Shorts", icon: Zap });
+    if (channelMedia.includes('podcast')) libraryItems.push({ href: "/podcasts", label: "Podcasts", icon: Mic });
 
     const sections: NavSection[] = [
         {
@@ -48,12 +57,7 @@ export default function Sidebar() {
         },
         {
             label: "Biblioteca",
-            items: [
-                { href: "/blogs", label: "Blogs", icon: PenLine },
-                { href: "/videos", label: "Videos", icon: Video },
-                { href: "/shorts", label: "Shorts", icon: Zap },
-                { href: "/podcasts", label: "Podcasts", icon: Mic },
-            ],
+            items: libraryItems,
         },
         {
             label: "Recursos",
@@ -107,7 +111,7 @@ export default function Sidebar() {
             {/* Scrollable nav */}
             <nav className="flex-1 overflow-y-auto px-3 pb-4 [mask-image:linear-gradient(to_bottom,black_calc(100%-24px),transparent)] [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full">
                 <div className="flex flex-col gap-3">
-                    {sections.map((section, i) => (
+                    {sections.filter((s) => s.items.length > 0).map((section, i) => (
                         <div key={section.label} className={i > 0 ? "pt-2 border-t border-border/30" : ""}>
                             <p className="px-3 mb-1.5 text-[10px] font-semibold text-[#475569] uppercase tracking-wider">
                                 {section.label}

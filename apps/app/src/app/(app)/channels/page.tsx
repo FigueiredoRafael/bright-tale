@@ -4,20 +4,14 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import {
-  Plus,
-  Video,
-  FileText,
-  Ghost,
-  Layers,
-  Globe,
-  Search,
-  Sparkles,
-  ChevronRight,
+  Plus, Globe, Search, Sparkles, ChevronRight,
+  PenLine, Video, Zap, Mic,
 } from 'lucide-react';
+import { ChannelLogo } from '@/components/channels/ChannelLogo';
 
 interface Channel {
   id: string;
@@ -26,29 +20,36 @@ interface Channel {
   market: string;
   language: string;
   channel_type: string;
+  media_types: string[];
+  video_style: string | null;
+  logo_url: string | null;
   youtube_url: string | null;
-  youtube_subs: number | null;
-  youtube_monthly_views: number | null;
+  blog_url: string | null;
   created_at: string;
 }
 
-const TYPE_CONFIG: Record<string, { label: string; icon: React.ElementType; color: string }> = {
-  text: { label: 'Text', icon: FileText, color: 'text-blue-500 bg-blue-500/10' },
-  face: { label: 'Com Rosto', icon: Video, color: 'text-green-500 bg-green-500/10' },
-  dark: { label: 'Dark Channel', icon: Ghost, color: 'text-purple-500 bg-purple-500/10' },
-  hybrid: { label: 'Hybrid', icon: Layers, color: 'text-amber-500 bg-amber-500/10' },
+interface ChannelCounts {
+  [channelId: string]: { blog: number; video: number; shorts: number; podcast: number };
+}
+
+const MEDIA_ICONS: Record<string, React.ElementType> = {
+  blog: PenLine,
+  video: Video,
+  shorts: Zap,
+  podcast: Mic,
 };
 
-function formatNumber(n: number | null): string {
-  if (!n) return '—';
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toString();
-}
+const MEDIA_LABELS: Record<string, string> = {
+  blog: 'Blog',
+  video: 'Video',
+  shorts: 'Shorts',
+  podcast: 'Podcast',
+};
 
 export default function ChannelsPage() {
   const router = useRouter();
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [counts] = useState<ChannelCounts>({});
   const [loading, setLoading] = useState(true);
 
   const fetchChannels = useCallback(async () => {
@@ -56,6 +57,7 @@ export default function ChannelsPage() {
       const res = await fetch('/api/channels');
       const json = await res.json();
       if (json.data?.items) setChannels(json.data.items);
+      // TODO: fetch counts per channel when drafts have channel_id (F6-009)
     } catch {
       toast.error('Failed to load channels');
     } finally {
@@ -90,12 +92,10 @@ export default function ChannelsPage() {
             </div>
             <h2 className="text-xl font-bold mb-2">Create your first content channel</h2>
             <p className="text-muted-foreground text-sm mb-6 max-w-sm">
-              A channel is a content project — YouTube, blog, or both.
-              Set up your niche, language, and style to start producing content.
+              A content channel is a project — can be a YouTube channel, blog, podcast, or a mix. Set up your niche and start producing content with AI.
             </p>
             <Button onClick={() => router.push('/onboarding')}>
-              <Plus className="h-4 w-4 mr-2" />
-              Get Started
+              <Plus className="h-4 w-4 mr-2" /> Get Started
             </Button>
           </CardContent>
         </Card>
@@ -113,80 +113,98 @@ export default function ChannelsPage() {
           </p>
         </div>
         <Button onClick={() => router.push('/onboarding')}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Content Channel
+          <Plus className="h-4 w-4 mr-2" /> New Content Channel
         </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {channels.map((channel) => {
-          const typeConfig = TYPE_CONFIG[channel.channel_type] ?? TYPE_CONFIG.text;
-          const TypeIcon = typeConfig.icon;
+          const mediaList = channel.media_types ?? ['blog'];
+          const channelCounts = counts[channel.id] ?? { blog: 0, video: 0, shorts: 0, podcast: 0 };
 
           return (
-            <Link key={channel.id} href={`/channels/${channel.id}`}>
-              <Card className="h-full hover:shadow-lg hover:border-primary/30 transition-all cursor-pointer group">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${typeConfig.color}`}>
-                        <TypeIcon className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-base flex items-center gap-2">
-                          {channel.name}
-                          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </CardTitle>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                            {typeConfig.label}
-                          </Badge>
-                          <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                            <Globe className="h-2.5 w-2.5" />
-                            {channel.language} &middot; {channel.market.toUpperCase()}
-                          </span>
-                        </div>
-                      </div>
+            <Card key={channel.id} className="h-full hover:shadow-lg hover:border-primary/30 transition-all group">
+              <CardContent className="p-5 space-y-4">
+                {/* Header: logo + name + external destinations */}
+                <Link href={`/channels/${channel.id}`} className="flex items-start gap-3">
+                  <ChannelLogo logoUrl={channel.logo_url} name={channel.name} size="lg" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="font-semibold text-base truncate">{channel.name}</h3>
+                      <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                     </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {channel.niche && (
-                    <p className="text-xs text-muted-foreground">
-                      Niche: <span className="text-foreground">{channel.niche}</span>
-                    </p>
-                  )}
-
-                  {channel.youtube_url && (
-                    <div className="flex gap-4 text-xs">
-                      <div>
-                        <div className="text-muted-foreground">Subs</div>
-                        <div className="font-medium">{formatNumber(channel.youtube_subs)}</div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground">Views/mo</div>
-                        <div className="font-medium">{formatNumber(channel.youtube_monthly_views)}</div>
-                      </div>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                        <Globe className="h-2.5 w-2.5" />
+                        {channel.language} &middot; {channel.market.toUpperCase()}
+                      </span>
                     </div>
-                  )}
-
-                  <div className="flex gap-1.5 pt-1">
-                    <Button variant="outline" size="sm" className="text-xs h-7 flex-1" asChild>
-                      <span>
-                        <Search className="h-3 w-3 mr-1" />
-                        Research
-                      </span>
-                    </Button>
-                    <Button variant="outline" size="sm" className="text-xs h-7 flex-1" asChild>
-                      <span>
-                        <Sparkles className="h-3 w-3 mr-1" />
-                        Generate
-                      </span>
-                    </Button>
+                    {channel.niche && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        <span className="text-foreground">{channel.niche}</span>
+                      </p>
+                    )}
                   </div>
-                </CardContent>
-              </Card>
-            </Link>
+                </Link>
+
+                {/* Media mix badges */}
+                <div className="flex flex-wrap gap-1.5">
+                  {mediaList.map((m) => {
+                    const Icon = MEDIA_ICONS[m];
+                    const count = channelCounts[m as keyof typeof channelCounts] ?? 0;
+                    return (
+                      <Badge key={m} variant="outline" className="text-[10px] gap-1 py-1 px-2">
+                        {Icon && <Icon className="h-2.5 w-2.5" />}
+                        {MEDIA_LABELS[m] ?? m}
+                        <span className="text-muted-foreground ml-0.5">{count}</span>
+                      </Badge>
+                    );
+                  })}
+                </div>
+
+                {/* External destinations indicator */}
+                {(channel.youtube_url || channel.blog_url) && (
+                  <div className="flex flex-wrap gap-1.5 text-[10px] text-muted-foreground">
+                    {channel.youtube_url && (
+                      <a
+                        href={channel.youtube_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:text-foreground truncate max-w-[150px]"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        YT: {channel.youtube_url.replace(/^https?:\/\/(www\.)?/, '')}
+                      </a>
+                    )}
+                    {channel.blog_url && (
+                      <a
+                        href={channel.blog_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:text-foreground truncate max-w-[150px]"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Blog: {channel.blog_url.replace(/^https?:\/\/(www\.)?/, '')}
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex gap-1.5 pt-1">
+                  <Button variant="outline" size="sm" className="text-xs h-7 flex-1" asChild>
+                    <Link href={`/channels/${channel.id}/create`}>
+                      <Sparkles className="h-3 w-3 mr-1" /> Create
+                    </Link>
+                  </Button>
+                  <Button variant="outline" size="sm" className="text-xs h-7 flex-1" asChild>
+                    <Link href="/research">
+                      <Search className="h-3 w-3 mr-1" /> Research
+                    </Link>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           );
         })}
       </div>
