@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
+import { friendlyAiError } from "@/lib/ai/error-message";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -98,15 +99,18 @@ export default function NewResearchPage() {
             });
             const json = await res.json();
             if (json.error) {
-                toast.error(json.error.message);
+                const friendly = friendlyAiError(json.error.message ?? "");
+                toast.error(friendly.title, { description: friendly.hint });
                 return;
             }
             setSessionId(json.data.sessionId);
             setCards(json.data.cards ?? []);
             setApproved(new Set((json.data.cards ?? []).map((_: Card, i: number) => i)));
             toast.success(`${json.data.cards?.length ?? 0} cards de pesquisa`);
-        } catch {
-            toast.error("Falha na pesquisa");
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            const friendly = friendlyAiError(message);
+            toast.error(friendly.title, { description: friendly.hint });
         } finally {
             setRunning(false);
         }

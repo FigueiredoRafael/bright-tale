@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Loader2, Lightbulb, Sparkles, ArrowLeft, ArrowRight } from "lucide-react";
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
+import { friendlyAiError } from "@/lib/ai/error-message";
 
 type Mode = "blind" | "fine_tuned" | "reference_guided";
 
@@ -120,19 +121,23 @@ export default function NewBrainstormPage() {
             }
 
             if (json?.error) {
-                toast.error(`${json.error.code ?? "Erro"}: ${json.error.message ?? "desconhecido"}`);
+                const friendly = friendlyAiError(json.error.message ?? "");
+                toast.error(friendly.title, { description: friendly.hint });
                 return;
             }
             const generatedIdeas = json?.data?.ideas ?? [];
             setIdeas(generatedIdeas);
             if (generatedIdeas.length === 0) {
-                toast.warning("A IA respondeu mas não retornou ideias reconhecíveis. Tente outro modelo ou re-execute.");
+                toast.warning("Nenhuma ideia reconhecida no output", {
+                    description: "A IA respondeu mas o formato não bateu. Tente outro modelo ou re-execute.",
+                });
             } else {
                 toast.success(`${generatedIdeas.length} ideias geradas`);
             }
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            toast.error(`Falha ao gerar ideias: ${message}`);
+            const friendly = friendlyAiError(message);
+            toast.error(friendly.title, { description: friendly.hint });
         } finally {
             setRunning(false);
         }
