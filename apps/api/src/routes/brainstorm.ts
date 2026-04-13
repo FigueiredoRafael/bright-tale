@@ -28,6 +28,8 @@ const brainstormBodySchema = z.object({
     .optional(),
   referenceUrl: z.string().url().optional(),
   modelTier: z.string().default('standard'),
+  provider: z.enum(['gemini', 'openai', 'anthropic']).optional(),
+  model: z.string().optional(),
 });
 
 interface RawIdea {
@@ -107,12 +109,17 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       try {
         const systemPrompt = (await loadAgentPrompt('brainstorm')) ?? undefined;
 
-        const { result } = await generateWithFallback('brainstorm', body.modelTier, {
-          agentType: 'brainstorm',
-          input: inputJson,
-          schema: null,
-          systemPrompt,
-        });
+        const { result } = await generateWithFallback(
+          'brainstorm',
+          body.modelTier,
+          {
+            agentType: 'brainstorm',
+            input: inputJson,
+            schema: null,
+            systemPrompt,
+          },
+          { provider: body.provider, model: body.model },
+        );
 
         const ideas = normalizeIdeas(result);
 

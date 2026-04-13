@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Loader2, Lightbulb, Sparkles, ArrowLeft, ArrowRight } from "lucide-react";
+import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
 
 type Mode = "blind" | "fine_tuned" | "reference_guided";
 
@@ -44,7 +45,9 @@ export default function NewBrainstormPage() {
     const router = useRouter();
 
     const [mode, setMode] = useState<Mode>("blind");
-    const [tier, setTier] = useState<"free" | "standard" | "premium" | "ultra">("free");
+    const [provider, setProvider] = useState<ProviderId>("gemini");
+    const [model, setModel] = useState<string>("gemini-2.5-flash");
+    const [recommended, setRecommended] = useState<{ provider: string | null; model: string | null }>({ provider: null, model: null });
     const [topic, setTopic] = useState("");
     const [niche, setNiche] = useState("");
     const [tone, setTone] = useState("");
@@ -55,6 +58,25 @@ export default function NewBrainstormPage() {
 
     const [running, setRunning] = useState(false);
     const [ideas, setIdeas] = useState<Idea[]>([]);
+
+    // Fetch the brainstorm agent's recommended provider/model so we can render
+    // the "Recommended" badge and prefill the picker.
+    useEffect(() => {
+        (async () => {
+            try {
+                const res = await fetch("/api/agents");
+                const json = await res.json();
+                const agent = json.data?.agents?.find((a: { slug: string }) => a.slug === "brainstorm");
+                if (agent?.recommended_provider) {
+                    setRecommended({ provider: agent.recommended_provider, model: agent.recommended_model ?? null });
+                    setProvider(agent.recommended_provider);
+                    if (agent.recommended_model) setModel(agent.recommended_model);
+                }
+            } catch {
+                // silent — keep defaults
+            }
+        })();
+    }, []);
 
     async function handleRun() {
         if (mode !== "reference_guided" && !topic.trim()) {
@@ -71,7 +93,8 @@ export default function NewBrainstormPage() {
             const body: Record<string, unknown> = {
                 channelId,
                 inputMode: mode,
-                modelTier: tier,
+                provider,
+                model,
                 topic: topic.trim() || undefined,
             };
             if (mode === "fine_tuned") {
@@ -201,29 +224,16 @@ export default function NewBrainstormPage() {
                         </div>
                     )}
 
-                    <div className="space-y-2 pt-2 border-t">
-                        <Label className="text-xs">Modelo de IA</Label>
-                        <div className="grid grid-cols-4 gap-2">
-                            {([
-                                { id: "free", label: "Free", model: "Gemini 2.5 Flash", note: "0 custo" },
-                                { id: "standard", label: "Standard", model: "Gemini / Claude Sonnet", note: "balanceado" },
-                                { id: "premium", label: "Premium", model: "GPT-4o / Claude Sonnet", note: "+ qualidade" },
-                                { id: "ultra", label: "Ultra", model: "Claude Opus", note: "máx qualidade" },
-                            ] as const).map((t) => (
-                                <button
-                                    key={t.id}
-                                    onClick={() => setTier(t.id)}
-                                    className={`text-left p-2 rounded-md border-2 transition-all ${
-                                        tier === t.id ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30"
-                                    }`}
-                                >
-                                    <div className="text-xs font-medium">{t.label}</div>
-                                    <div className="text-[10px] text-muted-foreground truncate">{t.model}</div>
-                                    <div className="text-[10px] text-muted-foreground italic mt-0.5">{t.note}</div>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
+                    <ModelPicker
+                        provider={provider}
+                        model={model}
+                        recommended={recommended}
+                        onProviderChange={(p) => {
+                            setProvider(p);
+                            setModel(MODELS_BY_PROVIDER[p][0].id);
+                        }}
+                        onModelChange={setModel}
+                    />
 
                     <Button onClick={handleRun} disabled={running}>
                         {running ? (

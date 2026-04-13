@@ -98,21 +98,49 @@ interface ProviderRoute {
   providerName: string;
 }
 
+interface ChainOptions {
+  /** Explicit provider override (highest priority). Falls back to FALLBACK_ORDER if it errors. */
+  provider?: string;
+  /** Explicit model — only used together with provider override. */
+  model?: string;
+}
+
 /**
  * Returns the ordered list of provider routes to try for a (stage, tier).
  * Filters out providers without an API key configured.
+ *
+ * If `options.provider` is set, that becomes the primary route (with model
+ * override or DEFAULT_MODELS lookup), and the rest of the tier's chain is
+ * appended as fallbacks.
  */
-export function getProviderChain(stage: AgentType, tier: string = 'standard'): ProviderRoute[] {
+export function getProviderChain(
+  stage: AgentType,
+  tier: string = 'standard',
+  options: ChainOptions = {},
+): ProviderRoute[] {
   const routeTable = ROUTE_TABLE[tier] ?? ROUTE_TABLE.standard;
-  const primary = routeTable[stage];
-  const order = [primary.provider, ...(FALLBACK_ORDER[primary.provider] ?? [])];
+  const tierPrimary = routeTable[stage];
+
+  // Start the chain with the explicit override (if any), then the tier primary,
+  // then the tier primary's standard fallback order.
+  const order: string[] = [];
+  if (options.provider) order.push(options.provider);
+  order.push(tierPrimary.provider);
+  for (const fb of FALLBACK_ORDER[options.provider ?? tierPrimary.provider] ?? []) {
+    order.push(fb);
+  }
+
   const seen = new Set<string>();
   const chain: ProviderRoute[] = [];
-
   for (const name of order) {
     if (seen.has(name)) continue;
     seen.add(name);
-    const model = name === primary.provider ? primary.model : DEFAULT_MODELS[name];
+    const model =
+      name === options.provider && options.model
+        ? options.model
+        : name === tierPrimary.provider
+          ? tierPrimary.model
+          : DEFAULT_MODELS[name];
     if (!model) continue;
     const provider = createProvider(name, model);
     if (provider) chain.push({ provider, model, providerName: name });
@@ -160,8 +188,9 @@ export async function generateWithFallback(
   stage: AgentType,
   tier: string,
   params: GenerateContentParams,
+  options: ChainOptions = {},
 ): Promise<{ result: unknown; providerName: string; model: string; attempts: number }> {
-  const chain = getProviderChain(stage, tier);
+  const chain = getProviderChain(stage, tier, options);
   if (chain.length === 0) {
     throw new Error(
       `No AI provider available for stage=${stage}, tier=${tier}. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_AI_KEY.`,

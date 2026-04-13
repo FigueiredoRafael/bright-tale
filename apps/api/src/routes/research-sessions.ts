@@ -26,6 +26,8 @@ const createSchema = z.object({
   level: z.enum(['surface', 'medium', 'deep']),
   focusTags: z.array(z.string()).default([]),
   modelTier: z.string().default('standard'),
+  provider: z.enum(['gemini', 'openai', 'anthropic']).optional(),
+  model: z.string().optional(),
 });
 
 const reviewSchema = z.object({
@@ -111,12 +113,17 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
         const baseSystem = (await loadAgentPrompt('research')) ?? '';
         const systemPrompt = `${baseSystem}\n\nLevel directive: ${inputJson.instruction}`.trim();
 
-        const { result } = await generateWithFallback('research', body.modelTier, {
-          agentType: 'research',
-          input: inputJson,
-          schema: null,
-          systemPrompt,
-        });
+        const { result } = await generateWithFallback(
+          'research',
+          body.modelTier,
+          {
+            agentType: 'research',
+            input: inputJson,
+            schema: null,
+            systemPrompt,
+          },
+          { provider: body.provider, model: body.model },
+        );
 
         const cards = normalizeCards(result);
 

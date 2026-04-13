@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,7 +47,27 @@ export default function NewResearchPage() {
     const [topic, setTopic] = useState("");
     const [level, setLevel] = useState<Level>("medium");
     const [focusTags, setFocusTags] = useState<string[]>(["stats"]);
+    const [provider, setProvider] = useState<ProviderId>("gemini");
+    const [model, setModel] = useState<string>("gemini-2.5-flash");
+    const [recommended, setRecommended] = useState<{ provider: string | null; model: string | null }>({ provider: null, model: null });
     const [running, setRunning] = useState(false);
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const res = await fetch("/api/agents");
+                const json = await res.json();
+                const agent = json.data?.agents?.find((a: { slug: string }) => a.slug === "research");
+                if (agent?.recommended_provider) {
+                    setRecommended({ provider: agent.recommended_provider, model: agent.recommended_model ?? null });
+                    setProvider(agent.recommended_provider);
+                    if (agent.recommended_model) setModel(agent.recommended_model);
+                }
+            } catch {
+                // silent
+            }
+        })();
+    }, []);
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [cards, setCards] = useState<Card[]>([]);
     const [approved, setApproved] = useState<Set<number>>(new Set());
@@ -71,6 +92,8 @@ export default function NewResearchPage() {
                     topic: topic.trim() || undefined,
                     level,
                     focusTags,
+                    provider,
+                    model,
                 }),
             });
             const json = await res.json();
@@ -181,6 +204,17 @@ export default function NewResearchPage() {
                             ))}
                         </div>
                     </div>
+
+                    <ModelPicker
+                        provider={provider}
+                        model={model}
+                        recommended={recommended}
+                        onProviderChange={(p) => {
+                            setProvider(p);
+                            setModel(MODELS_BY_PROVIDER[p][0].id);
+                        }}
+                        onModelChange={setModel}
+                    />
 
                     <Button onClick={handleRun} disabled={running}>
                         {running ? (
