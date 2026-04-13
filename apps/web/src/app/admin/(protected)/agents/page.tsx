@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { PipelineGraph } from './pipeline';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +33,11 @@ export default async function AgentsAdminPage() {
         <p className="text-sm text-muted-foreground mt-1">
           Prompts usados pelo pipeline de conteúdo. Alterações refletem na próxima geração (cache 5min).
         </p>
+      </div>
+
+      <div>
+        <h2 className="text-sm font-medium mb-3 text-muted-foreground">Pipeline</h2>
+        <PipelineGraph agents={agents} />
       </div>
 
       <div className="rounded-lg border">
