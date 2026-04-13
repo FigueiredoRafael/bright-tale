@@ -134,6 +134,9 @@ export default function DraftViewPage() {
     const [provider, setProvider] = useState<ProviderId>("ollama");
     const [model, setModel] = useState<string>("qwen2.5:7b");
     const [generating, setGenerating] = useState(false);
+    const [editingBody, setEditingBody] = useState(false);
+    const [bodyDraft, setBodyDraft] = useState("");
+    const [savingBody, setSavingBody] = useState(false);
 
     async function refetch() {
         const res = await fetch(`/api/content-drafts/${draftId}`);
@@ -210,28 +213,71 @@ export default function DraftViewPage() {
     }
 
     async function handlePublish() {
-        if (draft?.type !== "blog") {
-            toast.info("Publicação direta disponível só pra Blog (via WordPress) por enquanto");
-            return;
-        }
+        // Real platform integration (WordPress, etc.) ainda não tá ligada à
+        // tabela content_drafts — só ao pipeline legado. Por enquanto, "Publicar"
+        // só marca como publicado pra tu sinalizar que postou manualmente.
         await withActionGuard(async () => {
-            try {
-                const res = await fetch("/api/wordpress/publish", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ draftId }),
-                });
-                const json = await res.json();
-                if (json?.error) {
-                    const f = friendlyAiError(json.error.message ?? "");
-                    toast.error(f.title, { description: f.hint ?? "Configure WordPress em Settings primeiro." });
-                    return;
+            if (await patchStatus("published")) toast.success("Marcado como publicado");
+        });
+    }
+
+    /**
+     * Recursively walk draft_json and replace the first long-string content
+     * field (same heuristic as findContent). This keeps any other metadata
+     * (title, meta, sections list, etc.) intact.
+     */
+    function replaceContent(node: unknown, newBody: string, depth = 0): { changed: boolean; node: unknown } {
+        if (depth > 6) return { changed: false, node };
+        if (node && typeof node === "object" && !Array.isArray(node)) {
+            const o = { ...(node as Record<string, unknown>) };
+            for (const key of ["body", "content", "text", "markdown", "draft", "post", "article", "full_text"]) {
+                const v = o[key];
+                if (typeof v === "string" && v.length > 50) {
+                    o[key] = newBody;
+                    return { changed: true, node: o };
                 }
-                toast.success("Publicado no WordPress!");
-                await refetch();
-            } catch {
-                toast.error("Falha ao publicar — verifique sua config WordPress");
             }
+            for (const [k, v] of Object.entries(o)) {
+                const r = replaceContent(v, newBody, depth + 1);
+                if (r.changed) {
+                    o[k] = r.node;
+                    return { changed: true, node: o };
+                }
+            }
+        }
+        return { changed: false, node };
+    }
+
+    async function saveBody() {
+        if (!draft?.draft_json) return;
+        setSavingBody(true);
+        try {
+            const { changed, node } = replaceContent(draft.draft_json, bodyDraft);
+            if (!changed) {
+                toast.error("Não consegui localizar o campo de texto pra salvar");
+                return;
+            }
+            const res = await fetch(`/api/content-drafts/${draftId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ draftJson: node }),
+            });
+            const json = await res.json();
+            if (json?.error) {
+                toast.error(json.error.message ?? "Falha ao salvar");
+                return;
+            }
+            await refetch();
+            setEditingBody(false);
+            toast.success("Texto atualizado");
+        } finally {
+            setSavingBody(false);
+        }
+    }
+
+    async function handleUnapprove() {
+        await withActionGuard(async () => {
+            if (await patchStatus("in_review")) toast.success("Voltou pra revisão");
         });
     }
 
@@ -373,7 +419,7 @@ export default function DraftViewPage() {
                 </Card>
             )}
 
-            {/* Pretty rendered content */}
+            {/* Pretty rendered content (or inline editor) */}
             {draft.draft_json && body && (
                 <Card>
                     <CardContent className="py-6">
@@ -382,9 +428,41 @@ export default function DraftViewPage() {
                                 {metaDescription}
                             </p>
                         )}
-                        <article className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap leading-relaxed">
-                            {body}
-                        </article>
+                        {editingBody ? (
+                            <div className="space-y-2">
+                                <textarea
+                                    value={bodyDraft}
+                                    onChange={(e) => setBodyDraft(e.target.value)}
+                                    className="w-full min-h-[400px] text-sm font-mono leading-relaxed rounded-md border bg-background p-3 outline-none focus:ring-2 focus:ring-primary/40"
+                                    autoFocus
+                                />
+                                <div className="flex justify-end gap-2">
+                                    <Button variant="outline" size="sm" onClick={() => { setEditingBody(false); setBodyDraft(body); }} disabled={savingBody}>
+                                        Cancelar
+                                    </Button>
+                                    <Button size="sm" onClick={saveBody} disabled={savingBody}>
+                                        {savingBody ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Check className="h-4 w-4 mr-1.5" />}
+                                        Salvar
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="group relative">
+                                <button
+                                    onClick={() => { setBodyDraft(body); setEditingBody(true); }}
+                                    className="absolute -top-1 -right-1 px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-opacity"
+                                    title="Editar texto"
+                                >
+                                    ✎ Editar
+                                </button>
+                                <article
+                                    onClick={() => { setBodyDraft(body); setEditingBody(true); }}
+                                    className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap leading-relaxed cursor-text"
+                                >
+                                    {body}
+                                </article>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             )}
@@ -522,6 +600,25 @@ export default function DraftViewPage() {
                 </Card>
             )}
 
+            {/* Images placeholder — F2-042 */}
+            {draft.draft_json && draft.type === "blog" && (
+                <Card className="border-dashed">
+                    <CardContent className="py-5">
+                        <div className="flex items-start gap-3">
+                            <Sparkles className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                            <div className="flex-1 text-sm">
+                                <div className="font-medium">Imagens do post (em breve)</div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Vai dar pra gerar hero (topo) + imagens inline pelo seu provider de imagens
+                                    configurado em <button onClick={() => router.push("/settings/image-generation")} className="text-primary hover:underline">Settings → Image Generation</button>,
+                                    e ver onde cada uma vai aparecer no preview.
+                                </p>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
             {/* Action bar — Aprovar / Publicar */}
             {draft.draft_json && (
                 <Card>
@@ -536,9 +633,14 @@ export default function DraftViewPage() {
                                     Aprovar
                                 </Button>
                             )}
+                            {isApproved && !isPublished && (
+                                <Button onClick={handleUnapprove} variant="ghost" size="sm" disabled={actionBusy}>
+                                    Desaprovar
+                                </Button>
+                            )}
                             <Button onClick={handlePublish} disabled={!isApproved || isPublished || actionBusy} size="sm">
                                 {actionBusy ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Globe className="h-4 w-4 mr-1.5" />}
-                                {isPublished ? "Publicado" : "Publicar"}
+                                {isPublished ? "Publicado" : "Marcar como publicado"}
                             </Button>
                         </div>
                     </CardContent>

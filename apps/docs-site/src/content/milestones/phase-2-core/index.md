@@ -687,6 +687,29 @@ Ao escolher uma pesquisa, o title da pesquisa virou o título do conteúdo. Não
 
 ---
 
+### F2-042 — Drafts: imagens do post (hero + inline) + posicionamento visual
+🔲 **Não iniciado**
+
+Hoje a página do draft só mostra texto. Adicionar:
+- Botão "Gerar imagem hero" → chama image provider configurado em Settings (F1-XX)
+- Sugestão automática de N imagens inline com prompts derivados do conteúdo
+- Drag-and-drop pra reposicionar (hero, depois do parágrafo X, etc.)
+- Preview do post com imagens no lugar
+- Persistir image refs em `content_assets` linkado ao draft
+
+**Concluído em:** —
+
+---
+
+### F2-043 — Drafts: WordPress publish a partir de content_drafts
+🔲 **Não iniciado**
+
+`/api/wordpress/publish` hoje só aceita `project_id` (pipeline legado). Refatorar pra também aceitar `draftId` e mapear `content_drafts.draft_json` → payload do WP. "Publicar" no draft atual só seta status='published' (sinalização manual).
+
+**Concluído em:** —
+
+---
+
 ### F2-039 — Research: sinais de decisão (Google Trends + YouTube Intelligence)
 🔲 **Não iniciado**
 
