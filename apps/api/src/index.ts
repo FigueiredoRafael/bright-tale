@@ -88,6 +88,15 @@ server.register(researchSessionsRoutes, { prefix: '/research-sessions' });
 server.register(contentDraftsRoutes, { prefix: '/content-drafts' });
 
 if (!process.env.VERCEL) {
+  // Surface async errors that would otherwise crash the dev process silently
+  // (mid-request ECONNRESETs on the proxy side often trace back to this).
+  process.on('unhandledRejection', (reason) => {
+    server.log.error({ reason }, 'unhandledRejection — process kept alive');
+  });
+  process.on('uncaughtException', (err) => {
+    server.log.error({ err }, 'uncaughtException — process kept alive');
+  });
+
   const PORT = parseInt(process.env.PORT ?? '3001', 10);
   server.listen({ port: PORT, host: '0.0.0.0' }).catch((err) => {
     console.error(err);
