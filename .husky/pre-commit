@@ -1,2 +1,19 @@
+#!/usr/bin/env bash
+# Pre-commit: runs typecheck, lint, and production builds for the 3 Vercel-deployed apps
+# (api, app, web) to catch issues that would fail on Vercel deploy.
+# docs-site is skipped (has a Nextra issue, not deployed to Vercel as a product).
+
+set -e
+
+echo "→ Typecheck all workspaces..."
 npm run typecheck
+
+echo "→ Lint all workspaces..."
 npm run lint
+
+echo "→ Build Vercel apps (api, app, web)..."
+npm run build --workspace=@brighttale/api
+npm run build --workspace=@brighttale/app
+npm run build --workspace=@brighttale/web
+
+echo "✓ Pre-commit passed — safe to push to Vercel."
