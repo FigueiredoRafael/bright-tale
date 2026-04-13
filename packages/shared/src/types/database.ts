@@ -262,6 +262,63 @@ export type Database = {
           },
         ]
       }
+      brainstorm_sessions: {
+        Row: {
+          channel_id: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          input_json: Json
+          input_mode: string
+          model_tier: string
+          org_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          channel_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          input_json?: Json
+          input_mode: string
+          model_tier?: string
+          org_id: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          channel_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          input_json?: Json
+          input_mode?: string
+          model_tier?: string
+          org_id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brainstorm_sessions_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brainstorm_sessions_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       canonical_core: {
         Row: {
           affiliate_moment_json: string | null
@@ -511,6 +568,155 @@ export type Database = {
           },
         ]
       }
+      content_assets: {
+        Row: {
+          created_at: string
+          credits_used: number
+          draft_id: string
+          id: string
+          meta_json: Json
+          org_id: string
+          position: number | null
+          provider: string | null
+          type: string
+          updated_at: string
+          url: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          credits_used?: number
+          draft_id: string
+          id?: string
+          meta_json?: Json
+          org_id: string
+          position?: number | null
+          provider?: string | null
+          type: string
+          updated_at?: string
+          url: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          credits_used?: number
+          draft_id?: string
+          id?: string
+          meta_json?: Json
+          org_id?: string
+          position?: number | null
+          provider?: string | null
+          type?: string
+          updated_at?: string
+          url?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_assets_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "content_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_assets_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      content_drafts: {
+        Row: {
+          canonical_core_json: Json | null
+          channel_id: string | null
+          created_at: string
+          draft_json: Json | null
+          id: string
+          idea_id: string | null
+          org_id: string
+          published_at: string | null
+          published_url: string | null
+          research_session_id: string | null
+          review_feedback_json: Json | null
+          scheduled_at: string | null
+          status: string
+          title: string | null
+          type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          canonical_core_json?: Json | null
+          channel_id?: string | null
+          created_at?: string
+          draft_json?: Json | null
+          id?: string
+          idea_id?: string | null
+          org_id: string
+          published_at?: string | null
+          published_url?: string | null
+          research_session_id?: string | null
+          review_feedback_json?: Json | null
+          scheduled_at?: string | null
+          status?: string
+          title?: string | null
+          type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          canonical_core_json?: Json | null
+          channel_id?: string | null
+          created_at?: string
+          draft_json?: Json | null
+          id?: string
+          idea_id?: string | null
+          org_id?: string
+          published_at?: string | null
+          published_url?: string | null
+          research_session_id?: string | null
+          review_feedback_json?: Json | null
+          scheduled_at?: string | null
+          status?: string
+          title?: string | null
+          type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_drafts_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_drafts_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea_archives"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_drafts_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_drafts_research_session_id_fkey"
+            columns: ["research_session_id"]
+            isOneToOne: false
+            referencedRelation: "research_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       credit_usage: {
         Row: {
           action: string
@@ -557,6 +763,7 @@ export type Database = {
       }
       idea_archives: {
         Row: {
+          brainstorm_session_id: string | null
           channel_id: string | null
           core_tension: string
           created_at: string
@@ -577,6 +784,7 @@ export type Database = {
           verdict: string
         }
         Insert: {
+          brainstorm_session_id?: string | null
           channel_id?: string | null
           core_tension: string
           created_at?: string
@@ -597,6 +805,7 @@ export type Database = {
           verdict: string
         }
         Update: {
+          brainstorm_session_id?: string | null
           channel_id?: string | null
           core_tension?: string
           created_at?: string
@@ -617,6 +826,13 @@ export type Database = {
           verdict?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "idea_archives_brainstorm_session_id_fkey"
+            columns: ["brainstorm_session_id"]
+            isOneToOne: false
+            referencedRelation: "brainstorm_sessions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "idea_archives_channel_id_fkey"
             columns: ["channel_id"]
@@ -1110,6 +1326,82 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "research_archives_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      research_sessions: {
+        Row: {
+          approved_cards_json: Json | null
+          cards_json: Json | null
+          channel_id: string | null
+          created_at: string
+          error_message: string | null
+          focus_tags: string[]
+          id: string
+          idea_id: string | null
+          input_json: Json
+          level: string
+          model_tier: string
+          org_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          approved_cards_json?: Json | null
+          cards_json?: Json | null
+          channel_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          focus_tags?: string[]
+          id?: string
+          idea_id?: string | null
+          input_json?: Json
+          level: string
+          model_tier?: string
+          org_id: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          approved_cards_json?: Json | null
+          cards_json?: Json | null
+          channel_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          focus_tags?: string[]
+          id?: string
+          idea_id?: string | null
+          input_json?: Json
+          level?: string
+          model_tier?: string
+          org_id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "research_sessions_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_sessions_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea_archives"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_sessions_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"

@@ -6,7 +6,7 @@
 
 **Depende de:** Fase 1 (auth, orgs, storage, créditos)
 
-**Progresso:** 9/29 concluídos (F2-001 a F2-009 ✅ · F2-010 a F2-014 em andamento · F2-015+ novos)
+**Progresso:** 10/29 concluídos (F2-001 a F2-009 ✅ · F2-015 ✅ · F2-010 a F2-014 em andamento)
 
 > ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
 > Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
@@ -300,19 +300,22 @@
 > Migra o pipeline de 5 etapas do legado `bright-curios-automation-workflow` pro monorepo, troca YAML copy-paste por chamadas diretas de API, e implementa a UX por etapa conforme spec da reunião. Ver [memória Phase 2.5 Plan](../../../../../../.claude/projects/-Users-rafaelfigueiredo-projects-bright-labs-bright-tale/memory/project_phase_2_5_plan.md).
 
 ### F2-015 — Schema: tabelas do novo pipeline
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
-- Migration criando `brainstorm_sessions`, `ideas` (já existe `idea_archives` — avaliar se migra ou mantém), `research_sessions`, `content_drafts` (blog|video|shorts|podcast), `content_assets` (images/audio vinculados a draft)
+- Migration criando `brainstorm_sessions`, `research_sessions`, `content_drafts`, `content_assets`; adiciona `brainstorm_session_id` em `idea_archives`
 - Todas com `org_id`, `channel_id`, `user_id`, RLS deny-all, trigger `updated_at`
-- Regenerar types + adicionar schemas Zod em `packages/shared`
-- Decisão: deprecar `projects`/`stages` no Phase 6 (F6-009 já existe)
+- Zod schemas em `packages/shared/src/schemas/pipeline.ts`
+- Mappers + testes em `packages/shared/src/mappers/__tests__/pipeline.test.ts`
+- Legacy `blog_drafts`/`video_drafts`/`research_archives` mantidos até F6-009
 
 **Critérios de aceite:**
-- [ ] Migration roda
-- [ ] FKs corretos (idea → brainstorm_session, draft → idea, asset → draft)
-- [ ] Types gerados, Zod schemas publicados
-- [ ] Testes de mapper snake↔camel
+- [x] Migration roda (20260413050000_phase_2_5_pipeline_tables.sql)
+- [x] FKs corretos (idea → brainstorm_session, draft → idea + research_session, asset → draft)
+- [x] Types gerados, Zod schemas publicados
+- [x] Testes de mapper snake↔camel (4/4 passing)
+
+**Concluído em:** 2026-04-13
 
 ---
 
