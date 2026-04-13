@@ -193,9 +193,12 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
       const draft = await loadDraft(id) as Record<string, unknown>;
       const orgId = await getOrgId(request.userId);
       const type = (draft.type as 'blog' | 'video' | 'shorts' | 'podcast') ?? 'blog';
-      const cost = (FORMAT_COSTS[type] ?? 200) + CANONICAL_CORE_COST;
+      // Local Ollama runs cost us nothing → no internal credit charge.
+      const totalCost = override.provider === 'ollama'
+        ? 0
+        : (FORMAT_COSTS[type] ?? 200) + CANONICAL_CORE_COST;
 
-      await checkCredits(orgId, request.userId, cost);
+      if (totalCost > 0) await checkCredits(orgId, request.userId, totalCost);
       await emitJobEvent(id, 'production', 'queued', 'Na fila, começando já…');
 
       await inngest.send({

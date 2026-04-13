@@ -10,6 +10,18 @@ export interface FriendlyError {
 export function friendlyAiError(raw: string): FriendlyError {
     const lower = raw.toLowerCase();
 
+    // Our own internal credit system (NOT provider billing). The API returns
+    // code: INSUFFICIENT_CREDITS with a message like
+    // "Insufficient credits. Available: 260, required: 280. Resets at: N/A".
+    if (lower.includes('insufficient credits') && lower.includes('available')) {
+        const match = raw.match(/Available:\s*(\d+),\s*required:\s*(\d+)/i);
+        const detail = match ? ` (você tem ${match[1]}, precisa ${match[2]})` : '';
+        return {
+            title: `Créditos Bright Tale insuficientes${detail}`,
+            hint: 'Adicione créditos no plano ou escolha um formato mais barato (Shorts custa menos que Blog/Vídeo).',
+        };
+    }
+
     // Gemini free-tier quota
     if (lower.includes('resource_exhausted') || (lower.includes('quota') && lower.includes('gemini'))) {
         return {

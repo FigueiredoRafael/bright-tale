@@ -17,6 +17,16 @@ const FORMAT_COSTS: Record<string, number> = {
 };
 const CANONICAL_CORE_COST = 80;
 
+/**
+ * When the user runs everything locally via Ollama, our infra cost is zero —
+ * so we charge nothing in internal credits either. Any other provider hits a
+ * paid API and is billed at full rate.
+ */
+function applyProviderDiscount(cost: number, provider?: string): number {
+  if (provider === 'ollama') return 0;
+  return cost;
+}
+
 interface ProductionGenerateEvent {
   name: 'production/generate';
   data: {
@@ -39,7 +49,8 @@ export const productionGenerate = inngest.createFunction(
   async ({ event, step }: { event: ProductionGenerateEvent; step: { run: (name: string, fn: () => Promise<unknown>) => Promise<unknown> } }) => {
     const { draftId, orgId, userId, type, modelTier, provider, model } = event.data;
     const sb = createServiceClient();
-    const cost = FORMAT_COSTS[type] ?? 200;
+    const cost = applyProviderDiscount(FORMAT_COSTS[type] ?? 200, provider);
+    const coreCost = applyProviderDiscount(CANONICAL_CORE_COST, provider);
 
     try {
       // ─── Stage 1: Canonical Core ─────────────────────────────────────
@@ -100,7 +111,7 @@ export const productionGenerate = inngest.createFunction(
         })
           .update({ canonical_core_json: canonicalCore })
           .eq('id', draftId);
-        await debitCredits(orgId, userId, 'canonical-core', 'text', CANONICAL_CORE_COST, { draftId, type });
+        await debitCredits(orgId, userId, 'canonical-core', 'text', coreCost, { draftId, type, provider });
       });
 
       // ─── Stage 2: Produce final draft ────────────────────────────────
