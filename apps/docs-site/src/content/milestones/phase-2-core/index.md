@@ -6,14 +6,14 @@
 
 **Depende de:** Fase 1 (auth, orgs, storage, créditos)
 
-**Progresso:** 0/14 concluídos
+**Progresso:** 9/14 concluídos
 
 ---
 
 ## Cards
 
 ### F2-001 — Tabela channels + migration
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - Criar tabela `channels` (name, niche, market, language, channel_type, is_evergreen, youtube_url, voice config, model config)
@@ -26,12 +26,12 @@
 - [ ] Channel pertence a org
 - [ ] Tipos gerados
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F2-002 — API: CRUD de channels
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - `GET /api/channels` — listar canais da org
@@ -46,12 +46,12 @@
 - [ ] Admin+ pode criar/editar, member só lê
 - [ ] Envelope `{ data, error }`
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F2-003 — UI: Dashboard de canais
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - Página principal mostra lista de canais do usuário
@@ -64,12 +64,12 @@
 - [ ] Clicar abre o canal
 - [ ] Empty state para 0 canais → direciona para onboarding
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F2-004 — Onboarding wizard (7 telas)
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - Wizard progressivo (após primeiro login):
@@ -89,12 +89,12 @@
 - [ ] Não aparece se já fez
 - [ ] Pode voltar para steps anteriores
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F2-005 — YouTube Data API: integração base
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - Configurar YouTube Data API v3 (API key)
@@ -113,12 +113,12 @@
 - [ ] Top vídeos por keyword retorna dados corretos
 - [ ] Respeita quota do YouTube
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F2-006 — YouTube Intelligence: análise de nicho
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - `POST /api/youtube/analyze-niche` (keyword, market, language)
@@ -133,12 +133,12 @@
 - [ ] Cache funciona (não refaz se < 7 dias)
 - [ ] Debita créditos
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F2-007 — Tabela channel_references + reference_content
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - Criar tabelas `channel_references` e `reference_content`
@@ -149,12 +149,12 @@
 - [ ] Migration roda
 - [ ] Limites por plano enforced (Free: 0, Starter: 2, Creator: 5, Pro: 10)
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F2-008 — API: Reference modeling
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - `POST /api/channels/:id/references` — adicionar referência (URL)
@@ -168,12 +168,12 @@
 - [ ] Análise retorna top vídeos + padrões
 - [ ] Transcrição (Whisper) dos top 3 funciona
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
 ### F2-009 — UI: Config de canal + referências
-🔲 **Não iniciado**
+✅ **Concluído**
 
 **Escopo:**
 - Página `/channels/:id/settings` com config do canal
@@ -186,7 +186,7 @@
 - [ ] Mostra análise com top vídeos e patterns
 - [ ] Mostra limite do plano
 
-**Concluído em:** —
+**Concluído em:** 2026-04-12
 
 ---
 
