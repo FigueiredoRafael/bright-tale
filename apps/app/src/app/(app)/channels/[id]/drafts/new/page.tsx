@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, Sparkles, FileText, Video, Zap, Mic, ArrowLeft, Check, BookOpen } from "lucide-react";
+import { Loader2, Sparkles, FileText, Video, Zap, Mic, ArrowLeft, Check, BookOpen, Pencil } from "lucide-react";
 import { ResearchPickerModal, type ResearchOption } from "@/components/research/ResearchPickerModal";
 
 type DraftType = "blog" | "video" | "shorts" | "podcast";
@@ -31,6 +31,7 @@ export default function NewDraftPage() {
     const [research, setResearch] = useState<ResearchOption | null>(null);
     const [type, setType] = useState<DraftType>("blog");
     const [title, setTitle] = useState("");
+    const [editingTitle, setEditingTitle] = useState(false);
 
     // If query has researchSessionId, fetch and prefill.
     useEffect(() => {
@@ -172,13 +173,33 @@ export default function NewDraftPage() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-base">Setup</CardTitle>
+                    <CardTitle className="text-base">Formato + gerar</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                        <Label>Título</Label>
-                        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Como devs sênior usam IA" />
-                    </div>
+                    {research && (
+                        <div className="text-sm">
+                            <span className="text-muted-foreground">Tema:</span>{" "}
+                            {editingTitle ? (
+                                <Input
+                                    value={title}
+                                    onChange={(e) => setTitle(e.target.value)}
+                                    onBlur={() => setEditingTitle(false)}
+                                    onKeyDown={(e) => { if (e.key === "Enter") setEditingTitle(false); }}
+                                    autoFocus
+                                    className="inline-block w-auto min-w-[300px] mt-1"
+                                />
+                            ) : (
+                                <button
+                                    onClick={() => setEditingTitle(true)}
+                                    className="font-medium hover:text-primary inline-flex items-center gap-1.5 group"
+                                    title="Clique pra editar"
+                                >
+                                    {title || "(sem título — clique pra editar)"}
+                                    <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+                                </button>
+                            )}
+                        </div>
+                    )}
 
                     <div className="space-y-2">
                         <Label>Formato</Label>

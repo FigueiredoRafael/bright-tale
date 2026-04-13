@@ -662,6 +662,33 @@ Geração de brainstorm/research/produção é síncrona. Quando o provider é l
 
 ---
 
+### F2-040 — Create Content hub: tabs + cards visuais por formato
+🔲 **Não iniciado**
+
+A página `/channels/[id]/create` hoje só lista "Suas ideias geradas". Pesquisas e drafts somem. Refatorar:
+- 3 abas: **Ideias** (brainstorm) · **Pesquisas** (research_sessions completed) · **Conteúdo** (content_drafts)
+- Contadores em cada aba
+- Aba Conteúdo agrupada por formato (Blog / Vídeo / Shorts / Podcast)
+- Cards visuais distintos por tipo:
+  - Blog → mostra hero text + meta description
+  - Vídeo → thumb + duração
+  - Shorts → mini-preview vertical
+  - Podcast → ondinha + duração
+- Cada card tem actions contextuais (Continuar, Publicar, Duplicar)
+
+**Concluído em:** —
+
+---
+
+### F2-041 — Drafts/new: remover input de Título redundante
+✅ **Concluído**
+
+Ao escolher uma pesquisa, o title da pesquisa virou o título do conteúdo. Não precisa pedir pro usuário re-digitar. Substituído o campo `<Label>Título</Label> + <Input>` por uma linha "**Tema:** _\<título\>_ [editar]" que abre input inline ao clicar.
+
+**Concluído em:** 2026-04-13
+
+---
+
 ### F2-039 — Research: sinais de decisão (Google Trends + YouTube Intelligence)
 🔲 **Não iniciado**
 
