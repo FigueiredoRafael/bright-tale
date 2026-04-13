@@ -6,7 +6,7 @@
 
 **Depende de:** Fase 1 (auth, orgs, storage, créditos)
 
-**Progresso:** 14/14 concluídos ✅
+**Progresso:** 9/29 concluídos (F2-001 a F2-009 ✅ · F2-010 a F2-014 em andamento · F2-015+ novos)
 
 > ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
 > Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
@@ -277,7 +277,7 @@
 ---
 
 ### F2-014 — Inngest: setup de job queue
-🔲 **Não iniciado**
+🟡 **Em andamento**
 
 **Escopo:**
 - Integrar Inngest para background jobs
@@ -286,9 +286,266 @@
 - Retry com backoff (3 tentativas)
 
 **Critérios de aceite:**
-- [ ] Job roda em background
-- [ ] Status endpoint retorna progresso
-- [ ] Retry funciona em caso de falha
-- [ ] Frontend mostra progress bar
+- [x] Inngest client criado + `isDev` em desenvolvimento
+- [x] `content/generate` event wired
+- [ ] Status endpoint
+- [ ] Retry e progress bar no frontend
 
 **Concluído em:** —
+
+---
+
+## Phase 2.5 — Migração e refino do workflow de conteúdo
+
+> Migra o pipeline de 5 etapas do legado `bright-curios-automation-workflow` pro monorepo, troca YAML copy-paste por chamadas diretas de API, e implementa a UX por etapa conforme spec da reunião. Ver [memória Phase 2.5 Plan](../../../../../../.claude/projects/-Users-rafaelfigueiredo-projects-bright-labs-bright-tale/memory/project_phase_2_5_plan.md).
+
+### F2-015 — Schema: tabelas do novo pipeline
+🔲 **Não iniciado**
+
+**Escopo:**
+- Migration criando `brainstorm_sessions`, `ideas` (já existe `idea_archives` — avaliar se migra ou mantém), `research_sessions`, `content_drafts` (blog|video|shorts|podcast), `content_assets` (images/audio vinculados a draft)
+- Todas com `org_id`, `channel_id`, `user_id`, RLS deny-all, trigger `updated_at`
+- Regenerar types + adicionar schemas Zod em `packages/shared`
+- Decisão: deprecar `projects`/`stages` no Phase 6 (F6-009 já existe)
+
+**Critérios de aceite:**
+- [ ] Migration roda
+- [ ] FKs corretos (idea → brainstorm_session, draft → idea, asset → draft)
+- [ ] Types gerados, Zod schemas publicados
+- [ ] Testes de mapper snake↔camel
+
+---
+
+### F2-016 — Brainstorm: modos de input
+🔲 **Não iniciado**
+
+**Escopo:**
+- 3 modos no Step 1 do Create Content:
+  - **Prompt cego** — campo livre com tema
+  - **Fine-tuning avançado** — campos extras (nicho, tom, público, objetivo, restrições)
+  - **Guiado por referência** — colar URL (blog/YouTube/podcast) → extrair contexto (scraping + YouTube API já existe)
+- Montar `BC_BRAINSTORM_INPUT` automaticamente
+- Chamada direta `/api/brainstorm` (Anthropic/OpenAI/Gemini via router)
+- Remover fluxo YAML
+
+**Critérios de aceite:**
+- [ ] 3 modos funcionais e testáveis
+- [ ] Extração de contexto por URL funciona (validar com 3 URLs reais)
+- [ ] API call direta retorna ideas parseadas
+- [ ] Créditos debitados (50)
+
+---
+
+### F2-017 — Brainstorm: cards de ideia + seleção
+🔲 **Não iniciado**
+
+**Escopo:**
+- Output em cards por ideia: título, ângulo, veredicto (viável/experimental/fraco), potencial de monetização, ângulos de repurposing
+- Clicar confirma seleção, persiste em `ideas` com `brainstorm_session_id` + `channel_id`
+- Constrói `BC_RESEARCH_INPUT` automaticamente
+
+**Critérios de aceite:**
+- [ ] Cards renderizam todos os campos do output do agent-1
+- [ ] Seleção persiste no DB
+- [ ] Navegação direta para Step 2 (Research) com idea pré-carregada
+
+---
+
+### F2-018 — Research: níveis + foco configurável
+🔲 **Não iniciado**
+
+**Escopo:**
+- Seletor de nível: Surface (top 3 fontes, estatísticas básicas) / Medium (5-8 fontes, quotes) / Deep (10+ fontes, contra-argumentos)
+- Foco multi-select: estatísticas / expert advice / pro tips / processos validados
+- Router de créditos: Surface 60 / Medium 100 / Deep 180
+- Chamada direta `/api/research`
+
+**Critérios de aceite:**
+- [ ] Nível escolhido altera prompt do agent-2
+- [ ] Foco filtra tipo de resultado
+- [ ] Créditos debitados conforme nível
+- [ ] Teste cobre os 3 níveis
+
+---
+
+### F2-019 — Research: cards tipados + ranking + review humana
+🔲 **Não iniciado**
+
+**Escopo:**
+- Output em cards por tipo: Fonte (URL, autor, data, relevância), Dado (claim, fonte, contexto), Citação (quote, nome, cargo)
+- Ranking por score de relevância + botão "Recomendar os melhores"
+- Review humana: aprovar / rejeitar / editar por card antes de avançar
+- Salvar aprovados em `research_sessions` + legacy `research_archives`
+
+**Critérios de aceite:**
+- [ ] 3 tipos de card renderizados com dados corretos
+- [ ] Ranking ordena pelo score do agent
+- [ ] Ações approve/reject/edit persistem
+- [ ] Só cards aprovados seguem para Step 3
+
+---
+
+### F2-020 — Content: canonical core via API + seletor de mídia
+🔲 **Não iniciado**
+
+**Escopo:**
+- Geração do Canonical Core via agent-3a (`/api/content/canonical-core`)
+- Seletor de mídia: Blog ou Vídeo (determina sub-fluxo)
+- Persistir em `content_drafts` com `type` e `canonical_core_json`
+- Créditos: 80
+
+**Critérios de aceite:**
+- [ ] Canonical core gerado e salvo
+- [ ] Seletor direciona para sub-fluxo correto
+- [ ] Teste cobre ambos caminhos
+
+---
+
+### F2-021 — Sub-fluxo Blog (geração + assets + review)
+🔲 **Não iniciado**
+
+**Escopo:**
+- `/api/content/blog` chama agent-3b-blog com canonical core
+- Opcional: geração de assets por parágrafo/seção via Gemini Imagen (botão "Gerar imagens")
+- Editor inline com review interno do agent-4 (feedback por bloco)
+- Export HTML/Markdown
+- Créditos: 200 (blog) + 30 por imagem
+
+**Critérios de aceite:**
+- [ ] Draft salvo em `content_drafts`
+- [ ] Imagens geradas e vinculadas em `content_assets`
+- [ ] Review inline renderiza feedback do agent-4
+- [ ] Export funciona
+
+---
+
+### F2-022 — Sub-fluxo Vídeo (geração + thumbnail + áudio + review)
+🔲 **Não iniciado**
+
+**Escopo:**
+- `/api/content/video` chama agent-3b-video com seletor de estilo (talking head, documentário, tutorial) + duração alvo
+- Opcional: thumbnail via Gemini Imagen
+- Opcional: áudio por seção via ElevenLabs ou OpenAI TTS
+- Review interno do script via agent-4
+- Créditos: 200 + 30 (thumb) + 100/min (ElevenLabs) ou 50/min (OpenAI)
+
+**Critérios de aceite:**
+- [ ] Script gerado e salvo
+- [ ] Thumbnail opcional funciona
+- [ ] Áudio opcional funciona (provider configurável)
+- [ ] Review inline funciona
+
+---
+
+### F2-023 — Video preview rich (teleprompter + metadata)
+🔲 **Não iniciado**
+
+**Escopo:**
+- Roteiro com timestamps, B-roll notes, capítulos
+- Teleprompter: modo linha-por-linha, velocidade configurável, fonte grande
+- Preview thumbnail
+- Player de áudio (se gerado)
+- Comentário fixado recomendado (agent-3b-engagement)
+- Descrição SEO com keywords + links
+
+**Critérios de aceite:**
+- [ ] Teleprompter scroll controlado funciona
+- [ ] Todos os metadados renderizam
+- [ ] Comentário + descrição gerados via agent-3b-engagement
+
+---
+
+### F2-024 — Publish Blog: taxonomia + scheduling
+🔲 **Não iniciado**
+
+**Escopo:**
+- Migrar PublishingForm do bright-curios
+- Autocomplete de categorias + tags via WordPress REST (`/wp/v2/categories`, `/wp/v2/tags`)
+- Datepicker com timezone + scheduling via WordPress (`status=future` + `date`)
+- Status de publicação no draft: rascunho / agendado / publicado
+
+**Critérios de aceite:**
+- [ ] Publish imediato funciona
+- [ ] Agendamento cria post no futuro no WP
+- [ ] Taxonomia é aplicada corretamente
+- [ ] Teste E2E mockado da WP API
+
+---
+
+### F2-025 — Admin UI: agentes (web/admin)
+🔲 **Não iniciado**
+
+**Escopo:**
+- Nova página `apps/web/admin/(protected)/agents/` — lista + editor por agente
+- CRUD sobre `agent_prompts` via `GET/PUT /api/agents` (já existem)
+- Editor: `instructions`, `input_schema`, `output_schema` (Monaco ou textarea com syntax)
+- Versionamento simples: salvar histórico de versões (nova tabela `agent_prompt_versions` ou coluna `previous_instructions_json[]`)
+- Preview: rodar um dry-run com input de teste
+
+**Critérios de aceite:**
+- [ ] Lista todos os 10 agentes do seed
+- [ ] Editar + salvar persiste no DB
+- [ ] Histórico de versões acessível
+- [ ] Dry-run executa sem debitar créditos
+
+---
+
+### F2-026 — App: remover edição de agentes (só visualização)
+🔲 **Não iniciado**
+
+**Escopo:**
+- Auditar `apps/app/src/app/(app)/settings/agents/` — edição de prompt deve ser admin-only
+- Opções: remover página completamente OU deixar read-only ("Veja as instruções do agente que gera esse conteúdo")
+- Decisão de produto: read-only para transparência
+
+**Critérios de aceite:**
+- [ ] Usuário final não consegue alterar instructions via app
+- [ ] Se read-only, dados vêm via `GET /api/agents` sem expor schemas internos
+- [ ] Teste de autorização
+
+---
+
+### F2-027 — Job: ler instructions de agent_prompts (não hardcoded)
+🔲 **Não iniciado**
+
+**Escopo:**
+- Refatorar `apps/api/src/jobs/content-generate.ts` pra buscar `instructions` do `agent_prompts` por slug (brainstorm, research, production, content-core, blog, video, shorts, podcast, engagement, review)
+- Provider layer (`apps/api/src/lib/ai/providers/`) recebe `systemPrompt` via parâmetro, não arquivo estático
+- Cache de prompts em memória com TTL curto (5min) pra evitar lookup a cada step
+
+**Critérios de aceite:**
+- [ ] Alterar instructions no admin reflete na próxima geração (após TTL)
+- [ ] Jobs não referenciam strings hardcoded
+- [ ] Teste que mocka DB retornando prompt custom e verifica que é usado
+
+---
+
+### F2-028 — Migração: agents + módulos do bright-curios
+🔲 **Não iniciado**
+
+**Escopo:**
+- Copiar/adaptar `src/lib/modules/{blog,video,shorts,podcast,engagement}/` do legado para `packages/shared/src/modules/` (schemas, mappers, validators, exporters)
+- Adaptar imports, remover dependências de Prisma
+- Ajustar types ao novo modelo (org_id, channel_id, user_id)
+
+**Critérios de aceite:**
+- [ ] Todos os módulos compilam no monorepo
+- [ ] Exporters (HTML/MD) passam teste com fixture
+- [ ] Validators rodam sobre outputs reais dos agentes
+
+---
+
+### F2-029 — Migração: AI layer + provider routing
+🔲 **Não iniciado**
+
+**Escopo:**
+- Migrar `src/lib/ai/adapter.ts`, `providers/{anthropic,openai,gemini,mock}.ts`, `promptGenerators.ts`, `imageProvider.ts` para `apps/api/src/lib/ai/`
+- Router `getRouteForStage(stage, tier)` já existe — garantir que cobre Surface/Medium/Deep e os 10 agents
+- Fallback entre providers (se um falha, tenta o próximo)
+- Model tier por etapa: standard (flash/haiku) / premium (sonnet/gpt-4o) / ultra (opus/o1)
+
+**Critérios de aceite:**
+- [ ] 4 providers funcionais (anthropic, openai, gemini, mock)
+- [ ] Fallback testado (mock com falha → provider real)
+- [ ] Router cobre todas as combinações stage × tier
+- [ ] Teste integration com 1 call real por provider (skippable via env)
