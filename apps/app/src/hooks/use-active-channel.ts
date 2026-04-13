@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 const STORAGE_KEY = 'brighttale:active-channel-id';
 const ACTIVE_CHANGE_EVENT = 'brighttale:active-channel-change';
@@ -89,7 +89,6 @@ export function useActiveChannel(): UseActiveChannelResult {
     return resolved;
   });
   const [loading, setLoading] = useState(channelsCache === null);
-  const mountedRef = useRef(false);
 
   const refetch = useCallback(async () => {
     try {
@@ -106,46 +105,41 @@ export function useActiveChannel(): UseActiveChannelResult {
     }
   }, []);
 
+  // Subscribe to cross-instance updates. Recreates subscribers on each mount
+  // (Strict Mode safe — cleanup removes, re-mount re-adds).
   useEffect(() => {
-    if (mountedRef.current) return;
-    mountedRef.current = true;
-
-    // Subscribe to channel list changes (refetch)
     const listHandler = (list: Channel[]) => {
       setChannels(list);
       const newActive = resolveActiveId(list);
-      if (newActive !== activeIdCache) {
-        activeIdCache = newActive;
-      }
+      if (newActive !== activeIdCache) activeIdCache = newActive;
       setActiveChannelIdState(newActive);
     };
-    channelListSubscribers.add(listHandler);
-
-    // Subscribe to active-id changes (switcher)
     const activeHandler = (id: string | null) => {
       setActiveChannelIdState(id);
     };
+    channelListSubscribers.add(listHandler);
     activeIdSubscribers.add(activeHandler);
-
-    const cacheFresh = channelsCache !== null && Date.now() - cacheTimestamp < CACHE_TTL_MS;
-
-    if (cacheFresh && channelsCache) {
-      setChannels(channelsCache);
-      setActiveChannelIdState(activeIdCache ?? resolveActiveId(channelsCache));
-      setLoading(false);
-    } else {
-      if (channelsCache !== null) {
-        setChannels(channelsCache);
-        setActiveChannelIdState(activeIdCache ?? resolveActiveId(channelsCache));
-        setLoading(false);
-      }
-      refetch();
-    }
-
     return () => {
       channelListSubscribers.delete(listHandler);
       activeIdSubscribers.delete(activeHandler);
     };
+  }, []);
+
+  // Initial fetch on first mount (per instance, but dedup'd by inflightFetch)
+  useEffect(() => {
+    const cacheFresh = channelsCache !== null && Date.now() - cacheTimestamp < CACHE_TTL_MS;
+    if (cacheFresh && channelsCache) {
+      setChannels(channelsCache);
+      setActiveChannelIdState(activeIdCache ?? resolveActiveId(channelsCache));
+      setLoading(false);
+      return;
+    }
+    if (channelsCache !== null) {
+      setChannels(channelsCache);
+      setActiveChannelIdState(activeIdCache ?? resolveActiveId(channelsCache));
+      setLoading(false);
+    }
+    refetch();
   }, [refetch]);
 
   const setActiveChannelId = useCallback((id: string) => {
