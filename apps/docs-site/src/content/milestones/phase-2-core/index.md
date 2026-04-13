@@ -194,65 +194,33 @@
 ---
 
 ### F2-010 — Flow simplificado: Pesquisa (Step 1-2)
-🔲 **Não iniciado**
+✅ **Concluído (substituído por F2-016/017/018)**
 
-**Escopo:**
-- Nova UI de criação: campo tema + opção de YouTube analysis
-- Mostra resultados: top vídeos do nicho + ideias geradas
-- Ideias com "Modelado de: [referência]" quando aplicável
-- Selecionar ideia + escolher outputs (blog, vídeo, shorts, podcast)
+Substituído pelas páginas dedicadas: `/channels/[id]/brainstorm/new` (F2-016), `/channels/[id]/research/new` (F2-018) e a hub `/channels/[id]/create` (refatorada). YouTube Intelligence integrada via `analyze-niche`. Ideias persistem com `channel_id` + `brainstorm_session_id`.
 
-**Critérios de aceite:**
-- [ ] Pesquisa por tema funciona
-- [ ] YouTube Intelligence integrado (se ativado)
-- [ ] Ideias referenciam canal de origem
-- [ ] Selecionar outputs funciona
-
-**Concluído em:** —
+**Concluído em:** 2026-04-13
 
 ---
 
 ### F2-011 — Flow simplificado: Geração (Step 3)
-🔲 **Não iniciado**
+✅ **Concluído (entregue via F2-020/021/022)**
 
-**Escopo:**
-- Gerar conteúdo texto (blog, roteiro, shorts, podcast) via API de IA
-- Modelo por stage (standard routing)
-- Progress indicator durante geração
-- Resultado: cards com preview de cada output
-- Botões: Ver, Editar, Aprovar
+`/channels/[id]/drafts/new` é a UI de geração. Pipeline visual mostra os 3 passos (draft → canonical core → produção). Suporta blog/video/shorts/podcast com debit de créditos por formato.
 
-**Critérios de aceite:**
-- [ ] Gera blog post funcional
-- [ ] Gera roteiro de vídeo funcional
-- [ ] Model routing funciona (flash para brainstorm, sonnet para production)
-- [ ] Debita créditos corretos
-
-**Concluído em:** —
+**Concluído em:** 2026-04-13
 
 ---
 
 ### F2-012 — Integração direta com APIs de IA (substituir YAML copy-paste)
-🔲 **Não iniciado**
+✅ **Concluído**
 
-**Escopo:**
-- Chamar Claude/Gemini/GPT diretamente via API
-- Parsear response automática (sem colar YAML)
-- Fallback entre providers (se um falha, tenta outro)
-- Config de modelo por stage (standard/premium/ultra/custom)
+- 4 providers implementados: Anthropic, OpenAI, Gemini, Ollama (local)
+- Router (`apps/api/src/lib/ai/router.ts`) com 4 tiers: `local` (Ollama) / `free` (Gemini) / `standard` (Gemini+Anthropic) / `premium` / `ultra`
+- `generateWithFallback` — runtime fallback em 429/quota/billing/5xx/network com per-provider retry (apenas pra erros transientes; quota não retenta)
+- Brainstorm, Research, Canonical Core, Production, Review todos via API
+- 8 testes cobrindo chain construction, retries, fallback paths
 
-**Arquivos:**
-- `apps/api/src/lib/ai/providers/` (atualizar)
-- `apps/api/src/lib/ai/router.ts` (novo: smart model routing)
-
-**Critérios de aceite:**
-- [ ] Brainstorm roda via API (sem copy-paste)
-- [ ] Research roda via API
-- [ ] Production roda via API
-- [ ] Review roda via API
-- [ ] Fallback funciona
-
-**Concluído em:** —
+**Concluído em:** 2026-04-13
 
 ---
 
@@ -531,16 +499,77 @@
 ---
 
 ### F2-029 — Migração: AI layer + provider routing
-🔲 **Não iniciado**
+✅ **Concluído**
 
-**Escopo:**
-- Migrar `src/lib/ai/adapter.ts`, `providers/{anthropic,openai,gemini,mock}.ts`, `promptGenerators.ts`, `imageProvider.ts` para `apps/api/src/lib/ai/`
-- Router `getRouteForStage(stage, tier)` já existe — garantir que cobre Surface/Medium/Deep e os 10 agents
-- Fallback entre providers (se um falha, tenta o próximo)
-- Model tier por etapa: standard (flash/haiku) / premium (sonnet/gpt-4o) / ultra (opus/o1)
+- 4 providers em `apps/api/src/lib/ai/providers/`: anthropic, openai, gemini, ollama
+- Router cobre 4 tiers × 4 stages, runtime fallback chain configurável por (provider, model)
+- `isProviderFailover` vs `shouldRetrySameProvider` separados — quota não retenta mesmo modelo
+- Adapter legado mantido só pra compat; pipeline novo usa `generateWithFallback` direto
 
-**Critérios de aceite:**
-- [ ] 4 providers funcionais (anthropic, openai, gemini, mock)
-- [ ] Fallback testado (mock com falha → provider real)
-- [ ] Router cobre todas as combinações stage × tier
-- [ ] Teste integration com 1 call real por provider (skippable via env)
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-030 — Provider Ollama (AI local)
+✅ **Concluído**
+
+- `OllamaProvider` em `apps/api/src/lib/ai/providers/ollama.ts` — talks to local server (default `localhost:11434`)
+- Tier `local` mapeia todas as etapas pra `ollama/llama3.1:8b`
+- Não exige API key; falha graciosamente se servidor offline
+- Free e infinito — ideal pra dev sem queimar quota
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-031 — Per-stage ModelPicker + Recommended badges
+✅ **Concluído**
+
+- Componente `apps/app/src/components/ai/ModelPicker.tsx` com catálogo: Local (Ollama), Gemini, OpenAI, Anthropic — modelos específicos por provider
+- `agent_prompts` ganhou colunas `recommended_provider` + `recommended_model`
+- Admin define recomendação em `/admin/agents/[slug]`; app renderiza badge **Recommended**
+- Páginas brainstorm + research consomem o recomendado e fazem prefill
+- Backend aceita override `provider` + `model` em `/brainstorm/sessions` e `/research-sessions`
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-032 — Pipeline orgchart no admin
+✅ **Concluído**
+
+- `PipelineGraph` em SVG render coluna-por-coluna: brainstorm → research → core → {blog, video, shorts, podcast, engagement} → review
+- Cubic Bezier edges, nodes linkam pro editor, slugs faltantes aparecem com borda tracejada
+- Sem dependência nova (Tailwind + SVG puros)
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-033 — UserMenu + Profile editing
+✅ **Concluído**
+
+- `UserMenu` no topbar substitui o avatar estático: mostra email, links pra Perfil/Settings, "Sair" (Supabase signOut + redirect pra `/auth/login`)
+- Nova rota `/settings/profile` edita first/last name via `PATCH /api/users/:id` (email read-only)
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-034 — Friendly AI errors + onboarding redirect fix
+✅ **Concluído**
+
+- `friendlyAiError(raw)` mapeia falhas de provider pra título + dica acionável (quota → "aguarde 1min ou troque provider"; billing → "adicione crédito ou use Gemini grátis"; overload → "tente em segundos"; etc.)
+- `useActiveChannel` distingue "lista vazia" de "fetch falhou" — bug do redirect pra onboarding em loop resolvido
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-035 — Dev script + README de setup
+✅ **Concluído**
+
+- `npm run dev` agora sobe app + api + web + docs + inngest + ollama em paralelo (Ollama gracefully skip se não instalado)
+- README reescrito do zero: prerequisites, env files, db push, Ollama models, AI provider matrix, troubleshooting
+
+**Concluído em:** 2026-04-13
