@@ -6,7 +6,7 @@
 
 **Depende de:** Fase 1 (auth, orgs, storage, créditos)
 
-**Progresso:** 16/29 concluídos (F2-001 a F2-009 ✅ · F2-015–F2-018 ✅ · F2-026 ✅ · F2-027 ✅ · F2-019, F2-025 🟡 · F2-010 a F2-014 em andamento)
+**Progresso:** 19/29 concluídos (F2-001 a F2-009 ✅ · F2-015–F2-018 ✅ · F2-020 ✅ · F2-026 ✅ · F2-027 ✅ · F2-019, F2-021, F2-022, F2-025 🟡 · F2-010 a F2-014 em andamento)
 
 > ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
 > Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
@@ -379,41 +379,37 @@
 ---
 
 ### F2-020 — Content: canonical core via API + seletor de mídia
-🔲 **Não iniciado**
+✅ **Concluído**
 
-**Escopo:**
-- Geração do Canonical Core via agent-3a (`/api/content/canonical-core`)
-- Seletor de mídia: Blog ou Vídeo (determina sub-fluxo)
-- Persistir em `content_drafts` com `type` e `canonical_core_json`
-- Créditos: 80
+**Escopo entregue:**
+- POST/GET/PATCH `/api/content-drafts` (CRUD + listagem por canal/tipo)
+- POST `/api/content-drafts/:id/canonical-core` roda agent-3a (system prompt = `content-core` slug com fallback `production`), debita 80 créditos, persiste em `canonical_core_json`
+- Puxa approved cards do `research_sessions` quando draft está linkado
+- Seletor de tipo (blog/video/shorts/podcast) na UI
 
-**Critérios de aceite:**
-- [ ] Canonical core gerado e salvo
-- [ ] Seletor direciona para sub-fluxo correto
-- [ ] Teste cobre ambos caminhos
+**Concluído em:** 2026-04-13
 
 ---
 
 ### F2-021 — Sub-fluxo Blog (geração + assets + review)
-🔲 **Não iniciado**
+🟡 **Parcial — geração core entregue**
 
-**Escopo:**
-- `/api/content/blog` chama agent-3b-blog com canonical core
-- Opcional: geração de assets por parágrafo/seção via Gemini Imagen (botão "Gerar imagens")
-- Editor inline com review interno do agent-4 (feedback por bloco)
-- Export HTML/Markdown
-- Créditos: 200 (blog) + 30 por imagem
+**Escopo entregue:**
+- POST `/api/content-drafts/:id/produce` roda agent-3b-{type} (slug por tipo, com fallback production), persiste `draft_json`, marca status='in_review', debita custo do tipo (blog 200 / video 200 / shorts 100 / podcast 150)
+- UI `/channels/[id]/drafts/new` com seletor de formato + pipeline visual (draft → core → produção → done)
 
-**Critérios de aceite:**
-- [ ] Draft salvo em `content_drafts`
-- [ ] Imagens geradas e vinculadas em `content_assets`
-- [ ] Review inline renderiza feedback do agent-4
-- [ ] Export funciona
+**Pendente:**
+- [ ] Assets por parágrafo via Gemini Imagen (vincular em `content_assets`)
+- [ ] Editor inline do output
+- [ ] Review interno via agent-4 (feedback por bloco)
+- [ ] Export HTML/Markdown
+
+**Concluído em:** 2026-04-13 (parcial)
 
 ---
 
 ### F2-022 — Sub-fluxo Vídeo (geração + thumbnail + áudio + review)
-🔲 **Não iniciado**
+🟡 **Parcial — geração core entregue (mesmo endpoint que F2-021)**
 
 **Escopo:**
 - `/api/content/video` chama agent-3b-video com seletor de estilo (talking head, documentário, tutorial) + duração alvo

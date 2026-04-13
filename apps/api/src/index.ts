@@ -39,6 +39,7 @@ import { inngestRoutes } from './routes/inngest.js';
 import { contentRoutes } from './routes/content.js';
 import { brainstormRoutes } from './routes/brainstorm.js';
 import { researchSessionsRoutes } from './routes/research-sessions.js';
+import { contentDraftsRoutes } from './routes/content-drafts.js';
 
 const server = Fastify({ logger: true });
 
@@ -84,6 +85,7 @@ server.register(inngestRoutes, { prefix: '/inngest' });
 server.register(contentRoutes, { prefix: '/content' });
 server.register(brainstormRoutes, { prefix: '/brainstorm' });
 server.register(researchSessionsRoutes, { prefix: '/research-sessions' });
+server.register(contentDraftsRoutes, { prefix: '/content-drafts' });
 
 if (!process.env.VERCEL) {
   const PORT = parseInt(process.env.PORT ?? '3001', 10);
