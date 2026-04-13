@@ -341,6 +341,10 @@ export default function DraftViewPage() {
     const Icon = meta.icon;
     const teleprompter = draft.draft_json ? findScalar(draft.draft_json, ["teleprompter_script"]) : null;
     const editorScript = draft.draft_json ? findScalar(draft.draft_json, ["editor_script"]) : null;
+    const videoTitle = draft.draft_json ? findObject(draft.draft_json, ["video_title"]) : null;
+    const thumbnailIdeas = draft.draft_json ? findArray(draft.draft_json, ["thumbnail_ideas", "thumbnails"]) : null;
+    const pinnedComment = draft.draft_json ? findScalar(draft.draft_json, ["pinned_comment", "pinned_comment_text"]) : null;
+    const videoDescription = draft.draft_json ? findScalar(draft.draft_json, ["video_description", "youtube_description"]) : null;
     // For non-video formats, keep the generic body extractor.
     const body = teleprompter ?? (draft.draft_json ? findContent(draft.draft_json) : null);
     const metaDescription = draft.draft_json ? findScalar(draft.draft_json, ["meta_description", "summary", "description", "hook"]) : null;
@@ -496,6 +500,84 @@ export default function DraftViewPage() {
                         <pre className="text-xs bg-muted/40 rounded-md p-4 overflow-x-auto whitespace-pre-wrap">
                             {JSON.stringify(draft.draft_json, null, 2)}
                         </pre>
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* YouTube package — title options, thumbnails, pinned comment, description */}
+            {(draft.type === "video" || draft.type === "shorts") && (videoTitle || thumbnailIdeas || pinnedComment || videoDescription) && (
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-base flex items-center gap-2">
+                            <Video className="h-4 w-4 text-purple-500" /> Pacote YouTube
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-5">
+                        {videoTitle && (
+                            <div>
+                                <div className="text-xs text-muted-foreground mb-2 uppercase tracking-wider">Títulos</div>
+                                {(() => {
+                                    const primary = (videoTitle as Record<string, unknown>).primary as string | undefined;
+                                    const alts = (videoTitle as Record<string, unknown>).alternatives as string[] | undefined;
+                                    return (
+                                        <div className="space-y-1.5">
+                                            {primary && (
+                                                <div className="p-2 rounded-md bg-primary/5 border border-primary/20 text-sm font-medium">
+                                                    ⭐ {primary}
+                                                </div>
+                                            )}
+                                            {alts?.map((t, i) => (
+                                                <div key={i} className="p-2 rounded-md bg-muted/30 text-sm">{t}</div>
+                                            ))}
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                        )}
+
+                        {thumbnailIdeas && thumbnailIdeas.length > 0 && (
+                            <div>
+                                <div className="text-xs text-muted-foreground mb-2 uppercase tracking-wider">Ideias de thumbnail</div>
+                                <div className="grid gap-2">
+                                    {thumbnailIdeas.map((th, i) => {
+                                        const obj = th as Record<string, unknown>;
+                                        const emotion = typeof obj.emotion === "string" ? obj.emotion : null;
+                                        const overlay = typeof obj.text_overlay === "string" ? obj.text_overlay : null;
+                                        const concept = typeof obj.concept === "string" ? obj.concept : null;
+                                        const palette = typeof obj.color_palette === "string" ? obj.color_palette : null;
+                                        const comp = typeof obj.composition === "string" ? obj.composition : null;
+                                        return (
+                                            <div key={i} className="p-3 rounded-md border bg-muted/20 space-y-1.5">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-mono text-muted-foreground">#{i + 1}</span>
+                                                    {emotion && <Badge variant="outline" className="text-[10px] capitalize">{emotion}</Badge>}
+                                                    {overlay && <Badge variant="secondary" className="text-[10px]">📝 {overlay}</Badge>}
+                                                </div>
+                                                {concept && <div className="text-sm">{concept}</div>}
+                                                <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+                                                    {palette && <span>🎨 {palette}</span>}
+                                                    {comp && <span>📐 {comp}</span>}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {pinnedComment && (
+                            <div>
+                                <div className="text-xs text-muted-foreground mb-2 uppercase tracking-wider">Comentário fixado (engajamento)</div>
+                                <div className="p-3 rounded-md border bg-muted/20 text-sm italic">📌 {pinnedComment}</div>
+                            </div>
+                        )}
+
+                        {videoDescription && (
+                            <div>
+                                <div className="text-xs text-muted-foreground mb-2 uppercase tracking-wider">Descrição do vídeo</div>
+                                <pre className="text-xs bg-muted/40 rounded-md p-3 whitespace-pre-wrap leading-relaxed">{videoDescription}</pre>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             )}

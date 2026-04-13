@@ -37,6 +37,19 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gera
 
     const currentMessage = events[events.length - 1]?.message ?? "Iniciando…";
 
+    function fmtElapsed(s: number) {
+        if (s < 60) return `${s}s`;
+        const m = Math.floor(s / 60);
+        const r = s % 60;
+        return `${m}m${String(r).padStart(2, "0")}s`;
+    }
+    function stepDuration(i: number): number | null {
+        if (i === 0) return null;
+        const prev = new Date(events[i - 1].created_at).getTime();
+        const cur = new Date(events[i].created_at).getTime();
+        return Math.round((cur - prev) / 1000);
+    }
+
     return (
         <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
             <DialogContent className="sm:max-w-md">
@@ -53,7 +66,7 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gera
                     </DialogTitle>
                     <DialogDescription>
                         {currentMessage}
-                        <span className="ml-2 text-xs text-muted-foreground">({elapsed}s)</span>
+                        <span className="ml-2 text-xs text-muted-foreground">({fmtElapsed(elapsed)})</span>
                     </DialogDescription>
                 </DialogHeader>
 
@@ -75,15 +88,20 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gera
                                 ) : (
                                     <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
                                 )}
-                                <span className={
+                                <span className={`flex-1 ${
                                     isFailed
                                         ? "text-red-600 dark:text-red-400"
                                         : isLive
                                             ? "text-foreground font-medium"
                                             : "text-muted-foreground"
-                                }>
+                                }`}>
                                     {ev.message}
                                 </span>
+                                {(() => {
+                                    const d = stepDuration(i);
+                                    if (d == null || d < 1) return null;
+                                    return <span className="text-[10px] text-muted-foreground/70 shrink-0 mt-1 tabular-nums">{fmtElapsed(d)}</span>;
+                                })()}
                             </li>
                         );
                     })}
