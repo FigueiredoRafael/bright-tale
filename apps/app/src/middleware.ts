@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { createMiddlewareClient } from '@/lib/supabase/middleware';
+import { createServerClient } from '@supabase/ssr';
 
 /**
  * Builds the proxy header set sent to apps/api.
@@ -28,30 +28,78 @@ export function buildProxyHeaders(incoming: Headers, internalKey: string, userId
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const internalKey = process.env.INTERNAL_API_KEY;
+  const supaUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supaKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // Skip auth check if Supabase env vars are not configured (build time)
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    // Still handle API proxy if INTERNAL_API_KEY is set
+  // Build a response we'll mutate with cookie updates
+  let response = NextResponse.next({ request });
+
+  // No Supabase env → skip auth, just do API proxy if possible
+  if (!supaUrl || !supaKey) {
     if (pathname.startsWith('/api/')) {
-      return handleApiProxy(request);
+      if (!internalKey) {
+        return new NextResponse(
+          JSON.stringify({
+            data: null,
+            error: { code: 'MIDDLEWARE_MISCONFIGURED', message: 'INTERNAL_API_KEY is not set on apps/app' },
+          }),
+          { status: 500, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      const headers = buildProxyHeaders(request.headers, internalKey);
+      return NextResponse.next({ request: { headers } });
     }
-    return NextResponse.next();
+    return response;
   }
 
-  const { supabase, response } = createMiddlewareClient(request);
+  // Create Supabase client that syncs cookies to both request and response
+  const supabase = createServerClient(supaUrl, supaKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+        response = NextResponse.next({ request });
+        cookiesToSet.forEach(({ name, value, options }) =>
+          response.cookies.set(name, value, options),
+        );
+      },
+    },
+  });
+
   const { data: { user } } = await supabase.auth.getUser();
 
-  // API proxy requests — inject headers and forward
+  // API proxy — inject headers AND preserve refreshed cookies
   if (pathname.startsWith('/api/')) {
-    return handleApiProxy(request, user?.id);
+    if (!internalKey) {
+      return new NextResponse(
+        JSON.stringify({
+          data: null,
+          error: { code: 'MIDDLEWARE_MISCONFIGURED', message: 'INTERNAL_API_KEY is not set' },
+        }),
+        { status: 500, headers: { 'content-type': 'application/json' } },
+      );
+    }
+
+    const headers = buildProxyHeaders(request.headers, internalKey, user?.id);
+
+    // Build response with both header overrides AND cookie refresh preserved
+    const apiResponse = NextResponse.next({ request: { headers } });
+    // Copy over any cookies Supabase set via setAll()
+    response.cookies.getAll().forEach((cookie) => {
+      apiResponse.cookies.set(cookie);
+    });
+    return apiResponse;
   }
 
-  // Auth pages — redirect to home if already logged in
+  // Auth pages — redirect home if already logged in
   if (pathname.startsWith('/auth/')) {
     if (user) {
       return NextResponse.redirect(new URL('/', request.url));
     }
-    return response();
+    return response;
   }
 
   // App pages — redirect to login if not authenticated
@@ -61,26 +109,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return response();
-}
-
-function handleApiProxy(request: NextRequest, userId?: string): NextResponse {
-  const internalKey = process.env.INTERNAL_API_KEY;
-  if (!internalKey) {
-    return new NextResponse(
-      JSON.stringify({
-        data: null,
-        error: {
-          code: 'MIDDLEWARE_MISCONFIGURED',
-          message: 'INTERNAL_API_KEY is not set on apps/app',
-        },
-      }),
-      { status: 500, headers: { 'content-type': 'application/json' } },
-    );
-  }
-
-  const headers = buildProxyHeaders(request.headers, internalKey, userId);
-  return NextResponse.next({ request: { headers } });
+  return response;
 }
 
 export const config = {
