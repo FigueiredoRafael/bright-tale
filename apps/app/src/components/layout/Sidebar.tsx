@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
     Home, Radio, Lightbulb, FileText, PenLine, Video, Zap, Mic,
-    Images, Archive, Database, Settings, Users, Wand2, Sparkles,
+    Images, Archive, Database, Settings, Users, Sparkles, Globe,
     type LucideIcon,
 } from "lucide-react";
 import { ChannelSwitcher } from "./ChannelSwitcher";
@@ -71,9 +71,9 @@ export default function Sidebar() {
         {
             label: "Configurações",
             items: [
-                { href: "/settings", label: "All Settings", icon: Settings, exact: true },
-                { href: "/settings/team", label: "Team", icon: Users },
-                { href: "/settings/image-generation", label: "Image Generation", icon: Wand2 },
+                { href: "/settings", label: "Configurações", icon: Settings, exact: true },
+                { href: "/settings/team", label: "Time", icon: Users },
+                { href: "/settings/wordpress", label: "WordPress", icon: Globe },
             ],
         },
     ];
