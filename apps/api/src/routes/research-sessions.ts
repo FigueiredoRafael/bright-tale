@@ -162,7 +162,8 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       'X-Accel-Buffering': 'no',
     });
 
-    let lastCreatedAt = '1970-01-01T00:00:00Z';
+    const sinceParam = (request.query as { since?: string })?.since;
+    let lastCreatedAt = sinceParam ?? '1970-01-01T00:00:00Z';
     let closed = false;
     request.raw.on('close', () => { closed = true; });
 

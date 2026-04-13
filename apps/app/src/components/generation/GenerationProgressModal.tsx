@@ -16,7 +16,23 @@ interface Props {
 }
 
 export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gerando ideias", onComplete, onFailed, onClose }: Props) {
-    const { events, status } = useJobEvents(open ? sseUrl : "");
+    // Pin a "since" timestamp at the moment the modal opens so we ignore stale
+    // events from prior runs of the same session_id. Recomputed each open.
+    const [openedAt, setOpenedAt] = useState<string | null>(null);
+    useEffect(() => {
+        if (open) {
+            // Back-date by 30s so we still pick up the "queued" event the route
+            // emitted right before the modal opened (typically <2s ago) but
+            // exclude events from prior runs minutes ago.
+            setOpenedAt(new Date(Date.now() - 30_000).toISOString());
+        } else {
+            setOpenedAt(null);
+        }
+    }, [open]);
+    const effectiveUrl = open && openedAt && sseUrl
+        ? `${sseUrl}${sseUrl.includes("?") ? "&" : "?"}since=${encodeURIComponent(openedAt)}`
+        : "";
+    const { events, status } = useJobEvents(effectiveUrl);
     const [elapsed, setElapsed] = useState(0);
 
     useEffect(() => {
@@ -36,6 +52,26 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gera
     }, [status, events, onComplete, onFailed]);
 
     const currentMessage = events[events.length - 1]?.message ?? "Iniciando…";
+    // Collapse consecutive events that share the same human message (e.g. two
+    // "Iniciando…" rows after a duplicate /generate trigger) — show one row
+    // with the first timestamp.
+    const dedupedEvents = events.reduce<typeof events>((acc, ev) => {
+        if (acc.length > 0 && acc[acc.length - 1].message === ev.message) return acc;
+        acc.push(ev);
+        return acc;
+    }, []);
+    // Track how long it's been since we last received an event. Reset on each
+    // new event, tick every second otherwise.
+    const [secondsSinceLastEvent, setSecondsSinceLastEvent] = useState(0);
+    useEffect(() => {
+        setSecondsSinceLastEvent(0);
+    }, [events.length]);
+    useEffect(() => {
+        if (!open) return;
+        const t = setInterval(() => setSecondsSinceLastEvent((s) => s + 1), 1000);
+        return () => clearInterval(t);
+    }, [open]);
+    const stalled = status === "streaming" && secondsSinceLastEvent > 60;
 
     function fmtElapsed(s: number) {
         if (s < 60) return `${s}s`;
@@ -43,10 +79,10 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gera
         const r = s % 60;
         return `${m}m${String(r).padStart(2, "0")}s`;
     }
-    function stepDuration(i: number): number | null {
+    function stepDurationFor(list: typeof events, i: number): number | null {
         if (i === 0) return null;
-        const prev = new Date(events[i - 1].created_at).getTime();
-        const cur = new Date(events[i].created_at).getTime();
+        const prev = new Date(list[i - 1].created_at).getTime();
+        const cur = new Date(list[i].created_at).getTime();
         return Math.round((cur - prev) / 1000);
     }
 
@@ -75,8 +111,8 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gera
                     (production = canonical-core + produce + review, which all
                     emit the same `calling_provider` stage with different msgs). */}
                 <ul className="space-y-2 py-2 max-h-[280px] overflow-y-auto">
-                    {events.map((ev, i) => {
-                        const isLast = i === events.length - 1;
+                    {dedupedEvents.map((ev, i) => {
+                        const isLast = i === dedupedEvents.length - 1;
                         const isLive = isLast && status === "streaming";
                         const isFailed = ev.stage === "failed";
                         return (
@@ -98,8 +134,8 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gera
                                     {ev.message}
                                 </span>
                                 {(() => {
-                                    const d = stepDuration(i);
-                                    if (d == null || d < 1) return null;
+                                    const d = stepDurationFor(dedupedEvents, i);
+                                    if (d == null || d < 2) return null;
                                     return <span className="text-[10px] text-muted-foreground/70 shrink-0 mt-1 tabular-nums">{fmtElapsed(d)}</span>;
                                 })()}
                             </li>
@@ -111,6 +147,11 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gera
                         </li>
                     )}
                 </ul>
+                {stalled && (
+                    <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
+                        Sem novidades há {fmtElapsed(secondsSinceLastEvent)}. Pode ser o Ollama lento, ou o worker do Inngest precisa reiniciar (mata e roda <code>npm run dev</code> de novo).
+                    </div>
+                )}
 
                 {status === "failed" && (
                     <div className="rounded-md border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-600 dark:text-red-400">

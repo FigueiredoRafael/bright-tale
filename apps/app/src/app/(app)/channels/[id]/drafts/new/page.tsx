@@ -161,7 +161,12 @@ export default function NewDraftPage() {
                     open={!!activeDraftId}
                     sessionId={activeDraftId}
                     sseUrl={`/api/content-drafts/${activeDraftId}/events`}
-                    title={`Gerando ${type}`}
+                    title={
+                        type === "video" ? "Gerando roteiro do vídeo" :
+                        type === "shorts" ? "Gerando roteiro do Shorts" :
+                        type === "podcast" ? "Gerando roteiro do podcast" :
+                        "Gerando blog"
+                    }
                     onComplete={onJobComplete}
                     onFailed={onJobFailed}
                     onClose={() => {

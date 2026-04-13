@@ -34,6 +34,14 @@ const TYPE_META: Record<Draft["type"], { label: string; icon: typeof FileText }>
     podcast: { label: "Podcast", icon: Mic },
 };
 
+function generateModalTitle(type: Draft["type"], label: string): string {
+    // For audio/video formats we're producing a script, not the final media.
+    if (type === "video") return "Gerando roteiro do vídeo";
+    if (type === "shorts") return "Gerando roteiro do Shorts";
+    if (type === "podcast") return "Gerando roteiro do podcast";
+    return `Gerando ${label.toLowerCase()}`;
+}
+
 /**
  * Recursively pull the first string from common content fields. Agents tend
  * to wrap output in {output:..., body:..., draft:..., content:..., text:...}.
@@ -401,7 +409,7 @@ export default function DraftViewPage() {
                     open={generating}
                     sessionId={draftId as string}
                     sseUrl={`/api/content-drafts/${draftId}/events`}
-                    title={`Gerando ${meta.label.toLowerCase()}`}
+                    title={generateModalTitle(draft.type, meta.label)}
                     onComplete={async () => { setGenerating(false); inFlightRef.current = false; await refetch(); toast.success("Conteúdo gerado"); }}
                     onFailed={(msg) => { setGenerating(false); inFlightRef.current = false; const f = friendlyAiError(msg); toast.error(f.title, { description: f.hint }); }}
                     onClose={() => { setGenerating(false); inFlightRef.current = false; }}
