@@ -169,6 +169,20 @@ export default function DraftViewPage() {
         }
     }
 
+    const actionRef = useRef(false);
+    const [actionBusy, setActionBusy] = useState(false);
+    async function withActionGuard<T>(fn: () => Promise<T>): Promise<T | undefined> {
+        if (actionRef.current) return undefined;
+        actionRef.current = true;
+        setActionBusy(true);
+        try {
+            return await fn();
+        } finally {
+            actionRef.current = false;
+            setActionBusy(false);
+        }
+    }
+
     async function patchStatus(newStatus: string) {
         try {
             const res = await fetch(`/api/content-drafts/${draftId}`, {
@@ -190,7 +204,9 @@ export default function DraftViewPage() {
     }
 
     async function handleApprove() {
-        if (await patchStatus("approved")) toast.success("Aprovado");
+        await withActionGuard(async () => {
+            if (await patchStatus("approved")) toast.success("Aprovado");
+        });
     }
 
     async function handlePublish() {
@@ -198,39 +214,43 @@ export default function DraftViewPage() {
             toast.info("Publicação direta disponível só pra Blog (via WordPress) por enquanto");
             return;
         }
-        try {
-            const res = await fetch("/api/wordpress/publish", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ draftId }),
-            });
-            const json = await res.json();
-            if (json?.error) {
-                const f = friendlyAiError(json.error.message ?? "");
-                toast.error(f.title, { description: f.hint ?? "Configure WordPress em Settings primeiro." });
-                return;
+        await withActionGuard(async () => {
+            try {
+                const res = await fetch("/api/wordpress/publish", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ draftId }),
+                });
+                const json = await res.json();
+                if (json?.error) {
+                    const f = friendlyAiError(json.error.message ?? "");
+                    toast.error(f.title, { description: f.hint ?? "Configure WordPress em Settings primeiro." });
+                    return;
+                }
+                toast.success("Publicado no WordPress!");
+                await refetch();
+            } catch {
+                toast.error("Falha ao publicar — verifique sua config WordPress");
             }
-            toast.success("Publicado no WordPress!");
-            await refetch();
-        } catch {
-            toast.error("Falha ao publicar — verifique sua config WordPress");
-        }
+        });
     }
 
     async function handleDelete() {
         if (!confirm("Deletar este rascunho? Essa ação não pode ser desfeita.")) return;
-        try {
-            const res = await fetch(`/api/content-drafts/${draftId}`, { method: "DELETE" });
-            const json = await res.json();
-            if (json?.error) {
-                toast.error(json.error.message ?? "Falha ao deletar");
-                return;
+        await withActionGuard(async () => {
+            try {
+                const res = await fetch(`/api/content-drafts/${draftId}`, { method: "DELETE" });
+                const json = await res.json();
+                if (json?.error) {
+                    toast.error(json.error.message ?? "Falha ao deletar");
+                    return;
+                }
+                toast.success("Rascunho deletado");
+                router.push(`/channels/${channelId}/create`);
+            } catch {
+                toast.error("Falha ao deletar");
             }
-            toast.success("Rascunho deletado");
-            router.push(`/channels/${channelId}/create`);
-        } catch {
-            toast.error("Falha ao deletar");
-        }
+        });
     }
 
     useEffect(() => {
@@ -300,7 +320,7 @@ export default function DraftViewPage() {
                         <Badge variant={draft.status === "published" ? "default" : "outline"} className="capitalize">
                             {draft.status}
                         </Badge>
-                        <Button variant="ghost" size="sm" onClick={handleDelete} className="text-muted-foreground hover:text-red-500">
+                        <Button variant="ghost" size="sm" onClick={handleDelete} disabled={actionBusy} className="text-muted-foreground hover:text-red-500">
                             <Trash2 className="h-4 w-4" />
                         </Button>
                     </div>
@@ -511,12 +531,13 @@ export default function DraftViewPage() {
                         </div>
                         <div className="flex items-center gap-2">
                             {!isApproved && (
-                                <Button onClick={handleApprove} variant="outline" size="sm">
-                                    <Check className="h-4 w-4 mr-1.5" /> Aprovar
+                                <Button onClick={handleApprove} variant="outline" size="sm" disabled={actionBusy}>
+                                    {actionBusy ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Check className="h-4 w-4 mr-1.5" />}
+                                    Aprovar
                                 </Button>
                             )}
-                            <Button onClick={handlePublish} disabled={!isApproved || isPublished} size="sm">
-                                <Globe className="h-4 w-4 mr-1.5" />
+                            <Button onClick={handlePublish} disabled={!isApproved || isPublished || actionBusy} size="sm">
+                                {actionBusy ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Globe className="h-4 w-4 mr-1.5" />}
                                 {isPublished ? "Publicado" : "Publicar"}
                             </Button>
                         </div>
