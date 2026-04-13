@@ -29,7 +29,7 @@ interface UseActiveChannelResult {
 // Module-level state — shared across all hook instances
 let channelsCache: Channel[] | null = null;
 let cacheTimestamp = 0;
-let inflightFetch: Promise<Channel[]> | null = null;
+let inflightFetch: Promise<Channel[] | null> | null = null;
 let activeIdCache: string | null = null;
 const CACHE_TTL_MS = 30_000;
 
@@ -44,18 +44,24 @@ function notifyActiveId(id: string | null) {
   activeIdSubscribers.forEach((cb) => cb(id));
 }
 
-async function fetchChannelsFromApi(): Promise<Channel[]> {
+async function fetchChannelsFromApi(): Promise<Channel[] | null> {
   if (inflightFetch) return inflightFetch;
 
   inflightFetch = (async () => {
     try {
       const res = await fetch('/api/channels');
+      // Return null on transport/auth/server failure so callers can distinguish
+      // "no channels yet" from "request failed" (avoids bogus onboarding redirects).
+      if (!res.ok) return null;
       const json = await res.json();
+      if (json.error) return null;
       const list: Channel[] = json.data?.items ?? [];
       channelsCache = list;
       cacheTimestamp = Date.now();
       notifyChannelList(list);
       return list;
+    } catch {
+      return null;
     } finally {
       inflightFetch = null;
     }
@@ -91,18 +97,18 @@ export function useActiveChannel(): UseActiveChannelResult {
   const [loading, setLoading] = useState(channelsCache === null);
 
   const refetch = useCallback(async () => {
-    try {
-      const list = await fetchChannelsFromApi();
-      setChannels(list);
-      const newActive = resolveActiveId(list);
-      if (newActive !== activeIdCache) {
-        activeIdCache = newActive;
-        notifyActiveId(newActive);
-      }
-      setActiveChannelIdState(newActive);
-    } finally {
-      setLoading(false);
+    const list = await fetchChannelsFromApi();
+    // null = fetch failed; keep loading=true so callers don't take the
+    // "no channels → redirect to onboarding" branch on a transient error.
+    if (list === null) return;
+    setChannels(list);
+    const newActive = resolveActiveId(list);
+    if (newActive !== activeIdCache) {
+      activeIdCache = newActive;
+      notifyActiveId(newActive);
     }
+    setActiveChannelIdState(newActive);
+    setLoading(false);
   }, []);
 
   // Subscribe to cross-instance updates. Recreates subscribers on each mount
