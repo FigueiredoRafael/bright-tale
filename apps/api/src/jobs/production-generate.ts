@@ -151,6 +151,53 @@ export const productionGenerate = inngest.createFunction(
         await debitCredits(orgId, userId, `production-${type}`, 'text', cost, { draftId, type });
       });
 
+      // ─── Stage 3: Auto-review ────────────────────────────────────────
+      // Best-effort: if review fails we don't rollback the produced draft,
+      // we just log and let the user manually re-trigger review.
+      try {
+        await step.run('emit-calling-review', async () => {
+          const label = provider ? `${provider}${model ? ` (${model})` : ''}` : modelTier;
+          await emitJobEvent(draftId, 'production', 'calling_provider', `Revisando com ${label}…`, { stage: 'review', provider, model });
+        });
+
+        const reviewSystemPrompt = (await step.run('load-review-prompt', async () => {
+          return (await loadAgentPrompt('review')) ?? null;
+        })) as string | null;
+
+        const reviewResult = await step.run('generate-review', async () => {
+          const { result } = await generateWithFallback(
+            'review',
+            modelTier,
+            {
+              agentType: 'review',
+              input: { type, title: draft.title, draft: draftJson, canonicalCore },
+              schema: null,
+              systemPrompt: reviewSystemPrompt ?? undefined,
+            },
+            { provider, model },
+          );
+          return result;
+        });
+
+        await step.run('save-review', async () => {
+          await (sb.from('content_drafts') as unknown as {
+            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+          })
+            .update({ review_feedback_json: reviewResult })
+            .eq('id', draftId);
+        });
+      } catch (reviewErr) {
+        // Surface a soft warning but treat the job as a success since the
+        // produced draft is saved.
+        await emitJobEvent(
+          draftId,
+          'production',
+          'parsing_output',
+          `Review automática falhou (rascunho está salvo): ${(reviewErr as Error).message?.slice(0, 100)}`,
+          { reviewFailed: true },
+        );
+      }
+
       await emitJobEvent(draftId, 'production', 'completed', `${type === 'blog' ? 'Post' : type === 'video' ? 'Vídeo' : type === 'shorts' ? 'Shorts' : 'Podcast'} pronto!`, { draftId, type });
       return { success: true, draftId };
     } catch (err) {
