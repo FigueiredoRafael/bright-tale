@@ -803,6 +803,24 @@ export type Database = {
         }
         Relationships: []
       }
+      channel_references: {
+        Row: { id: string; channel_id: string; org_id: string; url: string; platform: string; name: string | null; external_id: string | null; subscribers: number | null; monthly_views: number | null; video_count: number | null; patterns_json: Record<string, unknown> | null; analyzed_at: string | null; created_at: string; updated_at: string }
+        Insert: { id?: string; channel_id: string; org_id: string; url: string; platform?: string; name?: string | null; external_id?: string | null; subscribers?: number | null; monthly_views?: number | null; video_count?: number | null; patterns_json?: Record<string, unknown> | null; analyzed_at?: string | null; created_at?: string; updated_at?: string }
+        Update: { id?: string; channel_id?: string; org_id?: string; url?: string; platform?: string; name?: string | null; external_id?: string | null; subscribers?: number | null; monthly_views?: number | null; video_count?: number | null; patterns_json?: Record<string, unknown> | null; analyzed_at?: string | null; created_at?: string; updated_at?: string }
+        Relationships: []
+      }
+      reference_content: {
+        Row: { id: string; reference_id: string; external_id: string; title: string; url: string | null; published_at: string | null; view_count: number | null; like_count: number | null; comment_count: number | null; duration_seconds: number | null; engagement_rate: number | null; description: string | null; tags: string[] | null; transcript: string | null; created_at: string }
+        Insert: { id?: string; reference_id: string; external_id: string; title: string; url?: string | null; published_at?: string | null; view_count?: number | null; like_count?: number | null; comment_count?: number | null; duration_seconds?: number | null; engagement_rate?: number | null; description?: string | null; tags?: string[] | null; transcript?: string | null; created_at?: string }
+        Update: { id?: string; reference_id?: string; external_id?: string; title?: string; url?: string | null; published_at?: string | null; view_count?: number | null; like_count?: number | null; comment_count?: number | null; duration_seconds?: number | null; engagement_rate?: number | null; description?: string | null; tags?: string[] | null; transcript?: string | null; created_at?: string }
+        Relationships: []
+      }
+      youtube_niche_analyses: {
+        Row: { id: string; channel_id: string | null; org_id: string; user_id: string; niche: string; market: string; language: string; reference_channels_json: Json | null; top_videos_json: Json | null; opportunities_json: Json | null; saturated_topics_json: Json | null; optimal_duration: string | null; optimal_posting_schedule: string | null; analyzed_at: string; expires_at: string; created_at: string }
+        Insert: { id?: string; channel_id?: string | null; org_id: string; user_id: string; niche: string; market: string; language: string; reference_channels_json?: Record<string, unknown> | null; top_videos_json?: Record<string, unknown> | null; opportunities_json?: Record<string, unknown> | null; saturated_topics_json?: Record<string, unknown> | null; optimal_duration?: string | null; optimal_posting_schedule?: string | null; analyzed_at?: string; expires_at?: string; created_at?: string }
+        Update: { id?: string; channel_id?: string | null; org_id?: string; user_id?: string; niche?: string; market?: string; language?: string; reference_channels_json?: Record<string, unknown> | null; top_videos_json?: Record<string, unknown> | null; opportunities_json?: Record<string, unknown> | null; saturated_topics_json?: Record<string, unknown> | null; optimal_duration?: string | null; optimal_posting_schedule?: string | null; analyzed_at?: string; expires_at?: string; created_at?: string }
+        Relationships: []
+      }
       channels: {
         Row: {
           id: string
