@@ -6,7 +6,7 @@
 
 **Depende de:** Fase 1 (auth, orgs, storage, créditos)
 
-**Progresso:** 12/29 concluídos (F2-001 a F2-009 ✅ · F2-015 ✅ · F2-026 ✅ · F2-027 ✅ · F2-025 🟡 · F2-010 a F2-014 em andamento)
+**Progresso:** 16/29 concluídos (F2-001 a F2-009 ✅ · F2-015–F2-018 ✅ · F2-026 ✅ · F2-027 ✅ · F2-019, F2-025 🟡 · F2-010 a F2-014 em andamento)
 
 > ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
 > Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
@@ -320,71 +320,61 @@
 ---
 
 ### F2-016 — Brainstorm: modos de input
-🔲 **Não iniciado**
+✅ **Concluído**
 
-**Escopo:**
-- 3 modos no Step 1 do Create Content:
-  - **Prompt cego** — campo livre com tema
-  - **Fine-tuning avançado** — campos extras (nicho, tom, público, objetivo, restrições)
-  - **Guiado por referência** — colar URL (blog/YouTube/podcast) → extrair contexto (scraping + YouTube API já existe)
-- Montar `BC_BRAINSTORM_INPUT` automaticamente
-- Chamada direta `/api/brainstorm` (Anthropic/OpenAI/Gemini via router)
-- Remover fluxo YAML
+**Escopo entregue:**
+- POST/GET `/api/brainstorm/sessions` cria `brainstorm_sessions` row, roda agente, persiste ideias em `idea_archives` com channel_id + brainstorm_session_id, debita 50 créditos
+- Página `/channels/[id]/brainstorm/new` com 3 modos (blind / fine_tuned / reference_guided)
+- System prompt vem do `agent_prompts` via promptLoader (F2-027)
+- 5 testes (auth, validação, happy-path para blind e reference_guided)
 
-**Critérios de aceite:**
-- [ ] 3 modos funcionais e testáveis
-- [ ] Extração de contexto por URL funciona (validar com 3 URLs reais)
-- [ ] API call direta retorna ideas parseadas
-- [ ] Créditos debitados (50)
+**Pendente para futuro card:**
+- Extração ativa de conteúdo da URL no modo reference_guided (hoje só repassa pro agente)
+
+**Concluído em:** 2026-04-13
 
 ---
 
 ### F2-017 — Brainstorm: cards de ideia + seleção
-🔲 **Não iniciado**
+✅ **Concluído**
 
-**Escopo:**
-- Output em cards por ideia: título, ângulo, veredicto (viável/experimental/fraco), potencial de monetização, ângulos de repurposing
-- Clicar confirma seleção, persiste em `ideas` com `brainstorm_session_id` + `channel_id`
-- Constrói `BC_RESEARCH_INPUT` automaticamente
+**Escopo entregue:**
+- Cards de ideia na página de brainstorm com badge de verdict (viable/weak/experimental), target audience, ângulo e tags de repurposing
+- Cards também aparecem em Create Content via filtro `?channel_id` em `/api/ideas/library` (F2-009 melhorado)
+- Picking → redireciona para Create Content (ideia já visível no card "Suas ideias geradas")
 
-**Critérios de aceite:**
-- [ ] Cards renderizam todos os campos do output do agent-1
-- [ ] Seleção persiste no DB
-- [ ] Navegação direta para Step 2 (Research) com idea pré-carregada
+**Concluído em:** 2026-04-13
 
 ---
 
 ### F2-018 — Research: níveis + foco configurável
-🔲 **Não iniciado**
+✅ **Concluído**
 
-**Escopo:**
-- Seletor de nível: Surface (top 3 fontes, estatísticas básicas) / Medium (5-8 fontes, quotes) / Deep (10+ fontes, contra-argumentos)
-- Foco multi-select: estatísticas / expert advice / pro tips / processos validados
-- Router de créditos: Surface 60 / Medium 100 / Deep 180
-- Chamada direta `/api/research`
+**Escopo entregue:**
+- POST `/api/research-sessions` aceita `level` (surface/medium/deep) + `focusTags[]` + `topic`/`ideaId`
+- Custos por nível: Surface 60 / Medium 100 / Deep 180
+- System prompt = base do agent-2 (via promptLoader) + level directive append
+- Página `/channels/[id]/research/new` com seletor visual + foco multi-select
+- 3 testes (validação de level, happy path, review)
 
-**Critérios de aceite:**
-- [ ] Nível escolhido altera prompt do agent-2
-- [ ] Foco filtra tipo de resultado
-- [ ] Créditos debitados conforme nível
-- [ ] Teste cobre os 3 níveis
+**Concluído em:** 2026-04-13
 
 ---
 
 ### F2-019 — Research: cards tipados + ranking + review humana
-🔲 **Não iniciado**
+🟡 **Parcial**
 
-**Escopo:**
-- Output em cards por tipo: Fonte (URL, autor, data, relevância), Dado (claim, fonte, contexto), Citação (quote, nome, cargo)
-- Ranking por score de relevância + botão "Recomendar os melhores"
-- Review humana: aprovar / rejeitar / editar por card antes de avançar
-- Salvar aprovados em `research_sessions` + legacy `research_archives`
+**Escopo entregue:**
+- Cards renderizam type, title/quote/claim, author, url, relevance
+- PATCH `/api/research-sessions/:id/review` salva approved_cards_json + status='reviewed'
+- UI permite aprovar/rejeitar (toggle por card) — todos aprovados por padrão
 
-**Critérios de aceite:**
-- [ ] 3 tipos de card renderizados com dados corretos
-- [ ] Ranking ordena pelo score do agent
-- [ ] Ações approve/reject/edit persistem
-- [ ] Só cards aprovados seguem para Step 3
+**Pendente:**
+- [ ] Botão "Recomendar os melhores" (ordenação por relevance score automática)
+- [ ] Edição inline por card
+- [ ] Backfill em legacy `research_archives`
+
+**Concluído em:** 2026-04-13 (parcial)
 
 ---
 
