@@ -13,6 +13,7 @@ import {
   updateChannelSchema,
   listChannelsQuerySchema,
 } from '@brighttale/shared/schemas/channels';
+import { ensureOrgId } from '../lib/orgs.js';
 
 /** Helper: get user's org_id */
 async function getOrgId(userId: string): Promise<string> {
@@ -72,7 +73,8 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
       const sb = createServiceClient();
       if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
 
-      const orgId = await getOrgId(request.userId);
+      // Use ensureOrgId: creates org if legacy user doesn't have one
+      const orgId = await ensureOrgId(request.userId);
       const body = createChannelSchema.parse(request.body);
 
       // Derive legacy channel_type from media_types + video_style for backward compat
