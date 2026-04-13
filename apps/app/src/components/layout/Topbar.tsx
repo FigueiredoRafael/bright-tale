@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import StartWorkflowButton from "@/components/projects/StartWorkflowButton";
+import UserMenu from "@/components/layout/UserMenu";
 import { Search, Moon, Sun } from "lucide-react";
 
 const PAGE_TITLES: Record<string, string> = {
@@ -64,9 +65,7 @@ export default function Topbar() {
                     <Moon className="h-[15px] w-[15px] block dark:hidden" />
                 </button>
 
-                <div className="w-[34px] h-[34px] rounded-full bg-primary/10 border border-primary/15 flex items-center justify-center text-primary text-xs font-semibold">
-                    U
-                </div>
+                <UserMenu />
             </div>
         </header>
     );
