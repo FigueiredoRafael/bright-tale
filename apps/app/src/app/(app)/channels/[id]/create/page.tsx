@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,6 +22,9 @@ import {
   Play,
   Eye,
   ThumbsUp,
+  Plus,
+  Trash2,
+  Youtube,
 } from 'lucide-react';
 
 type Step = 'research' | 'select' | 'generate' | 'done';
@@ -68,11 +71,58 @@ export default function CreateContentPage() {
   const [step, setStep] = useState<Step>('research');
   const [topic, setTopic] = useState('');
   const [useYouTube, setUseYouTube] = useState(true);
+  const [useReferences, setUseReferences] = useState(true);
   const [researching, setResearching] = useState(false);
   const [analysis, setAnalysis] = useState<NicheAnalysis | null>(null);
   const [selectedFormats, setSelectedFormats] = useState<string[]>(['blog']);
   const [generating, setGenerating] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
+
+  // References for this channel
+  const [references, setReferences] = useState<Array<{ id: string; url: string; name: string | null; platform: string }>>([]);
+  const [refsLoading, setRefsLoading] = useState(true);
+  const [newRefUrl, setNewRefUrl] = useState('');
+  const [addingRef, setAddingRef] = useState(false);
+
+  // Load references for the channel
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/channels/${channelId}/references`);
+        const json = await res.json();
+        if (json.data?.references) setReferences(json.data.references);
+      } catch {
+        // silent
+      } finally {
+        setRefsLoading(false);
+      }
+    })();
+  }, [channelId]);
+
+  async function addReference(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newRefUrl.trim()) return;
+    setAddingRef(true);
+    try {
+      const res = await fetch(`/api/channels/${channelId}/references`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: newRefUrl }),
+      });
+      const json = await res.json();
+      if (json.error) {
+        toast.error(json.error.message);
+        return;
+      }
+      setReferences((prev) => [...prev, json.data]);
+      setNewRefUrl('');
+      toast.success('Reference added');
+    } catch {
+      toast.error('Failed to add reference');
+    } finally {
+      setAddingRef(false);
+    }
+  }
 
   // Step 1: Research
   async function handleResearch(e: React.FormEvent) {
@@ -127,6 +177,7 @@ export default function CreateContentPage() {
           channelId,
           topic,
           formats: selectedFormats,
+          useReferences: useReferences && references.length > 0,
         }),
       });
       const json = await res.json();
@@ -188,15 +239,71 @@ export default function CreateContentPage() {
                 />
               </div>
 
-              <div className="flex items-start space-x-2">
+              {/* YouTube Intelligence — broad niche search */}
+              <div className="flex items-start gap-2 p-3 rounded-lg border border-border">
                 <Checkbox
                   id="youtube"
                   checked={useYouTube}
                   onCheckedChange={(c) => setUseYouTube(c === true)}
+                  className="mt-0.5"
                 />
-                <Label htmlFor="youtube" className="text-sm cursor-pointer">
-                  Use YouTube Intelligence to find top-performing content in this niche (150 credits)
+                <Label htmlFor="youtube" className="text-sm cursor-pointer flex-1">
+                  <span className="font-medium">YouTube Intelligence</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">
+                    Busca ampla: top vídeos do nicho no YouTube (últimos 30 dias).
+                    Dá contexto do que está bombando. <strong>150 créditos</strong>.
+                  </span>
                 </Label>
+              </div>
+
+              {/* Reference modeling — specific channels */}
+              <div className="p-3 rounded-lg border border-border space-y-3">
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    id="references"
+                    checked={useReferences && references.length > 0}
+                    onCheckedChange={(c) => setUseReferences(c === true)}
+                    disabled={references.length === 0}
+                    className="mt-0.5"
+                  />
+                  <Label htmlFor="references" className="text-sm cursor-pointer flex-1">
+                    <span className="font-medium">Modelar a partir das minhas referências</span>
+                    <span className="block text-xs text-muted-foreground mt-0.5">
+                      Use os YouTubers/blogs que você configurou como referência desse canal.
+                      A IA modela o estilo deles.
+                    </span>
+                  </Label>
+                </div>
+
+                {!refsLoading && references.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pl-6">
+                    {references.map((ref) => (
+                      <Badge key={ref.id} variant="secondary" className="text-[10px] gap-1">
+                        <Youtube className="h-2.5 w-2.5" />
+                        {ref.name ?? ref.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 25)}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+
+                <form onSubmit={addReference} className="flex gap-2 pl-6">
+                  <Input
+                    placeholder="https://youtube.com/@youtuber-referencia"
+                    value={newRefUrl}
+                    onChange={(e) => setNewRefUrl(e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                  <Button type="submit" size="sm" variant="outline" disabled={addingRef || !newRefUrl.trim()} className="h-8 px-2">
+                    {addingRef ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                  </Button>
+                </form>
+
+                {references.length === 0 && !refsLoading && (
+                  <p className="text-[10px] text-muted-foreground pl-6">
+                    Adicione canais do YouTube que você quer modelar. Ou configure todos no{' '}
+                    <a href={`/channels/${channelId}`} className="underline">settings do canal</a>.
+                  </p>
+                )}
               </div>
 
               <Button type="submit" disabled={researching || !topic.trim()}>
