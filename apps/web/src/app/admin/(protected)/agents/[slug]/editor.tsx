@@ -12,14 +12,32 @@ interface Agent {
   instructions: string;
   input_schema: string | null;
   output_schema: string | null;
+  recommended_provider: string | null;
+  recommended_model: string | null;
   updated_at: string;
 }
+
+const PROVIDER_OPTIONS = [
+  { value: '', label: '— sem recomendação —' },
+  { value: 'gemini', label: 'Gemini (Google)' },
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'anthropic', label: 'Anthropic (Claude)' },
+];
+
+// Suggested models per provider — admin can override with a custom model name.
+const MODEL_SUGGESTIONS: Record<string, string[]> = {
+  gemini: ['gemini-2.5-flash', 'gemini-2.5-pro'],
+  openai: ['gpt-4o-mini', 'gpt-4o', 'o1-mini'],
+  anthropic: ['claude-sonnet-4-5-20250514', 'claude-opus-4-5-20250514', 'claude-haiku-4-5-20251001'],
+};
 
 export function AgentEditor({ agent }: { agent: Agent }) {
   const [name, setName] = useState(agent.name);
   const [instructions, setInstructions] = useState(agent.instructions);
   const [inputSchema, setInputSchema] = useState(agent.input_schema ?? '');
   const [outputSchema, setOutputSchema] = useState(agent.output_schema ?? '');
+  const [provider, setProvider] = useState(agent.recommended_provider ?? '');
+  const [model, setModel] = useState(agent.recommended_model ?? '');
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
@@ -32,6 +50,8 @@ export function AgentEditor({ agent }: { agent: Agent }) {
         instructions,
         input_schema: inputSchema || null,
         output_schema: outputSchema || null,
+        recommended_provider: provider || null,
+        recommended_model: model || null,
       });
       if (res.ok) {
         setMessage({ kind: 'ok', text: 'Salvo. Nova versão refletirá na próxima geração (cache 5min).' });
@@ -79,6 +99,50 @@ export function AgentEditor({ agent }: { agent: Agent }) {
             rows={24}
             className="w-full px-3 py-2 rounded-md border bg-background text-sm font-mono"
           />
+        </div>
+
+        <div className="space-y-3 p-4 rounded-md border bg-muted/20">
+          <div>
+            <h3 className="text-sm font-medium">Modelo recomendado</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              O app vai mostrar este modelo como &ldquo;Recommended&rdquo; para essa etapa do pipeline.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Provider</label>
+              <select
+                value={provider}
+                onChange={(e) => {
+                  setProvider(e.target.value);
+                  setModel('');
+                }}
+                className="w-full px-2 py-1.5 rounded-md border bg-background text-sm"
+              >
+                {PROVIDER_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Model</label>
+              <input
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                disabled={!provider}
+                list={`models-${provider}`}
+                placeholder={provider ? 'ex: gemini-2.5-flash' : 'escolha um provider primeiro'}
+                className="w-full px-2 py-1.5 rounded-md border bg-background text-sm disabled:opacity-50"
+              />
+              {provider && MODEL_SUGGESTIONS[provider] && (
+                <datalist id={`models-${provider}`}>
+                  {MODEL_SUGGESTIONS[provider].map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">

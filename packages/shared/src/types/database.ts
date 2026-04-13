@@ -23,6 +23,8 @@ export type Database = {
           name: string
           org_id: string | null
           output_schema: string | null
+          recommended_model: string | null
+          recommended_provider: string | null
           slug: string
           stage: string
           updated_at: string
@@ -35,6 +37,8 @@ export type Database = {
           name: string
           org_id?: string | null
           output_schema?: string | null
+          recommended_model?: string | null
+          recommended_provider?: string | null
           slug: string
           stage: string
           updated_at?: string
@@ -47,6 +51,8 @@ export type Database = {
           name?: string
           org_id?: string | null
           output_schema?: string | null
+          recommended_model?: string | null
+          recommended_provider?: string | null
           slug?: string
           stage?: string
           updated_at?: string

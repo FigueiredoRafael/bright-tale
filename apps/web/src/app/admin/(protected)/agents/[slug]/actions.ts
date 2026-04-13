@@ -9,6 +9,8 @@ interface UpdatePayload {
   instructions: string;
   input_schema: string | null;
   output_schema: string | null;
+  recommended_provider: string | null;
+  recommended_model: string | null;
 }
 
 export async function updateAgentAction(payload: UpdatePayload) {
@@ -20,6 +22,8 @@ export async function updateAgentAction(payload: UpdatePayload) {
       instructions: payload.instructions,
       input_schema: payload.input_schema,
       output_schema: payload.output_schema,
+      recommended_provider: payload.recommended_provider,
+      recommended_model: payload.recommended_model,
     })
     .eq('id', payload.id);
 
