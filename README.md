@@ -1,296 +1,191 @@
-# BrightCurios Workflow Platform
+# BrightTale
 
-A comprehensive Next.js platform for AI-assisted content creation with a **5-stage, 4-agent workflow system**, AI image generation, global Image Bank, research library, and multi-platform publishing (Blog, YouTube, Shorts, Podcast).
+AI-assisted content factory: brainstorm → research → produce → review → publish across blog, video, shorts and podcast formats. Multi-provider AI (Gemini, OpenAI, Anthropic, **local Ollama**) with runtime fallback.
 
-> **Monorepo layout:** Next.js app lives in `bright-curios-workflow/`. Agent definition files live in `agents/`. All dev commands must be run from `bright-curios-workflow/`.
-
----
-
-## Features
-
-### Workflow Pipeline
-
-- **5-Stage Pipeline**: Brainstorm → Research → Production → Review → Publish
-- **4-Agent ChatGPT Integration**: Structured BC_* YAML contracts for AI-assisted content creation
-- **Full Input Persistence**: Every stage saves and restores all form fields, raw AI responses, and configuration on reload
-- **Stage Navigation**: Click any stage in the tracker to switch; auto-saves current stage before navigating
-- **Auto-advance Toggle**: Optionally advance to the next stage automatically on complete
-
-### AI Image Generation
-
-- **Gemini Imagen Integration**: `gemini-2.5-flash-image` (recommended) and `imagen-3.0-generate-002`
-- **Global Image Bank** (`/images`): Gallery of all generated images across projects with filter, search, bulk download/delete
-- **Prompt Builder**: Sidebar for standalone image creation without a project context
-- **Production Assets**: Per-section blog images and thumbnail/chapter video images auto-suggested from agent output
-- **Image Storage**: Files saved locally under `public/generated-images/`
-- **Single & ZIP Downloads**: Download individual images or bulk ZIP
-
-### Content Production
-
-- **Canonical Core Workflow**: BC_CANONICAL_CORE → per-format agents (Blog, Video, Shorts, Podcast, Engagement)
-- **Blog Editor**: Rich editing with live preview, save as blog draft
-- **Video Script**: Title options, script sections, chapter illustrations
-- **Shorts & Podcast**: Dedicated tabs with structured output
-- **Asset Tabs**: Generate images tied to each piece of content
-
-### Research Library
-
-- Store and reuse research across multiple projects
-- Research focus and depth settings persisted when loading from library
-- Import from markdown, download as markdown
-- Link research entries to projects
-
-### Publishing
-
-- WordPress publishing (draft or live) with category/tag support
-- Blog content auto-fetched from production stage
-- Asset download section for manual upload to WordPress/YouTube
-
-### Settings
-
-- **AI Providers**: Configure Anthropic / OpenAI text generation providers
-- **Image Generation**: Configure Gemini Imagen API key and model
-- **WordPress**: Configure site URL and credentials
-- **Agents**: View and edit agent system prompts per stage
+```
+bright-tale/
+├── apps/
+│   ├── app/      Next.js UI (port 3000)        @brighttale/app
+│   ├── api/      Fastify API (port 3001)       @brighttale/api
+│   └── web/      landing + admin (port 3002)   @brighttale/web
+├── packages/
+│   └── shared/   types, schemas, mappers       @brighttale/shared
+├── supabase/     migrations + seeds
+└── agents/       agent prompt source files
+```
 
 ---
 
-## Tech Stack
+## Prerequisites
 
-| Layer | Technology |
-|---|---|
-| Framework | Next.js 16 (App Router) + React 19 |
-| Language | TypeScript |
-| Database | PostgreSQL + Prisma 7 |
-| Validation | Zod |
-| UI | shadcn/ui + Tailwind CSS 4 |
-| Image AI | `@google/genai` (Gemini Imagen) |
-| Testing | Vitest + Testing Library |
+- **Node.js 20+** and **npm 10+**
+- **Supabase CLI** (`brew install supabase/tap/supabase`) — for migrations
+- **Docker Desktop** — only if you want a local Supabase instead of remote
+- **Ollama** (optional, recommended for free local AI):
+  - macOS: `brew install ollama`
+  - Linux: `curl -fsSL https://ollama.com/install.sh | sh`
 
 ---
 
-## Getting Started
+## First-time setup
 
-### Prerequisites
-
-- Node.js 18+
-- PostgreSQL 14+
-
-### 1. Clone & Install
+### 1. Clone + install
 
 ```bash
-git clone <repository-url>
-cd bright-curios-automation-workflow/bright-curios-workflow
+git clone <repo-url> bright-tale
+cd bright-tale
 npm install
 ```
 
-### 2. Database Setup
+### 2. Environment files
+
+Three env files (gitignored). Copy from someone on the team or create:
+
+**`.env.local`** (root)
+```bash
+SUPABASE_ACCESS_TOKEN=sbp_...   # for `supabase` CLI
+```
+
+**`apps/api/.env.local`**
+```bash
+INTERNAL_API_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+SUPABASE_URL=https://<project>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+
+# At least ONE of these — Gemini has a free tier, Ollama is fully local.
+GOOGLE_AI_KEY=AIza...           # https://aistudio.google.com/app/apikey
+OPENAI_API_KEY=sk-...           # paid
+ANTHROPIC_API_KEY=sk-ant-...    # paid
+# Ollama needs no key, only a running server (see step 4).
+
+YOUTUBE_API_KEY=...             # https://console.cloud.google.com (YouTube Data API v3)
+```
+
+**`apps/app/.env.local`**
+```bash
+INTERNAL_API_KEY=<same value as apps/api>
+API_URL=http://localhost:3001
+NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+```
+
+### 3. Database
+
+Apply migrations to your dev Supabase project:
 
 ```bash
-createdb bright_curios_workflow
-npx prisma migrate dev
-npx prisma db seed
+npm run db:push:dev      # pushes supabase/migrations/* to dev
+npm run db:types         # regenerates packages/shared/src/types/database.ts
 ```
 
-### 3. Environment Variables
-
-Create `bright-curios-workflow/.env`:
-
-```env
-# Database
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/bright_curios_workflow"
-
-# Encryption (generate with: npm run generate:secret)
-ENCRYPTION_SECRET="your-32-char-secret"
-
-# Image Generation (optional — can also configure via Settings UI)
-IMAGE_PROVIDER=gemini
-GEMINI_API_KEY=AIza...
-
-# Node
-NODE_ENV="development"
-```
-
-### 4. Run
+Local Supabase alternative (Docker required):
 
 ```bash
-npm run dev
-# Open http://localhost:3000
+npm run db:start         # boots local Supabase on :54321
+npm run db:reset         # applies migrations + seed
+# Then point apps/api .env to http://localhost:54321 with local keys
 ```
+
+Seed agent prompts (idempotent):
+
+```bash
+npm run db:seed
+```
+
+### 4. Local AI (Ollama, optional but recommended)
+
+```bash
+ollama pull llama3.2:3b      # smallest, ~2GB, fast on any Mac
+# or
+ollama pull qwen2.5:7b       # better JSON output, ~4.4GB
+# or
+ollama pull llama3.1:8b      # better quality, ~4.7GB
+```
+
+`npm run dev` will start `ollama serve` automatically; if you already run it as a service or skip this step, the script just logs and moves on.
 
 ---
 
-## Development Commands
+## Running
 
 ```bash
-# Dev server
-npm run dev
-
-# Build
-npm run build && npm start
-
-# Tests
-npm run test
-npm run test:watch
-
-# Lint
-npm run lint
-
-# Database
-npx prisma migrate dev      # Create and apply migration
-npx prisma generate         # Regenerate Prisma client
-npx prisma studio           # Database GUI
-npx prisma db seed          # Seed agent prompts & sample data
-
-# Generate encryption secret
-npm run generate:secret
+npm run dev       # app + api + web + docs + inngest + ollama in parallel
 ```
+
+Or individually:
+
+```bash
+npm run dev:app       # http://localhost:3000  (user UI)
+npm run dev:api       # http://localhost:3001  (Fastify routes)
+npm run dev:web       # http://localhost:3002  (admin + landing)
+npm run dev:docs      # http://localhost:3003  (docs-site)
+npm run dev:inngest   # http://localhost:8288  (Inngest dev UI)
+npm run dev:ollama    # http://localhost:11434 (local AI)
+```
+
+After login the app routes you to onboarding (creates org + first channel). Then:
+
+- `/channels/[id]/brainstorm/new` — generate ideas (50 credits, picks any provider)
+- `/channels/[id]/research/new` — research a topic at surface/medium/deep level
+- `/channels/[id]/drafts/new` — produce blog/video/shorts/podcast from a research session
+
+Admin lives at `http://localhost:3002/admin` (you must be in `user_roles` with `role='admin'`).
 
 ---
 
-## Agent Architecture
+## AI providers
 
-### 5-Stage Pipeline
-
-```
-Brainstorm → Research → Production → Review → Publish
-     │            │           │          │        │
-BC_BRAINSTORM  BC_RESEARCH  BC_*      BC_REVIEW  (WP API)
-```
-
-### The 4 Agents
-
-| Agent | Stage | Purpose | Contract |
+| Provider | Cost | Setup | Best for |
 |---|---|---|---|
-| **Brainstorm** | brainstorm | Generate & select content ideas | `BC_BRAINSTORM_INPUT` → `BC_BRAINSTORM_OUTPUT` |
-| **Research** | research | Validate claims, find sources | `BC_RESEARCH_INPUT` → `BC_RESEARCH_OUTPUT` |
-| **Production** | production | Create blog, video, shorts, podcast | `BC_CANONICAL_CORE` → per-format outputs |
-| **Review** | review | Quality review & publication plan | `BC_REVIEW_INPUT` → `BC_REVIEW_OUTPUT` |
+| **Ollama** (local) | Free | `ollama pull <model>` | Dev/test, offline, infinite calls |
+| **Gemini** | Free tier (15 RPM, 1M tokens/day) | `GOOGLE_AI_KEY` | Standard daily use |
+| **OpenAI** | Paid ($5 min) | `OPENAI_API_KEY` | High-quality production |
+| **Anthropic** | Paid ($5 min) | `ANTHROPIC_API_KEY` | Best for long-form content |
 
-### ChatGPT Integration Workflow
-
-1. **Generate YAML** — Platform generates `BC_*_INPUT` YAML from form data
-2. **Copy to ChatGPT** — User copies YAML + agent prompt
-3. **Get Response** — ChatGPT returns `BC_*_OUTPUT` YAML
-4. **Paste & Parse** — Platform parses response and displays structured content
-5. **Advance Stage** — User reviews and advances to next stage
+The router automatically falls back across providers on transient errors (overload, network, billing). Per-stage `Recommended` provider+model is configurable in **admin → Agentes**.
 
 ---
 
-## Project Structure
+## Common scripts
 
-```
-bright-curios-automation-workflow/
-├── agents/                          # Agent definition markdown files
-│   ├── agent-1-brainstorm.md
-│   ├── agent-2-research.md
-│   ├── agent-3b-blog.md
-│   ├── agent-3b-video.md
-│   └── agent-4-review.md
-│
-└── bright-curios-workflow/          # Next.js application
-    ├── src/
-    │   ├── app/
-    │   │   ├── api/
-    │   │   │   ├── projects/        # Project CRUD + bulk operations
-    │   │   │   ├── stages/          # Stage management + revisions
-    │   │   │   ├── assets/          # Asset CRUD + generate + download
-    │   │   │   ├── image-generation/# Gemini Imagen config + test
-    │   │   │   ├── research/        # Research library
-    │   │   │   ├── templates/       # Template system
-    │   │   │   ├── wordpress/       # WordPress publish + config
-    │   │   │   └── ai/              # AI provider config
-    │   │   ├── images/              # Global Image Bank
-    │   │   ├── projects/[id]/       # Focused project view (all stages)
-    │   │   ├── research/            # Research library UI
-    │   │   ├── blogs/               # Blog draft library
-    │   │   ├── videos/              # Video draft library
-    │   │   └── settings/            # AI, image gen, WordPress, agents
-    │   │
-    │   ├── components/
-    │   │   ├── brainstorm/          # BrainstormForm
-    │   │   ├── research/            # ResearchForm
-    │   │   ├── production/          # ProductionForm, BlogEditor, VideoPreview
-    │   │   ├── review/              # ReviewForm
-    │   │   ├── wordpress/           # PublishingForm
-    │   │   ├── assets/              # AssetsTabBlog, AssetsTabVideo, ImageGenerationCard
-    │   │   ├── images/              # ImageBankCard, PromptBuilder, RegenerateDialog
-    │   │   ├── agents/              # AgentPromptViewer
-    │   │   ├── ideas/               # IdeaLibraryPicker
-    │   │   ├── layout/              # DashboardLayout, Sidebar
-    │   │   └── ui/                  # shadcn/ui components
-    │   │
-    │   ├── types/
-    │   │   └── agents.ts            # BC_* agent contract types
-    │   │
-    │   └── lib/
-    │       ├── ai/                  # Provider abstraction + Gemini Imagen
-    │       │   ├── imageIndex.ts    # Image provider factory
-    │       │   ├── imageProvider.ts # Provider interface
-    │       │   ├── promptGenerators.ts
-    │       │   └── providers/
-    │       │       ├── gemini-imagen.ts
-    │       │       └── mock-imagen.ts
-    │       ├── files/
-    │       │   └── imageStorage.ts  # Local file save/delete utilities
-    │       ├── modules/             # blog, video, shorts, podcast, engagement
-    │       │   └── {format}/        # schema, mapper, exporter, validator
-    │       ├── schemas/             # Zod validation schemas
-    │       ├── queries/             # Reusable DB query logic
-    │       └── prisma.ts            # Prisma client singleton
-    │
-    ├── prisma/
-    │   ├── schema.prisma            # Database schema
-    │   ├── seed.ts                  # Agent prompts + sample data
-    │   └── migrations/
-    │
-    └── public/
-        └── generated-images/        # AI-generated images (gitignored)
+```bash
+# Build & test
+npm run build            # all workspaces
+npm run test             # all workspaces
+npm run typecheck        # all workspaces
+npm run lint             # all workspaces
+
+# Database
+npm run db:push:dev      # apply migrations to dev Supabase
+npm run db:push:prod     # apply migrations to prod (with confirmation)
+npm run db:types         # regenerate database.ts types from remote
+npm run db:start         # local Supabase up (Docker)
+npm run db:stop          # local Supabase down
+npm run db:reset         # local Supabase reset + reseed
+npm run db:seed          # regenerate seed.sql from agents/*.md and apply
+
+# Utilities
+npm run generate:secret  # 32-byte hex (use for INTERNAL_API_KEY)
 ```
 
 ---
 
-## Key Architectural Decisions
+## Architecture in one paragraph
 
-| Decision | Choice | Reason |
-|---|---|---|
-| Agent contracts | BC_* YAML format | Structured, parseable, copy-paste friendly |
-| Image storage | Local filesystem (`public/`) | Simple, no external dependency |
-| API key storage | AES-256-GCM encrypted in DB | Secure; supports UI-based config |
-| Asset project link | Nullable `project_id` | Images can be standalone (Image Bank) |
-| Research library format | JSON-wrapped in `research_content` | Flexible schema evolution |
-| Legacy format support | `isLegacyIdea()` + 30-day compat | Avoid breaking existing data |
-| Bulk export | JSON only (ZIP deferred) | Simplicity first |
+`apps/app` is a thin Next.js UI. Its middleware proxies all `/api/*` to `apps/api` (Fastify on port 3001), stripping any client-supplied `x-internal-key` / `x-user-id` and injecting the real values from env. `apps/api` validates the shared secret on every request, owns all Supabase writes via the `service_role` key, and runs background jobs through Inngest. AI calls go through `apps/api/src/lib/ai/router.ts` which builds a provider chain (override → tier primary → fallbacks) and retries transient failures. Agent system prompts live in `agent_prompts` (DB), seeded from `agents/*.md` and editable from the admin UI without redeploys.
+
+For deeper docs see [`docs/`](./docs/) and the milestone pages in `apps/docs-site/src/content/milestones/`.
 
 ---
 
-## Roadmap
+## Troubleshooting
 
-### Completed
+**`ECONNRESET` / `Failed to proxy`** — `apps/api` crashed or restarted mid-request. Restart with `npm run dev:api` and check stderr for the actual error.
 
-- [x] 5-stage workflow pipeline with 4-agent YAML contracts
-- [x] Full input persistence across all stages (save/restore on reload)
-- [x] Gemini Imagen AI image generation
-- [x] Global Image Bank with filter, search, bulk operations
-- [x] Production assets tab (blog sections + video thumbnails)
-- [x] Canonical Core multi-format production workflow
-- [x] Blog editor with live preview
-- [x] Research library with markdown import/export
-- [x] WordPress publishing integration
-- [x] AI provider configuration (text + image)
-- [x] Stage navigation with auto-save
-- [x] Idea library with similarity detection
-- [x] Template system with inheritance
+**Brainstorm/research returns 0 ideas** — the agent output shape didn't match the normalizer. Check `apps/api` logs for the raw response and adjust `normalizeIdeas` in `apps/api/src/routes/brainstorm.ts`.
 
-### In Progress / Planned
+**Quota exceeded on Gemini** — free tier resets per minute and per day. Wait or switch to Ollama for unlimited dev usage.
 
-- [ ] Revision comparison (diff view between stage versions)
-- [ ] Full-text search across projects and research
-- [ ] Kanban board view for projects
-- [ ] ZIP export for bulk project data
-- [ ] WordPress media upload (auto-upload generated images)
-- [ ] YouTube metadata publishing
+**`supabase: command not found`** — `brew install supabase/tap/supabase` (mac) or see https://supabase.com/docs/guides/cli.
 
----
-
-**Built for content creators who want AI assistance without losing control.**
+**Ollama "model not found"** — `ollama list` shows what you actually pulled. Either pull the model the picker is asking for, or pick one from `ollama list` in the UI.
