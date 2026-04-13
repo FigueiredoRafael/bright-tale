@@ -128,6 +128,10 @@ export default function NewDraftPage() {
         const friendly = friendlyAiError(message);
         toast.error(friendly.title, { description: friendly.hint });
         setActiveDraftId(null);
+        // Even on failure, the draft row exists with status='failed' — send the
+        // user to the draft page so they can inspect, retry with another model,
+        // or delete it. Better than leaving them stranded on /new.
+        if (draftId) router.push(`/channels/${channelId}/drafts/${draftId}`);
     }
 
     return (
@@ -149,7 +153,13 @@ export default function NewDraftPage() {
                     title={`Gerando ${type}`}
                     onComplete={onJobComplete}
                     onFailed={onJobFailed}
-                    onClose={() => { setActiveDraftId(null); }}
+                    onClose={() => {
+                        setActiveDraftId(null);
+                        // If the user closes the modal manually, take them to the
+                        // draft so they can see status / retry / delete instead of
+                        // staying on /new with a half-spawned draft.
+                        if (draftId) router.push(`/channels/${channelId}/drafts/${draftId}`);
+                    }}
                 />
             )}
             <div>
