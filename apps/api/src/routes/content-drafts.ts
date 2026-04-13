@@ -403,4 +403,20 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
       return sendError(reply, error);
     }
   });
+
+  /**
+   * DELETE /:id — remove a draft.
+   */
+  fastify.delete('/:id', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const { id } = request.params as { id: string };
+      const sb = createServiceClient();
+      const { error } = await sb.from('content_drafts').delete().eq('id', id);
+      if (error) throw error;
+      return reply.send({ data: { deleted: true }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
 }

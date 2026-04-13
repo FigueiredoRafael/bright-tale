@@ -5,7 +5,11 @@ import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, Video, Zap, Mic, Loader2, Sparkles, Code2, MessageSquare } from "lucide-react";
+import { ArrowLeft, FileText, Video, Zap, Mic, Loader2, Sparkles, Code2, MessageSquare, Trash2 } from "lucide-react";
+import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
+import { GenerationProgressModal } from "@/components/generation/GenerationProgressModal";
+import { friendlyAiError } from "@/lib/ai/error-message";
+import { toast } from "sonner";
 
 interface Draft {
     id: string;
@@ -67,6 +71,50 @@ export default function DraftViewPage() {
     const [draft, setDraft] = useState<Draft | null>(null);
     const [loading, setLoading] = useState(true);
     const [showRaw, setShowRaw] = useState(false);
+    const [provider, setProvider] = useState<ProviderId>("ollama");
+    const [model, setModel] = useState<string>("qwen2.5:7b");
+    const [generating, setGenerating] = useState(false);
+
+    async function refetch() {
+        const res = await fetch(`/api/content-drafts/${draftId}`);
+        const json = await res.json();
+        if (json?.data) setDraft(json.data as Draft);
+    }
+
+    async function startGeneration() {
+        try {
+            const res = await fetch(`/api/content-drafts/${draftId}/generate`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ provider, model }),
+            });
+            const json = await res.json();
+            if (json?.error) {
+                const f = friendlyAiError(json.error.message ?? "");
+                toast.error(f.title, { description: f.hint });
+                return;
+            }
+            setGenerating(true);
+        } catch {
+            toast.error("Não consegui iniciar a geração");
+        }
+    }
+
+    async function handleDelete() {
+        if (!confirm("Deletar este rascunho? Essa ação não pode ser desfeita.")) return;
+        try {
+            const res = await fetch(`/api/content-drafts/${draftId}`, { method: "DELETE" });
+            const json = await res.json();
+            if (json?.error) {
+                toast.error(json.error.message ?? "Falha ao deletar");
+                return;
+            }
+            toast.success("Rascunho deletado");
+            router.push(`/channels/${channelId}/create`);
+        } catch {
+            toast.error("Falha ao deletar");
+        }
+    }
 
     useEffect(() => {
         if (!draftId) return;
@@ -125,30 +173,59 @@ export default function DraftViewPage() {
                         </div>
                         <h1 className="text-2xl font-bold">{draft.title ?? "Sem título"}</h1>
                     </div>
-                    <Badge variant={draft.status === "published" ? "default" : "outline"} className="capitalize">
-                        {draft.status}
-                    </Badge>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <Badge variant={draft.status === "published" ? "default" : "outline"} className="capitalize">
+                            {draft.status}
+                        </Badge>
+                        <Button variant="ghost" size="sm" onClick={handleDelete} className="text-muted-foreground hover:text-red-500">
+                            <Trash2 className="h-4 w-4" />
+                        </Button>
+                    </div>
                 </div>
             </div>
 
-            {!draft.draft_json && draft.status !== "failed" && (
-                <Card>
-                    <CardContent className="py-8 text-center space-y-3">
-                        <Sparkles className="h-8 w-8 mx-auto text-muted-foreground" />
-                        <p className="text-sm text-muted-foreground">
-                            Esse rascunho ainda não foi gerado. Volte pra Create Content e clique Gerar.
-                        </p>
-                        <Button onClick={() => router.push(`/channels/${channelId}/drafts/new`)}>
-                            Gerar agora
-                        </Button>
-                    </CardContent>
-                </Card>
+            {generating && (
+                <GenerationProgressModal
+                    open={generating}
+                    sessionId={draftId as string}
+                    sseUrl={`/api/content-drafts/${draftId}/events`}
+                    title={`Gerando ${meta.label.toLowerCase()}`}
+                    onComplete={async () => { setGenerating(false); await refetch(); toast.success("Conteúdo gerado"); }}
+                    onFailed={(msg) => { setGenerating(false); const f = friendlyAiError(msg); toast.error(f.title, { description: f.hint }); }}
+                    onClose={() => setGenerating(false)}
+                />
             )}
 
-            {draft.status === "failed" && (
-                <Card className="border-red-500/50">
-                    <CardContent className="py-6">
-                        <p className="text-sm text-red-500">Geração falhou. Tente de novo no Create Content.</p>
+            {(!draft.draft_json || draft.status === "failed") && (
+                <Card className={draft.status === "failed" ? "border-red-500/50" : ""}>
+                    <CardContent className="py-6 space-y-4">
+                        <div className="text-center space-y-2">
+                            <Sparkles className="h-8 w-8 mx-auto text-muted-foreground" />
+                            <p className="text-sm">
+                                {draft.status === "failed"
+                                    ? "Geração anterior falhou."
+                                    : "Esse rascunho ainda não foi gerado."}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                                Escolha o modelo e clique gerar — vai rodar nesse mesmo rascunho.
+                            </p>
+                        </div>
+                        <ModelPicker
+                            provider={provider}
+                            model={model}
+                            recommended={{ provider: null, model: null }}
+                            onProviderChange={(p) => {
+                                setProvider(p);
+                                setModel(MODELS_BY_PROVIDER[p][0].id);
+                            }}
+                            onModelChange={setModel}
+                        />
+                        <div className="flex justify-center">
+                            <Button onClick={startGeneration} disabled={generating}>
+                                <Sparkles className="h-4 w-4 mr-2" />
+                                {draft.status === "failed" ? "Tentar de novo" : "Gerar agora"}
+                            </Button>
+                        </div>
                     </CardContent>
                 </Card>
             )}

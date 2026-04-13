@@ -6,8 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Sparkles, FileText, Video, Zap, Mic, Loader2, Search, Clock } from "lucide-react";
+import { Sparkles, FileText, Video, Zap, Mic, Loader2, Search, Clock, Trash2 } from "lucide-react";
 import { useActiveChannel } from "@/hooks/use-active-channel";
+import { toast } from "sonner";
 
 interface ContentDraft {
     id: string;
@@ -63,6 +64,22 @@ export default function ContentPage() {
         if (d.channel_id) router.push(`/channels/${d.channel_id}/drafts/${d.id}`);
     }
 
+    async function deleteDraft(d: ContentDraft) {
+        if (!confirm(`Deletar "${d.title ?? "rascunho"}"?`)) return;
+        try {
+            const res = await fetch(`/api/content-drafts/${d.id}`, { method: "DELETE" });
+            const json = await res.json();
+            if (json?.error) {
+                toast.error(json.error.message ?? "Falha ao deletar");
+                return;
+            }
+            setDrafts((prev) => prev.filter((x) => x.id !== d.id));
+            toast.success("Deletado");
+        } catch {
+            toast.error("Falha ao deletar");
+        }
+    }
+
     return (
         <div className="p-6 max-w-5xl mx-auto space-y-6">
             <div>
@@ -105,11 +122,11 @@ export default function ContentPage() {
                     </TabsList>
 
                     <TabsContent value="all" className="mt-4">
-                        <DraftList items={filtered} onClick={gotoDraft} />
+                        <DraftList items={filtered} onClick={gotoDraft} onDelete={deleteDraft} />
                     </TabsContent>
                     {(["blog", "video", "shorts", "podcast"] as const).map((t) => (
                         <TabsContent key={t} value={t} className="mt-4">
-                            <DraftList items={filtered.filter((d) => d.type === t)} onClick={gotoDraft} />
+                            <DraftList items={filtered.filter((d) => d.type === t)} onClick={gotoDraft} onDelete={deleteDraft} />
                         </TabsContent>
                     ))}
                 </Tabs>
@@ -118,7 +135,7 @@ export default function ContentPage() {
     );
 }
 
-function DraftList({ items, onClick }: { items: ContentDraft[]; onClick: (d: ContentDraft) => void }) {
+function DraftList({ items, onClick, onDelete }: { items: ContentDraft[]; onClick: (d: ContentDraft) => void; onDelete: (d: ContentDraft) => void }) {
     if (items.length === 0) {
         return (
             <Card>
@@ -134,27 +151,35 @@ function DraftList({ items, onClick }: { items: ContentDraft[]; onClick: (d: Con
                 const meta = TYPE_META[d.type];
                 const Icon = meta.icon;
                 return (
-                    <button
+                    <div
                         key={d.id}
-                        onClick={() => onClick(d)}
-                        className="text-left p-3 rounded-lg border hover:border-primary/50 hover:bg-muted/30 transition-colors"
+                        className="group relative text-left p-3 rounded-lg border hover:border-primary/50 hover:bg-muted/30 transition-colors"
                     >
-                        <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 text-[10px] text-muted-foreground mb-1">
-                                    <Icon className={`h-3 w-3 ${meta.color}`} /> {meta.label}
+                        <button onClick={() => onClick(d)} className="w-full text-left">
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground mb-1">
+                                        <Icon className={`h-3 w-3 ${meta.color}`} /> {meta.label}
+                                    </div>
+                                    <div className="text-sm font-medium line-clamp-2 pr-6">{d.title ?? "Sem título"}</div>
+                                    <div className="flex items-center gap-1.5 mt-1 text-[10px] text-muted-foreground">
+                                        <Clock className="h-3 w-3" />
+                                        {new Date(d.updated_at).toLocaleDateString("pt-BR")}
+                                    </div>
                                 </div>
-                                <div className="text-sm font-medium line-clamp-2">{d.title ?? "Sem título"}</div>
-                                <div className="flex items-center gap-1.5 mt-1 text-[10px] text-muted-foreground">
-                                    <Clock className="h-3 w-3" />
-                                    {new Date(d.updated_at).toLocaleDateString("pt-BR")}
-                                </div>
+                                <Badge variant={d.status === "published" ? "default" : "outline"} className="text-[10px] shrink-0 capitalize">
+                                    {d.status}
+                                </Badge>
                             </div>
-                            <Badge variant={d.status === "published" ? "default" : "outline"} className="text-[10px] shrink-0 capitalize">
-                                {d.status}
-                            </Badge>
-                        </div>
-                    </button>
+                        </button>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onDelete(d); }}
+                            className="absolute top-2 right-2 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-opacity"
+                            title="Deletar"
+                        >
+                            <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
                 );
             })}
         </div>
