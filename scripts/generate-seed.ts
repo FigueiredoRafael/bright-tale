@@ -8,7 +8,15 @@ import { join } from 'node:path';
 
 const AGENTS_DIR = join(process.cwd(), 'agents');
 const OUT = join(process.cwd(), 'supabase', 'seed.sql');
-const AGENT_RE = /^agent-(\d+)-([a-z]+)\.md$/;
+// Matches agent-1-brainstorm.md, agent-3a-content-core.md, agent-3b-blog.md, etc.
+const AGENT_RE = /^agent-(\d+)([a-z]?)-(.+)\.md$/;
+
+const STAGE_BY_NUM: Record<string, string> = {
+  '1': 'brainstorm',
+  '2': 'research',
+  '3': 'production',
+  '4': 'review',
+};
 
 function dollarQuote(s: string): string {
   let tag = 'bt';
@@ -27,12 +35,14 @@ if (files.length === 0) {
 }
 
 const inserts = files.map(f => {
-  const [, agentNum, stage] = AGENT_RE.exec(f)!;
-  const id = `agent-${agentNum}-${stage}`;
-  const slug = stage;
+  const [, agentNum, subLetter, suffix] = AGENT_RE.exec(f)!;
+  const stage = STAGE_BY_NUM[agentNum] ?? 'unknown';
+  // slug: unique identifier — use suffix for 3a/3b variants, stage name otherwise.
+  const slug = subLetter ? suffix : stage;
+  const id = `agent-${agentNum}${subLetter}-${suffix}`;
   const instructions = readFileSync(join(AGENTS_DIR, f), 'utf8').trim();
-  const nameMatch = instructions.match(/^#\s+Agent\s+\d+:\s+(.+)/m);
-  const name = nameMatch ? nameMatch[1].trim() : `Agent ${agentNum}`;
+  const nameMatch = instructions.match(/^#\s+Agent\s+[\d\w]+:\s+(.+)/m);
+  const name = nameMatch ? nameMatch[1].trim() : `Agent ${agentNum}${subLetter}`;
 
   return [
     `insert into public.agent_prompts (id, name, slug, stage, instructions, created_at, updated_at)`,
