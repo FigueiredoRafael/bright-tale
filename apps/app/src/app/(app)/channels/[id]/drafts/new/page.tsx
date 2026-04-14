@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,30 +8,101 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, Sparkles, FileText, Video, Zap, Mic, ArrowLeft, Check } from "lucide-react";
+import {
+    Loader2, Sparkles, FileText, Video, Zap, Mic,
+    ArrowLeft, Check, Lightbulb, Search, ClipboardPaste,
+} from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ManualModePanel } from "@/components/ai/ManualModePanel";
+import { useManualMode } from "@/hooks/use-manual-mode";
 
 type DraftType = "blog" | "video" | "shorts" | "podcast";
 
 const TYPES: { id: DraftType; label: string; icon: typeof FileText; cost: number }[] = [
     { id: "blog", label: "Blog", icon: FileText, cost: 200 },
-    { id: "video", label: "Vídeo", icon: Video, cost: 200 },
+    { id: "video", label: "Video", icon: Video, cost: 200 },
     { id: "shorts", label: "Shorts", icon: Zap, cost: 100 },
     { id: "podcast", label: "Podcast", icon: Mic, cost: 150 },
 ];
+
+interface LinkedIdea {
+    idea_id: string;
+    title: string;
+    core_tension: string;
+    verdict: string;
+}
+
+interface ResearchSummary {
+    id: string;
+    level: string;
+    status: string;
+    cardsCount: number;
+    refinedAngle: Record<string, unknown> | null;
+}
 
 export default function NewDraftPage() {
     const { id: channelId } = useParams<{ id: string }>();
     const router = useRouter();
     const searchParams = useSearchParams();
     const ideaIdParam = searchParams.get("ideaId") ?? undefined;
-    const researchSessionId = searchParams.get("researchSessionId") ?? undefined;
+    const researchSessionIdParam = searchParams.get("researchSessionId") ?? undefined;
+    const { enabled: manualEnabled } = useManualMode();
 
     const [type, setType] = useState<DraftType>("blog");
     const [title, setTitle] = useState("");
     const [draftId, setDraftId] = useState<string | null>(null);
     const [step, setStep] = useState<"setup" | "core" | "produce" | "done">("setup");
     const [busy, setBusy] = useState(false);
-    const [output, setOutput] = useState<unknown>(null);
+    const [genMode, setGenMode] = useState<"ai" | "manual">("ai");
+
+    // Context from previous steps
+    const [linkedIdea, setLinkedIdea] = useState<LinkedIdea | null>(null);
+    const [researchSummary, setResearchSummary] = useState<ResearchSummary | null>(null);
+
+    // Fetch idea context
+    useEffect(() => {
+        if (!ideaIdParam) return;
+        (async () => {
+            try {
+                const res = await fetch("/api/ideas/library?limit=100");
+                const json = await res.json();
+                const idea = (json.data?.ideas ?? []).find(
+                    (i: { id: string; idea_id: string }) => i.id === ideaIdParam || i.idea_id === ideaIdParam,
+                );
+                if (idea) {
+                    setLinkedIdea({
+                        idea_id: idea.idea_id,
+                        title: idea.title,
+                        core_tension: idea.core_tension ?? "",
+                        verdict: idea.verdict ?? "experimental",
+                    });
+                    if (!title) setTitle(idea.title);
+                }
+            } catch { /* silent */ }
+        })();
+    }, [ideaIdParam]);
+
+    // Fetch research context
+    useEffect(() => {
+        if (!researchSessionIdParam) return;
+        (async () => {
+            try {
+                const res = await fetch(`/api/research-sessions/${researchSessionIdParam}`);
+                const json = await res.json();
+                if (json.data) {
+                    const d = json.data;
+                    const cards = d.approved_cards_json ?? d.cards_json;
+                    setResearchSummary({
+                        id: d.id,
+                        level: d.level,
+                        status: d.status,
+                        cardsCount: Array.isArray(cards) ? cards.length : 0,
+                        refinedAngle: d.refined_angle_json ?? null,
+                    });
+                }
+            } catch { /* silent */ }
+        })();
+    }, [researchSessionIdParam]);
 
     async function runStep(label: string, fn: () => Promise<Response>) {
         setBusy(true);
@@ -44,7 +115,7 @@ export default function NewDraftPage() {
             }
             return json.data;
         } catch {
-            toast.error(`${label} falhou`);
+            toast.error(`${label} failed`);
             return null;
         } finally {
             setBusy(false);
@@ -53,39 +124,40 @@ export default function NewDraftPage() {
 
     async function handleStart() {
         if (!title.trim()) {
-            toast.error("Informe um título");
+            toast.error("Enter a title");
             return;
         }
-        const draft = await runStep("criar draft", () =>
+        const draft = await runStep("Create draft", () =>
             fetch("/api/content-drafts", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     channelId,
                     ideaId: ideaIdParam,
-                    researchSessionId,
+                    researchSessionId: researchSessionIdParam,
                     type,
                     title,
                 }),
             }),
         );
         if (!draft) return;
-        setDraftId((draft as { id: string }).id);
+        const id = (draft as { id: string }).id;
+        setDraftId(id);
         setStep("core");
 
-        const core = await runStep("canonical core", () =>
-            fetch(`/api/content-drafts/${(draft as { id: string }).id}/canonical-core`, { method: "POST" }),
+        const core = await runStep("Canonical core", () =>
+            fetch(`/api/content-drafts/${id}/canonical-core`, { method: "POST" }),
         );
         if (!core) return;
         setStep("produce");
 
-        const produced = await runStep("produção", () =>
-            fetch(`/api/content-drafts/${(draft as { id: string }).id}/produce`, { method: "POST" }),
+        const produced = await runStep("Production", () =>
+            fetch(`/api/content-drafts/${id}/produce`, { method: "POST" }),
         );
         if (!produced) return;
-        setOutput((produced as { draft_json?: unknown }).draft_json);
         setStep("done");
-        toast.success("Conteúdo gerado");
+        toast.success("Content generated — redirecting to editor");
+        setTimeout(() => router.push(`/channels/${channelId}/drafts/${id}`), 1500);
     }
 
     return (
@@ -95,12 +167,59 @@ export default function NewDraftPage() {
                     onClick={() => router.back()}
                     className="text-xs text-muted-foreground hover:underline flex items-center gap-1"
                 >
-                    <ArrowLeft className="h-3 w-3" /> Voltar
+                    <ArrowLeft className="h-3 w-3" /> Back
                 </button>
                 <h1 className="text-2xl font-bold mt-2 flex items-center gap-2">
-                    <Sparkles className="h-5 w-5" /> Novo conteúdo
+                    <Sparkles className="h-5 w-5" /> New Content
                 </h1>
             </div>
+
+            {/* Context from previous steps */}
+            {(linkedIdea || researchSummary) && (
+                <Card className="border-muted">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-sm text-muted-foreground">Pipeline context</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                        {linkedIdea && (
+                            <div className="flex items-start gap-3">
+                                <Lightbulb className="h-4 w-4 text-yellow-500 shrink-0 mt-0.5" />
+                                <div className="min-w-0">
+                                    <p className="text-xs text-muted-foreground">Idea</p>
+                                    <p className="text-sm font-medium">{linkedIdea.title}</p>
+                                    {linkedIdea.core_tension && (
+                                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{linkedIdea.core_tension}</p>
+                                    )}
+                                </div>
+                                <Badge
+                                    variant={linkedIdea.verdict === "viable" ? "default" : linkedIdea.verdict === "weak" ? "destructive" : "secondary"}
+                                    className="text-[10px] shrink-0"
+                                >
+                                    {linkedIdea.verdict}
+                                </Badge>
+                            </div>
+                        )}
+                        {researchSummary && (
+                            <div className="flex items-start gap-3">
+                                <Search className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                                <div className="min-w-0">
+                                    <p className="text-xs text-muted-foreground">Research</p>
+                                    <p className="text-sm">
+                                        <Badge variant="outline" className="text-[10px] mr-1">{researchSummary.level}</Badge>
+                                        {researchSummary.cardsCount} approved cards
+                                        <Badge variant="outline" className="text-[10px] ml-1">{researchSummary.status}</Badge>
+                                    </p>
+                                    {researchSummary.refinedAngle && Boolean((researchSummary.refinedAngle as Record<string, unknown>).should_pivot) && (
+                                        <p className="text-xs text-yellow-600 mt-0.5">
+                                            Pivot suggested: {String((researchSummary.refinedAngle as Record<string, unknown>).updated_title ?? "")}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
 
             <Card>
                 <CardHeader>
@@ -108,12 +227,16 @@ export default function NewDraftPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="space-y-2">
-                        <Label>Título</Label>
-                        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Como devs sênior usam IA" />
+                        <Label>Title</Label>
+                        <Input
+                            value={title}
+                            onChange={(e) => setTitle(e.target.value)}
+                            placeholder="e.g. How senior devs use AI"
+                        />
                     </div>
 
                     <div className="space-y-2">
-                        <Label>Formato</Label>
+                        <Label>Format</Label>
                         <div className="grid grid-cols-4 gap-2">
                             {TYPES.map((t) => {
                                 const Icon = t.icon;
@@ -134,40 +257,89 @@ export default function NewDraftPage() {
                         </div>
                     </div>
 
-                    <Button onClick={handleStart} disabled={busy || step !== "setup"}>
-                        {busy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-                        Gerar
-                    </Button>
+                    <Tabs value={genMode} onValueChange={(v) => setGenMode(v as "ai" | "manual")} className="mt-2">
+                        <TabsList>
+                            <TabsTrigger value="ai" className="gap-1.5">
+                                <Sparkles className="h-3.5 w-3.5" /> AI Production
+                            </TabsTrigger>
+                            {manualEnabled && (
+                                <TabsTrigger value="manual" className="gap-1.5">
+                                    <ClipboardPaste className="h-3.5 w-3.5" /> Manual
+                                </TabsTrigger>
+                            )}
+                        </TabsList>
+
+                        <TabsContent value="ai" className="mt-3">
+                            <Button onClick={handleStart} disabled={busy || step !== "setup"}>
+                                {busy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                                Generate
+                            </Button>
+                        </TabsContent>
+
+                        {manualEnabled && (
+                            <TabsContent value="manual" className="mt-3">
+                                <ManualModePanel
+                                    agentSlug="content-core"
+                                    inputContext={[
+                                        `Title: ${title || "(enter title above)"}`,
+                                        `Format: ${type}`,
+                                        linkedIdea ? `Idea: ${linkedIdea.title}` : "",
+                                        linkedIdea?.core_tension ? `Core Tension: ${linkedIdea.core_tension}` : "",
+                                        researchSummary ? `Research: ${researchSummary.cardsCount} cards (${researchSummary.level})` : "",
+                                        "",
+                                        "Generate canonical core + blog draft.",
+                                        "Output: {\"canonical_core\":{\"thesis\":\"...\",\"argument_chain\":[...]},\"draft\":{\"full_draft\":\"markdown...\",\"outline\":[...],\"meta_description\":\"...\",\"slug\":\"...\"}}",
+                                    ].filter(Boolean).join("\n")}
+                                    pastePlaceholder={'Paste JSON with canonical_core and/or draft:\n{"canonical_core":{...},"draft":{"full_draft":"# Title\\n\\nContent...","meta_description":"...","slug":"..."}}'}
+                                    onImport={async (parsed) => {
+                                        const obj = parsed as Record<string, unknown>;
+                                        // Create draft first
+                                        const res = await fetch("/api/content-drafts", {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({
+                                                channelId,
+                                                ideaId: ideaIdParam,
+                                                researchSessionId: researchSessionIdParam,
+                                                type,
+                                                title: title || "Untitled",
+                                            }),
+                                        });
+                                        const json = await res.json();
+                                        if (json.error) { toast.error(json.error.message); return; }
+                                        const id = json.data.id;
+
+                                        // Patch with manual content
+                                        await fetch(`/api/content-drafts/${id}`, {
+                                            method: "PATCH",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({
+                                                draftJson: obj.draft ?? obj,
+                                            }),
+                                        });
+
+                                        toast.success("Draft created — redirecting to editor");
+                                        router.push(`/channels/${channelId}/drafts/${id}`);
+                                    }}
+                                    importLabel="Create Draft"
+                                    loading={busy}
+                                />
+                            </TabsContent>
+                        )}
+                    </Tabs>
                 </CardContent>
             </Card>
 
+            {/* Pipeline progress */}
             {step !== "setup" && (
                 <Card>
                     <CardHeader>
                         <CardTitle className="text-base">Pipeline</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
-                        <PipelineStep label="Draft criado" done={!!draftId} active={step === "core" && busy} />
+                        <PipelineStep label="Draft created" done={!!draftId} active={step === "core" && busy} />
                         <PipelineStep label="Canonical core (agent-3a)" done={step === "produce" || step === "done"} active={step === "core" && busy} />
-                        <PipelineStep label={`Produção (agent-3b-${type})`} done={step === "done"} active={step === "produce" && busy} />
-                    </CardContent>
-                </Card>
-            )}
-
-            {step === "done" && output !== null && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-base">Output</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <pre className="text-xs bg-muted/40 rounded-md p-4 overflow-x-auto whitespace-pre-wrap">
-                            {JSON.stringify(output, null, 2)}
-                        </pre>
-                        {draftId && (
-                            <p className="text-xs text-muted-foreground mt-2">
-                                Draft id: <span className="font-mono">{draftId}</span> · Status: in_review
-                            </p>
-                        )}
+                        <PipelineStep label={`Production (agent-3b-${type})`} done={step === "done"} active={step === "produce" && busy} />
                     </CardContent>
                 </Card>
             )}
@@ -185,7 +357,7 @@ function PipelineStep({ label, done, active }: { label: string; done: boolean; a
             ) : (
                 <div className="h-4 w-4 rounded-full border border-muted-foreground/30" />
             )}
-            <span className={done ? "text-foreground" : active ? "text-foreground" : "text-muted-foreground"}>{label}</span>
+            <span className={done || active ? "text-foreground" : "text-muted-foreground"}>{label}</span>
         </div>
     );
 }
