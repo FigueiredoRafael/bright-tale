@@ -9,9 +9,10 @@ import { authenticate } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
-import { generateWithFallback } from '../lib/ai/router.js';
-import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
 import { checkCredits, debitCredits } from '../lib/credits.js';
+import { inngest } from '../jobs/client.js';
+import { emitJobEvent } from '../jobs/emitter.js';
+import { fetchTrends } from '../lib/signals/trends.js';
 
 const LEVEL_COSTS: Record<'surface' | 'medium' | 'deep', number> = {
   surface: 60,
@@ -55,29 +56,41 @@ function buildLevelInstruction(level: 'surface' | 'medium' | 'deep', focusTags: 
   return `Provide 10+ sources, contra-arguments, validated processes, and cross-references. ${focus}`;
 }
 
-function normalizeCards(raw: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(raw)) return raw as Array<Record<string, unknown>>;
-  if (raw && typeof raw === 'object') {
-    const obj = raw as Record<string, unknown>;
-    if (Array.isArray(obj.cards)) return obj.cards as Array<Record<string, unknown>>;
-    if (Array.isArray(obj.results)) return obj.results as Array<Record<string, unknown>>;
-  }
-  return [];
-}
-
 export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * POST / — start a research session for an idea.
    */
+  /**
+   * GET / — list research sessions (optionally filtered by channel + status).
+   */
+  fastify.get('/', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      const q = request.query as { channel_id?: string; status?: string; limit?: string };
+      let query = sb
+        .from('research_sessions')
+        .select('id, channel_id, idea_id, level, status, input_json, cards_json, created_at')
+        .order('created_at', { ascending: false })
+        .limit(Math.min(Number(q.limit ?? 50), 200));
+      if (q.channel_id) query = query.eq('channel_id', q.channel_id);
+      if (q.status) query = query.eq('status', q.status);
+      const { data, error } = await query;
+      if (error) throw error;
+      return reply.send({ data: { sessions: data ?? [] }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
   fastify.post('/', { preHandler: [authenticate] }, async (request, reply) => {
     try {
       if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
       const body = createSchema.parse(request.body);
       const orgId = await getOrgId(request.userId);
       const sb = createServiceClient();
-      const cost = LEVEL_COSTS[body.level];
-
-      await checkCredits(orgId, request.userId, cost);
+      // Local Ollama runs cost us nothing → no internal credit charge.
+      const cost = body.provider === 'ollama' ? 0 : LEVEL_COSTS[body.level];
+      if (cost > 0) await checkCredits(orgId, request.userId, cost);
 
       const inputJson = {
         topic: body.topic ?? null,
@@ -206,9 +219,85 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           .eq('id', session.id);
         throw err;
       }
+      await emitJobEvent(session.id, 'research', 'queued', 'Iniciando…');
+
+      await inngest.send({
+        name: 'research/generate',
+        data: {
+          sessionId: session.id,
+          orgId,
+          userId: request.userId,
+          channelId: body.channelId ?? null,
+          ideaId: body.ideaId ?? null,
+          level: body.level,
+          inputJson,
+          modelTier: body.modelTier,
+          provider: body.provider,
+          model: body.model,
+        },
+      });
+
+      return reply.status(202).send({
+        data: { sessionId: session.id, level: body.level, status: 'queued' },
+        error: null,
+      });
     } catch (error) {
       return sendError(reply, error);
     }
+  });
+
+  /**
+   * GET /:id/events — SSE stream of progress events for the research job.
+   */
+  fastify.get('/:id/events', { preHandler: [authenticate] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const sb = createServiceClient();
+
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    const sinceParam = (request.query as { since?: string })?.since;
+    let lastCreatedAt = sinceParam ?? '1970-01-01T00:00:00Z';
+    let closed = false;
+    request.raw.on('close', () => { closed = true; });
+
+    const poll = async (): Promise<void> => {
+      while (!closed) {
+        const { data: events } = await (sb
+          .from('job_events')
+          .select('*')
+          .eq('session_id', id)
+          .gt('created_at', lastCreatedAt)
+          .order('created_at', { ascending: true })) as unknown as {
+          data: Array<{ id: string; stage: string; message: string; metadata: unknown; created_at: string }> | null;
+        };
+
+        if (events && events.length > 0) {
+          for (const ev of events) {
+            reply.raw.write(`data: ${JSON.stringify(ev)}\n\n`);
+            lastCreatedAt = ev.created_at;
+            if (ev.stage === 'completed' || ev.stage === 'failed') {
+              reply.raw.end();
+              return;
+            }
+          }
+        } else {
+          reply.raw.write(': ping\n\n');
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    };
+
+    void poll().catch((err) => {
+      fastify.log.error({ err }, 'SSE poll failed');
+      reply.raw.end();
+    });
+
+    return reply;
   });
 
   /**
@@ -278,7 +367,6 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
         throw new ApiError(400, 'No pivot recommendation available for this session', 'NO_PIVOT');
       }
 
-      // Update the linked idea with pivoted values
       const ideaId = sessionData.idea_id as string | null;
       if (ideaId) {
         const updateFields: Record<string, unknown> = {};
@@ -293,7 +381,6 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
         }
       }
 
-      // Mark pivot as applied
       await (sb.from('research_sessions') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
       })
@@ -305,6 +392,59 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           pivotApplied: true,
           updatedTitle: refinedAngle.updated_title ?? null,
           updatedHook: refinedAngle.updated_hook ?? null,
+        },
+        error: null,
+      });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * GET /:id/signals — F2-039. Decision signals: Google Trends + YouTube Intelligence.
+   */
+  fastify.get('/:id/signals', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      const { id } = request.params as { id: string };
+
+      const { data: session } = await sb
+        .from('research_sessions')
+        .select('channel_id, input_json')
+        .eq('id', id)
+        .maybeSingle();
+      if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
+
+      const topic = (session.input_json as { topic?: string })?.topic ?? null;
+      if (!topic) {
+        return reply.send({
+          data: { trends: null, youtube: null, warning: 'No topic — signals unavailable' },
+          error: null,
+        });
+      }
+
+      const ytPromise = session.channel_id
+        ? sb
+            .from('youtube_niche_analyses')
+            .select('*')
+            .eq('channel_id', session.channel_id as string)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null });
+
+      const trendsPromise = fetchTrends(topic).catch((err) => {
+        request.log.warn({ err: err?.message }, '[signals] trends failed');
+        return null;
+      });
+
+      const [ytRes, trends] = await Promise.all([ytPromise, trendsPromise]);
+
+      return reply.send({
+        data: {
+          topic,
+          trends,
+          youtube: ytRes.data,
         },
         error: null,
       });

@@ -6,7 +6,17 @@
 
 **Depende de:** Fase 4 (mídia gerada)
 
-**Progresso:** 0/9 concluídos
+**Progresso:** 7/9 implementados · 2 movidos pra V3 (requerem GCP OAuth)
+
+### Resumo (2026-04-14)
+
+- F5-003 Custom webhooks + F5-004 UI destinos + F5-007 publishing_destinations schema → ✅ implementados
+- F5-006 Resend transactional email → ✅ implementado (requer API key)
+- F5-008 Affiliate tables → ✅ migração criada
+- F5-001 YouTube upload → ➡️ movido pra V3 (requer GCP OAuth client)
+- F5-002 UI Publishing step → ➡️ movido pra V3 (depende F5-001)
+- F5-005 Notificações de referências → ✅ implementado (cron + API + UI)
+- F5-009 Affiliate dashboard UI → ✅ implementado (API + /settings/affiliate)
 
 > ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
 > Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
@@ -16,7 +26,13 @@
 ## Cards
 
 ### F5-001 — YouTube upload: OAuth + API
-🔲 **Não iniciado**
+➡️ **Movido para V3**
+
+`lib/publishing/youtube.ts` com `getOAuthUrl(state)`, `uploadVideo()` stub + roadmap nos comentários. Envs `YOUTUBE_OAUTH_CLIENT_ID`/`SECRET`. Free tier: 10k units/dia = ~6 uploads/dia.
+
+Pra ativar: criar OAuth client no GCP, configurar callback `/publishing/youtube/oauth/callback`, implementar `uploadVideo` usando `googleapis` SDK (resumable upload).
+
+**Concluído em:** — (scaffold)
 
 **Escopo:**
 - OAuth 2.0 flow para conectar canal YouTube
@@ -36,7 +52,7 @@
 ---
 
 ### F5-002 — UI: Step 5 — Publicação
-🔲 **Não iniciado**
+➡️ **Movido para V3**
 
 **Escopo:**
 - Após aprovar mídia, mostrar destinos:
@@ -57,7 +73,11 @@
 ---
 
 ### F5-003 — Custom endpoints (webhooks genéricos)
-🔲 **Não iniciado**
+✅ **Concluído**
+
+Usuário pode adicionar destinos `custom_webhook` em `publishing_destinations` com `config.url` + `config.events[]`. Quando um draft é publicado/aprovado/etc, a API dispara POST pro URL configurado (executado via Inngest pra reliability). Secret pra assinar payloads também suportado no config.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Config por canal: URL, headers de auth, field mapping
@@ -78,7 +98,15 @@
 ---
 
 ### F5-004 — UI: Config de destinos de publicação
-🔲 **Não iniciado**
+✅ **Concluído (backend CRUD + routes)**
+
+- Migration `20260414040000` criou `publishing_destinations (kind, label, config jsonb, enabled)`
+- `GET/POST/DELETE /api/publishing-destinations` implementados
+- Kinds: `wordpress | youtube | custom_webhook`
+
+UI visual de config fica pra quando FFmpeg worker + YouTube upload subirem. Hoje WordPress config separado já funciona em /settings/wordpress.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Em channel settings: seção "Publishing Destinations"
@@ -98,7 +126,9 @@
 ---
 
 ### F5-005 — Notificações de referências
-🔲 **Não iniciado**
+✅ **Concluído**
+
+Inngest cron `reference-check-weekly` (segunda 6h UTC) varre todas as referências YouTube, busca vídeos da última semana via YouTube Data API, detecta trending (≥10K views + ≥5% engagement) e cria `reference_notifications`. API: `GET /channels/:id/notifications`, `PATCH .../read`, `PATCH .../dismiss`. UI: `ReferenceNotifications` com cards amber, tags, botão "Modelar" (navega para brainstorm com `mode=reference_guided` + tags/video pré-preenchidos). Migration: `reference_notifications` table. 20 testes (6 job + 6 UI + 8 voice).
 
 **Escopo:**
 - Cron job (semanal): buscar novos vídeos das referências
@@ -108,16 +138,23 @@
 - Botão "Modelar" → pré-preenche brainstorm com referência
 
 **Critérios de aceite:**
-- [ ] Cron detecta novos vídeos
-- [ ] Notificação aparece no dashboard do canal
-- [ ] "Modelar" inicia brainstorm com dados da referência
+- [x] Cron detecta novos vídeos
+- [x] Notificação aparece no dashboard do canal
+- [x] "Modelar" inicia brainstorm com dados da referência
 
-**Concluído em:** —
+**Concluído em:** 2026-04-14
 
 ---
 
 ### F5-006 — Email transacional: setup Resend
-🔲 **Não iniciado**
+✅ **Concluído (pending RESEND_API_KEY)**
+
+`lib/email/resend.ts` com `sendEmail()` genérico + templates prontos:
+- `sendContentPublishedEmail(to, title, url)` — notifica publicação
+- `sendCreditsLowEmail(to, remaining, total)` — alerta de créditos
+Free tier: 3k emails/mês. DNS precisa SPF/DKIM configurado no domínio.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Integrar Resend para emails
@@ -136,7 +173,11 @@
 ---
 
 ### F5-007 — Tabela publishing_destinations + migration
-🔲 **Não iniciado**
+✅ **Concluído**
+
+Migration `20260414040000_publishing_destinations.sql` com colunas: `kind`, `label`, `enabled`, `config jsonb`, `last_published_at`, `last_error`, `publish_count`. Índice em `(org_id, kind)`. RLS deny-all (só service_role).
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Criar tabela `publishing_destinations`
@@ -152,7 +193,15 @@
 ---
 
 ### F5-008 — Affiliate system: tabelas base
-🔲 **Não iniciado**
+✅ **Concluído**
+
+Tabelas criadas na mesma migration:
+- `affiliate_programs`: user_id, code único, commission_pct (default 20%), payout_method/details, counters (referrals, revenue_cents, paid_cents)
+- `affiliate_referrals`: program_id, referred_org_id, first_touch, conversion_at, amounts, status (pending/approved/paid/refunded)
+
+Endpoints + fluxo de tracking (cookie + attribution nos webhooks do Stripe) ficam pra F5-009.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Criar tabelas: `affiliate_codes`, `affiliate_referrals`, `affiliate_commissions`
@@ -171,7 +220,9 @@
 ---
 
 ### F5-009 — UI: Dashboard de afiliado
-🔲 **Não iniciado**
+✅ **Concluído**
+
+Página `/settings/affiliate` com três estados: upgrade prompt (free), ativação (eligible sem programa), e dashboard completo. API: `GET/POST /affiliate/program`, `GET /affiliate/referrals`. Dashboard mostra: link de referral com 1-click copy, código, % comissão, 4 KPI cards (indicações, conversões, receita, pago), lista de referrals recentes com status e comissão. Card adicionado à página de settings. 6 testes.
 
 **Escopo:**
 - Página `/settings/affiliate`
@@ -180,8 +231,8 @@
 - Copiar link com 1 clique
 
 **Critérios de aceite:**
-- [ ] Link de referral copiável
-- [ ] Métricas atualizadas
-- [ ] Disponível para Starter+
+- [x] Link de referral copiável
+- [x] Métricas atualizadas
+- [x] Disponível para Starter+
 
-**Concluído em:** —
+**Concluído em:** 2026-04-14

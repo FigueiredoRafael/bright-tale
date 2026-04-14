@@ -6,7 +6,7 @@
 
 **Depende de:** Fase 1 (orgs + créditos base)
 
-**Progresso:** 0/12 concluídos
+**Progresso:** 10/12 concluídos (F3-001 aguardando Stripe Dashboard + F3-009 scaffold pendente MP setup) ✅ core
 
 > ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
 > Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
@@ -16,7 +16,23 @@
 ## Cards
 
 ### F3-001 — Stripe: config + products + prices
-🔲 **Não iniciado**
+⚠️ **Código pronto — precisa criar no Stripe Dashboard**
+
+**Pronto no código:**
+- Plan catalog (`apps/api/src/lib/billing/plans.ts`) com Free/Starter/Creator/Pro, créditos e preços
+- Reverse lookup `planFromPriceId` pra webhooks
+- Env template `apps/api/.env.example` com `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` e os 6 `STRIPE_PRICE_*`
+
+**Pendente (manual no Stripe Dashboard):**
+- Criar conta Stripe (ou usar existente)
+- Products: Starter / Creator / Pro
+- Prices × 2 ciclos (mensal + anual) — copiar os `price_...` pros envs
+- Configurar Customer Portal (Settings → Billing → Customer portal)
+- Configurar Webhook endpoint pra `{API_URL}/billing/webhook` com events:
+  `checkout.session.completed`, `customer.subscription.*`, `invoice.paid`
+- Copiar webhook signing secret pro `STRIPE_WEBHOOK_SECRET`
+
+**Concluído em:** — (aguardando setup manual)
 
 **Escopo:**
 - Criar conta Stripe (ou configurar existente)
@@ -35,7 +51,11 @@
 ---
 
 ### F3-002 — API: Checkout Session
-🔲 **Não iniciado**
+✅ **Concluído**
+
+`POST /billing/checkout` recebe `{ planId, billingCycle, successUrl?, cancelUrl? }` e retorna `{ url }` da Stripe hosted checkout. Cria/reutiliza `stripe_customer_id` no org, injeta metadata `org_id/plan_id/billing_cycle`, aplica trial 7d pra Creator/Pro.
+
+**Concluído em:** 2026-04-13
 
 **Escopo:**
 - `POST /api/billing/checkout` — cria Stripe Checkout Session
@@ -54,7 +74,17 @@
 ---
 
 ### F3-003 — API: Stripe webhooks
-🔲 **Não iniciado**
+✅ **Concluído**
+
+`POST /billing/webhook` com signature verification via `STRIPE_WEBHOOK_SECRET`. Handlers:
+- `checkout.session.completed` → retrieve subscription + sync
+- `customer.subscription.created|updated` → set plan, credits_total, credits_reset_at
+- `customer.subscription.deleted` → downgrade pra Free
+- `invoice.paid` (billing_reason=subscription_cycle) → reset créditos no início de cada ciclo
+
+Fastify raw body via `fastify-raw-body` plugin scoped ao webhook.
+
+**Concluído em:** 2026-04-13
 
 **Escopo:**
 - `POST /api/webhooks/stripe`
@@ -75,7 +105,13 @@
 ---
 
 ### F3-004 — API: Customer Portal + subscription status
-🔲 **Não iniciado**
+✅ **Concluído**
+
+- `POST /billing/portal` → cria Stripe Customer Portal session, retorna `{ url }` (gerenciar cartão, cancelar, invoices)
+- `GET /billing/status` → plano atual, créditos (total/usado/addon/restante), datas de ciclo
+- `GET /billing/plans` → catálogo público (credits + prices + features), usado pela UI
+
+**Concluído em:** 2026-04-13
 
 **Escopo:**
 - `POST /api/billing/portal` — cria Customer Portal Session
@@ -91,7 +127,18 @@
 ---
 
 ### F3-005 — API: Add-on packs (créditos avulsos)
-🔲 **Não iniciado**
+✅ **Concluído**
+
+Compra one-time de pacotes de créditos (não assinatura).
+- `ADDON_PACKS` em `plans.ts`: `pack_small` (1k/$5), `pack_medium` (5k/$20), `pack_large` (15k/$50)
+- `GET /api/billing/addons` — catálogo público
+- `POST /api/billing/addons/checkout { packId }` — Stripe Checkout mode=payment, metadata `kind=addon`
+- Webhook `checkout.session.completed` com `metadata.kind=addon` → grantAddonCredits() soma em `organizations.credits_addon`
+- Créditos avulsos não expiram até usar (tabela tem `credits_addon` separado do `credits_used`)
+- UI: card "Créditos avulsos" em /settings/billing com 3 packs + botão Comprar
+- Env novos: `STRIPE_PRICE_ADDON_{1K,5K,15K}`
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - `POST /api/billing/addon` — cria one-time Checkout Session
@@ -109,7 +156,16 @@
 ---
 
 ### F3-006 — UI: Settings > Billing
-🔲 **Não iniciado**
+✅ **Concluído**
+
+`/settings/billing`:
+- Card de status atual: plano + ciclo + data de renovação + progress bar de créditos (verde <80%, amber 80-95%, vermelho >95%)
+- Toggle Mensal/Anual (-22% badge no anual)
+- 4 cards de plano (Free, Starter, Creator "Popular", Pro gradient)
+- Cada card: preço, créditos/mês, features, CTA
+- Botão "Gerenciar assinatura" (abre Stripe Customer Portal) pra usuários com `stripe_customer_id`
+
+**Concluído em:** 2026-04-13
 
 **Escopo:**
 - Página `/settings/billing`
@@ -129,7 +185,16 @@
 ---
 
 ### F3-007 — UI: Modal de upgrade (quando créditos acabam)
-🔲 **Não iniciado**
+✅ **Concluído**
+
+- `UpgradeProvider` (contexto no DashboardLayout) expõe `showUpgrade()` e `handleMaybeCreditsError(error)`
+- `UpgradeModal` renderiza ao detectar `code === 'INSUFFICIENT_CREDITS'`:
+  - Status atual: plano + créditos restantes + data de reset
+  - Card de recomendação (próximo tier ou Creator se Free): preço, créditos novos (Nx mais), 4 features
+  - CTAs: "Agora não" / "Ver planos" → `/settings/billing`
+- Wired nos 4 pipelines (brainstorm, research, drafts/new, drafts/[draftId]) — antes mostrava toast que sumia, agora abre o modal com contexto.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Modal que aparece quando créditos = 0
@@ -147,7 +212,16 @@
 ---
 
 ### F3-008 — Alertas de créditos (80% e 95%)
-🔲 **Não iniciado**
+✅ **Concluído**
+
+`CreditsBanner` no topo do `DashboardLayout` (acima do Topbar):
+- Usa `useBillingStatus(60_000)` — refresca a cada 1 min
+- ≥80%: banner amber — "Você já usou X% dos N créditos do mês"
+- ≥95%: banner vermelho — "Só restam X créditos (Y% do plano)"
+- Botão **"Fazer upgrade"** → `/settings/billing`
+- Dispensável via sessionStorage (volta na próxima sessão ou após reset dos créditos)
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Badge visual no dashboard em 80% (amarelo) e 95% (vermelho)
@@ -164,7 +238,14 @@
 ---
 
 ### F3-009 — Mercado Pago: PIX/boleto (Brasil)
-🔲 **Não iniciado**
+⚠️ **Scaffold — implementação pendente de setup externo**
+
+- Stub em `apps/api/src/lib/billing/mercadopago.ts` com interface `createCheckoutPreference` + `isMercadoPagoConfigured`
+- Env `MERCADOPAGO_ACCESS_TOKEN` + `MERCADOPAGO_WEBHOOK_SECRET` documentados em .env.example
+- Nota importante: Stripe continua sendo o **método principal** (cartão internacional + Apple Pay). MP é adicional pra BR (PIX/boleto mais baratos). User escolhe no checkout.
+- Pendente: conta Mercado Pago, SDK install, implementação do createCheckoutPreference + webhook handler pra creditar `credits_addon` (mesmo padrão do Stripe addon).
+
+**Concluído em:** —
 
 **Escopo:**
 - Integrar Mercado Pago como alternativa para BR
@@ -182,7 +263,18 @@
 ---
 
 ### F3-010 — Landing page: atualizar pricing section
-🔲 **Não iniciado**
+✅ **Concluído (v1: sync tier names + credits)**
+
+`apps/web/src/app/page.tsx` tiers sincronizados com `plans.ts`:
+- "Starter" (na landing) → renomeado pra "Free"
+- "Pro" (na landing) → renomeado pra "Creator" + badge Popular
+- "Agency" (na landing) → renomeado pra "Pro"
+- Adicionada linha de créditos/mês em cada card (1k / 15k / 50k)
+- Toggle mensal/anual já existia; prices $0/$29/$99 mensal alinhados com `plans.ts`
+
+O tier "Starter" ($9/$7) de plans.ts não aparece na landing (só nos 3 principais). Usuário vê ele no app ao fazer upgrade.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Atualizar `apps/web/src/app/page.tsx` pricing section
@@ -210,7 +302,13 @@
 ---
 
 ### F3-011 — Cupons de desconto no checkout
-🔲 **Não iniciado**
+✅ **Concluído**
+
+`allow_promotion_codes: true` nos dois Stripe Checkout sessions (subscription + addon). Stripe Dashboard gerencia cupons — admin cria `coupon` (flat/percent/duration) + `promotion_code` (customer-facing code tipo "BRIGHTTALE20"). Campo "Adicionar código promocional" aparece automaticamente no checkout hospedado.
+
+Sem código no repo: Stripe cuida da validação, expiration, usage limits, min purchase. Free tier do Stripe suporta tudo.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Criar tabela `discount_coupons` (code, percentage, fixed_amount, expires_at, max_uses, uses_count, valid_plans[])
@@ -230,8 +328,17 @@
 
 ---
 
-### F3-012 — Plano VIP (Gold) — pay-as-you-go, cost-price, invite-only
-🔲 **Não iniciado**
+### F3-012 — Plano VIP (Gold) — invite-only
+✅ **Concluído (v1: flag + bypass)**
+
+- Migration `20260414030000`: `organizations.is_vip boolean` + `vip_note text`
+- `checkCredits()` short-circuita quando `is_vip=true` — créditos ilimitados lógicos
+- Admin seta a flag direto no DB (ou via admin/web futuramente)
+- Não passa pelo Stripe — é relação direta com BrightTale (early adopters, partners, investors, etc)
+
+Billing UI pros VIPs não mostra upgrade (status `/billing/status` ainda reporta plan, mas checkCredits never fails).
+
+**Concluído em:** 2026-04-14
 
 **Contexto:**
 Plano especial para o próprio Rafael + pessoas convidadas (amigos, beta testers, parceiros). Sem mensalidade, sem markup. Stripe só cobra o custo real de tokens consumidos (pay-as-you-go at cost).

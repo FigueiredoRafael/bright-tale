@@ -743,6 +743,147 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   /**
+   * POST /publish-draft — F2-043. Publica um content_drafts.draft_json no WP.
+   * Mapping:
+   *   title        → draft.title ou draft_json.title
+   *   content      → draft_json.body (ou outro campo longo via findContent)
+   *   excerpt      → draft_json.meta_description | hook | summary
+   *   status       → "draft" | "publish" | "future" (com scheduled_at)
+   *   tags/categories → draft_json.keywords[] (criadas se não existirem)
+   *   scheduled_at → F2-024 scheduling (status=future + date ISO)
+   *
+   * Body:
+   *   { draftId: uuid, configId?: uuid, status?: 'draft'|'publish'|'future',
+   *     scheduledAt?: ISO date, categories?: string[], tags?: string[] }
+   */
+  fastify.post('/publish-draft', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      const body = z.object({
+        draftId: z.string().uuid(),
+        configId: z.string().uuid().optional(),
+        status: z.enum(['draft', 'publish', 'future']).default('publish'),
+        scheduledAt: z.string().datetime().optional(),
+        categories: z.array(z.string()).optional(),
+        tags: z.array(z.string()).optional(),
+      }).parse(request.body);
+
+      if (body.status === 'future' && !body.scheduledAt) {
+        throw new ApiError(400, 'scheduledAt required when status=future', 'BAD_REQUEST');
+      }
+
+      // Load draft
+      const { data: draft } = await sb
+        .from('content_drafts')
+        .select('*')
+        .eq('id', body.draftId)
+        .maybeSingle();
+      if (!draft) throw new ApiError(404, 'Draft not found', 'NOT_FOUND');
+      if (draft.type !== 'blog') throw new ApiError(400, 'Only blog drafts can publish to WordPress', 'WRONG_TYPE');
+      if (!draft.draft_json) throw new ApiError(400, 'Draft has no content yet — generate first', 'NO_CONTENT');
+
+      // Extract fields from draft_json (handles various agent shapes).
+      const dj = draft.draft_json as Record<string, unknown>;
+      function findLong(node: unknown, keys: string[], depth = 0): string | null {
+        if (depth > 6) return null;
+        if (node && typeof node === 'object' && !Array.isArray(node)) {
+          const o = node as Record<string, unknown>;
+          for (const k of keys) {
+            const v = o[k];
+            if (typeof v === 'string' && v.length > 50) return v;
+          }
+          for (const v of Object.values(o)) {
+            const r = findLong(v, keys, depth + 1);
+            if (r) return r;
+          }
+        }
+        return null;
+      }
+      const content = findLong(dj, ['body', 'content', 'text', 'markdown', 'draft', 'post', 'article', 'full_text']) ?? '';
+      const excerpt = findLong(dj, ['meta_description', 'summary', 'description', 'hook']) ?? '';
+      const title = (draft.title as string | null) ?? (dj.title as string | null) ?? 'Sem título';
+      const keywords = (dj.keywords as string[] | undefined) ?? (dj.tags as string[] | undefined) ?? [];
+
+      // WP credentials
+      const configQuery = sb.from('wordpress_configs').select('*');
+      const { data: config } = body.configId
+        ? await configQuery.eq('id', body.configId).maybeSingle()
+        : await configQuery.limit(1).maybeSingle();
+      if (!config) throw new ApiError(404, 'WordPress not configured — configure em /settings/wordpress', 'NO_WP_CONFIG');
+
+      const site_url = (config.site_url as string).replace(/\/$/, '');
+      const username = config.username as string;
+      const password = decrypt(config.password as string);
+      const auth = Buffer.from(`${username}:${password}`).toString('base64');
+
+      // POST to WP
+      const payload: Record<string, unknown> = {
+        title,
+        content,
+        excerpt,
+        status: body.status,
+      };
+      if (body.scheduledAt) payload.date = body.scheduledAt;
+
+      const tagList = body.tags ?? keywords;
+      if (tagList.length > 0) {
+        // Resolve/create tags (best-effort; skip failures silently).
+        const tagIds: number[] = [];
+        for (const tagName of tagList.slice(0, 10)) {
+          try {
+            const res = await fetch(`${site_url}/wp-json/wp/v2/tags`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
+              body: JSON.stringify({ name: tagName }),
+            });
+            const json = await res.json() as { id?: number; code?: string; data?: { term_id?: number } };
+            if (json.id) tagIds.push(json.id);
+            else if (json.code === 'term_exists' && json.data?.term_id) tagIds.push(json.data.term_id);
+          } catch { /* skip */ }
+        }
+        if (tagIds.length > 0) payload.tags = tagIds;
+      }
+
+      const wpRes = await fetch(`${site_url}/wp-json/wp/v2/posts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
+        body: JSON.stringify(payload),
+      });
+      if (!wpRes.ok) {
+        const err = await wpRes.text();
+        throw new ApiError(wpRes.status, `WordPress: ${err.slice(0, 200)}`, 'WP_ERROR');
+      }
+      const wpPost = await wpRes.json() as { id: number; link: string; status: string };
+
+      // Update draft status
+      const newStatus = body.status === 'publish' ? 'published' : body.status === 'future' ? 'scheduled' : 'approved';
+      await (sb.from('content_drafts') as unknown as {
+        update: (row: Record<string, unknown>) => { eq: (c: string, v: string) => Promise<unknown> };
+      })
+        .update({
+          status: newStatus,
+          published_at: body.status === 'publish' ? new Date().toISOString() : null,
+          scheduled_at: body.scheduledAt ?? null,
+          published_url: wpPost.link,
+        })
+        .eq('id', body.draftId);
+
+      return reply.status(201).send({
+        data: {
+          published: true,
+          wordpress_post_id: wpPost.id,
+          wordpress_url: wpPost.link,
+          status: wpPost.status,
+        },
+        error: null,
+      });
+    } catch (error) {
+      request.log.error({ err: error }, 'WordPress publish-draft error');
+      return sendError(reply, error);
+    }
+  });
+
+  /**
    * GET /tags — Fetch WordPress tags
    */
   fastify.get('/tags', { preHandler: [authenticate] }, async (request, reply) => {

@@ -9,7 +9,7 @@
  *   retry on 429/5xx without losing context.
  */
 
-import type { AgentType, AIProvider, GenerateContentParams } from './provider.js';
+import type { AgentType, AIProvider, GenerateContentParams, TokenUsage } from './provider.js';
 import { OpenAIProvider } from './providers/openai.js';
 import { AnthropicProvider } from './providers/anthropic.js';
 import { GeminiProvider } from './providers/gemini.js';
@@ -238,7 +238,7 @@ export async function generateWithFallback(
   tier: string,
   params: GenerateContentParams,
   options: ChainOptions = {},
-): Promise<{ result: unknown; providerName: string; model: string; attempts: number }> {
+): Promise<{ result: unknown; providerName: string; model: string; attempts: number; usage?: TokenUsage }> {
   const chain = getProviderChain(stage, tier, options);
   if (chain.length === 0) {
     throw new Error(
@@ -261,7 +261,13 @@ export async function generateWithFallback(
     while (attempt <= SAME_PROVIDER_RETRIES) {
       try {
         const result = await route.provider.generateContent(params);
-        return { result, providerName: route.providerName, model: route.model, attempts: i + 1 };
+        return {
+          result,
+          providerName: route.providerName,
+          model: route.model,
+          attempts: i + 1,
+          usage: route.provider.lastUsage,
+        };
       } catch (err) {
         lastErr = err;
         const message = String((err as { message?: string })?.message ?? err);

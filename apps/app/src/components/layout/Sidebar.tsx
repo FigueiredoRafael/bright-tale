@@ -8,6 +8,7 @@ import {
     Images, Archive, Database, Settings, Users, Wand2, Sparkles,
     FolderKanban,
     type LucideIcon,
+    Globe,
 } from "lucide-react";
 import { ChannelSwitcher } from "./ChannelSwitcher";
 import { useActiveChannel } from "@/hooks/use-active-channel";
@@ -51,9 +52,10 @@ export default function Sidebar() {
             label: t('createContentSection'),
             items: activeChannelId
                 ? [
-                    { href: `/channels/${activeChannelId}/create`, label: t('createContent'), icon: Sparkles },
-                    { href: "/ideas", label: t('ideas'), icon: Lightbulb },
-                    { href: "/research", label: t('research'), icon: FileText },
+                    { href: `/channels/${activeChannelId}/create`, label: "Create Content", icon: Sparkles },
+                    { href: "/ideas", label: "Ideas", icon: Lightbulb },
+                    { href: "/research", label: "Research", icon: FileText },
+                    { href: "/content", label: "Conteúdo", icon: PenLine },
                 ]
                 : [
                     { href: "/onboarding", label: t('createContent'), icon: Sparkles },
@@ -74,9 +76,9 @@ export default function Sidebar() {
         {
             label: t('settings'),
             items: [
-                { href: "/settings", label: t('allSettings'), icon: Settings, exact: true },
-                { href: "/settings/team", label: t('team'), icon: Users },
-                { href: "/settings/image-generation", label: t('imageGeneration'), icon: Wand2 },
+                { href: "/settings", label: "Configurações", icon: Settings, exact: true },
+                { href: "/settings/team", label: "Time", icon: Users },
+                { href: "/settings/wordpress", label: "WordPress", icon: Globe },
             ],
         },
     ];
@@ -87,11 +89,10 @@ export default function Sidebar() {
 
     function navClass(href: string, exact = false) {
         const active = isActive(href, exact);
-        return `relative flex items-center gap-2.5 px-3 py-[9px] rounded-lg text-[13px] transition-all ${
-            active
-                ? "bg-primary/[0.08] text-primary font-medium"
-                : "text-muted-foreground hover:text-[#94A3B8] hover:bg-white/[0.03]"
-        }`;
+        return `relative flex items-center gap-2.5 px-3 py-[9px] rounded-lg text-[13px] transition-all ${active
+            ? "bg-primary/[0.08] text-primary font-medium"
+            : "text-muted-foreground hover:text-[#94A3B8] hover:bg-white/[0.03]"
+            }`;
     }
 
     return (

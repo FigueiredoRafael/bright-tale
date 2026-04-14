@@ -15,9 +15,17 @@ export interface GenerateContentParams {
   systemPrompt?: string;
 }
 
+export interface TokenUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
 export interface AIProvider {
   name: string;
   generateContent(params: GenerateContentParams): Promise<any>;
+  /** Populated best-effort after each generateContent call. Undefined for
+   *  providers that don't report usage (e.g. Ollama). */
+  lastUsage?: TokenUsage;
 }
 
 export interface AIProviderConfig {

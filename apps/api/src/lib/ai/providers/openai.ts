@@ -7,10 +7,11 @@
 
 import { OpenAI } from "openai";
 import yaml from "js-yaml";
-import type { AIProvider, GenerateContentParams, AgentType } from "../provider.js";
+import type { AIProvider, GenerateContentParams, AgentType, TokenUsage } from "../provider.js";
 
 export class OpenAIProvider implements AIProvider {
   name = "openai";
+  lastUsage?: TokenUsage;
   private client: OpenAI;
   private model: string;
   private temperature: number;
@@ -46,6 +47,11 @@ export class OpenAIProvider implements AIProvider {
         response_format: { type: "json_object" },
         temperature: this.temperature,
       });
+
+      this.lastUsage = {
+        inputTokens: response.usage?.prompt_tokens,
+        outputTokens: response.usage?.completion_tokens,
+      };
 
       const content = response.choices[0]?.message?.content;
       if (!content) {

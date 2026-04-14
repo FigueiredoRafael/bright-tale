@@ -141,6 +141,7 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       if (countErr) throw countErr;
       if (dataErr) throw dataErr;
 
+      reply.header('Cache-Control', 'private, max-age=60');
       return reply.send({
         data: {
           projects,

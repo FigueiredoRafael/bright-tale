@@ -1,22 +1,60 @@
-# Pipeline de 4 Agentes
+# Pipeline de agentes
 
-O BrightTale usa um pipeline de 4 agentes que transforma um tema em conteúdo multi-formato pronto para publicação.
+O BrightTale usa um pipeline de agentes que transforma um tema em conteúdo multi-formato pronto pra publicação. Todos os agentes são chamados via API real dos providers (Anthropic/OpenAI/Gemini/Ollama) — YAML copy-paste é legado.
 
 ## Fluxo
 
 ```
-Brainstorm → Research → Production → Review → Publish
-   Agent 1     Agent 2     Agent 3     Agent 4    (WordPress/YouTube API)
+Brainstorm → Research → Canonical Core → Produce (blog/video/shorts/podcast) → Review
 ```
 
-## Resumo dos Agentes
+## Lista completa de slugs
 
-| # | Agente | Arquivo | Papel |
-|---|---|---|---|
-| 1 | **Brainstorm** | `agent-1-brainstorm.md` | Gera 5-10 ideias, mata as fracas |
-| 2 | **Research** | `agent-2-research.md` | Valida claims, busca fontes e estatísticas |
-| 3 | **Production** | `agent-3-production.md` + sub-agentes | Cria conteúdo multi-formato |
-| 4 | **Review** | `agent-4-review.md` | QA final + plano de publicação |
+`agent_prompts.slug` em uso:
+
+| Slug | Stage | Papel |
+|---|---|---|
+| `brainstorm` | brainstorm | Gera N ideias com verdict viable/weak/experimental |
+| `research` | research | Cards de pesquisa com nível surface/medium/deep |
+| `content-core` | production | Destila ideia+pesquisa em narrativa canônica |
+| `blog` | production | Escreve blog (body markdown + meta + keywords) |
+| `video` | production | Roteiro dual: teleprompter + editor_script + pacote YouTube |
+| `shorts` | production | Roteiro de shorts vertical |
+| `podcast` | production | Roteiro de podcast |
+| `engagement` | production | Peças de engajamento cross-platform |
+| `review` | review | QA: score, verdict, SEO, strengths, issues, fixes |
+
+## Diretivas injetadas nos prompts (por migration)
+
+Cada migration de `agent_prompts` apenda diretivas críticas ao `instructions` original. As ativas:
+
+### Channel context (F2-048)
+Todos os agentes recebem `input.channel = { name, niche, language, tone, presentation_style }`:
+- **language** — output 100% no idioma do canal (pt-BR default). Zero mistura com inglês.
+- **tone** — informativo / casual / técnico / irreverente.
+- **presentation_style** (video/shorts):
+  - `talking_head` → cues de delivery entre colchetes: `[lean forward]`, `[pausa dramática]`
+  - `voiceover`/`faceless` → prosa limpa audiobook (vírgulas pra breath, reticências pra pausa, SEM brackets) — pronto pra ElevenLabs TTS sem pós-processamento
+
+### Target length (F2-047)
+`input.production_params`:
+- Blog: `target_word_count` (300/500/700/1000…) — ±15% com substância, content_warning se pesquisa insuficiente
+- Video: `target_duration_minutes` — ~150 palavras/min, chapters calibrados
+- Podcast: ~140 palavras/min por tier (10/20/30/45/60 min)
+- Shorts: estruturas explícitas pra 15s/30s/60s
+
+### Dual script pro vídeo (F2-045)
+Output top-level obrigatório:
+- `teleprompter_script` — narração limpa, ready pro teleprompter
+- `editor_script` — briefing pro editor: A-roll/B-roll com timestamps, SFX, BGM, efeitos, color, pacing
+
+### Pacote YouTube completo (F2-046)
+Também top-level no output do agente `video`:
+- `video_title` — primary + 3 alternatives (A/B testáveis, ≤60 chars)
+- `thumbnail_ideas[3-5]` — concept, text_overlay, emotion, color_palette, composition
+- `pinned_comment` — pergunta/insight de engajamento (proibido "curtam!")
+- `video_description` — SEO completa com timestamps, CTAs, hashtags (≥800 chars)
+- `teleprompter_script` ≥1500 chars; chapters ≥300 chars cada; content_warning se insuficiente.
 
 ## Contratos YAML (BC_*)
 

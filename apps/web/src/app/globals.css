@@ -133,11 +133,96 @@
   --white-shimmer: rgba(255, 255, 255, 0.10);
 }
 
+/* ═══ Light mode — inspired by ToNaGarantia ═══ */
+html.light {
+  /* Backgrounds: clean white surfaces */
+  --bg-deep: #FFFFFF;
+  --bg-primary: #F9FAFB;
+  --bg-surface: #F3F4F6;
+  --bg-elevated: #E5E7EB;
+  --bg-card: #FFFFFF;
+  --bg-card-hover: #F9FAFB;
+
+  /* Borders: subtle gray */
+  --border: #E5E7EB;
+  --border-light: #D1D5DB;
+
+  /* Text: dark readable */
+  --text-primary: #111827;
+  --text-secondary: #4B5563;
+  --text-muted: #9CA3AF;
+
+  /* Navbar */
+  --navbar-scrolled-bg: rgba(255, 255, 255, 0.90);
+  --mobile-menu-bg: rgba(255, 255, 255, 0.98);
+
+  /* Brand glows: slightly more visible on white */
+  --brand-grid: rgba(45, 212, 168, 0.05);
+  --brand-glow-xs: rgba(45, 212, 168, 0.06);
+  --brand-glow-sm: rgba(45, 212, 168, 0.08);
+  --brand-glow-md: rgba(45, 212, 168, 0.12);
+  --brand-glow-lg: rgba(45, 212, 168, 0.15);
+  --brand-glow-xl: rgba(45, 212, 168, 0.20);
+  --brand-glow-pulse: rgba(45, 212, 168, 0.35);
+  --brand-glow-dot: rgba(45, 212, 168, 0.60);
+  --brand-border-subtle: rgba(45, 212, 168, 0.15);
+  --brand-border-soft: rgba(45, 212, 168, 0.20);
+  --brand-border-mid: rgba(45, 212, 168, 0.30);
+  --brand-border-strong: rgba(45, 212, 168, 0.40);
+  --brand-shadow-sm: rgba(45, 212, 168, 0.08);
+  --brand-shadow-md: rgba(45, 212, 168, 0.12);
+  --brand-shadow-lg: rgba(45, 212, 168, 0.18);
+
+  /* Accent */
+  --accent-glow-xs: rgba(255, 107, 53, 0.06);
+  --accent-glow-sm: rgba(255, 107, 53, 0.10);
+  --accent-glow-md: rgba(255, 107, 53, 0.18);
+  --accent-shadow: rgba(255, 107, 53, 0.20);
+  --accent-shadow-lg: rgba(255, 107, 53, 0.25);
+  --accent-shadow-xl: rgba(255, 107, 53, 0.30);
+
+  /* Shadows: soft on white */
+  --shadow-sm: rgba(0, 0, 0, 0.04);
+  --shadow-md: rgba(0, 0, 0, 0.08);
+  --shadow-lg: rgba(0, 0, 0, 0.12);
+
+  /* Misc */
+  --white-shimmer: rgba(0, 0, 0, 0.04);
+  --color-white: #ffffff;
+}
+
+/* Terminal stays dark even in light mode (like code blocks) */
+html.light .terminal { background: #1A1F2E; border-color: #2D3748; }
+html.light .terminal-bar { background: #141925; border-color: #2D3748; }
+html.light .terminal-body { color: #E2E8F0; }
+html.light .terminal .t-cmd { color: #E2E8F0; }
+html.light .terminal .t-out { color: #A0AEC0; }
+html.light .terminal .t-ok { color: #68D391; }
+html.light .terminal .t-p { color: #4FD1C5; }
+html.light .terminal-title { color: #718096; }
+html.light .terminal-replay { border-color: #4A5568; color: #A0AEC0; }
+html.light .terminal .t-cursor { background: #4FD1C5; }
+
+/* Pricing popular card: white card with green border on light */
+html.light .pr-card.pop { background: #FFFFFF; border-color: var(--brand-400); box-shadow: 0 4px 30px rgba(45, 212, 168, 0.15); }
+
+/* Lang switch on light */
+html.light .lang-btn.active { color: #FFFFFF; }
+
+/* Avatar keeps its gradient */
+html.light .test-avatar { color: #FFFFFF; }
+
+/* Ambient orbs: more subtle on light */
+html.light .ambient-orb { opacity: 0.25; }
+
+/* Scroll-to-top */
+html.light .scroll-top { background: #FFFFFF; border-color: #E5E7EB; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+
 html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
-body { line-height: 1.6; overflow-x: hidden; }
+body { line-height: 1.6; overflow-x: hidden; background: var(--bg-deep); color: var(--text-primary); }
 
 /* Landing page dark theme — scoped to .landing-page wrapper */
-.landing-page { font-family: var(--font-body); background: var(--bg-deep); color: var(--text-primary); min-height: 100vh; }
+.landing-page { font-family: var(--font-body); background: var(--bg-deep); color: var(--text-primary); }
 
 .scroll-progress { position: fixed; top: 0; left: 0; height: 3px; background: linear-gradient(90deg, var(--brand-400), var(--accent)); z-index: 9999; transition: width 0.1s linear; }
 
@@ -191,7 +276,7 @@ body { line-height: 1.6; overflow-x: hidden; }
 
 .mobile-toggle { display: none; background: none; border: 1px solid var(--border); color: var(--text-primary); cursor: pointer; padding: 8px; border-radius: var(--radius-sm); }
 
-.hero { position: relative; min-height: 100vh; display: flex; align-items: center; padding: 120px 0 80px; overflow: hidden; }
+.hero { position: relative; display: flex; align-items: center; padding: 120px 0 80px; overflow: hidden; }
 .hero-grid { position: absolute; inset: 0;
   background-image: linear-gradient(var(--brand-grid) 1px, transparent 1px), linear-gradient(90deg, var(--brand-grid) 1px, transparent 1px);
   background-size: 60px 60px;
@@ -349,7 +434,7 @@ body { line-height: 1.6; overflow-x: hidden; }
 .pr-toggle-switch.annual::after { transform: translateX(24px); }
 .pr-toggle-switch.annual { border-color: var(--brand-400); }
 .pr-save { display: inline-block; padding: 2px 10px; background: var(--brand-glow-lg); border: 1px solid var(--brand-border-soft); border-radius: var(--radius-full); font-size: 12px; font-weight: 600; color: var(--brand-400); margin-left: 6px; }
-.pr-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 1000px; margin: 0 auto; }
+.pr-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; max-width: 1100px; margin: 0 auto; }
 .pr-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: 40px 32px; text-align: center; transition: all 0.35s; position: relative; }
 .pr-card:hover { transform: translateY(-4px); box-shadow: 0 8px 40px var(--shadow-sm); }
 .pr-card.pop { border-color: var(--brand-400); background: var(--bg-elevated); box-shadow: 0 0 60px var(--brand-glow-lg); transform: scale(1.03); }
@@ -426,6 +511,7 @@ body { line-height: 1.6; overflow-x: hidden; }
 .scroll-top svg { width: 20px; height: 20px; color: var(--brand-400); }
 
 .lang-switch { display: flex; align-items: center; gap: 4px; margin-right: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-full); padding: 3px; }
+.mobile-nav-right { display: none; align-items: center; gap: 12px; }
 .lang-btn { padding: 5px 10px; font-family: var(--font-display); font-size: 12px; font-weight: 600; border: none; border-radius: var(--radius-full); cursor: pointer; background: transparent; color: var(--text-muted); transition: all 0.25s; letter-spacing: 0.5px; }
 .lang-btn.active { background: var(--brand-400); color: var(--bg-deep); }
 .lang-btn:hover:not(.active) { color: var(--text-primary); }
@@ -465,7 +551,10 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--brand-400); out
 @media(max-width:768px) {
   .nav-links { display: none; }
   .mobile-toggle { display: block; }
-  .nav-links.open { display: flex; flex-direction: column; position: absolute; top: 100%; left: 0; right: 0; background: var(--mobile-menu-bg); backdrop-filter: blur(20px); border-bottom: 1px solid var(--border); padding: 24px; gap: 20px; }
+  .mobile-nav-right { display: flex; }
+  .nav-controls-desktop { display: none; }
+  .nav-links.open { display: flex; flex-direction: column; position: absolute; top: 100%; left: 0; right: 0; background: var(--mobile-menu-bg); backdrop-filter: blur(20px); border-bottom: 1px solid var(--border); padding: 24px; gap: 20px; align-items: center; }
+  .nav-links.open .nav-cta { width: 100%; text-align: center; }
   .hero { padding: 100px 0 60px; min-height: auto; }
   .hero-metrics { gap: 24px; flex-wrap: wrap; }
   .pipeline-steps { grid-template-columns: 1fr; max-width: 400px; margin: 0 auto; }
@@ -473,7 +562,7 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--brand-400); out
   .step-arrow { display: none; }
   .b-card.span-8, .b-card.span-4, .b-card.span-6 { grid-column: span 12; }
   .int-grid { grid-template-columns: repeat(2,1fr); }
-  .pr-grid { grid-template-columns: 1fr; max-width: 400px; margin: 0 auto; }
+  .pr-grid { grid-template-columns: repeat(2, 1fr); max-width: 600px; margin: 0 auto; }
   .pr-card.pop { transform: scale(1); }
   .pr-card.pop:hover { transform: translateY(-4px); }
   .test-grid { grid-template-columns: 1fr; }
@@ -485,6 +574,7 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--brand-400); out
   .hero-form input { width: 100%; padding: 12px 16px; text-align: center; }
   .hero-form button { width: 100%; padding: 14px; border-radius: var(--radius-md); }
   .hero-metrics { flex-direction: column; gap: 16px; }
+  .pr-grid { grid-template-columns: 1fr; max-width: 400px; }
   .stats-row { grid-template-columns: 1fr 1fr; gap: 10px; }
   .stat-num { font-size: 32px; }
   .trust-row { flex-direction: column; gap: 16px; }
@@ -502,7 +592,7 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--brand-400); out
 .hero-split .hero-metrics { justify-content: flex-start; gap: 32px; margin-top: 48px; padding-top: 32px; }
 
 /* Pipeline Preview Card — base */
-.ppc { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: 0; overflow: hidden; box-shadow: 0 24px 80px var(--shadow-lg), 0 0 0 1px var(--border), 0 0 80px var(--brand-glow-xs); animation: float 8s ease infinite; position: relative; }
+.ppc { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: 0; overflow: hidden; box-shadow: 0 24px 80px var(--shadow-lg), 0 0 0 1px var(--border), 0 0 80px var(--brand-glow-xs); animation: float 8s ease infinite; position: relative; width: 100%; max-width: 400px; }
 .ppc::before { content: ''; position: absolute; inset: 0; border-radius: var(--radius-xl); background: linear-gradient(135deg, var(--brand-glow-xs) 0%, transparent 60%); pointer-events: none; z-index: 0; }
 
 @media(max-width:900px) {
@@ -512,7 +602,10 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--brand-400); out
   .hero-split .hero-metrics { justify-content: center; }
   .ppc { max-width: 440px; margin: 0 auto; }
 }
-@media(max-width:640px) { .hero-preview-wrap { display: none; } }
+@media(max-width:640px) {
+  .hero-preview-wrap { display: none; }
+  .hero { min-height: auto; }
+}
 
 /* ═══════════════════════════════════════════════════════════
    TASK 3 — FORM STATES
@@ -638,7 +731,7 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--brand-400); out
 /* ═══════════════════════════════════════════════════════════
    PIPELINE PREVIEW CARD — new component styles
 ═══════════════════════════════════════════════════════════ */
-.hero-preview-wrap { display: flex; align-items: center; justify-content: center; position: relative; }
+.hero-preview-wrap { display: flex; align-items: center; justify-content: flex-end; position: relative; }
 .hero-text { min-width: 0; }
 
 .ppc-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; background: var(--bg-elevated); border-bottom: 1px solid var(--border); }

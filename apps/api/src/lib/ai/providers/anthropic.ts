@@ -7,10 +7,11 @@
 
 import { Anthropic } from "@anthropic-ai/sdk";
 import yaml from "js-yaml";
-import type { AIProvider, GenerateContentParams, AgentType } from "../provider.js";
+import type { AIProvider, GenerateContentParams, AgentType, TokenUsage } from "../provider.js";
 
 export class AnthropicProvider implements AIProvider {
   name = "anthropic";
+  lastUsage?: TokenUsage;
   private client: Anthropic;
   private model: string;
   private temperature: number;
@@ -49,6 +50,11 @@ export class AnthropicProvider implements AIProvider {
           },
         ],
       });
+
+      this.lastUsage = {
+        inputTokens: response.usage?.input_tokens,
+        outputTokens: response.usage?.output_tokens,
+      };
 
       const content = response.content[0];
       if (content.type !== "text") {

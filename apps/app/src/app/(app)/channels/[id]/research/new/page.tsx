@@ -1,0 +1,396 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
+import { friendlyAiError } from "@/lib/ai/error-message";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { toast } from "sonner";
+import { Loader2, Search, ArrowLeft, ArrowRight, Check, Lightbulb, RefreshCw } from "lucide-react";
+import { IdeaPickerModal, type IdeaOption } from "@/components/research/IdeaPickerModal";
+import { NicheSignalsCard } from "@/components/research/NicheSignalsCard";
+import { GenerationProgressModal } from "@/components/generation/GenerationProgressModal";
+import { ConfirmRegenerateModal } from "@/components/generation/ConfirmRegenerateModal";
+import { WizardStepper } from "@/components/generation/WizardStepper";
+import { useUpgrade } from "@/components/billing/UpgradeProvider";
+
+type Level = "surface" | "medium" | "deep";
+
+interface Card {
+    type?: string;
+    title?: string;
+    url?: string;
+    author?: string;
+    quote?: string;
+    claim?: string;
+    relevance?: number;
+    [k: string]: unknown;
+}
+
+const LEVELS: { id: Level; label: string; cost: number; description: string }[] = [
+    { id: "surface", label: "Surface", cost: 60, description: "Top 3 fontes, estatísticas básicas" },
+    { id: "medium", label: "Medium", cost: 100, description: "5-8 fontes, citações de experts, dados" },
+    { id: "deep", label: "Deep", cost: 180, description: "10+ fontes, contra-argumentos, validações" },
+];
+
+const FOCUS_OPTIONS = [
+    { id: "stats", label: "Estatísticas" },
+    { id: "expert_advice", label: "Expert advice" },
+    { id: "pro_tips", label: "Pro tips" },
+    { id: "validated_processes", label: "Processos validados" },
+];
+
+export default function NewResearchPage() {
+    const { id: channelId } = useParams<{ id: string }>();
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const ideaIdParam = searchParams.get("ideaId") ?? undefined;
+
+    const [selectedIdeaId, setSelectedIdeaId] = useState<string | undefined>(ideaIdParam);
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const [topic, setTopic] = useState("");
+    const [level, setLevel] = useState<Level>("medium");
+    const [focusTags, setFocusTags] = useState<string[]>(["stats"]);
+    const [provider, setProvider] = useState<ProviderId>("gemini");
+    const [model, setModel] = useState<string>("gemini-2.5-flash");
+    const [recommended, setRecommended] = useState<{ provider: string | null; model: string | null }>({ provider: null, model: null });
+    const [running, setRunning] = useState(false);
+
+    // Pre-fill topic from the idea passed via ?ideaId= query param.
+    useEffect(() => {
+        if (!ideaIdParam) return;
+        (async () => {
+            try {
+                const res = await fetch(`/api/ideas/library/${ideaIdParam}`);
+                const json = await res.json();
+                if (json?.data?.idea?.title) setTopic(json.data.idea.title);
+            } catch {
+                // silent
+            }
+        })();
+    }, [ideaIdParam]);
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const res = await fetch("/api/agents");
+                const json = await res.json();
+                const agent = json.data?.agents?.find((a: { slug: string }) => a.slug === "research");
+                if (agent?.recommended_provider) {
+                    setRecommended({ provider: agent.recommended_provider, model: agent.recommended_model ?? null });
+                    setProvider(agent.recommended_provider);
+                    if (agent.recommended_model) setModel(agent.recommended_model);
+                }
+            } catch {
+                // silent
+            }
+        })();
+    }, []);
+    const [sessionId, setSessionId] = useState<string | null>(null);
+    const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+    const [confirmRegen, setConfirmRegen] = useState(false);
+    const [cards, setCards] = useState<Card[]>([]);
+    const [approved, setApproved] = useState<Set<number>>(new Set());
+    const { handleMaybeCreditsError } = useUpgrade();
+
+    function toggleFocus(id: string) {
+        setFocusTags((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
+    }
+
+    async function handleRun() {
+        if (!topic.trim() && !selectedIdeaId) {
+            toast.error("Informe um tema ou escolha uma ideia");
+            return;
+        }
+        setRunning(true);
+        try {
+            const res = await fetch("/api/research-sessions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    channelId,
+                    ideaId: selectedIdeaId,
+                    topic: topic.trim() || undefined,
+                    level,
+                    focusTags,
+                    provider,
+                    model,
+                }),
+            });
+            const json = await res.json();
+            if (json.error) {
+                if (handleMaybeCreditsError(json.error)) {
+                    setRunning(false);
+                    return;
+                }
+                const friendly = friendlyAiError(json.error.message ?? "");
+                toast.error(friendly.title, { description: friendly.hint });
+                setRunning(false);
+                return;
+            }
+            if (json.data?.sessionId) {
+                setActiveSessionId(json.data.sessionId);
+                // running stays true until modal completes/fails
+            } else {
+                setRunning(false);
+            }
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            const friendly = friendlyAiError(message);
+            toast.error(friendly.title, { description: friendly.hint });
+            setRunning(false);
+        }
+    }
+
+    async function onJobComplete() {
+        if (!activeSessionId) return;
+        try {
+            const res = await fetch(`/api/research-sessions/${activeSessionId}`);
+            const json = await res.json();
+            const session = json?.data;
+            const loadedCards: Card[] = session?.cards_json ?? [];
+            setSessionId(activeSessionId);
+            setCards(loadedCards);
+            setApproved(new Set(loadedCards.map((_: Card, i: number) => i)));
+            toast.success(`${loadedCards.length} cards de pesquisa`);
+        } catch {
+            toast.error("Pesquisa gerada mas falha ao carregar");
+        } finally {
+            setRunning(false);
+            setActiveSessionId(null);
+        }
+    }
+
+    function onJobFailed(message: string) {
+        const friendly = friendlyAiError(message);
+        toast.error(friendly.title, { description: friendly.hint });
+        setRunning(false);
+        setActiveSessionId(null);
+    }
+
+    function toggleApproval(i: number) {
+        setApproved((prev) => {
+            const next = new Set(prev);
+            if (next.has(i)) next.delete(i);
+            else next.add(i);
+            return next;
+        });
+    }
+
+    async function handleApprove() {
+        if (!sessionId) return;
+        const approvedCards = cards.filter((_, i) => approved.has(i));
+        try {
+            const res = await fetch(`/api/research-sessions/${sessionId}/review`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ approvedCardsJson: approvedCards }),
+            });
+            const json = await res.json();
+            if (json.error) {
+                toast.error(json.error.message);
+                return;
+            }
+            toast.success(`${approvedCards.length} cards aprovados — agora escolhe o formato`);
+            // Continue the wizard: research → drafts/new with this research preselected.
+            router.push(`/channels/${channelId}/drafts/new?researchSessionId=${sessionId}`);
+        } catch {
+            toast.error("Falha ao salvar review");
+        }
+    }
+
+    return (
+        <div className="p-6 max-w-4xl mx-auto space-y-6">
+            <IdeaPickerModal
+                open={pickerOpen}
+                channelId={channelId}
+                onSelect={(idea: IdeaOption) => {
+                    setTopic(idea.title);
+                    setSelectedIdeaId(idea.id);
+                }}
+                onClose={() => setPickerOpen(false)}
+            />
+            {activeSessionId && (
+                <GenerationProgressModal
+                    open={!!activeSessionId}
+                    sessionId={activeSessionId}
+                    sseUrl={`/api/research-sessions/${activeSessionId}/events`}
+                    title="Pesquisando"
+                    onComplete={onJobComplete}
+                    onFailed={onJobFailed}
+                    onClose={() => { setActiveSessionId(null); setRunning(false); }}
+                />
+            )}
+            <ConfirmRegenerateModal
+                open={confirmRegen}
+                title="Refazer pesquisa?"
+                description="Vai gerar novos cards de pesquisa com o mesmo tema/level. Os cards anteriores ficam salvos no histórico."
+                initialProvider={provider}
+                initialModel={model}
+                onConfirm={async (p, m) => {
+                    setProvider(p);
+                    setModel(m);
+                    setConfirmRegen(false);
+                    await handleRun();
+                }}
+                onClose={() => setConfirmRegen(false)}
+            />
+            <div>
+                <button
+                    onClick={() => router.back()}
+                    className="text-xs text-muted-foreground hover:underline flex items-center gap-1"
+                >
+                    <ArrowLeft className="h-3 w-3" /> Voltar
+                </button>
+                <div className="mt-2"><WizardStepper current="research" /></div>
+                <h1 className="text-2xl font-bold mt-2 flex items-center gap-2">
+                    <Search className="h-5 w-5" /> Nova Pesquisa
+                </h1>
+            </div>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-base">Configuração</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <Label>Tema {selectedIdeaId && <span className="text-xs text-muted-foreground">(vindo de uma ideia)</span>}</Label>
+                            <button
+                                type="button"
+                                onClick={() => setPickerOpen(true)}
+                                className="text-xs text-primary hover:underline flex items-center gap-1"
+                            >
+                                <Lightbulb className="h-3 w-3" /> Escolher ideia existente
+                            </button>
+                        </div>
+                        <Input value={topic} onChange={(e) => { setTopic(e.target.value); setSelectedIdeaId(undefined); }} placeholder="e.g. deep work techniques" />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label>Nível de pesquisa</Label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {LEVELS.map((l) => (
+                                <button
+                                    key={l.id}
+                                    onClick={() => setLevel(l.id)}
+                                    className={`text-left p-3 rounded-lg border-2 transition-all ${
+                                        level === l.id ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30"
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-medium text-sm">{l.label}</span>
+                                        <Badge variant="outline" className="text-[10px]">{l.cost}c</Badge>
+                                    </div>
+                                    <div className="text-[11px] text-muted-foreground mt-1">{l.description}</div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label>Foco</Label>
+                        <div className="flex flex-wrap gap-2">
+                            {FOCUS_OPTIONS.map((opt) => (
+                                <label
+                                    key={opt.id}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs cursor-pointer hover:bg-muted/30"
+                                >
+                                    <Checkbox
+                                        checked={focusTags.includes(opt.id)}
+                                        onCheckedChange={() => toggleFocus(opt.id)}
+                                    />
+                                    {opt.label}
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+
+                    <ModelPicker
+                        provider={provider}
+                        model={model}
+                        recommended={recommended}
+                        onProviderChange={(p) => {
+                            setProvider(p);
+                            setModel(MODELS_BY_PROVIDER[p][0].id);
+                        }}
+                        onModelChange={setModel}
+                    />
+
+                    <Button onClick={handleRun} disabled={running}>
+                        {running ? (
+                            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Pesquisando...</>
+                        ) : (
+                            <><Search className="h-4 w-4 mr-2" /> Pesquisar</>
+                        )}
+                    </Button>
+                </CardContent>
+            </Card>
+
+            {sessionId && <NicheSignalsCard sessionId={sessionId} />}
+
+            {cards.length > 0 && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-base flex items-center justify-between">
+                            <span>Cards de pesquisa <Badge variant="secondary" className="text-[10px] ml-1">{cards.length}</Badge></span>
+                            <div className="flex items-center gap-3">
+                                <span className="text-xs text-muted-foreground font-normal">{approved.size} aprovados</span>
+                                <Button onClick={() => setConfirmRegen(true)} variant="outline" size="sm" disabled={running}>
+                                    <RefreshCw className="h-4 w-4 mr-1.5" /> Refazer
+                                </Button>
+                            </div>
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                        {cards.map((c, i) => {
+                            const isApproved = approved.has(i);
+                            return (
+                                <div
+                                    key={i}
+                                    className={`p-3 rounded-lg border ${
+                                        isApproved ? "border-primary/50 bg-primary/5" : "border-border opacity-60"
+                                    }`}
+                                >
+                                    <div className="flex items-start gap-3">
+                                        <Checkbox checked={isApproved} onCheckedChange={() => toggleApproval(i)} className="mt-0.5" />
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                {c.type && <Badge variant="outline" className="text-[10px]">{c.type}</Badge>}
+                                                {typeof c.relevance === "number" && (
+                                                    <Badge variant="secondary" className="text-[10px]">
+                                                        relevância {c.relevance}
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                            <div className="text-sm font-medium mt-1">
+                                                {c.title ?? c.claim ?? c.quote ?? "—"}
+                                            </div>
+                                            {c.author && <div className="text-xs text-muted-foreground mt-1">— {c.author}</div>}
+                                            {c.url && (
+                                                <a href={c.url} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline mt-1 inline-block">
+                                                    {c.url}
+                                                </a>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+
+                        <div className="flex justify-end pt-2">
+                            <Button onClick={handleApprove}>
+                                <Check className="h-4 w-4 mr-2" /> Aprovar ({approved.size}) <ArrowRight className="h-4 w-4 ml-2" />
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+        </div>
+    );
+}

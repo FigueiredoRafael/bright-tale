@@ -18,6 +18,7 @@ export default defineConfig({
       'src/**/*.test.ts',
       'src/**/*.test.tsx',
       'src/**/__tests__/**/*.ts',
+      'src/**/__tests__/**/*.tsx',
     ],
     pool: 'forks',
   },

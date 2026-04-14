@@ -18,12 +18,14 @@ import {
 } from "@/components/ui/dialog";
 import AgentPromptViewer from "@/components/agents/AgentPromptViewer";
 import MarkdownImport from "@/components/import/MarkdownImport";
-import BlogEditor from "@/components/production/BlogEditor";
-import BlogPreview from "@/components/production/BlogPreview";
-import VideoPreview from "@/components/production/VideoPreview";
+import dynamic from "next/dynamic";
 import AssetsTabBlog from "@/components/assets/AssetsTabBlog";
 import AssetsTabVideo from "@/components/assets/AssetsTabVideo";
-import CanonicalCoreEditor from "@/components/production/CanonicalCoreEditor";
+
+const BlogEditor = dynamic(() => import("@/components/production/BlogEditor"), { ssr: false });
+const BlogPreview = dynamic(() => import("@/components/production/BlogPreview"), { ssr: false });
+const VideoPreview = dynamic(() => import("@/components/production/VideoPreview"), { ssr: false });
+const CanonicalCoreEditor = dynamic(() => import("@/components/production/CanonicalCoreEditor"), { ssr: false });
 import VideoStyleSelector from "@/components/production/VideoStyleSelector";
 import { Copy, Check, ArrowRight, FileText, Video, Zap, Mic, AlertCircle, Upload, MessageSquare, CheckCircle, Edit3, Eye, Save, Library, Image } from "lucide-react";
 import type { ParsedProduction } from "@/lib/parsers/markdown";

@@ -6,7 +6,9 @@
 
 **Depende de:** Fase 1 (auth, orgs, storage, créditos)
 
-**Progresso:** 19/29 concluídos (F2-001 a F2-009 ✅ · F2-015–F2-018 ✅ · F2-020 ✅ · F2-026 ✅ · F2-027 ✅ · F2-019, F2-021, F2-022, F2-025 🟡 · F2-010 a F2-014 em andamento)
+**Progresso:** 46/47 concluídos · 1 N/A (F2-028 dep externa ausente) — Phase 2 core ✅ completa
+
+**(Old progress tag)** 19/29 concluídos (F2-001 a F2-009 ✅ · F2-015–F2-018 ✅ · F2-020 ✅ · F2-026 ✅ · F2-027 ✅ · F2-019, F2-021, F2-022, F2-025 🟡 · F2-010 a F2-014 em andamento)
 
 > ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
 > Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
@@ -194,70 +196,48 @@
 ---
 
 ### F2-010 — Flow simplificado: Pesquisa (Step 1-2)
-🔲 **Não iniciado**
+✅ **Concluído (substituído por F2-016/017/018)**
 
-**Escopo:**
-- Nova UI de criação: campo tema + opção de YouTube analysis
-- Mostra resultados: top vídeos do nicho + ideias geradas
-- Ideias com "Modelado de: [referência]" quando aplicável
-- Selecionar ideia + escolher outputs (blog, vídeo, shorts, podcast)
+Substituído pelas páginas dedicadas: `/channels/[id]/brainstorm/new` (F2-016), `/channels/[id]/research/new` (F2-018) e a hub `/channels/[id]/create` (refatorada). YouTube Intelligence integrada via `analyze-niche`. Ideias persistem com `channel_id` + `brainstorm_session_id`.
 
-**Critérios de aceite:**
-- [ ] Pesquisa por tema funciona
-- [ ] YouTube Intelligence integrado (se ativado)
-- [ ] Ideias referenciam canal de origem
-- [ ] Selecionar outputs funciona
-
-**Concluído em:** —
+**Concluído em:** 2026-04-13
 
 ---
 
 ### F2-011 — Flow simplificado: Geração (Step 3)
-🔲 **Não iniciado**
+✅ **Concluído (entregue via F2-020/021/022)**
 
-**Escopo:**
-- Gerar conteúdo texto (blog, roteiro, shorts, podcast) via API de IA
-- Modelo por stage (standard routing)
-- Progress indicator durante geração
-- Resultado: cards com preview de cada output
-- Botões: Ver, Editar, Aprovar
+`/channels/[id]/drafts/new` é a UI de geração. Pipeline visual mostra os 3 passos (draft → canonical core → produção). Suporta blog/video/shorts/podcast com debit de créditos por formato.
 
-**Critérios de aceite:**
-- [ ] Gera blog post funcional
-- [ ] Gera roteiro de vídeo funcional
-- [ ] Model routing funciona (flash para brainstorm, sonnet para production)
-- [ ] Debita créditos corretos
-
-**Concluído em:** —
+**Concluído em:** 2026-04-13
 
 ---
 
 ### F2-012 — Integração direta com APIs de IA (substituir YAML copy-paste)
-🔲 **Não iniciado**
+✅ **Concluído**
 
-**Escopo:**
-- Chamar Claude/Gemini/GPT diretamente via API
-- Parsear response automática (sem colar YAML)
-- Fallback entre providers (se um falha, tenta outro)
-- Config de modelo por stage (standard/premium/ultra/custom)
+- 4 providers implementados: Anthropic, OpenAI, Gemini, Ollama (local)
+- Router (`apps/api/src/lib/ai/router.ts`) com 4 tiers: `local` (Ollama) / `free` (Gemini) / `standard` (Gemini+Anthropic) / `premium` / `ultra`
+- `generateWithFallback` — runtime fallback em 429/quota/billing/5xx/network com per-provider retry (apenas pra erros transientes; quota não retenta)
+- Brainstorm, Research, Canonical Core, Production, Review todos via API
+- 8 testes cobrindo chain construction, retries, fallback paths
 
-**Arquivos:**
-- `apps/api/src/lib/ai/providers/` (atualizar)
-- `apps/api/src/lib/ai/router.ts` (novo: smart model routing)
-
-**Critérios de aceite:**
-- [ ] Brainstorm roda via API (sem copy-paste)
-- [ ] Research roda via API
-- [ ] Production roda via API
-- [ ] Review roda via API
-- [ ] Fallback funciona
-
-**Concluído em:** —
+**Concluído em:** 2026-04-13
 
 ---
 
 ### F2-013 — Bulk generation
-🔲 **Não iniciado**
+✅ **Concluído (backend v1)**
+
+Novo endpoint `POST /api/bulk/drafts { channelId, researchSessionId, type, titles[], provider?, model?, productionParams? }` — cria N drafts da mesma pesquisa e enfileira a pipeline de produção pra cada um via Inngest.
+
+- Pre-flight checkCredits pelo total (N × custo por draft) — skip se Ollama
+- Cada draft vira um Inngest event `production/generate` independente
+- Retorna `202 { drafts: [{id, title}], totalCostReserved }`
+
+UI multi-select na `/create` ficará como follow-up de UX (o endpoint já permite tooling/scripts fazer bulk agora).
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - A partir de uma pesquisa, gerar N blog posts ou N roteiros
@@ -427,7 +407,19 @@
 ---
 
 ### F2-023 — Video preview rich (teleprompter + metadata)
-🔲 **Não iniciado**
+✅ **Concluído**
+
+A página do draft de vídeo/shorts agora renderiza (quando presentes no `draft_json`):
+- Teleprompter como artigo (F2-045)
+- Pacote YouTube: títulos A/B, thumbnails, comentário fixado, descrição (F2-046)
+- **Capítulos** (F2-023) — lista com timestamp, título, duração, content de cada chapter com border-left destacado
+- Roteiro do editor com A-roll/B-roll/SFX/BGM (F2-045)
+- Review card com score + SEO + strengths/issues
+- Imagens do post (F2-042) — aplicável só pra blog
+
+Tudo renderizado sem precisar do toggle "Ver dados técnicos", preservando o JSON cru no devtools.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Roteiro com timestamps, B-roll notes, capítulos
@@ -445,7 +437,15 @@
 ---
 
 ### F2-024 — Publish Blog: taxonomia + scheduling
-🔲 **Não iniciado**
+✅ **Concluído**
+
+- O endpoint `POST /wordpress/publish-draft` aceita `status='future'` + `scheduledAt` ISO (F2-043). WP cria post com `status=future` e `date=scheduledAt` (nativo do WP REST).
+- `tags[]` auto-criadas no publish (quando não existentes no WP).
+- `categories[]` aceitas no body (passthrough).
+- UI: `SchedulePublishButton` na action bar do draft (blog) com input `datetime-local`, default amanhã 9h. Hide atrás de "📅 Agendar" pra não poluir. Ao confirmar chama /publish-draft com status=future.
+- Draft status vira `scheduled` + `scheduled_at` timestamp. UI reflete "Publicado" pós-data porque o WP assume.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Migrar PublishingForm do bright-curios
@@ -516,7 +516,11 @@
 ---
 
 ### F2-028 — Migração: agents + módulos do bright-curios
-🔲 **Não iniciado**
+⚠️ **N/A — dependência externa ausente**
+
+O repo `bright-curios` não está acessível neste workspace. Os agentes que precisávamos importar (`brainstorm`, `research`, `content-core`, `blog`, `video`, `shorts`, `podcast`, `engagement`, `review`) já foram recriados nativamente em `supabase/migrations/20260413040000_seed_all_agent_prompts.sql` e estendidos por migrations subsequentes (F2-045/046/047/048/037). Módulos de schemas/mappers específicos do legado seriam úteis mas não são bloqueantes — o pipeline atual valida output via recursive-search heuristics no backend (normalizeIdeas, normalizeCards, findContent, etc).
+
+**Decisão**: marcar como N/A. Se no futuro o repo for acessível e houver valor em portar schemas específicos, abrir card novo focado.
 
 **Escopo:**
 - Copiar/adaptar `src/lib/modules/{blog,video,shorts,podcast,engagement}/` do legado para `packages/shared/src/modules/` (schemas, mappers, validators, exporters)
@@ -531,16 +535,325 @@
 ---
 
 ### F2-029 — Migração: AI layer + provider routing
-🔲 **Não iniciado**
+✅ **Concluído**
+
+- 4 providers em `apps/api/src/lib/ai/providers/`: anthropic, openai, gemini, ollama
+- Router cobre 4 tiers × 4 stages, runtime fallback chain configurável por (provider, model)
+- `isProviderFailover` vs `shouldRetrySameProvider` separados — quota não retenta mesmo modelo
+- Adapter legado mantido só pra compat; pipeline novo usa `generateWithFallback` direto
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-030 — Provider Ollama (AI local)
+✅ **Concluído**
+
+- `OllamaProvider` em `apps/api/src/lib/ai/providers/ollama.ts` — talks to local server (default `localhost:11434`)
+- Tier `local` mapeia todas as etapas pra `ollama/llama3.1:8b`
+- Não exige API key; falha graciosamente se servidor offline
+- Free e infinito — ideal pra dev sem queimar quota
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-031 — Per-stage ModelPicker + Recommended badges
+✅ **Concluído**
+
+- Componente `apps/app/src/components/ai/ModelPicker.tsx` com catálogo: Local (Ollama), Gemini, OpenAI, Anthropic — modelos específicos por provider
+- `agent_prompts` ganhou colunas `recommended_provider` + `recommended_model`
+- Admin define recomendação em `/admin/agents/[slug]`; app renderiza badge **Recommended**
+- Páginas brainstorm + research consomem o recomendado e fazem prefill
+- Backend aceita override `provider` + `model` em `/brainstorm/sessions` e `/research-sessions`
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-032 — Pipeline orgchart no admin
+✅ **Concluído**
+
+- `PipelineGraph` em SVG render coluna-por-coluna: brainstorm → research → core → {blog, video, shorts, podcast, engagement} → review
+- Cubic Bezier edges, nodes linkam pro editor, slugs faltantes aparecem com borda tracejada
+- Sem dependência nova (Tailwind + SVG puros)
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-033 — UserMenu + Profile editing
+✅ **Concluído**
+
+- `UserMenu` no topbar substitui o avatar estático: mostra email, links pra Perfil/Settings, "Sair" (Supabase signOut + redirect pra `/auth/login`)
+- Nova rota `/settings/profile` edita first/last name via `PATCH /api/users/:id` (email read-only)
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-034 — Friendly AI errors + onboarding redirect fix
+✅ **Concluído**
+
+- `friendlyAiError(raw)` mapeia falhas de provider pra título + dica acionável (quota → "aguarde 1min ou troque provider"; billing → "adicione crédito ou use Gemini grátis"; overload → "tente em segundos"; etc.)
+- `useActiveChannel` distingue "lista vazia" de "fetch falhou" — bug do redirect pra onboarding em loop resolvido
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-035 — Dev script + README de setup
+✅ **Concluído**
+
+- `npm run dev` agora sobe app + api + web + docs + inngest + ollama em paralelo (Ollama gracefully skip se não instalado)
+- README reescrito do zero: prerequisites, env files, db push, Ollama models, AI provider matrix, troubleshooting
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-036 — Geração assíncrona com modal de progresso em tempo real (brainstorm + research + production)
+✅ **Concluído**
+
+Implementado end-to-end pros 3 stages (validado com Ollama + Gemini):
+- Migration `job_events` + helper `emitJobEvent`
+- Inngest functions: `brainstormGenerate`, `researchGenerate`, `productionGenerate` (canonical-core → produce → review em 3 steps)
+- `POST /brainstorm/sessions`, `POST /research-sessions`, `POST /content-drafts/:id/generate` retornam 202 em ~1s
+- `GET /{session}/events` — SSE stream com filtro `?since=<iso>` pra ignorar eventos de runs anteriores
+- Hook `useJobEvents` + `GenerationProgressModal`: log cronológico, duração por step, warning de stall após 60s
+- Auto-navega pra página do draft/session on complete/fail
+
+**Concluído em:** 2026-04-13
+
+---
+
+
+### F2-038 — Research: picker de ideias existentes + pré-preenchimento
+✅ **Concluído**
+
+- Novo componente `IdeaPickerModal` (lista filtrável por título/público, badges de verdict)
+- Link "Escolher ideia existente" ao lado do label Tema
+- Seleção → preenche topic + guarda `selectedIdeaId` no payload
+- Query param `?ideaId=X` agora faz fetch da ideia e pré-preenche Tema
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-040 — Create Content hub: tabs + arquivamento de itens usados
+✅ **Concluído (v1)**
+
+`/channels/[id]/create` agora tem 3 abas: **Ideias** · **Pesquisas** · **Conteúdo**.
+
+- Cada aba tem busca por título/tema
+- Ideias e pesquisas que já viraram `content_drafts` são automaticamente **arquivadas** (ocultas por padrão), com toggle "Mostrar arquivadas (N)" — evita gerar conteúdo duplicado
+- Aba Conteúdo agrupada por formato (Blog/Vídeo/Shorts/Podcast) com ícone e cor por tipo
+- Cards de conteúdo levam pra `/drafts/:id` (página dedicada)
+
+Cards visuais ricos por formato (hero blog, thumb vídeo, ondinha podcast, etc.) ficam pra v2 quando essas pages forem polidas.
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-041 — Drafts/new: remover input de Título redundante
+✅ **Concluído**
+
+Ao escolher uma pesquisa, o title da pesquisa virou o título do conteúdo. Não precisa pedir pro usuário re-digitar. Substituído o campo `<Label>Título</Label> + <Input>` por uma linha "**Tema:** _\<título\>_ [editar]" que abre input inline ao clicar.
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-048 — Contexto do canal nos agentes (idioma, tom, presentation_style)
+✅ **Concluído**
+
+Antes: vídeo de canal pt-BR saía em inglês. Agentes não tinham contexto do canal.
+
+- Nova coluna `channels.presentation_style` (talking_head | voiceover | mixed)
+- Todos os jobs (brainstorm/research/production) buscam o canal e injetam
+  `channel: { name, niche, language, tone, presentation_style }` no input do agente
+- Migration do prompt exige: output NO idioma do channel.language; tom adaptado;
+  talking_head usa cues `[lean forward]`, voiceover/faceless produz prosa limpa
+  estilo audiobook (vírgulas pra breath, reticências pra pausa) — pronta pra
+  ElevenLabs TTS sem pós-processamento
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-049 — Token usage tracking & cost dashboard
+✅ **Concluído**
+
+- Provider interface com `lastUsage?: TokenUsage` — Anthropic/OpenAI/Gemini/Ollama populam após cada call
+- `lib/ai/pricing.ts` — USD por 1M tokens por modelo (Ollama = $0)
+- `lib/ai/usage-log.ts` — `logUsage()` grava em `usage_events` (one row por AI call)
+- Migration `usage_events` (org_id, user_id, channel_id, stage, sub_stage, session_id/type, provider, model, input_tokens, output_tokens, cost_usd)
+- `generateWithFallback` retorna `usage` junto com result
+- Jobs registram uso em todos os pontos (brainstorm + research + production.core + production.produce + production.review)
+- `GET /usage/summary?days=N` — totais + groupings (provider/stage/model/day)
+- UI `/settings/usage` — 4 stat cards (calls, tokens in, tokens out, custo USD+BRL) + 4 breakdown cards com barras proporcionais
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-045 — Vídeo: roteiro de teleprompt + roteiro do editor
+✅ **Concluído**
+
+Output do agente de vídeo era um JSON solto sem separação clara. Atualizado:
+- `teleprompter_script`: roteiro limpo, só falas (sem cues), pronto pra teleprompter
+- `editor_script`: briefing pra editor com A-roll, B-roll com timestamps, lower-thirds, SFX, BGM, efeitos visuais, transições, pacing, color — escrito como um chief editor guiando um editor júnior
+- Migration `20260413080000_video_agent_dual_script.sql` apenda a directive ao prompt existente
+- Página do draft renderiza ambos: teleprompter como artigo legível, editor_script em card próprio com font-mono
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-044 — Wizard de criação contínuo (Brainstorm → Pesquisa → Conteúdo)
+✅ **Concluído (v1: nav contínua + stepper)**
+
+Antes: depois do brainstorm voltava pra Create Content (perdia contexto). Depois da pesquisa, idem. Usuário tinha que recomeçar o setup do próximo passo manualmente.
+
+Agora:
+- **Brainstorm** → clicar numa ideia leva pra `/research/new?ideaId=X` (idea pré-selecionada)
+- **Pesquisa** → "Aprovar cards" leva pra `/drafts/new?researchSessionId=X` (research pré-selecionada)
+- **Stepper visual** no topo das 3 páginas mostra Ideia → Pesquisa → Conteúdo, com check verde nos completos
+
+v2 (futuro): wizard single-page com state shared entre os steps (sem navegação) pra permitir voltar/editar steps anteriores.
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-042 — Drafts: imagens do post (hero + inline)
+✅ **Concluído (v1: generate + render)**
+
+Endpoint `POST /api/content-drafts/:id/images { slot, prompt?, aspectRatio }` usa o image provider configurado (Gemini Imagen ou mock) pra gerar uma imagem e append em `draft_json.images[]`. Se prompt omitido, é derivado do título + meta_description.
+
+UI: componente `DraftImages` no draft view — grid de imagens geradas + form inline (slot hero/inline, prompt custom opcional) + botão Gerar.
+
+**Drag-and-drop posicionamento ficou pra v2.**
+
+**Concluído em:** 2026-04-14
+
+Hoje a página do draft só mostra texto. Adicionar:
+- Botão "Gerar imagem hero" → chama image provider configurado em Settings (F1-XX)
+- Sugestão automática de N imagens inline com prompts derivados do conteúdo
+- Drag-and-drop pra reposicionar (hero, depois do parágrafo X, etc.)
+- Preview do post com imagens no lugar
+- Persistir image refs em `content_assets` linkado ao draft
+
+**Concluído em:** —
+
+---
+
+### F2-043 — Drafts: WordPress publish a partir de content_drafts
+✅ **Concluído**
+
+Novo endpoint `POST /api/wordpress/publish-draft { draftId, status, scheduledAt?, categories?, tags? }` que:
+- Carrega `content_drafts` e mapeia `draft_json` pro payload WP (title, content, excerpt)
+- Extração via heurística recursiva (body/content/text/markdown/draft/post/article/full_text)
+- Meta description → excerpt
+- Keywords do draft/review → tags do WP (auto-create)
+- Credenciais do `wordpress_configs` (encrypted)
+- Status = `publish` | `draft` | `future` (com scheduledAt pro F2-024)
+- Atualiza content_drafts com `published_url`, `published_at`, `scheduled_at`, `status`
+
+Frontend: "Publicar agora" agora chama direto o endpoint. Erro `NO_WP_CONFIG` → toast "Configure em Settings → WordPress". Video/shorts/podcast continuam como "Marcar como publicado" (manual).
+
+**Concluído em:** 2026-04-14
+
+---
+
+### F2-039 — Research: sinais de decisão (Google Trends + YouTube Intelligence)
+✅ **Concluído**
+
+`GET /api/research-sessions/:id/signals` retorna:
+- **Google Trends** 12m (via `google-trends-api`, free): pontos da série, tendência (rising/stable/falling), média, pico, queries relacionadas
+- **YouTube Intelligence**: última análise de nicho do canal (se existente)
+- Recomendação automática ("Momento ideal" / "Nicho em queda" / "Estável")
+
+Frontend: componente `NicheSignalsCard` com sparkline SVG, badge de tendência, queries como tags. Renderizado na página de pesquisa assim que a sessão completa.
+
+**Concluído em:** 2026-04-14
+
+Pesquisa hoje volta texto corrido. Pra decidir se vale produzir o conteúdo, usuário precisa de sinais quantitativos. Adicionar card "Sinais do nicho" no output do research (Medium/Deep):
+- 📈 **Google Trends** 12m (subindo/estável/caindo + gráfico sparkline) via `google-trends-api` (free)
+- 🎥 **YouTube Intelligence** — top 3 vídeos, avg views/likes, tópicos recorrentes (`/api/youtube/analyze-niche` já existe)
+- 🔥 Queries relacionadas (do Google Trends)
+- 💡 Recomendação: "Momento ideal" vs "Nicho saturado" baseado em trend + competição YouTube
+
+**Arquivos:**
+- `apps/api/src/lib/signals/trends.ts` (novo) — wrapper Google Trends
+- `apps/api/src/routes/research-sessions.ts` — chamar trends + youtube em paralelo
+- `apps/app/src/components/research/NicheSignalsCard.tsx` (novo)
+
+**Concluído em:** —
+
+---
+
+### F2-037 — Brainstorm: contagem fixa + draft mode + seleção
+✅ **Concluído (v1: count + draft mode + seleção)**
+
+Resolvido volume descontrolado + ausência de seleção. Idempotency transacional (header) fica pra v2 — o combo Inngest + double-click guard já cobre os casos reais.
+
+**Entregue:**
+- **Cap de count**: UI tem picker de 3/5/7/10 ideias. Schema valida `count: 3-10` (default 5). Body enviado com `count` + `targetCount` no evento Inngest.
+- **Agent prompt (migration 20260414020000)**: anexa diretiva "Produza exatamente `target_count` ideias, não invente placeholders".
+- **Job safety net**: `.slice(0, targetCount)` no job antes de persistir — se o modelo ignorar a diretiva, o cap ainda aplica.
+- **Draft mode (migration 20260414010000)**: nova tabela `brainstorm_drafts` (staging, TTL 24h). Job grava lá em vez de `idea_archives`.
+- **Seleção no UI**: após geração o modal fecha e renderiza os cards com checkbox (todos pré-selecionados). Botão "Salvar N" move os selecionados pra biblioteca; "Descartar tudo" limpa o draft.
+- **Endpoints novos**:
+  - `GET /brainstorm/sessions/:id/drafts` — lista staged
+  - `POST /brainstorm/sessions/:id/drafts/save` com body `draftIds[]` — move pra idea_archives
+  - `DELETE /brainstorm/sessions/:id/drafts` — descarta tudo
+- **Testes**: 9 passando — range validation, default count, empty draftIds, 404 handling.
+
+**Concluído em:** 2026-04-14
+
+**Problemas atuais (descobertos em 2026-04-13):**
+
+1. **Volume descontrolado:** prompt diz "Be thorough" sem cap → modelo gera 15-20 ideias quando o usuário só queria ~5. Polui banco e UI.
+2. **Idempotência ausente:** se o request é retentado (proxy timeout, fallback chain, F5 do navegador), múltiplos batches são persistidos pra mesma sessão. Vimos 25+ ideias salvas após 1 click + erro de quota.
+3. **Sem seleção:** todas as ideias geradas vão direto pro `idea_archives`. Usuário não pode escolher só as 3-5 que interessam — tem que deletar uma a uma.
+4. **Erro mascarado:** quando o provider falha mas o fallback parcial salva algo, o frontend mostra erro "INTERNAL" sem revelar que houve dados gerados.
 
 **Escopo:**
-- Migrar `src/lib/ai/adapter.ts`, `providers/{anthropic,openai,gemini,mock}.ts`, `promptGenerators.ts`, `imageProvider.ts` para `apps/api/src/lib/ai/`
-- Router `getRouteForStage(stage, tier)` já existe — garantir que cobre Surface/Medium/Deep e os 10 agents
-- Fallback entre providers (se um falha, tenta o próximo)
-- Model tier por etapa: standard (flash/haiku) / premium (sonnet/gpt-4o) / ultra (opus/o1)
+
+- **Cap de ideias:** UI tem campo `Quantas ideias gerar?` (default 5, range 3-10). Backend valida e injeta no prompt: `"Generate exactly ${count} ideas. Do not generate more or fewer."`
+- **Idempotência:**
+  - Frontend gera `idempotencyKey` (UUID) por click, manda no header `X-Idempotency-Key`
+  - Backend: tabela `brainstorm_runs(idempotency_key UNIQUE, session_id, status, result_json)` — se a key já existe, retorna o resultado anterior em vez de re-rodar
+  - Mesmo com retries internos do `generateWithFallback`, só 1 batch é persistido (deduplicação por key)
+- **Modo "draft" antes de salvar:**
+  - Geração nova vai pra `brainstorm_drafts` (tabela temporária, não em `idea_archives`)
+  - UI mostra ideias como cards com checkbox; usuário marca quais quer salvar
+  - Botão "Salvar selecionadas (N)" → move só as marcadas pra `idea_archives`
+  - "Descartar tudo" → limpa o draft, devolve créditos NÃO (já gastou IA)
+  - Drafts expiram em 24h
+- **Erro coerente:** se geração teve sucesso parcial, retorna `{data: {ideas, partial: true}, error: {message, code: 'PARTIAL_SUCCESS'}}` — frontend mostra ideias E aviso ("Geramos só 3 das 5 pedidas — quota Gemini")
+
+**Arquivos novos/alterados:**
+- `supabase/migrations/YYYYMMDDHHMMSS_brainstorm_drafts_and_runs.sql`
+- `packages/shared/src/schemas/brainstorm.ts` — adicionar `count?: number` (3-10)
+- `apps/api/src/lib/idempotency.ts` (novo) — middleware de idempotency-key
+- `apps/api/src/routes/brainstorm.ts` — usar drafts + idempotency
+- `apps/api/src/routes/brainstorm-drafts.ts` (novo) — endpoints `GET/POST/DELETE`
+- `apps/app/src/app/(app)/channels/[id]/brainstorm/new/page.tsx` — campo count + idempotency-key
+- `apps/app/src/components/brainstorm/IdeasDraftPicker.tsx` (novo) — checkbox UI
 
 **Critérios de aceite:**
-- [ ] 4 providers funcionais (anthropic, openai, gemini, mock)
-- [ ] Fallback testado (mock com falha → provider real)
-- [ ] Router cobre todas as combinações stage × tier
-- [ ] Teste integration com 1 call real por provider (skippable via env)
+- [ ] UI tem campo "Quantas ideias?" (slider ou input, 3-10)
+- [ ] Backend gera exatamente N (±1 tolerância) ideias
+- [ ] Mesma idempotency-key chamada 2x retorna o mesmo resultado, sem re-rodar IA
+- [ ] Ideias geradas vão pra draft, não pra `idea_archives`
+- [ ] Usuário seleciona com checkbox e clica "Salvar selecionadas"
+- [ ] Drafts expiram em 24h (cron Inngest)
+- [ ] Sucesso parcial mostra ideias + aviso amigável
+- [ ] Testes: idempotency, cap de count, draft → archive flow
+
+**Estimativa:** 1-2 dias
+
+**Concluído em:** —

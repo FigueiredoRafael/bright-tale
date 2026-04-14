@@ -13,6 +13,8 @@ import { STAGE_COSTS, generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
 import { buildChannelContext } from '../lib/ai/channelContext.js';
 import { checkCredits, debitCredits } from '../lib/credits.js';
+import { inngest } from '../jobs/client.js';
+import { emitJobEvent } from '../jobs/emitter.js';
 
 const brainstormBodySchema = z.object({
   channelId: z.string().uuid().optional(),
@@ -59,44 +61,6 @@ const brainstormBodySchema = z.object({
   contentGoal: z.enum(['growth', 'engagement', 'monetization', 'authority']).optional(),
 });
 
-interface RawIdea {
-  title?: string;
-  angle?: string;
-  core_tension?: string;
-  target_audience?: string;
-  verdict?: string;
-  monetization?: string;
-  repurposing?: string[];
-}
-
-function normalizeIdeas(raw: unknown): RawIdea[] {
-  // Recursive search: agents often nest the array inside arbitrary keys
-  // (BC_BRAINSTORM_OUTPUT.ideas, output.ideas, results, etc.). Find the first
-  // array whose items look like ideas (have a string "title" or "idea_id").
-  function looksLikeIdea(item: unknown): boolean {
-    if (!item || typeof item !== 'object') return false;
-    const o = item as Record<string, unknown>;
-    return typeof o.title === 'string' || typeof o.idea_id === 'string' || typeof o.angle === 'string';
-  }
-
-  function find(node: unknown, depth = 0): RawIdea[] | null {
-    if (depth > 6) return null;
-    if (Array.isArray(node)) {
-      if (node.length > 0 && node.some(looksLikeIdea)) return node as RawIdea[];
-      return null;
-    }
-    if (node && typeof node === 'object') {
-      for (const v of Object.values(node as Record<string, unknown>)) {
-        const found = find(v, depth + 1);
-        if (found) return found;
-      }
-    }
-    return null;
-  }
-
-  return find(raw) ?? [];
-}
-
 async function getOrgId(userId: string): Promise<string> {
   const sb = createServiceClient();
   const { data } = await sb
@@ -122,7 +86,9 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       const orgId = await getOrgId(request.userId);
       const sb = createServiceClient();
 
-      await checkCredits(orgId, request.userId, STAGE_COSTS.brainstorm);
+      // Local Ollama runs cost us nothing → no internal credit charge.
+      const cost = body.provider === 'ollama' ? 0 : STAGE_COSTS.brainstorm;
+      if (cost > 0) await checkCredits(orgId, request.userId, cost);
 
       const inputJson: Record<string, unknown> = {
         topic: body.topic ?? null,
@@ -194,18 +160,25 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         if (channelContext && systemPrompt) {
           systemPrompt = `${systemPrompt}\n\n${channelContext}`;
         }
+      // Seed a "queued" event so the SSE stream has something to show immediately.
+      await emitJobEvent(session.id, 'brainstorm', 'queued', 'Iniciando…');
 
-        const { result } = await generateWithFallback(
-          'brainstorm',
-          body.modelTier,
-          {
-            agentType: 'brainstorm',
-            input: inputJson,
-            schema: null,
-            systemPrompt,
-          },
-          { provider: body.provider, model: body.model },
-        );
+      // Fire-and-forget: Inngest runs the job in the background.
+      await inngest.send({
+        name: 'brainstorm/generate',
+        data: {
+          sessionId: session.id,
+          orgId,
+          userId: request.userId,
+          channelId: body.channelId ?? null,
+          inputMode: body.inputMode,
+          inputJson: { ...inputJson, target_count: body.count },
+          modelTier: body.modelTier,
+          provider: body.provider,
+          model: body.model,
+          targetCount: body.count,
+        },
+      });
 
         const ideas = normalizeIdeas(result);
         if (ideas.length === 0) {
@@ -280,9 +253,74 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
           .eq('id', session.id);
         throw err;
       }
+      return reply.status(202).send({
+        data: { sessionId: session.id, status: 'queued' },
+        error: null,
+      });
     } catch (error) {
       return sendError(reply, error);
     }
+  });
+
+  /**
+   * GET /sessions/:id/events — SSE stream of progress events for a job.
+   * Polls job_events every 1s and pushes new rows to the client.
+   * Closes when a `completed` or `failed` event is emitted.
+   */
+  fastify.get('/sessions/:id/events', { preHandler: [authenticate] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const sb = createServiceClient();
+
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    const sinceParam = (request.query as { since?: string })?.since;
+    let lastCreatedAt = sinceParam ?? '1970-01-01T00:00:00Z';
+    let closed = false;
+    request.raw.on('close', () => {
+      closed = true;
+    });
+
+    const poll = async (): Promise<void> => {
+      while (!closed) {
+        const { data: events } = await (sb
+          .from('job_events')
+          .select('*')
+          .eq('session_id', id)
+          .gt('created_at', lastCreatedAt)
+          .order('created_at', { ascending: true })) as unknown as {
+          data: Array<{ id: string; stage: string; message: string; metadata: unknown; created_at: string }> | null;
+        };
+
+        if (events && events.length > 0) {
+          for (const ev of events) {
+            reply.raw.write(`data: ${JSON.stringify(ev)}\n\n`);
+            lastCreatedAt = ev.created_at;
+            if (ev.stage === 'completed' || ev.stage === 'failed') {
+              reply.raw.end();
+              return;
+            }
+          }
+        } else {
+          // Heartbeat so proxies don't time out the connection.
+          reply.raw.write(': ping\n\n');
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    };
+
+    // Kick off polling; do not await in handler scope (stream continues until done).
+    void poll().catch((err) => {
+      fastify.log.error({ err }, 'SSE poll failed');
+      reply.raw.end();
+    });
+
+    // Tell Fastify we've handled the response manually.
+    return reply;
   });
 
   /**
@@ -409,6 +447,94 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         }).update({ status: 'failed', error_message: (err as Error)?.message?.slice(0, 500) }).eq('id', session.id);
         throw err;
       }
+  /*   
+   * GET /sessions/:id/drafts — F2-037. List staged ideas for a session
+   * (not yet persisted to idea_archives).
+   */
+  fastify.get('/sessions/:id/drafts', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      const { id } = request.params as { id: string };
+      const { data, error } = await sb
+        .from('brainstorm_drafts')
+        .select('*')
+        .eq('session_id', id)
+        .order('position', { ascending: true });
+      if (error) throw error;
+      return reply.send({ data: { drafts: data ?? [] }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * POST /sessions/:id/drafts/save — F2-037. Move selected drafts into
+   * idea_archives (the permanent library). Body: { draftIds: string[] }.
+   * Removes the selected drafts from the staging table. Unselected ones
+   * stay until the 24h expiry.
+   */
+  fastify.post('/sessions/:id/drafts/save', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const { id: sessionId } = request.params as { id: string };
+      const body = z.object({ draftIds: z.array(z.string().uuid()).min(1) }).parse(request.body);
+      const sb = createServiceClient();
+
+      // Pull the selected drafts.
+      const { data: drafts, error: draftsErr } = await sb
+        .from('brainstorm_drafts')
+        .select('*')
+        .eq('session_id', sessionId)
+        .in('id', body.draftIds);
+      if (draftsErr) throw draftsErr;
+      if (!drafts || drafts.length === 0) {
+        throw new ApiError(404, 'No matching drafts', 'NOT_FOUND');
+      }
+
+      // Generate sequential idea_ids (BC-IDEA-NNN).
+      const { count } = await sb.from('idea_archives').select('*', { count: 'exact', head: true });
+      const startNum = (count ?? 0) + 1;
+
+      const rows = drafts.map((d, i) => ({
+        idea_id: `BC-IDEA-${String(startNum + i).padStart(3, '0')}`,
+        title: d.title,
+        core_tension: d.core_tension ?? '',
+        target_audience: d.target_audience ?? '',
+        verdict: d.verdict ?? 'experimental',
+        discovery_data: d.discovery_data ?? '',
+        source_type: 'brainstorm',
+        channel_id: d.channel_id,
+        brainstorm_session_id: d.session_id,
+        user_id: d.user_id,
+        org_id: d.org_id,
+      }));
+
+      const { error: insErr } = await (sb.from('idea_archives') as unknown as {
+        upsert: (rows: Record<string, unknown>[], opts?: unknown) => Promise<{ error: unknown }>;
+      }).upsert(rows, { onConflict: 'idea_id', ignoreDuplicates: true });
+      if (insErr) throw insErr;
+
+      // Delete the drafts that were saved.
+      await sb.from('brainstorm_drafts').delete().in('id', body.draftIds);
+
+      return reply.send({ data: { saved: rows.length }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * DELETE /sessions/:id/drafts — F2-037. Discard ALL staged drafts for a
+   * session without saving.
+   */
+  fastify.delete('/sessions/:id/drafts', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const { id: sessionId } = request.params as { id: string };
+      const sb = createServiceClient();
+      const { error } = await sb.from('brainstorm_drafts').delete().eq('session_id', sessionId);
+      if (error) throw error;
+      return reply.send({ data: { discarded: true }, error: null });
     } catch (error) {
       return sendError(reply, error);
     }

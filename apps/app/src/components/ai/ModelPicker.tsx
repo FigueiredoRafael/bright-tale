@@ -64,11 +64,10 @@ export function ModelPicker({ provider, model, recommended, onProviderChange, on
                             <button
                                 key={p}
                                 onClick={() => onProviderChange(p)}
-                                className={`relative text-left p-2 rounded-md border-2 transition-all ${
-                                    provider === p
+                                className={`relative text-left p-2 rounded-md border-2 transition-all ${provider === p
                                         ? "border-primary bg-primary/5"
                                         : "border-border hover:border-muted-foreground/30"
-                                }`}
+                                    }`}
                             >
                                 <div className="text-sm font-medium">{PROVIDER_LABELS[p]}</div>
                                 {isRecommended && (
@@ -91,11 +90,10 @@ export function ModelPicker({ provider, model, recommended, onProviderChange, on
                             <button
                                 key={m.id}
                                 onClick={() => onModelChange(m.id)}
-                                className={`relative text-left p-2 rounded-md border-2 transition-all ${
-                                    model === m.id
+                                className={`relative text-left p-2 rounded-md border-2 transition-all ${model === m.id
                                         ? "border-primary bg-primary/5"
                                         : "border-border hover:border-muted-foreground/30"
-                                }`}
+                                    }`}
                             >
                                 <div className="text-xs font-medium pr-12">{m.label}</div>
                                 {m.note && <div className="text-[10px] text-muted-foreground mt-0.5">{m.note}</div>}
