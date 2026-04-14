@@ -90,6 +90,33 @@ const translations = {
     ft_product: 'Product', ft_resources: 'Resources', ft_company: 'Company',
     ft_docs: 'Documentation', ft_api: 'API Reference', ft_status: 'Status Page',
     ft_about: 'About BrightLabs', ft_contact: 'Contact', ft_privacy: 'Privacy Policy', ft_terms: 'Terms of Service',
+    // Pipeline preview card
+    ppc_topic: 'best ergonomic keyboards 2026',
+    ppc_brainstorm: 'Brainstorm', ppc_research: 'Research', ppc_write: 'Write', ppc_optimize: 'Optimize', ppc_publish: 'Publish',
+    ppc_brainstorm_detail: '8 angles · 12 keywords', ppc_research_detail: '14 sources · 3.2k words',
+    ppc_write_detail: '2,847 words · Flesch 64', ppc_optimize_detail: '6 affiliate links added', ppc_publish_detail: 'yoursite.com/article',
+    ppc_done: 'done', ppc_running: 'running', ppc_queue: 'queue',
+    ppc_replay: '↻ replay', ppc_ai_pipeline: 'AI Pipeline',
+    // Terminal
+    term_title: 'brighttale pipeline',
+    term_1: '<span class="t-p">▸ </span><span class="t-cmd">brighttale run --topic "best ergonomic keyboards 2026"</span>',
+    term_2: '<span class="t-out">⠋ Agent 1/4: Brainstorming angles...</span>',
+    term_3: '<span class="t-ok">✓ </span><span class="t-out">Generated 8 content angles (12 keywords mapped)</span>',
+    term_4: '<span class="t-out">⠋ Agent 2/4: Deep research (14 sources)...</span>',
+    term_5: '<span class="t-ok">✓ </span><span class="t-out">Research brief ready — 3,200 words of source material</span>',
+    term_6: '<span class="t-out">⠋ Agent 3/4: Writing SEO-optimized draft...</span>',
+    term_7: '<span class="t-ok">✓ </span><span class="t-out">Draft complete — 2,847 words, Flesch score 64</span>',
+    term_8: '<span class="t-out">⠋ Agent 4/4: Review + affiliate links...</span>',
+    term_9: '<span class="t-ok">✓ </span><span class="t-out">Added 6 affiliate links, 3 internal links, meta tags</span>',
+    term_10: '<span class="t-out">⠋ Publishing to WordPress...</span>',
+    term_11: '<span class="t-ok">✓ </span><span class="t-acc">Published! </span><span class="t-out">→ yoursite.com/best-ergonomic-keyboards-2026</span>',
+    term_12: '<span class="t-ok">  Pipeline complete in 4m 23s</span><span class="t-cursor"></span>',
+    // Research sources
+    rs_title: 'Sources scanned', rs_count: '14 sources',
+    // Schedule days
+    day_mon: 'Mon', day_tue: 'Tue', day_wed: 'Wed', day_thu: 'Thu', day_fri: 'Fri', day_sat: 'Sat', day_sun: 'Sun',
+    // Form success
+    form_success: "You're on the list! We'll be in touch soon.",
   },
   pt: {
     nav_how: 'Como funciona', nav_features: 'Funcionalidades', nav_pricing: 'Preços', nav_cta: 'Comece Grátis →',
@@ -176,28 +203,57 @@ const translations = {
     ft_product: 'Produto', ft_resources: 'Recursos', ft_company: 'Empresa',
     ft_docs: 'Documentação', ft_api: 'Referência da API', ft_status: 'Status do Serviço',
     ft_about: 'Sobre a BrightLabs', ft_contact: 'Contato', ft_privacy: 'Política de Privacidade', ft_terms: 'Termos de Uso',
+    // Pipeline preview card
+    ppc_topic: 'melhores teclados ergonômicos 2026',
+    ppc_brainstorm: 'Brainstorm', ppc_research: 'Pesquisa', ppc_write: 'Escrita', ppc_optimize: 'Otimização', ppc_publish: 'Publicação',
+    ppc_brainstorm_detail: '8 ângulos · 12 palavras-chave', ppc_research_detail: '14 fontes · 3,2k palavras',
+    ppc_write_detail: '2.847 palavras · Flesch 64', ppc_optimize_detail: '6 links de afiliados', ppc_publish_detail: 'seusite.com/artigo',
+    ppc_done: 'feito', ppc_running: 'rodando', ppc_queue: 'fila',
+    ppc_replay: '↻ replay', ppc_ai_pipeline: 'Pipeline IA',
+    // Terminal
+    term_title: 'brighttale pipeline',
+    term_1: '<span class="t-p">▸ </span><span class="t-cmd">brighttale run --topic "melhores teclados ergonômicos 2026"</span>',
+    term_2: '<span class="t-out">⠋ Agente 1/4: Gerando ângulos...</span>',
+    term_3: '<span class="t-ok">✓ </span><span class="t-out">8 ângulos de conteúdo gerados (12 palavras-chave mapeadas)</span>',
+    term_4: '<span class="t-out">⠋ Agente 2/4: Pesquisa profunda (14 fontes)...</span>',
+    term_5: '<span class="t-ok">✓ </span><span class="t-out">Briefing pronto — 3.200 palavras de material fonte</span>',
+    term_6: '<span class="t-out">⠋ Agente 3/4: Escrevendo rascunho otimizado para SEO...</span>',
+    term_7: '<span class="t-ok">✓ </span><span class="t-out">Rascunho completo — 2.847 palavras, score Flesch 64</span>',
+    term_8: '<span class="t-out">⠋ Agente 4/4: Revisão + links de afiliados...</span>',
+    term_9: '<span class="t-ok">✓ </span><span class="t-out">6 links de afiliados, 3 links internos, meta tags adicionados</span>',
+    term_10: '<span class="t-out">⠋ Publicando no WordPress...</span>',
+    term_11: '<span class="t-ok">✓ </span><span class="t-acc">Publicado! </span><span class="t-out">→ seusite.com/melhores-teclados-ergonomicos-2026</span>',
+    term_12: '<span class="t-ok">  Pipeline completo em 4min 23s</span><span class="t-cursor"></span>',
+    // Research sources
+    rs_title: 'Fontes analisadas', rs_count: '14 fontes',
+    // Schedule days
+    day_mon: 'Seg', day_tue: 'Ter', day_wed: 'Qua', day_thu: 'Qui', day_fri: 'Sex', day_sat: 'Sáb', day_sun: 'Dom',
+    // Form success
+    form_success: 'Você está na lista! Entraremos em contato em breve.',
   },
 } as const;
 
 type Lang = keyof typeof translations;
 type Dict = (typeof translations)[Lang];
 
-// ─── Terminal lines ───────────────────────────────────────────────────────────
+// ─── Terminal lines (built from translations) ────────────────────────────────
 
-const TERM_LINES = [
-  { html: '<span class="t-p">▸ </span><span class="t-cmd">brighttale run --topic "best ergonomic keyboards 2026"</span>', delay: 200 },
-  { html: '<span class="t-out">⠋ Agent 1/4: Brainstorming angles...</span>', delay: 800 },
-  { html: '<span class="t-ok">✓ </span><span class="t-out">Generated 8 content angles (12 keywords mapped)</span>', delay: 1700 },
-  { html: '<span class="t-out">⠋ Agent 2/4: Deep research (14 sources)...</span>', delay: 2200 },
-  { html: '<span class="t-ok">✓ </span><span class="t-out">Research brief ready — 3,200 words of source material</span>', delay: 3200 },
-  { html: '<span class="t-out">⠋ Agent 3/4: Writing SEO-optimized draft...</span>', delay: 3700 },
-  { html: '<span class="t-ok">✓ </span><span class="t-out">Draft complete — 2,847 words, Flesch score 64</span>', delay: 4800 },
-  { html: '<span class="t-out">⠋ Agent 4/4: Review + affiliate links...</span>', delay: 5300 },
-  { html: '<span class="t-ok">✓ </span><span class="t-out">Added 6 affiliate links, 3 internal links, meta tags</span>', delay: 6100 },
-  { html: '<span class="t-out">⠋ Publishing to WordPress...</span>', delay: 6500 },
-  { html: '<span class="t-ok">✓ </span><span class="t-acc">Published! </span><span class="t-out">→ yoursite.com/best-ergonomic-keyboards-2026</span>', delay: 7200 },
-  { html: '<span class="t-ok">  Pipeline complete in 4m 23s</span><span class="t-cursor"></span>', delay: 7700 },
-];
+function getTermLines(t: (key: keyof Dict) => string) {
+  return [
+    { html: t('term_1'), delay: 200 },
+    { html: t('term_2'), delay: 800 },
+    { html: t('term_3'), delay: 1700 },
+    { html: t('term_4'), delay: 2200 },
+    { html: t('term_5'), delay: 3200 },
+    { html: t('term_6'), delay: 3700 },
+    { html: t('term_7'), delay: 4800 },
+    { html: t('term_8'), delay: 5300 },
+    { html: t('term_9'), delay: 6100 },
+    { html: t('term_10'), delay: 6500 },
+    { html: t('term_11'), delay: 7200 },
+    { html: t('term_12'), delay: 7700 },
+  ];
+}
 
 // ─── PPC step types ───────────────────────────────────────────────────────────
 
@@ -209,31 +265,40 @@ interface PpcStep {
   status: StepStatus;
 }
 
-const PPC_INITIAL: PpcStep[] = [
-  { label: 'Brainstorm', detail: '8 angles · 12 keywords', status: 'idle' },
-  { label: 'Research', detail: '14 sources · 3.2k words', status: 'idle' },
-  { label: 'Write', detail: '2,847 words · Flesch 64', status: 'idle' },
-  { label: 'Optimize', detail: '6 affiliate links added', status: 'idle' },
-  { label: 'Publish', detail: 'yoursite.com/article', status: 'idle' },
-];
+function getPpcInitial(t: (key: keyof Dict) => string): PpcStep[] {
+  return [
+    { label: t('ppc_brainstorm'), detail: t('ppc_brainstorm_detail'), status: 'idle' },
+    { label: t('ppc_research'), detail: t('ppc_research_detail'), status: 'idle' },
+    { label: t('ppc_write'), detail: t('ppc_write_detail'), status: 'idle' },
+    { label: t('ppc_optimize'), detail: t('ppc_optimize_detail'), status: 'idle' },
+    { label: t('ppc_publish'), detail: t('ppc_publish_detail'), status: 'idle' },
+  ];
+}
 
 // ─── Pipeline Preview Card ────────────────────────────────────────────────────
 
-function PipelinePreviewCard() {
-  const [steps, setSteps] = useState<PpcStep[]>(PPC_INITIAL.map((s) => ({ ...s })));
+function PipelinePreviewCard({ t }: { t: (key: keyof Dict) => string }) {
+  const ppcInitial = getPpcInitial(t);
+  const [steps, setSteps] = useState<PpcStep[]>(ppcInitial.map((s) => ({ ...s })));
   const [writeProgress, setWriteProgress] = useState(0);
   const [elapsed, setElapsed] = useState('0s');
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Re-sync steps when language changes
+  useEffect(() => {
+    const updated = getPpcInitial(t);
+    setSteps((prev) => prev.map((s, i) => ({ ...updated[i], status: s.status })));
+  }, [t]);
+
   const runAnimation = useCallback(() => {
-    setSteps(PPC_INITIAL.map((s) => ({ ...s })));
+    setSteps(getPpcInitial(t).map((s) => ({ ...s })));
     setWriteProgress(0);
     setElapsed('0s');
 
     const timings = [300, 1200, 2400, 3900, 5200];
     const doneTimes = [1100, 2300, 3800, 5100, 6000];
 
-    timings.forEach((t, i) => {
+    timings.forEach((ms, i) => {
       setTimeout(() => {
         setSteps((prev) => prev.map((s, idx) => idx === i ? { ...s, status: 'active' } : s));
         if (i === 2) {
@@ -245,7 +310,7 @@ function PipelinePreviewCard() {
             if (p >= 100) clearInterval(iv);
           }, 28);
         }
-      }, t);
+      }, ms);
       setTimeout(() => {
         setSteps((prev) => prev.map((s, idx) => idx === i ? { ...s, status: 'done' } : s));
       }, doneTimes[i]);
@@ -263,7 +328,7 @@ function PipelinePreviewCard() {
         setElapsed('4m 23s');
       }
     }, 1000);
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const timeout = setTimeout(runAnimation, 600);
@@ -283,7 +348,7 @@ function PipelinePreviewCard() {
               <path d="M4 12V4h2l2 4 2-4h2v8h-2V7.5l-2 3.5-2-3.5V12H4z" fill="var(--brand-400)" />
             </svg>
           </div>
-          <span className="ppc-topic">best ergonomic keyboards 2026</span>
+          <span className="ppc-topic">{t('ppc_topic')}</span>
         </div>
         <span className="ppc-elapsed">{elapsed}</span>
       </div>
@@ -313,20 +378,20 @@ function PipelinePreviewCard() {
               )}
             </div>
             <div className={`ppc-step-badge ppc-step-badge--${step.status}`}>
-              {step.status === 'done' ? 'done' : step.status === 'active' ? 'running' : 'queue'}
+              {step.status === 'done' ? t('ppc_done') : step.status === 'active' ? t('ppc_running') : t('ppc_queue')}
             </div>
           </div>
         ))}
       </div>
       <div className="ppc-footer">
         <button className="ppc-replay" onClick={runAnimation} aria-label="Replay animation">
-          ↻ replay
+          {t('ppc_replay')}
         </button>
         <span className="ppc-publish-tag">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" width="12" height="12">
             <path d="M8 1l2 5h5l-4 3 1.5 5L8 11l-4.5 3L5 9 1 6h5z" />
           </svg>
-          AI Pipeline
+          {t('ppc_ai_pipeline')}
         </span>
       </div>
     </div>
@@ -475,7 +540,8 @@ export default function Home() {
     const body = termBodyRef.current;
     if (!body) return;
     body.innerHTML = '';
-    TERM_LINES.forEach(({ html, delay }) => {
+    const lines = getTermLines(t);
+    lines.forEach(({ html, delay }) => {
       setTimeout(() => {
         if (!termBodyRef.current) return;
         const div = document.createElement('div');
@@ -486,7 +552,7 @@ export default function Home() {
         termBodyRef.current.scrollTop = termBodyRef.current.scrollHeight;
       }, delay);
     });
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const el = termBodyRef.current;
@@ -656,7 +722,7 @@ export default function Home() {
                       <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
                       <polyline points="22 4 12 14.01 9 11.01" />
                     </svg>
-                    <span>You&apos;re on the list! We&apos;ll be in touch soon.</span>
+                    <span>{t('form_success')}</span>
                   </div>
                 ) : (
                   <form className={`hero-form${formLoading ? ' loading' : ''}`} onSubmit={handleEarlyAccess}>
@@ -696,7 +762,7 @@ export default function Home() {
 
               {/* Task 2: Preview card on right side */}
               <div className="hero-preview-wrap">
-                <PipelinePreviewCard />
+                <PipelinePreviewCard t={t} />
               </div>
             </div>
           </div>
@@ -840,8 +906,8 @@ export default function Home() {
                 <div className="terminal">
                   <div className="terminal-bar">
                     <span className="t-dot r" /><span className="t-dot y" /><span className="t-dot g" />
-                    <span className="terminal-title">brighttale pipeline</span>
-                    <button className="terminal-replay" onClick={runTerminal} aria-label="Replay">↻ replay</button>
+                    <span className="terminal-title">{t('term_title')}</span>
+                    <button className="terminal-replay" onClick={runTerminal} aria-label="Replay">{t('ppc_replay')}</button>
                   </div>
                   <div className="terminal-body" ref={termBodyRef} />
                 </div>
@@ -873,8 +939,8 @@ export default function Home() {
                 </div>
                 <div className="research-sources">
                   <div className="rs-header">
-                    <span className="rs-title">Sources scanned</span>
-                    <span className="rs-count-total">14 sources</span>
+                    <span className="rs-title">{t('rs_title')}</span>
+                    <span className="rs-count-total">{t('rs_count')}</span>
                   </div>
                   {[
                     { label: 'Wikipedia', pct: 92 },
@@ -929,12 +995,12 @@ export default function Home() {
                   <span className="b-tag">{t('b4_tag')}</span>
                 </div>
                 <div className="schedule-grid">
-                  {(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const).map((day, di) => {
+                  {(['day_mon', 'day_tue', 'day_wed', 'day_thu', 'day_fri', 'day_sat', 'day_sun'] as const).map((dayKey, di) => {
                     // today = Wed (di=2), publishing slot = Wed slot 1
                     const isToday = di === 2;
                     return (
-                      <div key={day} className="sg-col">
-                        <span className={`sg-day${isToday ? ' sg-day--today' : ''}`}>{day}</span>
+                      <div key={dayKey} className="sg-col">
+                        <span className={`sg-day${isToday ? ' sg-day--today' : ''}`}>{t(dayKey)}</span>
                         {[0, 1, 2].map((slot) => {
                           const isNow = isToday && slot === 1;
                           const isDone = di < 2 || (di === 2 && slot === 0);
@@ -1095,7 +1161,7 @@ export default function Home() {
               />
               <span className={isAnnual ? 'active' : ''}>{t('pr_toggle_an')} <span className="pr-save">{t('pr_toggle_save')}</span></span>
             </div>
-            <div className="pr-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+            <div className="pr-grid">
               {/* Free */}
               <div className="pr-card anim">
                 <div className="pr-name">Free</div>
@@ -1232,7 +1298,7 @@ export default function Home() {
                   <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
                   <polyline points="22 4 12 14.01 9 11.01" />
                 </svg>
-                <span>You&apos;re on the list! We&apos;ll be in touch soon.</span>
+                <span>{t('form_success')}</span>
               </div>
             ) : (
               <form
