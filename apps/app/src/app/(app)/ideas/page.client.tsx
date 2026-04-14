@@ -22,8 +22,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import MarkdownImport from "@/components/import/MarkdownImport";
-import type { ParsedIdea } from "@/lib/parsers/markdown";
+import { IdeaImportModal } from "@/components/import/IdeaImportModal";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
     Search,
     Lightbulb,
@@ -33,6 +33,10 @@ import {
     Upload,
     Loader2,
     AlertTriangle,
+    LayoutGrid,
+    List,
+    Download,
+    Archive,
 } from "lucide-react";
 
 interface LibraryIdea {
@@ -84,6 +88,10 @@ export default function IdeasPage() {
 
     // Delete confirmation
     const [deletingId, setDeletingId] = useState<string | null>(null);
+
+    // View mode + multi-select
+    const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
     // Prevent duplicate fetches
     const fetchingRef = useRef(false);
@@ -248,31 +256,25 @@ export default function IdeasPage() {
         });
     };
 
-    const handleImport = async (parsed: ParsedIdea) => {
-        setSaving(true);
-        try {
-            const res = await fetch("/api/ideas/library", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    title: parsed.title,
-                    core_tension: parsed.one_liner,
-                    target_audience: "",
-                    verdict: "experimental",
-                    source_type: "import",
-                    markdown_content: parsed.raw_content,
-                }),
-            });
+    const [showImport, setShowImport] = useState(false);
 
-            if (!res.ok) throw new Error("Failed to import");
-
-            toast({ title: "Idea imported successfully" });
-            fetchIdeas();
-        } catch (err) {
-            toast({ title: "Failed to import idea", variant: "destructive" });
-        } finally {
-            setSaving(false);
+    const handleBulkImport = async (ideas: Array<{ title: string; core_tension: string; target_audience: string; verdict: string; tags: string[]; source_type: string }>) => {
+        let imported = 0;
+        let failed = 0;
+        for (const idea of ideas) {
+            try {
+                const res = await fetch("/api/ideas/library", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(idea),
+                });
+                if (res.ok) imported++; else failed++;
+            } catch {
+                failed++;
+            }
         }
+        fetchIdeas();
+        return { imported, failed };
     };
 
     const getVerdictColor = (verdict: string) => {
@@ -301,6 +303,83 @@ export default function IdeasPage() {
         }
     };
 
+    // Track last clicked index for shift-select range
+    const lastClickedRef = useRef<number>(-1);
+
+    const handleSelect = (id: string, index: number, event?: React.MouseEvent) => {
+        setSelectedIds((prev) => {
+            const next = new Set(prev);
+
+            if (event?.shiftKey && lastClickedRef.current >= 0) {
+                // Shift+click: select range between last click and current
+                const start = Math.min(lastClickedRef.current, index);
+                const end = Math.max(lastClickedRef.current, index);
+                for (let i = start; i <= end; i++) {
+                    next.add(ideas[i].id);
+                }
+            } else if (event?.ctrlKey || event?.metaKey) {
+                // Ctrl/Cmd+click: toggle single without clearing others
+                if (next.has(id)) next.delete(id); else next.add(id);
+            } else {
+                // Plain click on checkbox: toggle single
+                if (next.has(id)) next.delete(id); else next.add(id);
+            }
+
+            return next;
+        });
+        lastClickedRef.current = index;
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.size === ideas.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(ideas.map((i) => i.id)));
+        }
+    };
+
+    const [batchDeleting, setBatchDeleting] = useState(false);
+
+    const handleBatchDelete = async () => {
+        setBatchDeleting(true);
+        const ids = Array.from(selectedIds);
+        for (const id of ids) {
+            await fetch(`/api/ideas/library/${id}`, { method: "DELETE" });
+        }
+        toast({ title: `${ids.length} ideas deleted` });
+        setSelectedIds(new Set());
+        setBatchDeleting(false);
+        fetchIdeas();
+    };
+
+    const handleBatchExport = () => {
+        const selected = ideas.filter((i) => selectedIds.has(i.id));
+        const json = JSON.stringify(selected, null, 2);
+        const blob = new Blob([json], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `ideas-export-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast({ title: `${selected.length} ideas exported` });
+    };
+
+
+    const handleBatchVerdictChange = async (newVerdict: string) => {
+        const ids = Array.from(selectedIds);
+        for (const id of ids) {
+            await fetch(`/api/ideas/library/${id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ verdict: newVerdict }),
+            });
+        }
+        toast({ title: `${ids.length} ideas marked as ${newVerdict}` });
+        setSelectedIds(new Set());
+        fetchIdeas();
+    };
+
     return (
         <div className="p-6">
             {/* Header */}
@@ -315,17 +394,10 @@ export default function IdeasPage() {
                     </p>
                 </div>
                 <div className="flex gap-2">
-                    <MarkdownImport
-                        type="idea"
-                        saveToLibrary={true}
-                        onImport={(parsed) => handleImport(parsed as ParsedIdea)}
-                        trigger={
-                            <Button variant="outline" className="gap-2">
-                                <Upload className="h-4 w-4" />
-                                Import
-                            </Button>
-                        }
-                    />
+                    <Button variant="outline" className="gap-2" onClick={() => setShowImport(true)}>
+                        <Upload className="h-4 w-4" />
+                        Import
+                    </Button>
                     <Button onClick={() => setShowCreate(true)} className="gap-2">
                         <Plus className="h-4 w-4" />
                         New Idea
@@ -368,7 +440,58 @@ export default function IdeasPage() {
                         <SelectItem value="manual">Manual</SelectItem>
                     </SelectContent>
                 </Select>
+                <div className="flex border rounded-md">
+                    <Button
+                        variant={viewMode === "grid" ? "default" : "ghost"}
+                        size="sm"
+                        className="rounded-r-none h-9 px-2.5"
+                        onClick={() => setViewMode("grid")}
+                    >
+                        <LayoutGrid className="h-4 w-4" />
+                    </Button>
+                    <Button
+                        variant={viewMode === "list" ? "default" : "ghost"}
+                        size="sm"
+                        className="rounded-l-none h-9 px-2.5"
+                        onClick={() => setViewMode("list")}
+                    >
+                        <List className="h-4 w-4" />
+                    </Button>
+                </div>
             </div>
+
+            {/* Batch Action Toolbar */}
+            {selectedIds.size > 0 && (
+                <div className="flex items-center gap-3 mb-4 p-3 bg-muted/50 rounded-lg border">
+                    <Checkbox
+                        checked={selectedIds.size === ideas.length}
+                        onCheckedChange={toggleSelectAll}
+                    />
+                    <span className="text-sm font-medium">
+                        {selectedIds.size} selected
+                    </span>
+                    <div className="flex gap-2 ml-auto">
+                        <Button size="sm" variant="outline" className="gap-1.5" onClick={handleBatchExport}>
+                            <Download className="h-3.5 w-3.5" />
+                            Export JSON
+                        </Button>
+                        <Select onValueChange={handleBatchVerdictChange}>
+                            <SelectTrigger className="w-36 h-8 text-xs">
+                                <SelectValue placeholder="Change verdict" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="viable">Mark Viable</SelectItem>
+                                <SelectItem value="experimental">Mark Experimental</SelectItem>
+                                <SelectItem value="weak">Mark Weak</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Button size="sm" variant="destructive" className="gap-1.5" onClick={handleBatchDelete} disabled={batchDeleting}>
+                            {batchDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash className="h-3.5 w-3.5" />}
+                            {batchDeleting ? "Deleting..." : `Delete (${selectedIds.size})`}
+                        </Button>
+                    </div>
+                </div>
+            )}
 
             {/* Ideas Grid */}
             {loading ? (
@@ -385,12 +508,27 @@ export default function IdeasPage() {
                 </div>
             ) : (
                 <>
+                    {viewMode === "grid" ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {ideas.map((idea) => (
-                            <Card key={idea.id} className="hover:shadow-md transition-shadow">
+                        {ideas.map((idea, idx) => (
+                            <Card
+                                key={idea.id}
+                                className={`hover:shadow-md transition-shadow cursor-pointer ${selectedIds.has(idea.id) ? "ring-2 ring-primary" : ""}`}
+                                onClick={(e) => {
+                                    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                                        e.preventDefault();
+                                        handleSelect(idea.id, idx, e);
+                                    }
+                                }}
+                            >
                                 <CardHeader className="pb-2">
                                     <div className="flex items-start justify-between">
                                         <div className="flex items-center gap-2">
+                                            <Checkbox
+                                                checked={selectedIds.has(idea.id)}
+                                                onClick={(e) => { e.stopPropagation(); handleSelect(idea.id, idx, e as unknown as React.MouseEvent); }}
+                                                onCheckedChange={() => {/* handled by onClick */}}
+                                            />
                                             <span title={idea.source_type}>{getSourceIcon(idea.source_type)}</span>
                                             <span className="text-xs text-muted-foreground font-mono">
                                                 {idea.idea_id}
@@ -459,6 +597,81 @@ export default function IdeasPage() {
                             </Card>
                         ))}
                     </div>
+                    ) : (
+                    /* List View */
+                    <div className="border rounded-lg divide-y">
+                        {/* List header */}
+                        <div className="flex items-center gap-3 px-4 py-2 bg-muted/30 text-xs font-medium text-muted-foreground">
+                            <Checkbox
+                                checked={ideas.length > 0 && selectedIds.size === ideas.length}
+                                onCheckedChange={toggleSelectAll}
+                            />
+                            <span className="w-24">ID</span>
+                            <span className="flex-1">Title</span>
+                            <span className="w-48 hidden lg:block">Audience</span>
+                            <span className="w-24 text-center">Verdict</span>
+                            <span className="w-20 text-center">Source</span>
+                            <span className="w-20 text-right">Actions</span>
+                        </div>
+                        {ideas.map((idea, idx) => (
+                            <div
+                                key={idea.id}
+                                className={`flex items-center gap-3 px-4 py-3 hover:bg-muted/20 transition-colors cursor-pointer select-none ${selectedIds.has(idea.id) ? "bg-primary/5" : ""}`}
+                                onClick={(e) => {
+                                    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                                        e.preventDefault();
+                                        handleSelect(idea.id, idx, e);
+                                    }
+                                }}
+                            >
+                                <Checkbox
+                                    checked={selectedIds.has(idea.id)}
+                                    onClick={(e) => { e.stopPropagation(); handleSelect(idea.id, idx, e as unknown as React.MouseEvent); }}
+                                    onCheckedChange={() => {/* handled by onClick */}}
+                                />
+                                <span className="text-xs text-muted-foreground font-mono w-24 shrink-0">
+                                    {idea.idea_id}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium truncate">{idea.title}</p>
+                                    <p className="text-xs text-muted-foreground truncate">{idea.core_tension}</p>
+                                </div>
+                                <span className="w-48 text-xs text-muted-foreground truncate hidden lg:block">
+                                    {idea.target_audience}
+                                </span>
+                                <div className="w-24 flex justify-center">
+                                    <Badge
+                                        variant="outline"
+                                        className={`text-xs ${getVerdictColor(idea.verdict)}`}
+                                    >
+                                        {idea.verdict}
+                                    </Badge>
+                                </div>
+                                <span className="w-20 text-center" title={idea.source_type}>
+                                    {getSourceIcon(idea.source_type)}
+                                </span>
+                                <div className="w-20 flex justify-end gap-1">
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 w-7 p-0"
+                                        onClick={() => openEditModal(idea)}
+                                    >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 w-7 p-0 text-destructive hover:text-destructive/80"
+                                        onClick={() => setDeletingId(idea.id)}
+                                    >
+                                        <Trash className="h-3.5 w-3.5" />
+                                    </Button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    )}
 
                     {/* Pagination */}
                     {totalPages > 1 && (
@@ -630,6 +843,13 @@ export default function IdeasPage() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Import Modal */}
+            <IdeaImportModal
+                open={showImport}
+                onOpenChange={setShowImport}
+                onImport={handleBulkImport}
+            />
 
             {/* Delete Confirmation */}
             <Dialog open={!!deletingId} onOpenChange={(open) => !open && setDeletingId(null)}>

@@ -26,7 +26,7 @@ export function buildProxyHeaders(incoming: Headers, internalKey: string, userId
   return headers;
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const internalKey = process.env.INTERNAL_API_KEY;
   const supaUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -42,7 +42,7 @@ export async function middleware(request: NextRequest) {
         return new NextResponse(
           JSON.stringify({
             data: null,
-            error: { code: 'MIDDLEWARE_MISCONFIGURED', message: 'INTERNAL_API_KEY is not set on apps/app' },
+            error: { code: 'PROXY_MISCONFIGURED', message: 'INTERNAL_API_KEY is not set on apps/app' },
           }),
           { status: 500, headers: { 'content-type': 'application/json' } },
         );
@@ -77,7 +77,7 @@ export async function middleware(request: NextRequest) {
       return new NextResponse(
         JSON.stringify({
           data: null,
-          error: { code: 'MIDDLEWARE_MISCONFIGURED', message: 'INTERNAL_API_KEY is not set' },
+          error: { code: 'PROXY_MISCONFIGURED', message: 'INTERNAL_API_KEY is not set' },
         }),
         { status: 500, headers: { 'content-type': 'application/json' } },
       );
