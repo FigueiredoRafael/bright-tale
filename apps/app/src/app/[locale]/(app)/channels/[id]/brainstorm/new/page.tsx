@@ -161,11 +161,25 @@ export default function NewBrainstormPage() {
     }
 
     async function handleManualImport(parsed: unknown) {
-        const obj = parsed as Record<string, unknown>;
-        const rawIdeas = Array.isArray(parsed) ? parsed : (obj.ideas ?? obj.results ?? []) as Array<Record<string, unknown>>;
+        // Recursively find ideas array (handles BC_BRAINSTORM_OUTPUT.ideas, output.ideas, etc.)
+        function findIdeas(node: unknown, depth = 0): Array<Record<string, unknown>> {
+            if (depth > 5) return [];
+            if (Array.isArray(node) && node.length > 0 && node[0] && typeof node[0] === 'object' && 'title' in (node[0] as object)) {
+                return node as Array<Record<string, unknown>>;
+            }
+            if (node && typeof node === 'object' && !Array.isArray(node)) {
+                for (const v of Object.values(node as Record<string, unknown>)) {
+                    const found = findIdeas(v, depth + 1);
+                    if (found.length > 0) return found;
+                }
+            }
+            return [];
+        }
+
+        const rawIdeas = findIdeas(parsed);
 
         if (rawIdeas.length === 0) {
-            toast.error("No ideas found in pasted output");
+            toast.error("No ideas found in pasted output. Expected an array with objects containing 'title'.");
             return;
         }
 
