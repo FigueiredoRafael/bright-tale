@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link } from "@/i18n/navigation";
+import { usePathname } from "@/i18n/navigation";
+import { useTranslations } from "next-intl";
 import {
     Home, Radio, Lightbulb, FileText, PenLine, Video, Zap, Mic,
     Images, Archive, Database, Settings, Users, Wand2, Sparkles,
@@ -24,55 +25,56 @@ interface NavSection {
 
 export default function Sidebar() {
     const pathname = usePathname();
+    const t = useTranslations("nav");
     const { activeChannelId, activeChannel } = useActiveChannel();
 
     // Dynamic library: only show media types the active channel actually produces.
     // If no active channel, show all (user-friendly default).
     const channelMedia = activeChannel?.media_types ?? ['blog', 'video', 'shorts', 'podcast'];
     const libraryItems: NavItem[] = [];
-    if (channelMedia.includes('blog')) libraryItems.push({ href: "/blogs", label: "Blogs", icon: PenLine });
-    if (channelMedia.includes('video')) libraryItems.push({ href: "/videos", label: "Videos", icon: Video });
-    if (channelMedia.includes('shorts')) libraryItems.push({ href: "/shorts", label: "Shorts", icon: Zap });
-    if (channelMedia.includes('podcast')) libraryItems.push({ href: "/podcasts", label: "Podcasts", icon: Mic });
+    if (channelMedia.includes('blog')) libraryItems.push({ href: "/blogs", label: t('blogs'), icon: PenLine });
+    if (channelMedia.includes('video')) libraryItems.push({ href: "/videos", label: t('videos'), icon: Video });
+    if (channelMedia.includes('shorts')) libraryItems.push({ href: "/shorts", label: t('shorts'), icon: Zap });
+    if (channelMedia.includes('podcast')) libraryItems.push({ href: "/podcasts", label: t('podcasts'), icon: Mic });
 
     const sections: NavSection[] = [
         {
-            label: "Principal",
+            label: t('principal'),
             items: [
-                { href: "/", label: "Dashboard", icon: Home, exact: true },
-                { href: "/channels", label: "Content Channels", icon: Radio },
+                { href: "/", label: t('dashboard'), icon: Home, exact: true },
+                { href: "/channels", label: t('contentChannels'), icon: Radio },
             ],
         },
         {
-            label: "Criar conteúdo",
+            label: t('createContentSection'),
             items: activeChannelId
                 ? [
-                    { href: `/channels/${activeChannelId}/create`, label: "Create Content", icon: Sparkles },
-                    { href: "/ideas", label: "Ideas", icon: Lightbulb },
-                    { href: "/research", label: "Research", icon: FileText },
+                    { href: `/channels/${activeChannelId}/create`, label: t('createContent'), icon: Sparkles },
+                    { href: "/ideas", label: t('ideas'), icon: Lightbulb },
+                    { href: "/research", label: t('research'), icon: FileText },
                 ]
                 : [
-                    { href: "/onboarding", label: "Create Content Channel", icon: Sparkles },
+                    { href: "/onboarding", label: t('createContent'), icon: Sparkles },
                 ],
         },
         {
-            label: "Biblioteca",
+            label: t('library'),
             items: libraryItems,
         },
         {
-            label: "Recursos",
+            label: t('resources'),
             items: [
-                { href: "/images", label: "Image Bank", icon: Images },
-                { href: "/assets", label: "Assets", icon: Archive },
-                { href: "/templates", label: "Templates", icon: Database },
+                { href: "/images", label: t('imageBank'), icon: Images },
+                { href: "/assets", label: t('assets'), icon: Archive },
+                { href: "/templates", label: t('templates'), icon: Database },
             ],
         },
         {
-            label: "Configurações",
+            label: t('settings'),
             items: [
-                { href: "/settings", label: "All Settings", icon: Settings, exact: true },
-                { href: "/settings/team", label: "Team", icon: Users },
-                { href: "/settings/image-generation", label: "Image Generation", icon: Wand2 },
+                { href: "/settings", label: t('allSettings'), icon: Settings, exact: true },
+                { href: "/settings/team", label: t('team'), icon: Users },
+                { href: "/settings/image-generation", label: t('imageGeneration'), icon: Wand2 },
             ],
         },
     ];

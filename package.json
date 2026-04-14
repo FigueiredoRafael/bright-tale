@@ -59,5 +59,8 @@
     "@tn-figueiredo/auth-fastify": {
       "zod": "^3.25.76"
     }
+  },
+  "dependencies": {
+    "@tailwindcss/typography": "0.5.19"
   }
 }
