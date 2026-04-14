@@ -10,4 +10,10 @@ const withNextra = nextra({
 
 export default withNextra({
   reactStrictMode: true,
+  webpack: (config, { dev }) => {
+    if (dev) {
+      config.cache = false
+    }
+    return config
+  },
 })
