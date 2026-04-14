@@ -6,7 +6,21 @@
 
 **Depende de:** Fases 1-5 (tudo funcional)
 
-**Progresso:** 0/9 concluídos
+**Progresso:** 4/9 concluídos · 5 parcial/scaffolded
+
+### Resumo (2026-04-14)
+
+Base legal + security headers entregues. Perf/analytics/test-coverage polish ficam pra refinamento contínuo.
+
+- F6-001 ToS + Privacy + Refund → ✅ páginas criadas em apps/web/legal/
+- F6-002 Refund policy → ✅ (parte da F6-001)
+- F6-003 Security headers + CSP → ✅ em next.config.ts
+- F6-008 Docs-site sync → ✅ feito nesta rodada (commits f6635a2 + a73d18a + outros)
+- F6-004 API key rotation → scaffold (Stripe tem, Supabase tem, docs explicam fluxo)
+- F6-005 Performance → parcial (SSE + Inngest + cache implícito via Supabase)
+- F6-006 Analytics → parcial (usage_events + credit_usage já rastreiam)
+- F6-007 Test coverage → em progresso — 17 testes novos adicionados em Phase 2/3
+- F6-009 Deprecar v1 → em progresso (tabelas legacy documentadas como "remover")
 
 > ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
 > Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
@@ -16,7 +30,16 @@
 ## Cards
 
 ### F6-001 — Terms of Service + Privacy Policy
-🔲 **Não iniciado**
+✅ **Concluído**
+
+Páginas criadas em `apps/web/src/app/legal/`:
+- `/legal/terms` — Termos de Uso (11 seções cobrindo conta, créditos, conteúdo gerado, uso aceitável, cancelamento, responsabilidade)
+- `/legal/privacy` — Política de Privacidade (LGPD + GDPR: dados coletados, uso, criptografia, direitos, cookies, retenção, transferência internacional)
+- `/legal/refund` — Política de Reembolso (planos mensais/anuais/addons + credit-on-fault)
+
+Todas em pt-BR, estilo prose simples. Footer do app pode linkar pra elas. Checkbox de aceite no signup fica pra quando abrir inscrição pública.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Criar Terms of Service (obrigatório antes de cobrar)
@@ -37,7 +60,11 @@
 ---
 
 ### F6-002 — Refund Policy + Stripe config
-🔲 **Não iniciado**
+✅ **Concluído (policy)**
+
+Política em `/legal/refund`. Config no Stripe Dashboard (Settings → Customer portal → Cancellation + Refund) é manual — admin define janela de cancelamento sem penalidade e políticas de reembolso que refletem o texto público.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Definir política de reembolso (Stripe requer)
@@ -54,7 +81,19 @@
 ---
 
 ### F6-003 — Security headers + CSP
-🔲 **Não iniciado**
+✅ **Concluído**
+
+`apps/app/next.config.ts` agora adiciona headers em toda rota:
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy` (camera/mic/geo disabled; payment permitido só do Stripe)
+- `Strict-Transport-Security: max-age=1yr`
+- **CSP** completo: default-src 'self'; Stripe domains whitelisted pra script+frame+form; Supabase pra connect-src (REST + WebSocket); images permissivas pra data/blob/https; sem `object-src`; `frame-ancestors 'none'`.
+
+Em dev, CSP é `Report-Only` pra não quebrar HMR. Em prod (`NODE_ENV=production`), enforced + sem `unsafe-eval`.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Content Security Policy headers
@@ -152,7 +191,18 @@
 ---
 
 ### F6-008 — Docs-site: sync com código final
-🔲 **Não iniciado**
+✅ **Concluído (v1)**
+
+Commits anteriores (f6635a2 + a73d18a + subsequentes) adicionaram:
+- 6 novas páginas de api-reference (brainstorm, research-sessions, content-drafts, bulk, billing, usage)
+- architecture/pipeline.md completo
+- database/schema.md dividido em "v2 ativo" vs "legacy"
+- features/ (billing, usage, create-content) + nav regrupada
+- agents/index.md reescrita listando todas as diretivas das migrations
+
+Pendente: gerar OpenAPI spec automaticamente dos schemas Zod (nice-to-have).
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Rodar `/docs-audit` para detectar drift

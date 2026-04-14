@@ -10,11 +10,11 @@ _Atualizado em 2026-04-14._
 |---|---|---:|---:|---|
 | [1](/milestones/phase-1-foundation) | **Fundação** | 12 | 12 | ✅ Concluído |
 | [2](/milestones/phase-2-core) | **Core (v2)** | 47 | 46 (+1 N/A) | ✅ Concluído |
-| [3](/milestones/phase-3-monetization) | **Monetização** | 12 | 6 (+1 parcial) | 🟡 58% |
-| [4](/milestones/phase-4-media) | **Mídia** | 11 | 0 | 🔲 Não iniciado |
-| [5](/milestones/phase-5-publishing) | **Publicação** | 9 | 0 | 🔲 Não iniciado |
-| [6](/milestones/phase-6-polish) | **Polish** | 9 | 0 | 🔲 Não iniciado |
-| | **Total** | **100** | **64** | **64%** |
+| [3](/milestones/phase-3-monetization) | **Monetização** | 12 | 10 (+2 scaffold) | ✅ Core pronto |
+| [4](/milestones/phase-4-media) | **Mídia** | 11 | 5 (+6 scaffold) | 🟡 Base pronta |
+| [5](/milestones/phase-5-publishing) | **Publicação** | 9 | 5 (+4 scaffold) | 🟡 Base pronta |
+| [6](/milestones/phase-6-polish) | **Polish** | 9 | 4 (+5 parcial) | 🟡 Legal + security ✅ |
+| | **Total** | **100** | **82 + 18 scaffold** | **🎯** |
 
 _Phase 2 cresceu de 14 → 47 cards ao longo do desenvolvimento (F2-036..F2-049 adicionados conforme bugs/UX surgiam). Phase 3 cresceu de 10 → 12 (F3-011 cupons + F3-012 VIP)._
 
