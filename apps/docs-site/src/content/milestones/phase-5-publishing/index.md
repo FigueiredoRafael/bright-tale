@@ -6,15 +6,15 @@
 
 **Depende de:** Fase 4 (mídia gerada)
 
-**Progresso:** 7/9 implementados · 2 scaffolded pending external
+**Progresso:** 7/9 implementados · 2 movidos pra V3 (requerem GCP OAuth)
 
 ### Resumo (2026-04-14)
 
 - F5-003 Custom webhooks + F5-004 UI destinos + F5-007 publishing_destinations schema → ✅ implementados
 - F5-006 Resend transactional email → ✅ implementado (requer API key)
 - F5-008 Affiliate tables → ✅ migração criada
-- F5-001 YouTube upload → ⚠️ scaffold (requer GCP OAuth client)
-- F5-002 UI Publishing step → esperando F5-001
+- F5-001 YouTube upload → ➡️ movido pra V3 (requer GCP OAuth client)
+- F5-002 UI Publishing step → ➡️ movido pra V3 (depende F5-001)
 - F5-005 Notificações de referências → ✅ implementado (cron + API + UI)
 - F5-009 Affiliate dashboard UI → ✅ implementado (API + /settings/affiliate)
 
@@ -26,7 +26,7 @@
 ## Cards
 
 ### F5-001 — YouTube upload: OAuth + API
-⚠️ **Scaffolded — pendente GCP OAuth client**
+➡️ **Movido para V3**
 
 `lib/publishing/youtube.ts` com `getOAuthUrl(state)`, `uploadVideo()` stub + roadmap nos comentários. Envs `YOUTUBE_OAUTH_CLIENT_ID`/`SECRET`. Free tier: 10k units/dia = ~6 uploads/dia.
 
@@ -52,7 +52,7 @@ Pra ativar: criar OAuth client no GCP, configurar callback `/publishing/youtube/
 ---
 
 ### F5-002 — UI: Step 5 — Publicação
-🔲 **Não iniciado**
+➡️ **Movido para V3**
 
 **Escopo:**
 - Após aprovar mídia, mostrar destinos:

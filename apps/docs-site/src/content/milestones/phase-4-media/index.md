@@ -6,7 +6,7 @@
 
 **Depende de:** Fase 2 (flow simplificado + Inngest)
 
-**Progresso:** 6/11 implementados · 5 scaffolded (pending external setup)
+**Progresso:** 6/11 implementados · 5 movidos pra V3 (requerem FFmpeg)
 
 ### Resumo do scaffold (2026-04-14)
 
@@ -163,7 +163,7 @@ Componente `VoiceConfigSection` em `apps/app/src/components/channels/VoiceConfig
 ---
 
 ### F4-006 — FFmpeg worker: setup no Fly.io
-⚠️ **Scaffolded — deploy pendente**
+➡️ **Movido para V3**
 
 `lib/video/render.ts` com `RenderJob` interface + `requestRender` stub. Lança erro instrutivo com roadmap completo nos comentários (Fly.io machine + volumes + Inngest trigger). `isRenderWorkerAvailable()` consulta env `VIDEO_WORKER_URL`.
 
@@ -189,7 +189,7 @@ Requer: criar serviço separado com FFmpeg + listener Inngest, deploy, setar env
 ---
 
 ### F4-007 — API: Video generation routes
-🔲 **Não iniciado**
+➡️ **Movido para V3**
 
 **Escopo:**
 - `POST /api/video/generate` (projectId, type: dark_channel/shorts)
@@ -231,7 +231,7 @@ Requer: criar serviço separado com FFmpeg + listener Inngest, deploy, setar env
 ---
 
 ### F4-009 — UI: Step 4 — Mídia (áudio + vídeo)
-🔲 **Não iniciado**
+➡️ **Movido para V3**
 
 **Escopo:**
 - Após aprovar conteúdo texto, mostrar opções:
@@ -254,7 +254,7 @@ Requer: criar serviço separado com FFmpeg + listener Inngest, deploy, setar env
 ---
 
 ### F4-010 — Shorts: geração de vídeo vertical
-🔲 **Não iniciado**
+➡️ **Movido para V3**
 
 **Escopo:**
 - Gerar shorts (9:16, 15-60s)
@@ -272,7 +272,7 @@ Requer: criar serviço separado com FFmpeg + listener Inngest, deploy, setar env
 ---
 
 ### F4-011 — Express mode (⚡)
-🔲 **Não iniciado**
+➡️ **Movido para V3**
 
 **Escopo:**
 - Botão "Express" que encadeia tudo: pesquisa → brainstorm → select melhor ideia → production → audio → video → thumbnail

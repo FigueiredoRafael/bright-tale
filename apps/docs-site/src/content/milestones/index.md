@@ -1,22 +1,47 @@
-# Milestones — BrightTale V2
+# Milestones — BrightTale
 
 Tracking de progresso do desenvolvimento. Cada fase tem cards independentes. Marque como ✅ ao concluir.
 
-## Progresso Geral
+## V2 — Concluído ✅
 
-_Atualizado em 2026-04-14._
+_Encerrado em 2026-04-14. 90 cards implementados, 10 movidos pra V3._
 
 | Fase | Nome | Cards | Concluídos | Status |
 |---|---|---:|---:|---|
 | [1](/milestones/phase-1-foundation) | **Fundação** | 12 | 12 | ✅ Concluído |
 | [2](/milestones/phase-2-core) | **Core (v2)** | 47 | 46 (+1 N/A) | ✅ Concluído |
 | [3](/milestones/phase-3-monetization) | **Monetização** | 12 | 10 (+2 scaffold) | ✅ Core pronto |
-| [4](/milestones/phase-4-media) | **Mídia** | 11 | 6 (+5 scaffold) | 🟡 Base pronta |
-| [5](/milestones/phase-5-publishing) | **Publicação** | 9 | 7 (+2 scaffold) | ✅ Core pronto |
+| [4](/milestones/phase-4-media) | **Mídia** | 11 | 6 (+5 → V3) | ✅ Core pronto |
+| [5](/milestones/phase-5-publishing) | **Publicação** | 9 | 7 (+2 → V3) | ✅ Core pronto |
 | [6](/milestones/phase-6-polish) | **Polish** | 9 | 9 | ✅ Concluído |
-| | **Total** | **100** | **90 + 10 scaffold** | **🎯** |
+| | **Total** | **100** | **90 implementados** | **✅** |
 
 _Phase 2 cresceu de 14 → 47 cards ao longo do desenvolvimento (F2-036..F2-049 adicionados conforme bugs/UX surgiam). Phase 3 cresceu de 10 → 12 (F3-011 cupons + F3-012 VIP)._
+
+---
+
+## V3 — Backlog (video assembly + YouTube publishing)
+
+Cards movidos do V2 que dependem de infra externa (FFmpeg, GCP OAuth). O produto V2 funciona end-to-end para blog + áudio; a edição de vídeo é manual (CapCut/Premiere/DaVinci).
+
+| Card | Origem | Descrição | Requisito |
+|---|---|---|---|
+| F4-006 | Phase 4 | FFmpeg worker: montar vídeo (áudio + clips + legendas) | FFmpeg local ou serviço remoto |
+| F4-007 | Phase 4 | API: Video generation routes (Inngest pipeline) | F4-006 |
+| F4-009 | Phase 4 | UI: Step 4 Mídia (áudio + vídeo) | F4-006/007 |
+| F4-010 | Phase 4 | Shorts: geração de vídeo vertical (9:16, batch 3) | F4-006/007 |
+| F4-011 | Phase 4 | Express mode: one-click end-to-end | F4-006/007 |
+| F5-001 | Phase 5 | YouTube upload: OAuth 2.0 + resumable upload | GCP OAuth client |
+| F5-002 | Phase 5 | UI: Step 5 Publishing (blog + video + shorts) | F5-001 |
+| F3-001 | Phase 3 | Stripe checkout: criar Products + Prices no Dashboard | Stripe Dashboard setup |
+| F3-009 | Phase 3 | Mercado Pago scaffold | MP API keys |
+| F3-010 | Phase 3 | Stripe webhook endpoint no deploy | Deploy prod |
+
+### Para desbloquear
+
+1. **`brew install ffmpeg`** → F4-006/007/009/010/011 (montagem local de vídeo)
+2. **GCP Console → OAuth Client** → F5-001/002 (YouTube upload)
+3. **Stripe Dashboard → Products/Prices** → F3-001/009/010
 
 ## Histórico recente (além dos cards originais)
 
