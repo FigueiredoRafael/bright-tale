@@ -296,7 +296,12 @@ export default function NewDraftPage() {
                                     ].filter(Boolean).join("\n")}
                                     pastePlaceholder={'Paste JSON with canonical_core and/or draft:\n{"canonical_core":{...},"draft":{"full_draft":"# Title\\n\\nContent...","meta_description":"...","slug":"..."}}'}
                                     onImport={async (parsed) => {
-                                        const obj = parsed as Record<string, unknown>;
+                                        // Unwrap common wrappers
+                                        let obj = parsed as Record<string, unknown>;
+                                        if (obj.BC_CANONICAL_CORE && typeof obj.BC_CANONICAL_CORE === 'object') {
+                                            obj = { canonical_core: obj.BC_CANONICAL_CORE, ...obj };
+                                        }
+
                                         // Create draft first
                                         const res = await fetch("/api/content-drafts", {
                                             method: "POST",
@@ -314,14 +319,27 @@ export default function NewDraftPage() {
                                         if (json.error) { toast.error(json.error.message); return; }
                                         const id = json.data.id;
 
-                                        // Patch with manual content
-                                        await fetch(`/api/content-drafts/${id}`, {
-                                            method: "PATCH",
-                                            headers: { "Content-Type": "application/json" },
-                                            body: JSON.stringify({
-                                                draftJson: obj.draft ?? obj,
-                                            }),
-                                        });
+                                        // Patch with content — save canonical core and/or draft
+                                        const patchData: Record<string, unknown> = {};
+                                        if (obj.canonical_core) patchData.canonicalCoreJson = obj.canonical_core;
+                                        if (obj.draft) {
+                                            patchData.draftJson = obj.draft;
+                                        } else if (obj.full_draft || obj.outline) {
+                                            // Flat structure — wrap as draft
+                                            patchData.draftJson = obj;
+                                        }
+
+                                        if (Object.keys(patchData).length > 0) {
+                                            const patchRes = await fetch(`/api/content-drafts/${id}`, {
+                                                method: "PATCH",
+                                                headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify(patchData),
+                                            });
+                                            const patchJson = await patchRes.json();
+                                            if (patchJson.error) {
+                                                toast.error(`Draft created but patch failed: ${patchJson.error.message}`);
+                                            }
+                                        }
 
                                         toast.success("Draft created — redirecting to editor");
                                         router.push(`/channels/${channelId}/drafts/${id}`);

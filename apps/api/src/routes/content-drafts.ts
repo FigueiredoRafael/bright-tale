@@ -38,7 +38,7 @@ const createSchema = z.object({
   channelId: z.string().uuid().optional(),
   ideaId: z.string().optional(),
   researchSessionId: z.string().uuid().optional(),
-  projectId: z.string().uuid().optional(),
+  projectId: z.string().optional(),
   type: z.enum(['blog', 'video', 'shorts', 'podcast', 'engagement']),
   title: z.string().optional(),
   modelTier: z.string().default('standard'),
@@ -46,6 +46,7 @@ const createSchema = z.object({
 
 const updateSchema = z.object({
   title: z.string().optional(),
+  canonicalCoreJson: z.record(z.unknown()).optional(),
   draftJson: z.record(z.unknown()).optional(),
   reviewFeedbackJson: z.record(z.unknown()).optional(),
   status: z.enum(['draft', 'in_review', 'approved', 'scheduled', 'published', 'failed']).optional(),
@@ -158,6 +159,7 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
 
       const update: Record<string, unknown> = {};
       if (body.title !== undefined) update.title = body.title;
+      if (body.canonicalCoreJson !== undefined) update.canonical_core_json = body.canonicalCoreJson;
       if (body.draftJson !== undefined) update.draft_json = body.draftJson;
       if (body.reviewFeedbackJson !== undefined) update.review_feedback_json = body.reviewFeedbackJson;
       if (body.status !== undefined) update.status = body.status;
@@ -302,10 +304,8 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
       const cost = FORMAT_COSTS[type] ?? 200;
       await checkCredits(orgId, request.userId, cost);
 
-      // Blog type requires production settings
-      if (type === 'blog' && !draft.production_settings_json) {
-        throw new ApiError(400, 'Blog production settings are required before producing. Use PATCH /:id/production-settings first.', 'SETTINGS_REQUIRED');
-      }
+      // Blog production settings are optional — use defaults if not set
+      // Users can set via PATCH /:id/production-settings before producing
 
       let systemPrompt =
         (await loadAgentPrompt(type)) ?? (await loadAgentPrompt('production')) ?? undefined;
