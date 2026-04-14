@@ -227,12 +227,12 @@ export default function BillingPage() {
                             <CardHeader className="pb-3">
                                 <CardTitle className="text-base">{p.displayName}</CardTitle>
                                 <div className="flex items-baseline gap-1 mt-2">
-                                    <span className="text-3xl font-bold">${price}</span>
+                                    <span className="text-3xl font-bold">R$ {(price * 5.5).toFixed(0)}</span>
                                     <span className="text-xs text-muted-foreground">/mês</span>
                                 </div>
-                                {cycle === "annual" && p.usdAnnual > 0 && (
-                                    <div className="text-[11px] text-muted-foreground">cobrado anualmente</div>
-                                )}
+                                <div className="text-[11px] text-muted-foreground">
+                                    ${price}/mo{cycle === "annual" ? " · cobrado anualmente" : ""}
+                                </div>
                             </CardHeader>
                             <CardContent>
                                 <div className="text-sm font-medium mb-3 flex items-center gap-1.5">
@@ -288,7 +288,10 @@ export default function BillingPage() {
                             {addons.map((a) => (
                                 <div key={a.id} className="border rounded-lg p-4 space-y-2">
                                     <div className="flex items-baseline justify-between">
-                                        <div className="text-xl font-bold">${a.usdPrice}</div>
+                                        <div>
+                                            <span className="text-xl font-bold">R$ {(a.usdPrice * 5.5).toFixed(0)}</span>
+                                            <span className="text-xs text-muted-foreground ml-1.5">${a.usdPrice}</span>
+                                        </div>
                                         <Badge variant="outline" className="text-[10px]">pack</Badge>
                                     </div>
                                     <div className="text-sm flex items-center gap-1.5">

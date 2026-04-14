@@ -60,12 +60,15 @@ const translations = {
     pr_title: 'Start free.<br><span class="gradient-text">Scale when ready.</span>',
     pr_desc: 'No credit card required. Upgrade when your content engine needs more power.',
     pr_pop_badge: 'Most Popular',
-    pr_starter_desc: 'For creators getting started', pr_pro_desc: 'For serious content creators',
-    pr_agency_name: 'Agency', pr_agency_desc: 'For teams and agencies',
-    pr_s1: '5 articles per month', pr_s2: 'Basic AI brainstorming', pr_s3: '1 WordPress site', pr_s4: 'Standard templates', pr_s5: 'Community support',
-    pr_p1: 'Unlimited articles', pr_p2: 'Deep research agent', pr_p3: '5 WordPress sites', pr_p4: 'Affiliate link automation', pr_p5: 'Custom brand voice', pr_p6: 'Priority support',
-    pr_a1: 'Everything in Pro', pr_a2: 'Unlimited WP sites', pr_a3: 'Team collaboration', pr_a4: 'Custom AI prompts', pr_a5: 'API access', pr_a6: 'Dedicated support',
-    pr_starter_btn: 'Get Started Free', pr_pro_btn: 'Start Free Trial', pr_agency_btn: 'Contact Sales',
+    pr_toggle_mo: 'Monthly', pr_toggle_an: 'Annual', pr_toggle_save: 'Save 20%',
+    pr_credits: 'credits/month', pr_per_mo: '/month', pr_per_an: '/month, billed annually',
+    pr_free_desc: 'To try the platform', pr_starter_desc: 'For creators getting started',
+    pr_creator_desc: 'For serious content creators', pr_pro_desc: 'For teams and agencies',
+    pr_f1: '1,000 credits/month', pr_f2: 'AI brainstorming', pr_f3: 'Blog + video scripts', pr_f4: '1 WordPress site', pr_f5: 'Standard AI models', pr_f6: 'Community support',
+    pr_s1: '5,000 credits/month', pr_s2: 'Audio narration (TTS)', pr_s3: 'YouTube Intelligence', pr_s4: 'Deep research with sources', pr_s5: '3 WordPress sites', pr_s6: 'Email support',
+    pr_c1: '15,000 credits/month', pr_c2: 'Dark channel video gen', pr_c3: 'Premium AI models', pr_c4: 'Voice cloning', pr_c5: 'Express mode', pr_c6: 'Priority support',
+    pr_p1: '50,000 credits/month', pr_p2: 'AI video clips (Runway)', pr_p3: 'Team (3 seats)', pr_p4: 'Custom AI prompts', pr_p5: 'API access + webhooks', pr_p6: 'Dedicated support',
+    pr_free_btn: 'Start Free', pr_starter_btn: 'Choose Starter', pr_creator_btn: 'Start Free Trial', pr_pro_btn: 'Choose Pro',
     trust1: 'AES-256 encrypted', trust2: '99.9% uptime SLA', trust3: 'Cancel anytime', trust4: 'GDPR compliant',
     faq_title: 'Common <span class="gradient-text">questions.</span>',
     faq_desc: 'Everything you need to know about BrightTale.',
@@ -143,12 +146,15 @@ const translations = {
     pr_title: 'Comece grátis.<br><span class="gradient-text">Escale quando quiser.</span>',
     pr_desc: 'Sem cartão de crédito. Faça upgrade quando seu motor de conteúdo precisar de mais potência.',
     pr_pop_badge: 'Mais Popular',
-    pr_starter_desc: 'Para criadores começando', pr_pro_desc: 'Para criadores sérios',
-    pr_agency_name: 'Agência', pr_agency_desc: 'Para times e agências',
-    pr_s1: '5 artigos por mês', pr_s2: 'Brainstorming básico com IA', pr_s3: '1 site WordPress', pr_s4: 'Templates padrão', pr_s5: 'Suporte da comunidade',
-    pr_p1: 'Artigos ilimitados', pr_p2: 'Agente de pesquisa profunda', pr_p3: '5 sites WordPress', pr_p4: 'Automação de links de afiliados', pr_p5: 'Voz da marca personalizada', pr_p6: 'Suporte prioritário',
-    pr_a1: 'Tudo do Pro', pr_a2: 'Sites WP ilimitados', pr_a3: 'Colaboração em equipe', pr_a4: 'Prompts de IA customizados', pr_a5: 'Acesso à API', pr_a6: 'Suporte dedicado',
-    pr_starter_btn: 'Começar Grátis', pr_pro_btn: 'Iniciar Teste Grátis', pr_agency_btn: 'Falar com Vendas',
+    pr_toggle_mo: 'Mensal', pr_toggle_an: 'Anual', pr_toggle_save: 'Economize 20%',
+    pr_credits: 'créditos/mês', pr_per_mo: '/mês', pr_per_an: '/mês, cobrado anualmente',
+    pr_free_desc: 'Para testar a plataforma', pr_starter_desc: 'Para criadores começando',
+    pr_creator_desc: 'Para criadores sérios', pr_pro_desc: 'Para times e agências',
+    pr_f1: '1.000 créditos/mês', pr_f2: 'Brainstorming com IA', pr_f3: 'Blog + roteiros de vídeo', pr_f4: '1 site WordPress', pr_f5: 'Modelos de IA Standard', pr_f6: 'Suporte da comunidade',
+    pr_s1: '5.000 créditos/mês', pr_s2: 'Narração de áudio (TTS)', pr_s3: 'YouTube Intelligence', pr_s4: 'Pesquisa profunda com fontes', pr_s5: '3 sites WordPress', pr_s6: 'Suporte por email',
+    pr_c1: '15.000 créditos/mês', pr_c2: 'Geração de vídeo dark channel', pr_c3: 'Modelos de IA Premium', pr_c4: 'Clonagem de voz', pr_c5: 'Modo express', pr_c6: 'Suporte prioritário',
+    pr_p1: '50.000 créditos/mês', pr_p2: 'Clips de vídeo IA (Runway)', pr_p3: 'Time (3 assentos)', pr_p4: 'Prompts de IA customizados', pr_p5: 'API + webhooks', pr_p6: 'Suporte dedicado',
+    pr_free_btn: 'Começar Grátis', pr_starter_btn: 'Escolher Starter', pr_creator_btn: 'Iniciar Teste Grátis', pr_pro_btn: 'Escolher Pro',
     trust1: 'Criptografia AES-256', trust2: '99.9% uptime SLA', trust3: 'Cancele quando quiser', trust4: 'Compatível com LGPD',
     faq_title: 'Perguntas <span class="gradient-text">frequentes.</span>',
     faq_desc: 'Tudo que você precisa saber sobre o BrightTale.',
@@ -1054,7 +1060,7 @@ export default function Home() {
               <p className="section-desc">{t('pr_desc')}</p>
             </div>
             <div className="pr-toggle anim">
-              <span className={isAnnual ? '' : 'active'}>Monthly</span>
+              <span className={isAnnual ? '' : 'active'}>{t('pr_toggle_mo')}</span>
               <div
                 className={`pr-toggle-switch${isAnnual ? ' annual' : ''}`}
                 onClick={() => setIsAnnual((v) => !v)}
@@ -1064,25 +1070,42 @@ export default function Home() {
                 aria-label="Toggle annual pricing"
                 tabIndex={0}
               />
-              <span className={isAnnual ? 'active' : ''}>Annual <span className="pr-save">Save 20%</span></span>
+              <span className={isAnnual ? 'active' : ''}>{t('pr_toggle_an')} <span className="pr-save">{t('pr_toggle_save')}</span></span>
             </div>
-            <div className="pr-grid">
-              {/* F3-010: tiers sincronizados com plans.ts (Free/Creator/Pro).
-                  Starter $9 fica no app; landing mostra os 3 tiers principais. */}
+            <div className="pr-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
               {/* Free */}
               <div className="pr-card anim">
                 <div className="pr-name">Free</div>
-                <div className="pr-desc">{t('pr_starter_desc')}</div>
+                <div className="pr-desc">{t('pr_free_desc')}</div>
                 <div className="pr-price">
-                  <span className="pr-cur">$</span>
-                  <span className="pr-val">{pv('0', '0')}</span>
-                  <span className="pr-per">{isAnnual ? '/month, billed annually' : '/month'}</span>
+                  <span className="pr-val" style={{ fontSize: '2.2rem' }}>{lang === 'pt' ? 'R$ 0' : '$0'}</span>
+                  <span className="pr-per">{t('pr_per_mo')}</span>
                 </div>
-                <div style={{ fontSize: '.82rem', opacity: .8, marginBottom: '.8rem' }}>
-                  1,000 credits / month
+                <div style={{ fontSize: '.78rem', opacity: .7, marginBottom: '.8rem' }}>
+                  {t('pr_f1')}
                 </div>
                 <ul className="pr-feats">
-                  {[t('pr_s1'), t('pr_s2'), t('pr_s3'), t('pr_s4'), t('pr_s5')].map((f) => (
+                  {[t('pr_f2'), t('pr_f3'), t('pr_f4'), t('pr_f5'), t('pr_f6')].map((f) => (
+                    <li key={f}><CheckIcon /><span>{f}</span></li>
+                  ))}
+                </ul>
+                <a href="https://app.brighttale.io" className="pr-btn ghost">{t('pr_free_btn')}</a>
+              </div>
+              {/* Starter */}
+              <div className="pr-card anim">
+                <div className="pr-name">Starter</div>
+                <div className="pr-desc">{t('pr_starter_desc')}</div>
+                <div className="pr-price">
+                  <span className="pr-val" style={{ fontSize: '2.2rem' }}>{lang === 'pt' ? `R$ ${pv('49', '39')}` : `$${pv('9', '7')}`}</span>
+                  <span className="pr-per">{isAnnual ? t('pr_per_an') : t('pr_per_mo')}</span>
+                </div>
+                <div style={{ fontSize: '.78rem', opacity: .7, marginBottom: '.8rem' }}>
+                  {lang !== 'pt' && <span style={{ opacity: .5 }}>R$ {pv('49', '39')} · </span>}
+                  {lang === 'pt' && <span style={{ opacity: .5 }}>${pv('9', '7')} · </span>}
+                  {t('pr_s1')}
+                </div>
+                <ul className="pr-feats">
+                  {[t('pr_s2'), t('pr_s3'), t('pr_s4'), t('pr_s5'), t('pr_s6')].map((f) => (
                     <li key={f}><CheckIcon /><span>{f}</span></li>
                   ))}
                 </ul>
@@ -1092,40 +1115,42 @@ export default function Home() {
               <div className="pr-card pop anim">
                 <span className="pr-badge">{t('pr_pop_badge')}</span>
                 <div className="pr-name">Creator</div>
-                <div className="pr-desc">{t('pr_pro_desc')}</div>
+                <div className="pr-desc">{t('pr_creator_desc')}</div>
                 <div className="pr-price">
-                  <span className="pr-cur">$</span>
-                  <span className="pr-val">{pv('29', '23')}</span>
-                  <span className="pr-per">{isAnnual ? '/month, billed annually' : '/month'}</span>
+                  <span className="pr-val" style={{ fontSize: '2.2rem' }}>{lang === 'pt' ? `R$ ${pv('149', '119')}` : `$${pv('29', '23')}`}</span>
+                  <span className="pr-per">{isAnnual ? t('pr_per_an') : t('pr_per_mo')}</span>
                 </div>
-                <div style={{ fontSize: '.82rem', opacity: .8, marginBottom: '.8rem' }}>
-                  15,000 credits / month
+                <div style={{ fontSize: '.78rem', opacity: .7, marginBottom: '.8rem' }}>
+                  {lang !== 'pt' && <span style={{ opacity: .5 }}>R$ {pv('149', '119')} · </span>}
+                  {lang === 'pt' && <span style={{ opacity: .5 }}>${pv('29', '23')} · </span>}
+                  {t('pr_c1')}
                 </div>
                 <ul className="pr-feats">
-                  {[t('pr_p1'), t('pr_p2'), t('pr_p3'), t('pr_p4'), t('pr_p5'), t('pr_p6')].map((f) => (
+                  {[t('pr_c2'), t('pr_c3'), t('pr_c4'), t('pr_c5'), t('pr_c6')].map((f) => (
                     <li key={f}><CheckIcon /><span>{f}</span></li>
                   ))}
                 </ul>
-                <a href="https://app.brighttale.io" className="pr-btn primary">{t('pr_pro_btn')}</a>
+                <a href="https://app.brighttale.io" className="pr-btn primary">{t('pr_creator_btn')}</a>
               </div>
               {/* Pro */}
               <div className="pr-card anim">
                 <div className="pr-name">Pro</div>
-                <div className="pr-desc">{t('pr_agency_desc')}</div>
+                <div className="pr-desc">{t('pr_pro_desc')}</div>
                 <div className="pr-price">
-                  <span className="pr-cur">$</span>
-                  <span className="pr-val">{pv('99', '79')}</span>
-                  <span className="pr-per">{isAnnual ? '/month, billed annually' : '/month'}</span>
+                  <span className="pr-val" style={{ fontSize: '2.2rem' }}>{lang === 'pt' ? `R$ ${pv('499', '399')}` : `$${pv('99', '79')}`}</span>
+                  <span className="pr-per">{isAnnual ? t('pr_per_an') : t('pr_per_mo')}</span>
                 </div>
-                <div style={{ fontSize: '.82rem', opacity: .8, marginBottom: '.8rem' }}>
-                  50,000 credits / month + AI video clips
+                <div style={{ fontSize: '.78rem', opacity: .7, marginBottom: '.8rem' }}>
+                  {lang !== 'pt' && <span style={{ opacity: .5 }}>R$ {pv('499', '399')} · </span>}
+                  {lang === 'pt' && <span style={{ opacity: .5 }}>${pv('99', '79')} · </span>}
+                  {t('pr_p1')}
                 </div>
                 <ul className="pr-feats">
-                  {[t('pr_a1'), t('pr_a2'), t('pr_a3'), t('pr_a4'), t('pr_a5'), t('pr_a6')].map((f) => (
+                  {[t('pr_p2'), t('pr_p3'), t('pr_p4'), t('pr_p5'), t('pr_p6')].map((f) => (
                     <li key={f}><CheckIcon /><span>{f}</span></li>
                   ))}
                 </ul>
-                <a href="https://app.brighttale.io" className="pr-btn ghost">{t('pr_agency_btn')}</a>
+                <a href="https://app.brighttale.io" className="pr-btn ghost">{t('pr_pro_btn')}</a>
               </div>
             </div>
             <div className="trust-row anim">
