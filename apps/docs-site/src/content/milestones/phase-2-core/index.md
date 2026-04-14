@@ -747,7 +747,7 @@ Resolvido volume descontrolado + ausência de seleção. Idempotency transaciona
 - **Seleção no UI**: após geração o modal fecha e renderiza os cards com checkbox (todos pré-selecionados). Botão "Salvar N" move os selecionados pra biblioteca; "Descartar tudo" limpa o draft.
 - **Endpoints novos**:
   - `GET /brainstorm/sessions/:id/drafts` — lista staged
-  - `POST /brainstorm/sessions/:id/drafts/save { draftIds }` — move pra idea_archives
+  - `POST /brainstorm/sessions/:id/drafts/save` com body `draftIds[]` — move pra idea_archives
   - `DELETE /brainstorm/sessions/:id/drafts` — descarta tudo
 - **Testes**: 9 passando — range validation, default count, empty draftIds, 404 handling.
 
