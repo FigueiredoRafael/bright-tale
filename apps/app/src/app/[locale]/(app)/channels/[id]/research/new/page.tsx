@@ -114,15 +114,76 @@ export default function NewResearchPage() {
     }
 
     async function handleManualResearchImport(parsed: unknown) {
-        const obj = parsed as Record<string, unknown>;
-        const rawCards = (Array.isArray(parsed) ? parsed : obj.cards ?? obj.sources ?? obj.results ?? []) as Card[];
-        if (rawCards.length === 0) {
-            toast.error("No research cards found in pasted output");
+        // Unwrap BC_RESEARCH_OUTPUT wrapper if present
+        let obj = parsed as Record<string, unknown>;
+        if (obj.BC_RESEARCH_OUTPUT && typeof obj.BC_RESEARCH_OUTPUT === 'object') {
+            obj = obj.BC_RESEARCH_OUTPUT as Record<string, unknown>;
+        }
+
+        // Build cards from various BC_RESEARCH_OUTPUT sections
+        const allCards: Card[] = [];
+
+        // Sources → cards
+        const sources = (obj.sources ?? []) as Array<Record<string, unknown>>;
+        for (const s of sources) {
+            allCards.push({
+                type: 'source',
+                title: (s.title as string) ?? '',
+                url: (s.url as string) ?? '',
+                author: (s.author as string) ?? '',
+                relevance: s.credibility === 'high' ? 10 : s.credibility === 'medium' ? 7 : 4,
+                ...s,
+            });
+        }
+
+        // Statistics → cards
+        const stats = (obj.statistics ?? []) as Array<Record<string, unknown>>;
+        for (const s of stats) {
+            allCards.push({
+                type: 'statistic',
+                title: `${s.claim}: ${s.figure}`,
+                claim: s.claim as string,
+                ...s,
+            });
+        }
+
+        // Expert quotes → cards
+        const quotes = (obj.expert_quotes ?? []) as Array<Record<string, unknown>>;
+        for (const q of quotes) {
+            allCards.push({
+                type: 'expert_quote',
+                title: (q.author as string) ?? 'Expert',
+                quote: q.quote as string,
+                author: q.author as string,
+                ...q,
+            });
+        }
+
+        // Counterarguments → cards
+        const counters = (obj.counterarguments ?? []) as Array<Record<string, unknown>>;
+        for (const c of counters) {
+            allCards.push({
+                type: 'counterargument',
+                title: (c.point as string) ?? '',
+                claim: c.point as string,
+                ...c,
+            });
+        }
+
+        // Fallback: try flat cards/results array
+        if (allCards.length === 0) {
+            const flat = (obj.cards ?? obj.results ?? []) as Card[];
+            if (Array.isArray(flat)) allCards.push(...flat);
+        }
+
+        if (allCards.length === 0) {
+            toast.error("No research data found. Expected sources, statistics, expert_quotes, or counterarguments.");
             return;
         }
-        setCards(rawCards);
-        setApproved(new Set(rawCards.map((_, i) => i)));
-        toast.success(`${rawCards.length} research cards imported`);
+
+        setCards(allCards);
+        setApproved(new Set(allCards.map((_, i) => i)));
+        toast.success(`${allCards.length} research cards imported (${sources.length} sources, ${stats.length} stats, ${quotes.length} quotes, ${counters.length} counterarguments)`);
     }
 
     async function handleRun() {
