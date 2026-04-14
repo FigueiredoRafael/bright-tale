@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { Link, useRouter } from "@/i18n/navigation";
 import { useActiveChannel } from "@/hooks/use-active-channel";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,7 @@ function StatCard({ label, value, icon: Icon }: {
 }
 
 export default function Home() {
+  const t = useTranslations("dashboard");
   const router = useRouter();
   const { channels, activeChannel, loading } = useActiveChannel();
 
@@ -80,12 +81,12 @@ export default function Home() {
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
               <Sparkles className="h-8 w-8 text-primary" />
             </div>
-            <h2 className="text-xl font-bold mb-2">Você ainda não decidiu seu canal</h2>
+            <h2 className="text-xl font-bold mb-2">{t("noChannel")}</h2>
             <p className="text-muted-foreground text-sm mb-6 max-w-sm">
-              Vamos configurar seu primeiro canal de conteúdo em menos de 2 minutos.
+              {t("noChannelDesc")}
             </p>
             <Button onClick={() => router.push("/onboarding")}>
-              <Plus className="h-4 w-4 mr-2" /> Começar
+              <Plus className="h-4 w-4 mr-2" /> {t("getStarted")}
             </Button>
           </CardContent>
         </Card>
@@ -101,7 +102,7 @@ export default function Home() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">
-              {activeChannel ? `Hello, ${activeChannel.name}` : "Dashboard"}
+              {activeChannel ? t("helloGreeting", { channelName: activeChannel.name }) : t("greeting")}
             </h1>
             {activeChannel && (
               <p className="text-muted-foreground text-sm flex items-center gap-2 mt-1">
@@ -114,10 +115,10 @@ export default function Home() {
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
-          <StatCard label="Content Channels" value={channels.length} icon={Radio} />
-          <StatCard label="Ideas" value="—" icon={Lightbulb} />
-          <StatCard label="Drafts" value="—" icon={PenLine} />
-          <StatCard label="Published" value="—" icon={ChevronRight} />
+          <StatCard label={t("contentChannels")} value={channels.length} icon={Radio} />
+          <StatCard label={t("ideas")} value="—" icon={Lightbulb} />
+          <StatCard label={t("drafts")} value="—" icon={PenLine} />
+          <StatCard label={t("published")} value="—" icon={ChevronRight} />
         </div>
 
         {/* Quick Create — pa pum */}
@@ -125,46 +126,46 @@ export default function Home() {
           <div className="bg-card border border-border rounded-[14px] p-6">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="font-display text-base font-semibold">Criar conteúdo</h2>
-                <p className="text-xs text-muted-foreground">Pa pum — escolha o formato e a IA gera</p>
+                <h2 className="font-display text-base font-semibold">{t("createContent")}</h2>
+                <p className="text-xs text-muted-foreground">{t("createContentDescription")}</p>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
               <QuickCreateButton
                 href={`/channels/${activeChannel.id}/create`}
                 icon={Sparkles}
-                label="Multi-format"
-                description="Pipeline completo: pesquisa + múltiplos outputs"
+                label={t("multiFormat")}
+                description={t("multiFormatDesc")}
               />
               <QuickCreateButton
                 href={`/channels/${activeChannel.id}/create?format=blog`}
                 icon={PenLine}
-                label="Blog Post"
-                description="Post SEO com imagens"
+                label={t("blogPost")}
+                description={t("blogPostDesc")}
               />
               <QuickCreateButton
                 href={`/channels/${activeChannel.id}/create?format=video`}
                 icon={Video}
-                label="Video Script"
-                description="Roteiro completo com B-roll"
+                label={t("videoScript")}
+                description={t("videoScriptDesc")}
               />
               <QuickCreateButton
                 href={`/channels/${activeChannel.id}/create?format=shorts`}
                 icon={Zap}
-                label="Shorts"
-                description="Script otimizado para verticais"
+                label={t("shorts")}
+                description={t("shortsDesc")}
               />
               <QuickCreateButton
                 href={`/channels/${activeChannel.id}/create?format=podcast`}
                 icon={Mic}
-                label="Podcast"
-                description="Roteiro + talking points"
+                label={t("podcast")}
+                description={t("podcastDesc")}
               />
               <QuickCreateButton
                 href="/ideas"
                 icon={Lightbulb}
-                label="Ideas Library"
-                description="Escolher de ideias salvas"
+                label={t("ideasLibrary")}
+                description={t("ideasLibraryDesc")}
               />
             </div>
           </div>
@@ -174,9 +175,9 @@ export default function Home() {
         {channels.length > 1 && (
           <div className="bg-card border border-border rounded-[14px] p-6">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-display text-base font-semibold">Seus Canais</h2>
+              <h2 className="font-display text-base font-semibold">{t("yourChannels")}</h2>
               <Link href="/channels" className="text-primary text-xs font-medium hover:text-[#4ADE80]">
-                Ver todos →
+                {t("viewAll")} →
               </Link>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
