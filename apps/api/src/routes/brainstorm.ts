@@ -313,4 +313,104 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       return sendError(reply, error);
     }
   });
+
+  /**
+   * POST /sessions/:id/regenerate — Re-run brainstorm with same inputs.
+   * Creates a new session linked to the same project.
+   */
+  fastify.post('/sessions/:id/regenerate', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const sb = createServiceClient();
+      const { id } = request.params as { id: string };
+
+      const { data: original, error: fetchErr } = await sb
+        .from('brainstorm_sessions')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      if (fetchErr) throw fetchErr;
+      if (!original) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
+
+      const orig = original as Record<string, unknown>;
+      const orgId = await getOrgId(request.userId);
+      await checkCredits(orgId, request.userId, STAGE_COSTS.brainstorm);
+
+      const inputJson = orig.input_json as Record<string, unknown>;
+
+      // Create new session with same inputs
+      const { data: session, error: insertErr } = await (
+        sb.from('brainstorm_sessions') as unknown as {
+          insert: (row: Record<string, unknown>) => {
+            select: () => { single: () => Promise<{ data: { id: string } | null; error: unknown }> };
+          };
+        }
+      )
+        .insert({
+          org_id: orgId,
+          user_id: request.userId,
+          channel_id: orig.channel_id ?? null,
+          project_id: orig.project_id ?? null,
+          input_mode: orig.input_mode,
+          input_json: inputJson,
+          model_tier: orig.model_tier,
+          status: 'running',
+        })
+        .select()
+        .single();
+
+      if (insertErr || !session) throw insertErr ?? new ApiError(500, 'Failed to create session', 'DB_ERROR');
+
+      try {
+        const systemPrompt = (await loadAgentPrompt('brainstorm')) ?? undefined;
+
+        const { result } = await generateWithFallback(
+          'brainstorm',
+          (orig.model_tier as string) ?? 'standard',
+          { agentType: 'brainstorm', input: inputJson, schema: null, systemPrompt },
+        );
+
+        const ideas = normalizeIdeas(result);
+
+        const { count } = await sb.from('idea_archives').select('*', { count: 'exact', head: true });
+        const startNum = (count ?? 0) + 1;
+
+        const ideaRows = ideas.map((idea, i) => ({
+          idea_id: `BC-IDEA-${String(startNum + i).padStart(3, '0')}`,
+          title: idea.title ?? `Untitled ${i + 1}`,
+          core_tension: idea.core_tension ?? '',
+          target_audience: idea.target_audience ?? '',
+          verdict: idea.verdict === 'viable' || idea.verdict === 'weak' || idea.verdict === 'experimental' ? idea.verdict : 'experimental',
+          discovery_data: JSON.stringify({ angle: idea.angle, monetization: idea.monetization, repurposing: idea.repurposing }),
+          source_type: 'brainstorm',
+          channel_id: orig.channel_id ?? null,
+          project_id: orig.project_id ?? null,
+          brainstorm_session_id: session.id,
+          user_id: request.userId,
+          org_id: orgId,
+        }));
+
+        if (ideaRows.length > 0) {
+          await (sb.from('idea_archives') as unknown as {
+            upsert: (rows: Record<string, unknown>[], opts?: unknown) => Promise<{ error: unknown }>;
+          }).upsert(ideaRows, { onConflict: 'idea_id', ignoreDuplicates: true });
+        }
+
+        await (sb.from('brainstorm_sessions') as unknown as {
+          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+        }).update({ status: 'completed' }).eq('id', session.id);
+
+        await debitCredits(orgId, request.userId, 'brainstorm', 'text', STAGE_COSTS.brainstorm, { regeneratedFrom: id });
+
+        return reply.send({ data: { sessionId: session.id, ideas: ideaRows }, error: null });
+      } catch (err) {
+        await (sb.from('brainstorm_sessions') as unknown as {
+          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+        }).update({ status: 'failed', error_message: (err as Error)?.message?.slice(0, 500) }).eq('id', session.id);
+        throw err;
+      }
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
 }

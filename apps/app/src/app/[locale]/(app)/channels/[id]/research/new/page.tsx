@@ -218,6 +218,11 @@ export default function NewResearchPage() {
             setCards(json.data.cards ?? []);
             setApproved(new Set((json.data.cards ?? []).map((_: Card, i: number) => i)));
             toast.success(`${json.data.cards?.length ?? 0} research cards found`);
+            // Redirect to session detail page
+            if (json.data.sessionId) {
+                router.push(`/channels/${channelId}/research/${json.data.sessionId}`);
+                return;
+            }
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             const friendly = friendlyAiError(message);

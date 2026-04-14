@@ -67,6 +67,8 @@ export default function DraftDetailPage() {
   const [activeTab, setActiveTab] = useState('content');
   const [publishing, setPublishing] = useState(false);
   const [editedBody, setEditedBody] = useState('');
+  const [brainstormSessionId, setBrainstormSessionId] = useState<string | undefined>();
+  const [researchSessionId, setResearchSessionId] = useState<string | undefined>();
 
   const fetchDraft = useCallback(async () => {
     const res = await fetch(`/api/content-drafts/${draftId}`);
@@ -75,6 +77,23 @@ export default function DraftDetailPage() {
       setDraft(data);
       const body = (data.draft_json as Record<string, unknown>)?.full_draft as string;
       if (body) setEditedBody(body);
+
+      // Extract session IDs for stepper navigation
+      const rsId = data.research_session_id as string | undefined;
+      if (rsId) setResearchSessionId(rsId);
+
+      // Trace brainstorm session from linked idea
+      const ideaId = data.idea_id as string | undefined;
+      if (ideaId) {
+        try {
+          const ideaRes = await fetch(`/api/ideas/library?limit=100`);
+          const ideaJson = await ideaRes.json();
+          const idea = (ideaJson.data?.ideas ?? []).find(
+            (i: Record<string, unknown>) => i.id === ideaId || i.idea_id === ideaId,
+          );
+          if (idea?.brainstorm_session_id) setBrainstormSessionId(idea.brainstorm_session_id);
+        } catch { /* silent */ }
+      }
     }
     setLoading(false);
   }, [draftId]);
@@ -165,7 +184,14 @@ export default function DraftDetailPage() {
 
   return (
     <div>
-      <PipelineStages currentStep={pipelineStep} channelId={channelId} draftId={draftId} ideaTitle={draft.title ?? undefined} />
+      <PipelineStages
+        currentStep={pipelineStep}
+        channelId={channelId}
+        draftId={draftId}
+        brainstormSessionId={brainstormSessionId}
+        researchSessionId={researchSessionId}
+        ideaTitle={draft.title ?? undefined}
+      />
       <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">

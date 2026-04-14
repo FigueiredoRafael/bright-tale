@@ -129,7 +129,7 @@ export default function NewBrainstormPage() {
             });
 
             // Some 5xx responses might not be JSON — handle that gracefully.
-            let json: { data?: { ideas?: Idea[] }; error?: { message?: string; code?: string } } | null = null;
+            let json: { data?: { sessionId?: string; ideas?: Idea[] }; error?: { message?: string; code?: string } } | null = null;
             try {
                 json = await res.json();
             } catch {
@@ -150,6 +150,12 @@ export default function NewBrainstormPage() {
                 });
             } else {
                 toast.success(`${generatedIdeas.length} ideas generated`);
+                // Redirect to session detail page
+                const sid = json?.data?.sessionId;
+                if (sid) {
+                    router.push(`/channels/${channelId}/brainstorm/${sid}`);
+                    return;
+                }
             }
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);

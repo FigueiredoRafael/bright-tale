@@ -30,6 +30,8 @@ interface PipelineStagesProps {
   projectId?: string;
   projectTitle?: string;
   ideaTitle?: string;
+  brainstormSessionId?: string;
+  researchSessionId?: string;
 }
 
 function buildStepUrl(
@@ -37,15 +39,23 @@ function buildStepUrl(
   channelId?: string,
   draftId?: string,
   projectId?: string,
+  brainstormSessionId?: string,
+  researchSessionId?: string,
 ): string | null {
   if (!channelId) return null;
   switch (step) {
     case 'brainstorm':
-      return `/channels/${channelId}/brainstorm/new`;
+      return brainstormSessionId
+        ? `/channels/${channelId}/brainstorm/${brainstormSessionId}`
+        : `/channels/${channelId}/brainstorm/new`;
     case 'research':
-      return `/channels/${channelId}/research/new`;
+      return researchSessionId
+        ? `/channels/${channelId}/research/${researchSessionId}`
+        : `/channels/${channelId}/research/new`;
     case 'production':
-      return `/channels/${channelId}/drafts/new`;
+      return draftId
+        ? `/channels/${channelId}/drafts/${draftId}`
+        : `/channels/${channelId}/drafts/new`;
     case 'review':
       return draftId ? `/channels/${channelId}/drafts/${draftId}?tab=review` : null;
     case 'assets':
@@ -64,6 +74,8 @@ export function PipelineStages({
   projectId,
   projectTitle,
   ideaTitle,
+  brainstormSessionId,
+  researchSessionId,
 }: PipelineStagesProps) {
   const router = useRouter();
   const currentIndex = STEPS.findIndex((s) => s.key === currentStep);
@@ -93,7 +105,7 @@ export function PipelineStages({
           const isDone = i < currentIndex;
           const isActive = i === currentIndex;
           const isClickable = isDone || isActive;
-          const url = isClickable ? buildStepUrl(step.key, channelId, draftId, projectId) : null;
+          const url = isClickable ? buildStepUrl(step.key, channelId, draftId, projectId, brainstormSessionId, researchSessionId) : null;
 
           return (
             <div key={step.key} className="flex items-center shrink-0">

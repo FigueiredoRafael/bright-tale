@@ -312,4 +312,91 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       return sendError(reply, error);
     }
   });
+
+  /**
+   * POST /:id/regenerate — Re-run research with same inputs.
+   * Creates a new session linked to the same project/idea.
+   */
+  fastify.post('/:id/regenerate', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const sb = createServiceClient();
+      const { id } = request.params as { id: string };
+
+      const { data: original, error: fetchErr } = await sb
+        .from('research_sessions')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      if (fetchErr) throw fetchErr;
+      if (!original) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
+
+      const orig = original as Record<string, unknown>;
+      const orgId = await getOrgId(request.userId);
+      const level = (orig.level as 'surface' | 'medium' | 'deep') ?? 'medium';
+      const cost = LEVEL_COSTS[level];
+      await checkCredits(orgId, request.userId, cost);
+
+      const focusTags = (orig.focus_tags as string[]) ?? [];
+      const instruction = buildLevelInstruction(level, focusTags);
+      const inputJson = { ...(orig.input_json as Record<string, unknown>), instruction };
+
+      const { data: session, error: insertErr } = await (
+        sb.from('research_sessions') as unknown as {
+          insert: (row: Record<string, unknown>) => {
+            select: () => { single: () => Promise<{ data: { id: string } | null; error: unknown }> };
+          };
+        }
+      )
+        .insert({
+          org_id: orgId,
+          user_id: request.userId,
+          channel_id: orig.channel_id ?? null,
+          project_id: orig.project_id ?? null,
+          idea_id: orig.idea_id ?? null,
+          level,
+          focus_tags: focusTags,
+          input_json: inputJson,
+          model_tier: orig.model_tier,
+          status: 'running',
+        })
+        .select()
+        .single();
+
+      if (insertErr || !session) throw insertErr ?? new ApiError(500, 'Failed to create session', 'INTERNAL');
+
+      try {
+        const baseSystem = (await loadAgentPrompt('research')) ?? '';
+        const systemPrompt = `${baseSystem}\n\nLevel directive: ${instruction}`.trim();
+
+        const { result } = await generateWithFallback(
+          'research',
+          (orig.model_tier as string) ?? 'standard',
+          { agentType: 'research', input: inputJson, schema: null, systemPrompt },
+        );
+
+        const cards = normalizeCards(result);
+        const resultObj = (result && typeof result === 'object') ? result as Record<string, unknown> : {};
+        const refinedAngle = resultObj.refined_angle ?? resultObj.refinedAngle ?? null;
+
+        const updateData: Record<string, unknown> = { status: 'completed', cards_json: cards };
+        if (refinedAngle) updateData.refined_angle_json = refinedAngle;
+
+        await (sb.from('research_sessions') as unknown as {
+          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+        }).update(updateData).eq('id', session.id);
+
+        await debitCredits(orgId, request.userId, `research-${level}`, 'text', cost, { regeneratedFrom: id });
+
+        return reply.send({ data: { sessionId: session.id, level, cards, refinedAngle }, error: null });
+      } catch (err) {
+        await (sb.from('research_sessions') as unknown as {
+          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+        }).update({ status: 'failed', error_message: (err as Error)?.message?.slice(0, 500) }).eq('id', session.id);
+        throw err;
+      }
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
 }
