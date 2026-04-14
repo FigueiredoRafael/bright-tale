@@ -10,6 +10,7 @@ import {
     Users,
     User,
     TrendingUp,
+    CreditCard,
 } from "lucide-react";
 
 interface SettingsCard {
@@ -43,6 +44,12 @@ export default function SettingsPage() {
             description: "Conecte o site WordPress pra publicar posts direto da plataforma. Sem isso, dá pra marcar como publicado manualmente.",
             href: "/settings/wordpress",
             icon: <Globe className="h-6 w-6" />,
+        },
+        {
+            title: "Plano & créditos",
+            description: "Seu plano atual, créditos mensais, histórico de pagamento e upgrade.",
+            href: "/settings/billing",
+            icon: <CreditCard className="h-6 w-6" />,
         },
         {
             title: "Uso & custo",

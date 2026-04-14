@@ -6,7 +6,7 @@
 
 **Depende de:** Fase 1 (orgs + créditos base)
 
-**Progresso:** 0/12 concluídos
+**Progresso:** 4/12 concluídos (F3-001 scaffolding + F3-002/003/004/006 code)
 
 > ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
 > Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
@@ -16,7 +16,23 @@
 ## Cards
 
 ### F3-001 — Stripe: config + products + prices
-🔲 **Não iniciado**
+⚠️ **Código pronto — precisa criar no Stripe Dashboard**
+
+**Pronto no código:**
+- Plan catalog (`apps/api/src/lib/billing/plans.ts`) com Free/Starter/Creator/Pro, créditos e preços
+- Reverse lookup `planFromPriceId` pra webhooks
+- Env template `apps/api/.env.example` com `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` e os 6 `STRIPE_PRICE_*`
+
+**Pendente (manual no Stripe Dashboard):**
+- Criar conta Stripe (ou usar existente)
+- Products: Starter / Creator / Pro
+- Prices × 2 ciclos (mensal + anual) — copiar os `price_...` pros envs
+- Configurar Customer Portal (Settings → Billing → Customer portal)
+- Configurar Webhook endpoint pra `{API_URL}/billing/webhook` com events:
+  `checkout.session.completed`, `customer.subscription.*`, `invoice.paid`
+- Copiar webhook signing secret pro `STRIPE_WEBHOOK_SECRET`
+
+**Concluído em:** — (aguardando setup manual)
 
 **Escopo:**
 - Criar conta Stripe (ou configurar existente)
@@ -35,7 +51,11 @@
 ---
 
 ### F3-002 — API: Checkout Session
-🔲 **Não iniciado**
+✅ **Concluído**
+
+`POST /billing/checkout` recebe `{ planId, billingCycle, successUrl?, cancelUrl? }` e retorna `{ url }` da Stripe hosted checkout. Cria/reutiliza `stripe_customer_id` no org, injeta metadata `org_id/plan_id/billing_cycle`, aplica trial 7d pra Creator/Pro.
+
+**Concluído em:** 2026-04-13
 
 **Escopo:**
 - `POST /api/billing/checkout` — cria Stripe Checkout Session
@@ -54,7 +74,17 @@
 ---
 
 ### F3-003 — API: Stripe webhooks
-🔲 **Não iniciado**
+✅ **Concluído**
+
+`POST /billing/webhook` com signature verification via `STRIPE_WEBHOOK_SECRET`. Handlers:
+- `checkout.session.completed` → retrieve subscription + sync
+- `customer.subscription.created|updated` → set plan, credits_total, credits_reset_at
+- `customer.subscription.deleted` → downgrade pra Free
+- `invoice.paid` (billing_reason=subscription_cycle) → reset créditos no início de cada ciclo
+
+Fastify raw body via `fastify-raw-body` plugin scoped ao webhook.
+
+**Concluído em:** 2026-04-13
 
 **Escopo:**
 - `POST /api/webhooks/stripe`
@@ -75,7 +105,13 @@
 ---
 
 ### F3-004 — API: Customer Portal + subscription status
-🔲 **Não iniciado**
+✅ **Concluído**
+
+- `POST /billing/portal` → cria Stripe Customer Portal session, retorna `{ url }` (gerenciar cartão, cancelar, invoices)
+- `GET /billing/status` → plano atual, créditos (total/usado/addon/restante), datas de ciclo
+- `GET /billing/plans` → catálogo público (credits + prices + features), usado pela UI
+
+**Concluído em:** 2026-04-13
 
 **Escopo:**
 - `POST /api/billing/portal` — cria Customer Portal Session
@@ -109,7 +145,16 @@
 ---
 
 ### F3-006 — UI: Settings > Billing
-🔲 **Não iniciado**
+✅ **Concluído**
+
+`/settings/billing`:
+- Card de status atual: plano + ciclo + data de renovação + progress bar de créditos (verde <80%, amber 80-95%, vermelho >95%)
+- Toggle Mensal/Anual (-22% badge no anual)
+- 4 cards de plano (Free, Starter, Creator "Popular", Pro gradient)
+- Cada card: preço, créditos/mês, features, CTA
+- Botão "Gerenciar assinatura" (abre Stripe Customer Portal) pra usuários com `stripe_customer_id`
+
+**Concluído em:** 2026-04-13
 
 **Escopo:**
 - Página `/settings/billing`

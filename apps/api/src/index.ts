@@ -41,6 +41,8 @@ import { brainstormRoutes } from './routes/brainstorm.js';
 import { researchSessionsRoutes } from './routes/research-sessions.js';
 import { contentDraftsRoutes } from './routes/content-drafts.js';
 import { usageRoutes } from './routes/usage.js';
+import { billingRoutes } from './routes/billing.js';
+import fastifyRawBody from 'fastify-raw-body';
 
 const server = Fastify({ logger: true });
 
@@ -55,6 +57,15 @@ server.register(fastifyCors, {
 });
 
 server.register(fastifyCookie);
+
+// Stripe webhooks need the raw request body to verify the signature. Scoped
+// to routes that set `config: { rawBody: true }`.
+server.register(fastifyRawBody, {
+  field: 'rawBody',
+  global: false,
+  encoding: 'utf8',
+  runFirst: true,
+});
 
 server.register(healthRoutes);
 server.register(authRoutes);
@@ -88,6 +99,7 @@ server.register(brainstormRoutes, { prefix: '/brainstorm' });
 server.register(researchSessionsRoutes, { prefix: '/research-sessions' });
 server.register(contentDraftsRoutes, { prefix: '/content-drafts' });
 server.register(usageRoutes, { prefix: '/usage' });
+server.register(billingRoutes, { prefix: '/billing' });
 
 if (!process.env.VERCEL) {
   // Surface async errors that would otherwise crash the dev process silently
