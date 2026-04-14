@@ -11,6 +11,7 @@ import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
 import { STAGE_COSTS, generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
+import { buildChannelContext } from '../lib/ai/channelContext.js';
 import { checkCredits, debitCredits } from '../lib/credits.js';
 
 const brainstormBodySchema = z.object({
@@ -186,6 +187,12 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
           if (ctx.length > 0) {
             systemPrompt = `${systemPrompt}\n\n## Advanced Settings\n${ctx.join('\n')}`;
           }
+        }
+
+        // Inject channel context into system prompt
+        const channelContext = await buildChannelContext(body.channelId);
+        if (channelContext && systemPrompt) {
+          systemPrompt = `${systemPrompt}\n\n${channelContext}`;
         }
 
         const { result } = await generateWithFallback(
