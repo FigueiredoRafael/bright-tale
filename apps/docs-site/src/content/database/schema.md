@@ -1,5 +1,165 @@
 # Schema Completo
 
+> **Pipeline ativo (v2):** `channels → idea_archives → brainstorm_sessions → research_sessions → content_drafts`. As tabelas `projects`, `stages`, `revisions`, `research_archives`, `blog_drafts`, `video_drafts`, `podcast_drafts`, `shorts_drafts` são do **pipeline legado (v1)** e serão removidas em F6-009.
+
+---
+
+## Pipeline v2
+
+### channels
+
+Um canal de conteúdo por org (blog, YouTube, ou híbrido).
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| id | uuid PK | |
+| org_id / user_id | uuid FK | |
+| name / niche / niche_tags | text | |
+| market | text | default 'br' |
+| language | text | default 'pt-BR' — **injetado nos agent inputs** |
+| tone | text | informative/casual/técnico/irreverente |
+| channel_type | text | default 'text' |
+| presentation_style | text | `talking_head` \| `voiceover` \| `mixed` — define cues de produção no video script |
+| media_types | text[] | ['blog', 'video', 'shorts', 'podcast'] — filtra tabs no /content e Biblioteca |
+| youtube_url / youtube_channel_id | text | |
+| blog_url / wordpress_config_id | text / uuid FK | |
+| voice_{provider,id,speed,style} | text/num | Preferences pra TTS (Phase 4) |
+| model_tier | text | default 'standard' |
+| youtube_subs / youtube_monthly_views | int | cache |
+
+### idea_archives
+
+Ideias persistidas do brainstorm.
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| id | uuid PK | |
+| idea_id | text unique | BC-IDEA-NNN humanizado |
+| title / core_tension / target_audience | text | |
+| verdict | text | viable \| weak \| experimental |
+| discovery_data | text (JSON) | monetization/angle/repurposing |
+| source_type | text | brainstorm / manual |
+| channel_id | uuid FK | |
+| brainstorm_session_id | uuid FK | |
+
+### brainstorm_sessions
+
+Uma run de brainstorm por registro.
+
+| Coluna | Descrição |
+|---|---|
+| id, org_id, user_id, channel_id | |
+| input_mode | blind / fine_tuned / reference_guided |
+| input_json | { topic, fineTuning, referenceUrl } |
+| model_tier / status | running/completed/failed |
+| error_message | |
+
+### research_sessions
+
+Pesquisa async com níveis.
+
+| Coluna | Descrição |
+|---|---|
+| id, org_id, user_id, channel_id, idea_id | |
+| level | surface/medium/deep |
+| focus_tags | text[] |
+| input_json | { topic, level, focusTags, instruction } |
+| cards_json | output do agente |
+| approved_cards_json | cards aprovados no review humano |
+| status | running/completed/reviewed/failed |
+
+### content_drafts
+
+Drafts finais (blog/video/shorts/podcast).
+
+| Coluna | Descrição |
+|---|---|
+| id, org_id, user_id, channel_id | |
+| idea_id / research_session_id | FK opcional pra rastrear origem |
+| type | blog/video/shorts/podcast |
+| title | |
+| canonical_core_json | agent-3a output |
+| draft_json | agent-3b-{type} output (body + teleprompter + editor_script + pacote YouTube) |
+| review_feedback_json | agent-4 output (score, verdict, SEO checks, strengths, issues) |
+| production_params | { target_word_count } ou { target_duration_minutes } |
+| status | draft/in_review/approved/scheduled/published/failed |
+| scheduled_at / published_at / published_url | |
+
+### job_events (F2-036)
+
+Eventos de progresso de jobs async, consumidos via SSE.
+
+| Coluna | Descrição |
+|---|---|
+| id | uuid PK |
+| session_id | uuid — brainstorm_session / research_session / content_draft id |
+| session_type | brainstorm / research / production |
+| stage | queued / loading_prompt / calling_provider / parsing_output / saving / completed / failed |
+| message | texto humano |
+| metadata | jsonb |
+| created_at | |
+
+Índice: `(session_id, created_at)`. RLS deny-all (só service_role).
+
+### usage_events (F2-049)
+
+Registro de cada chamada de IA + custo estimado.
+
+| Coluna | Descrição |
+|---|---|
+| id | uuid PK |
+| org_id / user_id / channel_id | |
+| stage | brainstorm/research/production/review |
+| sub_stage | canonical-core / produce-{type} / null |
+| session_id / session_type | rastreio reverso (qual draft/session originou) |
+| provider | anthropic/openai/gemini/ollama |
+| model | ex. gemini-2.5-flash |
+| input_tokens / output_tokens | int |
+| cost_usd | numeric(10,6) — 0 pra ollama |
+
+Índices: `(org_id, created_at desc)`, `(user_id, created_at desc)`, `(session_id)`.
+
+### agent_prompts
+
+Prompts dos agentes. Editado no admin (`apps/web`), apenas leitura no `apps/app`.
+
+| Coluna | Descrição |
+|---|---|
+| id / name | |
+| slug | brainstorm / research / content-core / blog / video / shorts / podcast / engagement / review |
+| stage | brainstorm / research / production / review |
+| instructions | text — system prompt completo |
+| input_schema | text (opcional) |
+| org_id | null = global, senão override por org |
+| recommended_provider / recommended_model | badges "Recommended" no ModelPicker |
+
+## Infraestrutura & auth
+
+### organizations
+
+| Coluna | Descrição |
+|---|---|
+| id | uuid PK |
+| name / slug / logo_url | |
+| stripe_customer_id / stripe_subscription_id | Billing (F3) |
+| plan | free/starter/creator/pro |
+| billing_cycle | monthly/annual |
+| plan_started_at / plan_expires_at | |
+| credits_total / credits_used / credits_reset_at | Plano mensal |
+| credits_addon | Créditos avulsos (F3-005) |
+
+### org_memberships / org_invites
+
+Membros do org e convites pendentes (email token).
+
+### credit_usage
+
+Log individual de débitos de crédito (diferente de `usage_events` que é sobre tokens de IA). Ambas co-existem; credit_usage é "quanto usei do plano", usage_events é "quanto custou em tokens".
+
+---
+
+## Pipeline legado (v1 — será removido em F6-009)
+
 ## projects
 
 | Coluna | Tipo | Descrição |

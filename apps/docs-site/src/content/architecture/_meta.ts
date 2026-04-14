@@ -1,5 +1,6 @@
 export default {
   index: 'Visão Geral',
-  security: 'Segurança',
+  pipeline: 'Pipeline assíncrono',
   'ai-providers': 'Providers de IA',
+  security: 'Segurança',
 }

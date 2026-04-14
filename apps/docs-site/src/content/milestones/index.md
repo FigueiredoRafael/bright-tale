@@ -4,15 +4,44 @@ Tracking de progresso do desenvolvimento. Cada fase tem cards independentes. Mar
 
 ## Progresso Geral
 
+_Atualizado em 2026-04-14._
+
 | Fase | Nome | Cards | Concluídos | Status |
 |---|---|---:|---:|---|
 | [1](/milestones/phase-1-foundation) | **Fundação** | 12 | 12 | ✅ Concluído |
-| [2](/milestones/phase-2-core) | **Core** | 14 | 14 | ✅ Concluído |
-| [3](/milestones/phase-3-monetization) | **Monetização** | 10 | 0 | 🔲 Não iniciado |
+| [2](/milestones/phase-2-core) | **Core (v2)** | 47 | 34 | 🟡 72% |
+| [3](/milestones/phase-3-monetization) | **Monetização** | 12 | 6 (+1 parcial) | 🟡 58% |
 | [4](/milestones/phase-4-media) | **Mídia** | 11 | 0 | 🔲 Não iniciado |
 | [5](/milestones/phase-5-publishing) | **Publicação** | 9 | 0 | 🔲 Não iniciado |
 | [6](/milestones/phase-6-polish) | **Polish** | 9 | 0 | 🔲 Não iniciado |
-| | **Total** | **65** | **26** | |
+| | **Total** | **100** | **52** | **52%** |
+
+_Phase 2 cresceu de 14 → 47 cards ao longo do desenvolvimento (F2-036..F2-049 adicionados conforme bugs/UX surgiam). Phase 3 cresceu de 10 → 12 (F3-011 cupons + F3-012 VIP)._
+
+## Histórico recente (além dos cards originais)
+
+Melhorias e correções adicionadas durante Phase 2/3 que viraram novos cards:
+
+**Pipeline async + UX de geração**
+- **F2-036** Geração assíncrona com modal de progresso (Inngest + SSE) — brainstorm/research/production, com filtro `?since=`, dedup, stall warning, duração por step
+- **F2-044** Wizard contínuo (brainstorm → research → drafts com state passado via query params) + stepper visual
+- **F2-047** Target length configurável (palavras pro blog, minutos pro vídeo/podcast, segundos pros shorts)
+
+**Qualidade de output**
+- **F2-045** Vídeo: dois roteiros distintos — teleprompter (fala limpa) + editor_script (A-roll/B-roll/SFX/BGM/color)
+- **F2-046** Pacote YouTube completo — títulos A/B, thumbnails com composição/emoção, pinned comment, descrição SEO
+- **F2-048** Contexto do canal (idioma pt-BR, tom, talking_head vs voiceover faceless) injetado em todos os agentes
+
+**Diferenciais de produto**
+- **F2-030** Ollama local (zero custo, sem quota)
+- **F2-031** ModelPicker com recommended badges
+- **F2-034** Friendly AI errors (toast acionável em vez de JSON cru)
+- **F2-040** Create Content hub com tabs + auto-arquivamento de ideias/pesquisas usadas
+- **F2-049** Token usage tracking + dashboard de custo (USD/BRL)
+
+**Monetização (Phase 3)**
+- **F3-002→008** Backend Stripe completo + UI de billing + modal de upgrade + banner de alerta
+- **F3-001** ⚠️ código pronto, aguardando setup manual no Stripe Dashboard
 
 ## Legenda
 

@@ -16,24 +16,65 @@ Todas as rotas requerem header `X-Internal-Key` (injetado pelo middleware do app
 { "data": null, "error": { "code": "NOT_FOUND", "message": "..." } }
 ```
 
-## Rotas Disponíveis
+## Rotas disponíveis
+
+### Pipeline v2 (ativo)
 
 | Grupo | Prefixo | Descrição |
 |---|---|---|
-| [Projects](/api-reference/projects) | `/api/projects` | Gerenciamento de projetos |
-| [Research](/api-reference/research) | `/api/research` | Biblioteca de pesquisa |
-| [Ideas](/api-reference/ideas) | `/api/ideas` | Biblioteca de ideias |
-| [Stages](/api-reference/stages) | `/api/stages` | Stages do pipeline |
-| [Blogs](/api-reference/blogs) | `/api/blogs` | Blog drafts |
-| [Videos](/api-reference/videos) | `/api/videos` | Video drafts |
-| [Podcasts](/api-reference/podcasts) | `/api/podcasts` | Podcast drafts |
-| [Shorts](/api-reference/shorts) | `/api/shorts` | Shorts drafts |
-| [Canonical Core](/api-reference/canonical-core) | `/api/canonical-core` | Framework de conteúdo |
+| [Brainstorm](/api-reference/brainstorm) | `/api/brainstorm` | Sessões de brainstorm (async, SSE) |
+| [Research Sessions](/api-reference/research-sessions) | `/api/research-sessions` | Pesquisa com níveis (surface/medium/deep) |
+| [Content Drafts](/api-reference/content-drafts) | `/api/content-drafts` | Blog/vídeo/shorts/podcast drafts — produção async |
+| [Ideas Library](/api-reference/ideas) | `/api/ideas/library` | Biblioteca de ideias |
+| [Channels](/api-reference/channels) | `/api/channels` | Canais do usuário |
+| [Canonical Core](/api-reference/canonical-core) | `/api/canonical-core` | Framework de conteúdo (pipeline) |
+
+### Billing & usage
+
+| Grupo | Prefixo | Descrição |
+|---|---|---|
+| [Billing](/api-reference/billing) | `/api/billing` | Stripe: checkout, webhook, portal, status |
+| [Usage](/api-reference/usage) | `/api/usage` | Token usage analytics |
+| [Credits](/api-reference/credits) | `/api/credits` | Saldo de créditos |
+
+### Agentes & prompts
+
+| Grupo | Prefixo | Descrição |
+|---|---|---|
+| [Agents](/api-reference/agents) | `/api/agents` | `agent_prompts` (visualização no app, edição no admin) |
+| [AI Config](/api-reference/ai) | `/api/ai` | Chaves por provider |
+| [Image Generation](/api-reference/image-generation) | `/api/image-generation` | Gemini Imagen config |
+
+### Integrations
+
+| Grupo | Prefixo | Descrição |
+|---|---|---|
+| [WordPress](/api-reference/wordpress) | `/api/wordpress` | WP config + publish (legacy) |
+| [YouTube](/api-reference/youtube) | `/api/youtube` | YouTube Intelligence |
+| [Inngest](/api-reference/inngest) | `/inngest` | Webhook do Inngest (não chamado pelo usuário) |
+
+### Legacy (pipeline v1, em deprecação)
+
+| Grupo | Prefixo | Descrição |
+|---|---|---|
+| [Projects](/api-reference/projects) | `/api/projects` | ⚠️ Legacy |
+| [Research Archives](/api-reference/research) | `/api/research` | ⚠️ Legacy |
+| [Stages](/api-reference/stages) | `/api/stages` | ⚠️ Legacy |
+| [Blogs / Videos / Podcasts / Shorts](/api-reference/blogs) | `/api/{tipo}` | ⚠️ Legacy drafts (substituídos por content-drafts) |
 | [Templates](/api-reference/templates) | `/api/templates` | Templates reutilizáveis |
 | [Assets](/api-reference/assets) | `/api/assets` | Imagens e mídia |
-| [WordPress](/api-reference/wordpress) | `/api/wordpress` | Integração WordPress |
-| [AI Config](/api-reference/ai) | `/api/ai` | Configuração de providers |
 | [Users](/api-reference/users) | `/api/users` | Admin: gestão de usuários |
+
+### Async pipeline — padrão SSE
+
+Endpoints de geração (brainstorm/research/production) retornam `202 queued` e disparam um job Inngest. O cliente consome progresso via SSE:
+
+```
+GET /api/{brainstorm|research-sessions|content-drafts}/:id/events?since=<iso>
+Content-Type: text/event-stream
+```
+
+Events carregam `{ id, stage, message, metadata, created_at }`. O filtro `?since=` evita re-stream de eventos de runs anteriores do mesmo session id.
 
 ## Paginação
 
