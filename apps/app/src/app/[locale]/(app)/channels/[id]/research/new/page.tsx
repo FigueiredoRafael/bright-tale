@@ -49,6 +49,7 @@ export default function NewResearchPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const ideaIdParam = searchParams.get("ideaId") ?? undefined;
+    const projectIdParam = searchParams.get("projectId") ?? undefined;
 
     const [topic, setTopic] = useState("");
     const [level, setLevel] = useState<Level>("medium");
@@ -136,6 +137,7 @@ export default function NewResearchPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     channelId,
+                    projectId: projectIdParam,
                     ideaId: ideaIdParam,
                     topic: topic.trim() || undefined,
                     level,
@@ -198,6 +200,7 @@ export default function NewResearchPage() {
         const params = new URLSearchParams();
         if (sessionId) params.set('researchSessionId', sessionId);
         if (ideaIdParam) params.set('ideaId', ideaIdParam);
+        if (projectIdParam) params.set('projectId', projectIdParam);
         router.push(`/channels/${channelId}/drafts/new?${params.toString()}`);
     }
 

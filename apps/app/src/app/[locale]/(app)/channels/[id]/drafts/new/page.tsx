@@ -48,6 +48,7 @@ export default function NewDraftPage() {
     const searchParams = useSearchParams();
     const ideaIdParam = searchParams.get("ideaId") ?? undefined;
     const researchSessionIdParam = searchParams.get("researchSessionId") ?? undefined;
+    const projectIdParam = searchParams.get("projectId") ?? undefined;
     const { enabled: manualEnabled } = useManualMode();
 
     const [type, setType] = useState<DraftType>("blog");
@@ -135,6 +136,7 @@ export default function NewDraftPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     channelId,
+                    projectId: projectIdParam,
                     ideaId: ideaIdParam,
                     researchSessionId: researchSessionIdParam,
                     type,
@@ -301,6 +303,7 @@ export default function NewDraftPage() {
                                             headers: { "Content-Type": "application/json" },
                                             body: JSON.stringify({
                                                 channelId,
+                                                projectId: projectIdParam,
                                                 ideaId: ideaIdParam,
                                                 researchSessionId: researchSessionIdParam,
                                                 type,

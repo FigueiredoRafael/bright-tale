@@ -19,8 +19,7 @@ export default function ProjectsDashboard() {
     const { toast } = useToast();
 
     useEffect(() => {
-        // fetchProjects();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        fetchProjects({ ...filters, search });
     }, []);
 
     const fetchProjects = useCallback(async (opts?: { search?: string; stage?: string | null; status?: string | null; sort?: string }) => {
