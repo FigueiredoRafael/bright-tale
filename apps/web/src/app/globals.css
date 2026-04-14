@@ -133,6 +133,38 @@
   --white-shimmer: rgba(255, 255, 255, 0.10);
 }
 
+/* Light mode overrides */
+html.light {
+  --bg-deep: #F8FAFC; --bg-primary: #FFFFFF; --bg-surface: #F1F5F9;
+  --bg-elevated: #E2E8F0; --bg-card: #FFFFFF; --bg-card-hover: #F8FAFC;
+  --border: #E2E8F0; --border-light: #CBD5E1;
+  --text-primary: #0F172A; --text-secondary: #475569; --text-muted: #94A3B8;
+  --navbar-scrolled-bg: rgba(255, 255, 255, 0.92);
+  --mobile-menu-bg: rgba(255, 255, 255, 0.98);
+  --brand-grid: rgba(45, 212, 168, 0.04);
+  --brand-glow-xs: rgba(45, 212, 168, 0.06);
+  --brand-glow-sm: rgba(45, 212, 168, 0.08);
+  --brand-glow-md: rgba(45, 212, 168, 0.10);
+  --brand-glow-lg: rgba(45, 212, 168, 0.14);
+  --brand-glow-xl: rgba(45, 212, 168, 0.18);
+  --brand-glow-pulse: rgba(45, 212, 168, 0.40);
+  --brand-glow-dot: rgba(45, 212, 168, 0.60);
+  --brand-border-subtle: rgba(45, 212, 168, 0.12);
+  --brand-border-soft: rgba(45, 212, 168, 0.18);
+  --brand-border-mid: rgba(45, 212, 168, 0.25);
+  --brand-border-strong: rgba(45, 212, 168, 0.35);
+  --brand-shadow-sm: rgba(45, 212, 168, 0.08);
+  --brand-shadow-md: rgba(45, 212, 168, 0.12);
+  --brand-shadow-lg: rgba(45, 212, 168, 0.15);
+  --shadow-sm: rgba(0, 0, 0, 0.06);
+  --shadow-md: rgba(0, 0, 0, 0.10);
+  --shadow-lg: rgba(0, 0, 0, 0.15);
+  --white-shimmer: rgba(0, 0, 0, 0.05);
+  --terminal-red: #FF5F57;
+  --terminal-yellow: #FEBC2E;
+  --terminal-green: #28C840;
+}
+
 html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
 body { line-height: 1.6; overflow-x: hidden; }
 
