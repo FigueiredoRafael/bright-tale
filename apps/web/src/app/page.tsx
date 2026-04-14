@@ -1067,14 +1067,19 @@ export default function Home() {
               <span className={isAnnual ? 'active' : ''}>Annual <span className="pr-save">Save 20%</span></span>
             </div>
             <div className="pr-grid">
-              {/* Starter */}
+              {/* F3-010: tiers sincronizados com plans.ts (Free/Creator/Pro).
+                  Starter $9 fica no app; landing mostra os 3 tiers principais. */}
+              {/* Free */}
               <div className="pr-card anim">
-                <div className="pr-name">Starter</div>
+                <div className="pr-name">Free</div>
                 <div className="pr-desc">{t('pr_starter_desc')}</div>
                 <div className="pr-price">
                   <span className="pr-cur">$</span>
                   <span className="pr-val">{pv('0', '0')}</span>
                   <span className="pr-per">{isAnnual ? '/month, billed annually' : '/month'}</span>
+                </div>
+                <div style={{ fontSize: '.82rem', opacity: .8, marginBottom: '.8rem' }}>
+                  1,000 credits / month
                 </div>
                 <ul className="pr-feats">
                   {[t('pr_s1'), t('pr_s2'), t('pr_s3'), t('pr_s4'), t('pr_s5')].map((f) => (
@@ -1083,15 +1088,18 @@ export default function Home() {
                 </ul>
                 <a href="https://app.brighttale.io" className="pr-btn ghost">{t('pr_starter_btn')}</a>
               </div>
-              {/* Pro */}
+              {/* Creator (Popular) */}
               <div className="pr-card pop anim">
                 <span className="pr-badge">{t('pr_pop_badge')}</span>
-                <div className="pr-name">Pro</div>
+                <div className="pr-name">Creator</div>
                 <div className="pr-desc">{t('pr_pro_desc')}</div>
                 <div className="pr-price">
                   <span className="pr-cur">$</span>
                   <span className="pr-val">{pv('29', '23')}</span>
                   <span className="pr-per">{isAnnual ? '/month, billed annually' : '/month'}</span>
+                </div>
+                <div style={{ fontSize: '.82rem', opacity: .8, marginBottom: '.8rem' }}>
+                  15,000 credits / month
                 </div>
                 <ul className="pr-feats">
                   {[t('pr_p1'), t('pr_p2'), t('pr_p3'), t('pr_p4'), t('pr_p5'), t('pr_p6')].map((f) => (
@@ -1100,14 +1108,17 @@ export default function Home() {
                 </ul>
                 <a href="https://app.brighttale.io" className="pr-btn primary">{t('pr_pro_btn')}</a>
               </div>
-              {/* Agency */}
+              {/* Pro */}
               <div className="pr-card anim">
-                <div className="pr-name">{t('pr_agency_name')}</div>
+                <div className="pr-name">Pro</div>
                 <div className="pr-desc">{t('pr_agency_desc')}</div>
                 <div className="pr-price">
                   <span className="pr-cur">$</span>
                   <span className="pr-val">{pv('99', '79')}</span>
                   <span className="pr-per">{isAnnual ? '/month, billed annually' : '/month'}</span>
+                </div>
+                <div style={{ fontSize: '.82rem', opacity: .8, marginBottom: '.8rem' }}>
+                  50,000 credits / month + AI video clips
                 </div>
                 <ul className="pr-feats">
                   {[t('pr_a1'), t('pr_a2'), t('pr_a3'), t('pr_a4'), t('pr_a5'), t('pr_a6')].map((f) => (

@@ -8,7 +8,7 @@ import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
 import { getStripe } from '../lib/billing/stripe.js';
-import { PLANS, getPlan, planFromPriceId, type PlanId, type BillingCycle } from '../lib/billing/plans.js';
+import { PLANS, getPlan, planFromPriceId, ADDON_PACKS, type PlanId, type BillingCycle } from '../lib/billing/plans.js';
 import type Stripe from 'stripe';
 
 async function getOrg(userId: string) {
@@ -56,6 +56,12 @@ async function ensureStripeCustomer(orgId: string, email: string | null): Promis
 const checkoutSchema = z.object({
   planId: z.enum(['starter', 'creator', 'pro']),
   billingCycle: z.enum(['monthly', 'annual']),
+  successUrl: z.string().url().optional(),
+  cancelUrl: z.string().url().optional(),
+});
+
+const addonCheckoutSchema = z.object({
+  packId: z.enum(['pack_small', 'pack_medium', 'pack_large']),
   successUrl: z.string().url().optional(),
   cancelUrl: z.string().url().optional(),
 });
@@ -156,6 +162,9 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
         customer: customerId,
         mode: 'subscription',
         line_items: [{ price: priceId, quantity: 1 }],
+        // F3-011: aceita qualquer cupom ativo no Stripe. UI do checkout mostra
+        // o campo "Adicionar código promocional" automaticamente.
+        allow_promotion_codes: true,
         success_url: body.successUrl ?? `${appOrigin}/settings/billing?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: body.cancelUrl ?? `${appOrigin}/settings/billing?canceled=1`,
         subscription_data: {
@@ -163,6 +172,68 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
           metadata: { org_id: org.id as string, plan_id: body.planId, billing_cycle: body.billingCycle },
         },
         metadata: { org_id: org.id as string, plan_id: body.planId, billing_cycle: body.billingCycle },
+      });
+
+      return reply.send({ data: { url: session.url, sessionId: session.id }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * GET /addons — F3-005. Public catalog de packs avulsos de créditos.
+   */
+  fastify.get('/addons', async (_request, reply) => {
+    return reply.send({
+      data: {
+        packs: Object.values(ADDON_PACKS).map((p) => ({
+          id: p.id,
+          credits: p.credits,
+          usdPrice: p.usdPrice,
+        })),
+      },
+      error: null,
+    });
+  });
+
+  /**
+   * POST /addons/checkout — F3-005. Comprar créditos avulsos. Mode=payment
+   * (não assinatura). Creditos são creditados em `organizations.credits_addon`
+   * via webhook `checkout.session.completed` quando pago.
+   */
+  fastify.post('/addons/checkout', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const body = addonCheckoutSchema.parse(request.body);
+      const pack = ADDON_PACKS[body.packId];
+      if (!pack?.stripePriceId) {
+        throw new ApiError(500, `Stripe price id pro ${body.packId} não configurado (STRIPE_PRICE_ADDON_*)`, 'CONFIG_ERROR');
+      }
+
+      const sb = createServiceClient();
+      const { data: userRow } = await sb
+        .from('user_profiles')
+        .select('email')
+        .eq('id', request.userId)
+        .maybeSingle();
+      const org = await getOrg(request.userId);
+      const customerId = await ensureStripeCustomer(org.id as string, (userRow?.email as string | null) ?? null);
+
+      const stripe = getStripe();
+      const appOrigin = process.env.APP_ORIGIN ?? 'http://localhost:3000';
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        mode: 'payment',
+        line_items: [{ price: pack.stripePriceId, quantity: 1 }],
+        allow_promotion_codes: true, // F3-011
+        success_url: body.successUrl ?? `${appOrigin}/settings/billing?addon=1`,
+        cancel_url: body.cancelUrl ?? `${appOrigin}/settings/billing?canceled=1`,
+        metadata: {
+          org_id: org.id as string,
+          kind: 'addon',
+          pack_id: pack.id,
+          credits: String(pack.credits),
+        },
       });
 
       return reply.send({ data: { url: session.url, sessionId: session.id }, error: null });
@@ -235,6 +306,11 @@ async function handleStripeEvent(event: Stripe.Event, fastify: FastifyInstance):
   switch (event.type) {
     case 'checkout.session.completed': {
       const session = event.data.object as Stripe.Checkout.Session;
+      // F3-005: one-time addon payments — grant credits to org.
+      if (session.metadata?.kind === 'addon') {
+        await grantAddonCredits(session);
+        break;
+      }
       await activateSubscriptionFromSession(session);
       break;
     }
@@ -258,6 +334,27 @@ async function handleStripeEvent(event: Stripe.Event, fastify: FastifyInstance):
       // Ignore other event types for now.
       break;
   }
+}
+
+async function grantAddonCredits(session: Stripe.Checkout.Session): Promise<void> {
+  const orgId = session.metadata?.org_id;
+  const creditsStr = session.metadata?.credits;
+  if (!orgId || !creditsStr) return;
+  const credits = Number(creditsStr);
+  if (!Number.isFinite(credits) || credits <= 0) return;
+
+  const sb = createServiceClient();
+  const { data: org } = await sb
+    .from('organizations')
+    .select('credits_addon')
+    .eq('id', orgId)
+    .single();
+  const current = (org?.credits_addon as number | null) ?? 0;
+  await (sb.from('organizations') as unknown as {
+    update: (row: Record<string, unknown>) => { eq: (c: string, v: string) => Promise<unknown> };
+  })
+    .update({ credits_addon: current + credits })
+    .eq('id', orgId);
 }
 
 async function activateSubscriptionFromSession(session: Stripe.Checkout.Session): Promise<void> {

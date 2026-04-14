@@ -115,3 +115,44 @@ export function planFromPriceId(priceId: string): { planId: PlanId; cycle: Billi
   }
   return null;
 }
+
+/* ─── F3-005 Add-on packs (one-time purchase) ─────────────────────────── */
+
+export interface AddonPack {
+  id: string;
+  credits: number;
+  usdPrice: number;
+  stripePriceId: string | null;
+}
+
+/**
+ * Packs avulsos de créditos — compra única via Stripe Checkout em modo
+ * `payment` (não assinatura). Granted via webhook `invoice.paid` + metadata.
+ */
+export const ADDON_PACKS: Record<string, AddonPack> = {
+  pack_small: {
+    id: 'pack_small',
+    credits: 1_000,
+    usdPrice: 5,
+    stripePriceId: env('STRIPE_PRICE_ADDON_1K'),
+  },
+  pack_medium: {
+    id: 'pack_medium',
+    credits: 5_000,
+    usdPrice: 20,
+    stripePriceId: env('STRIPE_PRICE_ADDON_5K'),
+  },
+  pack_large: {
+    id: 'pack_large',
+    credits: 15_000,
+    usdPrice: 50,
+    stripePriceId: env('STRIPE_PRICE_ADDON_15K'),
+  },
+};
+
+export function addonFromPriceId(priceId: string): AddonPack | null {
+  for (const pack of Object.values(ADDON_PACKS)) {
+    if (pack.stripePriceId === priceId) return pack;
+  }
+  return null;
+}

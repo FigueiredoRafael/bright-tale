@@ -4,8 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Check, Sparkles, CreditCard } from "lucide-react";
+import { Loader2, Check, Sparkles, CreditCard, Zap } from "lucide-react";
 import { toast } from "sonner";
+
+interface Addon {
+    id: "pack_small" | "pack_medium" | "pack_large";
+    credits: number;
+    usdPrice: number;
+}
 
 type PlanId = "free" | "starter" | "creator" | "pro";
 interface Plan {
@@ -24,20 +30,24 @@ interface Status {
 
 export default function BillingPage() {
     const [plans, setPlans] = useState<Plan[]>([]);
+    const [addons, setAddons] = useState<Addon[]>([]);
     const [status, setStatus] = useState<Status | null>(null);
     const [loading, setLoading] = useState(true);
     const [cycle, setCycle] = useState<"monthly" | "annual">("monthly");
     const [pendingPlan, setPendingPlan] = useState<PlanId | null>(null);
+    const [pendingAddon, setPendingAddon] = useState<Addon["id"] | null>(null);
     const [openingPortal, setOpeningPortal] = useState(false);
 
     useEffect(() => {
         (async () => {
             try {
-                const [p, s] = await Promise.all([
+                const [p, a, s] = await Promise.all([
                     fetch("/api/billing/plans").then((r) => r.json()),
+                    fetch("/api/billing/addons").then((r) => r.json()),
                     fetch("/api/billing/status").then((r) => r.json()),
                 ]);
                 setPlans(p?.data?.plans ?? []);
+                setAddons(a?.data?.packs ?? []);
                 setStatus(s?.data ?? null);
                 if (s?.data?.plan?.billingCycle) setCycle(s.data.plan.billingCycle);
             } finally {
@@ -74,6 +84,30 @@ export default function BillingPage() {
         } catch {
             toast.error("Falha ao iniciar checkout");
             setPendingPlan(null);
+        }
+    }
+
+    async function buyAddon(packId: Addon["id"]) {
+        if (pendingAddon) return;
+        setPendingAddon(packId);
+        try {
+            const res = await fetch("/api/billing/addons/checkout", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ packId }),
+            });
+            const json = await res.json();
+            if (json?.error || !json?.data?.url) {
+                toast.error(json?.error?.message ?? "Falha ao iniciar compra", {
+                    description: "Verifica se os STRIPE_PRICE_ADDON_* envs estão configurados.",
+                });
+                setPendingAddon(null);
+                return;
+            }
+            window.location.href = json.data.url;
+        } catch {
+            toast.error("Falha ao iniciar compra");
+            setPendingAddon(null);
         }
     }
 
@@ -237,6 +271,47 @@ export default function BillingPage() {
                     );
                 })}
             </div>
+
+            {/* F3-005 Add-on packs */}
+            {addons.length > 0 && (
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-base flex items-center gap-2">
+                            <Zap className="h-4 w-4 text-amber-500" /> Créditos avulsos
+                        </CardTitle>
+                        <p className="text-xs text-muted-foreground">
+                            Precisou de mais créditos no mês? Compre packs one-time que somam aos do plano. Não expiram até usar.
+                        </p>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            {addons.map((a) => (
+                                <div key={a.id} className="border rounded-lg p-4 space-y-2">
+                                    <div className="flex items-baseline justify-between">
+                                        <div className="text-xl font-bold">${a.usdPrice}</div>
+                                        <Badge variant="outline" className="text-[10px]">pack</Badge>
+                                    </div>
+                                    <div className="text-sm flex items-center gap-1.5">
+                                        <Sparkles className="h-3.5 w-3.5 text-primary" />
+                                        <span className="font-medium">{a.credits.toLocaleString("pt-BR")}</span>
+                                        <span className="text-muted-foreground">créditos</span>
+                                    </div>
+                                    <Button
+                                        onClick={() => buyAddon(a.id)}
+                                        disabled={pendingAddon !== null}
+                                        variant="outline"
+                                        className="w-full"
+                                        size="sm"
+                                    >
+                                        {pendingAddon === a.id ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : null}
+                                        Comprar
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
             <p className="text-xs text-muted-foreground text-center">
                 Pagamento processado pelo Stripe. Cancele quando quiser no portal de assinatura.

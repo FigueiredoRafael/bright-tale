@@ -45,6 +45,15 @@ export async function getBalance(orgId: string): Promise<CreditBalance> {
  * Throws InsufficientCreditsError if not.
  */
 export async function checkCredits(orgId: string, userId: string, cost: number): Promise<void> {
+  // F3-012 — VIP orgs têm créditos ilimitados (invite-only admin flag).
+  const sbVip = createServiceClient();
+  const { data: vipCheck } = await sbVip
+    .from('organizations')
+    .select('is_vip')
+    .eq('id', orgId)
+    .maybeSingle();
+  if (vipCheck?.is_vip) return;
+
   const balance = await getBalance(orgId);
 
   if (balance.available < cost) {

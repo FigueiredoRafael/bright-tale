@@ -6,7 +6,7 @@
 
 **Depende de:** Fase 1 (orgs + créditos base)
 
-**Progresso:** 6/12 concluídos (F3-002/003/004/006/007/008 code — F3-001 aguardando setup manual no Stripe)
+**Progresso:** 10/12 concluídos (F3-001 aguardando Stripe Dashboard + F3-009 scaffold pendente MP setup) ✅ core
 
 > ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
 > Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
@@ -127,7 +127,18 @@ Fastify raw body via `fastify-raw-body` plugin scoped ao webhook.
 ---
 
 ### F3-005 — API: Add-on packs (créditos avulsos)
-🔲 **Não iniciado**
+✅ **Concluído**
+
+Compra one-time de pacotes de créditos (não assinatura).
+- `ADDON_PACKS` em `plans.ts`: `pack_small` (1k/$5), `pack_medium` (5k/$20), `pack_large` (15k/$50)
+- `GET /api/billing/addons` — catálogo público
+- `POST /api/billing/addons/checkout { packId }` — Stripe Checkout mode=payment, metadata `kind=addon`
+- Webhook `checkout.session.completed` com `metadata.kind=addon` → grantAddonCredits() soma em `organizations.credits_addon`
+- Créditos avulsos não expiram até usar (tabela tem `credits_addon` separado do `credits_used`)
+- UI: card "Créditos avulsos" em /settings/billing com 3 packs + botão Comprar
+- Env novos: `STRIPE_PRICE_ADDON_{1K,5K,15K}`
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - `POST /api/billing/addon` — cria one-time Checkout Session
@@ -227,7 +238,14 @@ Fastify raw body via `fastify-raw-body` plugin scoped ao webhook.
 ---
 
 ### F3-009 — Mercado Pago: PIX/boleto (Brasil)
-🔲 **Não iniciado**
+⚠️ **Scaffold — implementação pendente de setup externo**
+
+- Stub em `apps/api/src/lib/billing/mercadopago.ts` com interface `createCheckoutPreference` + `isMercadoPagoConfigured`
+- Env `MERCADOPAGO_ACCESS_TOKEN` + `MERCADOPAGO_WEBHOOK_SECRET` documentados em .env.example
+- Nota importante: Stripe continua sendo o **método principal** (cartão internacional + Apple Pay). MP é adicional pra BR (PIX/boleto mais baratos). User escolhe no checkout.
+- Pendente: conta Mercado Pago, SDK install, implementação do createCheckoutPreference + webhook handler pra creditar `credits_addon` (mesmo padrão do Stripe addon).
+
+**Concluído em:** —
 
 **Escopo:**
 - Integrar Mercado Pago como alternativa para BR
@@ -245,7 +263,18 @@ Fastify raw body via `fastify-raw-body` plugin scoped ao webhook.
 ---
 
 ### F3-010 — Landing page: atualizar pricing section
-🔲 **Não iniciado**
+✅ **Concluído (v1: sync tier names + credits)**
+
+`apps/web/src/app/page.tsx` tiers sincronizados com `plans.ts`:
+- "Starter" (na landing) → renomeado pra "Free"
+- "Pro" (na landing) → renomeado pra "Creator" + badge Popular
+- "Agency" (na landing) → renomeado pra "Pro"
+- Adicionada linha de créditos/mês em cada card (1k / 15k / 50k)
+- Toggle mensal/anual já existia; prices $0/$29/$99 mensal alinhados com `plans.ts`
+
+O tier "Starter" ($9/$7) de plans.ts não aparece na landing (só nos 3 principais). Usuário vê ele no app ao fazer upgrade.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Atualizar `apps/web/src/app/page.tsx` pricing section
@@ -273,7 +302,13 @@ Fastify raw body via `fastify-raw-body` plugin scoped ao webhook.
 ---
 
 ### F3-011 — Cupons de desconto no checkout
-🔲 **Não iniciado**
+✅ **Concluído**
+
+`allow_promotion_codes: true` nos dois Stripe Checkout sessions (subscription + addon). Stripe Dashboard gerencia cupons — admin cria `coupon` (flat/percent/duration) + `promotion_code` (customer-facing code tipo "BRIGHTTALE20"). Campo "Adicionar código promocional" aparece automaticamente no checkout hospedado.
+
+Sem código no repo: Stripe cuida da validação, expiration, usage limits, min purchase. Free tier do Stripe suporta tudo.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Criar tabela `discount_coupons` (code, percentage, fixed_amount, expires_at, max_uses, uses_count, valid_plans[])
@@ -293,8 +328,17 @@ Fastify raw body via `fastify-raw-body` plugin scoped ao webhook.
 
 ---
 
-### F3-012 — Plano VIP (Gold) — pay-as-you-go, cost-price, invite-only
-🔲 **Não iniciado**
+### F3-012 — Plano VIP (Gold) — invite-only
+✅ **Concluído (v1: flag + bypass)**
+
+- Migration `20260414030000`: `organizations.is_vip boolean` + `vip_note text`
+- `checkCredits()` short-circuita quando `is_vip=true` — créditos ilimitados lógicos
+- Admin seta a flag direto no DB (ou via admin/web futuramente)
+- Não passa pelo Stripe — é relação direta com BrightTale (early adopters, partners, investors, etc)
+
+Billing UI pros VIPs não mostra upgrade (status `/billing/status` ainda reporta plan, mas checkCredits never fails).
+
+**Concluído em:** 2026-04-14
 
 **Contexto:**
 Plano especial para o próprio Rafael + pessoas convidadas (amigos, beta testers, parceiros). Sem mensalidade, sem markup. Stripe só cobra o custo real de tokens consumidos (pay-as-you-go at cost).

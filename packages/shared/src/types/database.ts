@@ -1147,6 +1147,7 @@ export type Database = {
           credits_total: number
           credits_used: number
           id: string
+          is_vip: boolean
           logo_url: string | null
           name: string
           plan: string
@@ -1156,6 +1157,7 @@ export type Database = {
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
           updated_at: string
+          vip_note: string | null
         }
         Insert: {
           billing_cycle?: string | null
@@ -1165,6 +1167,7 @@ export type Database = {
           credits_total?: number
           credits_used?: number
           id?: string
+          is_vip?: boolean
           logo_url?: string | null
           name: string
           plan?: string
@@ -1174,6 +1177,7 @@ export type Database = {
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           updated_at?: string
+          vip_note?: string | null
         }
         Update: {
           billing_cycle?: string | null
@@ -1183,6 +1187,7 @@ export type Database = {
           credits_total?: number
           credits_used?: number
           id?: string
+          is_vip?: boolean
           logo_url?: string | null
           name?: string
           plan?: string
@@ -1192,6 +1197,7 @@ export type Database = {
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           updated_at?: string
+          vip_note?: string | null
         }
         Relationships: []
       }
