@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, Lightbulb, Sparkles, ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
+import { Loader2, Lightbulb, Sparkles, ArrowLeft, RefreshCw, Check } from "lucide-react";
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
 import { friendlyAiError } from "@/lib/ai/error-message";
 import { GenerationProgressModal } from "@/components/generation/GenerationProgressModal";
@@ -21,11 +21,13 @@ type Mode = "blind" | "fine_tuned" | "reference_guided";
 
 interface Idea {
     id: string;
-    idea_id: string;
+    idea_id?: string;              // present in saved ideas, undefined in drafts
     title: string;
     target_audience: string;
     verdict: "viable" | "weak" | "experimental";
     discovery_data: string;
+    // brainstorm_drafts shape
+    session_id?: string;
 }
 
 const MODES: { id: Mode; label: string; description: string }[] = [
@@ -51,6 +53,7 @@ export default function NewBrainstormPage() {
     const router = useRouter();
 
     const [mode, setMode] = useState<Mode>("blind");
+    const [count, setCount] = useState<number>(5);
     const [provider, setProvider] = useState<ProviderId>("gemini");
     const [model, setModel] = useState<string>("gemini-2.5-flash");
     const [recommended, setRecommended] = useState<{ provider: string | null; model: string | null }>({ provider: null, model: null });
@@ -104,6 +107,7 @@ export default function NewBrainstormPage() {
                 inputMode: mode,
                 provider,
                 model,
+                count,
                 topic: topic.trim() || undefined,
             };
             if (mode === "fine_tuned") {
@@ -156,17 +160,69 @@ export default function NewBrainstormPage() {
     async function onJobComplete() {
         if (!activeSessionId) return;
         try {
-            const res = await fetch(`/api/brainstorm/sessions/${activeSessionId}`);
+            // F2-037: ideas são drafts (staging) até o user selecionar o que salvar.
+            const res = await fetch(`/api/brainstorm/sessions/${activeSessionId}/drafts`);
             const json = await res.json();
-            const generatedIdeas: Idea[] = json?.data?.ideas ?? [];
+            const generatedIdeas: Idea[] = json?.data?.drafts ?? [];
             setIdeas(generatedIdeas);
-            toast.success(`${generatedIdeas.length} ideias geradas`);
+            // Pré-selecionar tudo — usuário só desmarca o que não quer.
+            setSelectedIdeaIds(new Set(generatedIdeas.map((i) => i.id)));
+            toast.success(`${generatedIdeas.length} ideias geradas — escolha quais salvar`);
         } catch {
             toast.error("Ideias geradas mas falha ao carregar");
         } finally {
             setRunning(false);
             setActiveSessionId(null);
         }
+    }
+
+    const [selectedIdeaIds, setSelectedIdeaIds] = useState<Set<string>>(new Set());
+    const [savingSelection, setSavingSelection] = useState(false);
+
+    function toggleIdea(id: string) {
+        setSelectedIdeaIds((prev) => {
+            const n = new Set(prev);
+            if (n.has(id)) n.delete(id);
+            else n.add(id);
+            return n;
+        });
+    }
+
+    async function saveSelected() {
+        if (!activeSessionIdForDrafts() || selectedIdeaIds.size === 0 || savingSelection) return;
+        setSavingSelection(true);
+        try {
+            const sid = activeSessionIdForDrafts();
+            const res = await fetch(`/api/brainstorm/sessions/${sid}/drafts/save`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ draftIds: Array.from(selectedIdeaIds) }),
+            });
+            const json = await res.json();
+            if (json?.error) {
+                toast.error(json.error.message ?? "Falha ao salvar");
+                return;
+            }
+            toast.success(`${json.data.saved} ideias salvas na biblioteca`);
+            setIdeas([]);
+            setSelectedIdeaIds(new Set());
+        } finally {
+            setSavingSelection(false);
+        }
+    }
+
+    async function discardAll() {
+        const sid = activeSessionIdForDrafts();
+        if (!sid) return;
+        if (!confirm("Descartar todas as ideias deste brainstorm? Não dá pra recuperar.")) return;
+        await fetch(`/api/brainstorm/sessions/${sid}/drafts`, { method: "DELETE" });
+        setIdeas([]);
+        setSelectedIdeaIds(new Set());
+        toast.success("Descartado");
+    }
+
+    function activeSessionIdForDrafts(): string | null {
+        return ideas[0]?.session_id ?? null;
     }
 
     function onJobFailed(message: string) {
@@ -176,10 +232,9 @@ export default function NewBrainstormPage() {
         setActiveSessionId(null);
     }
 
-    function pickIdea(idea: Idea) {
-        // Continue the wizard flow: idea → research with this idea preselected.
-        router.push(`/channels/${channelId}/research/new?ideaId=${encodeURIComponent(idea.id)}`);
-    }
+    // (pickIdea removed in F2-037 — ideas now go through draft selection
+    // instead of jumping straight to research. Once saved, users pick from
+    // /create hub or directly on /research/new with ?ideaId=.)
 
     return (
         <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -301,6 +356,23 @@ export default function NewBrainstormPage() {
                         </div>
                     )}
 
+                    <div className="space-y-2">
+                        <Label>Quantas ideias?</Label>
+                        <div className="grid grid-cols-4 gap-2">
+                            {[3, 5, 7, 10].map((n) => (
+                                <button
+                                    key={n}
+                                    onClick={() => setCount(n)}
+                                    className={`p-2 rounded-md border text-sm ${
+                                        count === n ? "border-primary bg-primary/5 text-primary font-medium" : "border-border hover:border-muted-foreground/30"
+                                    }`}
+                                >
+                                    {n}<span className="text-xs text-muted-foreground"> ideias</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
                     <ModelPicker
                         provider={provider}
                         model={model}
@@ -328,6 +400,7 @@ export default function NewBrainstormPage() {
                         <CardTitle className="text-base flex items-center justify-between gap-2">
                             <span className="flex items-center gap-2">
                                 Ideias geradas <Badge variant="secondary" className="text-[10px]">{ideas.length}</Badge>
+                                <span className="text-xs text-muted-foreground font-normal">— marque o que quer salvar</span>
                             </span>
                             <Button onClick={() => setConfirmRegen(true)} variant="outline" size="sm" disabled={running}>
                                 <RefreshCw className="h-4 w-4 mr-1.5" /> Refazer
@@ -342,13 +415,25 @@ export default function NewBrainstormPage() {
                             } catch {
                                 // ignore
                             }
+                            const isSelected = selectedIdeaIds.has(idea.id);
                             return (
-                                <button
-                                    key={idea.idea_id}
-                                    onClick={() => pickIdea(idea)}
-                                    className="w-full text-left p-4 rounded-lg border border-border hover:border-primary/50 hover:bg-muted/30 transition-colors"
+                                <div
+                                    key={idea.id}
+                                    onClick={() => toggleIdea(idea.id)}
+                                    className={`w-full text-left p-4 rounded-lg border cursor-pointer transition-colors ${
+                                        isSelected
+                                            ? "border-primary/60 bg-primary/5"
+                                            : "border-border opacity-60 hover:opacity-100 hover:border-muted-foreground/30"
+                                    }`}
                                 >
                                     <div className="flex items-start gap-3">
+                                        <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => toggleIdea(idea.id)}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="mt-1 shrink-0 accent-primary"
+                                        />
                                         <Badge
                                             variant={
                                                 idea.verdict === "viable" ? "default" :
@@ -378,11 +463,25 @@ export default function NewBrainstormPage() {
                                                 </div>
                                             )}
                                         </div>
-                                        <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
                                     </div>
-                                </button>
+                                </div>
                             );
                         })}
+
+                        <div className="flex items-center justify-between pt-2 border-t">
+                            <Button variant="ghost" size="sm" onClick={discardAll} disabled={savingSelection}>
+                                Descartar tudo
+                            </Button>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground tabular-nums">
+                                    {selectedIdeaIds.size} de {ideas.length} selecionadas
+                                </span>
+                                <Button onClick={saveSelected} disabled={savingSelection || selectedIdeaIds.size === 0}>
+                                    {savingSelection ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Check className="h-4 w-4 mr-1.5" />}
+                                    Salvar {selectedIdeaIds.size}
+                                </Button>
+                            </div>
+                        </div>
                     </CardContent>
                 </Card>
             )}

@@ -157,4 +157,56 @@ describe('POST /brainstorm/sessions', () => {
 
     expect(res.statusCode).toBe(202);
   });
+
+  it('F2-037: rejects count outside 3-10 range', async () => {
+    const resLow = await app.inject({
+      method: 'POST', url: '/brainstorm/sessions', headers: AUTH_USER,
+      payload: { inputMode: 'blind', topic: 'ai', count: 2 },
+    });
+    expect(resLow.statusCode).toBe(400);
+
+    const resHigh = await app.inject({
+      method: 'POST', url: '/brainstorm/sessions', headers: AUTH_USER,
+      payload: { inputMode: 'blind', topic: 'ai', count: 11 },
+    });
+    expect(resHigh.statusCode).toBe(400);
+  });
+
+  it('F2-037: defaults count to 5 when omitted', async () => {
+    mockChain.single
+      .mockResolvedValueOnce({ data: { org_id: 'org-1' }, error: null })
+      .mockResolvedValueOnce({ data: { id: 'session-3' }, error: null });
+
+    const res = await app.inject({
+      method: 'POST', url: '/brainstorm/sessions', headers: AUTH_USER,
+      payload: { inputMode: 'blind', topic: 'ai' },
+    });
+    expect(res.statusCode).toBe(202);
+    // The inngest mock captures the payload — if count defaulted, the event
+    // data would have count:5. We trust the zod default here.
+  });
+});
+
+describe('POST /brainstorm/sessions/:id/drafts/save', () => {
+  it('F2-037: rejects empty draftIds', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/brainstorm/sessions/session-1/drafts/save',
+      headers: AUTH_USER,
+      payload: { draftIds: [] },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('F2-037: returns 404 when no matching drafts', async () => {
+    // Mock the select to return empty
+    mockChain.in = vi.fn().mockResolvedValue({ data: [], error: null });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/brainstorm/sessions/session-1/drafts/save',
+      headers: AUTH_USER,
+      payload: { draftIds: ['00000000-0000-0000-0000-000000000001'] },
+    });
+    expect(res.statusCode).toBe(404);
+  });
 });

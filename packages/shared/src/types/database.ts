@@ -268,6 +268,76 @@ export type Database = {
           },
         ]
       }
+      brainstorm_drafts: {
+        Row: {
+          channel_id: string | null
+          core_tension: string | null
+          created_at: string
+          discovery_data: string | null
+          expires_at: string
+          id: string
+          org_id: string
+          position: number
+          session_id: string
+          target_audience: string | null
+          title: string
+          user_id: string | null
+          verdict: string | null
+        }
+        Insert: {
+          channel_id?: string | null
+          core_tension?: string | null
+          created_at?: string
+          discovery_data?: string | null
+          expires_at?: string
+          id?: string
+          org_id: string
+          position?: number
+          session_id: string
+          target_audience?: string | null
+          title: string
+          user_id?: string | null
+          verdict?: string | null
+        }
+        Update: {
+          channel_id?: string | null
+          core_tension?: string | null
+          created_at?: string
+          discovery_data?: string | null
+          expires_at?: string
+          id?: string
+          org_id?: string
+          position?: number
+          session_id?: string
+          target_audience?: string | null
+          title?: string
+          user_id?: string | null
+          verdict?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brainstorm_drafts_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brainstorm_drafts_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brainstorm_drafts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "brainstorm_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       brainstorm_sessions: {
         Row: {
           channel_id: string | null

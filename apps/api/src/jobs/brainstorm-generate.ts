@@ -25,6 +25,7 @@ interface BrainstormGenerateEvent {
     modelTier: string;
     provider?: 'gemini' | 'openai' | 'anthropic' | 'ollama';
     model?: string;
+    targetCount?: number;
   };
 }
 
@@ -68,7 +69,7 @@ export const brainstormGenerate = inngest.createFunction(
     triggers: [{ event: 'brainstorm/generate' }],
   },
   async ({ event, step }: { event: BrainstormGenerateEvent; step: { run: (name: string, fn: () => Promise<unknown>) => Promise<unknown> } }) => {
-    const { sessionId, orgId, userId, channelId, inputJson, modelTier, provider, model } = event.data;
+    const { sessionId, orgId, userId, channelId, inputJson, modelTier, provider, model, targetCount } = event.data;
     const sb = createServiceClient();
 
     try {
@@ -123,16 +124,22 @@ export const brainstormGenerate = inngest.createFunction(
 
       const ideas = normalizeIdeas(result);
 
+      // F2-037: enforce target_count at the job level as a safety net in
+      // case the model ignored the prompt directive.
+      const capped = typeof targetCount === 'number' ? ideas.slice(0, targetCount) : ideas;
+
       await step.run('emit-saving', async () => {
-        await emitJobEvent(sessionId, 'brainstorm', 'saving', `Salvando ${ideas.length} ideias…`, { count: ideas.length });
+        await emitJobEvent(sessionId, 'brainstorm', 'saving', `Salvando ${capped.length} ideias em draft…`, { count: capped.length });
       });
 
       const persisted = await step.run('persist-ideas', async () => {
-        const { count } = await sb.from('idea_archives').select('*', { count: 'exact', head: true });
-        const startNum = (count ?? 0) + 1;
-
-        const ideaRows = ideas.map((idea, i) => ({
-          idea_id: `BC-IDEA-${String(startNum + i).padStart(3, '0')}`,
+        // F2-037: stage ideas in brainstorm_drafts instead of idea_archives.
+        // The user picks which to keep via POST /drafts/save.
+        const draftRows = capped.map((idea, i) => ({
+          session_id: sessionId,
+          org_id: orgId,
+          user_id: userId,
+          channel_id: channelId,
           title: idea.title ?? `Untitled ${i + 1}`,
           core_tension: idea.core_tension ?? '',
           target_audience: idea.target_audience ?? '',
@@ -145,17 +152,16 @@ export const brainstormGenerate = inngest.createFunction(
             monetization: idea.monetization,
             repurposing: idea.repurposing,
           }),
-          source_type: 'brainstorm',
-          channel_id: channelId,
-          brainstorm_session_id: sessionId,
-          user_id: userId,
-          org_id: orgId,
+          position: i,
         }));
 
-        if (ideaRows.length > 0) {
-          await (sb.from('idea_archives') as unknown as {
-            upsert: (rows: Record<string, unknown>[], opts?: unknown) => Promise<{ error: unknown }>;
-          }).upsert(ideaRows, { onConflict: 'idea_id', ignoreDuplicates: true });
+        if (draftRows.length > 0) {
+          // Clear any previous drafts from this session (shouldn't happen with
+          // idempotent inngest, but defensive) then insert fresh ones.
+          await sb.from('brainstorm_drafts').delete().eq('session_id', sessionId);
+          await (sb.from('brainstorm_drafts') as unknown as {
+            insert: (rows: Record<string, unknown>[]) => Promise<{ error: unknown }>;
+          }).insert(draftRows);
         }
 
         await (sb.from('brainstorm_sessions') as unknown as {
@@ -173,14 +179,14 @@ export const brainstormGenerate = inngest.createFunction(
           });
         }
 
-        return ideaRows.length;
+        return draftRows.length;
       });
 
       await emitJobEvent(
         sessionId,
         'brainstorm',
         'completed',
-        `${persisted} ideias geradas com sucesso!`,
+        `${persisted} ideias geradas — revise e escolha quais salvar.`,
         { ideaCount: persisted },
       );
 

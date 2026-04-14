@@ -734,8 +734,24 @@ Pesquisa hoje volta texto corrido. Pra decidir se vale produzir o conteúdo, usu
 
 ---
 
-### F2-037 — Brainstorm: contagem fixa, idempotência e seleção de ideias
-🔲 **Não iniciado**
+### F2-037 — Brainstorm: contagem fixa + draft mode + seleção
+✅ **Concluído (v1: count + draft mode + seleção)**
+
+Resolvido volume descontrolado + ausência de seleção. Idempotency transacional (header) fica pra v2 — o combo Inngest + double-click guard já cobre os casos reais.
+
+**Entregue:**
+- **Cap de count**: UI tem picker de 3/5/7/10 ideias. Schema valida `count: 3-10` (default 5). Body enviado com `count` + `targetCount` no evento Inngest.
+- **Agent prompt (migration 20260414020000)**: anexa diretiva "Produza exatamente `target_count` ideias, não invente placeholders".
+- **Job safety net**: `.slice(0, targetCount)` no job antes de persistir — se o modelo ignorar a diretiva, o cap ainda aplica.
+- **Draft mode (migration 20260414010000)**: nova tabela `brainstorm_drafts` (staging, TTL 24h). Job grava lá em vez de `idea_archives`.
+- **Seleção no UI**: após geração o modal fecha e renderiza os cards com checkbox (todos pré-selecionados). Botão "Salvar N" move os selecionados pra biblioteca; "Descartar tudo" limpa o draft.
+- **Endpoints novos**:
+  - `GET /brainstorm/sessions/:id/drafts` — lista staged
+  - `POST /brainstorm/sessions/:id/drafts/save { draftIds }` — move pra idea_archives
+  - `DELETE /brainstorm/sessions/:id/drafts` — descarta tudo
+- **Testes**: 9 passando — range validation, default count, empty draftIds, 404 handling.
+
+**Concluído em:** 2026-04-14
 
 **Problemas atuais (descobertos em 2026-04-13):**
 

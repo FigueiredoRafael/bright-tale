@@ -31,6 +31,7 @@ const brainstormBodySchema = z.object({
   modelTier: z.string().default('standard'),
   provider: z.enum(['gemini', 'openai', 'anthropic', 'ollama']).optional(),
   model: z.string().optional(),
+  count: z.number().int().min(3).max(10).default(5),
 });
 
 async function getOrgId(userId: string): Promise<string> {
@@ -101,10 +102,11 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
           userId: request.userId,
           channelId: body.channelId ?? null,
           inputMode: body.inputMode,
-          inputJson,
+          inputJson: { ...inputJson, target_count: body.count },
           modelTier: body.modelTier,
           provider: body.provider,
           model: body.model,
+          targetCount: body.count,
         },
       });
 
@@ -202,6 +204,99 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         .order('created_at', { ascending: true });
 
       return reply.send({ data: { session, ideas: ideas ?? [] }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * GET /sessions/:id/drafts — F2-037. List staged ideas for a session
+   * (not yet persisted to idea_archives).
+   */
+  fastify.get('/sessions/:id/drafts', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      const { id } = request.params as { id: string };
+      const { data, error } = await sb
+        .from('brainstorm_drafts')
+        .select('*')
+        .eq('session_id', id)
+        .order('position', { ascending: true });
+      if (error) throw error;
+      return reply.send({ data: { drafts: data ?? [] }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * POST /sessions/:id/drafts/save — F2-037. Move selected drafts into
+   * idea_archives (the permanent library). Body: { draftIds: string[] }.
+   * Removes the selected drafts from the staging table. Unselected ones
+   * stay until the 24h expiry.
+   */
+  fastify.post('/sessions/:id/drafts/save', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const { id: sessionId } = request.params as { id: string };
+      const body = z.object({ draftIds: z.array(z.string().uuid()).min(1) }).parse(request.body);
+      const sb = createServiceClient();
+
+      // Pull the selected drafts.
+      const { data: drafts, error: draftsErr } = await sb
+        .from('brainstorm_drafts')
+        .select('*')
+        .eq('session_id', sessionId)
+        .in('id', body.draftIds);
+      if (draftsErr) throw draftsErr;
+      if (!drafts || drafts.length === 0) {
+        throw new ApiError(404, 'No matching drafts', 'NOT_FOUND');
+      }
+
+      // Generate sequential idea_ids (BC-IDEA-NNN).
+      const { count } = await sb.from('idea_archives').select('*', { count: 'exact', head: true });
+      const startNum = (count ?? 0) + 1;
+
+      const rows = drafts.map((d, i) => ({
+        idea_id: `BC-IDEA-${String(startNum + i).padStart(3, '0')}`,
+        title: d.title,
+        core_tension: d.core_tension ?? '',
+        target_audience: d.target_audience ?? '',
+        verdict: d.verdict ?? 'experimental',
+        discovery_data: d.discovery_data ?? '',
+        source_type: 'brainstorm',
+        channel_id: d.channel_id,
+        brainstorm_session_id: d.session_id,
+        user_id: d.user_id,
+        org_id: d.org_id,
+      }));
+
+      const { error: insErr } = await (sb.from('idea_archives') as unknown as {
+        upsert: (rows: Record<string, unknown>[], opts?: unknown) => Promise<{ error: unknown }>;
+      }).upsert(rows, { onConflict: 'idea_id', ignoreDuplicates: true });
+      if (insErr) throw insErr;
+
+      // Delete the drafts that were saved.
+      await sb.from('brainstorm_drafts').delete().in('id', body.draftIds);
+
+      return reply.send({ data: { saved: rows.length }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * DELETE /sessions/:id/drafts — F2-037. Discard ALL staged drafts for a
+   * session without saving.
+   */
+  fastify.delete('/sessions/:id/drafts', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const { id: sessionId } = request.params as { id: string };
+      const sb = createServiceClient();
+      const { error } = await sb.from('brainstorm_drafts').delete().eq('session_id', sessionId);
+      if (error) throw error;
+      return reply.send({ data: { discarded: true }, error: null });
     } catch (error) {
       return sendError(reply, error);
     }

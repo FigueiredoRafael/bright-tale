@@ -19,9 +19,12 @@ Enfileira um job de brainstorm.
   "referenceUrl": "https://...",
   "modelTier": "standard",
   "provider": "gemini" | "openai" | "anthropic" | "ollama",
-  "model": "gemini-2.5-flash"
+  "model": "gemini-2.5-flash",
+  "count": 5
 }
 ```
+
+`count` (3-10, default 5) — **F2-037** — número exato de ideias a gerar. Propagado como `input.target_count` pro agente + cap defensivo no job.
 
 **Response 202**
 
@@ -43,9 +46,35 @@ data: {"id":"...","stage":"loading_prompt","message":"Carregando agente…","met
 
 Stages emitidos: `queued` → `loading_prompt` → `calling_provider` → `parsing_output` → `saving` → `completed` (ou `failed`).
 
+## Draft mode (F2-037)
+
+Ideias geradas ficam em staging (`brainstorm_drafts`, TTL 24h) até o usuário decidir quais salvar.
+
+### GET `/sessions/:id/drafts`
+
+Lista as ideias staged pra sessão.
+
+```json
+{ "data": { "drafts": [ { "id", "session_id", "title", "verdict", ... } ] }, "error": null }
+```
+
+### POST `/sessions/:id/drafts/save`
+
+Move ideias selecionadas pra `idea_archives` (biblioteca permanente). Remove do staging. Deixa as não selecionadas no staging até o TTL.
+
+```json
+{ "draftIds": ["uuid", ...] }
+```
+
+Response: `{ data: { saved: N }, error: null }`
+
+### DELETE `/sessions/:id/drafts`
+
+Descarta tudo sem salvar.
+
 ## GET `/sessions/:id`
 
-Retorna a sessão + ideias já persistidas em `idea_archives`.
+Retorna a sessão + ideias já persistidas em `idea_archives` (após save).
 
 ```json
 {
