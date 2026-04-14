@@ -167,34 +167,62 @@ export default function NewBrainstormPage() {
             return;
         }
 
-        const res = await fetch("/api/ideas/archive", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                ideas: rawIdeas.map((idea: Record<string, unknown>) => ({
-                    title: idea.title ?? "Untitled",
-                    core_tension: idea.core_tension ?? "",
-                    target_audience: idea.target_audience ?? "",
-                    verdict: idea.verdict ?? "experimental",
-                    monetization: idea.monetization ?? "",
-                    repurposing: idea.repurposing ?? [],
-                })),
-                channelId,
-            }),
-        });
+        // Save each idea via /ideas/library POST (auto-generates idea_id)
+        const saved: Idea[] = [];
+        const errors: string[] = [];
+        for (const idea of rawIdeas) {
+            try {
+                const title = String(idea.title ?? "").trim();
+                if (title.length < 5) {
+                    errors.push(`"${title || "(empty)"}" — title too short (min 5 chars)`);
+                    continue;
+                }
+                const res = await fetch("/api/ideas/library", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        title,
+                        core_tension: String(idea.core_tension ?? ""),
+                        target_audience: String(idea.target_audience ?? ""),
+                        verdict: ["viable", "experimental", "weak"].includes(String(idea.verdict ?? ""))
+                            ? idea.verdict : "experimental",
+                        source_type: "manual",
+                        channel_id: channelId,
+                        tags: Array.isArray(idea.tags) ? idea.tags : [],
+                    }),
+                });
+                const json = await res.json();
+                if (json.error) {
+                    errors.push(`"${title}" — ${json.error.message}`);
+                    continue;
+                }
+                if (json.data?.idea) {
+                    saved.push({
+                        idea_id: json.data.idea.idea_id,
+                        title: json.data.idea.title,
+                        target_audience: json.data.idea.target_audience ?? "",
+                        verdict: json.data.idea.verdict ?? "experimental",
+                        discovery_data: JSON.stringify({
+                            monetization: idea.monetization,
+                            repurposing: idea.repurposing,
+                        }),
+                    });
+                }
+            } catch (err) {
+                errors.push(`"${idea.title ?? "?"}" — ${err instanceof Error ? err.message : "unknown error"}`);
+            }
+        }
 
-        const json = await res.json();
-        const savedIdeas = json.data?.ideas ?? rawIdeas.map((idea: Record<string, unknown>, i: number) => ({
-            idea_id: `MANUAL-${i + 1}`,
-            title: idea.title ?? "Untitled",
-            core_tension: idea.core_tension ?? "",
-            target_audience: idea.target_audience ?? "",
-            verdict: idea.verdict ?? "experimental",
-            discovery_data: JSON.stringify({ monetization: idea.monetization, repurposing: idea.repurposing }),
-        }));
-
-        setIdeas(savedIdeas);
-        toast.success(`${savedIdeas.length} ideas imported`);
+        if (saved.length > 0) {
+            setIdeas(saved);
+            toast.success(`${saved.length} of ${rawIdeas.length} ideas saved`);
+        }
+        if (errors.length > 0) {
+            toast.error(`${errors.length} failed`, { description: errors.slice(0, 3).join("\n") });
+        }
+        if (saved.length === 0 && errors.length === 0) {
+            toast.error("No ideas found in pasted output");
+        }
     }
 
     const selectedIdea = ideas.find((i) => i.idea_id === selectedIdeaId) ?? null;

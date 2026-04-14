@@ -21,6 +21,8 @@ export const listIdeasQuerySchema = z.object({
   search: z.string().optional(),
   is_public: z.coerce.boolean().optional(),
   channel_id: z.string().uuid().optional(),
+  include_orphaned: z.coerce.boolean().optional(), // also show ideas with no channel_id
+  include_all_channels: z.coerce.boolean().optional(), // ignore channel_id filter entirely
   page: z.coerce.number().int().positive().default(1).optional(),
   limit: z.coerce.number().int().positive().max(100).default(20).optional(),
 });

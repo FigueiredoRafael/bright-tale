@@ -104,8 +104,17 @@ export async function ideasRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       if (query.channel_id) {
-        countQuery = countQuery.eq('channel_id', query.channel_id);
-        dataQuery = dataQuery.eq('channel_id', query.channel_id);
+        if (query.include_all_channels) {
+          // Show ideas from this channel + orphaned (no channel) + other channels
+          // Useful for Create Content page — user can pick ideas from anywhere
+        } else if (query.include_orphaned) {
+          // Show ideas from this channel + orphaned (no channel_id)
+          countQuery = countQuery.or(`channel_id.eq.${query.channel_id},channel_id.is.null`);
+          dataQuery = dataQuery.or(`channel_id.eq.${query.channel_id},channel_id.is.null`);
+        } else {
+          countQuery = countQuery.eq('channel_id', query.channel_id);
+          dataQuery = dataQuery.eq('channel_id', query.channel_id);
+        }
       }
 
       if (query.tags) {

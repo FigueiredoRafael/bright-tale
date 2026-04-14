@@ -26,7 +26,7 @@ export default function CreateContentPage() {
     useEffect(() => {
         (async () => {
             try {
-                const res = await fetch(`/api/ideas/library?channel_id=${channelId}&limit=20`);
+                const res = await fetch(`/api/ideas/library?channel_id=${channelId}&include_orphaned=true&limit=20`);
                 const json = await res.json();
                 if (json.data?.ideas) setIdeas(json.data.ideas);
             } finally {
