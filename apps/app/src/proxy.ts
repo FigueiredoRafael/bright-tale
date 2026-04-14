@@ -1,5 +1,14 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import createIntlMiddleware from 'next-intl/middleware';
+import { locales, defaultLocale } from './i18n/config';
+
+const intlMiddleware = createIntlMiddleware({
+  locales,
+  defaultLocale,
+  localePrefix: 'always',
+  localeDetection: true,
+});
 
 /**
  * Builds the proxy header set sent to apps/api.
@@ -109,7 +118,8 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return response;
+  // Apply i18n locale detection/routing for non-API, non-auth pages
+  return intlMiddleware(request);
 }
 
 export const config = {
