@@ -14,6 +14,96 @@ export type Database = {
   }
   public: {
     Tables: {
+      affiliate_programs: {
+        Row: {
+          code: string
+          commission_pct: number
+          created_at: string
+          id: string
+          payout_details: Json | null
+          payout_method: string | null
+          total_paid_cents: number
+          total_referrals: number
+          total_revenue_cents: number
+          user_id: string
+        }
+        Insert: {
+          code: string
+          commission_pct?: number
+          created_at?: string
+          id?: string
+          payout_details?: Json | null
+          payout_method?: string | null
+          total_paid_cents?: number
+          total_referrals?: number
+          total_revenue_cents?: number
+          user_id: string
+        }
+        Update: {
+          code?: string
+          commission_pct?: number
+          created_at?: string
+          id?: string
+          payout_details?: Json | null
+          payout_method?: string | null
+          total_paid_cents?: number
+          total_referrals?: number
+          total_revenue_cents?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      affiliate_referrals: {
+        Row: {
+          affiliate_program_id: string
+          commission_cents: number | null
+          conversion_at: string | null
+          created_at: string
+          first_touch_at: string
+          id: string
+          referred_org_id: string
+          status: string
+          subscription_amount_cents: number | null
+        }
+        Insert: {
+          affiliate_program_id: string
+          commission_cents?: number | null
+          conversion_at?: string | null
+          created_at?: string
+          first_touch_at?: string
+          id?: string
+          referred_org_id: string
+          status?: string
+          subscription_amount_cents?: number | null
+        }
+        Update: {
+          affiliate_program_id?: string
+          commission_cents?: number | null
+          conversion_at?: string | null
+          created_at?: string
+          first_touch_at?: string
+          id?: string
+          referred_org_id?: string
+          status?: string
+          subscription_amount_cents?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_referrals_affiliate_program_id_fkey"
+            columns: ["affiliate_program_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_referrals_referred_org_id_fkey"
+            columns: ["referred_org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_prompts: {
         Row: {
           created_at: string
@@ -1338,6 +1428,59 @@ export type Database = {
             columns: ["research_id"]
             isOneToOne: false
             referencedRelation: "research_archives"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      publishing_destinations: {
+        Row: {
+          config: Json
+          created_at: string
+          enabled: boolean
+          id: string
+          kind: string
+          label: string
+          last_error: string | null
+          last_published_at: string | null
+          org_id: string
+          publish_count: number
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          config?: Json
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          kind: string
+          label: string
+          last_error?: string | null
+          last_published_at?: string | null
+          org_id: string
+          publish_count?: number
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          config?: Json
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          kind?: string
+          label?: string
+          last_error?: string | null
+          last_published_at?: string | null
+          org_id?: string
+          publish_count?: number
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "publishing_destinations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
