@@ -632,6 +632,7 @@ export type Database = {
           niche_tags: string[] | null
           org_id: string
           presentation_style: string
+          region: string
           template_id: string | null
           tone: string | null
           updated_at: string
@@ -665,6 +666,7 @@ export type Database = {
           niche_tags?: string[] | null
           org_id: string
           presentation_style?: string
+          region?: string
           template_id?: string | null
           tone?: string | null
           updated_at?: string
@@ -698,6 +700,7 @@ export type Database = {
           niche_tags?: string[] | null
           org_id?: string
           presentation_style?: string
+          region?: string
           template_id?: string | null
           tone?: string | null
           updated_at?: string
