@@ -19,7 +19,8 @@ import { friendlyAiError } from "@/lib/ai/error-message";
 type Mode = "blind" | "fine_tuned" | "reference_guided";
 
 interface Idea {
-    idea_id: string;
+    id?: string; // UUID from DB (needed for FK references)
+    idea_id: string; // BC-IDEA-NNN display ID
     title: string;
     target_audience: string;
     verdict: "viable" | "weak" | "experimental";
@@ -198,6 +199,7 @@ export default function NewBrainstormPage() {
                 }
                 if (json.data?.idea) {
                     saved.push({
+                        id: json.data.idea.id, // UUID for FK references
                         idea_id: json.data.idea.idea_id,
                         title: json.data.idea.title,
                         target_audience: json.data.idea.target_audience ?? "",
@@ -493,7 +495,7 @@ export default function NewBrainstormPage() {
                             <span className="text-sm font-medium truncate">{selectedIdea.title}</span>
                         </div>
                         <Button
-                            onClick={() => router.push(`/channels/${channelId}/research/new?ideaId=${selectedIdea.idea_id}`)}
+                            onClick={() => router.push(`/channels/${channelId}/research/new?ideaId=${selectedIdea.id ?? selectedIdea.idea_id}`)}
                             className="shrink-0 gap-2"
                         >
                             Next: Research <ArrowRight className="h-4 w-4" />

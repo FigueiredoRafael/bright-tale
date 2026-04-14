@@ -241,6 +241,13 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
           }).upsert(ideaRows, { onConflict: 'idea_id', ignoreDuplicates: true });
         }
 
+        // Fetch saved ideas with UUIDs (upsert doesn't return them)
+        const ideaIds = ideaRows.map((r) => r.idea_id);
+        const { data: savedIdeas } = await sb
+          .from('idea_archives')
+          .select('*')
+          .in('idea_id', ideaIds);
+
         await (sb.from('brainstorm_sessions') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
@@ -253,7 +260,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         });
 
         return reply.send({
-          data: { sessionId: session.id, ideas: ideaRows },
+          data: { sessionId: session.id, ideas: savedIdeas ?? ideaRows },
           error: null,
         });
       } catch (err) {

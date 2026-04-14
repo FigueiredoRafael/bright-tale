@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Loader2, Search, ArrowLeft, ArrowRight, Check, Sparkles, ClipboardPaste } from "lucide-react";
+import { Loader2, Search, ArrowLeft, ArrowRight, Check, Sparkles, ClipboardPaste, Lightbulb } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ManualModePanel } from "@/components/ai/ManualModePanel";
 import { useManualMode } from "@/hooks/use-manual-mode";
@@ -58,6 +58,11 @@ export default function NewResearchPage() {
     const [genMode, setGenMode] = useState<"ai" | "manual">("ai");
     const { enabled: manualEnabled } = useManualMode();
 
+    // Linked idea context
+    const [linkedIdea, setLinkedIdea] = useState<{
+        idea_id: string; title: string; core_tension: string; verdict: string;
+    } | null>(null);
+
     useEffect(() => {
         (async () => {
             try {
@@ -74,6 +79,29 @@ export default function NewResearchPage() {
             }
         })();
     }, []);
+
+    // Fetch linked idea details
+    useEffect(() => {
+        if (!ideaIdParam) return;
+        (async () => {
+            try {
+                const res = await fetch(`/api/ideas/library?limit=50`);
+                const json = await res.json();
+                const idea = (json.data?.ideas ?? []).find(
+                    (i: { id: string; idea_id: string }) => i.id === ideaIdParam || i.idea_id === ideaIdParam,
+                );
+                if (idea) {
+                    setLinkedIdea({
+                        idea_id: idea.idea_id,
+                        title: idea.title,
+                        core_tension: idea.core_tension ?? "",
+                        verdict: idea.verdict ?? "experimental",
+                    });
+                    if (!topic) setTopic(idea.title);
+                }
+            } catch { /* silent */ }
+        })();
+    }, [ideaIdParam]);
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [cards, setCards] = useState<Card[]>([]);
     const [approved, setApproved] = useState<Set<number>>(new Set());
@@ -157,7 +185,7 @@ export default function NewResearchPage() {
                 return;
             }
             toast.success(`${approvedCards.length} cards aprovados`);
-            router.push(`/channels/${channelId}/create`);
+            router.push(`/channels/${channelId}/drafts/new?researchSessionId=${sessionId}${ideaIdParam ? `&ideaId=${ideaIdParam}` : ''}`);
         } catch {
             toast.error("Falha ao salvar review");
         }
@@ -176,6 +204,26 @@ export default function NewResearchPage() {
                     <Search className="h-5 w-5" /> Nova Pesquisa
                 </h1>
             </div>
+
+            {/* Linked idea context */}
+            {linkedIdea && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 flex items-start gap-3">
+                    <Lightbulb className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">Researching idea</p>
+                        <p className="font-medium text-sm">{linkedIdea.title}</p>
+                        {linkedIdea.core_tension && (
+                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{linkedIdea.core_tension}</p>
+                        )}
+                    </div>
+                    <Badge
+                        variant={linkedIdea.verdict === "viable" ? "default" : linkedIdea.verdict === "weak" ? "destructive" : "secondary"}
+                        className="text-[10px] shrink-0"
+                    >
+                        {linkedIdea.verdict}
+                    </Badge>
+                </div>
+            )}
 
             <Card>
                 <CardHeader>
