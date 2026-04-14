@@ -219,7 +219,7 @@ html.light .ambient-orb { opacity: 0.25; }
 html.light .scroll-top { background: #FFFFFF; border-color: #E5E7EB; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 
 html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
-body { line-height: 1.6; overflow-x: hidden; }
+body { line-height: 1.6; overflow-x: hidden; background: var(--bg-deep); color: var(--text-primary); }
 
 /* Landing page dark theme — scoped to .landing-page wrapper */
 .landing-page { font-family: var(--font-body); background: var(--bg-deep); color: var(--text-primary); min-height: 100vh; }
