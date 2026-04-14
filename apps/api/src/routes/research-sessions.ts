@@ -12,6 +12,7 @@ import { ApiError } from '../lib/api/errors.js';
 import { checkCredits } from '../lib/credits.js';
 import { inngest } from '../jobs/client.js';
 import { emitJobEvent } from '../jobs/emitter.js';
+import { fetchTrends } from '../lib/signals/trends.js';
 
 const LEVEL_COSTS: Record<'surface' | 'medium' | 'deep', number> = {
   surface: 60,
@@ -241,6 +242,63 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
       if (error) throw error;
       return reply.send({ data, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * GET /:id/signals — F2-039. Decision signals pra acompanhar a pesquisa:
+   * Google Trends (12m) + YouTube Intelligence (se o canal tiver sido analisado).
+   * Rápido: ambos em paralelo, cache implícito via DB (yt) ou curto-prazo do
+   * Google (trends). Não re-roda a pesquisa de IA.
+   */
+  fastify.get('/:id/signals', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      const { id } = request.params as { id: string };
+
+      const { data: session } = await sb
+        .from('research_sessions')
+        .select('channel_id, input_json')
+        .eq('id', id)
+        .maybeSingle();
+      if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
+
+      const topic = (session.input_json as { topic?: string })?.topic ?? null;
+      if (!topic) {
+        return reply.send({
+          data: { trends: null, youtube: null, warning: 'Sessão sem tema — sinais indisponíveis' },
+          error: null,
+        });
+      }
+
+      // YouTube: use the most recent analysis for the channel (if any).
+      const ytPromise = session.channel_id
+        ? sb
+            .from('youtube_niche_analyses')
+            .select('*')
+            .eq('channel_id', session.channel_id as string)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null });
+
+      const trendsPromise = fetchTrends(topic).catch((err) => {
+        request.log.warn({ err: err?.message }, '[signals] trends failed');
+        return null;
+      });
+
+      const [ytRes, trends] = await Promise.all([ytPromise, trendsPromise]);
+
+      return reply.send({
+        data: {
+          topic,
+          trends,
+          youtube: ytRes.data,
+        },
+        error: null,
+      });
     } catch (error) {
       return sendError(reply, error);
     }

@@ -22,9 +22,10 @@ Todas as rotas requerem header `X-Internal-Key` (injetado pelo middleware do app
 
 | Grupo | Prefixo | Descrição |
 |---|---|---|
-| [Brainstorm](/api-reference/brainstorm) | `/api/brainstorm` | Sessões de brainstorm (async, SSE) |
-| [Research Sessions](/api-reference/research-sessions) | `/api/research-sessions` | Pesquisa com níveis (surface/medium/deep) |
-| [Content Drafts](/api-reference/content-drafts) | `/api/content-drafts` | Blog/vídeo/shorts/podcast drafts — produção async |
+| [Brainstorm](/api-reference/brainstorm) | `/api/brainstorm` | Sessões de brainstorm (async, SSE) + draft mode |
+| [Research Sessions](/api-reference/research-sessions) | `/api/research-sessions` | Pesquisa com níveis + `/signals` (Google Trends + YT) |
+| [Content Drafts](/api-reference/content-drafts) | `/api/content-drafts` | Blog/vídeo/shorts/podcast drafts + images |
+| [Bulk](/api-reference/bulk) | `/api/bulk` | Fan-out: criar N drafts de uma vez |
 | [Ideas Library](/api-reference/ideas) | `/api/ideas/library` | Biblioteca de ideias |
 | [Channels](/api-reference/channels) | `/api/channels` | Canais do usuário |
 | [Canonical Core](/api-reference/canonical-core) | `/api/canonical-core` | Framework de conteúdo (pipeline) |

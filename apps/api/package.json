@@ -26,6 +26,7 @@
     "date-fns": "^4.1.0",
     "fastify": "^4.28.1",
     "fastify-raw-body": "4.3.0",
+    "google-trends-api": "4.9.2",
     "inngest": "4.2.1",
     "js-yaml": "^4.1.1",
     "marked": "^17.0.1",

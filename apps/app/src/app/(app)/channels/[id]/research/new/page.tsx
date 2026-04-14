@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Loader2, Search, ArrowLeft, ArrowRight, Check, Lightbulb, RefreshCw } from "lucide-react";
 import { IdeaPickerModal, type IdeaOption } from "@/components/research/IdeaPickerModal";
+import { NicheSignalsCard } from "@/components/research/NicheSignalsCard";
 import { GenerationProgressModal } from "@/components/generation/GenerationProgressModal";
 import { ConfirmRegenerateModal } from "@/components/generation/ConfirmRegenerateModal";
 import { WizardStepper } from "@/components/generation/WizardStepper";
@@ -330,6 +331,8 @@ export default function NewResearchPage() {
                     </Button>
                 </CardContent>
             </Card>
+
+            {sessionId && <NicheSignalsCard sessionId={sessionId} />}
 
             {cards.length > 0 && (
                 <Card>

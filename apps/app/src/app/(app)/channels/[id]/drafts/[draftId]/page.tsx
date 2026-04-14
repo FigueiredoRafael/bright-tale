@@ -231,12 +231,66 @@ export default function DraftViewPage() {
         });
     }
 
-    async function handlePublish() {
-        // Real platform integration (WordPress, etc.) ainda não tá ligada à
-        // tabela content_drafts — só ao pipeline legado. Por enquanto, "Publicar"
-        // só marca como publicado pra tu sinalizar que postou manualmente.
+    async function handleSchedule(isoDate: string) {
+        if (draft?.type !== "blog") {
+            toast.info("Agendamento disponível só pra blog (via WordPress) por enquanto");
+            return;
+        }
         await withActionGuard(async () => {
-            if (await patchStatus("published")) toast.success("Marcado como publicado");
+            try {
+                const res = await fetch("/api/wordpress/publish-draft", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ draftId, status: "future", scheduledAt: isoDate }),
+                });
+                const json = await res.json();
+                if (json?.error) {
+                    toast.error(json.error.message ?? "Falha ao agendar");
+                    return;
+                }
+                toast.success(`Agendado pra ${new Date(isoDate).toLocaleString("pt-BR")}`);
+                await refetch();
+            } catch {
+                toast.error("Falha ao agendar");
+            }
+        });
+    }
+
+    async function handlePublish() {
+        // F2-043: blogs publicam direto no WordPress via /publish-draft.
+        // Outros formatos continuam como "marcar como publicado" (manual).
+        if (draft?.type !== "blog") {
+            await withActionGuard(async () => {
+                if (await patchStatus("published")) toast.success("Marcado como publicado");
+            });
+            return;
+        }
+        await withActionGuard(async () => {
+            try {
+                const res = await fetch("/api/wordpress/publish-draft", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ draftId, status: "publish" }),
+                });
+                const json = await res.json();
+                if (json?.error) {
+                    const msg = json.error.message ?? "";
+                    if (msg.includes("NO_WP_CONFIG") || json.error.code === "NO_WP_CONFIG") {
+                        toast.error("WordPress não configurado", {
+                            description: "Configure em Settings → WordPress antes de publicar.",
+                        });
+                    } else {
+                        toast.error("Falha ao publicar no WordPress", { description: msg.slice(0, 160) });
+                    }
+                    return;
+                }
+                toast.success("Publicado no WordPress!", {
+                    description: json.data.wordpress_url ? "Abrir post" : undefined,
+                });
+                await refetch();
+            } catch {
+                toast.error("Falha de rede ao publicar");
+            }
         });
     }
 
@@ -358,6 +412,7 @@ export default function DraftViewPage() {
     const Icon = meta.icon;
     const teleprompter = draft.draft_json ? findScalar(draft.draft_json, ["teleprompter_script"]) : null;
     const editorScript = draft.draft_json ? findScalar(draft.draft_json, ["editor_script"]) : null;
+    const chapters = draft.draft_json ? findArray(draft.draft_json, ["chapters", "sections"]) : null;
     const videoTitle = draft.draft_json ? findObject(draft.draft_json, ["video_title"]) : null;
     const thumbnailIdeas = draft.draft_json ? findArray(draft.draft_json, ["thumbnail_ideas", "thumbnails"]) : null;
     const pinnedComment = draft.draft_json ? findScalar(draft.draft_json, ["pinned_comment", "pinned_comment_text"]) : null;
@@ -599,6 +654,39 @@ export default function DraftViewPage() {
                 </Card>
             )}
 
+            {/* Video chapters breakdown with timestamps (F2-023) */}
+            {chapters && chapters.length > 0 && (draft.type === "video" || draft.type === "shorts") && (
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-base flex items-center gap-2">
+                            <Video className="h-4 w-4 text-purple-500" /> Capítulos
+                            <Badge variant="secondary" className="text-[10px]">{chapters.length}</Badge>
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <ol className="space-y-3">
+                            {chapters.map((c, i) => {
+                                const o = c as Record<string, unknown>;
+                                const title = typeof o.title === "string" ? o.title : typeof o.name === "string" ? o.name : `Capítulo ${i + 1}`;
+                                const timestamp = typeof o.timestamp === "string" ? o.timestamp : typeof o.time === "string" ? o.time : null;
+                                const duration = typeof o.duration === "string" ? o.duration : typeof o.duration_seconds === "number" ? `${o.duration_seconds}s` : null;
+                                const contentStr = typeof o.content === "string" ? o.content : typeof o.text === "string" ? o.text : null;
+                                return (
+                                    <li key={i} className="border-l-2 border-primary/40 pl-3 space-y-1">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            {timestamp && <Badge variant="outline" className="text-[10px] font-mono">{timestamp}</Badge>}
+                                            <span className="font-medium text-sm">{title}</span>
+                                            {duration && <Badge variant="secondary" className="text-[10px]">{duration}</Badge>}
+                                        </div>
+                                        {contentStr && <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap line-clamp-6">{contentStr}</p>}
+                                    </li>
+                                );
+                            })}
+                        </ol>
+                    </CardContent>
+                </Card>
+            )}
+
             {/* Video editor's script (A-roll/B-roll/effects/music guidance) */}
             {editorScript && (draft.type === "video" || draft.type === "shorts") && (
                 <Card>
@@ -735,23 +823,9 @@ export default function DraftViewPage() {
                 </Card>
             )}
 
-            {/* Images placeholder — F2-042 */}
+            {/* Images (F2-042) */}
             {draft.draft_json && draft.type === "blog" && (
-                <Card className="border-dashed">
-                    <CardContent className="py-5">
-                        <div className="flex items-start gap-3">
-                            <Sparkles className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-                            <div className="flex-1 text-sm">
-                                <div className="font-medium">Imagens do post (em breve)</div>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    Vai dar pra gerar hero (topo) + imagens inline pelo seu provider de imagens
-                                    configurado em <button onClick={() => router.push("/settings/image-generation")} className="text-primary hover:underline">Settings → Image Generation</button>,
-                                    e ver onde cada uma vai aparecer no preview.
-                                </p>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
+                <DraftImages draftId={draftId as string} images={(draft.draft_json as { images?: DraftImage[] }).images ?? []} onChange={refetch} />
             )}
 
             {/* Action bar — Aprovar / Publicar */}
@@ -781,9 +855,12 @@ export default function DraftViewPage() {
                                     Desaprovar
                                 </Button>
                             )}
+                            {draft.type === "blog" && isApproved && !isPublished && (
+                                <SchedulePublishButton onSchedule={handleSchedule} disabled={actionBusy} />
+                            )}
                             <Button onClick={handlePublish} disabled={!isApproved || isPublished || actionBusy} size="sm">
                                 {actionBusy ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Globe className="h-4 w-4 mr-1.5" />}
-                                {isPublished ? "Publicado" : "Marcar como publicado"}
+                                {isPublished ? "Publicado" : draft.type === "blog" ? "Publicar agora" : "Marcar como publicado"}
                             </Button>
                         </div>
                     </CardContent>
@@ -832,6 +909,137 @@ export default function DraftViewPage() {
             <p className="text-xs text-muted-foreground">
                 Atualizado em {new Date(draft.updated_at).toLocaleString("pt-BR")}
             </p>
+        </div>
+    );
+}
+
+interface DraftImage {
+    slot: "hero" | "inline";
+    prompt: string;
+    aspectRatio: string;
+    mimeType: string;
+    dataUrl: string;
+    createdAt: string;
+}
+
+function DraftImages({ draftId, images, onChange }: { draftId: string; images: DraftImage[]; onChange: () => Promise<void> | void }) {
+    const [generating, setGenerating] = useState(false);
+    const [prompt, setPrompt] = useState("");
+    const [slot, setSlot] = useState<"hero" | "inline">(images.some((i) => i.slot === "hero") ? "inline" : "hero");
+
+    async function generate() {
+        if (generating) return;
+        setGenerating(true);
+        try {
+            const res = await fetch(`/api/content-drafts/${draftId}/images`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ slot, prompt: prompt.trim() || undefined, aspectRatio: slot === "hero" ? "16:9" : "4:3" }),
+            });
+            const json = await res.json();
+            if (json?.error) {
+                toast.error(json.error.message ?? "Falha ao gerar imagem");
+                return;
+            }
+            toast.success("Imagem gerada");
+            setPrompt("");
+            await onChange();
+        } finally {
+            setGenerating(false);
+        }
+    }
+
+    return (
+        <Card>
+            <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-amber-500" /> Imagens do post
+                    {images.length > 0 && <Badge variant="secondary" className="text-[10px]">{images.length}</Badge>}
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                {images.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {images.map((img, i) => (
+                            <div key={i} className="space-y-1.5">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={img.dataUrl} alt={img.prompt} className="w-full rounded-md border" />
+                                <div className="flex items-center gap-1.5">
+                                    <Badge variant="outline" className="text-[10px] capitalize">{img.slot}</Badge>
+                                    <Badge variant="secondary" className="text-[10px]">{img.aspectRatio}</Badge>
+                                </div>
+                                <p className="text-[11px] text-muted-foreground line-clamp-2">{img.prompt}</p>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                <div className="space-y-2 pt-2 border-t">
+                    <div className="flex items-center gap-2">
+                        <select
+                            value={slot}
+                            onChange={(e) => setSlot(e.target.value as "hero" | "inline")}
+                            className="text-xs rounded-md border bg-background px-2 py-1"
+                        >
+                            <option value="hero">Hero (topo, 16:9)</option>
+                            <option value="inline">Inline (4:3)</option>
+                        </select>
+                        <input
+                            type="text"
+                            placeholder="Prompt opcional (vazio = auto do título)"
+                            value={prompt}
+                            onChange={(e) => setPrompt(e.target.value)}
+                            className="flex-1 text-xs rounded-md border bg-background px-2 py-1"
+                        />
+                        <Button size="sm" onClick={generate} disabled={generating}>
+                            {generating ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1.5" />}
+                            Gerar
+                        </Button>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+function SchedulePublishButton({ onSchedule, disabled }: { onSchedule: (iso: string) => void; disabled?: boolean }) {
+    const [open, setOpen] = useState(false);
+    // Default: tomorrow 9am local
+    const defaultDate = (() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        d.setHours(9, 0, 0, 0);
+        return d.toISOString().slice(0, 16); // YYYY-MM-DDTHH:MM for datetime-local
+    })();
+    const [when, setWhen] = useState(defaultDate);
+
+    if (!open) {
+        return (
+            <Button onClick={() => setOpen(true)} variant="outline" size="sm" disabled={disabled}>
+                📅 Agendar
+            </Button>
+        );
+    }
+    return (
+        <div className="flex items-center gap-1.5">
+            <input
+                type="datetime-local"
+                value={when}
+                onChange={(e) => setWhen(e.target.value)}
+                className="text-xs rounded-md border bg-background px-2 py-1"
+            />
+            <Button
+                size="sm"
+                onClick={() => {
+                    if (!when) return;
+                    onSchedule(new Date(when).toISOString());
+                    setOpen(false);
+                }}
+                disabled={disabled}
+            >
+                Agendar
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>✕</Button>
         </div>
     );
 }

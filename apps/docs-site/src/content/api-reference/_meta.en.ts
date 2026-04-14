@@ -4,6 +4,7 @@ export default {
   brainstorm: 'Brainstorm (async)',
   'research-sessions': 'Research Sessions',
   'content-drafts': 'Content Drafts',
+  bulk: 'Bulk Generation',
   'canonical-core': 'Canonical Core',
   ideas: 'Ideas Library',
   '---2': { type: 'separator', title: 'Billing & usage' },

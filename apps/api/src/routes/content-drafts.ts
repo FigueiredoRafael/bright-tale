@@ -427,6 +427,66 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
   });
 
   /**
+   * POST /:id/images — F2-042. Generate a hero image for this draft using the
+   * configured image provider. Stored as base64 in the draft's draft_json.images[].
+   * Body: { prompt?: string, slot?: "hero" | "inline", aspectRatio?: string }.
+   * If prompt is omitted, derives from the draft title + meta_description.
+   */
+  fastify.post('/:id/images', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const { id } = request.params as { id: string };
+      const body = z.object({
+        prompt: z.string().optional(),
+        slot: z.enum(['hero', 'inline']).default('hero'),
+        aspectRatio: z.string().default('16:9'),
+      }).parse(request.body ?? {});
+
+      const draft = await loadDraft(id) as Record<string, unknown>;
+      const { getImageProvider } = await import('../lib/ai/imageIndex.js');
+      const provider = await getImageProvider();
+
+      // Derive prompt from draft content if not given.
+      let prompt = body.prompt;
+      if (!prompt) {
+        const title = (draft.title as string) ?? 'artigo sobre tema geral';
+        const dj = draft.draft_json as Record<string, unknown> | null;
+        const meta = (dj?.meta_description as string | undefined) ?? (dj?.hook as string | undefined) ?? '';
+        prompt = `Editorial illustration for article: "${title}". ${meta}. Clean modern style, high contrast, no text overlays.`;
+      }
+
+      const images = await provider.generateImages({ prompt, numImages: 1, aspectRatio: body.aspectRatio });
+      if (!images[0]) throw new ApiError(500, 'Image generation returned no results', 'GEN_FAILED');
+
+      const img = images[0];
+      const imageEntry = {
+        slot: body.slot,
+        prompt,
+        aspectRatio: body.aspectRatio,
+        mimeType: img.mimeType,
+        dataUrl: `data:${img.mimeType};base64,${img.base64}`,
+        createdAt: new Date().toISOString(),
+      };
+
+      // Append to draft_json.images
+      const sb = createServiceClient();
+      const existing = (draft.draft_json as { images?: unknown[] } | null) ?? {};
+      const images_arr = (existing as { images?: unknown[] }).images ?? [];
+      const newDraftJson = { ...(existing as object), images: [...images_arr, imageEntry] };
+      const { error: updateErr } = await (sb.from('content_drafts') as unknown as {
+        update: (row: Record<string, unknown>) => { eq: (c: string, v: string) => Promise<{ error: unknown }> };
+      })
+        .update({ draft_json: newDraftJson })
+        .eq('id', id);
+      if (updateErr) throw updateErr;
+
+      return reply.send({ data: { image: imageEntry, count: images_arr.length + 1 }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
    * DELETE /:id — remove a draft.
    */
   fastify.delete('/:id', { preHandler: [authenticate] }, async (request, reply) => {

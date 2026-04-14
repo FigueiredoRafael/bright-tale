@@ -42,6 +42,7 @@ import { researchSessionsRoutes } from './routes/research-sessions.js';
 import { contentDraftsRoutes } from './routes/content-drafts.js';
 import { usageRoutes } from './routes/usage.js';
 import { billingRoutes } from './routes/billing.js';
+import { bulkRoutes } from './routes/bulk.js';
 import fastifyRawBody from 'fastify-raw-body';
 
 const server = Fastify({ logger: true });
@@ -100,6 +101,7 @@ server.register(researchSessionsRoutes, { prefix: '/research-sessions' });
 server.register(contentDraftsRoutes, { prefix: '/content-drafts' });
 server.register(usageRoutes, { prefix: '/usage' });
 server.register(billingRoutes, { prefix: '/billing' });
+server.register(bulkRoutes, { prefix: '/bulk' });
 
 if (!process.env.VERCEL) {
   // Surface async errors that would otherwise crash the dev process silently

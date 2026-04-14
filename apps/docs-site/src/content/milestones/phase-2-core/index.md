@@ -6,7 +6,7 @@
 
 **Depende de:** Fase 1 (auth, orgs, storage, créditos)
 
-**Progresso:** 34/47 concluídos (substancialmente entregue — pendências: bulk generation, image insertion, WP publish, signals/trends, idempotency)
+**Progresso:** 46/47 concluídos · 1 N/A (F2-028 dep externa ausente) — Phase 2 core ✅ completa
 
 **(Old progress tag)** 19/29 concluídos (F2-001 a F2-009 ✅ · F2-015–F2-018 ✅ · F2-020 ✅ · F2-026 ✅ · F2-027 ✅ · F2-019, F2-021, F2-022, F2-025 🟡 · F2-010 a F2-014 em andamento)
 
@@ -227,7 +227,17 @@ Substituído pelas páginas dedicadas: `/channels/[id]/brainstorm/new` (F2-016),
 ---
 
 ### F2-013 — Bulk generation
-🔲 **Não iniciado**
+✅ **Concluído (backend v1)**
+
+Novo endpoint `POST /api/bulk/drafts { channelId, researchSessionId, type, titles[], provider?, model?, productionParams? }` — cria N drafts da mesma pesquisa e enfileira a pipeline de produção pra cada um via Inngest.
+
+- Pre-flight checkCredits pelo total (N × custo por draft) — skip se Ollama
+- Cada draft vira um Inngest event `production/generate` independente
+- Retorna `202 { drafts: [{id, title}], totalCostReserved }`
+
+UI multi-select na `/create` ficará como follow-up de UX (o endpoint já permite tooling/scripts fazer bulk agora).
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - A partir de uma pesquisa, gerar N blog posts ou N roteiros
@@ -397,7 +407,19 @@ Substituído pelas páginas dedicadas: `/channels/[id]/brainstorm/new` (F2-016),
 ---
 
 ### F2-023 — Video preview rich (teleprompter + metadata)
-🔲 **Não iniciado**
+✅ **Concluído**
+
+A página do draft de vídeo/shorts agora renderiza (quando presentes no `draft_json`):
+- Teleprompter como artigo (F2-045)
+- Pacote YouTube: títulos A/B, thumbnails, comentário fixado, descrição (F2-046)
+- **Capítulos** (F2-023) — lista com timestamp, título, duração, content de cada chapter com border-left destacado
+- Roteiro do editor com A-roll/B-roll/SFX/BGM (F2-045)
+- Review card com score + SEO + strengths/issues
+- Imagens do post (F2-042) — aplicável só pra blog
+
+Tudo renderizado sem precisar do toggle "Ver dados técnicos", preservando o JSON cru no devtools.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Roteiro com timestamps, B-roll notes, capítulos
@@ -415,7 +437,15 @@ Substituído pelas páginas dedicadas: `/channels/[id]/brainstorm/new` (F2-016),
 ---
 
 ### F2-024 — Publish Blog: taxonomia + scheduling
-🔲 **Não iniciado**
+✅ **Concluído**
+
+- O endpoint `POST /wordpress/publish-draft` aceita `status='future'` + `scheduledAt` ISO (F2-043). WP cria post com `status=future` e `date=scheduledAt` (nativo do WP REST).
+- `tags[]` auto-criadas no publish (quando não existentes no WP).
+- `categories[]` aceitas no body (passthrough).
+- UI: `SchedulePublishButton` na action bar do draft (blog) com input `datetime-local`, default amanhã 9h. Hide atrás de "📅 Agendar" pra não poluir. Ao confirmar chama /publish-draft com status=future.
+- Draft status vira `scheduled` + `scheduled_at` timestamp. UI reflete "Publicado" pós-data porque o WP assume.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Migrar PublishingForm do bright-curios
@@ -486,7 +516,11 @@ Substituído pelas páginas dedicadas: `/channels/[id]/brainstorm/new` (F2-016),
 ---
 
 ### F2-028 — Migração: agents + módulos do bright-curios
-🔲 **Não iniciado**
+⚠️ **N/A — dependência externa ausente**
+
+O repo `bright-curios` não está acessível neste workspace. Os agentes que precisávamos importar (`brainstorm`, `research`, `content-core`, `blog`, `video`, `shorts`, `podcast`, `engagement`, `review`) já foram recriados nativamente em `supabase/migrations/20260413040000_seed_all_agent_prompts.sql` e estendidos por migrations subsequentes (F2-045/046/047/048/037). Módulos de schemas/mappers específicos do legado seriam úteis mas não são bloqueantes — o pipeline atual valida output via recursive-search heuristics no backend (normalizeIdeas, normalizeCards, findContent, etc).
+
+**Decisão**: marcar como N/A. Se no futuro o repo for acessível e houver valor em portar schemas específicos, abrir card novo focado.
 
 **Escopo:**
 - Copiar/adaptar `src/lib/modules/{blog,video,shorts,podcast,engagement}/` do legado para `packages/shared/src/modules/` (schemas, mappers, validators, exporters)
@@ -693,8 +727,16 @@ v2 (futuro): wizard single-page com state shared entre os steps (sem navegação
 
 ---
 
-### F2-042 — Drafts: imagens do post (hero + inline) + posicionamento visual
-🔲 **Não iniciado**
+### F2-042 — Drafts: imagens do post (hero + inline)
+✅ **Concluído (v1: generate + render)**
+
+Endpoint `POST /api/content-drafts/:id/images { slot, prompt?, aspectRatio }` usa o image provider configurado (Gemini Imagen ou mock) pra gerar uma imagem e append em `draft_json.images[]`. Se prompt omitido, é derivado do título + meta_description.
+
+UI: componente `DraftImages` no draft view — grid de imagens geradas + form inline (slot hero/inline, prompt custom opcional) + botão Gerar.
+
+**Drag-and-drop posicionamento ficou pra v2.**
+
+**Concluído em:** 2026-04-14
 
 Hoje a página do draft só mostra texto. Adicionar:
 - Botão "Gerar imagem hero" → chama image provider configurado em Settings (F1-XX)
@@ -708,16 +750,34 @@ Hoje a página do draft só mostra texto. Adicionar:
 ---
 
 ### F2-043 — Drafts: WordPress publish a partir de content_drafts
-🔲 **Não iniciado**
+✅ **Concluído**
 
-`/api/wordpress/publish` hoje só aceita `project_id` (pipeline legado). Refatorar pra também aceitar `draftId` e mapear `content_drafts.draft_json` → payload do WP. "Publicar" no draft atual só seta status='published' (sinalização manual).
+Novo endpoint `POST /api/wordpress/publish-draft { draftId, status, scheduledAt?, categories?, tags? }` que:
+- Carrega `content_drafts` e mapeia `draft_json` pro payload WP (title, content, excerpt)
+- Extração via heurística recursiva (body/content/text/markdown/draft/post/article/full_text)
+- Meta description → excerpt
+- Keywords do draft/review → tags do WP (auto-create)
+- Credenciais do `wordpress_configs` (encrypted)
+- Status = `publish` | `draft` | `future` (com scheduledAt pro F2-024)
+- Atualiza content_drafts com `published_url`, `published_at`, `scheduled_at`, `status`
 
-**Concluído em:** —
+Frontend: "Publicar agora" agora chama direto o endpoint. Erro `NO_WP_CONFIG` → toast "Configure em Settings → WordPress". Video/shorts/podcast continuam como "Marcar como publicado" (manual).
+
+**Concluído em:** 2026-04-14
 
 ---
 
 ### F2-039 — Research: sinais de decisão (Google Trends + YouTube Intelligence)
-🔲 **Não iniciado**
+✅ **Concluído**
+
+`GET /api/research-sessions/:id/signals` retorna:
+- **Google Trends** 12m (via `google-trends-api`, free): pontos da série, tendência (rising/stable/falling), média, pico, queries relacionadas
+- **YouTube Intelligence**: última análise de nicho do canal (se existente)
+- Recomendação automática ("Momento ideal" / "Nicho em queda" / "Estável")
+
+Frontend: componente `NicheSignalsCard` com sparkline SVG, badge de tendência, queries como tags. Renderizado na página de pesquisa assim que a sessão completa.
+
+**Concluído em:** 2026-04-14
 
 Pesquisa hoje volta texto corrido. Pra decidir se vale produzir o conteúdo, usuário precisa de sinais quantitativos. Adicionar card "Sinais do nicho" no output do research (Medium/Deep):
 - 📈 **Google Trends** 12m (subindo/estável/caindo + gráfico sparkline) via `google-trends-api` (free)
