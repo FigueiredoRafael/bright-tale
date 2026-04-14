@@ -438,6 +438,7 @@ export type Database = {
           input_mode: string
           model_tier: string
           org_id: string
+          project_id: string | null
           status: string
           updated_at: string
           user_id: string
@@ -451,6 +452,7 @@ export type Database = {
           input_mode: string
           model_tier?: string
           org_id: string
+          project_id?: string | null
           status?: string
           updated_at?: string
           user_id: string
@@ -464,6 +466,7 @@ export type Database = {
           input_mode?: string
           model_tier?: string
           org_id?: string
+          project_id?: string | null
           status?: string
           updated_at?: string
           user_id?: string
@@ -481,6 +484,13 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brainstorm_sessions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
@@ -988,6 +998,7 @@ export type Database = {
           is_public: boolean
           markdown_content: string | null
           org_id: string | null
+          project_id: string | null
           source_project_id: string | null
           source_type: string
           tags: string[]
@@ -1009,6 +1020,7 @@ export type Database = {
           is_public?: boolean
           markdown_content?: string | null
           org_id?: string | null
+          project_id?: string | null
           source_project_id?: string | null
           source_type?: string
           tags?: string[]
@@ -1030,6 +1042,7 @@ export type Database = {
           is_public?: boolean
           markdown_content?: string | null
           org_id?: string | null
+          project_id?: string | null
           source_project_id?: string | null
           source_type?: string
           tags?: string[]
@@ -1060,6 +1073,13 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "idea_archives_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
@@ -1652,6 +1672,7 @@ export type Database = {
           model_tier: string
           org_id: string
           pivot_applied: boolean | null
+          project_id: string | null
           refined_angle_json: Json | null
           status: string
           updated_at: string
@@ -1671,6 +1692,7 @@ export type Database = {
           model_tier?: string
           org_id: string
           pivot_applied?: boolean | null
+          project_id?: string | null
           refined_angle_json?: Json | null
           status?: string
           updated_at?: string
@@ -1690,6 +1712,7 @@ export type Database = {
           model_tier?: string
           org_id?: string
           pivot_applied?: boolean | null
+          project_id?: string | null
           refined_angle_json?: Json | null
           status?: string
           updated_at?: string
@@ -1715,6 +1738,13 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_sessions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]

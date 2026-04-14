@@ -200,6 +200,7 @@ export type DbBrainstormSession = {
   org_id: string;
   user_id: string;
   channel_id: string | null;
+  project_id: string | null;
   input_mode: string;
   input_json: Record<string, unknown>;
   model_tier: string;
@@ -214,6 +215,7 @@ export type DomainBrainstormSession = {
   orgId: string;
   userId: string;
   channelId: string | null;
+  projectId: string | null;
   inputMode: string;
   inputJson: Record<string, unknown>;
   modelTier: string;
@@ -229,6 +231,7 @@ export function mapBrainstormSessionFromDb(row: DbBrainstormSession): DomainBrai
     orgId: row.org_id,
     userId: row.user_id,
     channelId: row.channel_id,
+    projectId: row.project_id,
     inputMode: row.input_mode,
     inputJson: row.input_json,
     modelTier: row.model_tier,
@@ -245,6 +248,7 @@ export type DbResearchSession = {
   user_id: string;
   channel_id: string | null;
   idea_id: string | null;
+  project_id: string | null;
   level: string;
   focus_tags: string[];
   input_json: Record<string, unknown>;
@@ -265,6 +269,7 @@ export type DomainResearchSession = {
   userId: string;
   channelId: string | null;
   ideaId: string | null;
+  projectId: string | null;
   level: string;
   focusTags: string[];
   inputJson: Record<string, unknown>;
@@ -286,6 +291,7 @@ export function mapResearchSessionFromDb(row: DbResearchSession): DomainResearch
     userId: row.user_id,
     channelId: row.channel_id,
     ideaId: row.idea_id,
+    projectId: row.project_id,
     level: row.level,
     focusTags: row.focus_tags,
     inputJson: row.input_json,
