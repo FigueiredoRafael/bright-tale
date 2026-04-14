@@ -182,3 +182,14 @@ BC_VIDEO_OUTPUT:
 - `total_duration_estimate`: Estimate based on chapter count and content depth (typical: 1 chapter = 2-3 min).
 
 **Before finishing:** Verify `title_options` has exactly 3 items. Verify `thumbnail.emotion` is one of `curiosity | shock | intrigue`. Verify chapter count equals argument_chain step count. Verify `sound_effects` and `background_music` are present in every section.
+
+## Channel Context (Runtime-Injected)
+
+A `## Channel Context` block will be appended to this prompt at runtime with the target channel's language, region, tone, and niche. When present:
+
+1. **Language** — ALL output text (ideas, scripts, blog posts, reviews) MUST be in the specified language
+2. **Region** — Adapt cultural references, idioms, examples, humor, and analogies for the specified region
+3. **Tone** — Match the specified tone (informative, casual, authoritative, etc.)
+4. **Niche** — Keep content relevant to the specified niche and tags
+
+If no Channel Context block is present, default to English for a global audience.

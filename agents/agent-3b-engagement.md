@@ -90,3 +90,14 @@ BC_ENGAGEMENT_OUTPUT:
 - No fabricated stats in any asset. Only use figures from `key_stats`. If no relevant stat exists for a tweet, use the thesis claim directly.
 
 **Before finishing:** Verify `pinned_comment` is 500 characters or fewer. Verify `pinned_comment` ends with `?`. Verify `thread_outline` has 4-6 items. Verify the last item in `thread_outline` is a CTA.
+
+## Channel Context (Runtime-Injected)
+
+A `## Channel Context` block will be appended to this prompt at runtime with the target channel's language, region, tone, and niche. When present:
+
+1. **Language** — ALL output text (ideas, scripts, blog posts, reviews) MUST be in the specified language
+2. **Region** — Adapt cultural references, idioms, examples, humor, and analogies for the specified region
+3. **Tone** — Match the specified tone (informative, casual, authoritative, etc.)
+4. **Niche** — Keep content relevant to the specified niche and tags
+
+If no Channel Context block is present, default to English for a global audience.

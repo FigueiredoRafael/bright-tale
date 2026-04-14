@@ -127,3 +127,14 @@ BC_BLOG_OUTPUT:
 - `internal_links_suggested`: Suggest 2-4 related topics that could be interlinked. Use natural anchor text.
 
 **Before finishing:** Verify that `slug` has no uppercase, no spaces, no special characters. Verify `meta_description` length is 150-160 chars. Verify `affiliate_integration.placement` is one of `intro | middle | conclusion`.
+
+## Channel Context (Runtime-Injected)
+
+A `## Channel Context` block will be appended to this prompt at runtime with the target channel's language, region, tone, and niche. When present:
+
+1. **Language** — ALL output text (ideas, scripts, blog posts, reviews) MUST be in the specified language
+2. **Region** — Adapt cultural references, idioms, examples, humor, and analogies for the specified region
+3. **Tone** — Match the specified tone (informative, casual, authoritative, etc.)
+4. **Niche** — Keep content relevant to the specified niche and tags
+
+If no Channel Context block is present, default to English for a global audience.

@@ -163,7 +163,18 @@ selected_idea:
   - BrightCurios' default audience (general, English-speaking, global, curious adults 25-45)
 - Generate exactly the number of ideas requested.
 - Always include a `recommendation.pick` with clear rationale.
-- Be brutally honest with `verdict` — label weak ideas as `weak`.$bt$,
+- Be brutally honest with `verdict` — label weak ideas as `weak`.
+
+## Channel Context (Runtime-Injected)
+
+A `## Channel Context` block will be appended to this prompt at runtime with the target channel's language, region, tone, and niche. When present:
+
+1. **Language** — ALL output text (ideas, scripts, blog posts, reviews) MUST be in the specified language
+2. **Region** — Adapt cultural references, idioms, examples, humor, and analogies for the specified region
+3. **Tone** — Match the specified tone (informative, casual, authoritative, etc.)
+4. **Niche** — Keep content relevant to the specified niche and tags
+
+If no Channel Context block is present, default to English for a global audience.$bt$,
   now(),
   now()
 )
@@ -367,7 +378,18 @@ research:
 - If core claims cannot be verified, set `core_claim_verified: false` and explain in validation_notes.
 - Include at least 3 sources for "standard" depth, 5+ for "deep".
 - Always provide a `refined_angle.recommendation` with clear rationale.
-- If research suggests the idea should be abandoned, say so clearly.$bt$,
+- If research suggests the idea should be abandoned, say so clearly.
+
+## Channel Context (Runtime-Injected)
+
+A `## Channel Context` block will be appended to this prompt at runtime with the target channel's language, region, tone, and niche. When present:
+
+1. **Language** — ALL output text (ideas, scripts, blog posts, reviews) MUST be in the specified language
+2. **Region** — Adapt cultural references, idioms, examples, humor, and analogies for the specified region
+3. **Tone** — Match the specified tone (informative, casual, authoritative, etc.)
+4. **Niche** — Keep content relevant to the specified niche and tags
+
+If no Channel Context block is present, default to English for a global audience.$bt$,
   now(),
   now()
 )
@@ -834,7 +856,18 @@ BC_CANONICAL_CORE:
 - `refined_angle.recommendation`: If `pivot`, update the thesis and argument chain to reflect the recommended angle. If `abandon`, output only: `{ idea_id: "...", thesis: "ABANDONED — research does not support this idea." }`.
 - `affiliate_moment`: Point to a specific step number in `argument_chain` in `trigger_context`.
 
-**Before finishing:** Verify that every `source_id` in `key_stats` matches a source from the research input.$bt$,
+**Before finishing:** Verify that every `source_id` in `key_stats` matches a source from the research input.
+
+## Channel Context (Runtime-Injected)
+
+A `## Channel Context` block will be appended to this prompt at runtime with the target channel's language, region, tone, and niche. When present:
+
+1. **Language** — ALL output text (ideas, scripts, blog posts, reviews) MUST be in the specified language
+2. **Region** — Adapt cultural references, idioms, examples, humor, and analogies for the specified region
+3. **Tone** — Match the specified tone (informative, casual, authoritative, etc.)
+4. **Niche** — Keep content relevant to the specified niche and tags
+
+If no Channel Context block is present, default to English for a global audience.$bt$,
   now(),
   now()
 )
@@ -977,7 +1010,18 @@ BC_BLOG_OUTPUT:
 - `word_count`: Must match the actual word count of `full_draft` (within ±50 words).
 - `internal_links_suggested`: Suggest 2-4 related topics that could be interlinked. Use natural anchor text.
 
-**Before finishing:** Verify that `slug` has no uppercase, no spaces, no special characters. Verify `meta_description` length is 150-160 chars. Verify `affiliate_integration.placement` is one of `intro | middle | conclusion`.$bt$,
+**Before finishing:** Verify that `slug` has no uppercase, no spaces, no special characters. Verify `meta_description` length is 150-160 chars. Verify `affiliate_integration.placement` is one of `intro | middle | conclusion`.
+
+## Channel Context (Runtime-Injected)
+
+A `## Channel Context` block will be appended to this prompt at runtime with the target channel's language, region, tone, and niche. When present:
+
+1. **Language** — ALL output text (ideas, scripts, blog posts, reviews) MUST be in the specified language
+2. **Region** — Adapt cultural references, idioms, examples, humor, and analogies for the specified region
+3. **Tone** — Match the specified tone (informative, casual, authoritative, etc.)
+4. **Niche** — Keep content relevant to the specified niche and tags
+
+If no Channel Context block is present, default to English for a global audience.$bt$,
   now(),
   now()
 )
@@ -1083,7 +1127,18 @@ BC_ENGAGEMENT_OUTPUT:
 - `twitter_thread.thread_outline`: 4-6 tweets expanding the argument. Each tweet = one sharp point, supported by a stat from `key_stats` where possible. Keep each tweet under 280 characters. Last tweet = CTA (subscribe, video link placeholder, or engagement question).
 - No fabricated stats in any asset. Only use figures from `key_stats`. If no relevant stat exists for a tweet, use the thesis claim directly.
 
-**Before finishing:** Verify `pinned_comment` is 500 characters or fewer. Verify `pinned_comment` ends with `?`. Verify `thread_outline` has 4-6 items. Verify the last item in `thread_outline` is a CTA.$bt$,
+**Before finishing:** Verify `pinned_comment` is 500 characters or fewer. Verify `pinned_comment` ends with `?`. Verify `thread_outline` has 4-6 items. Verify the last item in `thread_outline` is a CTA.
+
+## Channel Context (Runtime-Injected)
+
+A `## Channel Context` block will be appended to this prompt at runtime with the target channel's language, region, tone, and niche. When present:
+
+1. **Language** — ALL output text (ideas, scripts, blog posts, reviews) MUST be in the specified language
+2. **Region** — Adapt cultural references, idioms, examples, humor, and analogies for the specified region
+3. **Tone** — Match the specified tone (informative, casual, authoritative, etc.)
+4. **Niche** — Keep content relevant to the specified niche and tags
+
+If no Channel Context block is present, default to English for a global audience.$bt$,
   now(),
   now()
 )
@@ -1218,7 +1273,18 @@ BC_PODCAST_OUTPUT:
 - `outro`: Must land on `closing_emotion`. Must include `cta_subscribe` verbatim or paraphrased. Must end with `cta_comment_prompt` as a direct listener question.
 - `duration_estimate`: Base on talking_point count (roughly 5-7 min per point) plus intro/outro.
 
-**Before finishing:** Verify `talking_points` count matches `talking_point_seeds` count. Verify `personal_angle` is first-person. Verify `outro` includes `cta_subscribe` and ends with a listener question.$bt$,
+**Before finishing:** Verify `talking_points` count matches `talking_point_seeds` count. Verify `personal_angle` is first-person. Verify `outro` includes `cta_subscribe` and ends with a listener question.
+
+## Channel Context (Runtime-Injected)
+
+A `## Channel Context` block will be appended to this prompt at runtime with the target channel's language, region, tone, and niche. When present:
+
+1. **Language** — ALL output text (ideas, scripts, blog posts, reviews) MUST be in the specified language
+2. **Region** — Adapt cultural references, idioms, examples, humor, and analogies for the specified region
+3. **Tone** — Match the specified tone (informative, casual, authoritative, etc.)
+4. **Niche** — Keep content relevant to the specified niche and tags
+
+If no Channel Context block is present, default to English for a global audience.$bt$,
   now(),
   now()
 )
@@ -1357,7 +1423,18 @@ BC_SHORTS_OUTPUT:
 - `cta`: At least one short should include `cta_comment_prompt` as a question. At least one should reference `cta_subscribe`. "Watch the full video" is acceptable in `cta` but NOT in `hook` or `script` body.
 - No fabricated stats — only use figures from `key_stats`.
 
-**Before finishing:** Verify exactly 3 items in the output list. Verify `short_number` is 1, 2, 3 in order. Verify each `visual_style` is exactly `talking head`, `b-roll`, or `text overlay`.$bt$,
+**Before finishing:** Verify exactly 3 items in the output list. Verify `short_number` is 1, 2, 3 in order. Verify each `visual_style` is exactly `talking head`, `b-roll`, or `text overlay`.
+
+## Channel Context (Runtime-Injected)
+
+A `## Channel Context` block will be appended to this prompt at runtime with the target channel's language, region, tone, and niche. When present:
+
+1. **Language** — ALL output text (ideas, scripts, blog posts, reviews) MUST be in the specified language
+2. **Region** — Adapt cultural references, idioms, examples, humor, and analogies for the specified region
+3. **Tone** — Match the specified tone (informative, casual, authoritative, etc.)
+4. **Niche** — Keep content relevant to the specified niche and tags
+
+If no Channel Context block is present, default to English for a global audience.$bt$,
   now(),
   now()
 )
@@ -1555,7 +1632,18 @@ BC_VIDEO_OUTPUT:
 - `outro.end_screen_prompt`: Must be the exact `cta_comment_prompt` question.
 - `total_duration_estimate`: Estimate based on chapter count and content depth (typical: 1 chapter = 2-3 min).
 
-**Before finishing:** Verify `title_options` has exactly 3 items. Verify `thumbnail.emotion` is one of `curiosity | shock | intrigue`. Verify chapter count equals argument_chain step count. Verify `sound_effects` and `background_music` are present in every section.$bt$,
+**Before finishing:** Verify `title_options` has exactly 3 items. Verify `thumbnail.emotion` is one of `curiosity | shock | intrigue`. Verify chapter count equals argument_chain step count. Verify `sound_effects` and `background_music` are present in every section.
+
+## Channel Context (Runtime-Injected)
+
+A `## Channel Context` block will be appended to this prompt at runtime with the target channel's language, region, tone, and niche. When present:
+
+1. **Language** — ALL output text (ideas, scripts, blog posts, reviews) MUST be in the specified language
+2. **Region** — Adapt cultural references, idioms, examples, humor, and analogies for the specified region
+3. **Tone** — Match the specified tone (informative, casual, authoritative, etc.)
+4. **Niche** — Keep content relevant to the specified niche and tags
+
+If no Channel Context block is present, default to English for a global audience.$bt$,
   now(),
   now()
 )
@@ -1870,7 +1958,18 @@ BC_REVIEW_OUTPUT:
   - Staggering shorts across multiple days (if shorts were requested)
 - A/B test suggestions are optional but encouraged for titles/thumbnails.
 - Never approve content that doesn't match the original core_tension.
-- If research was weak, note credibility concerns in the review.$bt$,
+- If research was weak, note credibility concerns in the review.
+
+## Channel Context (Runtime-Injected)
+
+A `## Channel Context` block will be appended to this prompt at runtime with the target channel's language, region, tone, and niche. When present:
+
+1. **Language** — ALL output text (ideas, scripts, blog posts, reviews) MUST be in the specified language
+2. **Region** — Adapt cultural references, idioms, examples, humor, and analogies for the specified region
+3. **Tone** — Match the specified tone (informative, casual, authoritative, etc.)
+4. **Niche** — Keep content relevant to the specified niche and tags
+
+If no Channel Context block is present, default to English for a global audience.$bt$,
   now(),
   now()
 )

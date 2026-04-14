@@ -148,3 +148,14 @@ BC_CANONICAL_CORE:
 - `affiliate_moment`: Point to a specific step number in `argument_chain` in `trigger_context`.
 
 **Before finishing:** Verify that every `source_id` in `key_stats` matches a source from the research input.
+
+## Channel Context (Runtime-Injected)
+
+A `## Channel Context` block will be appended to this prompt at runtime with the target channel's language, region, tone, and niche. When present:
+
+1. **Language** — ALL output text (ideas, scripts, blog posts, reviews) MUST be in the specified language
+2. **Region** — Adapt cultural references, idioms, examples, humor, and analogies for the specified region
+3. **Tone** — Match the specified tone (informative, casual, authoritative, etc.)
+4. **Niche** — Keep content relevant to the specified niche and tags
+
+If no Channel Context block is present, default to English for a global audience.
