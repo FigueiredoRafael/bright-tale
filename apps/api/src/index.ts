@@ -45,6 +45,8 @@ import { billingRoutes } from './routes/billing.js';
 import { bulkRoutes } from './routes/bulk.js';
 import { voiceRoutes } from './routes/voice.js';
 import { publishingDestinationsRoutes } from './routes/publishing-destinations.js';
+import { notificationsRoutes } from './routes/notifications.js';
+import { affiliateRoutes } from './routes/affiliate.js';
 import fastifyRawBody from 'fastify-raw-body';
 
 const server = Fastify({ logger: true });
@@ -106,6 +108,8 @@ server.register(billingRoutes, { prefix: '/billing' });
 server.register(bulkRoutes, { prefix: '/bulk' });
 server.register(voiceRoutes, { prefix: '/voice' });
 server.register(publishingDestinationsRoutes, { prefix: '/publishing-destinations' });
+server.register(notificationsRoutes, { prefix: '/channels' });
+server.register(affiliateRoutes, { prefix: '/affiliate' });
 
 if (!process.env.VERCEL) {
   // Surface async errors that would otherwise crash the dev process silently

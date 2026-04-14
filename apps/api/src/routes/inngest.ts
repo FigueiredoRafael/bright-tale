@@ -9,12 +9,12 @@
 import type { FastifyInstance } from 'fastify';
 import { serve } from 'inngest/fastify';
 import { inngest } from '../jobs/client.js';
-import { contentGenerate, brainstormGenerate, researchGenerate, productionGenerate } from '../jobs/index.js';
+import { contentGenerate, brainstormGenerate, researchGenerate, productionGenerate, referenceCheck } from '../jobs/index.js';
 
 export async function inngestRoutes(fastify: FastifyInstance): Promise<void> {
   const handler = serve({
     client: inngest,
-    functions: [contentGenerate, brainstormGenerate, researchGenerate, productionGenerate],
+    functions: [contentGenerate, brainstormGenerate, researchGenerate, productionGenerate, referenceCheck],
   });
 
   // Inngest expects GET (introspection) + POST (events) + PUT (sync)

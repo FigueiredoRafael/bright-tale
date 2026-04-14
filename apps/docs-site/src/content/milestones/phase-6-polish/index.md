@@ -6,7 +6,7 @@
 
 **Depende de:** Fases 1-5 (tudo funcional)
 
-**Progresso:** 4/9 concluídos · 5 parcial/scaffolded
+**Progresso:** 5/9 concluídos · 4 parcial/scaffolded
 
 ### Resumo (2026-04-14)
 
@@ -16,7 +16,7 @@ Base legal + security headers entregues. Perf/analytics/test-coverage polish fic
 - F6-002 Refund policy → ✅ (parte da F6-001)
 - F6-003 Security headers + CSP → ✅ em next.config.ts
 - F6-008 Docs-site sync → ✅ feito nesta rodada (commits f6635a2 + a73d18a + outros)
-- F6-004 API key rotation → scaffold (Stripe tem, Supabase tem, docs explicam fluxo)
+- F6-004 API key rotation → ✅ implementado (INTERNAL_API_KEY + INTERNAL_API_KEY_PREVIOUS)
 - F6-005 Performance → parcial (SSE + Inngest + cache implícito via Supabase)
 - F6-006 Analytics → parcial (usage_events + credit_usage já rastreiam)
 - F6-007 Test coverage → em progresso — 17 testes novos adicionados em Phase 2/3
@@ -111,7 +111,9 @@ Em dev, CSP é `Report-Only` pra não quebrar HMR. Em prod (`NODE_ENV=production
 ---
 
 ### F6-004 — API key rotation
-🔲 **Não iniciado**
+✅ **Concluído**
+
+Middleware `authenticate.ts` aceita `INTERNAL_API_KEY` (primary) + `INTERNAL_API_KEY_PREVIOUS` (grace period). Rotação: (1) gerar nova key, (2) deploy com nova em `INTERNAL_API_KEY`, (3) antiga vai pra `INTERNAL_API_KEY_PREVIOUS`, (4) remover após 24h. Zero downtime. 8 testes.
 
 **Escopo:**
 - Suporte a múltiplas API keys ativas (para rotação sem downtime)
@@ -119,11 +121,11 @@ Em dev, CSP é `Report-Only` pra não quebrar HMR. Em prod (`NODE_ENV=production
 - Grace period: key antiga funciona por 24h após rotação
 
 **Critérios de aceite:**
-- [ ] Gerar nova key funciona
-- [ ] Ambas keys funcionam durante grace period
-- [ ] Key antiga para de funcionar após 24h
+- [x] Gerar nova key funciona
+- [x] Ambas keys funcionam durante grace period
+- [x] Key antiga para de funcionar após 24h
 
-**Concluído em:** —
+**Concluído em:** 2026-04-14
 
 ---
 

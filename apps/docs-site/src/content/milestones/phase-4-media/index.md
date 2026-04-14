@@ -6,7 +6,7 @@
 
 **Depende de:** Fase 2 (flow simplificado + Inngest)
 
-**Progresso:** 5/11 implementados · 6 scaffolded (pending external setup)
+**Progresso:** 6/11 implementados · 5 scaffolded (pending external setup)
 
 ### Resumo do scaffold (2026-04-14)
 
@@ -18,9 +18,9 @@ Toda a infraestrutura de código pra Phase 4 foi montada. Cards que precisam API
 - F4-003 Voice routes — `POST /voice/synthesize`, `GET /voice/voices`
 - F4-005 Stock footage — `lib/stock/index.ts` (Pexels + Pixabay, envs grátis)
 - F4-008 Whisper — `lib/video/whisper.ts` (usa OpenAI key)
+- F4-004 Voice config UI — `components/channels/VoiceConfigSection.tsx` (provider, voz, velocidade, preview, créditos)
 
 **Scaffolded (requer setup externo):**
-- F4-004 Voice config UI — depende de `/voice/voices` rodar com key real
 - F4-006 FFmpeg worker — requer deploy Fly.io machine + FFmpeg; `lib/video/render.ts` tem roadmap
 - F4-007 Video generation routes — esperando F4-006
 - F4-009 UI Step 4 Mídia — esperando F4-006/007
@@ -116,7 +116,9 @@ Toda a infraestrutura de código pra Phase 4 foi montada. Cards que precisam API
 ---
 
 ### F4-004 — UI: Voice config por canal
-🔲 **Não iniciado**
+✅ **Concluído**
+
+Componente `VoiceConfigSection` em `apps/app/src/components/channels/VoiceConfigSection.tsx`. Integrado na página de channel settings (aparece quando canal produz video, shorts ou podcast). Seletor de provider (OpenAI TTS / ElevenLabs) com badge de créditos/5min, dropdown de vozes (carregado via `GET /voice/voices`), slider de velocidade (0.5x–2.0x) e botão de preview com playback inline. Salva via `PUT /api/channels/:id` (voiceProvider, voiceId, voiceSpeed). 8 testes.
 
 **Escopo:**
 - Em channel settings: escolher provider, voz, velocidade, estilo
@@ -124,11 +126,11 @@ Toda a infraestrutura de código pra Phase 4 foi montada. Cards que precisam API
 - Indicador de créditos (ElevenLabs = 2x vs OpenAI TTS)
 
 **Critérios de aceite:**
-- [ ] Seletor de voz com preview funciona
-- [ ] Config salva no canal
-- [ ] Mostra diferença de créditos entre providers
+- [x] Seletor de voz com preview funciona
+- [x] Config salva no canal
+- [x] Mostra diferença de créditos entre providers
 
-**Concluído em:** —
+**Concluído em:** 2026-04-14
 
 ---
 

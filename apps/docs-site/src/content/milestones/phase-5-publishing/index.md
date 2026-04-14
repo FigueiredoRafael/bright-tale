@@ -6,7 +6,7 @@
 
 **Depende de:** Fase 4 (mídia gerada)
 
-**Progresso:** 5/9 implementados · 4 scaffolded pending external
+**Progresso:** 7/9 implementados · 2 scaffolded pending external
 
 ### Resumo (2026-04-14)
 
@@ -15,8 +15,8 @@
 - F5-008 Affiliate tables → ✅ migração criada
 - F5-001 YouTube upload → ⚠️ scaffold (requer GCP OAuth client)
 - F5-002 UI Publishing step → esperando F5-001
-- F5-005 Notificações de referências → esperando F5-006 key
-- F5-009 Affiliate dashboard UI → esperando F5-008 tables em uso
+- F5-005 Notificações de referências → ✅ implementado (cron + API + UI)
+- F5-009 Affiliate dashboard UI → ✅ implementado (API + /settings/affiliate)
 
 > ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
 > Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
@@ -126,7 +126,9 @@ UI visual de config fica pra quando FFmpeg worker + YouTube upload subirem. Hoje
 ---
 
 ### F5-005 — Notificações de referências
-🔲 **Não iniciado**
+✅ **Concluído**
+
+Inngest cron `reference-check-weekly` (segunda 6h UTC) varre todas as referências YouTube, busca vídeos da última semana via YouTube Data API, detecta trending (≥10K views + ≥5% engagement) e cria `reference_notifications`. API: `GET /channels/:id/notifications`, `PATCH .../read`, `PATCH .../dismiss`. UI: `ReferenceNotifications` com cards amber, tags, botão "Modelar" (navega para brainstorm com `mode=reference_guided` + tags/video pré-preenchidos). Migration: `reference_notifications` table. 20 testes (6 job + 6 UI + 8 voice).
 
 **Escopo:**
 - Cron job (semanal): buscar novos vídeos das referências
@@ -136,11 +138,11 @@ UI visual de config fica pra quando FFmpeg worker + YouTube upload subirem. Hoje
 - Botão "Modelar" → pré-preenche brainstorm com referência
 
 **Critérios de aceite:**
-- [ ] Cron detecta novos vídeos
-- [ ] Notificação aparece no dashboard do canal
-- [ ] "Modelar" inicia brainstorm com dados da referência
+- [x] Cron detecta novos vídeos
+- [x] Notificação aparece no dashboard do canal
+- [x] "Modelar" inicia brainstorm com dados da referência
 
-**Concluído em:** —
+**Concluído em:** 2026-04-14
 
 ---
 
@@ -218,7 +220,9 @@ Endpoints + fluxo de tracking (cookie + attribution nos webhooks do Stripe) fica
 ---
 
 ### F5-009 — UI: Dashboard de afiliado
-🔲 **Não iniciado**
+✅ **Concluído**
+
+Página `/settings/affiliate` com três estados: upgrade prompt (free), ativação (eligible sem programa), e dashboard completo. API: `GET/POST /affiliate/program`, `GET /affiliate/referrals`. Dashboard mostra: link de referral com 1-click copy, código, % comissão, 4 KPI cards (indicações, conversões, receita, pago), lista de referrals recentes com status e comissão. Card adicionado à página de settings. 6 testes.
 
 **Escopo:**
 - Página `/settings/affiliate`
@@ -227,8 +231,8 @@ Endpoints + fluxo de tracking (cookie + attribution nos webhooks do Stripe) fica
 - Copiar link com 1 clique
 
 **Critérios de aceite:**
-- [ ] Link de referral copiável
-- [ ] Métricas atualizadas
-- [ ] Disponível para Starter+
+- [x] Link de referral copiável
+- [x] Métricas atualizadas
+- [x] Disponível para Starter+
 
-**Concluído em:** —
+**Concluído em:** 2026-04-14

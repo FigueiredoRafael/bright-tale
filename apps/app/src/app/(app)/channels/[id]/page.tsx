@@ -28,6 +28,8 @@ import {
 } from 'lucide-react';
 import { NichePicker } from '@/components/channels/NichePicker';
 import { LogoUpload } from '@/components/channels/LogoUpload';
+import { VoiceConfigSection } from '@/components/channels/VoiceConfigSection';
+import { ReferenceNotifications } from '@/components/channels/ReferenceNotifications';
 import { invalidateChannelCache } from '@/hooks/use-active-channel';
 
 interface Channel {
@@ -44,6 +46,7 @@ interface Channel {
   youtube_url: string | null;
   voice_provider: string | null;
   voice_id: string | null;
+  voice_speed: number;
   model_tier: string;
   tone: string | null;
 }
@@ -78,6 +81,9 @@ export default function ChannelDetailPage() {
   const [videoStyle, setVideoStyle] = useState<string>('face');
   const [modelTier, setModelTier] = useState('standard');
   const [tone, setTone] = useState('informative');
+  const [voiceProvider, setVoiceProvider] = useState<string | null>(null);
+  const [voiceId, setVoiceId] = useState<string | null>(null);
+  const [voiceSpeed, setVoiceSpeed] = useState(1.0);
 
   const fetchData = useCallback(async () => {
     try {
@@ -99,6 +105,9 @@ export default function ChannelDetailPage() {
         setVideoStyle(c.video_style ?? 'face');
         setModelTier(c.model_tier);
         setTone(c.tone ?? 'informative');
+        setVoiceProvider(c.voice_provider);
+        setVoiceId(c.voice_id);
+        setVoiceSpeed(c.voice_speed ?? 1.0);
       }
       if (refsJson.data) {
         setReferences(refsJson.data.references ?? []);
@@ -125,6 +134,9 @@ export default function ChannelDetailPage() {
           name, niche: niche || undefined, market, language, modelTier, tone,
           mediaTypes,
           videoStyle: mediaTypes.includes('video') || mediaTypes.includes('shorts') ? videoStyle : null,
+          voiceProvider: voiceProvider || undefined,
+          voiceId: voiceId || undefined,
+          voiceSpeed,
         }),
       });
       const json = await res.json();
@@ -209,6 +221,9 @@ export default function ChannelDetailPage() {
           <Sparkles className="h-4 w-4 mr-2" /> Generate Content
         </Button>
       </div>
+
+      {/* Reference notifications */}
+      <ReferenceNotifications channelId={id} />
 
       {/* Channel config */}
       <Card>
@@ -299,6 +314,16 @@ export default function ChannelDetailPage() {
                   </SelectContent>
                 </Select>
               </div>
+            )}
+            {(mediaTypes.includes('video') || mediaTypes.includes('shorts') || mediaTypes.includes('podcast')) && (
+              <VoiceConfigSection
+                value={{ voiceProvider, voiceId, voiceSpeed }}
+                onChange={({ voiceProvider: vp, voiceId: vi, voiceSpeed: vs }) => {
+                  setVoiceProvider(vp);
+                  setVoiceId(vi);
+                  setVoiceSpeed(vs);
+                }}
+              />
             )}
             <div className="space-y-2">
               <Label>AI Model Tier</Label>

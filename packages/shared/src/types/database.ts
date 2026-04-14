@@ -1547,6 +1547,83 @@ export type Database = {
           },
         ]
       }
+      reference_notifications: {
+        Row: {
+          id: string
+          org_id: string
+          channel_id: string
+          reference_id: string
+          content_id: string | null
+          type: string
+          title: string
+          body: string | null
+          metadata_json: Json
+          read_at: string | null
+          dismissed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          channel_id: string
+          reference_id: string
+          content_id?: string | null
+          type?: string
+          title: string
+          body?: string | null
+          metadata_json?: Json
+          read_at?: string | null
+          dismissed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          channel_id?: string
+          reference_id?: string
+          content_id?: string | null
+          type?: string
+          title?: string
+          body?: string | null
+          metadata_json?: Json
+          read_at?: string | null
+          dismissed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reference_notifications_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_notifications_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "channel_references"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_notifications_content_id_fkey"
+            columns: ["content_id"]
+            isOneToOne: false
+            referencedRelation: "reference_content"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_notifications_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       research_archives: {
         Row: {
           created_at: string
