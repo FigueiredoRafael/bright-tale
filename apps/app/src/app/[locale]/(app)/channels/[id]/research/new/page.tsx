@@ -17,6 +17,7 @@ import { Loader2, Search, ArrowLeft, ArrowRight, Check, Sparkles, ClipboardPaste
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ManualModePanel } from "@/components/ai/ManualModePanel";
 import { useManualMode } from "@/hooks/use-manual-mode";
+import { PipelineStages } from "@/components/pipeline/PipelineStages";
 
 type Level = "surface" | "medium" | "deep";
 
@@ -266,7 +267,9 @@ export default function NewResearchPage() {
     }
 
     return (
-        <div className="p-6 max-w-4xl mx-auto space-y-6">
+        <div>
+            <PipelineStages currentStep="research" ideaTitle={linkedIdea?.title} />
+            <div className="p-6 max-w-4xl mx-auto space-y-6">
             <div>
                 <button
                     onClick={() => router.back()}
@@ -456,6 +459,7 @@ export default function NewResearchPage() {
                     </CardContent>
                 </Card>
             )}
+        </div>
         </div>
     );
 }

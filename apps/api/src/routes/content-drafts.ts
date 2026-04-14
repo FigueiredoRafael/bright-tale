@@ -568,4 +568,100 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
       return sendError(reply, error);
     }
   });
+
+  /**
+   * POST /:id/reproduce — Re-run production agent with review feedback context.
+   * Used in the revision loop: review gives feedback → reproduce fixes issues.
+   */
+  fastify.post('/:id/reproduce', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const sb = createServiceClient();
+      const { id } = request.params as { id: string };
+      const draft = await loadDraft(id) as Record<string, unknown>;
+      const orgId = await getOrgId(request.userId);
+
+      if (!draft.review_feedback_json) {
+        throw new ApiError(400, 'No review feedback to revise from. Submit for review first.', 'NO_FEEDBACK');
+      }
+
+      const type = (draft.type as string) ?? 'blog';
+      const cost = FORMAT_COSTS[type] ?? 200;
+      await checkCredits(orgId, request.userId, cost);
+
+      let systemPrompt =
+        (await loadAgentPrompt(type)) ?? (await loadAgentPrompt('production')) ?? undefined;
+
+      // Inject production settings if present
+      const settings = draft.production_settings_json as Record<string, unknown> | null;
+      if (settings && systemPrompt) {
+        const ctx: string[] = [];
+        if (settings.wordCountTarget) ctx.push(`Target word count: ${settings.wordCountTarget}`);
+        if (settings.writingStyle) ctx.push(`Writing style: ${settings.writingStyle}`);
+        if (settings.tone) ctx.push(`Tone: ${settings.tone}`);
+        if (ctx.length > 0) {
+          systemPrompt = `${systemPrompt}\n\n## Production Settings\n${ctx.join('\n')}`;
+        }
+      }
+
+      // Build input with review feedback context
+      const reviewFeedback = draft.review_feedback_json as Record<string, unknown>;
+      const formatReview = reviewFeedback[`${type}_review`] as Record<string, unknown> | undefined;
+
+      const { result } = await generateWithFallback(
+        'production',
+        (draft.model_tier as string) ?? 'standard',
+        {
+          agentType: 'production',
+          input: {
+            stage: 'reproduce',
+            type,
+            title: draft.title,
+            canonicalCore: draft.canonical_core_json,
+            previousDraft: draft.draft_json,
+            reviewFeedback: {
+              overall_verdict: reviewFeedback.overall_verdict,
+              score: formatReview?.score ?? null,
+              critical_issues: formatReview?.critical_issues ?? [],
+              minor_issues: formatReview?.minor_issues ?? [],
+              strengths: formatReview?.strengths ?? [],
+            },
+            instruction: 'Fix the critical and minor issues identified in the review. Keep the strengths. Produce an improved version.',
+          },
+          schema: null,
+          systemPrompt,
+        },
+      );
+
+      const iterationCount = ((draft.iteration_count as number) ?? 0) + 1;
+
+      const { data: updated, error } = await (sb.from('content_drafts') as unknown as {
+        update: (row: Record<string, unknown>) => {
+          eq: (col: string, val: string) => {
+            select: () => { single: () => Promise<{ data: unknown; error: unknown }> };
+          };
+        };
+      })
+        .update({
+          draft_json: result,
+          status: 'draft',
+          review_verdict: 'pending',
+          iteration_count: iterationCount,
+        })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+
+      await debitCredits(orgId, request.userId, `reproduce-${type}`, 'text', cost, {
+        draftId: id,
+        type,
+        iteration: iterationCount,
+      });
+
+      return reply.send({ data: updated, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
 }

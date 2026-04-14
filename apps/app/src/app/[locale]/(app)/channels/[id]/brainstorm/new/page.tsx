@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
 import { ManualModePanel } from "@/components/ai/ManualModePanel";
 import { useManualMode } from "@/hooks/use-manual-mode";
+import { PipelineStages } from "@/components/pipeline/PipelineStages";
 import { friendlyAiError } from "@/lib/ai/error-message";
 
 type Mode = "blind" | "fine_tuned" | "reference_guided";
@@ -245,7 +246,9 @@ export default function NewBrainstormPage() {
     const selectedIdea = ideas.find((i) => i.idea_id === selectedIdeaId) ?? null;
 
     return (
-        <div className="p-6 max-w-4xl mx-auto space-y-6">
+        <div>
+            <PipelineStages currentStep="brainstorm" />
+            <div className="p-6 max-w-4xl mx-auto space-y-6">
             <div>
                 <button
                     onClick={() => router.push(`/channels/${channelId}`)}
@@ -535,6 +538,7 @@ export default function NewBrainstormPage() {
 
             {/* Spacer for sticky footer */}
             {selectedIdea && !running && <div className="h-16" />}
+        </div>
         </div>
     );
 }

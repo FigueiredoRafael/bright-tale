@@ -17,6 +17,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ManualModePanel } from "@/components/ai/ManualModePanel";
 import { useManualMode } from "@/hooks/use-manual-mode";
+import { PipelineStages } from "@/components/pipeline/PipelineStages";
+import { MarkdownPreview } from "@/components/preview/MarkdownPreview";
 
 type DraftType = "blog" | "video" | "shorts" | "podcast";
 
@@ -56,6 +58,7 @@ export default function NewDraftPage() {
     const [draftId, setDraftId] = useState<string | null>(null);
     const [step, setStep] = useState<"setup" | "core" | "produce" | "done">("setup");
     const [busy, setBusy] = useState(false);
+    const [producedContent, setProducedContent] = useState<string>("");
     const [genMode, setGenMode] = useState<"ai" | "manual">("ai");
 
     // Context from previous steps
@@ -160,12 +163,17 @@ export default function NewDraftPage() {
         );
         if (!produced) return;
         setStep("done");
-        toast.success("Content generated — redirecting to editor");
-        setTimeout(() => router.push(`/channels/${channelId}/drafts/${id}`), 1500);
+        // Extract full_draft for preview
+        const draftJson = (produced as Record<string, unknown>).draft_json as Record<string, unknown> | undefined;
+        const fullDraft = (draftJson?.full_draft as string) ?? "";
+        setProducedContent(fullDraft);
+        toast.success("Content generated — preview below");
     }
 
     return (
-        <div className="p-6 max-w-3xl mx-auto space-y-6">
+        <div>
+            <PipelineStages currentStep="production" ideaTitle={linkedIdea?.title} />
+            <div className="p-6 max-w-3xl mx-auto space-y-6">
             <div>
                 <button
                     onClick={() => router.back()}
@@ -354,18 +362,53 @@ export default function NewDraftPage() {
             </Card>
 
             {/* Pipeline progress */}
-            {step !== "setup" && (
+            {step !== "setup" && step !== "done" && (
                 <Card>
                     <CardHeader>
                         <CardTitle className="text-base">Pipeline</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
-                        <PipelineStep label="Draft created" done={!!draftId} active={step === "core" && busy} />
-                        <PipelineStep label="Canonical core (agent-3a)" done={step === "produce" || step === "done"} active={step === "core" && busy} />
-                        <PipelineStep label={`Production (agent-3b-${type})`} done={step === "done"} active={step === "produce" && busy} />
+                        <PipelineStep label="Draft created" done={!!draftId} active={(step as string) === "core" && busy} />
+                        <PipelineStep label="Canonical core (agent-3a)" done={(step as string) === "produce" || (step as string) === "done"} active={(step as string) === "core" && busy} />
+                        <PipelineStep label={`Production (agent-3b-${type})`} done={(step as string) === "done"} active={(step as string) === "produce" && busy} />
                     </CardContent>
                 </Card>
             )}
+
+            {/* Generated content preview + actions */}
+            {step === "done" && draftId && (
+                <>
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-base">Generated Content Preview</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            {producedContent ? (
+                                <div className="max-h-[500px] overflow-y-auto border rounded-lg p-4">
+                                    <MarkdownPreview content={producedContent} />
+                                </div>
+                            ) : (
+                                <p className="text-sm text-muted-foreground">Content generated but no preview available.</p>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    <div className="flex gap-3">
+                        <Button
+                            variant="outline"
+                            onClick={() => router.push(`/channels/${channelId}/drafts/${draftId}`)}
+                        >
+                            <FileText className="h-4 w-4 mr-2" /> Open in Editor
+                        </Button>
+                        <Button
+                            onClick={() => router.push(`/channels/${channelId}/drafts/${draftId}?tab=review`)}
+                        >
+                            <Check className="h-4 w-4 mr-2" /> Continue to Review
+                        </Button>
+                    </div>
+                </>
+            )}
+        </div>
         </div>
     );
 }

@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import {
     Home, Radio, Lightbulb, FileText, PenLine, Video, Zap, Mic,
     Images, Archive, Database, Settings, Users, Wand2, Sparkles,
+    FolderKanban,
     type LucideIcon,
 } from "lucide-react";
 import { ChannelSwitcher } from "./ChannelSwitcher";
@@ -43,6 +44,7 @@ export default function Sidebar() {
             items: [
                 { href: "/", label: t('dashboard'), icon: Home, exact: true },
                 { href: "/channels", label: t('contentChannels'), icon: Radio },
+                { href: "/projects", label: "Projects", icon: FolderKanban },
             ],
         },
         {

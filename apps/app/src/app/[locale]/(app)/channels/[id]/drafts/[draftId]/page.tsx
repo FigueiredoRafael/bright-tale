@@ -14,6 +14,8 @@ import { PublishPanel } from '@/components/preview/PublishPanel';
 import { ManualModePanel } from '@/components/ai/ManualModePanel';
 import { useManualMode } from '@/hooks/use-manual-mode';
 import { Sparkles, ClipboardPaste, Loader2 } from 'lucide-react';
+import { PipelineStages, type PipelineStep } from '@/components/pipeline/PipelineStages';
+import { toast } from 'sonner';
 
 interface Draft {
   id: string;
@@ -153,8 +155,17 @@ export default function DraftDetailPage() {
 
   const blogBody = (draft.draft_json as Record<string, unknown>)?.full_draft as string ?? '';
 
+  // Determine pipeline step from draft state
+  let pipelineStep: PipelineStep = 'production';
+  if (draft.status === 'draft' && draft.draft_json) pipelineStep = 'review';
+  if (draft.status === 'in_review') pipelineStep = 'review';
+  if (draft.review_verdict === 'approved' || draft.status === 'approved') pipelineStep = 'assets';
+  if (draft.status === 'published' || draft.status === 'scheduled') pipelineStep = 'published';
+
   return (
-    <div className="p-6 space-y-6">
+    <div>
+      <PipelineStages currentStep={pipelineStep} ideaTitle={draft.title ?? undefined} />
+      <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -169,19 +180,6 @@ export default function DraftDetailPage() {
             )}
           </div>
         </div>
-      </div>
-
-      {/* Pipeline progress */}
-      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-        {['Idea', 'Research', 'Core', 'Draft', 'Review', 'Assets', 'Published'].map((step, i) => (
-          <span key={step} className="flex items-center gap-1">
-            {i > 0 && <span>→</span>}
-            <span className={getStepClass(step, draft)}>{step}</span>
-            {step === 'Review' && draft.iteration_count > 0 && (
-              <span className="text-[10px]">(×{draft.iteration_count})</span>
-            )}
-          </span>
-        ))}
       </div>
 
       {/* Tabs */}
@@ -225,8 +223,8 @@ export default function DraftDetailPage() {
                     Save Changes
                   </Button>
                   {draft.status === 'draft' && draft.draft_json && (
-                    <Button size="sm" onClick={handleSubmitForReview} disabled={reviewing}>
-                      {reviewing ? 'Submitting...' : 'Submit for Review'}
+                    <Button size="sm" onClick={() => setActiveTab('review')}>
+                      Submit for Review →
                     </Button>
                   )}
                 </div>
@@ -275,14 +273,35 @@ export default function DraftDetailPage() {
             {draft.review_verdict === 'revision_required' && (
               <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-4 space-y-3">
                 <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">Revision required</p>
-                <p className="text-xs text-muted-foreground">Fix the issues above, then resubmit.</p>
-                <div className="flex gap-2">
+                <p className="text-xs text-muted-foreground">Fix the issues above, then resubmit for review.</p>
+                <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => setActiveTab('content')}>
-                    Edit Content
+                    Edit Manually
                   </Button>
-                  <Button size="sm" onClick={handleRevise}>
-                    Revise & Resubmit
+                  <Button
+                    size="sm"
+                    disabled={reviewing}
+                    onClick={async () => {
+                      setReviewing(true);
+                      const res = await fetch(`/api/content-drafts/${draftId}/reproduce`, { method: 'POST' });
+                      const json = await res.json();
+                      if (json.data) {
+                        setDraft(json.data);
+                        setEditedBody((json.data.draft_json as Record<string, unknown>)?.full_draft as string ?? '');
+                        toast.success('Draft revised by AI — review the changes');
+                      } else {
+                        toast.error(json.error?.message ?? 'Revision failed');
+                      }
+                      setReviewing(false);
+                    }}
+                  >
+                    {reviewing ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Revising...</> : <><Sparkles className="h-3.5 w-3.5 mr-1" /> AI Revision</>}
                   </Button>
+                  {manualEnabled && (
+                    <Button size="sm" variant="outline" onClick={handleRevise}>
+                      Manual Revise & Resubmit
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
@@ -382,6 +401,7 @@ export default function DraftDetailPage() {
           </div>
         </TabsContent>
       </Tabs>
+    </div>
     </div>
   );
 }
