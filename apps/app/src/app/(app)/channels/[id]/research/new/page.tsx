@@ -30,16 +30,16 @@ interface Card {
 }
 
 const LEVELS: { id: Level; label: string; cost: number; description: string }[] = [
-    { id: "surface", label: "Surface", cost: 60, description: "Top 3 fontes, estatísticas básicas" },
-    { id: "medium", label: "Medium", cost: 100, description: "5-8 fontes, citações de experts, dados" },
-    { id: "deep", label: "Deep", cost: 180, description: "10+ fontes, contra-argumentos, validações" },
+    { id: "surface", label: "Surface", cost: 60, description: "Top 3 sources, basic statistics" },
+    { id: "medium", label: "Medium", cost: 100, description: "5-8 sources, expert quotes, supporting data" },
+    { id: "deep", label: "Deep", cost: 180, description: "10+ sources, counterarguments, cross-validation" },
 ];
 
 const FOCUS_OPTIONS = [
-    { id: "stats", label: "Estatísticas" },
+    { id: "stats", label: "Statistics" },
     { id: "expert_advice", label: "Expert advice" },
     { id: "pro_tips", label: "Pro tips" },
-    { id: "validated_processes", label: "Processos validados" },
+    { id: "validated_processes", label: "Validated processes" },
 ];
 
 export default function NewResearchPage() {
@@ -124,7 +124,7 @@ export default function NewResearchPage() {
 
     async function handleRun() {
         if (!topic.trim() && !ideaIdParam) {
-            toast.error("Informe um tema ou venha de uma ideia");
+            toast.error("Enter a topic or come from an idea");
             return;
         }
         setRunning(true);
@@ -151,7 +151,7 @@ export default function NewResearchPage() {
             setSessionId(json.data.sessionId);
             setCards(json.data.cards ?? []);
             setApproved(new Set((json.data.cards ?? []).map((_: Card, i: number) => i)));
-            toast.success(`${json.data.cards?.length ?? 0} cards de pesquisa`);
+            toast.success(`${json.data.cards?.length ?? 0} research cards found`);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             const friendly = friendlyAiError(message);
@@ -171,24 +171,32 @@ export default function NewResearchPage() {
     }
 
     async function handleApprove() {
-        if (!sessionId) return;
         const approvedCards = cards.filter((_, i) => approved.has(i));
-        try {
-            const res = await fetch(`/api/research-sessions/${sessionId}/review`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ approvedCardsJson: approvedCards }),
-            });
-            const json = await res.json();
-            if (json.error) {
-                toast.error(json.error.message);
+
+        if (sessionId) {
+            // AI-generated: save approved cards to session
+            try {
+                const res = await fetch(`/api/research-sessions/${sessionId}/review`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ approvedCardsJson: approvedCards }),
+                });
+                const json = await res.json();
+                if (json.error) {
+                    toast.error(json.error.message);
+                    return;
+                }
+            } catch {
+                toast.error("Failed to save review");
                 return;
             }
-            toast.success(`${approvedCards.length} cards aprovados`);
-            router.push(`/channels/${channelId}/drafts/new?researchSessionId=${sessionId}${ideaIdParam ? `&ideaId=${ideaIdParam}` : ''}`);
-        } catch {
-            toast.error("Falha ao salvar review");
         }
+
+        toast.success(`${approvedCards.length} cards approved`);
+        const params = new URLSearchParams();
+        if (sessionId) params.set('researchSessionId', sessionId);
+        if (ideaIdParam) params.set('ideaId', ideaIdParam);
+        router.push(`/channels/${channelId}/drafts/new?${params.toString()}`);
     }
 
     return (
@@ -198,10 +206,10 @@ export default function NewResearchPage() {
                     onClick={() => router.back()}
                     className="text-xs text-muted-foreground hover:underline flex items-center gap-1"
                 >
-                    <ArrowLeft className="h-3 w-3" /> Voltar
+                    <ArrowLeft className="h-3 w-3" /> Back
                 </button>
                 <h1 className="text-2xl font-bold mt-2 flex items-center gap-2">
-                    <Search className="h-5 w-5" /> Nova Pesquisa
+                    <Search className="h-5 w-5" /> New Research
                 </h1>
             </div>
 
@@ -227,16 +235,16 @@ export default function NewResearchPage() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-base">Configuração</CardTitle>
+                    <CardTitle className="text-base">Configuration</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="space-y-2">
-                        <Label>Tema {ideaIdParam && <span className="text-xs text-muted-foreground">(opcional — vindo de uma ideia)</span>}</Label>
+                        <Label>Topic {ideaIdParam && <span className="text-xs text-muted-foreground">(optional — pre-filled from idea)</span>}</Label>
                         <Input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. deep work techniques" />
                     </div>
 
                     <div className="space-y-2">
-                        <Label>Nível de pesquisa</Label>
+                        <Label>Research depth</Label>
                         <div className="grid grid-cols-3 gap-2">
                             {LEVELS.map((l) => (
                                 <button
@@ -257,7 +265,7 @@ export default function NewResearchPage() {
                     </div>
 
                     <div className="space-y-2">
-                        <Label>Foco</Label>
+                        <Label>Focus</Label>
                         <div className="flex flex-wrap gap-2">
                             {FOCUS_OPTIONS.map((opt) => (
                                 <label
@@ -299,9 +307,9 @@ export default function NewResearchPage() {
                             />
                             <Button onClick={handleRun} disabled={running}>
                                 {running ? (
-                                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Pesquisando...</>
+                                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Researching...</>
                                 ) : (
-                                    <><Search className="h-4 w-4 mr-2" /> Pesquisar</>
+                                    <><Search className="h-4 w-4 mr-2" /> Research</>
                                 )}
                             </Button>
                         </TabsContent>
@@ -334,8 +342,8 @@ export default function NewResearchPage() {
                 <Card>
                     <CardHeader>
                         <CardTitle className="text-base flex items-center justify-between">
-                            <span>Cards de pesquisa <Badge variant="secondary" className="text-[10px] ml-1">{cards.length}</Badge></span>
-                            <span className="text-xs text-muted-foreground font-normal">{approved.size} aprovados</span>
+                            <span>Research cards <Badge variant="secondary" className="text-[10px] ml-1">{cards.length}</Badge></span>
+                            <span className="text-xs text-muted-foreground font-normal">{approved.size} approved</span>
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
@@ -355,7 +363,7 @@ export default function NewResearchPage() {
                                                 {c.type && <Badge variant="outline" className="text-[10px]">{c.type}</Badge>}
                                                 {typeof c.relevance === "number" && (
                                                     <Badge variant="secondary" className="text-[10px]">
-                                                        relevância {c.relevance}
+                                                        relevance {c.relevance}
                                                     </Badge>
                                                 )}
                                             </div>
@@ -376,7 +384,7 @@ export default function NewResearchPage() {
 
                         <div className="flex justify-end pt-2">
                             <Button onClick={handleApprove}>
-                                <Check className="h-4 w-4 mr-2" /> Aprovar ({approved.size}) <ArrowRight className="h-4 w-4 ml-2" />
+                                <Check className="h-4 w-4 mr-2" /> Approve ({approved.size}) <ArrowRight className="h-4 w-4 ml-2" />
                             </Button>
                         </div>
                     </CardContent>

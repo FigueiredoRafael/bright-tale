@@ -30,18 +30,18 @@ interface Idea {
 const MODES: { id: Mode; label: string; description: string }[] = [
     {
         id: "blind",
-        label: "Prompt cego",
-        description: "Só um tema. A IA gera ideias amplas a partir do nicho do canal.",
+        label: "Blind prompt",
+        description: "Just a topic. AI generates broad ideas from the channel niche.",
     },
     {
         id: "fine_tuned",
         label: "Fine-tuning",
-        description: "Tema + nicho, tom, público, objetivo e restrições. Mais focado.",
+        description: "Topic + niche, tone, audience, goal and constraints. More focused.",
     },
     {
         id: "reference_guided",
-        label: "Guiado por referência",
-        description: "URL de um conteúdo (blog/YouTube). A IA modela a partir dele.",
+        label: "Reference-guided",
+        description: "URL of existing content (blog/YouTube). AI models from it.",
     },
 ];
 
@@ -92,11 +92,11 @@ export default function NewBrainstormPage() {
 
     async function handleRun() {
         if (mode !== "reference_guided" && !topic.trim()) {
-            toast.error("Informe um tema");
+            toast.error("Enter a topic");
             return;
         }
         if (mode === "reference_guided" && !referenceUrl.trim()) {
-            toast.error("Cole a URL de referência");
+            toast.error("Paste the reference URL");
             return;
         }
 
@@ -143,11 +143,11 @@ export default function NewBrainstormPage() {
             const generatedIdeas = json?.data?.ideas ?? [];
             setIdeas(generatedIdeas);
             if (generatedIdeas.length === 0) {
-                toast.warning("Nenhuma ideia reconhecida no output", {
-                    description: "A IA respondeu mas o formato não bateu. Tente outro modelo ou re-execute.",
+                toast.warning("No ideas recognized in output", {
+                    description: "AI responded but format didn't match. Try a different model or re-run.",
                 });
             } else {
-                toast.success(`${generatedIdeas.length} ideias geradas`);
+                toast.success(`${generatedIdeas.length} ideas generated`);
             }
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -236,19 +236,19 @@ export default function NewBrainstormPage() {
                     onClick={() => router.push(`/channels/${channelId}`)}
                     className="text-xs text-muted-foreground hover:underline flex items-center gap-1"
                 >
-                    <ArrowLeft className="h-3 w-3" /> Voltar pro canal
+                    <ArrowLeft className="h-3 w-3" /> Back to channel
                 </button>
                 <h1 className="text-2xl font-bold mt-2 flex items-center gap-2">
                     <Lightbulb className="h-5 w-5" /> Brainstorm
                 </h1>
                 <p className="text-sm text-muted-foreground mt-1">
-                    Gere ideias para esse canal usando a IA. Cada brainstorm consome 50 créditos.
+                    Generate ideas for this channel using AI. Each brainstorm costs 50 credits.
                 </p>
             </div>
 
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-base">Modo de entrada</CardTitle>
+                    <CardTitle className="text-base">Input mode</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="grid grid-cols-3 gap-2">
@@ -270,7 +270,7 @@ export default function NewBrainstormPage() {
 
                     {mode !== "reference_guided" && (
                         <div className="space-y-2">
-                            <Label>Tema</Label>
+                            <Label>Topic</Label>
                             <Input
                                 placeholder="e.g. produtividade pra desenvolvedores"
                                 value={topic}
@@ -283,27 +283,27 @@ export default function NewBrainstormPage() {
                     {mode === "fine_tuned" && (
                         <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1.5">
-                                <Label className="text-xs">Nicho</Label>
+                                <Label className="text-xs">Niche</Label>
                                 <Input value={niche} onChange={(e) => setNiche(e.target.value)} placeholder="tech / educação" />
                             </div>
                             <div className="space-y-1.5">
-                                <Label className="text-xs">Tom</Label>
+                                <Label className="text-xs">Tone</Label>
                                 <Input value={tone} onChange={(e) => setTone(e.target.value)} placeholder="técnico / casual" />
                             </div>
                             <div className="space-y-1.5">
-                                <Label className="text-xs">Público</Label>
+                                <Label className="text-xs">Audience</Label>
                                 <Input value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="devs sênior" />
                             </div>
                             <div className="space-y-1.5">
-                                <Label className="text-xs">Objetivo</Label>
+                                <Label className="text-xs">Goal</Label>
                                 <Input value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="educar / engajar" />
                             </div>
                             <div className="col-span-2 space-y-1.5">
-                                <Label className="text-xs">Restrições</Label>
+                                <Label className="text-xs">Constraints</Label>
                                 <Textarea
                                     value={constraints}
                                     onChange={(e) => setConstraints(e.target.value)}
-                                    placeholder="evitar X, sempre incluir Y…"
+                                    placeholder="avoid X, always include Y…"
                                     rows={2}
                                 />
                             </div>
@@ -312,14 +312,14 @@ export default function NewBrainstormPage() {
 
                     {mode === "reference_guided" && (
                         <div className="space-y-2">
-                            <Label>URL de referência</Label>
+                            <Label>Reference URL</Label>
                             <Input
                                 placeholder="https://youtube.com/watch?v=… ou https://blog.com/post"
                                 value={referenceUrl}
                                 onChange={(e) => setReferenceUrl(e.target.value)}
                             />
                             <p className="text-xs text-muted-foreground">
-                                A IA extrai o contexto desse conteúdo e gera variações alinhadas ao seu canal.
+                                AI extracts context from this content and generates variations aligned with your channel.
                             </p>
                         </div>
                     )}
@@ -349,9 +349,9 @@ export default function NewBrainstormPage() {
                             />
                             <Button onClick={handleRun} disabled={running}>
                                 {running ? (
-                                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Gerando...</>
+                                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating...</>
                                 ) : (
-                                    <><Sparkles className="h-4 w-4 mr-2" /> Gerar ideias</>
+                                    <><Sparkles className="h-4 w-4 mr-2" /> Generate ideas</>
                                 )}
                             </Button>
                         </TabsContent>
