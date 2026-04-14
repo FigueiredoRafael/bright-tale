@@ -14,6 +14,7 @@ import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/a
 import { friendlyAiError } from "@/lib/ai/error-message";
 import { GenerationProgressModal } from "@/components/generation/GenerationProgressModal";
 import { WizardStepper } from "@/components/generation/WizardStepper";
+import { useUpgrade } from "@/components/billing/UpgradeProvider";
 
 type DraftType = "blog" | "video" | "shorts" | "podcast";
 
@@ -62,6 +63,7 @@ export default function NewDraftPage() {
     const [draftId, setDraftId] = useState<string | null>(null);
     const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    const { handleMaybeCreditsError } = useUpgrade();
 
     async function runStep(label: string, fn: () => Promise<Response>) {
         setBusy(true);
@@ -69,6 +71,7 @@ export default function NewDraftPage() {
             const res = await fn();
             const json = await res.json();
             if (json.error) {
+                if (handleMaybeCreditsError(json.error)) return null;
                 const friendly = friendlyAiError(json.error.message ?? "");
                 toast.error(`${label}: ${friendly.title}`, { description: friendly.hint });
                 return null;

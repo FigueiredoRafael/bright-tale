@@ -12,6 +12,7 @@ import {
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
 import { GenerationProgressModal } from "@/components/generation/GenerationProgressModal";
 import { ConfirmRegenerateModal } from "@/components/generation/ConfirmRegenerateModal";
+import { useUpgrade } from "@/components/billing/UpgradeProvider";
 import { friendlyAiError } from "@/lib/ai/error-message";
 import { toast } from "sonner";
 
@@ -144,6 +145,7 @@ export default function DraftViewPage() {
     const [model, setModel] = useState<string>("qwen2.5:7b");
     const [generating, setGenerating] = useState(false);
     const [confirmRegen, setConfirmRegen] = useState(false);
+    const { handleMaybeCreditsError } = useUpgrade();
     const [editingBody, setEditingBody] = useState(false);
     const [bodyDraft, setBodyDraft] = useState("");
     const [savingBody, setSavingBody] = useState(false);
@@ -169,6 +171,13 @@ export default function DraftViewPage() {
             });
             const json = await res.json();
             if (json?.error) {
+                // Credit exhaustion → open the upgrade modal instead of a
+                // toast that vanishes.
+                if (handleMaybeCreditsError(json.error)) {
+                    setGenerating(false);
+                    inFlightRef.current = false;
+                    return;
+                }
                 const f = friendlyAiError(json.error.message ?? "");
                 toast.error(f.title, { description: f.hint });
                 setGenerating(false);

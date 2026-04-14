@@ -16,6 +16,7 @@ import { IdeaPickerModal, type IdeaOption } from "@/components/research/IdeaPick
 import { GenerationProgressModal } from "@/components/generation/GenerationProgressModal";
 import { ConfirmRegenerateModal } from "@/components/generation/ConfirmRegenerateModal";
 import { WizardStepper } from "@/components/generation/WizardStepper";
+import { useUpgrade } from "@/components/billing/UpgradeProvider";
 
 type Level = "surface" | "medium" | "deep";
 
@@ -94,6 +95,7 @@ export default function NewResearchPage() {
     const [confirmRegen, setConfirmRegen] = useState(false);
     const [cards, setCards] = useState<Card[]>([]);
     const [approved, setApproved] = useState<Set<number>>(new Set());
+    const { handleMaybeCreditsError } = useUpgrade();
 
     function toggleFocus(id: string) {
         setFocusTags((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
@@ -121,6 +123,10 @@ export default function NewResearchPage() {
             });
             const json = await res.json();
             if (json.error) {
+                if (handleMaybeCreditsError(json.error)) {
+                    setRunning(false);
+                    return;
+                }
                 const friendly = friendlyAiError(json.error.message ?? "");
                 toast.error(friendly.title, { description: friendly.hint });
                 setRunning(false);

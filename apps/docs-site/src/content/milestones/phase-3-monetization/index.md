@@ -6,7 +6,7 @@
 
 **Depende de:** Fase 1 (orgs + créditos base)
 
-**Progresso:** 4/12 concluídos (F3-001 scaffolding + F3-002/003/004/006 code)
+**Progresso:** 6/12 concluídos (F3-002/003/004/006/007/008 code — F3-001 aguardando setup manual no Stripe)
 
 > ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
 > Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
@@ -174,7 +174,16 @@ Fastify raw body via `fastify-raw-body` plugin scoped ao webhook.
 ---
 
 ### F3-007 — UI: Modal de upgrade (quando créditos acabam)
-🔲 **Não iniciado**
+✅ **Concluído**
+
+- `UpgradeProvider` (contexto no DashboardLayout) expõe `showUpgrade()` e `handleMaybeCreditsError(error)`
+- `UpgradeModal` renderiza ao detectar `code === 'INSUFFICIENT_CREDITS'`:
+  - Status atual: plano + créditos restantes + data de reset
+  - Card de recomendação (próximo tier ou Creator se Free): preço, créditos novos (Nx mais), 4 features
+  - CTAs: "Agora não" / "Ver planos" → `/settings/billing`
+- Wired nos 4 pipelines (brainstorm, research, drafts/new, drafts/[draftId]) — antes mostrava toast que sumia, agora abre o modal com contexto.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Modal que aparece quando créditos = 0
@@ -192,7 +201,16 @@ Fastify raw body via `fastify-raw-body` plugin scoped ao webhook.
 ---
 
 ### F3-008 — Alertas de créditos (80% e 95%)
-🔲 **Não iniciado**
+✅ **Concluído**
+
+`CreditsBanner` no topo do `DashboardLayout` (acima do Topbar):
+- Usa `useBillingStatus(60_000)` — refresca a cada 1 min
+- ≥80%: banner amber — "Você já usou X% dos N créditos do mês"
+- ≥95%: banner vermelho — "Só restam X créditos (Y% do plano)"
+- Botão **"Fazer upgrade"** → `/settings/billing`
+- Dispensável via sessionStorage (volta na próxima sessão ou após reset dos créditos)
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Badge visual no dashboard em 80% (amarelo) e 95% (vermelho)

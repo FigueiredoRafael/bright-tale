@@ -15,6 +15,7 @@ import { friendlyAiError } from "@/lib/ai/error-message";
 import { GenerationProgressModal } from "@/components/generation/GenerationProgressModal";
 import { ConfirmRegenerateModal } from "@/components/generation/ConfirmRegenerateModal";
 import { WizardStepper } from "@/components/generation/WizardStepper";
+import { useUpgrade } from "@/components/billing/UpgradeProvider";
 
 type Mode = "blind" | "fine_tuned" | "reference_guided";
 
@@ -65,6 +66,7 @@ export default function NewBrainstormPage() {
     const [ideas, setIdeas] = useState<Idea[]>([]);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [confirmRegen, setConfirmRegen] = useState(false);
+    const { handleMaybeCreditsError } = useUpgrade();
 
     // Fetch the brainstorm agent's recommended provider/model so we can render
     // the "Recommended" badge and prefill the picker.
@@ -127,6 +129,10 @@ export default function NewBrainstormPage() {
             }
 
             if (json?.error) {
+                if (handleMaybeCreditsError(json.error)) {
+                    setRunning(false);
+                    return;
+                }
                 const friendly = friendlyAiError(json.error.message ?? "");
                 toast.error(friendly.title, { description: friendly.hint });
                 setRunning(false);
