@@ -1,58 +1,44 @@
 'use client';
 
+import ReactMarkdown from 'react-markdown';
+
 interface MarkdownPreviewProps {
   content: string;
   className?: string;
 }
 
-/**
- * Simple markdown preview — renders markdown as styled HTML.
- * Uses basic regex transforms for headings, bold, italic, lists, links, code.
- * For production, consider react-markdown or a full parser.
- */
 export function MarkdownPreview({ content, className = '' }: MarkdownPreviewProps) {
-  const html = markdownToHtml(content);
+  if (!content) {
+    return (
+      <div className={`text-sm text-muted-foreground italic ${className}`}>
+        No content to preview
+      </div>
+    );
+  }
 
   return (
-    <div
-      className={`prose prose-sm dark:prose-invert max-w-none ${className}`}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <article
+      className={`
+        prose prose-sm dark:prose-invert max-w-none
+        prose-headings:font-bold prose-headings:tracking-tight
+        prose-h1:text-2xl prose-h1:mt-6 prose-h1:mb-4 prose-h1:pb-2 prose-h1:border-b prose-h1:border-border
+        prose-h2:text-xl prose-h2:mt-8 prose-h2:mb-3
+        prose-h3:text-lg prose-h3:mt-6 prose-h3:mb-2
+        prose-p:leading-7 prose-p:mb-4 prose-p:text-foreground/90
+        prose-strong:text-foreground prose-strong:font-semibold
+        prose-em:text-foreground/80
+        prose-a:text-primary prose-a:underline prose-a:underline-offset-2 hover:prose-a:text-primary/80
+        prose-blockquote:border-l-primary prose-blockquote:bg-muted/30 prose-blockquote:py-1 prose-blockquote:px-4 prose-blockquote:rounded-r-md prose-blockquote:not-italic
+        prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:font-mono prose-code:before:content-none prose-code:after:content-none
+        prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border prose-pre:rounded-lg
+        prose-ul:my-4 prose-ol:my-4
+        prose-li:my-1 prose-li:leading-7
+        prose-hr:border-border prose-hr:my-8
+        prose-img:rounded-lg prose-img:shadow-md
+        ${className}
+      `}
+    >
+      <ReactMarkdown>{content}</ReactMarkdown>
+    </article>
   );
-}
-
-function markdownToHtml(md: string): string {
-  if (!md) return '';
-  let html = md
-    // Code blocks (fenced)
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
-    // Inline code
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    // Headings
-    .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    // Bold + Italic
-    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // Links
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-    // Images (placeholders)
-    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="rounded-md" />')
-    // Unordered lists
-    .replace(/^[*-] (.+)$/gm, '<li>$1</li>')
-    // Ordered lists
-    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
-    // Horizontal rules
-    .replace(/^---$/gm, '<hr />')
-    // Paragraphs (double newlines)
-    .replace(/\n\n/g, '</p><p>')
-    // Line breaks
-    .replace(/\n/g, '<br />');
-
-  // Wrap in paragraph if not already wrapped
-  if (!html.startsWith('<')) html = `<p>${html}</p>`;
-  return html;
 }
