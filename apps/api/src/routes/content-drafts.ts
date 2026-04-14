@@ -18,6 +18,7 @@ import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
 import { generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
+import { buildChannelContext } from '../lib/ai/channelContext.js';
 import { checkCredits, debitCredits } from '../lib/credits.js';
 import {
   blogProductionSettingsSchema,
@@ -207,8 +208,14 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
         approvedCards = rs?.approved_cards_json ?? rs?.cards_json ?? null;
       }
 
-      const systemPrompt =
+      let systemPrompt =
         (await loadAgentPrompt('content-core')) ?? (await loadAgentPrompt('production')) ?? undefined;
+
+      // Inject channel context into system prompt
+      const channelContext = await buildChannelContext(draft.channel_id as string | null | undefined);
+      if (channelContext && systemPrompt) {
+        systemPrompt = `${systemPrompt}\n\n${channelContext}`;
+      }
 
       const { result } = await generateWithFallback(
         'production',
@@ -321,6 +328,12 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
         }
       }
 
+      // Inject channel context into system prompt
+      const channelContext = await buildChannelContext(draft.channel_id as string | null | undefined);
+      if (channelContext && systemPrompt) {
+        systemPrompt = `${systemPrompt}\n\n${channelContext}`;
+      }
+
       const { result } = await generateWithFallback(
         'production',
         (draft.model_tier as string) ?? 'standard',
@@ -402,8 +415,14 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
         researchData = rs?.approved_cards_json ?? rs?.cards_json ?? null;
       }
 
-      const systemPrompt =
+      let systemPrompt =
         (await loadAgentPrompt('review')) ?? undefined;
+
+      // Inject channel context into system prompt
+      const channelContext = await buildChannelContext(draft.channel_id as string | null | undefined);
+      if (channelContext && systemPrompt) {
+        systemPrompt = `${systemPrompt}\n\n${channelContext}`;
+      }
 
       let result: Record<string, unknown>;
       try {
