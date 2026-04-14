@@ -77,9 +77,10 @@ export default function DraftDetailPage() {
   const fetchAssets = useCallback(async () => {
     const res = await fetch(`/api/assets?draft_id=${draftId}`);
     const { data } = await res.json();
-    if (data) {
+    const items = Array.isArray(data) ? data : (data?.assets ?? data?.items ?? []);
+    if (items.length > 0) {
       setAssets(
-        (data as Array<Record<string, unknown>>).map((a) => ({
+        (items as Array<Record<string, unknown>>).map((a) => ({
           id: a.id as string,
           url: a.url as string,
           webpUrl: (a.webp_url as string) ?? null,
