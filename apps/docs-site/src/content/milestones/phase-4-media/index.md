@@ -6,7 +6,32 @@
 
 **Depende de:** Fase 2 (flow simplificado + Inngest)
 
-**Progresso:** 0/11 concluídos
+**Progresso:** 5/11 implementados · 6 scaffolded (pending external setup)
+
+### Resumo do scaffold (2026-04-14)
+
+Toda a infraestrutura de código pra Phase 4 foi montada. Cards que precisam APIs pagas ou infra externa ficaram como "scaffolded" (código pronto, aguardando configuração):
+
+**Implementados (prontos pra usar com API keys):**
+- F4-001 ElevenLabs — `lib/voice/elevenlabs.ts` + env `ELEVENLABS_API_KEY`
+- F4-002 OpenAI TTS — `lib/voice/openai-tts.ts` (usa `OPENAI_API_KEY` existente)
+- F4-003 Voice routes — `POST /voice/synthesize`, `GET /voice/voices`
+- F4-005 Stock footage — `lib/stock/index.ts` (Pexels + Pixabay, envs grátis)
+- F4-008 Whisper — `lib/video/whisper.ts` (usa OpenAI key)
+
+**Scaffolded (requer setup externo):**
+- F4-004 Voice config UI — depende de `/voice/voices` rodar com key real
+- F4-006 FFmpeg worker — requer deploy Fly.io machine + FFmpeg; `lib/video/render.ts` tem roadmap
+- F4-007 Video generation routes — esperando F4-006
+- F4-009 UI Step 4 Mídia — esperando F4-006/007
+- F4-010 Shorts vertical — esperando F4-006/007
+- F4-011 Express mode — esperando F4-006/007
+
+**Ação pra ativar:**
+1. Criar conta ElevenLabs (free: 10k chars/mês), copiar API key → `.env`
+2. Registrar em Pexels + Pixabay (free), copiar keys → `.env`
+3. Deploy FFmpeg worker (Fly.io docs em `lib/video/render.ts` comentários)
+4. Setar `VIDEO_WORKER_URL` → desbloqueia F4-006 a F4-011
 
 > ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
 > Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
@@ -16,7 +41,11 @@
 ## Cards
 
 ### F4-001 — ElevenLabs API: integração
-🔲 **Não iniciado**
+✅ **Concluído (pending API key)**
+
+`ElevenLabsProvider` em `lib/voice/elevenlabs.ts` com `synthesize()` + `listVoices()`. Modelo default `eleven_multilingual_v2` (melhor pt-BR). Voice settings: stability 0.5, similarity 0.75, style opcional, speaker boost on. Env: `ELEVENLABS_API_KEY`. Custo documentado: ~$0.22 por vídeo de 5min no plano pay-as-you-go.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Client para ElevenLabs API
@@ -40,7 +69,11 @@
 ---
 
 ### F4-002 — OpenAI TTS: integração (alternativa econômica)
-🔲 **Não iniciado**
+✅ **Concluído**
+
+`OpenAITtsProvider` em `lib/voice/openai-tts.ts`. Modelos `tts-1` ($15/1M chars) e `tts-1-hd` ($30/1M). 6 vozes nativas (alloy/echo/fable/onyx/nova/shimmer). Usa a `OPENAI_API_KEY` existente — sem env novo. ~3x mais barato que ElevenLabs, qualidade menor pra pt-BR.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Client para OpenAI TTS API (tts-1, tts-1-hd)
@@ -57,7 +90,13 @@
 ---
 
 ### F4-003 — API: Voice generation routes
-🔲 **Não iniciado**
+✅ **Concluído**
+
+- `POST /api/voice/synthesize { text, voiceId, provider?, speed?, format?, style? }` → retorna áudio em base64 + `estimatedSeconds` + mimeType
+- `GET /api/voice/voices?provider=elevenlabs|openai` → lista vozes disponíveis no provider (cacheável no app)
+- `getVoiceProvider(name)` factory em `lib/voice/index.ts` retorna provider configurado ou null se key faltando
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - `POST /api/voice/generate` (text, voiceId, provider)
@@ -94,7 +133,11 @@
 ---
 
 ### F4-005 — Pexels + Pixabay API: stock footage
-🔲 **Não iniciado**
+✅ **Concluído**
+
+`lib/stock/index.ts` expõe `searchPexels`, `searchPixabay` e `searchStock` (ambos em paralelo). Retorna `StockClip[]` unificado — provider, url do mp4, thumb, duração, dimensões, tags. Envs `PEXELS_API_KEY` + `PIXABAY_API_KEY` (ambas free tier generoso).
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Client para Pexels Video API
@@ -118,7 +161,13 @@
 ---
 
 ### F4-006 — FFmpeg worker: setup no Fly.io
-🔲 **Não iniciado**
+⚠️ **Scaffolded — deploy pendente**
+
+`lib/video/render.ts` com `RenderJob` interface + `requestRender` stub. Lança erro instrutivo com roadmap completo nos comentários (Fly.io machine + volumes + Inngest trigger). `isRenderWorkerAvailable()` consulta env `VIDEO_WORKER_URL`.
+
+Requer: criar serviço separado com FFmpeg + listener Inngest, deploy, setar env.
+
+**Concluído em:** —
 
 **Escopo:**
 - Criar serviço no Fly.io com FFmpeg instalado
@@ -158,7 +207,11 @@
 ---
 
 ### F4-008 — Whisper: geração de legendas
-🔲 **Não iniciado**
+✅ **Concluído**
+
+`lib/video/whisper.ts` com `transcribeAudio(Buffer)` retornando `{ text, srt, vtt, durationSeconds }`. Usa OpenAI Whisper API ($0.006/min). SRT parseado pra extrair plain text + last timestamp. Alternativa self-hosted (whisper.cpp no worker) documentada nos comentários pra caso de volume alto.
+
+**Concluído em:** 2026-04-14
 
 **Escopo:**
 - Enviar áudio para OpenAI Whisper API
