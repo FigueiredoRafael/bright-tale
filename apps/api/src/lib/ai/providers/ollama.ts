@@ -32,6 +32,7 @@ export class OllamaProvider implements AIProvider {
     const res = await fetch(`${this.baseUrl}/api/chat`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      signal: AbortSignal.timeout(300_000), // 5 min — local models are slow on CPU
       body: JSON.stringify({
         model: this.model,
         messages,

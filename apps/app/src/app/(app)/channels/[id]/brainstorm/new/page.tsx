@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,8 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, Lightbulb, Sparkles, ArrowLeft, ArrowRight } from "lucide-react";
+import { Loader2, Lightbulb, Sparkles, ArrowLeft, ArrowRight, ClipboardPaste } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
+import { ManualModePanel } from "@/components/ai/ManualModePanel";
+import { useManualMode } from "@/hooks/use-manual-mode";
 import { friendlyAiError } from "@/lib/ai/error-message";
 
 type Mode = "blind" | "fine_tuned" | "reference_guided";
@@ -59,6 +62,13 @@ export default function NewBrainstormPage() {
 
     const [running, setRunning] = useState(false);
     const [ideas, setIdeas] = useState<Idea[]>([]);
+    const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(null);
+    const [elapsed, setElapsed] = useState(0);
+    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // Manual mode
+    const [generationMode, setGenerationMode] = useState<"ai" | "manual">("ai");
+    const { enabled: manualEnabled } = useManualMode();
 
     // Fetch the brainstorm agent's recommended provider/model so we can render
     // the "Recommended" badge and prefill the picker.
@@ -90,6 +100,10 @@ export default function NewBrainstormPage() {
         }
 
         setRunning(true);
+        setIdeas([]);
+        setSelectedIdeaId(null);
+        setElapsed(0);
+        timerRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
         try {
             const body: Record<string, unknown> = {
                 channelId,
@@ -140,14 +154,50 @@ export default function NewBrainstormPage() {
             toast.error(friendly.title, { description: friendly.hint });
         } finally {
             setRunning(false);
+            if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
         }
     }
 
-    function pickIdea(_idea: Idea) {
-        // Ideas were persisted with channel_id, so the Create Content page
-        // will surface them in its "Suas ideias geradas" section.
-        router.push(`/channels/${channelId}/create`);
+    async function handleManualImport(parsed: unknown) {
+        const obj = parsed as Record<string, unknown>;
+        const rawIdeas = Array.isArray(parsed) ? parsed : (obj.ideas ?? obj.results ?? []) as Array<Record<string, unknown>>;
+
+        if (rawIdeas.length === 0) {
+            toast.error("No ideas found in pasted output");
+            return;
+        }
+
+        const res = await fetch("/api/ideas/archive", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                ideas: rawIdeas.map((idea: Record<string, unknown>) => ({
+                    title: idea.title ?? "Untitled",
+                    core_tension: idea.core_tension ?? "",
+                    target_audience: idea.target_audience ?? "",
+                    verdict: idea.verdict ?? "experimental",
+                    monetization: idea.monetization ?? "",
+                    repurposing: idea.repurposing ?? [],
+                })),
+                channelId,
+            }),
+        });
+
+        const json = await res.json();
+        const savedIdeas = json.data?.ideas ?? rawIdeas.map((idea: Record<string, unknown>, i: number) => ({
+            idea_id: `MANUAL-${i + 1}`,
+            title: idea.title ?? "Untitled",
+            core_tension: idea.core_tension ?? "",
+            target_audience: idea.target_audience ?? "",
+            verdict: idea.verdict ?? "experimental",
+            discovery_data: JSON.stringify({ monetization: idea.monetization, repurposing: idea.repurposing }),
+        }));
+
+        setIdeas(savedIdeas);
+        toast.success(`${savedIdeas.length} ideas imported`);
     }
+
+    const selectedIdea = ideas.find((i) => i.idea_id === selectedIdeaId) ?? null;
 
     return (
         <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -244,32 +294,92 @@ export default function NewBrainstormPage() {
                         </div>
                     )}
 
-                    <ModelPicker
-                        provider={provider}
-                        model={model}
-                        recommended={recommended}
-                        onProviderChange={(p) => {
-                            setProvider(p);
-                            setModel(MODELS_BY_PROVIDER[p][0].id);
-                        }}
-                        onModelChange={setModel}
-                    />
+                    <Tabs value={generationMode} onValueChange={(v) => setGenerationMode(v as "ai" | "manual")} className="mt-2">
+                        <TabsList>
+                            <TabsTrigger value="ai" className="gap-1.5">
+                                <Sparkles className="h-3.5 w-3.5" /> AI Generation
+                            </TabsTrigger>
+                            {manualEnabled && (
+                                <TabsTrigger value="manual" className="gap-1.5">
+                                    <ClipboardPaste className="h-3.5 w-3.5" /> Manual (ChatGPT/Gemini)
+                                </TabsTrigger>
+                            )}
+                        </TabsList>
 
-                    <Button onClick={handleRun} disabled={running}>
-                        {running ? (
-                            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Gerando...</>
-                        ) : (
-                            <><Sparkles className="h-4 w-4 mr-2" /> Gerar ideias</>
+                        <TabsContent value="ai" className="space-y-4 mt-3">
+                            <ModelPicker
+                                provider={provider}
+                                model={model}
+                                recommended={recommended}
+                                onProviderChange={(p) => {
+                                    setProvider(p);
+                                    setModel(MODELS_BY_PROVIDER[p][0].id);
+                                }}
+                                onModelChange={setModel}
+                            />
+                            <Button onClick={handleRun} disabled={running}>
+                                {running ? (
+                                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Gerando...</>
+                                ) : (
+                                    <><Sparkles className="h-4 w-4 mr-2" /> Gerar ideias</>
+                                )}
+                            </Button>
+                        </TabsContent>
+
+                        {manualEnabled && (
+                            <TabsContent value="manual" className="mt-3">
+                                <ManualModePanel
+                                    agentSlug="brainstorm"
+                                    inputContext={[
+                                        `Topic: ${topic || "(enter topic above)"}`,
+                                        mode === "fine_tuned" && niche ? `Niche: ${niche}` : "",
+                                        mode === "fine_tuned" && tone ? `Tone: ${tone}` : "",
+                                        mode === "fine_tuned" && audience ? `Audience: ${audience}` : "",
+                                        mode === "fine_tuned" && goal ? `Goal: ${goal}` : "",
+                                        mode === "fine_tuned" && constraints ? `Constraints: ${constraints}` : "",
+                                    ].filter(Boolean).join("\n")}
+                                    pastePlaceholder={'Paste JSON:\n{"ideas":[{"title":"...","core_tension":"...","target_audience":"...","verdict":"viable"}]}'}
+                                    onImport={handleManualImport}
+                                    importLabel="Import Ideas"
+                                    loading={running}
+                                />
+                            </TabsContent>
                         )}
-                    </Button>
+                    </Tabs>
                 </CardContent>
             </Card>
 
-            {ideas.length > 0 && (
+            {/* Progress Panel */}
+            {running && (
+                <Card className="border-primary/30 bg-primary/5">
+                    <CardContent className="py-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                <span className="text-sm font-medium">Generating ideas with {model}...</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-[10px]">{provider}</Badge>
+                                <span className="text-xs text-muted-foreground tabular-nums">{elapsed}s</span>
+                            </div>
+                        </div>
+                        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                            <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: "60%" }} />
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* Ideas Selection */}
+            {!running && ideas.length > 0 && (
                 <Card>
                     <CardHeader>
                         <CardTitle className="text-base flex items-center gap-2">
-                            Ideias geradas <Badge variant="secondary" className="text-[10px]">{ideas.length}</Badge>
+                            Ideias geradas
+                            <Badge variant="secondary" className="text-[10px]">{ideas.length}</Badge>
+                            <span className="text-xs text-muted-foreground font-normal ml-auto">
+                                Select one to continue to Research
+                            </span>
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
@@ -280,13 +390,27 @@ export default function NewBrainstormPage() {
                             } catch {
                                 // ignore
                             }
+                            const isSelected = selectedIdeaId === idea.idea_id;
                             return (
                                 <button
                                     key={idea.idea_id}
-                                    onClick={() => pickIdea(idea)}
-                                    className="w-full text-left p-4 rounded-lg border border-border hover:border-primary/50 hover:bg-muted/30 transition-colors"
+                                    onClick={() => setSelectedIdeaId(idea.idea_id)}
+                                    className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
+                                        isSelected
+                                            ? "border-primary bg-primary/5 ring-1 ring-primary/20"
+                                            : "border-border hover:border-muted-foreground/30"
+                                    }`}
                                 >
                                     <div className="flex items-start gap-3">
+                                        <div className={`h-5 w-5 rounded-full border-2 shrink-0 mt-0.5 flex items-center justify-center ${
+                                            isSelected ? "border-primary bg-primary" : "border-muted-foreground/30"
+                                        }`}>
+                                            {isSelected && (
+                                                <svg className="h-3 w-3 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            )}
+                                        </div>
                                         <Badge
                                             variant={
                                                 idea.verdict === "viable" ? "default" :
@@ -316,7 +440,6 @@ export default function NewBrainstormPage() {
                                                 </div>
                                             )}
                                         </div>
-                                        <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
                                     </div>
                                 </button>
                             );
@@ -324,6 +447,35 @@ export default function NewBrainstormPage() {
                     </CardContent>
                 </Card>
             )}
+
+            {/* Sticky Footer — Next Step */}
+            {selectedIdea && !running && (
+                <div className="fixed bottom-0 left-0 right-0 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 z-50">
+                    <div className="max-w-4xl mx-auto px-6 py-3 flex items-center justify-between">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <Badge
+                                variant={
+                                    selectedIdea.verdict === "viable" ? "default" :
+                                    selectedIdea.verdict === "weak" ? "destructive" : "secondary"
+                                }
+                                className="text-[10px] shrink-0"
+                            >
+                                {selectedIdea.verdict}
+                            </Badge>
+                            <span className="text-sm font-medium truncate">{selectedIdea.title}</span>
+                        </div>
+                        <Button
+                            onClick={() => router.push(`/channels/${channelId}/research/new?ideaId=${selectedIdea.idea_id}`)}
+                            className="shrink-0 gap-2"
+                        >
+                            Next: Research <ArrowRight className="h-4 w-4" />
+                        </Button>
+                    </div>
+                </div>
+            )}
+
+            {/* Spacer for sticky footer */}
+            {selectedIdea && !running && <div className="h-16" />}
         </div>
     );
 }

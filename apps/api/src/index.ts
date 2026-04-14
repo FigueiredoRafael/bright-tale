@@ -41,7 +41,29 @@ import { brainstormRoutes } from './routes/brainstorm.js';
 import { researchSessionsRoutes } from './routes/research-sessions.js';
 import { contentDraftsRoutes } from './routes/content-drafts.js';
 
-const server = Fastify({ logger: true });
+const server = Fastify({
+  logger: {
+    level: process.env.LOG_LEVEL ?? 'info',
+    transport: process.env.NODE_ENV !== 'production' ? {
+      target: 'pino-pretty',
+      options: {
+        translateTime: 'HH:MM:ss',
+        ignore: 'pid,hostname',
+        colorize: true,
+      },
+    } : undefined,
+    // Silence Inngest polling noise in dev
+    serializers: {
+      req(req: { method?: string; url?: string }) {
+        return { method: req.method, url: req.url };
+      },
+      res(res: { statusCode?: number }) {
+        return { statusCode: res.statusCode };
+      },
+    },
+  },
+  disableRequestLogging: true, // We'll log manually with more control
+});
 
 const allowedOrigins = [
   'http://localhost:3000',
@@ -54,6 +76,18 @@ server.register(fastifyCors, {
 });
 
 server.register(fastifyCookie);
+
+// Request/response logging — skip Inngest polling noise
+const SILENT_ROUTES = new Set(['/inngest', '/health']);
+server.addHook('onResponse', (request, reply, done) => {
+  const url = request.url.split('?')[0];
+  if (SILENT_ROUTES.has(url)) { done(); return; }
+  const ms = reply.elapsedTime.toFixed(0);
+  const status = reply.statusCode;
+  const color = status >= 500 ? '❌' : status >= 400 ? '⚠️' : '✅';
+  server.log.info(`${color} ${request.method} ${request.url} → ${status} (${ms}ms)`);
+  done();
+});
 
 server.register(healthRoutes);
 server.register(authRoutes);

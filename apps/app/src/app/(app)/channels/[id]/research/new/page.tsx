@@ -11,7 +11,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Loader2, Search, ArrowLeft, ArrowRight, Check } from "lucide-react";
+import { Loader2, Search, ArrowLeft, ArrowRight, Check, Sparkles, ClipboardPaste } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ManualModePanel } from "@/components/ai/ManualModePanel";
+import { useManualMode } from "@/hooks/use-manual-mode";
 
 type Level = "surface" | "medium" | "deep";
 
@@ -52,6 +55,8 @@ export default function NewResearchPage() {
     const [model, setModel] = useState<string>("gemini-2.5-flash");
     const [recommended, setRecommended] = useState<{ provider: string | null; model: string | null }>({ provider: null, model: null });
     const [running, setRunning] = useState(false);
+    const [genMode, setGenMode] = useState<"ai" | "manual">("ai");
+    const { enabled: manualEnabled } = useManualMode();
 
     useEffect(() => {
         (async () => {
@@ -75,6 +80,18 @@ export default function NewResearchPage() {
 
     function toggleFocus(id: string) {
         setFocusTags((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
+    }
+
+    async function handleManualResearchImport(parsed: unknown) {
+        const obj = parsed as Record<string, unknown>;
+        const rawCards = (Array.isArray(parsed) ? parsed : obj.cards ?? obj.sources ?? obj.results ?? []) as Card[];
+        if (rawCards.length === 0) {
+            toast.error("No research cards found in pasted output");
+            return;
+        }
+        setCards(rawCards);
+        setApproved(new Set(rawCards.map((_, i) => i)));
+        toast.success(`${rawCards.length} research cards imported`);
     }
 
     async function handleRun() {
@@ -209,24 +226,56 @@ export default function NewResearchPage() {
                         </div>
                     </div>
 
-                    <ModelPicker
-                        provider={provider}
-                        model={model}
-                        recommended={recommended}
-                        onProviderChange={(p) => {
-                            setProvider(p);
-                            setModel(MODELS_BY_PROVIDER[p][0].id);
-                        }}
-                        onModelChange={setModel}
-                    />
+                    <Tabs value={genMode} onValueChange={(v) => setGenMode(v as "ai" | "manual")} className="mt-2">
+                        <TabsList>
+                            <TabsTrigger value="ai" className="gap-1.5">
+                                <Sparkles className="h-3.5 w-3.5" /> AI Research
+                            </TabsTrigger>
+                            {manualEnabled && (
+                                <TabsTrigger value="manual" className="gap-1.5">
+                                    <ClipboardPaste className="h-3.5 w-3.5" /> Manual
+                                </TabsTrigger>
+                            )}
+                        </TabsList>
 
-                    <Button onClick={handleRun} disabled={running}>
-                        {running ? (
-                            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Pesquisando...</>
-                        ) : (
-                            <><Search className="h-4 w-4 mr-2" /> Pesquisar</>
+                        <TabsContent value="ai" className="space-y-4 mt-3">
+                            <ModelPicker
+                                provider={provider}
+                                model={model}
+                                recommended={recommended}
+                                onProviderChange={(p) => {
+                                    setProvider(p);
+                                    setModel(MODELS_BY_PROVIDER[p][0].id);
+                                }}
+                                onModelChange={setModel}
+                            />
+                            <Button onClick={handleRun} disabled={running}>
+                                {running ? (
+                                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Pesquisando...</>
+                                ) : (
+                                    <><Search className="h-4 w-4 mr-2" /> Pesquisar</>
+                                )}
+                            </Button>
+                        </TabsContent>
+
+                        {manualEnabled && (
+                            <TabsContent value="manual" className="mt-3">
+                                <ManualModePanel
+                                    agentSlug="research"
+                                    inputContext={[
+                                        `Topic: ${topic || "(enter topic above)"}`,
+                                        `Level: ${level}`,
+                                        `Focus: ${focusTags.join(", ") || "general"}`,
+                                        ideaIdParam ? `Idea ID: ${ideaIdParam}` : "",
+                                    ].filter(Boolean).join("\n")}
+                                    pastePlaceholder={'Paste JSON:\n{"cards":[{"title":"Finding","summary":"...","source":"URL","credibility":"high"}]}'}
+                                    onImport={handleManualResearchImport}
+                                    importLabel="Import Research"
+                                    loading={running}
+                                />
+                            </TabsContent>
                         )}
-                    </Button>
+                    </Tabs>
                 </CardContent>
             </Card>
 

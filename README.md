@@ -178,6 +178,40 @@ For deeper docs see [`docs/`](./docs/) and the milestone pages in `apps/docs-sit
 
 ---
 
+## Features
+
+### Content Pipeline (end-to-end)
+
+Complete 5-stage workflow: **Brainstorm** (idea generation) **Research** (evidence validation + pivot recommendations) **Canonical Core** (thesis + emotional arc) **Production** (blog/video/shorts/podcast) **Review Loop** (agent-4 scoring, must reach 90+ to approve) **Asset Generation** (post-approval, WebP optimized) **WordPress Publishing** (images embedded, taxonomies resolved, draft/publish/schedule modes).
+
+### Manual Mode (copy-paste AI workflow)
+
+Every AI-powered stage (brainstorm, research, review) supports a **Manual** tab alongside the AI generation tab. When AI providers are unavailable, rate-limited, or your machine can't run local models:
+
+1. **Copy Prompt** copies the full agent instructions + your input context to clipboard
+2. Paste into **ChatGPT, Gemini web, Claude, or any free AI chat**
+3. **Paste Output** back the JSON response imports it into the pipeline
+
+This preserves the original BrightCurios workflow (YAML copy-paste with ChatGPT) while the platform transitions to fully automated AI calls. Manual mode visibility is controlled by `useManualMode()` hook in `apps/app/src/hooks/use-manual-mode.ts` and can be restricted to admin users via the `user_roles` table.
+
+### Ideas Library
+
+Grid and list views with multi-select (Shift+click range, Ctrl/Cmd+click toggle). Batch actions: export JSON, change verdict, bulk delete. Import modal with JSON/Markdown support, drag-drop, dry-run validation with error/warning reporting, and preview table before confirming.
+
+### Smart AI Routing
+
+Multi-provider fallback chain: Gemini (free tier) OpenAI Anthropic Ollama (local). Per-stage model routing by tier (free/standard/premium/ultra). Runtime provider override in UI. Agent prompts loaded from DB and editable from admin without redeploys.
+
+### Review Loop
+
+Agent-4 evaluates content with per-format scoring (blog_review.score, video_review.score). Verdict-driven state machine: `approved` (score 90+), `revision_required`, or `rejected`. Each iteration logged in `review_iterations` audit table. Credits debited only on successful agent calls.
+
+### Entity Linking
+
+Full traceability: idea content_draft project published WordPress post. `project_id` on content_drafts, `wordpress_post_id` tracking. One project per selected idea, flowing through the entire pipeline.
+
+---
+
 ## Troubleshooting
 
 **`ECONNRESET` / `Failed to proxy`** — `apps/api` crashed or restarted mid-request. Restart with `npm run dev:api` and check stderr for the actual error.

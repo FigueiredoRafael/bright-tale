@@ -11,6 +11,8 @@ import { MarkdownPreview } from '@/components/preview/MarkdownPreview';
 import { ReviewFeedbackPanel } from '@/components/preview/ReviewFeedbackPanel';
 import { AssetGallery } from '@/components/preview/AssetGallery';
 import { PublishPanel } from '@/components/preview/PublishPanel';
+import { ManualModePanel } from '@/components/ai/ManualModePanel';
+import { useManualMode } from '@/hooks/use-manual-mode';
 
 interface Draft {
   id: string;
@@ -57,6 +59,7 @@ export default function DraftDetailPage() {
   const [assets, setAssets] = useState<ContentAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [reviewing, setReviewing] = useState(false);
+  const { enabled: manualEnabled } = useManualMode();
   const [publishing, setPublishing] = useState(false);
   const [editedBody, setEditedBody] = useState('');
 
@@ -257,11 +260,36 @@ export default function DraftDetailPage() {
                 )}
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                {draft.draft_json
-                  ? 'No review yet. Submit your draft for review from the Content tab.'
-                  : 'Produce content first before requesting review.'}
-              </p>
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  {draft.draft_json
+                    ? 'No review yet. Submit your draft for review from the Content tab.'
+                    : 'Produce content first before requesting review.'}
+                </p>
+                {manualEnabled && draft.draft_json && (
+                  <div className="border-t pt-4">
+                    <p className="text-sm font-medium mb-2">Or paste review from external AI:</p>
+                    <ManualModePanel
+                      agentSlug="review"
+                      inputContext={`Draft title: ${draft.title ?? "Untitled"}\nType: ${draft.type}`}
+                      pastePlaceholder={'Paste JSON:\n{"overall_verdict":"approved","blog_review":{"score":85,"strengths":["..."],"critical_issues":[],"minor_issues":["..."]}}'}
+                      onImport={async (parsed) => {
+                        const obj = parsed as Record<string, unknown>;
+                        await fetch(`/api/content-drafts/${draftId}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            reviewFeedbackJson: obj,
+                            status: obj.overall_verdict === 'approved' ? 'approved' : 'in_review',
+                          }),
+                        });
+                        await fetchDraft();
+                      }}
+                      importLabel="Import Review"
+                    />
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </TabsContent>
