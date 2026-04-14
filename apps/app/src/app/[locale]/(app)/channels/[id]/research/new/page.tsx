@@ -268,7 +268,7 @@ export default function NewResearchPage() {
 
     return (
         <div>
-            <PipelineStages currentStep="research" ideaTitle={linkedIdea?.title} />
+            <PipelineStages currentStep="research" channelId={channelId} ideaTitle={linkedIdea?.title} />
             <div className="p-6 max-w-4xl mx-auto space-y-6">
             <div>
                 <button

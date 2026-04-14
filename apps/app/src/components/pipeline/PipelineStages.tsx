@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from '@/i18n/navigation';
 import { Badge } from '@/components/ui/badge';
 import {
   Lightbulb, Search, FileText, CheckCircle, Image, Globe, Check,
@@ -24,11 +25,47 @@ const STEPS: { key: PipelineStep; label: string; icon: typeof Lightbulb }[] = [
 
 interface PipelineStagesProps {
   currentStep: PipelineStep;
+  channelId?: string;
+  draftId?: string;
+  projectId?: string;
   projectTitle?: string;
   ideaTitle?: string;
 }
 
-export function PipelineStages({ currentStep, projectTitle, ideaTitle }: PipelineStagesProps) {
+function buildStepUrl(
+  step: PipelineStep,
+  channelId?: string,
+  draftId?: string,
+  projectId?: string,
+): string | null {
+  if (!channelId) return null;
+  switch (step) {
+    case 'brainstorm':
+      return `/channels/${channelId}/brainstorm/new`;
+    case 'research':
+      return `/channels/${channelId}/research/new`;
+    case 'production':
+      return `/channels/${channelId}/drafts/new`;
+    case 'review':
+      return draftId ? `/channels/${channelId}/drafts/${draftId}?tab=review` : null;
+    case 'assets':
+      return draftId ? `/channels/${channelId}/drafts/${draftId}?tab=assets` : null;
+    case 'published':
+      return draftId ? `/channels/${channelId}/drafts/${draftId}?tab=publish` : null;
+    default:
+      return null;
+  }
+}
+
+export function PipelineStages({
+  currentStep,
+  channelId,
+  draftId,
+  projectId,
+  projectTitle,
+  ideaTitle,
+}: PipelineStagesProps) {
+  const router = useRouter();
   const currentIndex = STEPS.findIndex((s) => s.key === currentStep);
 
   return (
@@ -36,7 +73,15 @@ export function PipelineStages({ currentStep, projectTitle, ideaTitle }: Pipelin
       {/* Project/idea context */}
       {(projectTitle || ideaTitle) && (
         <div className="flex items-center gap-2 mb-1.5 text-xs text-muted-foreground">
-          {projectTitle && <Badge variant="outline" className="text-[10px]">{projectTitle}</Badge>}
+          {projectTitle && (
+            <Badge
+              variant="outline"
+              className="text-[10px] cursor-pointer hover:bg-muted"
+              onClick={() => projectId && router.push(`/projects/${projectId}`)}
+            >
+              {projectTitle}
+            </Badge>
+          )}
           {ideaTitle && <span className="truncate">{ideaTitle}</span>}
         </div>
       )}
@@ -47,20 +92,25 @@ export function PipelineStages({ currentStep, projectTitle, ideaTitle }: Pipelin
           const Icon = step.icon;
           const isDone = i < currentIndex;
           const isActive = i === currentIndex;
+          const isClickable = isDone || isActive;
+          const url = isClickable ? buildStepUrl(step.key, channelId, draftId, projectId) : null;
 
           return (
             <div key={step.key} className="flex items-center shrink-0">
               {i > 0 && (
                 <div className={`w-4 h-px mx-0.5 ${isDone ? 'bg-green-500' : 'bg-border'}`} />
               )}
-              <div
+              <button
+                type="button"
+                disabled={!url}
+                onClick={() => url && router.push(url)}
                 className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
                   isDone
-                    ? 'text-green-600 dark:text-green-400'
+                    ? 'text-green-600 dark:text-green-400 hover:bg-green-500/10 cursor-pointer'
                     : isActive
                     ? 'text-primary font-medium bg-primary/10'
-                    : 'text-muted-foreground'
-                }`}
+                    : 'text-muted-foreground cursor-default'
+                } ${url ? '' : 'cursor-default'}`}
               >
                 {isDone ? (
                   <Check className="h-3 w-3" />
@@ -68,7 +118,7 @@ export function PipelineStages({ currentStep, projectTitle, ideaTitle }: Pipelin
                   <Icon className="h-3 w-3" />
                 )}
                 <span className="hidden sm:inline">{step.label}</span>
-              </div>
+              </button>
             </div>
           );
         })}

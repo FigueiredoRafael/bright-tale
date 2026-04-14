@@ -172,7 +172,7 @@ export default function NewDraftPage() {
 
     return (
         <div>
-            <PipelineStages currentStep="production" ideaTitle={linkedIdea?.title} />
+            <PipelineStages currentStep="production" channelId={channelId} ideaTitle={linkedIdea?.title} />
             <div className="p-6 max-w-3xl mx-auto space-y-6">
             <div>
                 <button

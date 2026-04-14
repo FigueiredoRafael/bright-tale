@@ -57,6 +57,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default function DraftDetailPage() {
   const params = useParams();
   const draftId = params.draftId as string;
+  const channelId = params.id as string;
 
   const [draft, setDraft] = useState<Draft | null>(null);
   const [assets, setAssets] = useState<ContentAsset[]>([]);
@@ -164,7 +165,7 @@ export default function DraftDetailPage() {
 
   return (
     <div>
-      <PipelineStages currentStep={pipelineStep} ideaTitle={draft.title ?? undefined} />
+      <PipelineStages currentStep={pipelineStep} channelId={channelId} draftId={draftId} ideaTitle={draft.title ?? undefined} />
       <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">

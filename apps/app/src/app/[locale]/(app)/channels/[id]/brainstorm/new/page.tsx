@@ -247,7 +247,7 @@ export default function NewBrainstormPage() {
 
     return (
         <div>
-            <PipelineStages currentStep="brainstorm" />
+            <PipelineStages currentStep="brainstorm" channelId={channelId} />
             <div className="p-6 max-w-4xl mx-auto space-y-6">
             <div>
                 <button
