@@ -21,6 +21,7 @@ const LEVEL_COSTS: Record<'surface' | 'medium' | 'deep', number> = {
 
 const createSchema = z.object({
   channelId: z.string().uuid().optional(),
+  projectId: z.string().optional(),
   ideaId: z.string().optional(),
   topic: z.string().min(2).optional(),
   level: z.enum(['surface', 'medium', 'deep']),
@@ -97,6 +98,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           org_id: orgId,
           user_id: request.userId,
           channel_id: body.channelId ?? null,
+          project_id: body.projectId ?? null,
           idea_id: body.ideaId ?? null,
           level: body.level,
           focus_tags: body.focusTags,

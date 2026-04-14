@@ -496,7 +496,21 @@ export default function NewBrainstormPage() {
                             <span className="text-sm font-medium truncate">{selectedIdea.title}</span>
                         </div>
                         <Button
-                            onClick={() => router.push(`/channels/${channelId}/research/new?ideaId=${selectedIdea.id ?? selectedIdea.idea_id}`)}
+                            onClick={async () => {
+                                const ideaId = selectedIdea.id ?? selectedIdea.idea_id;
+                                try {
+                                    const res = await fetch('/api/projects/from-idea', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ ideaId, channelId }),
+                                    });
+                                    const json = await res.json();
+                                    const projectId = (json.data?.project as Record<string, unknown>)?.id as string;
+                                    router.push(`/channels/${channelId}/research/new?ideaId=${ideaId}&projectId=${projectId ?? ''}`);
+                                } catch {
+                                    router.push(`/channels/${channelId}/research/new?ideaId=${ideaId}`);
+                                }
+                            }}
                             className="shrink-0 gap-2"
                         >
                             Next: Research <ArrowRight className="h-4 w-4" />

@@ -15,6 +15,7 @@ import { checkCredits, debitCredits } from '../lib/credits.js';
 
 const brainstormBodySchema = z.object({
   channelId: z.string().uuid().optional(),
+  projectId: z.string().optional(),
   inputMode: z.enum(['blind', 'fine_tuned', 'reference_guided']),
   topic: z.string().min(2).optional(),
   fineTuning: z
@@ -144,6 +145,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
           org_id: orgId,
           user_id: request.userId,
           channel_id: body.channelId ?? null,
+          project_id: body.projectId ?? null,
           input_mode: body.inputMode,
           input_json: inputJson,
           model_tier: body.modelTier,

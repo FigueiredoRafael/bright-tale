@@ -779,4 +779,95 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       return sendError(reply, error);
     }
   });
+
+  /**
+   * POST /from-idea — Create project from a selected idea.
+   * Called when user clicks "Next: Research" after brainstorm.
+   */
+  fastify.post('/from-idea', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      const body = request.body as { ideaId?: string; channelId?: string; title?: string };
+
+      if (!body.ideaId) throw new ApiError(400, 'ideaId is required');
+
+      // Fetch idea
+      const { data: idea, error: ideaErr } = await sb
+        .from('idea_archives')
+        .select('*')
+        .eq('id', body.ideaId)
+        .maybeSingle();
+      if (ideaErr) throw ideaErr;
+      if (!idea) throw new ApiError(404, 'Idea not found');
+
+      const ideaData = idea as Record<string, unknown>;
+      const title = body.title ?? (ideaData.title as string) ?? 'Untitled Project';
+
+      // Create project
+      const { data: project, error: projErr } = await sb
+        .from('projects')
+        .insert({
+          title,
+          channel_id: body.channelId ?? (ideaData.channel_id as string) ?? null,
+          status: 'active',
+          current_stage: 'brainstorm',
+          user_id: request.userId,
+          org_id: (ideaData.org_id as string) ?? null,
+        })
+        .select()
+        .single();
+      if (projErr) throw projErr;
+
+      // Link idea to project
+      await sb
+        .from('idea_archives')
+        .update({ project_id: (project as Record<string, unknown>).id } as never)
+        .eq('id', body.ideaId);
+
+      return reply.status(201).send({ data: { project }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * GET /:id/pipeline — Full pipeline state for a project.
+   * Returns all linked entities in one call.
+   */
+  fastify.get('/:id/pipeline', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      const { id } = request.params as { id: string };
+
+      // Fetch project
+      const { data: project, error: projErr } = await sb
+        .from('projects')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      if (projErr) throw projErr;
+      if (!project) throw new ApiError(404, 'Project not found');
+
+      // Fetch all linked entities in parallel
+      const [ideas, brainstorms, research, drafts] = await Promise.all([
+        sb.from('idea_archives').select('*').eq('project_id', id).order('created_at', { ascending: true }),
+        sb.from('brainstorm_sessions').select('*').eq('project_id', id).order('created_at', { ascending: true }),
+        sb.from('research_sessions').select('*').eq('project_id', id).order('created_at', { ascending: true }),
+        sb.from('content_drafts').select('*').eq('project_id', id).order('created_at', { ascending: true }),
+      ]);
+
+      return reply.send({
+        data: {
+          project,
+          ideas: ideas.data ?? [],
+          brainstormSessions: brainstorms.data ?? [],
+          researchSessions: research.data ?? [],
+          contentDrafts: drafts.data ?? [],
+        },
+        error: null,
+      });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
 }
