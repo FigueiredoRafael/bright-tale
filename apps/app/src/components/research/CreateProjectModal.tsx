@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/i18n/navigation";
 import { Lightbulb, ArrowRight } from "lucide-react";
 import { createProjectFromResearch } from "@/lib/api/research";
 

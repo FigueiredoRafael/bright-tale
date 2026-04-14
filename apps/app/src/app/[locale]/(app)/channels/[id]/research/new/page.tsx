@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "@/i18n/navigation";
+import { useParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
 import { friendlyAiError } from "@/lib/ai/error-message";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

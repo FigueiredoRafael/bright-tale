@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Trophy, FolderKanban, Calendar } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import Link from "next/link";
+import { Link } from "@/i18n/navigation";
 
 interface ResearchCardProps {
     id: string;
