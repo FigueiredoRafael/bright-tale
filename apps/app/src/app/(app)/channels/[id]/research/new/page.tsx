@@ -311,12 +311,15 @@ export default function NewResearchPage() {
                                 <ManualModePanel
                                     agentSlug="research"
                                     inputContext={[
-                                        `Topic: ${topic || "(enter topic above)"}`,
-                                        `Level: ${level}`,
-                                        `Focus: ${focusTags.join(", ") || "general"}`,
-                                        ideaIdParam ? `Idea ID: ${ideaIdParam}` : "",
+                                        linkedIdea ? `Selected Idea: ${linkedIdea.title}` : `Topic: ${topic || "(enter topic above)"}`,
+                                        linkedIdea?.core_tension ? `Core Tension: ${linkedIdea.core_tension}` : "",
+                                        `Depth: ${level}`,
+                                        `Research Focus: ${focusTags.join(", ") || "general"}`,
+                                        "",
+                                        "Output must follow BC_RESEARCH_OUTPUT schema with:",
+                                        "idea_validation, sources[], statistics[], expert_quotes[], counterarguments[], knowledge_gaps[], research_summary, refined_angle",
                                     ].filter(Boolean).join("\n")}
-                                    pastePlaceholder={'Paste JSON:\n{"cards":[{"title":"Finding","summary":"...","source":"URL","credibility":"high"}]}'}
+                                    pastePlaceholder={'Paste JSON matching BC_RESEARCH_OUTPUT:\n{"idea_validation":{...},"sources":[...],"statistics":[...],"expert_quotes":[...],"counterarguments":[...],"research_summary":"...","refined_angle":{...}}'}
                                     onImport={handleManualResearchImport}
                                     importLabel="Import Research"
                                     loading={running}

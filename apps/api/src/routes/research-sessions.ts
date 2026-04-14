@@ -110,15 +110,57 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       if (insertErr || !session) throw insertErr ?? new ApiError(500, 'Failed to create session', 'INTERNAL');
 
       try {
+        // Build BC_RESEARCH_INPUT with linked idea context
+        let selectedIdea: Record<string, unknown> | null = null;
+        if (body.ideaId) {
+          const { data: idea } = await sb
+            .from('idea_archives')
+            .select('*')
+            .eq('id', body.ideaId)
+            .maybeSingle();
+          if (idea) {
+            selectedIdea = {
+              idea_id: (idea as Record<string, unknown>).idea_id,
+              title: (idea as Record<string, unknown>).title,
+              core_tension: (idea as Record<string, unknown>).core_tension,
+              target_audience: (idea as Record<string, unknown>).target_audience,
+            };
+          }
+        }
+
+        // Fetch channel info for language/tone context
+        let channelContext: Record<string, unknown> | null = null;
+        if (body.channelId) {
+          const { data: ch } = await sb
+            .from('channels')
+            .select('name, language, tone, niche')
+            .eq('id', body.channelId)
+            .maybeSingle();
+          if (ch) channelContext = ch as Record<string, unknown>;
+        }
+
+        const researchInput: Record<string, unknown> = {
+          selected_idea: selectedIdea ?? { title: body.topic ?? '' },
+          research_focus: body.focusTags.length > 0 ? body.focusTags : ['general research'],
+          depth: body.level,
+        };
+        if (channelContext) researchInput.channel = channelContext;
+
         const baseSystem = (await loadAgentPrompt('research')) ?? '';
-        const systemPrompt = `${baseSystem}\n\nLevel directive: ${inputJson.instruction}`.trim();
+        const systemPrompt = [
+          baseSystem,
+          `\nLevel directive: ${inputJson.instruction}`,
+          '\nIMPORTANT: Output valid JSON matching the BC_RESEARCH_OUTPUT schema.',
+          'Include: idea_validation, sources, statistics, expert_quotes, counterarguments, knowledge_gaps, research_summary, refined_angle.',
+          channelContext?.language ? `\nWrite ALL content in ${channelContext.language}. Do NOT mix languages.` : '',
+        ].filter(Boolean).join('\n').trim();
 
         const { result } = await generateWithFallback(
           'research',
           body.modelTier,
           {
             agentType: 'research',
-            input: inputJson,
+            input: researchInput,
             schema: null,
             systemPrompt,
           },
