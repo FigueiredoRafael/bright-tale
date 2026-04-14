@@ -521,10 +521,7 @@ export default function Home() {
   useEffect(() => {
     const saved = localStorage.getItem('bt-theme');
     if (saved === 'light') { setIsDark(false); document.documentElement.classList.add('light'); }
-    else if (saved === 'dark') { setIsDark(true); document.documentElement.classList.remove('light'); }
-    else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-      setIsDark(false); document.documentElement.classList.add('light');
-    }
+    else { document.documentElement.classList.remove('light'); }
   }, []);
 
   const toggleTheme = () => {
