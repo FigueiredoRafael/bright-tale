@@ -20,6 +20,25 @@ _Phase 2 cresceu de 14 → 47 cards ao longo do desenvolvimento (F2-036..F2-049 
 
 ---
 
+## V2.1 — Pendente (afiliados)
+
+Cards que precisam ser implementados antes do V3. **Responsável: Thiago.**
+
+> **F5-009 (affiliate dashboard) feito na sessão anterior está ERRADO e precisa ser removido/refeito.** A implementação atual é um stub genérico que não segue o modelo do ToNaGarantia.
+
+| Card | Descrição | Status | Notas |
+|---|---|---|---|
+| AFF-001 | **Remover implementação atual de afiliados** — apagar `/settings/affiliate`, `routes/affiliate.ts`, tabelas `affiliate_programs`/`affiliate_referrals` atuais | 🔲 | Limpar tudo antes de reimplementar |
+| AFF-002 | **Estudar fluxo ToNaGarantia** — documentar: cadastro, link de referral, cookie tracking, duração, comissão (recorrente? primeira compra?), níveis, payout, dashboard | 🔲 | Spec de referência |
+| AFF-003 | **DB: novo schema de afiliados** — modelar tabelas baseado no ToNaGarantia (links, clicks, conversões, comissões, payouts) | 🔲 | Depende AFF-002 |
+| AFF-004 | **API: rotas de afiliados** — cadastro, gerar link, tracking, webhook de conversão, dashboard data | 🔲 | Depende AFF-003 |
+| AFF-005 | **Cookie tracking + attribution** — middleware que captura `?ref=` param, seta cookie, atribui conversão no checkout Stripe | 🔲 | Depende AFF-003 |
+| AFF-006 | **UI: dashboard do afiliado** — igual ao ToNaGarantia: métricas, links, histórico, payouts | 🔲 | Depende AFF-004 |
+| AFF-007 | **UI: página pública de cadastro de afiliado** | 🔲 | Depende AFF-004 |
+| AFF-008 | **Testes** — cobertura completa do fluxo de afiliados | 🔲 | Depende AFF-004/005/006 |
+
+---
+
 ## V3 — Backlog (video assembly + YouTube publishing)
 
 Cards movidos do V2 que dependem de infra externa (FFmpeg, GCP OAuth). O produto V2 funciona end-to-end para blog + áudio; a edição de vídeo é manual (CapCut/Premiere/DaVinci).
