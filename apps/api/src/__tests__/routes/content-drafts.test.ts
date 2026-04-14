@@ -129,6 +129,7 @@ describe('POST /content-drafts/:id/produce', () => {
         id: 'cd-1',
         type: 'blog',
         canonical_core_json: { hook: 'x' },
+        production_settings_json: { wordCountTarget: 1500 },
         model_tier: 'standard',
       },
       error: null,
