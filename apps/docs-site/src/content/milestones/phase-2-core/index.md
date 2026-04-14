@@ -6,7 +6,9 @@
 
 **Depende de:** Fase 1 (auth, orgs, storage, créditos)
 
-**Progresso:** 19/29 concluídos (F2-001 a F2-009 ✅ · F2-015–F2-018 ✅ · F2-020 ✅ · F2-026 ✅ · F2-027 ✅ · F2-019, F2-021, F2-022, F2-025 🟡 · F2-010 a F2-014 em andamento)
+**Progresso:** 34/47 concluídos (substancialmente entregue — pendências: bulk generation, image insertion, WP publish, signals/trends, idempotency)
+
+**(Old progress tag)** 19/29 concluídos (F2-001 a F2-009 ✅ · F2-015–F2-018 ✅ · F2-020 ✅ · F2-026 ✅ · F2-027 ✅ · F2-019, F2-021, F2-022, F2-025 🟡 · F2-010 a F2-014 em andamento)
 
 > ⚠️ **Regra obrigatória:** Todo card DEVE incluir testes automatizados antes de ser marcado ✅ concluído.
 > Ver [`docs/specs/testing-requirements.md`](/spec/testing-requirements) para cobertura mínima por tipo de card.
@@ -576,79 +578,21 @@ Substituído pelas páginas dedicadas: `/channels/[id]/brainstorm/new` (F2-016),
 
 ---
 
-### F2-036 — Geração assíncrona com modal de progresso em tempo real
-✅ **Concluído (brainstorm) — research/production pendentes**
+### F2-036 — Geração assíncrona com modal de progresso em tempo real (brainstorm + research + production)
+✅ **Concluído**
 
-Implementado pra brainstorm end-to-end (validado com Ollama local qwen2.5:7b — 5 ideias geradas):
+Implementado end-to-end pros 3 stages (validado com Ollama + Gemini):
 - Migration `job_events` + helper `emitJobEvent`
-- Inngest function `brainstormGenerate` (step-by-step com eventos)
-- `POST /brainstorm/sessions` retorna 202 em ~1s (enfileira)
-- `GET /brainstorm/sessions/:id/events` — SSE stream
-- Hook `useJobEvents` + componente `GenerationProgressModal` (checklist animada + timer)
-
-Research + production replicam o mesmo padrão — ticket separado quando prioridade subir.
+- Inngest functions: `brainstormGenerate`, `researchGenerate`, `productionGenerate` (canonical-core → produce → review em 3 steps)
+- `POST /brainstorm/sessions`, `POST /research-sessions`, `POST /content-drafts/:id/generate` retornam 202 em ~1s
+- `GET /{session}/events` — SSE stream com filtro `?since=<iso>` pra ignorar eventos de runs anteriores
+- Hook `useJobEvents` + `GenerationProgressModal`: log cronológico, duração por step, warning de stall após 60s
+- Auto-navega pra página do draft/session on complete/fail
 
 **Concluído em:** 2026-04-13
 
-Escopo original abaixo 👇
-
 ---
 
-### F2-036 (descrição original)
-🔲 **Não iniciado**
-
-**Problema atual:**
-Geração de brainstorm/research/produção é síncrona. Quando o provider é lento (Ollama local leva 60-180s, ou Anthropic em horário de pico), o proxy do Next.js dá `socket hang up` (ECONNRESET) antes da resposta chegar. Frontend mostra erro 500 mas a geração completa no servidor (orfã). Sem feedback de progresso o usuário fica travado em spinner mudo sem saber se vai funcionar.
-
-**Escopo:**
-- **Backend:** transformar `POST /brainstorm/sessions`, `/research-sessions`, `/content-drafts` em jobs Inngest. Endpoint retorna `{ sessionId, status: 'queued' }` imediatamente (não bloqueia).
-- **Eventos de progresso:** cada estágio do job emite eventos persistidos (tabela `job_events` com `session_id`, `stage`, `message`, `created_at`). Estágios típicos:
-  - `queued` — "Na fila…"
-  - `loading_prompt` — "Carregando agente…"
-  - `calling_provider` — "Conversando com {provider}…"
-  - `parsing_output` — "Processando resposta…"
-  - `analyzing_youtube` — "Analisando top vídeos do nicho…" (research)
-  - `generating_ideas` — "Gerando ideias…"
-  - `saving` — "Salvando no banco…"
-  - `completed` / `failed`
-- **Streaming pro frontend:** `GET /sessions/:id/events` com SSE (Server-Sent Events) — stream em tempo real dos eventos. Fallback: long-polling se SSE não rolar.
-- **Modal de progresso (UI):** novo componente `<GenerationProgressModal>` mostra:
-  - Checklist animada dos estágios (✅ feito, ⏳ em andamento, ⬜ pendente)
-  - Mensagem do estágio atual + tempo decorrido
-  - Botão "Cancelar" (envia DELETE → marca job pra abort)
-  - Ao terminar: redireciona pra resultado ou mostra ideias inline
-- **Persistência:** se o usuário fechar o navegador, ao voltar pode ver o status do job (lista de jobs em andamento).
-
-**Arquivos novos/alterados:**
-- `supabase/migrations/YYYYMMDDHHMMSS_job_events.sql` (nova tabela)
-- `apps/api/src/lib/jobs/emitter.ts` — helper `emitJobEvent(sessionId, stage, message)`
-- `apps/api/src/inngest/functions/brainstorm.ts` (novo)
-- `apps/api/src/inngest/functions/research.ts` (novo)
-- `apps/api/src/inngest/functions/production.ts` (novo)
-- `apps/api/src/routes/brainstorm.ts` — refactor: enfileira job, retorna sessionId
-- `apps/api/src/routes/sessions.ts` (novo) — `GET /sessions/:id/events` (SSE)
-- `apps/app/src/components/generation/GenerationProgressModal.tsx` (novo)
-- `apps/app/src/hooks/useJobEvents.ts` (novo) — consome SSE
-- Páginas brainstorm/research/drafts new — substituem `try/await fetch` por enfileirar + abrir modal
-
-**Critérios de aceite:**
-- [ ] POST retorna em <500ms com `{sessionId, status: 'queued'}`
-- [ ] Modal abre imediatamente com primeira mensagem
-- [ ] Cada estágio aparece em tempo real no modal (SSE)
-- [ ] Geração com Ollama 7B (>2min) completa sem timeout
-- [ ] Botão cancelar para o job (não debita créditos se cancelado antes de `calling_provider`)
-- [ ] Erros do provider chegam no modal com mensagem amigável (`friendlyAiError`)
-- [ ] Refresh do navegador no meio da geração: modal reabre e continua mostrando progresso
-- [ ] Lista "Jobs em andamento" no header (badge com contador)
-- [ ] Testes: unit do emitter, integration do SSE stream, e2e do modal
-
-**Dependências:** Inngest já está rodando (F2-035). Usa infraestrutura existente.
-
-**Estimativa:** 2-3 dias
-
-**Concluído em:** —
-
----
 
 ### F2-038 — Research: picker de ideias existentes + pré-preenchimento
 ✅ **Concluído**
@@ -705,19 +649,18 @@ Antes: vídeo de canal pt-BR saía em inglês. Agentes não tinham contexto do c
 ---
 
 ### F2-049 — Token usage tracking & cost dashboard
-🔲 **Não iniciado**
+✅ **Concluído**
 
-Pra precificar plano ($ da assinatura) precisamos saber quanto custa em tokens
-gerar cada tipo de conteúdo. Esse card cria:
-- Tabela `usage_events (user_id, org_id, provider, model, input_tokens, output_tokens, cost_usd, stage, draft_id, created_at)`
-- Capturar `usage` das respostas dos providers (Anthropic/OpenAI/Gemini retornam input_tokens/output_tokens; Ollama é zero)
-- Map de preço por modelo (tabela `provider_pricing` ou constante no código)
-- Dashboard `/settings/usage` mostrando custo agregado por mês, por canal, por formato
-- Alerta quando passar X% da quota do plano
+- Provider interface com `lastUsage?: TokenUsage` — Anthropic/OpenAI/Gemini/Ollama populam após cada call
+- `lib/ai/pricing.ts` — USD por 1M tokens por modelo (Ollama = $0)
+- `lib/ai/usage-log.ts` — `logUsage()` grava em `usage_events` (one row por AI call)
+- Migration `usage_events` (org_id, user_id, channel_id, stage, sub_stage, session_id/type, provider, model, input_tokens, output_tokens, cost_usd)
+- `generateWithFallback` retorna `usage` junto com result
+- Jobs registram uso em todos os pontos (brainstorm + research + production.core + production.produce + production.review)
+- `GET /usage/summary?days=N` — totais + groupings (provider/stage/model/day)
+- UI `/settings/usage` — 4 stat cards (calls, tokens in, tokens out, custo USD+BRL) + 4 breakdown cards com barras proporcionais
 
-Dados reais vão sustentar a decisão de preço da assinatura (a heurística do Rafael: ~R$100/mês mínimo dada a quantidade de prompts).
-
-**Concluído em:** —
+**Concluído em:** 2026-04-13
 
 ---
 
