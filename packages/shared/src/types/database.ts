@@ -14,6 +14,96 @@ export type Database = {
   }
   public: {
     Tables: {
+      affiliate_programs: {
+        Row: {
+          code: string
+          commission_pct: number
+          created_at: string
+          id: string
+          payout_details: Json | null
+          payout_method: string | null
+          total_paid_cents: number
+          total_referrals: number
+          total_revenue_cents: number
+          user_id: string
+        }
+        Insert: {
+          code: string
+          commission_pct?: number
+          created_at?: string
+          id?: string
+          payout_details?: Json | null
+          payout_method?: string | null
+          total_paid_cents?: number
+          total_referrals?: number
+          total_revenue_cents?: number
+          user_id: string
+        }
+        Update: {
+          code?: string
+          commission_pct?: number
+          created_at?: string
+          id?: string
+          payout_details?: Json | null
+          payout_method?: string | null
+          total_paid_cents?: number
+          total_referrals?: number
+          total_revenue_cents?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      affiliate_referrals: {
+        Row: {
+          affiliate_program_id: string
+          commission_cents: number | null
+          conversion_at: string | null
+          created_at: string
+          first_touch_at: string
+          id: string
+          referred_org_id: string
+          status: string
+          subscription_amount_cents: number | null
+        }
+        Insert: {
+          affiliate_program_id: string
+          commission_cents?: number | null
+          conversion_at?: string | null
+          created_at?: string
+          first_touch_at?: string
+          id?: string
+          referred_org_id: string
+          status?: string
+          subscription_amount_cents?: number | null
+        }
+        Update: {
+          affiliate_program_id?: string
+          commission_cents?: number | null
+          conversion_at?: string | null
+          created_at?: string
+          first_touch_at?: string
+          id?: string
+          referred_org_id?: string
+          status?: string
+          subscription_amount_cents?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_referrals_affiliate_program_id_fkey"
+            columns: ["affiliate_program_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_referrals_referred_org_id_fkey"
+            columns: ["referred_org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_prompts: {
         Row: {
           created_at: string
@@ -268,6 +358,76 @@ export type Database = {
           },
         ]
       }
+      brainstorm_drafts: {
+        Row: {
+          channel_id: string | null
+          core_tension: string | null
+          created_at: string
+          discovery_data: string | null
+          expires_at: string
+          id: string
+          org_id: string
+          position: number
+          session_id: string
+          target_audience: string | null
+          title: string
+          user_id: string | null
+          verdict: string | null
+        }
+        Insert: {
+          channel_id?: string | null
+          core_tension?: string | null
+          created_at?: string
+          discovery_data?: string | null
+          expires_at?: string
+          id?: string
+          org_id: string
+          position?: number
+          session_id: string
+          target_audience?: string | null
+          title: string
+          user_id?: string | null
+          verdict?: string | null
+        }
+        Update: {
+          channel_id?: string | null
+          core_tension?: string | null
+          created_at?: string
+          discovery_data?: string | null
+          expires_at?: string
+          id?: string
+          org_id?: string
+          position?: number
+          session_id?: string
+          target_audience?: string | null
+          title?: string
+          user_id?: string | null
+          verdict?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brainstorm_drafts_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brainstorm_drafts_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brainstorm_drafts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "brainstorm_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       brainstorm_sessions: {
         Row: {
           channel_id: string | null
@@ -471,6 +631,7 @@ export type Database = {
           niche: string | null
           niche_tags: string[] | null
           org_id: string
+          presentation_style: string
           template_id: string | null
           tone: string | null
           updated_at: string
@@ -503,6 +664,7 @@ export type Database = {
           niche?: string | null
           niche_tags?: string[] | null
           org_id: string
+          presentation_style?: string
           template_id?: string | null
           tone?: string | null
           updated_at?: string
@@ -535,6 +697,7 @@ export type Database = {
           niche?: string | null
           niche_tags?: string[] | null
           org_id?: string
+          presentation_style?: string
           template_id?: string | null
           tone?: string | null
           updated_at?: string
@@ -576,6 +739,7 @@ export type Database = {
       }
       content_assets: {
         Row: {
+          alt_text: string | null
           created_at: string
           credits_used: number
           draft_id: string
@@ -584,12 +748,16 @@ export type Database = {
           org_id: string
           position: number | null
           provider: string | null
+          role: string | null
+          source_type: string | null
           type: string
           updated_at: string
           url: string
           user_id: string
+          webp_url: string | null
         }
         Insert: {
+          alt_text?: string | null
           created_at?: string
           credits_used?: number
           draft_id: string
@@ -598,12 +766,16 @@ export type Database = {
           org_id: string
           position?: number | null
           provider?: string | null
+          role?: string | null
+          source_type?: string | null
           type: string
           updated_at?: string
           url: string
           user_id: string
+          webp_url?: string | null
         }
         Update: {
+          alt_text?: string | null
           created_at?: string
           credits_used?: number
           draft_id?: string
@@ -612,10 +784,13 @@ export type Database = {
           org_id?: string
           position?: number | null
           provider?: string | null
+          role?: string | null
+          source_type?: string | null
           type?: string
           updated_at?: string
           url?: string
           user_id?: string
+          webp_url?: string | null
         }
         Relationships: [
           {
@@ -636,61 +811,85 @@ export type Database = {
       }
       content_drafts: {
         Row: {
+          approved_at: string | null
           canonical_core_json: Json | null
           channel_id: string | null
           created_at: string
           draft_json: Json | null
           id: string
           idea_id: string | null
+          iteration_count: number
           org_id: string
+          production_params: Json | null
+          production_settings_json: Json | null
+          project_id: string | null
           published_at: string | null
           published_url: string | null
           research_session_id: string | null
           review_feedback_json: Json | null
+          review_score: number | null
+          review_verdict: string | null
           scheduled_at: string | null
           status: string
           title: string | null
           type: string
           updated_at: string
           user_id: string
+          wordpress_post_id: number | null
         }
         Insert: {
+          approved_at?: string | null
           canonical_core_json?: Json | null
           channel_id?: string | null
           created_at?: string
           draft_json?: Json | null
           id?: string
           idea_id?: string | null
+          iteration_count?: number
           org_id: string
+          production_params?: Json | null
+          production_settings_json?: Json | null
+          project_id?: string | null
           published_at?: string | null
           published_url?: string | null
           research_session_id?: string | null
           review_feedback_json?: Json | null
+          review_score?: number | null
+          review_verdict?: string | null
           scheduled_at?: string | null
           status?: string
           title?: string | null
           type: string
           updated_at?: string
           user_id: string
+          wordpress_post_id?: number | null
         }
         Update: {
+          approved_at?: string | null
           canonical_core_json?: Json | null
           channel_id?: string | null
           created_at?: string
           draft_json?: Json | null
           id?: string
           idea_id?: string | null
+          iteration_count?: number
           org_id?: string
+          production_params?: Json | null
+          production_settings_json?: Json | null
+          project_id?: string | null
           published_at?: string | null
           published_url?: string | null
           research_session_id?: string | null
           review_feedback_json?: Json | null
+          review_score?: number | null
+          review_verdict?: string | null
           scheduled_at?: string | null
           status?: string
           title?: string | null
           type?: string
           updated_at?: string
           user_id?: string
+          wordpress_post_id?: number | null
         }
         Relationships: [
           {
@@ -712,6 +911,13 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_drafts_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
           {
@@ -935,6 +1141,36 @@ export type Database = {
           },
         ]
       }
+      job_events: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          metadata: Json | null
+          session_id: string
+          session_type: string
+          stage: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          metadata?: Json | null
+          session_id: string
+          session_type: string
+          stage: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          metadata?: Json | null
+          session_id?: string
+          session_type?: string
+          stage?: string
+        }
+        Relationships: []
+      }
       org_invites: {
         Row: {
           accepted_at: string | null
@@ -1041,6 +1277,7 @@ export type Database = {
           credits_total: number
           credits_used: number
           id: string
+          is_vip: boolean
           logo_url: string | null
           name: string
           plan: string
@@ -1050,6 +1287,7 @@ export type Database = {
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
           updated_at: string
+          vip_note: string | null
         }
         Insert: {
           billing_cycle?: string | null
@@ -1059,6 +1297,7 @@ export type Database = {
           credits_total?: number
           credits_used?: number
           id?: string
+          is_vip?: boolean
           logo_url?: string | null
           name: string
           plan?: string
@@ -1068,6 +1307,7 @@ export type Database = {
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           updated_at?: string
+          vip_note?: string | null
         }
         Update: {
           billing_cycle?: string | null
@@ -1077,6 +1317,7 @@ export type Database = {
           credits_total?: number
           credits_used?: number
           id?: string
+          is_vip?: boolean
           logo_url?: string | null
           name?: string
           plan?: string
@@ -1086,6 +1327,7 @@ export type Database = {
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           updated_at?: string
+          vip_note?: string | null
         }
         Relationships: []
       }
@@ -1230,6 +1472,59 @@ export type Database = {
           },
         ]
       }
+      publishing_destinations: {
+        Row: {
+          config: Json
+          created_at: string
+          enabled: boolean
+          id: string
+          kind: string
+          label: string
+          last_error: string | null
+          last_published_at: string | null
+          org_id: string
+          publish_count: number
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          config?: Json
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          kind: string
+          label: string
+          last_error?: string | null
+          last_published_at?: string | null
+          org_id: string
+          publish_count?: number
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          config?: Json
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          kind?: string
+          label?: string
+          last_error?: string | null
+          last_published_at?: string | null
+          org_id?: string
+          publish_count?: number
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "publishing_destinations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reference_content: {
         Row: {
           comment_count: number | null
@@ -1353,6 +1648,8 @@ export type Database = {
           level: string
           model_tier: string
           org_id: string
+          pivot_applied: boolean | null
+          refined_angle_json: Json | null
           status: string
           updated_at: string
           user_id: string
@@ -1370,6 +1667,8 @@ export type Database = {
           level: string
           model_tier?: string
           org_id: string
+          pivot_applied?: boolean | null
+          refined_angle_json?: Json | null
           status?: string
           updated_at?: string
           user_id: string
@@ -1387,6 +1686,8 @@ export type Database = {
           level?: string
           model_tier?: string
           org_id?: string
+          pivot_applied?: boolean | null
+          refined_angle_json?: Json | null
           status?: string
           updated_at?: string
           user_id?: string
@@ -1449,6 +1750,44 @@ export type Database = {
             columns: ["research_id"]
             isOneToOne: false
             referencedRelation: "research_archives"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      review_iterations: {
+        Row: {
+          created_at: string
+          draft_id: string
+          feedback_json: Json | null
+          id: string
+          iteration: number
+          score: number | null
+          verdict: string | null
+        }
+        Insert: {
+          created_at?: string
+          draft_id: string
+          feedback_json?: Json | null
+          id?: string
+          iteration: number
+          score?: number | null
+          verdict?: string | null
+        }
+        Update: {
+          created_at?: string
+          draft_id?: string
+          feedback_json?: Json | null
+          id?: string
+          iteration?: number
+          score?: number | null
+          verdict?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_iterations_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "content_drafts"
             referencedColumns: ["id"]
           },
         ]
@@ -1623,6 +1962,72 @@ export type Database = {
             columns: ["parent_template_id"]
             isOneToOne: false
             referencedRelation: "templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      usage_events: {
+        Row: {
+          channel_id: string | null
+          cost_usd: number
+          created_at: string
+          id: string
+          input_tokens: number
+          model: string
+          org_id: string
+          output_tokens: number
+          provider: string
+          session_id: string | null
+          session_type: string | null
+          stage: string
+          sub_stage: string | null
+          user_id: string | null
+        }
+        Insert: {
+          channel_id?: string | null
+          cost_usd?: number
+          created_at?: string
+          id?: string
+          input_tokens?: number
+          model: string
+          org_id: string
+          output_tokens?: number
+          provider: string
+          session_id?: string | null
+          session_type?: string | null
+          stage: string
+          sub_stage?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          channel_id?: string | null
+          cost_usd?: number
+          created_at?: string
+          id?: string
+          input_tokens?: number
+          model?: string
+          org_id?: string
+          output_tokens?: number
+          provider?: string
+          session_id?: string | null
+          session_type?: string | null
+          stage?: string
+          sub_stage?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usage_events_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "usage_events_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -2016,3 +2421,5 @@ export const Constants = {
     Enums: {},
   },
 } as const
+A new version of Supabase CLI is available: v2.90.0 (currently installed v2.89.1)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

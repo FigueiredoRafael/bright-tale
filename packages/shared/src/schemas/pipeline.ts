@@ -75,7 +75,7 @@ export const createContentDraftSchema = z.object({
   channelId: z.string().uuid().optional(),
   ideaId: z.string().optional(),
   researchSessionId: z.string().uuid().optional(),
-  projectId: z.string().uuid().optional(),
+  projectId: z.string().optional(),
   type: z.enum(contentDraftTypes),
   title: z.string().optional(),
   canonicalCoreJson: z.record(z.unknown()).optional(),

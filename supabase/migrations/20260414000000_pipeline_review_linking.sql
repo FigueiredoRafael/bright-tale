@@ -3,7 +3,7 @@
 
 -- ─── 1. content_drafts: review fields + project link + WP tracking ──────────
 ALTER TABLE public.content_drafts
-  ADD COLUMN project_id uuid REFERENCES public.projects(id) ON DELETE SET NULL,
+  ADD COLUMN project_id text REFERENCES public.projects(id) ON DELETE SET NULL,
   ADD COLUMN wordpress_post_id integer,
   ADD COLUMN review_score integer CHECK (review_score >= 0 AND review_score <= 100),
   ADD COLUMN review_verdict text CHECK (review_verdict IN ('pending','approved','revision_required','rejected')) DEFAULT 'pending',
