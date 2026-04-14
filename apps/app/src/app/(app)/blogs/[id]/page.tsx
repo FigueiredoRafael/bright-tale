@@ -39,8 +39,9 @@ import {
     ExternalLink,
     RefreshCw,
 } from "lucide-react";
-import BlogEditor from "@/components/production/BlogEditor";
-import BlogPreview from "@/components/production/BlogPreview";
+import dynamic from "next/dynamic";
+const BlogEditor = dynamic(() => import("@/components/production/BlogEditor"), { ssr: false });
+const BlogPreview = dynamic(() => import("@/components/production/BlogPreview"), { ssr: false });
 import type { BlogOutput } from "@brighttale/shared/types/agents";
 
 interface BlogDraftFull {

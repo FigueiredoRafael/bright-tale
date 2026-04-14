@@ -6,7 +6,13 @@
  *   search.list = 100, videos.list = 1, channels.list = 1, commentThreads.list = 1
  */
 
+import { TtlCache } from '../cache.js';
+
 const API_BASE = 'https://www.googleapis.com/youtube/v3';
+
+const channelCache = new TtlCache<YouTubeChannel>({ defaultTtlMs: 24 * 60 * 60 * 1000, maxSize: 200 });
+const videoCache = new TtlCache<YouTubeVideoDetail[]>({ defaultTtlMs: 7 * 24 * 60 * 60 * 1000, maxSize: 100 });
+const searchCache = new TtlCache<YouTubeSearchResult[]>({ defaultTtlMs: 24 * 60 * 60 * 1000, maxSize: 100 });
 
 function getApiKey(): string {
   const key = process.env.YOUTUBE_API_KEY;
@@ -62,38 +68,49 @@ export interface YouTubeChannel {
  * Fetch a YouTube channel by URL or handle.
  */
 export async function getChannelByUrl(url: string): Promise<YouTubeChannel | null> {
-  // Extract handle from URL: youtube.com/@handle or youtube.com/channel/ID
+  const cached = channelCache.get(`url:${url}`);
+  if (cached) return cached;
+
   const handleMatch = url.match(/@([a-zA-Z0-9_-]+)/);
   const channelIdMatch = url.match(/\/channel\/([a-zA-Z0-9_-]+)/);
+
+  let channel: YouTubeChannel | null = null;
 
   if (handleMatch) {
     const data = await youtubeGet<YouTubeChannel>('channels', {
       part: 'snippet,statistics',
       forHandle: handleMatch[1],
     });
-    return data.items[0] ?? null;
-  }
-
-  if (channelIdMatch) {
+    channel = data.items[0] ?? null;
+  } else if (channelIdMatch) {
     const data = await youtubeGet<YouTubeChannel>('channels', {
       part: 'snippet,statistics',
       id: channelIdMatch[1],
     });
-    return data.items[0] ?? null;
+    channel = data.items[0] ?? null;
   }
 
-  return null;
+  if (channel) {
+    channelCache.set(`url:${url}`, channel);
+    channelCache.set(`id:${channel.id}`, channel);
+  }
+  return channel;
 }
 
 /**
  * Fetch a channel by its ID.
  */
 export async function getChannelById(channelId: string): Promise<YouTubeChannel | null> {
+  const cached = channelCache.get(`id:${channelId}`);
+  if (cached) return cached;
+
   const data = await youtubeGet<YouTubeChannel>('channels', {
     part: 'snippet,statistics',
     id: channelId,
   });
-  return data.items[0] ?? null;
+  const channel = data.items[0] ?? null;
+  if (channel) channelCache.set(`id:${channelId}`, channel);
+  return channel;
 }
 
 // ─── Search operations ───────────────────────────────────────────────────────
@@ -135,7 +152,12 @@ export async function searchVideos(
   if (options.relevanceLanguage) params.relevanceLanguage = options.relevanceLanguage;
   if (options.publishedAfter) params.publishedAfter = options.publishedAfter;
 
+  const cacheKey = `search:${JSON.stringify(params)}`;
+  const cached = searchCache.get(cacheKey);
+  if (cached) return cached;
+
   const data = await youtubeGet<YouTubeSearchResult>('search', params);
+  searchCache.set(cacheKey, data.items);
   return data.items;
 }
 
@@ -168,7 +190,10 @@ export interface YouTubeVideoDetail {
 export async function getVideoDetails(videoIds: string[]): Promise<YouTubeVideoDetail[]> {
   if (videoIds.length === 0) return [];
 
-  // API allows max 50 IDs per request
+  const sortedKey = [...videoIds].sort().join(',');
+  const cached = videoCache.get(`details:${sortedKey}`);
+  if (cached) return cached;
+
   const batches: string[][] = [];
   for (let i = 0; i < videoIds.length; i += 50) {
     batches.push(videoIds.slice(i, i + 50));
@@ -183,6 +208,7 @@ export async function getVideoDetails(videoIds: string[]): Promise<YouTubeVideoD
     results.push(...data.items);
   }
 
+  videoCache.set(`details:${sortedKey}`, results);
   return results;
 }
 

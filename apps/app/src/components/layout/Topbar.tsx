@@ -8,7 +8,6 @@ import { Search, Moon, Sun } from "lucide-react";
 
 const PAGE_TITLES: Record<string, string> = {
     "/": "Dashboard",
-    "/projects": "Projects",
     "/ideas": "Ideas",
     "/research": "Research",
     "/blogs": "Blogs",

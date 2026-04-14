@@ -57,6 +57,7 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
 
       if (error) throw error;
 
+      reply.header('Cache-Control', 'private, max-age=60');
       return reply.send({
         data: { items: channels, total: count, page, limit },
         error: null,
