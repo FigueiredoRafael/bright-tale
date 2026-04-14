@@ -127,10 +127,17 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
         const cards = normalizeCards(result);
 
+        // Extract refined_angle from agent output if present
+        const resultObj = (result && typeof result === 'object') ? result as Record<string, unknown> : {};
+        const refinedAngle = resultObj.refined_angle ?? resultObj.refinedAngle ?? null;
+
+        const updateData: Record<string, unknown> = { status: 'completed', cards_json: cards };
+        if (refinedAngle) updateData.refined_angle_json = refinedAngle;
+
         await (sb.from('research_sessions') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
-          .update({ status: 'completed', cards_json: cards })
+          .update(updateData)
           .eq('id', session.id);
 
         await debitCredits(orgId, request.userId, `research-${body.level}`, 'text', cost, {
@@ -138,7 +145,15 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           ideaId: body.ideaId,
         });
 
-        return reply.send({ data: { sessionId: session.id, level: body.level, cards }, error: null });
+        return reply.send({
+          data: {
+            sessionId: session.id,
+            level: body.level,
+            cards,
+            refinedAngle: refinedAngle ?? null,
+          },
+          error: null,
+        });
       } catch (err) {
         await (sb.from('research_sessions') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
@@ -191,6 +206,64 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
       if (error) throw error;
       return reply.send({ data, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * POST /:id/accept-pivot — Accept pivot recommendation from research.
+   * Updates linked idea title/core_tension and marks pivot_applied.
+   */
+  fastify.post('/:id/accept-pivot', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      const { id } = request.params as { id: string };
+
+      const { data: session, error: sessErr } = await sb
+        .from('research_sessions')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      if (sessErr) throw sessErr;
+      if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
+
+      const sessionData = session as Record<string, unknown>;
+      const refinedAngle = sessionData.refined_angle_json as Record<string, unknown> | null;
+      if (!refinedAngle || !refinedAngle.should_pivot) {
+        throw new ApiError(400, 'No pivot recommendation available for this session', 'NO_PIVOT');
+      }
+
+      // Update the linked idea with pivoted values
+      const ideaId = sessionData.idea_id as string | null;
+      if (ideaId) {
+        const updateFields: Record<string, unknown> = {};
+        if (refinedAngle.updated_title) updateFields.title = refinedAngle.updated_title;
+        if (refinedAngle.updated_hook) updateFields.core_tension = refinedAngle.updated_hook;
+
+        if (Object.keys(updateFields).length > 0) {
+          await sb
+            .from('idea_archives')
+            .update(updateFields as never)
+            .eq('id', ideaId);
+        }
+      }
+
+      // Mark pivot as applied
+      await (sb.from('research_sessions') as unknown as {
+        update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+      })
+        .update({ pivot_applied: true })
+        .eq('id', id);
+
+      return reply.send({
+        data: {
+          pivotApplied: true,
+          updatedTitle: refinedAngle.updated_title ?? null,
+          updatedHook: refinedAngle.updated_hook ?? null,
+        },
+        error: null,
+      });
     } catch (error) {
       return sendError(reply, error);
     }

@@ -44,6 +44,8 @@ describe('mapResearchSessionFromDb', () => {
       input_json: {},
       cards_json: null,
       approved_cards_json: null,
+      refined_angle_json: null,
+      pivot_applied: false,
       model_tier: 'premium',
       status: 'reviewed',
       error_message: null,
@@ -54,6 +56,8 @@ describe('mapResearchSessionFromDb', () => {
     expect(out.focusTags).toEqual(['stats', 'expert_advice']);
     expect(out.ideaId).toBe('BC-IDEA-001');
     expect(out.modelTier).toBe('premium');
+    expect(out.refinedAngleJson).toBeNull();
+    expect(out.pivotApplied).toBe(false);
   });
 });
 
@@ -66,12 +70,19 @@ describe('mapContentDraftFromDb', () => {
       channel_id: 'ch-1',
       idea_id: 'BC-IDEA-001',
       research_session_id: 'rs-1',
+      project_id: null,
       type: 'blog',
       title: 'Deep Work',
       canonical_core_json: { hook: 'x' },
       draft_json: { body: 'y' },
       review_feedback_json: null,
+      production_settings_json: null,
       status: 'scheduled',
+      review_score: null,
+      review_verdict: 'pending',
+      iteration_count: 0,
+      approved_at: null,
+      wordpress_post_id: null,
       scheduled_at: '2026-05-01T10:00:00.000Z',
       published_at: null,
       published_url: null,
@@ -83,6 +94,10 @@ describe('mapContentDraftFromDb', () => {
     expect(out.canonicalCoreJson).toEqual({ hook: 'x' });
     expect(out.scheduledAt).toBe('2026-05-01T10:00:00.000Z');
     expect(out.publishedUrl).toBeNull();
+    expect(out.projectId).toBeNull();
+    expect(out.reviewVerdict).toBe('pending');
+    expect(out.iterationCount).toBe(0);
+    expect(out.wordpressPostId).toBeNull();
   });
 });
 
@@ -99,6 +114,10 @@ describe('mapContentAssetFromDb', () => {
       meta_json: { prompt: 'p' },
       credits_used: 30,
       position: 0,
+      role: 'featured_image',
+      alt_text: 'A cool image',
+      webp_url: 'https://cdn/x.webp',
+      source_type: 'ai_generated',
       created_at: '2026-04-13T00:00:00.000Z',
       updated_at: '2026-04-13T00:00:00.000Z',
     });
@@ -106,5 +125,9 @@ describe('mapContentAssetFromDb', () => {
     expect(out.creditsUsed).toBe(30);
     expect(out.position).toBe(0);
     expect(out.provider).toBe('gemini_imagen');
+    expect(out.role).toBe('featured_image');
+    expect(out.altText).toBe('A cool image');
+    expect(out.webpUrl).toBe('https://cdn/x.webp');
+    expect(out.sourceType).toBe('ai_generated');
   });
 });

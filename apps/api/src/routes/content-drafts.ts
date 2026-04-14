@@ -1,11 +1,14 @@
 /**
  * F2-020/F2-021/F2-022 — Content drafts pipeline.
- * - POST /                     create a draft (type: blog|video|shorts|podcast)
- * - POST /:id/canonical-core   run agent-3a, store canonical_core_json
- * - POST /:id/produce          run agent-3b-{type}, store draft_json
- * - PATCH /:id                 manual edits (title, draft_json, status…)
- * - GET /:id                   read
- * - GET /                      list with optional ?channel_id, ?type
+ * - POST /                        create a draft (type: blog|video|shorts|podcast|engagement)
+ * - POST /:id/canonical-core      run agent-3a, store canonical_core_json
+ * - PATCH /:id/production-settings save blog settings before produce
+ * - POST /:id/produce             run agent-3b-{type}, store draft_json (status stays 'draft')
+ * - POST /:id/review              run agent-4, score + verdict (manual trigger)
+ * - POST /:id/revise              accept user edits after review_verdict='revision_required'
+ * - PATCH /:id                    manual edits (title, draft_json, status…)
+ * - GET /:id                      read
+ * - GET /                         list with optional ?channel_id, ?type
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -16,6 +19,10 @@ import { ApiError } from '../lib/api/errors.js';
 import { generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
 import { checkCredits, debitCredits } from '../lib/credits.js';
+import {
+  blogProductionSettingsSchema,
+  reviseSchema,
+} from '@brighttale/shared/schemas/pipeline';
 
 const FORMAT_COSTS: Record<string, number> = {
   blog: 200,
@@ -24,12 +31,14 @@ const FORMAT_COSTS: Record<string, number> = {
   podcast: 150,
 };
 const CANONICAL_CORE_COST = 80;
+const REVIEW_COST = 20;
 
 const createSchema = z.object({
   channelId: z.string().uuid().optional(),
   ideaId: z.string().optional(),
   researchSessionId: z.string().uuid().optional(),
-  type: z.enum(['blog', 'video', 'shorts', 'podcast']),
+  projectId: z.string().uuid().optional(),
+  type: z.enum(['blog', 'video', 'shorts', 'podcast', 'engagement']),
   title: z.string().optional(),
   modelTier: z.string().default('standard'),
 });
@@ -87,6 +96,7 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
           channel_id: body.channelId ?? null,
           idea_id: body.ideaId ?? null,
           research_session_id: body.researchSessionId ?? null,
+          project_id: body.projectId ?? null,
           type: body.type,
           title: body.title ?? null,
           status: 'draft',
@@ -242,7 +252,36 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
   });
 
   /**
+   * PATCH /:id/production-settings — Save blog settings before produce.
+   */
+  fastify.patch('/:id/production-settings', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      const { id } = request.params as { id: string };
+      const settings = blogProductionSettingsSchema.parse(request.body);
+
+      const { data, error } = await (sb.from('content_drafts') as unknown as {
+        update: (row: Record<string, unknown>) => {
+          eq: (col: string, val: string) => {
+            select: () => { single: () => Promise<{ data: unknown; error: unknown }> };
+          };
+        };
+      })
+        .update({ production_settings_json: settings })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return reply.send({ data, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
    * POST /:id/produce — F2-021/F2-022. Run agent-3b-{type} using canonical core.
+   * Status stays 'draft' — user manually triggers review when ready.
    */
   fastify.post('/:id/produce', { preHandler: [authenticate] }, async (request, reply) => {
     try {
@@ -256,8 +295,31 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
       const cost = FORMAT_COSTS[type] ?? 200;
       await checkCredits(orgId, request.userId, cost);
 
-      const systemPrompt =
+      // Blog type requires production settings
+      if (type === 'blog' && !draft.production_settings_json) {
+        throw new ApiError(400, 'Blog production settings are required before producing. Use PATCH /:id/production-settings first.', 'SETTINGS_REQUIRED');
+      }
+
+      let systemPrompt =
         (await loadAgentPrompt(type)) ?? (await loadAgentPrompt('production')) ?? undefined;
+
+      // Inject production settings into system prompt for blog
+      const settings = draft.production_settings_json as Record<string, unknown> | null;
+      if (settings && systemPrompt) {
+        const settingsContext: string[] = [];
+        if (settings.wordCountTarget) settingsContext.push(`Target word count: ${settings.wordCountTarget}`);
+        if (settings.writingStyle) settingsContext.push(`Writing style: ${settings.writingStyle}`);
+        if (settings.tone) settingsContext.push(`Tone: ${settings.tone}`);
+        if (Array.isArray(settings.keywords) && settings.keywords.length > 0)
+          settingsContext.push(`Keywords to include: ${settings.keywords.join(', ')}`);
+        if (Array.isArray(settings.categories) && settings.categories.length > 0)
+          settingsContext.push(`WordPress categories: ${settings.categories.join(', ')}`);
+        if (Array.isArray(settings.tags) && settings.tags.length > 0)
+          settingsContext.push(`WordPress tags: ${settings.tags.join(', ')}`);
+        if (settingsContext.length > 0) {
+          systemPrompt = `${systemPrompt}\n\n## Production Settings\n${settingsContext.join('\n')}`;
+        }
+      }
 
       const { result } = await generateWithFallback(
         'production',
@@ -276,6 +338,7 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
         },
       );
 
+      // Status stays 'draft' — user manually triggers review when ready
       const { data: updated, error } = await (sb.from('content_drafts') as unknown as {
         update: (row: Record<string, unknown>) => {
           eq: (col: string, val: string) => {
@@ -283,7 +346,7 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
           };
         };
       })
-        .update({ draft_json: result, status: 'in_review' })
+        .update({ draft_json: result, status: 'draft' })
         .eq('id', id)
         .select()
         .single();
@@ -295,6 +358,193 @@ export async function contentDraftsRoutes(fastify: FastifyInstance): Promise<voi
       });
 
       return reply.send({ data: updated, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * POST /:id/review — Run agent-4 review. Manual trigger only.
+   * Requires status = 'in_review'. User sets this via PATCH first.
+   */
+  fastify.post('/:id/review', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const sb = createServiceClient();
+      const { id } = request.params as { id: string };
+      const draft = await loadDraft(id) as Record<string, unknown>;
+      const orgId = await getOrgId(request.userId);
+
+      if (draft.status !== 'in_review') {
+        throw new ApiError(400, 'Draft must be in_review status. Use PATCH to set status first.', 'INVALID_STATUS');
+      }
+
+      await checkCredits(orgId, request.userId, REVIEW_COST);
+
+      // Build review input from draft context
+      let ideaData: unknown = null;
+      if (draft.idea_id) {
+        const { data: idea } = await sb
+          .from('idea_archives')
+          .select('*')
+          .eq('id', draft.idea_id as string)
+          .maybeSingle();
+        ideaData = idea;
+      }
+
+      let researchData: unknown = null;
+      if (draft.research_session_id) {
+        const { data: rs } = await sb
+          .from('research_sessions')
+          .select('approved_cards_json, cards_json')
+          .eq('id', draft.research_session_id as string)
+          .maybeSingle();
+        researchData = rs?.approved_cards_json ?? rs?.cards_json ?? null;
+      }
+
+      const systemPrompt =
+        (await loadAgentPrompt('review')) ?? undefined;
+
+      let result: Record<string, unknown>;
+      try {
+        const response = await generateWithFallback(
+          'review',
+          (draft.model_tier as string) ?? 'standard',
+          {
+            agentType: 'review',
+            input: {
+              stage: 'review',
+              type: draft.type,
+              title: draft.title,
+              draftJson: draft.draft_json,
+              canonicalCore: draft.canonical_core_json,
+              idea: ideaData,
+              research: researchData,
+              contentTypesRequested: [draft.type],
+            },
+            schema: null,
+            systemPrompt,
+          },
+        );
+        result = response.result as Record<string, unknown>;
+      } catch (agentError) {
+        // On agent failure: mark failed, don't debit credits
+        await (sb.from('content_drafts') as unknown as {
+          update: (row: Record<string, unknown>) => {
+            eq: (col: string, val: string) => Promise<{ error: unknown }>;
+          };
+        })
+          .update({
+            status: 'failed',
+            review_feedback_json: { error: String(agentError) },
+          })
+          .eq('id', id);
+        throw agentError;
+      }
+
+      // Extract verdict and score from agent response
+      const overallVerdict = (result.overall_verdict as string) ?? 'revision_required';
+      const draftType = draft.type as string;
+      const formatReview = result[`${draftType}_review`] as Record<string, unknown> | undefined;
+      const reviewScore = (formatReview?.score as number) ?? null;
+      const iterationCount = ((draft.iteration_count as number) ?? 0) + 1;
+
+      // Determine status based on agent verdict
+      let newStatus: string;
+      let newVerdict: string;
+      let approvedAt: string | null = null;
+
+      if (overallVerdict === 'approved') {
+        newStatus = 'approved';
+        newVerdict = 'approved';
+        approvedAt = new Date().toISOString();
+      } else if (overallVerdict === 'rejected') {
+        newStatus = 'failed';
+        newVerdict = 'rejected';
+      } else {
+        newStatus = 'in_review';
+        newVerdict = 'revision_required';
+      }
+
+      // Store review data
+      const updateData: Record<string, unknown> = {
+        review_feedback_json: result,
+        review_score: reviewScore,
+        review_verdict: newVerdict,
+        iteration_count: iterationCount,
+        status: newStatus,
+      };
+      if (approvedAt) updateData.approved_at = approvedAt;
+
+      const { data: updated, error } = await (sb.from('content_drafts') as unknown as {
+        update: (row: Record<string, unknown>) => {
+          eq: (col: string, val: string) => {
+            select: () => { single: () => Promise<{ data: unknown; error: unknown }> };
+          };
+        };
+      })
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+
+      // Log review iteration
+      await (sb.from('review_iterations' as never) as unknown as {
+        insert: (row: Record<string, unknown>) => Promise<{ error: unknown }>;
+      }).insert({
+        draft_id: id,
+        iteration: iterationCount,
+        score: reviewScore,
+        verdict: newVerdict,
+        feedback_json: result,
+      });
+
+      // Debit credits only on successful agent call
+      await debitCredits(orgId, request.userId, 'review', 'text', REVIEW_COST, {
+        draftId: id,
+        type: draftType,
+        iteration: iterationCount,
+      });
+
+      return reply.send({ data: { draft: updated, review: result }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * POST /:id/revise — Accept user edits after review returns revision_required.
+   */
+  fastify.post('/:id/revise', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      const { id } = request.params as { id: string };
+      const draft = await loadDraft(id) as Record<string, unknown>;
+      const body = reviseSchema.parse(request.body);
+
+      const verdict = draft.review_verdict as string;
+      if (verdict !== 'revision_required' && verdict !== 'rejected') {
+        throw new ApiError(400, 'Draft must have review_verdict of revision_required or rejected to revise.', 'INVALID_VERDICT');
+      }
+
+      const { data, error } = await (sb.from('content_drafts') as unknown as {
+        update: (row: Record<string, unknown>) => {
+          eq: (col: string, val: string) => {
+            select: () => { single: () => Promise<{ data: unknown; error: unknown }> };
+          };
+        };
+      })
+        .update({
+          draft_json: body.draftJson,
+          status: 'in_review',
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return reply.send({ data, error: null });
     } catch (error) {
       return sendError(reply, error);
     }

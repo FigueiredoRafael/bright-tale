@@ -12,11 +12,13 @@ import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { markdownToHtml } from '../lib/utils.js';
+import { convertToWebP } from '../lib/image/webp.js';
 import {
   publishToWordPressSchema,
   fetchTagsQuerySchema,
   fetchCategoriesQuerySchema,
 } from '@brighttale/shared/schemas/wordpress';
+import { publishDraftSchema } from '@brighttale/shared/schemas/pipeline';
 
 const createConfigSchema = z.object({
   site_url: z.string().url('Invalid WordPress site URL'),
@@ -502,7 +504,8 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   /**
-   * POST /publish — Full publish flow
+   * @deprecated Use POST /publish-draft instead for content_drafts pipeline.
+   * POST /publish — Legacy publish flow (uses projects/stages tables).
    */
   fastify.post('/publish', { preHandler: [authenticate] }, async (request, reply) => {
     try {
@@ -898,6 +901,188 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         error: null,
       });
     } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * POST /publish-draft — New publish flow for content_drafts pipeline.
+   * Uploads images (WebP preferred), resolves taxonomies, creates/updates WP post.
+   */
+  fastify.post('/publish-draft', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      const body = publishDraftSchema.parse(request.body);
+
+      // Load draft (cast to Record — new columns not yet in generated types)
+      const { data: draftRaw, error: draftErr } = await sb
+        .from('content_drafts')
+        .select('*')
+        .eq('id', body.draftId)
+        .maybeSingle();
+      if (draftErr) throw draftErr;
+      if (!draftRaw) throw new ApiError(404, 'Draft not found');
+      const draft = draftRaw as Record<string, unknown>;
+      if ((draft.status as string) !== 'approved' && (draft.status as string) !== 'scheduled') {
+        throw new ApiError(400, 'Draft must be approved before publishing');
+      }
+
+      // Get WordPress credentials
+      let site_url: string;
+      let username: string;
+      let password: string;
+
+      if (body.configId) {
+        const { data: config, error: cfgErr } = await sb
+          .from('wordpress_configs')
+          .select('*')
+          .eq('id', body.configId)
+          .maybeSingle();
+        if (cfgErr) throw cfgErr;
+        if (!config) throw new ApiError(404, 'WordPress config not found');
+        site_url = config.site_url;
+        username = config.username;
+        password = decrypt(config.password);
+      } else {
+        throw new ApiError(400, 'configId is required for publish-draft');
+      }
+
+      const auth = Buffer.from(`${username}:${password}`).toString('base64');
+      const headers = {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/json',
+      };
+
+      // Fetch content_assets for this draft
+      const { data: assets } = await sb
+        .from('content_assets')
+        .select('*')
+        .eq('draft_id', body.draftId);
+
+      // Upload images to WordPress — prefer WebP, fall back to original
+      const uploadedMedia: Record<string, { wpId: number; wpUrl: string }> = {};
+
+      for (const rawAsset of assets ?? []) {
+        const asset = rawAsset as Record<string, unknown>;
+        const imageUrl = (asset.webp_url as string) || (asset.url as string);
+        if (!imageUrl) continue;
+
+        const wpMediaId = await uploadImageToWordPress(
+          imageUrl,
+          (asset.alt_text as string) || (draft.title as string) || '',
+          site_url,
+          auth,
+        );
+
+        // Get media URL from WordPress
+        const mediaResp = await fetch(`${site_url}/wp-json/wp/v2/media/${wpMediaId}`, { headers });
+        let wpUrl = '';
+        if (mediaResp.ok) {
+          const mediaData = (await mediaResp.json()) as Record<string, unknown>;
+          wpUrl = (mediaData.source_url as string) ?? '';
+        }
+
+        const role = (asset.role as string) ?? `position_${(asset.position as number) ?? 0}`;
+        uploadedMedia[role] = { wpId: wpMediaId, wpUrl };
+      }
+
+      // Process blog content — replace image placeholders
+      const draftJson = draft.draft_json as Record<string, unknown> | null;
+      let blogBody = (draftJson?.full_draft as string) ?? '';
+
+      // Replace placeholders like <!-- IMAGE:featured_image --> or <!-- IMAGE:body_section_1 -->
+      for (const [role, media] of Object.entries(uploadedMedia)) {
+        if (role === 'featured_image') continue; // handled separately
+        const placeholder = new RegExp(`<!--\\s*IMAGE:${role}\\s*-->`, 'gi');
+        const imgTag = `<figure><img src="${media.wpUrl}" alt="" class="wp-image-${media.wpId}" /></figure>`;
+        blogBody = blogBody.replace(placeholder, imgTag);
+      }
+
+      // Convert markdown to HTML
+      const htmlContent = markdownToHtml(blogBody);
+
+      // Resolve categories and tags — freeform, create-if-missing
+      const prodSettings = draft.production_settings_json as Record<string, unknown> | null;
+      const categoryNames = body.categories
+        ?? (prodSettings?.categories as string[])
+        ?? [];
+      const tagNames = body.tags
+        ?? (prodSettings?.tags as string[])
+        ?? [];
+
+      const categoryIds = await resolveCategories(categoryNames, site_url, headers);
+      const tagIds = await resolveTags(tagNames, site_url, headers);
+
+      // Build post data
+      const postData: Record<string, unknown> = {
+        title: draft.title ?? draftJson?.title ?? 'Untitled',
+        slug: (draftJson?.slug as string) ?? undefined,
+        content: htmlContent,
+        excerpt: (draftJson?.meta_description as string) ?? '',
+        status: body.mode === 'schedule' ? 'future' : body.mode,
+      };
+      if (body.mode === 'schedule' && body.scheduledDate) {
+        postData.date = body.scheduledDate;
+      }
+      if (categoryIds.length > 0) postData.categories = categoryIds;
+      if (tagIds.length > 0) postData.tags = tagIds;
+
+      const featured = uploadedMedia['featured_image'];
+      if (featured) postData.featured_media = featured.wpId;
+
+      // Create or update WordPress post
+      const existingPostId = (draft.wordpress_post_id as number | null) ?? null;
+      let wpResponse: Response;
+      if (existingPostId) {
+        wpResponse = await fetch(`${site_url}/wp-json/wp/v2/posts/${existingPostId}`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(postData),
+        });
+      } else {
+        wpResponse = await fetch(`${site_url}/wp-json/wp/v2/posts`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(postData),
+        });
+      }
+
+      if (!wpResponse.ok) {
+        const errorText = await wpResponse.text();
+        throw new ApiError(wpResponse.status, `WordPress publish failed: ${errorText}`);
+      }
+
+      const wpPost = (await wpResponse.json()) as Record<string, unknown>;
+
+      // Update draft with WordPress data
+      const updateFields: Record<string, unknown> = {
+        wordpress_post_id: wpPost.id,
+        published_url: wpPost.link,
+      };
+      if (body.mode === 'publish') {
+        updateFields.status = 'published';
+        updateFields.published_at = new Date().toISOString();
+      } else if (body.mode === 'schedule') {
+        updateFields.status = 'scheduled';
+        updateFields.scheduled_at = body.scheduledDate;
+      }
+
+      await sb
+        .from('content_drafts')
+        .update(updateFields as never)
+        .eq('id', body.draftId);
+
+      return reply.status(201).send({
+        data: {
+          published: true,
+          wordpress_post_id: wpPost.id,
+          wordpress_url: wpPost.link,
+          status: wpPost.status,
+        },
+        error: null,
+      });
+    } catch (error) {
+      request.log.error({ err: error }, 'WordPress publish-draft error');
       return sendError(reply, error);
     }
   });

@@ -250,6 +250,8 @@ export type DbResearchSession = {
   input_json: Record<string, unknown>;
   cards_json: unknown | null;
   approved_cards_json: unknown | null;
+  refined_angle_json: unknown | null;
+  pivot_applied: boolean;
   model_tier: string;
   status: string;
   error_message: string | null;
@@ -268,6 +270,8 @@ export type DomainResearchSession = {
   inputJson: Record<string, unknown>;
   cardsJson: unknown | null;
   approvedCardsJson: unknown | null;
+  refinedAngleJson: unknown | null;
+  pivotApplied: boolean;
   modelTier: string;
   status: string;
   errorMessage: string | null;
@@ -287,6 +291,8 @@ export function mapResearchSessionFromDb(row: DbResearchSession): DomainResearch
     inputJson: row.input_json,
     cardsJson: row.cards_json,
     approvedCardsJson: row.approved_cards_json,
+    refinedAngleJson: row.refined_angle_json,
+    pivotApplied: row.pivot_applied,
     modelTier: row.model_tier,
     status: row.status,
     errorMessage: row.error_message,
@@ -302,12 +308,19 @@ export type DbContentDraft = {
   channel_id: string | null;
   idea_id: string | null;
   research_session_id: string | null;
+  project_id: string | null;
   type: string;
   title: string | null;
   canonical_core_json: unknown | null;
   draft_json: unknown | null;
   review_feedback_json: unknown | null;
+  production_settings_json: unknown | null;
   status: string;
+  review_score: number | null;
+  review_verdict: string;
+  iteration_count: number;
+  approved_at: string | null;
+  wordpress_post_id: number | null;
   scheduled_at: string | null;
   published_at: string | null;
   published_url: string | null;
@@ -322,12 +335,19 @@ export type DomainContentDraft = {
   channelId: string | null;
   ideaId: string | null;
   researchSessionId: string | null;
+  projectId: string | null;
   type: string;
   title: string | null;
   canonicalCoreJson: unknown | null;
   draftJson: unknown | null;
   reviewFeedbackJson: unknown | null;
+  productionSettingsJson: unknown | null;
   status: string;
+  reviewScore: number | null;
+  reviewVerdict: string;
+  iterationCount: number;
+  approvedAt: string | null;
+  wordpressPostId: number | null;
   scheduledAt: string | null;
   publishedAt: string | null;
   publishedUrl: string | null;
@@ -343,12 +363,19 @@ export function mapContentDraftFromDb(row: DbContentDraft): DomainContentDraft {
     channelId: row.channel_id,
     ideaId: row.idea_id,
     researchSessionId: row.research_session_id,
+    projectId: row.project_id,
     type: row.type,
     title: row.title,
     canonicalCoreJson: row.canonical_core_json,
     draftJson: row.draft_json,
     reviewFeedbackJson: row.review_feedback_json,
+    productionSettingsJson: row.production_settings_json,
     status: row.status,
+    reviewScore: row.review_score,
+    reviewVerdict: row.review_verdict,
+    iterationCount: row.iteration_count,
+    approvedAt: row.approved_at,
+    wordpressPostId: row.wordpress_post_id,
     scheduledAt: row.scheduled_at,
     publishedAt: row.published_at,
     publishedUrl: row.published_url,
@@ -368,6 +395,10 @@ export type DbContentAsset = {
   meta_json: Record<string, unknown>;
   credits_used: number;
   position: number | null;
+  role: string | null;
+  alt_text: string | null;
+  webp_url: string | null;
+  source_type: string;
   created_at: string;
   updated_at: string;
 };
@@ -383,6 +414,10 @@ export type DomainContentAsset = {
   metaJson: Record<string, unknown>;
   creditsUsed: number;
   position: number | null;
+  role: string | null;
+  altText: string | null;
+  webpUrl: string | null;
+  sourceType: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -399,7 +434,45 @@ export function mapContentAssetFromDb(row: DbContentAsset): DomainContentAsset {
     metaJson: row.meta_json,
     creditsUsed: row.credits_used,
     position: row.position,
+    role: row.role,
+    altText: row.alt_text,
+    webpUrl: row.webp_url,
+    sourceType: row.source_type,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+// ─── Review Iteration ────────────────────────────────────────────────────────
+
+export type DbReviewIteration = {
+  id: string;
+  draft_id: string;
+  iteration: number;
+  score: number | null;
+  verdict: string | null;
+  feedback_json: unknown | null;
+  created_at: string;
+};
+
+export type DomainReviewIteration = {
+  id: string;
+  draftId: string;
+  iteration: number;
+  score: number | null;
+  verdict: string | null;
+  feedbackJson: unknown | null;
+  createdAt: string;
+};
+
+export function mapReviewIterationFromDb(row: DbReviewIteration): DomainReviewIteration {
+  return {
+    id: row.id,
+    draftId: row.draft_id,
+    iteration: row.iteration,
+    score: row.score,
+    verdict: row.verdict,
+    feedbackJson: row.feedback_json,
+    createdAt: row.created_at,
   };
 }

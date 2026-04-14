@@ -30,6 +30,31 @@ const brainstormBodySchema = z.object({
   modelTier: z.string().default('standard'),
   provider: z.enum(['gemini', 'openai', 'anthropic', 'ollama']).optional(),
   model: z.string().optional(),
+  // Advanced settings
+  temporalMix: z
+    .object({
+      evergreen: z.number().min(0).max(100),
+      seasonal: z.number().min(0).max(100),
+      trending: z.number().min(0).max(100),
+    })
+    .refine((v) => v.evergreen + v.seasonal + v.trending === 100, {
+      message: 'Temporal mix must sum to 100',
+    })
+    .optional(),
+  constraints: z
+    .object({
+      avoidTopics: z.array(z.string()).default([]),
+      requiredFormats: z.array(z.string()).default([]),
+    })
+    .optional(),
+  ideasRequested: z.number().int().min(1).max(10).default(5),
+  performanceContext: z
+    .object({
+      recentWinners: z.array(z.string()).default([]),
+      recentLosers: z.array(z.string()).default([]),
+    })
+    .optional(),
+  contentGoal: z.enum(['growth', 'engagement', 'monetization', 'authority']).optional(),
 });
 
 interface RawIdea {
@@ -101,6 +126,11 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         topic: body.topic ?? null,
         fineTuning: body.fineTuning ?? null,
         referenceUrl: body.referenceUrl ?? null,
+        temporalMix: body.temporalMix ?? null,
+        constraints: body.constraints ?? null,
+        ideasRequested: body.ideasRequested,
+        performanceContext: body.performanceContext ?? null,
+        contentGoal: body.contentGoal ?? null,
       };
 
       const { data: session, error: insertErr } = await (
@@ -125,7 +155,36 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       if (insertErr || !session) throw insertErr ?? new ApiError(500, 'Failed to create session', 'DB_ERROR');
 
       try {
-        const systemPrompt = (await loadAgentPrompt('brainstorm')) ?? undefined;
+        let systemPrompt = (await loadAgentPrompt('brainstorm')) ?? undefined;
+
+        // Append advanced settings to system prompt
+        if (systemPrompt) {
+          const ctx: string[] = [];
+          if (body.temporalMix) {
+            ctx.push(`Content mix: ${body.temporalMix.evergreen}% evergreen, ${body.temporalMix.seasonal}% seasonal, ${body.temporalMix.trending}% trending`);
+          }
+          if (body.constraints?.avoidTopics?.length) {
+            ctx.push(`Avoid topics: ${body.constraints.avoidTopics.join(', ')}`);
+          }
+          if (body.constraints?.requiredFormats?.length) {
+            ctx.push(`Required formats: ${body.constraints.requiredFormats.join(', ')}`);
+          }
+          if (body.ideasRequested !== 5) {
+            ctx.push(`Generate exactly ${body.ideasRequested} ideas`);
+          }
+          if (body.contentGoal) {
+            ctx.push(`Primary goal: ${body.contentGoal}`);
+          }
+          if (body.performanceContext?.recentWinners?.length) {
+            ctx.push(`Recent winners (high-performing ideas): ${body.performanceContext.recentWinners.join(', ')}`);
+          }
+          if (body.performanceContext?.recentLosers?.length) {
+            ctx.push(`Recent losers (underperforming ideas): ${body.performanceContext.recentLosers.join(', ')}`);
+          }
+          if (ctx.length > 0) {
+            systemPrompt = `${systemPrompt}\n\n## Advanced Settings\n${ctx.join('\n')}`;
+          }
+        }
 
         const { result } = await generateWithFallback(
           'brainstorm',
