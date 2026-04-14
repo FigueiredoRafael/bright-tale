@@ -668,7 +668,7 @@ export default function Home() {
             <li><a href="#features" onClick={(e) => smoothScroll(e, '#features')}>{t('nav_features')}</a></li>
             <li><a href="#pricing" onClick={(e) => smoothScroll(e, '#pricing')}>{t('nav_pricing')}</a></li>
             <li><a href="#faq" onClick={(e) => smoothScroll(e, '#faq')}>FAQ</a></li>
-            <li>
+            <li className="nav-controls-desktop">
               <div className="lang-switch">
                 <button className={`lang-btn${lang === 'en' ? ' active' : ''}`} onClick={() => changeLang('en')} aria-label="English">EN</button>
                 <button className={`lang-btn${lang === 'pt' ? ' active' : ''}`} onClick={() => changeLang('pt')} aria-label="Português">PT</button>
@@ -684,17 +684,30 @@ export default function Home() {
             <li><a href="https://app.brighttale.io" className="nav-cta">{t('nav_cta')}</a></li>
           </ul>
 
-          {/* Task 5: Hamburger → X animated toggle */}
-          <button
-            className={`mobile-toggle${mobileMenuOpen ? ' open' : ''}`}
-            onClick={() => setMobileMenuOpen((v) => !v)}
-            aria-label="Menu"
-            aria-expanded={mobileMenuOpen}
-          >
-            <span className="ham-bar ham-bar-1" />
-            <span className="ham-bar ham-bar-2" />
-            <span className="ham-bar ham-bar-3" />
-          </button>
+          {/* Mobile: lang/theme + hamburger side by side */}
+          <div className="mobile-nav-right">
+            <div className="lang-switch">
+              <button className={`lang-btn${lang === 'en' ? ' active' : ''}`} onClick={() => changeLang('en')} aria-label="English">EN</button>
+              <button className={`lang-btn${lang === 'pt' ? ' active' : ''}`} onClick={() => changeLang('pt')} aria-label="Português">PT</button>
+              <button className="lang-btn" onClick={toggleTheme} aria-label="Toggle theme">
+                {isDark ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+                )}
+              </button>
+            </div>
+            <button
+              className={`mobile-toggle${mobileMenuOpen ? ' open' : ''}`}
+              onClick={() => setMobileMenuOpen((v) => !v)}
+              aria-label="Menu"
+              aria-expanded={mobileMenuOpen}
+            >
+              <span className="ham-bar ham-bar-1" />
+              <span className="ham-bar ham-bar-2" />
+              <span className="ham-bar ham-bar-3" />
+            </button>
+          </div>
         </div>
       </nav>
 
