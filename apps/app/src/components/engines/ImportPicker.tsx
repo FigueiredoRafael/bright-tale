@@ -16,8 +16,24 @@ const ENDPOINT_MAP: Record<EntityType, string> = {
 
 const DATA_EXTRACTORS: Record<EntityType, (json: Record<string, unknown>) => unknown[]> = {
   'ideas': (json) => (json.data as Record<string, unknown>)?.ideas as unknown[] ?? json.data as unknown[] ?? [],
-  'research-sessions': (json) => (json.data as Record<string, unknown>)?.items as unknown[] ?? json.data as unknown[] ?? [],
-  'content-drafts': (json) => (json.data as Record<string, unknown>)?.items as unknown[] ?? json.data as unknown[] ?? [],
+  'research-sessions': (json) => {
+    const d = json.data as Record<string, unknown>;
+    if (Array.isArray(d)) return d;
+    if (d && typeof d === 'object') {
+      const obj = d as Record<string, unknown>;
+      return (obj.sessions ?? obj.items ?? []) as unknown[];
+    }
+    return [];
+  },
+  'content-drafts': (json) => {
+    const d = json.data as Record<string, unknown>;
+    if (Array.isArray(d)) return d;
+    if (d && typeof d === 'object') {
+      const obj = d as Record<string, unknown>;
+      return (obj.drafts ?? obj.items ?? []) as unknown[];
+    }
+    return [];
+  },
   'content-assets': (json) => {
     const d = json.data;
     if (Array.isArray(d)) return d;
