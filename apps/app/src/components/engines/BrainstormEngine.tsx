@@ -191,7 +191,7 @@ export function BrainstormEngine({
 
     try {
       const body: Record<string, unknown> = {
-        channelId,
+        ...(channelId ? { channelId } : {}),
         inputMode: mode,
         provider,
         model,
@@ -309,7 +309,7 @@ export function BrainstormEngine({
               ? idea.verdict
               : 'experimental',
             source_type: 'manual',
-            channel_id: channelId,
+            ...(channelId ? { channel_id: channelId } : {}),
             tags: Array.isArray(idea.tags) ? idea.tags : [],
           }),
         });

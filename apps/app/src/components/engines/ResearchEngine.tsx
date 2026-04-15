@@ -293,9 +293,9 @@ export function ResearchEngine({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          channelId,
-          projectId: context.projectId,
-          ideaId: context.ideaId,
+          ...(channelId ? { channelId } : {}),
+          ...(context.projectId ? { projectId: context.projectId } : {}),
+          ...(context.ideaId ? { ideaId: context.ideaId } : {}),
           topic: topic.trim(),
           level,
           focusTags,

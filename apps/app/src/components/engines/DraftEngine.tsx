@@ -169,8 +169,8 @@ export function DraftEngine({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          channelId,
-          ideaId: context.ideaId,
+          ...(channelId ? { channelId } : {}),
+          ...(context.ideaId ? { ideaId: context.ideaId } : {}),
           researchSessionId: research.id,
           type,
           title,
@@ -221,8 +221,8 @@ export function DraftEngine({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          channelId,
-          ideaId: context.ideaId,
+          ...(channelId ? { channelId } : {}),
+          ...(context.ideaId ? { ideaId: context.ideaId } : {}),
           researchSessionId: research.id,
           type,
           title,
