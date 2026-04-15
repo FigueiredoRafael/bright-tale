@@ -48,6 +48,9 @@
     "tsx": "^4.21.0",
     "typescript": "^5.6.0"
   },
+  "lint-staged": {
+    "apps/app/**/*.{ts,tsx}": "eslint -c apps/app/eslint.config.mjs --no-warn-ignored --max-warnings 0"
+  },
   "engines": {
     "node": ">=20.0.0"
   },
