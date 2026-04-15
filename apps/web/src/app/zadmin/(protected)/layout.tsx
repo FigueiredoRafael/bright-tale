@@ -4,6 +4,7 @@ import { isAdminUser } from '@/lib/admin-check';
 import { adminPath } from '@/lib/admin-path';
 import { AdminShell } from '@tn-figueiredo/admin/client';
 import type { AdminLayoutConfig } from '@tn-figueiredo/admin';
+import { ThemeToggle } from './theme-toggle';
 
 const config: AdminLayoutConfig = {
   appName: 'BrightTale',
@@ -36,6 +37,9 @@ export default async function ProtectedLayout({ children }: { children: React.Re
 
   return (
     <AdminShell config={config} userEmail={user.email!}>
+      <div className="flex justify-end mb-4">
+        <ThemeToggle />
+      </div>
       {children}
     </AdminShell>
   );
