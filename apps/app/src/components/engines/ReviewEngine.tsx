@@ -156,8 +156,9 @@ export function ReviewEngine({
           score = feedbackJson.score as number;
         }
 
-        // Normalize verdict values
-        if (verdict === 'approved' || verdict === 'approve') verdict = 'approved';
+        // Normalize verdict — score ≥ 90 always means approved
+        if (score >= 90) verdict = 'approved';
+        else if (verdict === 'approved' || verdict === 'approve') verdict = 'approved';
         else if (verdict === 'rejected' || verdict === 'reject') verdict = 'rejected';
         else verdict = 'revision_required';
 
@@ -264,22 +265,16 @@ export function ReviewEngine({
         ? (blogReview.verdict as string).toLowerCase().replace(/\s+/g, '_')
         : draft.review_verdict;
 
-  const effectiveVerdict = rawVerdict === 'approved' || rawVerdict === 'approve' ? 'approved'
+  // Score ≥ 90 always means approved, regardless of text verdict
+  const effectiveVerdict =
+    (effectiveScore !== null && effectiveScore >= 90) ? 'approved'
+    : rawVerdict === 'approved' || rawVerdict === 'approve' ? 'approved'
     : rawVerdict === 'rejected' || rawVerdict === 'reject' ? 'rejected'
     : (rawVerdict && rawVerdict !== 'pending') ? 'revision_required'
     : 'pending';
 
-  // Check if verdict is approved
-  const isApproved =
-    effectiveVerdict === 'approved' ||
-    (effectiveScore !== null && effectiveScore >= 90);
-
-  // Check if revision is needed
-  const needsRevision =
-    effectiveVerdict === 'revision_required' ||
-    (effectiveScore !== null && effectiveScore < 90 && effectiveScore > 0);
-
-  // Check if rejected
+  const isApproved = effectiveVerdict === 'approved';
+  const needsRevision = effectiveVerdict === 'revision_required';
   const isRejected = effectiveVerdict === 'rejected';
 
   // Has any review been done (even if DB fields are stale)
