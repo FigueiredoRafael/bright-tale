@@ -88,6 +88,37 @@ npm run db:seed       # runs scripts/generate-seed.ts → seed.sql → supabase 
 - Stage data chains via mappers: `mapBrainstormToResearchInput`, etc.
 - Workflow is Claude/ChatGPT-assisted: platform generates BC_*_INPUT YAML, user pastes BC_*_OUTPUT YAML back.
 
+### Pipeline Orchestrator
+
+The project pipeline orchestrates 6 engine components through a multi-stage content workflow:
+
+**Engine components** (`apps/app/src/components/engines/`):
+- `BrainstormEngine` — Generate or import ideas, select one
+- `ResearchEngine` — Generate or import research, approve cards
+- `DraftEngine` — Generate canonical core + produce content, or import existing draft
+- `ReviewEngine` — AI review with scoring (always fresh, no import)
+- `AssetsEngine` — Generate or import/upload images
+- `PublishEngine` — WordPress publish (always requires confirmation)
+
+**Orchestrator** (`apps/app/src/components/pipeline/`):
+- `PipelineOrchestrator` — State machine on project page, composes engines inline
+- Modes: step-by-step (user drives) or auto-pilot (AI drives, user can pause)
+- Review loop: iterates until score >= 90 or max iterations
+- Context passing: accumulated results flow to downstream engines via `PipelineContext`
+- State persisted in `projects.pipeline_state_json`
+
+**Standalone pages** (`channels/[id]/brainstorm|research|drafts/`):
+- Thin wrappers around the same engine components
+- Work independently without a project for ad-hoc content creation
+
+**Pipeline flow:**
+```
+Brainstorm -> Research -> Draft -> Review Loop (score >= 90) -> Assets -> Publish
+     ^           ^          ^           |
+     |           |          |           v
+     +-----------+----------+---- (back-reference on issues)
+```
+
 ### Database
 
 Supabase (PostgreSQL). 18 tables, RLS enabled on all (deny-all — only `service_role` can read/write). `moddatetime` extension + `handle_updated_at()` trigger for `updated_at` columns.

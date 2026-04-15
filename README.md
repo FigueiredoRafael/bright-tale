@@ -208,7 +208,20 @@ For deeper docs see [`docs/`](./docs/) and the milestone pages in `apps/docs-sit
 
 ## Features
 
-### Content Pipeline (end-to-end)
+### Content Pipeline
+
+Orchestrated multi-stage workflow for producing publication-ready content:
+
+1. **Idea** — Brainstorm with AI or import from library
+2. **Research** — Deep research with card approval
+3. **Draft** — Canonical core + format-specific production
+4. **Review** — AI scoring with iterative revision loop (target: 90+)
+5. **Assets** — AI image generation or manual upload
+6. **Publish** — WordPress integration with scheduling
+
+Run step-by-step or in auto-pilot mode. Each stage can import existing material from the library.
+
+### Extended Workflow Features
 
 Complete 5-stage workflow: **Brainstorm** (idea generation) **Research** (evidence validation + pivot recommendations) **Canonical Core** (thesis + emotional arc) **Production** (blog/video/shorts/podcast) **Review Loop** (agent-4 scoring, must reach 90+ to approve) **Asset Generation** (post-approval, WebP optimized) **WordPress Publishing** (images embedded, taxonomies resolved, draft/publish/schedule modes).
 
