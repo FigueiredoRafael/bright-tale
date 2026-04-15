@@ -69,6 +69,9 @@ export default function DraftDetailPage() {
   const [editedBody, setEditedBody] = useState('');
   const [brainstormSessionId, setBrainstormSessionId] = useState<string | undefined>();
   const [researchSessionId, setResearchSessionId] = useState<string | undefined>();
+  const [projectId, setProjectId] = useState<string | undefined>();
+  const [projectTitle, setProjectTitle] = useState<string | undefined>();
+  const [ideaTitle, setIdeaTitle] = useState<string | undefined>();
 
   const fetchDraft = useCallback(async () => {
     const res = await fetch(`/api/content-drafts/${draftId}`);
@@ -78,21 +81,27 @@ export default function DraftDetailPage() {
       const body = (data.draft_json as Record<string, unknown>)?.full_draft as string;
       if (body) setEditedBody(body);
 
-      // Extract session IDs for stepper navigation
-      const rsId = data.research_session_id as string | undefined;
-      if (rsId) setResearchSessionId(rsId);
-
-      // Trace brainstorm session from linked idea
-      const ideaId = data.idea_id as string | undefined;
-      if (ideaId) {
+      // Use pipeline API to get full context
+      const pid = data.project_id as string | undefined;
+      if (pid) {
+        setProjectId(pid);
         try {
-          const ideaRes = await fetch(`/api/ideas/library?limit=100`);
-          const ideaJson = await ideaRes.json();
-          const idea = (ideaJson.data?.ideas ?? []).find(
-            (i: Record<string, unknown>) => i.id === ideaId || i.idea_id === ideaId,
-          );
-          if (idea?.brainstorm_session_id) setBrainstormSessionId(idea.brainstorm_session_id);
-        } catch { /* silent */ }
+          const pRes = await fetch(`/api/projects/${pid}/pipeline`);
+          const pJson = await pRes.json();
+          if (pJson.data) {
+            setProjectTitle(pJson.data.project?.title);
+            const bs = pJson.data.brainstormSessions?.[0];
+            if (bs) setBrainstormSessionId(bs.id);
+            const rs = pJson.data.researchSessions?.[0];
+            if (rs) setResearchSessionId(rs.id);
+            const ideas = pJson.data.ideas ?? [];
+            if (ideas.length > 0) setIdeaTitle(ideas[0].title);
+          }
+        } catch { /* pipeline fetch optional */ }
+      } else {
+        // Fallback: extract from draft fields
+        const rsId = data.research_session_id as string | undefined;
+        if (rsId) setResearchSessionId(rsId);
       }
     }
     setLoading(false);
@@ -176,7 +185,7 @@ export default function DraftDetailPage() {
   const blogBody = (draft.draft_json as Record<string, unknown>)?.full_draft as string ?? '';
 
   // Determine pipeline step from draft state
-  let pipelineStep: PipelineStep = 'production';
+  let pipelineStep: PipelineStep = 'draft';
   if (draft.status === 'draft' && draft.draft_json) pipelineStep = 'review';
   if (draft.status === 'in_review') pipelineStep = 'review';
   if (draft.review_verdict === 'approved' || draft.status === 'approved') pipelineStep = 'assets';
@@ -190,7 +199,9 @@ export default function DraftDetailPage() {
         draftId={draftId}
         brainstormSessionId={brainstormSessionId}
         researchSessionId={researchSessionId}
-        ideaTitle={draft.title ?? undefined}
+        projectId={projectId}
+        projectTitle={projectTitle}
+        ideaTitle={ideaTitle ?? draft.title ?? undefined}
       />
       <div className="p-6 space-y-6">
       {/* Header */}

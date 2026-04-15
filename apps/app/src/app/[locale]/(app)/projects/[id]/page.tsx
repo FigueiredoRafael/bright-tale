@@ -6,9 +6,10 @@ import { useRouter } from "@/i18n/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { PipelineStages, type PipelineStep } from "@/components/pipeline/PipelineStages";
 import {
-    ArrowLeft, Lightbulb, Search, FileText, CheckCircle,
-    Image, Globe, ArrowRight, Loader2,
+    ArrowLeft, Lightbulb, Search, FileText,
+    Globe, ArrowRight,
 } from "lucide-react";
 
 interface PipelineData {
@@ -18,15 +19,6 @@ interface PipelineData {
     researchSessions: Array<Record<string, unknown>>;
     contentDrafts: Array<Record<string, unknown>>;
 }
-
-const STEPS = [
-    { key: "idea", label: "Idea", icon: Lightbulb },
-    { key: "research", label: "Research", icon: Search },
-    { key: "draft", label: "Draft", icon: FileText },
-    { key: "review", label: "Review", icon: CheckCircle },
-    { key: "assets", label: "Assets", icon: Image },
-    { key: "published", label: "Published", icon: Globe },
-];
 
 export default function ProjectPipelinePage() {
     const params = useParams();
@@ -55,18 +47,30 @@ export default function ProjectPipelinePage() {
     const research = data.researchSessions[0];
     const draft = data.contentDrafts[0];
 
-    // Determine current step
+    // Determine current step (matches PipelineStages keys)
     const draftStatus = (draft?.status as string) ?? "";
     const reviewVerdict = (draft?.review_verdict as string) ?? "pending";
-    let currentStep = "idea";
-    if (data.ideas.length > 0) currentStep = "idea";
+    let currentStep: PipelineStep = "brainstorm";
+    if (data.ideas.length > 0) currentStep = "brainstorm";
     if (data.researchSessions.length > 0) currentStep = "research";
     if (data.contentDrafts.length > 0) currentStep = "draft";
     if (reviewVerdict !== "pending" && draft?.review_feedback_json) currentStep = "review";
     if (reviewVerdict === "approved") currentStep = "assets";
     if (draftStatus === "published") currentStep = "published";
 
-    const channelId = (project.channel_id as string) ?? "";
+    const brainstormSession = data.brainstormSessions[0];
+    const brainstormSessionId = brainstormSession?.id as string | undefined;
+    const researchSessionId = research?.id as string | undefined;
+    const draftId = draft?.id as string | undefined;
+
+    // Resolve channelId — project may have it, or fall back to linked entities
+    const channelId =
+        (project.channel_id as string)
+        || (idea?.channel_id as string)
+        || (brainstormSession?.channel_id as string)
+        || (research?.channel_id as string)
+        || (draft?.channel_id as string)
+        || "";
 
     return (
         <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -84,44 +88,32 @@ export default function ProjectPipelinePage() {
                 </div>
             </div>
 
-            {/* Pipeline stepper */}
-            <Card>
-                <CardContent className="py-4">
-                    <div className="flex items-center justify-between">
-                        {STEPS.map((step, i) => {
-                            const Icon = step.icon;
-                            const stepIndex = STEPS.findIndex(s => s.key === currentStep);
-                            const thisIndex = i;
-                            const isDone = thisIndex < stepIndex;
-                            const isActive = thisIndex === stepIndex;
-                            return (
-                                <div key={step.key} className="flex items-center gap-1">
-                                    {i > 0 && (
-                                        <div className={`h-px w-6 mx-1 ${isDone ? "bg-green-500" : "bg-border"}`} />
-                                    )}
-                                    <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs ${
-                                        isDone ? "text-green-600 dark:text-green-400" :
-                                        isActive ? "text-primary font-medium bg-primary/10" :
-                                        "text-muted-foreground"
-                                    }`}>
-                                        <Icon className="h-3.5 w-3.5" />
-                                        {step.label}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </CardContent>
+            {/* Pipeline stepper — navigational */}
+            <Card className="overflow-hidden">
+                <PipelineStages
+                    currentStep={currentStep}
+                    channelId={channelId}
+                    draftId={draftId}
+                    projectId={projectId}
+                    projectTitle={project.title as string}
+                    ideaTitle={idea?.title as string}
+                    brainstormSessionId={brainstormSessionId}
+                    researchSessionId={researchSessionId}
+                />
             </Card>
 
             {/* Pipeline entities */}
             <div className="space-y-4">
                 {/* Idea */}
                 {idea && (
-                    <Card>
+                    <Card
+                        className={channelId && brainstormSessionId ? "cursor-pointer hover:border-primary/40 transition-colors" : ""}
+                        onClick={() => channelId && brainstormSessionId && router.push(`/channels/${channelId}/brainstorm/${brainstormSessionId}`)}
+                    >
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm flex items-center gap-2">
                                 <Lightbulb className="h-4 w-4 text-yellow-500" /> Idea
+                                {channelId && brainstormSessionId && <ArrowRight className="h-3 w-3 ml-auto text-muted-foreground" />}
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
@@ -137,10 +129,14 @@ export default function ProjectPipelinePage() {
 
                 {/* Research */}
                 {research && (
-                    <Card>
+                    <Card
+                        className={channelId && researchSessionId ? "cursor-pointer hover:border-primary/40 transition-colors" : ""}
+                        onClick={() => channelId && researchSessionId && router.push(`/channels/${channelId}/research/${researchSessionId}`)}
+                    >
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm flex items-center gap-2">
                                 <Search className="h-4 w-4 text-blue-500" /> Research
+                                {channelId && researchSessionId && <ArrowRight className="h-3 w-3 ml-auto text-muted-foreground" />}
                             </CardTitle>
                         </CardHeader>
                         <CardContent>

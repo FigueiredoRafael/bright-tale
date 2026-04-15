@@ -9,15 +9,15 @@ import {
 export type PipelineStep =
   | 'brainstorm'
   | 'research'
-  | 'production'
+  | 'draft'
   | 'review'
   | 'assets'
   | 'published';
 
 const STEPS: { key: PipelineStep; label: string; icon: typeof Lightbulb }[] = [
-  { key: 'brainstorm', label: 'Brainstorm', icon: Lightbulb },
+  { key: 'brainstorm', label: 'Idea', icon: Lightbulb },
   { key: 'research', label: 'Research', icon: Search },
-  { key: 'production', label: 'Production', icon: FileText },
+  { key: 'draft', label: 'Draft', icon: FileText },
   { key: 'review', label: 'Review', icon: CheckCircle },
   { key: 'assets', label: 'Assets', icon: Image },
   { key: 'published', label: 'Published', icon: Globe },
@@ -52,7 +52,7 @@ function buildStepUrl(
       return researchSessionId
         ? `/channels/${channelId}/research/${researchSessionId}`
         : `/channels/${channelId}/research/new`;
-    case 'production':
+    case 'draft':
       return draftId
         ? `/channels/${channelId}/drafts/${draftId}`
         : `/channels/${channelId}/drafts/new`;
