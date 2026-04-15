@@ -30,7 +30,7 @@ export default async function AgentsAdminPage() {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Agentes</h1>
+        <h1 className="text-2xl font-bold text-foreground">Agentes</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Prompts usados pelo pipeline de conteúdo. Alterações refletem na próxima geração (cache 5min).
         </p>
@@ -41,20 +41,20 @@ export default async function AgentsAdminPage() {
         <PipelineGraph agents={agents} />
       </div>
 
-      <div className="rounded-lg border">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="border-b bg-muted/50">
+          <thead className="border-b border-border">
             <tr>
-              <th className="text-left px-4 py-2 font-medium">Nome</th>
-              <th className="text-left px-4 py-2 font-medium">Slug</th>
-              <th className="text-left px-4 py-2 font-medium">Stage</th>
-              <th className="text-left px-4 py-2 font-medium">Atualizado</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs uppercase tracking-wider">Nome</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs uppercase tracking-wider">Slug</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs uppercase tracking-wider">Stage</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs uppercase tracking-wider">Atualizado</th>
               <th className="w-24"></th>
             </tr>
           </thead>
           <tbody>
             {agents.map((a) => (
-              <tr key={a.id} className="border-b last:border-0 hover:bg-muted/30">
+              <tr key={a.id} className="border-b border-border last:border-0 hover:bg-secondary/50 transition-colors">
                 <td className="px-4 py-3 font-medium">{a.name}</td>
                 <td className="px-4 py-3 font-mono text-xs">{a.slug}</td>
                 <td className="px-4 py-3">

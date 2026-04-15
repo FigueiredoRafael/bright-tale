@@ -44,11 +44,11 @@ export function ThemeToggle() {
   return (
     <button
       onClick={toggle}
-      className="w-full flex items-center gap-3 px-2 py-2 text-xs rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+      className="admin-theme-toggle w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[#94A3B8] hover:text-[#F0F4F8] hover:bg-[rgba(45,212,168,0.06)] transition-all text-sm"
       title={isDark ? 'Modo claro' : 'Modo escuro'}
     >
       {isDark ? <Sun size={16} /> : <Moon size={16} />}
-      <span className="flex-1 text-left text-sm">{isDark ? 'Modo Claro' : 'Modo Escuro'}</span>
+      <span className="flex-1 text-left">{isDark ? 'Modo Claro' : 'Modo Escuro'}</span>
     </button>
   );
 }

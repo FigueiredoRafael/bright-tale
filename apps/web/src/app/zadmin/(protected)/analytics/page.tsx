@@ -121,7 +121,7 @@ export default async function AnalyticsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold">Analytics</h1>
+        <h1 className="text-2xl font-bold text-foreground">Analytics</h1>
         <p className="text-sm text-muted-foreground">Métricas de negócio e uso da plataforma</p>
       </div>
 
@@ -162,7 +162,7 @@ export default async function AnalyticsPage() {
       </KpiSection>
 
       {data.topOrgsList.length > 0 && (
-        <div className="rounded-lg border p-4 space-y-3">
+        <div className="bg-card border border-border rounded-xl p-4 space-y-3">
           <h3 className="font-semibold text-sm">Top 5 Orgs por créditos</h3>
           <div className="space-y-2">
             {data.topOrgsList.map(([orgId, credits], i) => (
@@ -176,12 +176,12 @@ export default async function AnalyticsPage() {
       )}
 
       {data.recentRows.length > 0 && (
-        <div className="rounded-lg border p-4 space-y-3">
+        <div className="bg-card border border-border rounded-xl p-4 space-y-3">
           <h3 className="font-semibold text-sm">Uso recente (últimas 20 chamadas)</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b text-muted-foreground">
+                <tr className="border-b border-border text-muted-foreground">
                   <th className="text-left py-1.5 pr-3">Provider</th>
                   <th className="text-left py-1.5 pr-3">Model</th>
                   <th className="text-left py-1.5 pr-3">Stage</th>
@@ -192,7 +192,7 @@ export default async function AnalyticsPage() {
               </thead>
               <tbody>
                 {data.recentRows.map((row, i) => (
-                  <tr key={i} className="border-b border-muted/50">
+                  <tr key={i} className="border-b border-border last:border-0">
                     <td className="py-1.5 pr-3">{row.provider}</td>
                     <td className="py-1.5 pr-3 font-mono">{row.model}</td>
                     <td className="py-1.5 pr-3">{row.stage}</td>
