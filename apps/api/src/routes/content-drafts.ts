@@ -59,6 +59,9 @@ const updateSchema = z.object({
   canonicalCoreJson: z.record(z.unknown()).optional(),
   draftJson: z.record(z.unknown()).optional(),
   reviewFeedbackJson: z.record(z.unknown()).optional(),
+  reviewScore: z.number().min(0).max(100).optional(),
+  reviewVerdict: z.enum(['pending', 'approved', 'revision_required', 'rejected']).optional(),
+  iterationCount: z.number().int().min(0).optional(),
   status: z
     .enum([
       "draft",
@@ -205,6 +208,12 @@ export async function contentDraftsRoutes(
         if (body.draftJson !== undefined) update.draft_json = body.draftJson;
         if (body.reviewFeedbackJson !== undefined)
           update.review_feedback_json = body.reviewFeedbackJson;
+        if (body.reviewScore !== undefined)
+          update.review_score = body.reviewScore;
+        if (body.reviewVerdict !== undefined)
+          update.review_verdict = body.reviewVerdict;
+        if (body.iterationCount !== undefined)
+          update.iteration_count = body.iterationCount;
         if (body.status !== undefined) update.status = body.status;
         if (body.scheduledAt !== undefined)
           update.scheduled_at = body.scheduledAt;

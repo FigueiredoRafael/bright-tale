@@ -125,14 +125,54 @@ export function ReviewEngine({
   async function handleManualImport(parsed: unknown) {
     await withGuard(async () => {
       try {
-        const feedbackJson = parsed as Record<string, unknown>;
+        let feedbackJson = parsed as Record<string, unknown>;
+
+        // Unwrap BC_REVIEW_OUTPUT wrapper if present
+        if (feedbackJson.BC_REVIEW_OUTPUT && typeof feedbackJson.BC_REVIEW_OUTPUT === 'object') {
+          feedbackJson = feedbackJson.BC_REVIEW_OUTPUT as Record<string, unknown>;
+        }
+
+        // Extract score and verdict from the review output
+        // Try format-specific review first (blog_review, video_review, etc.)
+        const draftType = (draft.draft_json as Record<string, unknown>)?.type as string | undefined;
+        const formatKey = draftType ? `${draftType}_review` : 'blog_review';
+        const formatReview = (feedbackJson[formatKey] ?? feedbackJson.blog_review) as Record<string, unknown> | undefined;
+
+        let score = 0;
+        let verdict = 'revision_required';
+
+        if (formatReview) {
+          if (typeof formatReview.score === 'number') score = formatReview.score;
+          if (typeof formatReview.verdict === 'string') {
+            verdict = formatReview.verdict.toLowerCase().replace(/\s+/g, '_');
+          }
+        }
+
+        // Fallback to top-level fields
+        if (typeof feedbackJson.overall_verdict === 'string') {
+          verdict = (feedbackJson.overall_verdict as string).toLowerCase().replace(/\s+/g, '_');
+        }
+        if (typeof feedbackJson.score === 'number') {
+          score = feedbackJson.score as number;
+        }
+
+        // Normalize verdict values
+        if (verdict === 'approved' || verdict === 'approve') verdict = 'approved';
+        else if (verdict === 'rejected' || verdict === 'reject') verdict = 'rejected';
+        else verdict = 'revision_required';
+
+        const patchBody: Record<string, unknown> = {
+          reviewFeedbackJson: feedbackJson,
+          reviewScore: score,
+          reviewVerdict: verdict,
+          status: verdict === 'approved' ? 'approved' : 'in_review',
+          iterationCount: draft.iteration_count + 1,
+        };
+
         const res = await fetch(`/api/content-drafts/${draftId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            review_feedback_json: feedbackJson,
-            status: 'in_review',
-          }),
+          body: JSON.stringify(patchBody),
         });
         const json = await res.json();
         if (json?.error) {
@@ -140,7 +180,14 @@ export function ReviewEngine({
           return;
         }
         await refetchDraft();
-        toast.success('Review imported');
+
+        if (verdict === 'approved') {
+          toast.success(`Review imported — Score: ${score}/100 — Approved!`);
+        } else if (verdict === 'rejected') {
+          toast.error(`Review imported — Score: ${score}/100 — Rejected`);
+        } else {
+          toast.warning(`Review imported — Score: ${score}/100 — Revision required`);
+        }
       } catch {
         toast.error('Failed to import review');
       }
@@ -285,15 +332,20 @@ export function ReviewEngine({
                 <TabsContent value="manual" className="mt-4">
                   <ManualModePanel
                     agentSlug="review"
-                    inputContext={[
-                      `Title: ${draft.title || '(no title)'}`,
-                      `Type: draft`,
-                      context.draftTitle
-                        ? `Draft: ${context.draftTitle}`
-                        : '',
-                    ]
-                      .filter(Boolean)
-                      .join('\n')}
+                    inputContext={(() => {
+                      const lines: string[] = [
+                        `Title: ${draft.title || '(no title)'}`,
+                      ];
+                      if (context.ideaTitle) lines.push(`Idea: ${context.ideaTitle}`);
+                      if (context.ideaCoreTension) lines.push(`Core Tension: ${context.ideaCoreTension}`);
+                      if (draft.draft_json) {
+                        lines.push('', '## Draft Content (to review)');
+                        lines.push('```json');
+                        lines.push(JSON.stringify(draft.draft_json, null, 2));
+                        lines.push('```');
+                      }
+                      return lines.join('\n');
+                    })()}
                     pastePlaceholder={
                       'Paste review JSON with verdict, score, and feedback'
                     }
