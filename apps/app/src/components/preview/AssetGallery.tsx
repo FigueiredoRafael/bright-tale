@@ -43,9 +43,13 @@ export function AssetGallery({
   onDelete,
 }: AssetGalleryProps) {
   const isApproved = draftStatus === 'approved' || draftStatus === 'published' || draftStatus === 'scheduled';
+  // Assets arrive newest-first (DESC). Keep first occurrence per role so the
+  // most recent upload wins and stale duplicates don't overwrite it.
   const assetsByRole = new Map<string, ContentAsset>();
   for (const asset of assets) {
-    if (asset.role) assetsByRole.set(asset.role, asset);
+    if (asset.role && !assetsByRole.has(asset.role)) {
+      assetsByRole.set(asset.role, asset);
+    }
   }
 
   const roles = ['featured_image', 'body_section_1', 'body_section_2', 'body_section_3'];

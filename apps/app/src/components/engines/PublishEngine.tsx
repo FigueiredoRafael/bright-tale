@@ -1,11 +1,9 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Loader2 } from 'lucide-react';
+import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { PublishPanel } from '@/components/preview/PublishPanel';
+import { PublishProgress } from '@/components/publish/PublishProgress';
 import { ContextBanner } from './ContextBanner';
 import type { PipelineContext, PipelineStage, PublishResult, StageResult } from './types';
 
@@ -35,75 +33,75 @@ export function PublishEngine({
   onBack,
 }: PublishEngineProps) {
   const [publishing, setPublishing] = useState(false);
-  const inFlightRef = useRef(false);
+  const [publishBody, setPublishBody] = useState<Record<string, unknown> | null>(null);
 
-  async function withGuard<T>(fn: () => Promise<T>): Promise<T | undefined> {
-    if (inFlightRef.current) return undefined;
-    inFlightRef.current = true;
-    try {
-      return await fn();
-    } finally {
-      inFlightRef.current = false;
-    }
+  function handlePublish(params: { mode: string; configId: string; scheduledDate?: string }) {
+    const body: Record<string, unknown> = {
+      draftId,
+      configId: params.configId,
+      mode: params.mode,
+      scheduledDate: params.scheduledDate,
+    };
+
+    // Inject preview data from pipeline context
+    if (context.previewImageMap) body.imageMap = context.previewImageMap;
+    if (context.previewAltTexts) body.altTexts = context.previewAltTexts;
+    if (context.previewCategories) body.categories = context.previewCategories;
+    if (context.previewTags) body.tags = context.previewTags;
+    if (context.previewSeoOverrides) body.seoOverrides = context.previewSeoOverrides;
+
+    setPublishBody(body);
+    setPublishing(true);
   }
 
-  async function handlePublish(params: {
-    mode: string;
-    configId: string;
-    scheduledDate?: string;
-  }) {
-    await withGuard(async () => {
-      try {
-        setPublishing(true);
-        const res = await fetch('/api/wordpress/publish-draft', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            draftId,
-            configId: params.configId,
-            mode: params.mode,
-            scheduledDate: params.scheduledDate,
-          }),
-        });
-        const json = await res.json();
+  const handleStreamComplete = useCallback((result: { wordpressPostId: number; publishedUrl: string }) => {
+    toast.success('Published successfully!');
+    const publishResult: PublishResult = {
+      wordpressPostId: result.wordpressPostId,
+      publishedUrl: result.publishedUrl,
+    };
+    onComplete(publishResult);
+  }, [onComplete]);
 
-        if (json?.error) {
-          toast.error(json.error.message ?? 'Failed to publish');
-          setPublishing(false);
-          return;
-        }
-
-        const publishedData = json.data as Record<string, unknown>;
-        const result: PublishResult = {
-          wordpressPostId: (publishedData.wordpress_post_id ??
-            publishedData.wordpressPostId) as number,
-          publishedUrl: (publishedData.published_url ??
-            publishedData.publishedUrl) as string,
-        };
-        toast.success('Draft published successfully');
-        onComplete(result);
-      } catch (error) {
-        toast.error('Failed to publish draft');
-        setPublishing(false);
-      }
-    });
-  }
+  const handleStreamError = useCallback((message: string) => {
+    toast.error(message);
+    setPublishing(false);
+    setPublishBody(null);
+  }, []);
 
   return (
     <div className="space-y-6">
       <ContextBanner stage="publish" context={context} onBack={onBack} />
 
-      <div className="max-w-lg">
-        <PublishPanel
-          draftId={draftId}
-          draftStatus={draft.status}
-          hasAssets={assetCount > 0}
-          wordpressPostId={draft.wordpress_post_id}
-          publishedUrl={draft.published_url}
-          onPublish={handlePublish}
-          isPublishing={publishing}
-        />
-      </div>
+      {publishing && publishBody ? (
+        <div className="max-w-lg">
+          <PublishProgress
+            publishBody={publishBody}
+            onComplete={handleStreamComplete}
+            onError={handleStreamError}
+          />
+        </div>
+      ) : (
+        <div className="max-w-lg">
+          <PublishPanel
+            draftId={draftId}
+            draftStatus={draft.status}
+            hasAssets={assetCount > 0}
+            wordpressPostId={draft.wordpress_post_id}
+            publishedUrl={draft.published_url}
+            onPublish={handlePublish}
+            isPublishing={publishing}
+            previewData={context.previewSeoOverrides ? {
+              categories: context.previewCategories ?? [],
+              tags: context.previewTags ?? [],
+              seo: context.previewSeoOverrides,
+              featuredImageUrl: context.featuredImageUrl,
+              imageCount: context.assetIds?.length ?? 0,
+              suggestedDate: context.previewPublishDate,
+            } : undefined}
+          />
+        </div>
+      )}
     </div>
   );
 }

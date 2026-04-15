@@ -7,6 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import path from 'path';
 import fs from 'fs';
 import archiver from 'archiver';
+import { z } from 'zod';
 import { authenticate } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
@@ -428,6 +429,111 @@ export async function assetsRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   /**
+   * POST /upload — Upload an image (base64 or URL), save original + WebP, create asset row
+   */
+  fastify.post('/upload', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      const { convertToWebP } = await import('../lib/image/webp.js');
+
+      const uploadSchema = z.object({
+        base64: z.string().optional(),
+        mimeType: z.string().optional(),
+        url: z.string().url().optional(),
+        draftId: z.string().uuid(),
+        role: z.string(),
+        altText: z.string().optional(),
+        prompt: z.string().optional(),
+        styleRationale: z.string().optional(),
+      }).refine(
+        (d) => d.base64 || d.url,
+        { message: 'Either base64 or url must be provided' },
+      );
+
+      const body = uploadSchema.parse(request.body);
+
+      // Load draft to get project_id context
+      const { data: draft, error: draftErr } = await sb
+        .from('content_drafts')
+        .select('project_id, channel_id, org_id, user_id')
+        .eq('id', body.draftId)
+        .maybeSingle();
+      if (draftErr) throw draftErr;
+      if (!draft) throw new ApiError(404, 'Draft not found', 'NOT_FOUND');
+
+      let imageBase64: string;
+      let imageMimeType: string;
+
+      if (body.base64) {
+        imageBase64 = body.base64;
+        imageMimeType = body.mimeType ?? 'image/png';
+      } else {
+        // Download from URL
+        const response = await fetch(body.url as string);
+        if (!response.ok) throw new ApiError(400, 'Failed to fetch image from URL', 'FETCH_FAILED');
+        const arrayBuf = await response.arrayBuffer();
+        imageBase64 = Buffer.from(arrayBuf).toString('base64');
+        imageMimeType = response.headers.get('content-type') ?? 'image/png';
+      }
+
+      // Save original
+      const { localPath, publicUrl } = await saveImageLocally(
+        imageBase64,
+        imageMimeType,
+        (draft.project_id as string) ?? undefined,
+      );
+
+      // Convert to WebP
+      const buffer = Buffer.from(imageBase64, 'base64');
+      const webpBuffer = await convertToWebP(buffer, 80);
+      let webpLocalPath: string | null = null;
+      let webpPublicUrl: string | null = null;
+      if (webpBuffer) {
+        const webpResult = await saveImageLocally(
+          webpBuffer.toString('base64'),
+          'image/webp',
+          (draft.project_id as string) ?? undefined,
+        );
+        webpLocalPath = webpResult.localPath;
+        webpPublicUrl = webpResult.publicUrl;
+      }
+
+      // Insert asset row
+      const { data: asset, error } = await sb
+        .from('assets')
+        .insert({
+          project_id: (draft.project_id as string) ?? null,
+          asset_type: 'image',
+          source: body.base64 ? 'manual_upload' : 'external_url',
+          source_url: body.url ?? publicUrl,
+          local_path: localPath,
+          prompt: body.prompt ?? null,
+          role: body.role,
+          content_type: 'blog',
+          content_id: body.draftId,
+          alt_text: body.altText ?? null,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return reply.status(201).send({
+        data: {
+          ...asset,
+          url: publicUrl,
+          webp_url: webpPublicUrl,
+          webp_local_path: webpLocalPath,
+        },
+        error: null,
+      });
+    } catch (error) {
+      request.log.error({ err: error }, 'Asset upload error');
+      return sendError(reply, error);
+    }
+  });
+
+  /**
    * GET / — List assets with optional filters/pagination
    */
   fastify.get('/', { preHandler: [authenticate] }, async (request, reply) => {
@@ -437,6 +543,7 @@ export async function assetsRoutes(fastify: FastifyInstance): Promise<void> {
       const { searchParams } = url;
 
       const projectId = searchParams.get('projectId');
+      const contentId = searchParams.get('content_id');
       const contentType = searchParams.get('contentType');
       const role = searchParams.get('role');
       const source = searchParams.get('source');
@@ -445,6 +552,7 @@ export async function assetsRoutes(fastify: FastifyInstance): Promise<void> {
 
       let query = sb.from('assets').select('*', { count: 'exact' });
       if (projectId) query = query.eq('project_id', projectId);
+      if (contentId) query = query.eq('content_id', contentId);
       if (contentType) query = query.eq('content_type', contentType);
       if (role) query = query.eq('role', role);
       if (source) query = query.eq('source', source);

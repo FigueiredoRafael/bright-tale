@@ -2,7 +2,7 @@
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Lightbulb, Search, FileText, ArrowLeft } from 'lucide-react';
+import { Lightbulb, Search, FileText, ArrowLeft, Eye } from 'lucide-react';
 import type { PipelineContext, PipelineStage } from './types';
 
 interface ContextBannerProps {
@@ -34,7 +34,7 @@ export function ContextBanner({ stage, context, onBack }: ContextBannerProps) {
     });
   }
 
-  if (['review', 'assets', 'publish'].includes(stage) && context.draftTitle) {
+  if (['preview', 'review', 'assets', 'publish'].includes(stage) && context.draftTitle) {
     items.push({
       icon: FileText,
       label: 'Draft',

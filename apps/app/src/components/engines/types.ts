@@ -4,10 +4,11 @@ export type PipelineStage =
   | 'draft'
   | 'review'
   | 'assets'
+  | 'preview'
   | 'publish';
 
 export const PIPELINE_STAGES: PipelineStage[] = [
-  'brainstorm', 'research', 'draft', 'review', 'assets', 'publish',
+  'brainstorm', 'research', 'draft', 'review', 'assets', 'preview', 'publish',
 ];
 
 export interface PipelineContext {
@@ -29,6 +30,13 @@ export interface PipelineContext {
   feedbackJson?: Record<string, unknown>;
   assetIds?: string[];
   featuredImageUrl?: string;
+  // From preview stage
+  previewImageMap?: Record<string, string>;
+  previewAltTexts?: Record<string, string>;
+  previewCategories?: string[];
+  previewTags?: string[];
+  previewSeoOverrides?: { title: string; slug: string; metaDescription: string };
+  previewPublishDate?: string;
   wordpressPostId?: number;
   publishedUrl?: string;
   projectId?: string;
@@ -68,6 +76,16 @@ export interface AssetsResult {
   featuredImageUrl?: string;
 }
 
+export interface PreviewResult {
+  imageMap: Record<string, string>;  // role → assetId
+  altTexts: Record<string, string>;  // role → alt text
+  categories: string[];
+  tags: string[];
+  seoOverrides: { title: string; slug: string; metaDescription: string };
+  suggestedPublishDate?: string;
+  composedHtml: string;  // client-side preview (display only)
+}
+
 export interface PublishResult {
   wordpressPostId: number;
   publishedUrl: string;
@@ -79,6 +97,7 @@ export type StageResult =
   | DraftResult
   | ReviewResult
   | AssetsResult
+  | PreviewResult
   | PublishResult;
 
 export interface BaseEngineProps {
@@ -98,6 +117,7 @@ export interface PipelineState {
     draft?: DraftResult & { completedAt: string };
     review?: ReviewResult & { completedAt: string };
     assets?: AssetsResult & { completedAt: string };
+    preview?: PreviewResult & { completedAt: string };
     publish?: PublishResult & { completedAt: string };
   };
   autoConfig: {

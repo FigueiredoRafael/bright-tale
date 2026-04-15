@@ -22,9 +22,9 @@ const PAGE_TITLE_KEYS: Record<string, { ns: string; key: string }> = {
     "/assets": { ns: "nav", key: "assets" },
     "/settings": { ns: "nav", key: "settings" },
     "/settings/image-generation": { ns: "nav", key: "imageGeneration" },
-    "/settings/ai": { ns: "pages", key: "aiSettings" },
-    "/settings/agents": { ns: "pages", key: "agents" },
-    "/settings/wordpress": { ns: "pages", key: "wordpress" },
+    "/settings/ai": { ns: "pages", key: "settingsAI" },
+    "/settings/agents": { ns: "pages", key: "settingsAgents" },
+    "/settings/wordpress": { ns: "pages", key: "settingsWordpress" },
 };
 
 function getPageTitle(pathname: string, t: (ns: string, key: string) => string): string {

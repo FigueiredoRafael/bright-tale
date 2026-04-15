@@ -235,7 +235,11 @@ export function ReviewEngine({
         const res = await fetch(`/api/content-drafts/${draftId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'approved' }),
+          body: JSON.stringify({
+            status: 'approved',
+            reviewScore: effectiveScore ?? draft.review_score ?? 0,
+            reviewVerdict: 'approved',
+          }),
         });
         const json = await res.json();
         if (json?.error) {
@@ -404,10 +408,24 @@ export function ReviewEngine({
                 </div>
                 <div className="flex gap-2">
                   <Button
-                    onClick={() => {
+                    onClick={async () => {
+                      const score = effectiveScore ?? draft.review_score ?? 0;
+                      const verdict = effectiveVerdict ?? draft.review_verdict;
+                      // Ensure DB status is 'approved' before advancing
+                      if (draft.status !== 'approved') {
+                        await fetch(`/api/content-drafts/${draftId}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            status: 'approved',
+                            reviewScore: score,
+                            reviewVerdict: verdict,
+                          }),
+                        });
+                      }
                       const result: ReviewResult = {
-                        score: draft.review_score ?? 0,
-                        verdict: draft.review_verdict,
+                        score,
+                        verdict,
                         feedbackJson: draft.review_feedback_json ?? {},
                         iterationCount: draft.iteration_count,
                       };

@@ -9,6 +9,11 @@
 import Fastify from "fastify";
 import fastifyCors from "@fastify/cors";
 import fastifyCookie from "@fastify/cookie";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { healthRoutes } from "./routes/health.js";
 import { authRoutes } from "./routes/auth.js";
 import { projectsRoutes } from "./routes/projects.js";
@@ -49,6 +54,7 @@ import { notificationsRoutes } from "./routes/notifications.js";
 import { affiliateRoutes } from "./routes/affiliate.js";
 
 const server = Fastify({
+  bodyLimit: 25 * 1024 * 1024, // 25 MB — needed for base64 image uploads
   logger: {
     level: process.env.LOG_LEVEL ?? "info",
     transport:
@@ -102,6 +108,23 @@ server.addHook("onResponse", (request, reply, done) => {
     `${color} ${request.method} ${request.url} → ${status} (${ms}ms)`,
   );
   done();
+});
+
+// Serve uploaded/generated images from apps/api/public/
+const publicDir = path.resolve(__dirname, "../public");
+server.get("/generated-images/*", async (request, reply) => {
+  const filePath = path.join(publicDir, "generated-images", (request.params as { "*": string })["*"]);
+  const safe = path.resolve(filePath);
+  if (!safe.startsWith(path.join(publicDir, "generated-images"))) {
+    return reply.status(403).send({ data: null, error: { code: "FORBIDDEN", message: "Forbidden" } });
+  }
+  if (!fs.existsSync(safe)) {
+    return reply.status(404).send({ data: null, error: { code: "NOT_FOUND", message: "File not found" } });
+  }
+  const ext = path.extname(safe).slice(1).toLowerCase();
+  const mimeMap: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" };
+  const mime = mimeMap[ext] ?? "application/octet-stream";
+  return reply.header("Content-Type", mime).send(fs.createReadStream(safe));
 });
 
 server.register(healthRoutes);

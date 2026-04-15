@@ -16,6 +16,7 @@ const STAGE_BY_NUM: Record<string, string> = {
   '2': 'research',
   '3': 'production',
   '4': 'review',
+  '5': 'assets',
 };
 
 function dollarQuote(s: string): string {

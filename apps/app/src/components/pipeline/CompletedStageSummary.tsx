@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-  Lightbulb, Search, FileText, CheckCircle, Image, Globe,
+  Lightbulb, Search, FileText, CheckCircle, Image, Eye, Globe,
   ChevronDown, ChevronUp, RotateCcw,
 } from 'lucide-react';
 import type { PipelineStage, PipelineState } from '@/components/engines/types';
@@ -16,6 +16,7 @@ const STAGE_META: Record<PipelineStage, { icon: typeof Lightbulb; label: string;
   draft: { icon: FileText, label: 'Draft', color: 'text-purple-500' },
   review: { icon: CheckCircle, label: 'Review', color: 'text-green-500' },
   assets: { icon: Image, label: 'Assets', color: 'text-pink-500' },
+  preview: { icon: Eye, label: 'Preview', color: 'text-indigo-500' },
   publish: { icon: Globe, label: 'Published', color: 'text-emerald-500' },
 };
 
@@ -53,6 +54,10 @@ export function CompletedStageSummary({ stage, stageResults, onRevisit }: Comple
       case 'assets': {
         const r = stageResults.assets;
         return r ? `${r.assetIds.length} assets` : '';
+      }
+      case 'preview': {
+        const r = stageResults.preview;
+        return r ? `${r.categories.length} categories · ${r.tags.length} tags` : '';
       }
       case 'publish': {
         const r = stageResults.publish;

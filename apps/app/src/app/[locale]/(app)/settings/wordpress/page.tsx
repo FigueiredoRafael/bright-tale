@@ -52,7 +52,7 @@ import {
     XCircle,
     AlertTriangle,
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 
 interface WordPressConfig {
     id: string;
@@ -63,7 +63,6 @@ interface WordPressConfig {
 }
 
 export default function WordPressSettingsPage() {
-    const { toast } = useToast();
     const [configs, setConfigs] = useState<WordPressConfig[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -93,11 +92,7 @@ export default function WordPressSettingsPage() {
                 setConfigs(json.data);
             }
         } catch (err) {
-            toast({
-                title: "Error",
-                description: "Failed to load WordPress configurations",
-                variant: "destructive",
-            });
+            toast.error("Failed to load WordPress configurations");
         } finally {
             setLoading(false);
         }
@@ -105,11 +100,7 @@ export default function WordPressSettingsPage() {
 
     const handleTestConnection = async () => {
         if (!siteUrl || !username || !password) {
-            toast({
-                title: "Validation Error",
-                description: "Please fill in all fields",
-                variant: "destructive",
-            });
+            toast.error("Please fill in all fields");
             return;
         }
 
@@ -181,32 +172,17 @@ export default function WordPressSettingsPage() {
                         description += `\nPermissions: ${perms.join(', ')}`;
                     }
 
-                    toast({
-                        title: "✅ Connection Successful",
-                        description,
-                    });
+                    toast.success(description);
                 } else {
-                    // Simple success response
-                    toast({
-                        variant: "success",
-                        title: "✅ Connection Successful",
-                        description: json.message || "API endpoint is reachable",
-                    });
+                    toast.success(json.message || "API endpoint is reachable");
                 }
             } else {
-                toast({
-                    title: "❌ Connection Failed",
-                    description: json.error || json.details || "Could not connect to WordPress",
-                    variant: "destructive",
-                });
+                const errMsg = typeof json.error === 'string' ? json.error : json.error?.message;
+                toast.error(errMsg || json.details || "Could not connect to WordPress");
             }
         } catch (err: any) {
             console.error("Test connection error:", err);
-            toast({
-                title: "❌ Connection Failed",
-                description: err.message || "Network error occurred. Check if the site URL is correct.",
-                variant: "destructive",
-            });
+            toast.error(err.message || "Network error occurred. Check if the site URL is correct.");
         } finally {
             setTesting(false);
         }
@@ -214,20 +190,12 @@ export default function WordPressSettingsPage() {
 
     const handleSave = async () => {
         if (!siteUrl || !username) {
-            toast({
-                title: "Validation Error",
-                description: "Please fill in site URL and username",
-                variant: "destructive",
-            });
+            toast.error("Please fill in site URL and username");
             return;
         }
 
         if (!editingId && !password) {
-            toast({
-                title: "Validation Error",
-                description: "Password is required for new configurations",
-                variant: "destructive",
-            });
+            toast.error("Password is required for new configurations");
             return;
         }
 
@@ -261,16 +229,13 @@ export default function WordPressSettingsPage() {
 
             if (!response.ok) {
                 // Show detailed error message (prioritize 'message' field for detailed info)
-                const errorMessage = responseData.message || responseData.error || "Failed to save configuration";
+                const errorMessage = responseData.message
+                    || (typeof responseData.error === 'string' ? responseData.error : responseData.error?.message)
+                    || "Failed to save configuration";
                 throw new Error(errorMessage);
             }
 
-            toast({
-                title: "✅ Success",
-                description: editingId
-                    ? "Configuration updated successfully"
-                    : "Configuration saved successfully",
-            });
+            toast.success(editingId ? "Configuration updated" : "Configuration saved");
 
             // Reset form
             setSiteUrl("");
@@ -283,11 +248,7 @@ export default function WordPressSettingsPage() {
             await fetchConfigs();
         } catch (err: any) {
             console.error("Save error:", err);
-            toast({
-                title: "❌ Error",
-                description: err.message || "Failed to save configuration",
-                variant: "destructive",
-            });
+            toast.error(err.message || "Failed to save configuration");
         } finally {
             setSaving(false);
         }
@@ -311,18 +272,11 @@ export default function WordPressSettingsPage() {
                 throw new Error("Failed to delete configuration");
             }
 
-            toast({
-                title: "Success",
-                description: "Configuration deleted successfully",
-            });
+            toast.success("Configuration deleted");
 
             fetchConfigs();
         } catch (err) {
-            toast({
-                title: "Error",
-                description: "Failed to delete configuration",
-                variant: "destructive",
-            });
+            toast.error("Failed to delete configuration");
         } finally {
             setDeleteId(null);
         }
@@ -354,16 +308,9 @@ export default function WordPressSettingsPage() {
 
             setMarkdownTestResult(json.data);
 
-            toast({
-                title: "✅ Test Complete",
-                description: "Test post created in WordPress. Please review and delete it.",
-            });
+            toast.success("Test post created in WordPress. Please review and delete it.");
         } catch (err: any) {
-            toast({
-                title: "❌ Test Failed",
-                description: err.message || "Failed to test markdown conversion",
-                variant: "destructive",
-            });
+            toast.error(err.message || "Failed to test markdown conversion");
         } finally {
             setTestingMarkdown(false);
         }

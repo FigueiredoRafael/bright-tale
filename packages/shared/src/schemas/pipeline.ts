@@ -155,6 +155,13 @@ export const publishDraftSchema = z.object({
   scheduledDate: z.string().datetime().optional(),
   categories: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
+  imageMap: z.record(z.string(), z.string().uuid()).optional(),
+  altTexts: z.record(z.string(), z.string()).optional(),
+  seoOverrides: z.object({
+    title: z.string(),
+    slug: z.string(),
+    metaDescription: z.string(),
+  }).optional(),
 });
 export type PublishDraftInput = z.infer<typeof publishDraftSchema>;
 

@@ -50,6 +50,10 @@ const nextConfig: NextConfig = {
         source: "/api/:path*",
         destination: `${API_URL}/:path*`,
       },
+      {
+        source: "/generated-images/:path*",
+        destination: `${API_URL}/generated-images/:path*`,
+      },
     ];
   },
   async headers() {

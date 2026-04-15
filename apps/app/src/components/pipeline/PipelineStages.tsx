@@ -3,7 +3,7 @@
 import { useRouter } from '@/i18n/navigation';
 import { Badge } from '@/components/ui/badge';
 import {
-  Lightbulb, Search, FileText, CheckCircle, Image, Globe, Check,
+  Lightbulb, Search, FileText, CheckCircle, Image, Eye, Globe, Check,
 } from 'lucide-react';
 
 export type PipelineStep =
@@ -12,6 +12,7 @@ export type PipelineStep =
   | 'draft'
   | 'review'
   | 'assets'
+  | 'preview'
   | 'published';
 
 const STEPS: { key: PipelineStep; label: string; icon: typeof Lightbulb }[] = [
@@ -20,6 +21,7 @@ const STEPS: { key: PipelineStep; label: string; icon: typeof Lightbulb }[] = [
   { key: 'draft', label: 'Draft', icon: FileText },
   { key: 'review', label: 'Review', icon: CheckCircle },
   { key: 'assets', label: 'Assets', icon: Image },
+  { key: 'preview', label: 'Preview', icon: Eye },
   { key: 'published', label: 'Published', icon: Globe },
 ];
 
@@ -60,6 +62,8 @@ function buildStepUrl(
       return draftId ? `/channels/${channelId}/drafts/${draftId}?tab=review` : null;
     case 'assets':
       return draftId ? `/channels/${channelId}/drafts/${draftId}?tab=assets` : null;
+    case 'preview':
+      return projectId ? `/channels/${channelId}/projects/${projectId}` : '#';
     case 'published':
       return draftId ? `/channels/${channelId}/drafts/${draftId}?tab=publish` : null;
     default:

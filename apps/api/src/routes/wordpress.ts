@@ -4,6 +4,8 @@
  */
 
 import type { FastifyInstance } from 'fastify';
+import path from 'path';
+import fs from 'fs';
 import { z } from 'zod';
 import yaml from 'js-yaml';
 import { authenticate } from '../middleware/authenticate.js';
@@ -39,15 +41,31 @@ async function uploadImageToWordPress(
   siteUrl: string,
   auth: string,
 ): Promise<number> {
-  // Download image from URL
-  const imageResponse = await fetch(imageUrl);
-  if (!imageResponse.ok) {
-    throw new ApiError(400, 'Failed to download image from source URL');
-  }
+  let buffer: Buffer;
+  let mimeType = 'image/jpeg';
 
-  const imageBlob = await imageResponse.blob();
-  const arrayBuffer = await imageBlob.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
+  if (imageUrl.startsWith('/')) {
+    // Local file — read from disk (relative to apps/api/public/)
+    const localPath = path.resolve(process.cwd(), 'public', imageUrl.replace(/^\//, ''));
+    if (!fs.existsSync(localPath)) {
+      throw new ApiError(400, `Local image not found: ${imageUrl}`);
+    }
+    buffer = fs.readFileSync(localPath);
+    const ext = path.extname(localPath).toLowerCase();
+    if (ext === '.webp') mimeType = 'image/webp';
+    else if (ext === '.png') mimeType = 'image/png';
+    else if (ext === '.gif') mimeType = 'image/gif';
+  } else {
+    // Remote URL — download
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) {
+      throw new ApiError(400, 'Failed to download image from source URL');
+    }
+    const imageBlob = await imageResponse.blob();
+    const arrayBuffer = await imageBlob.arrayBuffer();
+    buffer = Buffer.from(arrayBuffer);
+    mimeType = imageBlob.type || 'image/jpeg';
+  }
 
   // Get filename from URL or generate one
   const urlParts = imageUrl.split('/');
@@ -59,9 +77,9 @@ async function uploadImageToWordPress(
     headers: {
       Authorization: `Basic ${auth}`,
       'Content-Disposition': `attachment; filename="${filename}"`,
-      'Content-Type': imageBlob.type || 'image/jpeg',
+      'Content-Type': mimeType,
     },
-    body: buffer,
+    body: new Uint8Array(buffer),
   });
 
   if (!uploadResponse.ok) {
@@ -87,6 +105,44 @@ async function uploadImageToWordPress(
   }
 
   return mediaData.id;
+}
+
+/**
+ * Stitch images into HTML after <h2> tags by position.
+ * body_section_1 → after 1st <h2>, body_section_2 → after 2nd <h2>, etc.
+ */
+function stitchImagesAfterH2(
+  html: string,
+  uploadedMedia: Record<string, { wpId: number; wpUrl: string }>,
+  altTexts: Record<string, string>,
+): string {
+  const h2Regex = /<h2[^>]*>.*?<\/h2>/gi;
+  const h2Matches: { index: number; length: number }[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = h2Regex.exec(html)) !== null) {
+    h2Matches.push({ index: match.index, length: match[0].length });
+  }
+
+  const insertions: { afterIndex: number; html: string }[] = [];
+  for (const [role, media] of Object.entries(uploadedMedia)) {
+    if (role === 'featured_image') continue;
+    const sectionMatch = role.match(/body_section_(\d+)/);
+    if (!sectionMatch) continue;
+    const sectionNum = parseInt(sectionMatch[1], 10);
+    const h2 = h2Matches[sectionNum - 1];
+    if (!h2) continue;
+    const alt = (altTexts[role] ?? '').replace(/"/g, '&quot;');
+    const figureTag = `<figure class="wp-block-image"><img src="${media.wpUrl}" alt="${alt}" class="wp-image-${media.wpId}" /></figure>`;
+    insertions.push({ afterIndex: h2.index + h2.length, html: figureTag });
+  }
+
+  insertions.sort((a, b) => b.afterIndex - a.afterIndex);
+  let result = html;
+  for (const ins of insertions) {
+    result = result.slice(0, ins.afterIndex) + '\n' + ins.html + '\n' + result.slice(ins.afterIndex);
+  }
+
+  return result;
 }
 
 // Helper: Resolve categories (fetch existing or create new)
@@ -231,6 +287,34 @@ async function resolveTags(
     console.error('[WP Publish] Error in resolveTags:', error);
     return [];
   }
+}
+
+// Helper: Load draft for publishing
+async function loadDraftForPublish(sb: ReturnType<typeof createServiceClient>, draftId: string) {
+  const { data: draft, error } = await sb
+    .from('content_drafts')
+    .select('*')
+    .eq('id', draftId)
+    .maybeSingle();
+  if (error) throw error;
+  return draft;
+}
+
+// Helper: Resolve WordPress config (fetch and decrypt)
+async function resolveWpConfig(sb: ReturnType<typeof createServiceClient>, configId?: string) {
+  if (!configId) return null;
+  const { data: config, error } = await sb
+    .from('wordpress_configs')
+    .select('*')
+    .eq('id', configId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!config) return null;
+  return {
+    site_url: config.site_url as string,
+    username: config.username as string,
+    password: decrypt(config.password as string),
+  };
 }
 
 export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
@@ -745,6 +829,318 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
   // Legacy publish-draft removed — see POST /publish-draft below (with image upload + WebP).
 
   /**
+   * POST /publish-draft/stream — Streaming version with SSE progress updates.
+   * Emits events for each step: preparing, uploading_featured, uploading_images, composing, categories, tags, publishing, done.
+   */
+  fastify.post('/publish-draft/stream', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      const body = publishDraftSchema.parse(request.body);
+
+      // Set SSE headers
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      });
+
+      const sendEvent = (step: string, message: string, progress?: number, total?: number) => {
+        const data = JSON.stringify({ step, message, progress, total });
+        reply.raw.write(`data: ${data}\n\n`);
+      };
+
+      const sendSseError = (step: string, message: string) => {
+        const data = JSON.stringify({ step, message, error: true });
+        reply.raw.write(`data: ${data}\n\n`);
+        reply.raw.end();
+      };
+
+      const sendDone = (result: Record<string, unknown>) => {
+        const data = JSON.stringify({ step: 'done', message: 'Published!', result });
+        reply.raw.write(`data: ${data}\n\n`);
+        reply.raw.end();
+      };
+
+      try {
+        // Step 1: Preparing — load draft and config
+        sendEvent('preparing', 'Loading draft data...');
+        const draftRaw = await loadDraftForPublish(sb, body.draftId);
+        if (!draftRaw) throw new ApiError(404, 'Draft not found');
+        const draft = draftRaw as Record<string, unknown>;
+        if ((draft.status as string) !== 'approved' && (draft.status as string) !== 'scheduled') {
+          throw new ApiError(400, 'Draft must be approved before publishing');
+        }
+
+        sendEvent('preparing', 'Loading WordPress configuration...');
+        const wpConfig = await resolveWpConfig(sb, body.configId);
+        if (!wpConfig) throw new ApiError(404, 'WordPress config not found');
+
+        const { site_url, username, password } = wpConfig;
+        const auth = Buffer.from(`${username}:${password}`).toString('base64');
+        const headers = {
+          Authorization: `Basic ${auth}`,
+          'Content-Type': 'application/json',
+        };
+
+        // Step 2: Preparing featured image
+        const draftJson = draft.draft_json as Record<string, unknown> | null;
+        let blogBody = (draftJson?.full_draft as string) ?? '';
+        const uploadedMedia: Record<string, { wpId: number; wpUrl: string }> = {};
+
+        sendEvent('uploading_featured', 'Uploading featured image...');
+        let featuredAssetId: string | undefined;
+        if (body.imageMap?.['featured_image']) {
+          featuredAssetId = body.imageMap['featured_image'] as string;
+          const { data: assets } = await sb
+            .from('assets')
+            .select('*')
+            .eq('content_id', body.draftId);
+
+          for (const rawAsset of assets ?? []) {
+            const asset = rawAsset as Record<string, unknown>;
+            if (asset.id !== featuredAssetId) continue;
+
+            const imageUrl = (asset.source_url as string);
+            if (!imageUrl) continue;
+
+            const wpMediaId = await uploadImageToWordPress(
+              imageUrl,
+              (asset.alt_text as string) || (draft.title as string) || '',
+              site_url,
+              auth,
+            );
+
+            // Get media URL from WordPress
+            const mediaResp = await fetch(`${site_url}/wp-json/wp/v2/media/${wpMediaId}`, {
+              headers,
+            });
+            let wpUrl = '';
+            if (mediaResp.ok) {
+              const mediaData = (await mediaResp.json()) as Record<string, unknown>;
+              wpUrl = (mediaData.source_url as string) ?? '';
+            }
+
+            uploadedMedia['featured_image'] = { wpId: wpMediaId, wpUrl };
+            break;
+          }
+        }
+
+        // Step 3: Uploading section images
+        if (body.imageMap) {
+          // New flow: upload only images in imageMap
+          const { data: assets } = await sb
+            .from('assets')
+            .select('*')
+            .eq('content_id', body.draftId);
+
+          const assetsToUpload = assets?.filter((asset: any) =>
+            body.imageMap && Object.values(body.imageMap).includes(asset.id as string) &&
+            asset.id !== featuredAssetId,
+          ) ?? [];
+
+          const total = assetsToUpload.length;
+          for (let i = 0; i < total; i++) {
+            const rawAsset = assetsToUpload[i];
+            const asset = rawAsset as Record<string, unknown>;
+            const assetId = asset.id as string;
+
+            sendEvent(
+              'uploading_images',
+              `Uploading image ${i + 1} of ${total}...`,
+              i + 1,
+              total,
+            );
+
+            const imageUrl = (asset.source_url as string);
+            if (!imageUrl) continue;
+
+            const wpMediaId = await uploadImageToWordPress(
+              imageUrl,
+              (asset.alt_text as string) || (draft.title as string) || '',
+              site_url,
+              auth,
+            );
+
+            // Get media URL from WordPress
+            const mediaResp = await fetch(`${site_url}/wp-json/wp/v2/media/${wpMediaId}`, {
+              headers,
+            });
+            let wpUrl = '';
+            if (mediaResp.ok) {
+              const mediaData = (await mediaResp.json()) as Record<string, unknown>;
+              wpUrl = (mediaData.source_url as string) ?? '';
+            }
+
+            // Find the role by looking up in imageMap
+            const role = Object.entries(body.imageMap).find(([_, id]) => id === assetId)?.[0];
+            if (role) {
+              uploadedMedia[role] = { wpId: wpMediaId, wpUrl };
+            }
+          }
+
+          // Convert markdown to HTML
+          sendEvent('composing', 'Converting markdown to HTML...');
+          blogBody = markdownToHtml(blogBody);
+
+          // Stitch images after H2 tags
+          blogBody = stitchImagesAfterH2(blogBody, uploadedMedia, body.altTexts ?? {});
+        } else {
+          // Legacy flow: fetch all assets, upload all, replace placeholders
+          const { data: assets } = await sb
+            .from('assets')
+            .select('*')
+            .eq('content_id', body.draftId);
+
+          const total = assets?.length ?? 0;
+          for (let i = 0; i < total; i++) {
+            const rawAsset = assets?.[i];
+            if (!rawAsset) continue;
+            const asset = rawAsset as Record<string, unknown>;
+
+            sendEvent(
+              'uploading_images',
+              `Uploading image ${i + 1} of ${total}...`,
+              i + 1,
+              total,
+            );
+
+            const imageUrl = (asset.source_url as string);
+            if (!imageUrl) continue;
+
+            const wpMediaId = await uploadImageToWordPress(
+              imageUrl,
+              (asset.alt_text as string) || (draft.title as string) || '',
+              site_url,
+              auth,
+            );
+
+            // Get media URL from WordPress
+            const mediaResp = await fetch(`${site_url}/wp-json/wp/v2/media/${wpMediaId}`, {
+              headers,
+            });
+            let wpUrl = '';
+            if (mediaResp.ok) {
+              const mediaData = (await mediaResp.json()) as Record<string, unknown>;
+              wpUrl = (mediaData.source_url as string) ?? '';
+            }
+
+            const role = (asset.role as string) ?? `position_${(asset.position as number) ?? 0}`;
+            uploadedMedia[role] = { wpId: wpMediaId, wpUrl };
+          }
+
+          // Replace placeholders
+          sendEvent('composing', 'Converting markdown to HTML...');
+          for (const [role, media] of Object.entries(uploadedMedia)) {
+            if (role === 'featured_image') continue;
+            const placeholder = new RegExp(`<!--\\s*IMAGE:${role}\\s*-->`, 'gi');
+            const imgTag = `<figure><img src="${media.wpUrl}" alt="" class="wp-image-${media.wpId}" /></figure>`;
+            blogBody = blogBody.replace(placeholder, imgTag);
+          }
+
+          blogBody = markdownToHtml(blogBody);
+        }
+
+        // Step 4: Resolve categories
+        sendEvent('categories', 'Resolving categories...');
+        const prodSettings = draft.production_settings_json as Record<string, unknown> | null;
+        const categoryNames = body.categories
+          ?? (prodSettings?.categories as string[])
+          ?? [];
+        const categoryIds = await resolveCategories(categoryNames, site_url, headers);
+
+        // Step 5: Resolve tags
+        sendEvent('tags', 'Resolving tags...');
+        const tagNames = body.tags ?? (prodSettings?.tags as string[]) ?? [];
+        const tagIds = await resolveTags(tagNames, site_url, headers);
+
+        // Step 6: Publishing
+        sendEvent('publishing', 'Creating post on WordPress...');
+        const postData: Record<string, unknown> = {
+          title: body.seoOverrides?.title ?? draft.title ?? draftJson?.title ?? 'Untitled',
+          slug: body.seoOverrides?.slug ?? (draftJson?.slug as string) ?? undefined,
+          content: blogBody,
+          excerpt: body.seoOverrides?.metaDescription ?? (draftJson?.meta_description as string) ?? '',
+          status: body.mode === 'schedule' ? 'future' : body.mode,
+        };
+        if (body.mode === 'schedule' && body.scheduledDate) {
+          postData.date = body.scheduledDate;
+        }
+        if (categoryIds.length > 0) postData.categories = categoryIds;
+        if (tagIds.length > 0) postData.tags = tagIds;
+
+        const featured = uploadedMedia['featured_image'];
+        if (featured) postData.featured_media = featured.wpId;
+
+        // Create or update WordPress post
+        const existingPostId = (draft.wordpress_post_id as number | null) ?? null;
+        let wpResponse: Response;
+        if (existingPostId) {
+          wpResponse = await fetch(`${site_url}/wp-json/wp/v2/posts/${existingPostId}`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify(postData),
+          });
+        } else {
+          wpResponse = await fetch(`${site_url}/wp-json/wp/v2/posts`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(postData),
+          });
+        }
+
+        if (!wpResponse.ok) {
+          const errorText = await wpResponse.text();
+          throw new ApiError(wpResponse.status, `WordPress publish failed: ${errorText}`);
+        }
+
+        const wpPost = (await wpResponse.json()) as Record<string, unknown>;
+
+        // Update draft in DB
+        const updateFields: Record<string, unknown> = {
+          wordpress_post_id: wpPost.id,
+          published_url: wpPost.link,
+        };
+        if (body.mode === 'publish') {
+          updateFields.status = 'published';
+          updateFields.published_at = new Date().toISOString();
+        } else if (body.mode === 'schedule') {
+          updateFields.status = 'scheduled';
+          updateFields.scheduled_at = body.scheduledDate;
+        }
+
+        await sb
+          .from('content_drafts')
+          .update(updateFields as never)
+          .eq('id', body.draftId);
+
+        // Send completion event
+        sendDone({
+          published: true,
+          wordpress_post_id: wpPost.id,
+          published_url: wpPost.link,
+          status: wpPost.status,
+        });
+      } catch (innerError) {
+        if (innerError instanceof ApiError) {
+          sendSseError('error', innerError.message);
+        } else {
+          const msg = innerError instanceof Error ? innerError.message : 'Unknown error';
+          sendSseError('error', msg);
+        }
+      }
+    } catch (error) {
+      request.log.error({ err: error }, 'WordPress publish-draft/stream error');
+      try {
+        const msg = error instanceof Error ? error.message : 'Unknown error';
+        reply.raw.write(`data: ${JSON.stringify({ step: 'error', message: msg, error: true })}\n\n`);
+        reply.raw.end();
+      } catch (writeErr) {
+        request.log.error({ err: writeErr }, 'Failed to send error event');
+      }
+    }
+  });
+
+  /**
    * GET /tags — Fetch WordPress tags
    */
   fastify.get('/tags', { preHandler: [authenticate] }, async (request, reply) => {
@@ -955,53 +1351,98 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         'Content-Type': 'application/json',
       };
 
-      // Fetch content_assets for this draft
-      const { data: assets } = await sb
-        .from('content_assets')
-        .select('*')
-        .eq('draft_id', body.draftId);
-
-      // Upload images to WordPress — prefer WebP, fall back to original
-      const uploadedMedia: Record<string, { wpId: number; wpUrl: string }> = {};
-
-      for (const rawAsset of assets ?? []) {
-        const asset = rawAsset as Record<string, unknown>;
-        const imageUrl = (asset.webp_url as string) || (asset.url as string);
-        if (!imageUrl) continue;
-
-        const wpMediaId = await uploadImageToWordPress(
-          imageUrl,
-          (asset.alt_text as string) || (draft.title as string) || '',
-          site_url,
-          auth,
-        );
-
-        // Get media URL from WordPress
-        const mediaResp = await fetch(`${site_url}/wp-json/wp/v2/media/${wpMediaId}`, { headers });
-        let wpUrl = '';
-        if (mediaResp.ok) {
-          const mediaData = (await mediaResp.json()) as Record<string, unknown>;
-          wpUrl = (mediaData.source_url as string) ?? '';
-        }
-
-        const role = (asset.role as string) ?? `position_${(asset.position as number) ?? 0}`;
-        uploadedMedia[role] = { wpId: wpMediaId, wpUrl };
-      }
-
-      // Process blog content — replace image placeholders
+      // Process blog content — upload images and convert to HTML
       const draftJson = draft.draft_json as Record<string, unknown> | null;
       let blogBody = (draftJson?.full_draft as string) ?? '';
 
-      // Replace placeholders like <!-- IMAGE:featured_image --> or <!-- IMAGE:body_section_1 -->
-      for (const [role, media] of Object.entries(uploadedMedia)) {
-        if (role === 'featured_image') continue; // handled separately
-        const placeholder = new RegExp(`<!--\\s*IMAGE:${role}\\s*-->`, 'gi');
-        const imgTag = `<figure><img src="${media.wpUrl}" alt="" class="wp-image-${media.wpId}" /></figure>`;
-        blogBody = blogBody.replace(placeholder, imgTag);
-      }
+      const uploadedMedia: Record<string, { wpId: number; wpUrl: string }> = {};
 
-      // Convert markdown to HTML
-      const htmlContent = markdownToHtml(blogBody);
+      if (body.imageMap) {
+        // New flow: only upload images from imageMap, then use stitchImagesAfterH2
+        const { data: assets } = await sb
+          .from('assets')
+          .select('*')
+          .eq('content_id', body.draftId);
+
+        for (const rawAsset of assets ?? []) {
+          const asset = rawAsset as Record<string, unknown>;
+          const assetId = asset.id as string;
+
+          // Only process assets in the imageMap
+          if (!Object.values(body.imageMap).includes(assetId)) continue;
+
+          const imageUrl = (asset.source_url as string);
+          if (!imageUrl) continue;
+
+          const wpMediaId = await uploadImageToWordPress(
+            imageUrl,
+            (asset.alt_text as string) || (draft.title as string) || '',
+            site_url,
+            auth,
+          );
+
+          // Get media URL from WordPress
+          const mediaResp = await fetch(`${site_url}/wp-json/wp/v2/media/${wpMediaId}`, { headers });
+          let wpUrl = '';
+          if (mediaResp.ok) {
+            const mediaData = (await mediaResp.json()) as Record<string, unknown>;
+            wpUrl = (mediaData.source_url as string) ?? '';
+          }
+
+          // Find the role by looking up in imageMap
+          const role = Object.entries(body.imageMap).find(([_, id]) => id === assetId)?.[0];
+          if (role) {
+            uploadedMedia[role] = { wpId: wpMediaId, wpUrl };
+          }
+        }
+
+        // Convert markdown to HTML first
+        blogBody = markdownToHtml(blogBody);
+
+        // Then stitch images after H2 tags
+        blogBody = stitchImagesAfterH2(blogBody, uploadedMedia, body.altTexts ?? {});
+      } else {
+        // Legacy flow: fetch all assets, upload all, replace placeholders
+        const { data: assets } = await sb
+          .from('assets')
+          .select('*')
+          .eq('content_id', body.draftId);
+
+        for (const rawAsset of assets ?? []) {
+          const asset = rawAsset as Record<string, unknown>;
+          const imageUrl = (asset.source_url as string);
+          if (!imageUrl) continue;
+
+          const wpMediaId = await uploadImageToWordPress(
+            imageUrl,
+            (asset.alt_text as string) || (draft.title as string) || '',
+            site_url,
+            auth,
+          );
+
+          // Get media URL from WordPress
+          const mediaResp = await fetch(`${site_url}/wp-json/wp/v2/media/${wpMediaId}`, { headers });
+          let wpUrl = '';
+          if (mediaResp.ok) {
+            const mediaData = (await mediaResp.json()) as Record<string, unknown>;
+            wpUrl = (mediaData.source_url as string) ?? '';
+          }
+
+          const role = (asset.role as string) ?? `position_${(asset.position as number) ?? 0}`;
+          uploadedMedia[role] = { wpId: wpMediaId, wpUrl };
+        }
+
+        // Replace placeholders like <!-- IMAGE:featured_image --> or <!-- IMAGE:body_section_1 -->
+        for (const [role, media] of Object.entries(uploadedMedia)) {
+          if (role === 'featured_image') continue; // handled separately
+          const placeholder = new RegExp(`<!--\\s*IMAGE:${role}\\s*-->`, 'gi');
+          const imgTag = `<figure><img src="${media.wpUrl}" alt="" class="wp-image-${media.wpId}" /></figure>`;
+          blogBody = blogBody.replace(placeholder, imgTag);
+        }
+
+        // Convert markdown to HTML
+        blogBody = markdownToHtml(blogBody);
+      }
 
       // Resolve categories and tags — freeform, create-if-missing
       const prodSettings = draft.production_settings_json as Record<string, unknown> | null;
@@ -1015,12 +1456,12 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       const categoryIds = await resolveCategories(categoryNames, site_url, headers);
       const tagIds = await resolveTags(tagNames, site_url, headers);
 
-      // Build post data
+      // Build post data — apply seoOverrides if present
       const postData: Record<string, unknown> = {
-        title: draft.title ?? draftJson?.title ?? 'Untitled',
-        slug: (draftJson?.slug as string) ?? undefined,
-        content: htmlContent,
-        excerpt: (draftJson?.meta_description as string) ?? '',
+        title: body.seoOverrides?.title ?? draft.title ?? draftJson?.title ?? 'Untitled',
+        slug: body.seoOverrides?.slug ?? (draftJson?.slug as string) ?? undefined,
+        content: blogBody,
+        excerpt: body.seoOverrides?.metaDescription ?? (draftJson?.meta_description as string) ?? '',
         status: body.mode === 'schedule' ? 'future' : body.mode,
       };
       if (body.mode === 'schedule' && body.scheduledDate) {

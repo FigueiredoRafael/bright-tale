@@ -13,6 +13,7 @@ import { ResearchEngine } from '@/components/engines/ResearchEngine';
 import { DraftEngine } from '@/components/engines/DraftEngine';
 import { ReviewEngine } from '@/components/engines/ReviewEngine';
 import { AssetsEngine } from '@/components/engines/AssetsEngine';
+import { PreviewEngine } from '@/components/engines/PreviewEngine';
 import { PublishEngine } from '@/components/engines/PublishEngine';
 import { ImportPicker } from '@/components/engines/ImportPicker';
 import { PipelineStages, type PipelineStep } from './PipelineStages';
@@ -92,6 +93,15 @@ export function PipelineOrchestrator({
     if (sr.assets) {
       ctx.assetIds = sr.assets.assetIds;
       ctx.featuredImageUrl = sr.assets.featuredImageUrl;
+    }
+
+    if (sr.preview) {
+      ctx.previewImageMap = sr.preview.imageMap;
+      ctx.previewAltTexts = sr.preview.altTexts;
+      ctx.previewCategories = sr.preview.categories;
+      ctx.previewTags = sr.preview.tags;
+      ctx.previewSeoOverrides = sr.preview.seoOverrides;
+      ctx.previewPublishDate = sr.preview.suggestedPublishDate;
     }
 
     if (sr.publish) {
@@ -221,6 +231,16 @@ export function PipelineOrchestrator({
       }
     }
 
+    // Re-fetch draft after review approval so downstream stages see the fresh status
+    const draftId = pipelineState.stageResults.draft?.draftId;
+    if (stage === 'review' && (result as ReviewResult).verdict === 'approved' && draftId) {
+      try {
+        const res = await fetch(`/api/content-drafts/${draftId}`);
+        const { data } = await res.json();
+        if (data) setDraftData(data as Record<string, unknown>);
+      } catch { /* publish gate will fall back to stale draftData */ }
+    }
+
     await savePipelineState(newState);
     setEngineMode(null);
 
@@ -318,7 +338,8 @@ export function PipelineOrchestrator({
     const ctx = buildContext();
     const stage = pipelineState.currentStage;
 
-    if ((stage === 'review' || stage === 'publish' || stage === 'assets') && ctx.draftId && !draftData) {
+    const needsFresh = stage === 'publish'; // publish gate depends on live draft.status
+    if ((stage === 'review' || stage === 'publish' || stage === 'assets' || stage === 'preview') && ctx.draftId && (needsFresh || !draftData)) {
       (async () => {
         try {
           const res = await fetch(`/api/content-drafts/${ctx.draftId}`);
@@ -348,8 +369,8 @@ export function PipelineOrchestrator({
     const stage = pipelineState.currentStage;
     const isAutoMode = pipelineState.mode === 'auto';
 
-    // Skip picker for review and publish (always generate)
-    if (stage === 'review' || stage === 'publish') {
+    // Skip picker for review, preview, and publish (always generate)
+    if (stage === 'review' || stage === 'preview' || stage === 'publish') {
       return null;
     }
 
@@ -402,8 +423,8 @@ export function PipelineOrchestrator({
     }
 
     // Auto-set mode for stages without import
-    const mode = engineMode || (stage === 'review' || stage === 'publish' ? 'generate' : 'generate');
-    const showBackToOptions = engineMode !== null && stage !== 'review' && stage !== 'publish';
+    const mode = engineMode || (stage === 'review' || stage === 'preview' || stage === 'publish' ? 'generate' : 'generate');
+    const showBackToOptions = engineMode !== null && stage !== 'review' && stage !== 'preview' && stage !== 'publish';
 
     const handleBack = (targetStage?: PipelineStage) => {
       if (targetStage) {
@@ -516,6 +537,29 @@ export function PipelineOrchestrator({
             onComplete={handleStageComplete}
             onBack={handleBack}
           /></>
+        );
+
+      case 'preview':
+        if (!ctx.draftId) {
+          return (
+            <Card>
+              <CardContent className="py-8">
+                <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading draft...
+                </div>
+              </CardContent>
+            </Card>
+          );
+        }
+        return (
+          <PreviewEngine
+            channelId={channelId}
+            context={ctx}
+            draftId={ctx.draftId}
+            onComplete={handleStageComplete}
+            onBack={handleBack}
+          />
         );
 
       case 'publish':

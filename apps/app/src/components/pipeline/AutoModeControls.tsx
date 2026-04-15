@@ -9,7 +9,7 @@ import type { PipelineState, PipelineStage } from '@/components/engines/types';
 
 const STAGE_LABELS: Record<PipelineStage, string> = {
   brainstorm: 'Idea', research: 'Research', draft: 'Draft',
-  review: 'Review', assets: 'Assets', publish: 'Publish',
+  review: 'Review', assets: 'Assets', preview: 'Preview', publish: 'Publish',
 };
 
 interface AutoModeControlsProps {
