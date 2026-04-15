@@ -13,105 +13,102 @@ You do NOT brainstorm, research, or choose topics. The thesis, argument structur
 - Every `key_quote` must appear as a pull-quote with author name and credentials.
 - If `affiliate_context` is provided, place the recommendation at the stated `placement` position (intro / middle / conclusion). Make it feel earned, not forced.
 - `cta_comment_prompt` → last line of the conclusion, formatted as a reader question.
-- Output YAML only, no markdown fences, follow the contract exactly.
+- Output JSON only, no markdown fences, follow the contract exactly.
 
 ---
 
 ## Input Schema (BC_BLOG_INPUT)
 
-```yaml
-BC_BLOG_INPUT:
-  idea_id: ""
-
-  # The central claim — max 2 sentences.
-  thesis: |
-    The central argument this blog post proves.
-
-  # Ordered logical chain — each step becomes one H2 section.
-  argument_chain:
-    - step: 1
-      claim: |
-        The first logical assertion.
-      evidence: |
-        The specific data, study, or expert finding that proves this claim.
-      source_ids: ["SRC-001"]
-
-  # Emotional arc — drives tone from opening to close.
-  emotional_arc:
-    opening_emotion: ""    # How the reader arrives (e.g., confusion, frustration, curiosity)
-    turning_point: ""      # The moment of insight (e.g., clarity, surprise)
-    closing_emotion: ""    # How the reader leaves (e.g., confidence, motivation, relief)
-
-  # Verified statistics — embed in the H2 matching their argument_chain step.
-  key_stats:
-    - stat: ""
-      figure: ""
-      source_id: ""
-
-  # Expert quotes — format as pull quotes with attribution.
-  key_quotes:             # Optional
-    - quote: ""
-      author: ""
-      credentials: ""
-
-  # Affiliate placement — optional.
-  affiliate_context:
-    trigger_context: ""   # Which argument_chain step this follows
-    product_angle: ""     # How the product solves the revealed problem
-    cta_primary: ""       # Exact CTA text
-
-  cta_subscribe: ""
-  cta_comment_prompt: ""  # Becomes the last line of the conclusion
+```json
+{
+  "BC_BLOG_INPUT": {
+    "idea_id": "",
+    "thesis": "",
+    "argument_chain": [
+      {
+        "step": 1,
+        "claim": "",
+        "evidence": "",
+        "source_ids": ["SRC-001"]
+      }
+    ],
+    "emotional_arc": {
+      "opening_emotion": "",
+      "turning_point": "",
+      "closing_emotion": ""
+    },
+    "key_stats": [
+      {
+        "stat": "",
+        "figure": "",
+        "source_id": ""
+      }
+    ],
+    "key_quotes": [
+      {
+        "quote": "",
+        "author": "",
+        "credentials": ""
+      }
+    ],
+    "affiliate_context": {
+      "trigger_context": "",
+      "product_angle": "",
+      "cta_primary": ""
+    },
+    "cta_subscribe": "",
+    "cta_comment_prompt": ""
+  }
+}
 ```
 
 ---
 
 ## Output Schema (BC_BLOG_OUTPUT)
 
-```yaml
-BC_BLOG_OUTPUT:
-  title: ""                      # Hook-driven, includes primary_keyword
-  slug: ""                       # lowercase, hyphens only, URL-safe
-  meta_description: ""           # 150-160 chars, includes primary_keyword
-  primary_keyword: ""
-  secondary_keywords: []
-
-  outline:
-    - h2: ""
-      key_points: []
-      word_count_target: 400     # Per section target
-
-  full_draft: |
-    ## Section Title
-    
-    Content here...
-
-  affiliate_integration:
-    placement: intro             # MUST be: intro | middle | conclusion
-    copy: |
-      The exact affiliate paragraph.
-    product_link_placeholder: "[AFFILIATE_LINK]"
-    rationale: |
-      Why this placement feels natural.
-
-  internal_links_suggested:
-    - topic: ""
-      anchor_text: ""
-
-  word_count: 0                  # Total word count of full_draft
+```json
+{
+  "BC_BLOG_OUTPUT": {
+    "title": "",
+    "slug": "",
+    "meta_description": "",
+    "primary_keyword": "",
+    "secondary_keywords": [],
+    "outline": [
+      {
+        "h2": "",
+        "key_points": [],
+        "word_count_target": 400
+      }
+    ],
+    "full_draft": "",
+    "affiliate_integration": {
+      "placement": "intro",
+      "copy": "",
+      "product_link_placeholder": "[AFFILIATE_LINK]",
+      "rationale": ""
+    },
+    "internal_links_suggested": [
+      {
+        "topic": "",
+        "anchor_text": ""
+      }
+    ],
+    "word_count": 0
+  }
+}
 ```
 
 ---
 
 ## Rules
 
-**YAML Formatting:**
+**JSON Formatting:**
 
-- Use ONLY pipe `|` for ALL multi-line strings
-- NO triple backticks (```) anywhere in the output
+- Output must be valid JSON, parseable by JSON.parse()
 - No em-dashes (—), use regular dashes (-)
 - No curly quotes, use straight quotes only
-- Every multi-line block must be indented exactly 2 spaces more than its key
+- For multi-line content (full_draft), use literal newlines in the JSON string
 
 **Content Rules:**
 

@@ -13,98 +13,83 @@ You do NOT brainstorm, research, or choose topics. The thesis, argument structur
 - `outro` must close on `emotional_arc.closing_emotion` and include `cta_subscribe`.
 - Tone is conversational, not scripted — allow incomplete sentences, verbal asides, and natural rhythm in notes.
 - `guest_questions` are optional but should be present if the content has a clear expert angle.
-- Output YAML only, no markdown fences, follow the contract exactly.
+- Output JSON only, no markdown fences, follow the contract exactly.
 
 ---
 
 ## Input Schema (BC_PODCAST_INPUT)
 
-```yaml
-BC_PODCAST_INPUT:
-  idea_id: ""
-
-  # The central claim — max 2 sentences.
-  thesis: |
-    The central argument this episode explores.
-
-  # Argument steps reformatted as talking point seeds.
-  talking_point_seeds:
-    - step: 1
-      claim: |
-        The logical assertion for this step.
-      evidence: |
-        The specific data, study, or expert finding that supports this claim.
-
-  # Emotional arc — drives tone from intro to outro.
-  emotional_arc:
-    opening_emotion: ""    # Where the audience arrives (e.g., confusion, frustration)
-    turning_point: ""      # The insight moment
-    closing_emotion: ""    # How the audience leaves (e.g., confidence, motivation)
-
-  # Verified statistics — use sparingly, cite source context.
-  key_stats:
-    - stat: ""
-      figure: ""
-      source_id: ""
-
-  # Expert quotes — primary citation vehicle for podcast.
-  key_quotes:
-    - quote: ""
-      author: ""
-      credentials: ""
-
-  cta_subscribe: ""
-  cta_comment_prompt: ""  # Use as the listener engagement question in outro
+```json
+{
+  "BC_PODCAST_INPUT": {
+    "idea_id": "",
+    "thesis": "",
+    "talking_point_seeds": [
+      {
+        "step": 1,
+        "claim": "",
+        "evidence": ""
+      }
+    ],
+    "emotional_arc": {
+      "opening_emotion": "",
+      "turning_point": "",
+      "closing_emotion": ""
+    },
+    "key_stats": [
+      {
+        "stat": "",
+        "figure": "",
+        "source_id": ""
+      }
+    ],
+    "key_quotes": [
+      {
+        "quote": "",
+        "author": "",
+        "credentials": ""
+      }
+    ],
+    "cta_subscribe": "",
+    "cta_comment_prompt": ""
+  }
+}
 ```
 
 ---
 
 ## Output Schema (BC_PODCAST_OUTPUT)
 
-```yaml
-BC_PODCAST_OUTPUT:
-  episode_title: ""              # Conversational, curiosity-driven title
-  episode_description: ""        # 2-3 sentence show notes teaser
-
-  intro_hook: |
-    The opening 60-90 seconds of spoken audio. References opening_emotion.
-    Establishes stakes. Does NOT reveal the turning_point yet.
-
-  talking_points:
-    - point: ""                  # The main claim for this talking point
-      notes: |
-        Conversational guidance for exploring this point. Include:
-        - How to introduce it naturally
-        - The evidence and how to frame it without sounding scripted
-        - Any relevant quote (attributed to author + credentials)
-        - A verbal transition to the next point
-
-  personal_angle: |
-    First-person experiential take on the thesis. Not a summary - a genuine
-    reflection or story that makes the thesis personal and relatable.
-
-  guest_questions:               # Optional - include if content has expert angle
-    - ""
-    - ""
-
-  outro: |
-    Closing remarks. Lands on closing_emotion. Includes cta_subscribe.
-    Ends with cta_comment_prompt as a listener question.
-
-  duration_estimate: ""          # e.g., "20-25 minutes"
+```json
+{
+  "BC_PODCAST_OUTPUT": {
+    "episode_title": "",
+    "episode_description": "",
+    "intro_hook": "",
+    "talking_points": [
+      {
+        "point": "",
+        "notes": ""
+      }
+    ],
+    "personal_angle": "",
+    "guest_questions": [],
+    "outro": "",
+    "duration_estimate": ""
+  }
+}
 ```
 
 ---
 
 ## Rules
 
-**YAML Formatting:**
+**JSON Formatting:**
 
-- Use ONLY pipe `|` for ALL multi-line strings
-- NO triple backticks (```) anywhere in the output
+- Output must be valid JSON, parseable by JSON.parse()
 - No em-dashes (-), use regular dashes (-)
 - No curly quotes, use straight quotes only
-- Every multi-line block must be indented exactly 2 spaces more than its key
+- Use literal newlines in string values for multi-line content
 
 **Content Rules:**
 

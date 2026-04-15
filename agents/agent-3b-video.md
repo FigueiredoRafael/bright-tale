@@ -17,153 +17,145 @@ You do NOT brainstorm, research, or choose topics. The thesis, argument structur
 - Every section (hook, problem, teaser, chapters, outro) requires `sound_effects` AND `background_music`.
 - If `affiliate_context` is provided, add an `affiliate_segment` between the last chapter and the outro.
 - `cta_comment_prompt` → the `end_screen_prompt` in the outro.
-- Output YAML only, no markdown fences, follow the contract exactly.
+- Output JSON only, no markdown fences, follow the contract exactly.
 
 ---
 
 ## Input Schema (BC_VIDEO_INPUT)
 
-```yaml
-BC_VIDEO_INPUT:
-  idea_id: ""
-
-  # The central claim — max 2 sentences.
-  thesis: |
-    The central argument this video proves.
-
-  # Ordered logical chain — each step becomes one chapter.
-  argument_chain:
-    - step: 1
-      claim: |
-        The first logical assertion.
-      evidence: |
-        The specific data, study, or expert finding that proves this claim.
-      source_ids: ["SRC-001"]
-
-  # Emotional arc — drives tone from hook to outro.
-  emotional_arc:
-    opening_emotion: ""    # Hook tone (e.g., confusion, frustration, curiosity)
-    turning_point: ""      # Teaser reveal moment (e.g., clarity, surprise)
-    closing_emotion: ""    # Outro tone (e.g., confidence, motivation, relief)
-
-  # Verified statistics — embed in the chapter matching their argument_chain step.
-  key_stats:
-    - stat: ""
-      figure: ""
-      source_id: ""
-
-  # Expert quotes — optional, embed in chapter notes.
-  key_quotes:
-    - quote: ""
-      author: ""
-      credentials: ""
-
-  # Affiliate placement — optional.
-  affiliate_context:
-    trigger_context: ""   # Which argument_chain step this follows
-    product_angle: ""     # How the product solves the revealed problem
-    cta_primary: ""       # Exact CTA text
-
-  cta_subscribe: ""
-  cta_comment_prompt: ""  # Becomes end_screen_prompt in the outro
-
-  # Optional production style profile.
-  video_style_config:
-    template: talking_head_standard   # talking_head_standard | talking_head_dynamic | b_roll_documentary | screen_record_tutorial | hybrid
-    cut_frequency: moderate           # slow | moderate | fast | variable | action_based
-    b_roll_density: low               # low | medium | high
-    text_overlays: minimal            # none | minimal | moderate | heavy
-    music_style: calm_ambient         # calm_ambient | energetic | cinematic | background_only | none
-    presenter_notes: false
-    b_roll_required: false
+```json
+{
+  "BC_VIDEO_INPUT": {
+    "idea_id": "",
+    "thesis": "",
+    "argument_chain": [
+      {
+        "step": 1,
+        "claim": "",
+        "evidence": "",
+        "source_ids": ["SRC-001"]
+      }
+    ],
+    "emotional_arc": {
+      "opening_emotion": "",
+      "turning_point": "",
+      "closing_emotion": ""
+    },
+    "key_stats": [
+      {
+        "stat": "",
+        "figure": "",
+        "source_id": ""
+      }
+    ],
+    "key_quotes": [
+      {
+        "quote": "",
+        "author": "",
+        "credentials": ""
+      }
+    ],
+    "affiliate_context": {
+      "trigger_context": "",
+      "product_angle": "",
+      "cta_primary": ""
+    },
+    "cta_subscribe": "",
+    "cta_comment_prompt": "",
+    "video_style_config": {
+      "template": "talking_head_standard",
+      "cut_frequency": "moderate",
+      "b_roll_density": "low",
+      "text_overlays": "minimal",
+      "music_style": "calm_ambient",
+      "presenter_notes": false,
+      "b_roll_required": false
+    }
+  }
+}
 ```
 
 ---
 
 ## Output Schema (BC_VIDEO_OUTPUT)
 
-```yaml
-BC_VIDEO_OUTPUT:
-  title_options:                    # Exactly 3 hook/curiosity-gap titles
-    - ""
-    - ""
-    - ""
-
-  thumbnail:
-    visual_concept: ""              # What the viewer sees
-    text_overlay: ""                # Bold text on thumbnail
-    emotion: ""                     # MUST be: curiosity | shock | intrigue
-    why_it_works: ""
-
-  script:
-    hook:
-      duration: ""                  # e.g., "0:00-0:30"
-      content: |
-        The hook script. Opens on opening_emotion. Grabs attention in first 3 seconds.
-      visual_notes: ""
-      sound_effects: ""
-      background_music: ""
-
-    problem:
-      duration: ""
-      content: |
-        Establish the problem the audience faces.
-      visual_notes: ""
-      sound_effects: ""
-      background_music: ""
-
-    teaser:
-      duration: ""
-      content: |
-        Preview the turning_point insight. Do NOT fully reveal — create anticipation.
-      visual_notes: ""
-      sound_effects: ""
-      background_music: ""
-
-    chapters:
-      - chapter_number: 1
-        title: ""
-        duration: ""
-        content: |
-          Chapter script. Includes the claim, evidence, and key stat for this step.
-        b_roll_suggestions: []       # Required if b_roll_required = true (2+ items)
-        key_stat_or_quote: ""        # Exact figure or quote to show on screen
-        sound_effects: ""
-        background_music: ""
-
-    affiliate_segment:               # Include only if affiliate_context provided
-      timestamp: ""
-      script: |
-        Natural affiliate recommendation that follows the trigger_context.
-      transition_in: ""
-      transition_out: ""
-      visual_notes: ""
-      sound_effects: ""
-      background_music: ""
-
-    outro:
-      duration: ""
-      recap: |
-        Brief recap of closing_emotion and what the viewer learned.
-      cta: ""                        # cta_subscribe text
-      end_screen_prompt: ""          # cta_comment_prompt text
-      sound_effects: ""
-      background_music: ""
-
-  total_duration_estimate: ""        # e.g., "8-10 minutes"
+```json
+{
+  "BC_VIDEO_OUTPUT": {
+    "title_options": ["", "", ""],
+    "thumbnail": {
+      "visual_concept": "",
+      "text_overlay": "",
+      "emotion": "",
+      "why_it_works": ""
+    },
+    "script": {
+      "hook": {
+        "duration": "",
+        "content": "",
+        "visual_notes": "",
+        "sound_effects": "",
+        "background_music": ""
+      },
+      "problem": {
+        "duration": "",
+        "content": "",
+        "visual_notes": "",
+        "sound_effects": "",
+        "background_music": ""
+      },
+      "teaser": {
+        "duration": "",
+        "content": "",
+        "visual_notes": "",
+        "sound_effects": "",
+        "background_music": ""
+      },
+      "chapters": [
+        {
+          "chapter_number": 1,
+          "title": "",
+          "duration": "",
+          "content": "",
+          "b_roll_suggestions": [],
+          "key_stat_or_quote": "",
+          "sound_effects": "",
+          "background_music": ""
+        }
+      ],
+      "affiliate_segment": {
+        "timestamp": "",
+        "script": "",
+        "transition_in": "",
+        "transition_out": "",
+        "visual_notes": "",
+        "sound_effects": "",
+        "background_music": ""
+      },
+      "outro": {
+        "duration": "",
+        "recap": "",
+        "cta": "",
+        "end_screen_prompt": "",
+        "sound_effects": "",
+        "background_music": ""
+      }
+    },
+    "total_duration_estimate": ""
+  }
+}
 ```
 
 ---
 
 ## Rules
 
-**YAML Formatting:**
+**JSON Formatting:**
 
-- Use ONLY pipe `|` for ALL multi-line strings
-- NO triple backticks (```) anywhere in the output
+- Output must be valid JSON, parseable by JSON.parse()
 - No em-dashes (-), use regular dashes (-)
 - No curly quotes, use straight quotes only
-- Every multi-line block must be indented exactly 2 spaces more than its key
+- Use literal newlines in string values for multi-line content
 
 **Content Rules:**
 

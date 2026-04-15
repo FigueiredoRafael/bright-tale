@@ -15,100 +15,95 @@ You do NOT brainstorm, research, or choose topics. The thesis, argument structur
 - `short_number` must be sequential: 1, 2, 3.
 - `visual_style` must be exactly one of: `talking head` | `b-roll` | `text overlay`.
 - Save "watch the full video" for the `cta` only — not in the hook or script body.
-- Output YAML only, no markdown fences, follow the contract exactly.
+- Output JSON only, no markdown fences, follow the contract exactly.
 
 ---
 
 ## Input Schema (BC_SHORTS_INPUT)
 
-```yaml
-BC_SHORTS_INPUT:
-  idea_id: ""
-
-  # The central claim — condensed to one punchy statement.
-  thesis: |
-    The core argument, distilled to one provocative claim.
-
-  # The aha-moment — primary hook source for Short #1.
-  turning_point: ""
-
-  # Ordered logical chain — each step can seed one short.
-  argument_chain:
-    - step: 1
-      claim: |
-        The logical assertion for this step.
-      evidence: |
-        The specific data or finding that proves this claim.
-      source_ids: ["SRC-001"]
-
-  # Verified statistics — use for shock-value hooks or in-script callouts.
-  key_stats:
-    - stat: ""
-      figure: ""
-      source_id: ""
-
-  cta_subscribe: ""
-  cta_comment_prompt: ""  # Use as the comment CTA in at least one short
+```json
+{
+  "BC_SHORTS_INPUT": {
+    "idea_id": "",
+    "thesis": "",
+    "turning_point": "",
+    "argument_chain": [
+      {
+        "step": 1,
+        "claim": "",
+        "evidence": "",
+        "source_ids": ["SRC-001"]
+      }
+    ],
+    "key_stats": [
+      {
+        "stat": "",
+        "figure": "",
+        "source_id": ""
+      }
+    ],
+    "cta_subscribe": "",
+    "cta_comment_prompt": ""
+  }
+}
 ```
 
 ---
 
 ## Output Schema (BC_SHORTS_OUTPUT)
 
-The output is a YAML list of exactly 3 short items.
+The output is a JSON array of exactly 3 short items.
 
-```yaml
-BC_SHORTS_OUTPUT:
-  - short_number: 1
-    title: ""                  # Hook-driven title for the short
-    hook: |
-      The scroll-stopper. Max 2 sentences. Based on turning_point.
-      Must land the core tension or surprise in the first 2 seconds.
-    script: |
-      The complete short script. Self-contained. No "watch the full video"
-      in the body — save that for the cta field.
-    duration: ""               # e.g., "45 seconds"
-    visual_style: ""           # MUST be exactly: talking head | b-roll | text overlay
-    cta: ""                    # Call to action (subscribe, comment, or full video link)
-    sound_effects: ""
-    background_music: ""
-
-  - short_number: 2
-    title: ""
-    hook: |
-      Hook for short 2. Derived from the strongest argument_chain step.
-    script: |
-      Complete script for short 2.
-    duration: ""
-    visual_style: ""
-    cta: ""
-    sound_effects: ""
-    background_music: ""
-
-  - short_number: 3
-    title: ""
-    hook: |
-      Hook for short 3. Derived from another strong argument_chain step or key stat.
-    script: |
-      Complete script for short 3.
-    duration: ""
-    visual_style: ""
-    cta: ""
-    sound_effects: ""
-    background_music: ""
+```json
+{
+  "BC_SHORTS_OUTPUT": [
+    {
+      "short_number": 1,
+      "title": "",
+      "hook": "",
+      "script": "",
+      "duration": "",
+      "visual_style": "",
+      "cta": "",
+      "sound_effects": "",
+      "background_music": ""
+    },
+    {
+      "short_number": 2,
+      "title": "",
+      "hook": "",
+      "script": "",
+      "duration": "",
+      "visual_style": "",
+      "cta": "",
+      "sound_effects": "",
+      "background_music": ""
+    },
+    {
+      "short_number": 3,
+      "title": "",
+      "hook": "",
+      "script": "",
+      "duration": "",
+      "visual_style": "",
+      "cta": "",
+      "sound_effects": "",
+      "background_music": ""
+    }
+  ]
+}
 ```
 
 ---
 
 ## Rules
 
-**YAML Formatting:**
+**JSON Formatting:**
 
-- Use ONLY pipe `|` for ALL multi-line strings
-- NO triple backticks (```) anywhere in the output
+- Output must be valid JSON, parseable by JSON.parse()
 - No em-dashes (-), use regular dashes (-)
 - No curly quotes, use straight quotes only
-- Every multi-line block must be indented exactly 2 spaces more than its key
+- Use literal newlines in string values for multi-line content
 
 **Content Rules:**
 

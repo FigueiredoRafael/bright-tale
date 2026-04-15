@@ -13,128 +13,135 @@ This is NOT where you write the blog, script, or shorts. You are defining the **
 - `key_stats` and `key_quotes` are the shared assets. Only include statistics and quotes that are verified in the research.
 - Do NOT invent statistics. If the research didn't validate a claim, don't include it.
 - The `affiliate_moment` defines exactly where in the narrative a product recommendation feels natural — not forced. Identify the specific argument step or emotional beat where it fits.
-- Output YAML only, no markdown fences, follow the contract exactly.
+- Output JSON only, no markdown fences, follow the contract exactly.
 
 ---
 
 ## Input Schema (BC_CANONICAL_CORE_INPUT)
 
-```yaml
-BC_CANONICAL_CORE_INPUT:
-  selected_idea:
-    idea_id: ""
-    title: ""
-    core_tension: ""
-    target_audience: ""
-    scroll_stopper: ""
-    curiosity_gap: ""
-    monetization:
-      affiliate_angle: ""
-  research:
-    summary: ""
-    validation:
-      verified: true
-      evidence_strength: "" # weak | moderate | strong
-    key_sources:
-      - title: ""
-        url: ""
-        key_insight: ""
-    key_statistics:
-      - claim: ""
-        figure: ""
-        context: ""
-        source_id: ""
-    expert_quotes:
-      - quote: ""
-        author: ""
-        credentials: ""
-        source_id: ""
-    counterarguments:
-      - point: ""
-        rebuttal: ""
-    knowledge_gaps: []
-    refined_angle:
-      should_pivot: false
-      angle_notes: ""
-      recommendation: "proceed" # proceed | pivot | abandon
+```json
+{
+  "BC_CANONICAL_CORE_INPUT": {
+    "selected_idea": {
+      "idea_id": "",
+      "title": "",
+      "core_tension": "",
+      "target_audience": "",
+      "scroll_stopper": "",
+      "curiosity_gap": "",
+      "monetization": {
+        "affiliate_angle": ""
+      }
+    },
+    "research": {
+      "summary": "",
+      "validation": {
+        "verified": true,
+        "evidence_strength": ""
+      },
+      "key_sources": [
+        {
+          "title": "",
+          "url": "",
+          "key_insight": ""
+        }
+      ],
+      "key_statistics": [
+        {
+          "claim": "",
+          "figure": "",
+          "context": "",
+          "source_id": ""
+        }
+      ],
+      "expert_quotes": [
+        {
+          "quote": "",
+          "author": "",
+          "credentials": "",
+          "source_id": ""
+        }
+      ],
+      "counterarguments": [
+        {
+          "point": "",
+          "rebuttal": ""
+        }
+      ],
+      "knowledge_gaps": [],
+      "refined_angle": {
+        "should_pivot": false,
+        "angle_notes": "",
+        "recommendation": "proceed"
+      }
+    }
+  }
+}
 ```
 
 ---
 
 ## Output Schema (BC_CANONICAL_CORE)
 
-```yaml
-BC_CANONICAL_CORE:
-  idea_id: ""
-
-  # The central claim — max 2 sentences.
-  thesis: |
-    One concise statement of what the content proves.
-    Optional: a second sentence to sharpen the angle.
-
-  # Ordered logical chain — each step builds on the previous.
-  # Min 2 steps. Each step must have claim + evidence.
-  argument_chain:
-    - step: 1
-      claim: |
-        The first logical assertion.
-      evidence: |
-        The specific data, study, or expert finding that proves this claim.
-      source_ids: ["SRC-001"]
-
-    - step: 2
-      claim: |
-        The second logical assertion.
-      evidence: |
-        The supporting evidence.
-      source_ids: ["SRC-002"]
-
-  # Emotional arc — audience's journey from opening to close.
-  emotional_arc:
-    opening_emotion: ""    # How the audience arrives (e.g., confusion, frustration, curiosity)
-    turning_point: ""      # The moment of insight/revelation (e.g., clarity, surprise)
-    closing_emotion: ""    # How the audience leaves (e.g., confidence, motivation, relief)
-
-  # Verified statistics — used across all formats.
-  key_stats:
-    - stat: ""             # Brief description of what the stat measures
-      figure: ""           # The actual number/percentage
-      source_id: ""        # ID from research sources
-
-  # Expert quotes — optional, include only if present in research.
-  key_quotes:
-    - quote: ""
-      author: ""
-      credentials: ""
-
-  # Affiliate moment — where the product recommendation fits naturally.
-  # Optional — omit if this content should not monetize.
-  affiliate_moment:
-    trigger_context: |
-      Describe the specific moment in the argument chain (reference the step number)
-      where a product recommendation feels contextual, not forced.
-    product_angle: |
-      How the product solves the problem revealed at this moment.
-    cta_primary: ""        # The exact CTA text
-
-  # Subscribe CTA — used in all formats.
-  cta_subscribe: ""
-
-  # Comment prompt — drives engagement on all platforms.
-  cta_comment_prompt: ""
+```json
+{
+  "BC_CANONICAL_CORE": {
+    "idea_id": "",
+    "thesis": "",
+    "argument_chain": [
+      {
+        "step": 1,
+        "claim": "",
+        "evidence": "",
+        "source_ids": ["SRC-001"]
+      },
+      {
+        "step": 2,
+        "claim": "",
+        "evidence": "",
+        "source_ids": ["SRC-002"]
+      }
+    ],
+    "emotional_arc": {
+      "opening_emotion": "",
+      "turning_point": "",
+      "closing_emotion": ""
+    },
+    "key_stats": [
+      {
+        "stat": "",
+        "figure": "",
+        "source_id": ""
+      }
+    ],
+    "key_quotes": [
+      {
+        "quote": "",
+        "author": "",
+        "credentials": ""
+      }
+    ],
+    "affiliate_moment": {
+      "trigger_context": "",
+      "product_angle": "",
+      "cta_primary": ""
+    },
+    "cta_subscribe": "",
+    "cta_comment_prompt": ""
+  }
+}
 ```
 
 ---
 
 ## Rules
 
-**YAML Formatting:**
+**JSON Formatting:**
 
-- Use ONLY pipe `|` for ALL multi-line strings
-- NO triple backticks (```) anywhere in the output
+- Output must be valid JSON, parseable by JSON.parse()
 - No em-dashes (—), use regular dashes (-)
 - No curly quotes, use straight quotes only
-- Every multi-line block must be indented exactly 2 spaces more than its key
+- Use literal newlines in string values where content naturally spans lines
 
 **Content Rules:**
 
