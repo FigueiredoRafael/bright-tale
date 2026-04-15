@@ -90,6 +90,7 @@ export function DraftEngine({
 
   // Manual mode
   const [draftMode, setDraftMode] = useState<DraftMode>('ai');
+  const [produceMode, setProduceMode] = useState<DraftMode>('ai');
   const { enabled: manualEnabled } = useManualMode();
 
   // Upgrade handling
@@ -306,6 +307,58 @@ export function DraftEngine({
     }
     setPhase('done');
     toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} content produced`);
+  }
+
+  // ── Phase 2: Import produced content manually ──────────────────
+  async function handleManualProduceImport(parsed: unknown) {
+    let content = '';
+
+    // Try to extract content from various wrapper formats
+    const obj = parsed as Record<string, unknown>;
+    const FORMAT_KEYS: Record<DraftType, string[]> = {
+      blog: ['BC_BLOG_OUTPUT', 'blog', 'full_draft', 'content', 'html', 'markdown'],
+      video: ['BC_VIDEO_OUTPUT', 'video_script', 'script', 'content'],
+      shorts: ['BC_SHORTS_OUTPUT', 'shorts', 'scripts', 'content'],
+      podcast: ['BC_PODCAST_OUTPUT', 'podcast_outline', 'outline', 'content'],
+    };
+
+    // Try format-specific keys
+    for (const key of FORMAT_KEYS[type]) {
+      if (typeof obj[key] === 'string') {
+        content = obj[key] as string;
+        break;
+      }
+      if (obj[key] && typeof obj[key] === 'object') {
+        // Stringify structured output
+        content = JSON.stringify(obj[key], null, 2);
+        break;
+      }
+    }
+
+    // Fallback: stringify entire object
+    if (!content) {
+      content = typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2);
+    }
+
+    if (!content.trim()) {
+      toast.error('No content found in pasted output');
+      return;
+    }
+
+    // If we have a draft, save produced content to it
+    if (draftId) {
+      await runStep('save produced content', () =>
+        fetch(`/api/content-drafts/${draftId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ producedContent: content, type }),
+        })
+      );
+    }
+
+    setProducedContent(content);
+    setPhase('done');
+    toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} content imported`);
   }
 
   // ── Helpers ───────────────────────────────────────────────────
@@ -750,25 +803,70 @@ export function DraftEngine({
               </div>
             )}
 
-            {/* Model picker + produce button */}
-            <ModelPicker
-              provider={provider}
-              model={model}
-              recommended={{ provider: null, model: null }}
-              onProviderChange={(p) => {
-                setProvider(p);
-                setModel(MODELS_BY_PROVIDER[p][0].id);
-              }}
-              onModelChange={setModel}
-            />
+            {/* AI/Manual Tabs */}
+            <Tabs
+              value={produceMode}
+              onValueChange={(v) => setProduceMode(v as DraftMode)}
+            >
+              <TabsList>
+                <TabsTrigger value="ai" className="gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5" /> AI Generation
+                </TabsTrigger>
+                {manualEnabled && (
+                  <TabsTrigger value="manual" className="gap-1.5">
+                    <ClipboardPaste className="h-3.5 w-3.5" /> Manual (ChatGPT/Gemini)
+                  </TabsTrigger>
+                )}
+              </TabsList>
 
-            <Button onClick={handleProduce} disabled={busy || phase === 'produce'}>
-              {phase === 'produce' ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Producing...</>
-              ) : (
-                <><ArrowRight className="h-4 w-4 mr-2" /> Produce {type.charAt(0).toUpperCase() + type.slice(1)}</>
+              <TabsContent value="ai" className="space-y-4 mt-3">
+                <ModelPicker
+                  provider={provider}
+                  model={model}
+                  recommended={{ provider: null, model: null }}
+                  onProviderChange={(p) => {
+                    setProvider(p);
+                    setModel(MODELS_BY_PROVIDER[p][0].id);
+                  }}
+                  onModelChange={setModel}
+                />
+                <Button onClick={handleProduce} disabled={busy || phase === 'produce'}>
+                  {phase === 'produce' ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Producing...</>
+                  ) : (
+                    <><ArrowRight className="h-4 w-4 mr-2" /> Produce {type.charAt(0).toUpperCase() + type.slice(1)}</>
+                  )}
+                </Button>
+              </TabsContent>
+
+              {manualEnabled && (
+                <TabsContent value="manual" className="mt-3">
+                  <ManualModePanel
+                    agentSlug={type}
+                    inputContext={(() => {
+                      const lines: string[] = [
+                        `Title: ${title}`,
+                        `Format: ${type}`,
+                      ];
+                      if (type === 'blog') lines.push(`Target word count: ${targetWords}`);
+                      if (type === 'video' || type === 'podcast') lines.push(`Target duration: ${targetMinutes} minutes`);
+                      if (type === 'shorts') lines.push(`Target duration: ${targetShortsSeconds} seconds`);
+                      if (canonicalCore) {
+                        lines.push('', '## Canonical Core');
+                        lines.push('```json');
+                        lines.push(JSON.stringify(canonicalCore, null, 2));
+                        lines.push('```');
+                      }
+                      return lines.join('\n');
+                    })()}
+                    pastePlaceholder={`Paste the ${type} output JSON from your AI chat...`}
+                    onImport={handleManualProduceImport}
+                    importLabel={`Import ${type.charAt(0).toUpperCase() + type.slice(1)}`}
+                    loading={busy}
+                  />
+                </TabsContent>
               )}
-            </Button>
+            </Tabs>
           </CardContent>
         </Card>
       )}
