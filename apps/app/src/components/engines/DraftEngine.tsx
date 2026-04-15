@@ -257,9 +257,9 @@ export function DraftEngine({
           toast.success('Canonical core generated — review and proceed to produce');
         } else {
           // If the API generates full content in one step, handle that too
-          const produced = json.data?.produced_content;
-          if (produced) {
-            setProducedContent(produced as string);
+          const content = extractProducedContent(json.data as Record<string, unknown>, type);
+          if (content && content !== '{}') {
+            setProducedContent(content);
             setPhase('done');
             toast.success('Content generated');
           } else {
@@ -301,9 +301,10 @@ export function DraftEngine({
       return;
     }
 
-    const prodData = produced as { produced_content?: string };
-    if (prodData.produced_content) {
-      setProducedContent(prodData.produced_content);
+    // The produce endpoint returns the full draft row; extract content from draft_json
+    const content = extractProducedContent(produced as Record<string, unknown>, type);
+    if (content) {
+      setProducedContent(content);
     }
     setPhase('done');
     toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} content produced`);
@@ -362,6 +363,65 @@ export function DraftEngine({
   }
 
   // ── Helpers ───────────────────────────────────────────────────
+
+  /**
+   * Extract the displayable content from the produce API response.
+   * The endpoint returns the full draft row; draft_json contains the AI output
+   * which varies by format:
+   * - blog: { blog: { full_draft: "..." } } or { full_draft: "..." }
+   * - video: { video_script: { script: "..." } } or { script: "..." }
+   * - shorts: { shorts: [...] }
+   * - podcast: { podcast_outline: { outline: "..." } } or { outline: "..." }
+   */
+  function extractProducedContent(data: Record<string, unknown>, fmt: DraftType): string {
+    // Try produced_content first (direct field if API sets it)
+    if (typeof data.produced_content === 'string') return data.produced_content;
+
+    // Extract from draft_json
+    const draftJson = (data.draft_json ?? data.draftJson) as Record<string, unknown> | null;
+    if (!draftJson) return JSON.stringify(data, null, 2);
+
+    // Blog: look for full_draft
+    if (fmt === 'blog') {
+      const blog = draftJson.blog as Record<string, unknown> | undefined;
+      if (typeof blog?.full_draft === 'string') return blog.full_draft;
+      if (typeof draftJson.full_draft === 'string') return draftJson.full_draft;
+    }
+
+    // Video: look for script
+    if (fmt === 'video') {
+      const video = (draftJson.video_script ?? draftJson.video) as Record<string, unknown> | undefined;
+      if (typeof video?.script === 'string') return video.script;
+      if (typeof draftJson.script === 'string') return draftJson.script;
+    }
+
+    // Shorts: format as readable text
+    if (fmt === 'shorts') {
+      const shorts = (draftJson.shorts ?? draftJson.scripts) as unknown[];
+      if (Array.isArray(shorts)) {
+        return shorts.map((s, i) => {
+          const item = s as Record<string, unknown>;
+          return `## Short ${i + 1}${item.hook ? `: ${item.hook}` : ''}\n\n${item.script ?? item.content ?? JSON.stringify(item, null, 2)}`;
+        }).join('\n\n---\n\n');
+      }
+    }
+
+    // Podcast: look for outline
+    if (fmt === 'podcast') {
+      const podcast = (draftJson.podcast_outline ?? draftJson.podcast) as Record<string, unknown> | undefined;
+      if (typeof podcast?.outline === 'string') return podcast.outline;
+      if (typeof draftJson.outline === 'string') return draftJson.outline;
+    }
+
+    // Fallback: try common keys
+    for (const key of ['full_draft', 'content', 'text', 'markdown', 'html']) {
+      if (typeof draftJson[key] === 'string') return draftJson[key] as string;
+    }
+
+    // Last resort: pretty-print the JSON
+    return JSON.stringify(draftJson, null, 2);
+  }
+
   const cardCount = Array.isArray(research?.cards_json)
     ? research.cards_json.length
     : Array.isArray(research?.approved_cards_json)

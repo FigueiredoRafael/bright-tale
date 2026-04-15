@@ -644,7 +644,6 @@ export async function contentDraftsRoutes(
   );
 
   /**
-<<<<<<< HEAD
    * POST /:id/review — Run agent-4 review. Manual trigger only.
    * Requires status = 'in_review'. User sets this via PATCH first.
    */
