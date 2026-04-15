@@ -24,6 +24,7 @@ import type {
   PipelineContext,
   PipelineStage,
   StageResult,
+  ReviewResult,
   DEFAULT_PIPELINE_STATE,
 } from '@/components/engines/types';
 import { PIPELINE_STAGES, DEFAULT_PIPELINE_STATE as DEFAULT_STATE } from '@/components/engines/types';
@@ -139,11 +140,106 @@ export function PipelineOrchestrator({
       currentStage: nextStage,
     };
 
+    // Special handling for review in auto mode
+    if (stage === 'review' && pipelineState.mode === 'auto') {
+      const reviewResult = result as ReviewResult;
+      if (reviewResult.verdict === 'approved') {
+        // Normal flow — advance to assets
+        await savePipelineState(newState);
+        setEngineMode(null);
+        toast.success(`Completed ${stage}!`);
+      } else if (reviewResult.score < 40) {
+        // Rejected — too broken, pause
+        toast.warning('Auto-pilot paused — content scored too low for auto-revision');
+        const pausedState = {
+          ...newState,
+          autoConfig: { ...newState.autoConfig, pausedAt: 'review' as PipelineStage },
+        };
+        await savePipelineState(pausedState);
+        setEngineMode(null);
+        setIsRunning(false);
+        return;
+      } else if (reviewResult.iterationCount >= pipelineState.autoConfig.maxReviewIterations) {
+        // Max iterations reached — pause
+        toast.warning(
+          `Auto-pilot paused — reached ${reviewResult.iterationCount} review iterations without approval`
+        );
+        const pausedState = {
+          ...newState,
+          autoConfig: { ...newState.autoConfig, pausedAt: 'review' as PipelineStage },
+        };
+        await savePipelineState(pausedState);
+        setEngineMode(null);
+        setIsRunning(false);
+        return;
+      } else {
+        // Auto-revise: call reproduce, then re-trigger review
+        toast.info(`Auto-revising draft (iteration ${reviewResult.iterationCount + 1})...`);
+        try {
+          const draftId = pipelineState.stageResults.draft?.draftId;
+          if (draftId) {
+            const res = await fetch(`/api/content-drafts/${draftId}/reproduce`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ feedbackJson: reviewResult.feedbackJson }),
+            });
+            const { error } = await res.json();
+            if (error) {
+              toast.error('Auto-revision failed: ' + error.message);
+              const pausedState = {
+                ...newState,
+                autoConfig: { ...newState.autoConfig, pausedAt: 'review' as PipelineStage },
+              };
+              await savePipelineState(pausedState);
+              setEngineMode(null);
+              setIsRunning(false);
+              return;
+            }
+            // Update state with the iteration count and stay on review
+            await savePipelineState(newState);
+            setEngineMode('generate');
+            setIsRunning(true);
+            return; // Don't advance — stay on review
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Unknown error';
+          toast.error(`Auto-revision failed: ${message}`);
+          const pausedState = {
+            ...newState,
+            autoConfig: { ...newState.autoConfig, pausedAt: 'review' as PipelineStage },
+          };
+          await savePipelineState(pausedState);
+          setEngineMode(null);
+          setIsRunning(false);
+          return;
+        }
+      }
+    }
+
     await savePipelineState(newState);
     setEngineMode(null);
 
     if (stage !== nextStage) {
       toast.success(`Completed ${stage}!`);
+    }
+
+    // Auto mode: auto-advance to next stage
+    if (newState.mode === 'auto' && !newState.autoConfig.pausedAt) {
+      const nextStageForAuto = newState.currentStage;
+      if (nextStageForAuto === 'publish') {
+        // Always pause before publish
+        const pausedState = {
+          ...newState,
+          autoConfig: { ...newState.autoConfig, pausedAt: 'publish' as PipelineStage },
+        };
+        await savePipelineState(pausedState);
+        setIsRunning(false);
+        toast.info('Auto-pilot paused — publish requires manual confirmation');
+      } else {
+        // Auto-start next engine in generate mode
+        setEngineMode('generate');
+        setIsRunning(true);
+      }
     }
   }
 
@@ -170,6 +266,46 @@ export function PipelineOrchestrator({
     setResearchData(null);
 
     toast.info(`Revisiting ${targetStage}`);
+  }
+
+  // Handle mode toggle
+  async function handleToggleMode(mode: 'step-by-step' | 'auto') {
+    const newState: PipelineState = {
+      ...pipelineState,
+      mode,
+      autoConfig: { ...pipelineState.autoConfig, pausedAt: undefined },
+    };
+    await savePipelineState(newState);
+    if (mode === 'auto') {
+      setEngineMode('generate');
+      setIsRunning(true);
+      toast.info('Auto-pilot activated');
+    } else {
+      setIsRunning(false);
+    }
+  }
+
+  // Handle pause
+  async function handlePause() {
+    const newState: PipelineState = {
+      ...pipelineState,
+      autoConfig: { ...pipelineState.autoConfig, pausedAt: pipelineState.currentStage },
+    };
+    await savePipelineState(newState);
+    setIsRunning(false);
+    toast.info('Auto-pilot paused');
+  }
+
+  // Handle resume
+  async function handleResume() {
+    const newState: PipelineState = {
+      ...pipelineState,
+      autoConfig: { ...pipelineState.autoConfig, pausedAt: undefined },
+    };
+    await savePipelineState(newState);
+    setEngineMode('generate');
+    setIsRunning(true);
+    toast.info('Auto-pilot resumed');
   }
 
   // Fetch draft data for Review and Publish stages
@@ -406,30 +542,9 @@ export function PipelineOrchestrator({
       <AutoModeControls
         pipelineState={pipelineState}
         isRunning={isRunning}
-        onToggleMode={(mode) => {
-          const newState = { ...pipelineState, mode };
-          savePipelineState(newState as PipelineState);
-        }}
-        onPause={() => {
-          const newState = {
-            ...pipelineState,
-            autoConfig: {
-              ...pipelineState.autoConfig,
-              pausedAt: pipelineState.currentStage,
-            },
-          };
-          savePipelineState(newState);
-        }}
-        onResume={() => {
-          const newState = {
-            ...pipelineState,
-            autoConfig: {
-              ...pipelineState.autoConfig,
-              pausedAt: undefined,
-            },
-          };
-          savePipelineState(newState);
-        }}
+        onToggleMode={handleToggleMode}
+        onPause={handlePause}
+        onResume={handleResume}
       />
 
       <Separator />
