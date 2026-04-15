@@ -95,7 +95,7 @@ export function ResearchEngine({
   initialApproved,
 }: ResearchEngineProps) {
   // Input mode
-  const [topic, setTopic] = useState('');
+  const [topic, setTopic] = useState(context.ideaTitle ?? '');
   const [level, setLevel] = useState<Level>('medium');
   const [focusTags, setFocusTags] = useState<string[]>(['stats']);
   const [provider, setProvider] = useState<ProviderId>('gemini');

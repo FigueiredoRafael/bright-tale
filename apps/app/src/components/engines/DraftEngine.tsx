@@ -66,8 +66,8 @@ export function DraftEngine({
   // Research context
   const [research, setResearch] = useState<ResearchOption | null>(null);
 
-  // Core settings
-  const [title, setTitle] = useState('');
+  // Core settings — initialize title from pipeline context
+  const [title, setTitle] = useState(context.ideaTitle ?? '');
   const [provider, setProvider] = useState<ProviderId>('ollama');
   const [model, setModel] = useState<string>('qwen2.5:7b');
 
