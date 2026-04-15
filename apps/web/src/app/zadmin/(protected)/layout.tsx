@@ -36,7 +36,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   if (!await isAdminUser(supabase, user.id)) redirect(adminPath('/login?error=unauthorized'));
 
   return (
-    <div className="h-screen bg-slate-50 dark:bg-slate-900 flex overflow-hidden">
+    <div className="h-screen bg-[var(--bg-primary)] flex overflow-hidden">
       <div className="relative w-64 shrink-0 h-full">
         <AdminSidebar config={config} userEmail={user.email!} />
         {/* Toggle sits above the user-email footer */}
