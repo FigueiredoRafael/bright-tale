@@ -9,10 +9,42 @@ import { authenticate } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
+import { generateWithFallback } from '../lib/ai/router.js';
+import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
 import { checkCredits, debitCredits } from '../lib/credits.js';
 import { inngest } from '../jobs/client.js';
 import { emitJobEvent } from '../jobs/emitter.js';
 import { fetchTrends } from '../lib/signals/trends.js';
+
+function normalizeCards(raw: unknown): Array<Record<string, unknown>> {
+  function looksLikeCard(item: unknown): boolean {
+    if (!item || typeof item !== 'object') return false;
+    const o = item as Record<string, unknown>;
+    return (
+      typeof o.title === 'string' ||
+      typeof o.quote === 'string' ||
+      typeof o.claim === 'string' ||
+      typeof o.url === 'string' ||
+      typeof o.source === 'string' ||
+      typeof o.author === 'string'
+    );
+  }
+  function find(node: unknown, depth = 0): Array<Record<string, unknown>> | null {
+    if (depth > 6) return null;
+    if (Array.isArray(node)) {
+      if (node.length > 0 && node.some(looksLikeCard)) return node as Array<Record<string, unknown>>;
+      return null;
+    }
+    if (node && typeof node === 'object') {
+      for (const v of Object.values(node as Record<string, unknown>)) {
+        const found = find(v, depth + 1);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+  return find(raw) ?? [];
+}
 
 const LEVEL_COSTS: Record<'surface' | 'medium' | 'deep', number> = {
   surface: 60,
@@ -124,6 +156,8 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
       if (insertErr || !session) throw insertErr ?? new ApiError(500, 'Failed to create session', 'INTERNAL');
 
+      const sessionData = session!; // Narrowed after null check above
+
       try {
         // Build BC_RESEARCH_INPUT with linked idea context
         let selectedIdea: Record<string, unknown> | null = null;
@@ -195,7 +229,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
           .update(updateData)
-          .eq('id', session.id);
+          .eq('id', sessionData.id);
 
         await debitCredits(orgId, request.userId, `research-${body.level}`, 'text', cost, {
           channelId: body.channelId,
@@ -204,7 +238,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
         return reply.send({
           data: {
-            sessionId: session.id,
+            sessionId: sessionData.id,
             level: body.level,
             cards,
             refinedAngle: refinedAngle ?? null,
@@ -216,15 +250,15 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
           .update({ status: 'failed', error_message: (err as Error)?.message?.slice(0, 500) })
-          .eq('id', session.id);
+          .eq('id', sessionData.id);
         throw err;
       }
-      await emitJobEvent(session.id, 'research', 'queued', 'Iniciando…');
+      await emitJobEvent(sessionData.id, 'research', 'queued', 'Iniciando…');
 
       await inngest.send({
         name: 'research/generate',
         data: {
-          sessionId: session.id,
+          sessionId: sessionData.id,
           orgId,
           userId: request.userId,
           channelId: body.channelId ?? null,
@@ -238,7 +272,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       });
 
       return reply.status(202).send({
-        data: { sessionId: session.id, level: body.level, status: 'queued' },
+        data: { sessionId: sessionData.id, level: body.level, status: 'queued' },
         error: null,
       });
     } catch (error) {
@@ -505,6 +539,8 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
       if (insertErr || !session) throw insertErr ?? new ApiError(500, 'Failed to create session', 'INTERNAL');
 
+      const sessionData2 = session!; // Narrowed after null check above
+
       try {
         const baseSystem = (await loadAgentPrompt('research')) ?? '';
         const systemPrompt = `${baseSystem}\n\nLevel directive: ${instruction}`.trim();
@@ -524,15 +560,15 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
         await (sb.from('research_sessions') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        }).update(updateData).eq('id', session.id);
+        }).update(updateData).eq('id', sessionData2.id);
 
         await debitCredits(orgId, request.userId, `research-${level}`, 'text', cost, { regeneratedFrom: id });
 
-        return reply.send({ data: { sessionId: session.id, level, cards, refinedAngle }, error: null });
+        return reply.send({ data: { sessionId: sessionData2.id, level, cards, refinedAngle }, error: null });
       } catch (err) {
         await (sb.from('research_sessions') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        }).update({ status: 'failed', error_message: (err as Error)?.message?.slice(0, 500) }).eq('id', session.id);
+        }).update({ status: 'failed', error_message: (err as Error)?.message?.slice(0, 500) }).eq('id', sessionData2.id);
         throw err;
       }
     } catch (error) {

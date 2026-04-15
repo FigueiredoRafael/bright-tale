@@ -16,6 +16,39 @@ import { checkCredits, debitCredits } from '../lib/credits.js';
 import { inngest } from '../jobs/client.js';
 import { emitJobEvent } from '../jobs/emitter.js';
 
+interface RawIdea {
+  title?: string;
+  angle?: string;
+  core_tension?: string;
+  target_audience?: string;
+  verdict?: string;
+  monetization?: string;
+  repurposing?: string[];
+}
+
+function normalizeIdeas(raw: unknown): RawIdea[] {
+  function looksLikeIdea(item: unknown): boolean {
+    if (!item || typeof item !== 'object') return false;
+    const o = item as Record<string, unknown>;
+    return typeof o.title === 'string' || typeof o.idea_id === 'string' || typeof o.angle === 'string';
+  }
+  function find(node: unknown, depth = 0): RawIdea[] | null {
+    if (depth > 6) return null;
+    if (Array.isArray(node)) {
+      if (node.length > 0 && node.some(looksLikeIdea)) return node as RawIdea[];
+      return null;
+    }
+    if (node && typeof node === 'object') {
+      for (const v of Object.values(node as Record<string, unknown>)) {
+        const found = find(v, depth + 1);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+  return find(raw) ?? [];
+}
+
 const brainstormBodySchema = z.object({
   channelId: z.string().uuid().optional(),
   projectId: z.string().optional(),
@@ -123,43 +156,6 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
 
       if (insertErr || !session) throw insertErr ?? new ApiError(500, 'Failed to create session', 'DB_ERROR');
 
-      try {
-        let systemPrompt = (await loadAgentPrompt('brainstorm')) ?? undefined;
-
-        // Append advanced settings to system prompt
-        if (systemPrompt) {
-          const ctx: string[] = [];
-          if (body.temporalMix) {
-            ctx.push(`Content mix: ${body.temporalMix.evergreen}% evergreen, ${body.temporalMix.seasonal}% seasonal, ${body.temporalMix.trending}% trending`);
-          }
-          if (body.constraints?.avoidTopics?.length) {
-            ctx.push(`Avoid topics: ${body.constraints.avoidTopics.join(', ')}`);
-          }
-          if (body.constraints?.requiredFormats?.length) {
-            ctx.push(`Required formats: ${body.constraints.requiredFormats.join(', ')}`);
-          }
-          if (body.ideasRequested !== 5) {
-            ctx.push(`Generate exactly ${body.ideasRequested} ideas`);
-          }
-          if (body.contentGoal) {
-            ctx.push(`Primary goal: ${body.contentGoal}`);
-          }
-          if (body.performanceContext?.recentWinners?.length) {
-            ctx.push(`Recent winners (high-performing ideas): ${body.performanceContext.recentWinners.join(', ')}`);
-          }
-          if (body.performanceContext?.recentLosers?.length) {
-            ctx.push(`Recent losers (underperforming ideas): ${body.performanceContext.recentLosers.join(', ')}`);
-          }
-          if (ctx.length > 0) {
-            systemPrompt = `${systemPrompt}\n\n## Advanced Settings\n${ctx.join('\n')}`;
-          }
-        }
-
-        // Inject channel context into system prompt
-        const channelContext = await buildChannelContext(body.channelId);
-        if (channelContext && systemPrompt) {
-          systemPrompt = `${systemPrompt}\n\n${channelContext}`;
-        }
       // Seed a "queued" event so the SSE stream has something to show immediately.
       await emitJobEvent(session.id, 'brainstorm', 'queued', 'Iniciando…');
 
@@ -172,87 +168,14 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
           userId: request.userId,
           channelId: body.channelId ?? null,
           inputMode: body.inputMode,
-          inputJson: { ...inputJson, target_count: body.count },
+          inputJson,
           modelTier: body.modelTier,
           provider: body.provider,
           model: body.model,
-          targetCount: body.count,
+          targetCount: body.ideasRequested,
         },
       });
 
-        const ideas = normalizeIdeas(result);
-        if (ideas.length === 0) {
-          // Log the raw result so we can see what shape the agent returned and
-          // teach normalizeIdeas about it next time.
-          fastify.log.warn(
-            { rawResult: result },
-            'brainstorm returned 0 ideas — agent output shape may be unrecognized',
-          );
-        }
-
-        // Persist ideas with auto-generated idea_id (BC-IDEA-NNN).
-        const { count } = await sb
-          .from('idea_archives')
-          .select('*', { count: 'exact', head: true });
-        const startNum = (count ?? 0) + 1;
-
-        const ideaRows = ideas.map((idea, i) => ({
-          idea_id: `BC-IDEA-${String(startNum + i).padStart(3, '0')}`,
-          title: idea.title ?? `Untitled ${i + 1}`,
-          core_tension: idea.core_tension ?? '',
-          target_audience: idea.target_audience ?? '',
-          verdict:
-            idea.verdict === 'viable' || idea.verdict === 'weak' || idea.verdict === 'experimental'
-              ? idea.verdict
-              : 'experimental',
-          discovery_data: JSON.stringify({
-            angle: idea.angle,
-            monetization: idea.monetization,
-            repurposing: idea.repurposing,
-          }),
-          source_type: 'brainstorm',
-          channel_id: body.channelId ?? null,
-          brainstorm_session_id: session.id,
-          user_id: request.userId,
-          org_id: orgId,
-        }));
-
-        if (ideaRows.length > 0) {
-          await (sb.from('idea_archives') as unknown as {
-            upsert: (rows: Record<string, unknown>[], opts?: unknown) => Promise<{ error: unknown }>;
-          }).upsert(ideaRows, { onConflict: 'idea_id', ignoreDuplicates: true });
-        }
-
-        // Fetch saved ideas with UUIDs (upsert doesn't return them)
-        const ideaIds = ideaRows.map((r) => r.idea_id);
-        const { data: savedIdeas } = await sb
-          .from('idea_archives')
-          .select('*')
-          .in('idea_id', ideaIds);
-
-        await (sb.from('brainstorm_sessions') as unknown as {
-          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        })
-          .update({ status: 'completed' })
-          .eq('id', session.id);
-
-        await debitCredits(orgId, request.userId, 'brainstorm', 'text', STAGE_COSTS.brainstorm, {
-          channelId: body.channelId,
-          mode: body.inputMode,
-        });
-
-        return reply.send({
-          data: { sessionId: session.id, ideas: savedIdeas ?? ideaRows },
-          error: null,
-        });
-      } catch (err) {
-        await (sb.from('brainstorm_sessions') as unknown as {
-          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        })
-          .update({ status: 'failed', error_message: (err as Error)?.message?.slice(0, 500) })
-          .eq('id', session.id);
-        throw err;
-      }
       return reply.status(202).send({
         data: { sessionId: session.id, status: 'queued' },
         error: null,
@@ -413,7 +336,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         const { count } = await sb.from('idea_archives').select('*', { count: 'exact', head: true });
         const startNum = (count ?? 0) + 1;
 
-        const ideaRows = ideas.map((idea, i) => ({
+        const ideaRows = ideas.map((idea: RawIdea, i: number) => ({
           idea_id: `BC-IDEA-${String(startNum + i).padStart(3, '0')}`,
           title: idea.title ?? `Untitled ${i + 1}`,
           core_tension: idea.core_tension ?? '',
@@ -447,7 +370,12 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         }).update({ status: 'failed', error_message: (err as Error)?.message?.slice(0, 500) }).eq('id', session.id);
         throw err;
       }
-  /*   
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
    * GET /sessions/:id/drafts — F2-037. List staged ideas for a session
    * (not yet persisted to idea_archives).
    */
@@ -495,7 +423,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       const { count } = await sb.from('idea_archives').select('*', { count: 'exact', head: true });
       const startNum = (count ?? 0) + 1;
 
-      const rows = drafts.map((d, i) => ({
+      const rows = drafts.map((d: Record<string, unknown>, i: number) => ({
         idea_id: `BC-IDEA-${String(startNum + i).padStart(3, '0')}`,
         title: d.title,
         core_tension: d.core_tension ?? '',
