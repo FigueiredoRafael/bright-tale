@@ -4,6 +4,8 @@
  */
 import Stripe from 'stripe';
 
+export type { Stripe };
+
 let _client: Stripe | null = null;
 
 export function getStripe(): Stripe {
