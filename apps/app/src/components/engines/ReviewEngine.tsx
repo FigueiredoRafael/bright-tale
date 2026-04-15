@@ -428,49 +428,116 @@ export function ReviewEngine({
             </Card>
           )}
 
-          {/* Needs revision */}
-          {needsRevision && (
-            <Card className="border-amber-500/30 bg-amber-500/5">
+          {/* Needs revision or rejected — show actions */}
+          {(needsRevision || isRejected) && (
+            <Card className={needsRevision ? 'border-amber-500/30 bg-amber-500/5' : 'border-red-500/30 bg-red-500/5'}>
               <CardContent className="py-4 space-y-4">
-                <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-300">
+                <div className={`flex items-center gap-2 text-sm ${
+                  needsRevision
+                    ? 'text-amber-700 dark:text-amber-300'
+                    : 'text-red-700 dark:text-red-300'
+                }`}>
                   <AlertCircle className="h-4 w-4" />
-                  <span>Revision required. Choose an action:</span>
+                  <span>{needsRevision ? 'Revision required.' : 'Draft rejected.'} Choose an action:</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    onClick={handleRevise}
-                    disabled={busy}
-                    variant="outline"
-                    size="sm"
+
+                {/* Re-review section */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">Run a new review after revisions:</p>
+                  <Tabs
+                    value={reviewMode}
+                    onValueChange={(v) => setReviewMode(v as ReviewMode)}
                   >
-                    {busy ? (
-                      <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                    ) : (
-                      <Sparkles className="h-4 w-4 mr-1.5" />
+                    <TabsList className="grid w-full grid-cols-2 h-8">
+                      <TabsTrigger value="ai" className="gap-1 text-xs">
+                        <Sparkles className="h-3 w-3" /> AI Review
+                      </TabsTrigger>
+                      {manualEnabled && (
+                        <TabsTrigger value="manual" className="gap-1 text-xs">
+                          <ClipboardPaste className="h-3 w-3" /> Manual
+                        </TabsTrigger>
+                      )}
+                    </TabsList>
+                    <TabsContent value="ai" className="mt-2">
+                      <Button
+                        onClick={handleSubmitForReview}
+                        disabled={busy}
+                        size="sm"
+                        className="w-full"
+                      >
+                        {busy ? (
+                          <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Reviewing...</>
+                        ) : (
+                          <><Sparkles className="h-4 w-4 mr-1.5" /> Re-submit for AI Review</>
+                        )}
+                      </Button>
+                    </TabsContent>
+                    {manualEnabled && (
+                      <TabsContent value="manual" className="mt-2">
+                        <ManualModePanel
+                          agentSlug="review"
+                          inputContext={(() => {
+                            const lines: string[] = [`Title: ${draft.title || '(no title)'}`];
+                            if (context.ideaTitle) lines.push(`Idea: ${context.ideaTitle}`);
+                            if (draft.draft_json) {
+                              lines.push('', '## Draft Content (to review)');
+                              lines.push('```json');
+                              lines.push(JSON.stringify(draft.draft_json, null, 2));
+                              lines.push('```');
+                            }
+                            return lines.join('\n');
+                          })()}
+                          pastePlaceholder="Paste review JSON with verdict, score, and feedback"
+                          onImport={handleManualImport}
+                          importLabel="Import New Review"
+                          loading={busy}
+                        />
+                      </TabsContent>
                     )}
-                    AI Revision
-                  </Button>
-                  <Button
-                    onClick={() => onBack?.('draft')}
-                    variant="outline"
-                    size="sm"
-                  >
-                    Edit Manually
-                  </Button>
-                  <Button
-                    onClick={() => onBack?.('research')}
-                    variant="outline"
-                    size="sm"
-                  >
-                    Regenerate Research
-                  </Button>
-                  <Button
-                    onClick={() => onBack?.('brainstorm')}
-                    variant="outline"
-                    size="sm"
-                  >
-                    Pick Different Idea
-                  </Button>
+                  </Tabs>
+                </div>
+
+                <div className="h-px bg-border" />
+
+                {/* Go back options */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">Or go back to revise content:</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      onClick={handleRevise}
+                      disabled={busy}
+                      variant="outline"
+                      size="sm"
+                    >
+                      {busy ? (
+                        <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4 mr-1.5" />
+                      )}
+                      AI Revision
+                    </Button>
+                    <Button
+                      onClick={() => onBack?.('draft')}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Edit Manually
+                    </Button>
+                    <Button
+                      onClick={() => onBack?.('research')}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Regenerate Research
+                    </Button>
+                    <Button
+                      onClick={() => onBack?.('brainstorm')}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Pick Different Idea
+                    </Button>
+                  </div>
                 </div>
                 <div className="text-xs text-muted-foreground">
                   Or override and continue:
@@ -488,53 +555,6 @@ export function ReviewEngine({
             </Card>
           )}
 
-          {/* Rejected */}
-          {isRejected && (
-            <Card className="border-red-500/30 bg-red-500/5">
-              <CardContent className="py-4 space-y-4">
-                <div className="flex items-center gap-2 text-sm text-red-700 dark:text-red-300">
-                  <AlertCircle className="h-4 w-4" />
-                  <span>Draft rejected. Please address critical issues.</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    onClick={() => onBack?.('draft')}
-                    variant="outline"
-                    size="sm"
-                  >
-                    Edit Manually
-                  </Button>
-                  <Button
-                    onClick={() => onBack?.('research')}
-                    variant="outline"
-                    size="sm"
-                  >
-                    Regenerate Research
-                  </Button>
-                  <Button
-                    onClick={() => onBack?.('brainstorm')}
-                    variant="outline"
-                    size="sm"
-                    className="col-span-2"
-                  >
-                    Pick Different Idea
-                  </Button>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Or override and continue:
-                </div>
-                <Button
-                  onClick={handleOverrideApprove}
-                  disabled={busy}
-                  variant="ghost"
-                  size="sm"
-                  className="w-full"
-                >
-                  Override Approve
-                </Button>
-              </CardContent>
-            </Card>
-          )}
         </>
       )}
 
