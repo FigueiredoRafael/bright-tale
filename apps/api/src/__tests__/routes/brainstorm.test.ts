@@ -158,16 +158,16 @@ describe('POST /brainstorm/sessions', () => {
     expect(res.statusCode).toBe(202);
   });
 
-  it('F2-037: rejects count outside 3-10 range', async () => {
+  it('F2-037: rejects ideasRequested outside 1-10 range', async () => {
     const resLow = await app.inject({
       method: 'POST', url: '/brainstorm/sessions', headers: AUTH_USER,
-      payload: { inputMode: 'blind', topic: 'ai', count: 2 },
+      payload: { inputMode: 'blind', topic: 'ai', ideasRequested: 0 },
     });
     expect(resLow.statusCode).toBe(400);
 
     const resHigh = await app.inject({
       method: 'POST', url: '/brainstorm/sessions', headers: AUTH_USER,
-      payload: { inputMode: 'blind', topic: 'ai', count: 11 },
+      payload: { inputMode: 'blind', topic: 'ai', ideasRequested: 11 },
     });
     expect(resHigh.statusCode).toBe(400);
   });

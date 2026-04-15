@@ -101,12 +101,11 @@ describe('POST /research-sessions', () => {
       payload: { level: 'medium', topic: 'deep work', focusTags: ['stats'] },
     });
 
-    // F2-036: research now runs async via Inngest; cards arrive via SSE.
-    expect(res.statusCode).toBe(202);
+    // Research now runs synchronously and returns cards directly.
+    expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.data.sessionId).toBe('rs-1');
     expect(body.data.level).toBe('medium');
-    expect(body.data.status).toBe('queued');
   });
 });
 
