@@ -629,14 +629,11 @@ export function ResearchEngine({
                       context.ideaTitle
                         ? `Selected Idea: ${context.ideaTitle}`
                         : `Topic: ${topic || '(enter topic above)'}`,
-                      context.ideaTitle && context.ideaCoreTension
+                      context.ideaCoreTension
                         ? `Core Tension: ${context.ideaCoreTension}`
                         : '',
                       `Depth: ${level}`,
                       `Research Focus: ${focusTags.join(', ') || 'general'}`,
-                      '',
-                      'Output must follow BC_RESEARCH_OUTPUT schema with:',
-                      'idea_validation, sources[], statistics[], expert_quotes[], counterarguments[], knowledge_gaps[], research_summary, refined_angle',
                     ]
                       .filter(Boolean)
                       .join('\n')}

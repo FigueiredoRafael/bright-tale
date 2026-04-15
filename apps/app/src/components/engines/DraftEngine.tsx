@@ -567,18 +567,30 @@ export function DraftEngine({
             {manualEnabled && (
               <TabsContent value="manual" className="mt-3">
                 <ManualModePanel
-                  agentSlug="draft"
-                  inputContext={[
-                    `Title: ${title || '(enter title above)'}`,
-                    `Format: ${type}`,
-                    context.ideaTitle ? `Idea: ${context.ideaTitle}` : '',
-                    research?.input_json?.topic
-                      ? `Research topic: ${research.input_json.topic}`
-                      : '',
-                    `Research cards: ${cardCount}`,
-                  ]
-                    .filter(Boolean)
-                    .join('\n')}
+                  agentSlug="content-core"
+                  inputContext={(() => {
+                    const lines: string[] = [
+                      `Title: ${title || '(enter title above)'}`,
+                      `Format: ${type}`,
+                    ];
+                    if (context.ideaTitle) lines.push(`Idea: ${context.ideaTitle}`);
+                    if (context.ideaCoreTension) lines.push(`Core Tension: ${context.ideaCoreTension}`);
+                    if (research?.input_json?.topic) lines.push(`Research Topic: ${research.input_json.topic}`);
+                    if (research?.level) lines.push(`Research Depth: ${research.level}`);
+
+                    // Include approved research cards as context
+                    const researchCards = (research?.approved_cards_json ?? research?.cards_json ?? []) as Record<string, unknown>[];
+                    if (researchCards.length > 0) {
+                      lines.push('', '## Research Data (approved cards)');
+                      lines.push('```json');
+                      lines.push(JSON.stringify(researchCards, null, 2));
+                      lines.push('```');
+                    } else {
+                      lines.push(`Research cards: ${cardCount}`);
+                    }
+
+                    return lines.filter(Boolean).join('\n');
+                  })()}
                   pastePlaceholder={
                     'Paste JSON matching BC_CANONICAL_CORE:\n{"section":"...","subsections":[...]}'
                   }
