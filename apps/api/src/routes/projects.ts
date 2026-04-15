@@ -169,9 +169,7 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
 
       const { data: project, error } = await sb
         .from('projects')
-        .select(
-          '*, research:research_archives!research_id(*, sources:research_sources(*)), stages(*, revisions(count)), stages(count)',
-        )
+        .select('*')
         .eq('id', id)
         .maybeSingle();
 
