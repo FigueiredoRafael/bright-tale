@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Sparkles, Copy } from 'lucide-react';
+import { Loader2, Sparkles, Copy, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { BrainstormEngine } from '@/components/engines/BrainstormEngine';
@@ -398,6 +398,7 @@ export function PipelineOrchestrator({
 
     // Auto-set mode for stages without import
     const mode = engineMode || (stage === 'review' || stage === 'publish' ? 'generate' : 'generate');
+    const showBackToOptions = engineMode !== null && stage !== 'review' && stage !== 'publish';
 
     const handleBack = (targetStage?: PipelineStage) => {
       if (targetStage) {
@@ -412,38 +413,54 @@ export function PipelineOrchestrator({
       }
     };
 
+    const backBar = showBackToOptions ? (
+      <div className="mb-3 flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs text-muted-foreground"
+          onClick={() => setEngineMode(null)}
+        >
+          <ArrowLeft className="h-3 w-3 mr-1" /> Back to options
+        </Button>
+        <Badge variant="outline" className="text-[10px]">
+          {engineMode === 'generate' ? 'Generating' : 'Importing'}
+        </Badge>
+      </div>
+    ) : null;
+
     switch (stage) {
       case 'brainstorm':
         return (
-          <BrainstormEngine
+          <>{backBar}<BrainstormEngine
             mode={mode as 'generate' | 'import'}
             channelId={channelId}
             context={ctx}
             onComplete={handleStageComplete}
             onBack={handleBack}
-          />
+          /></>
         );
 
       case 'research':
         return (
-          <ResearchEngine
+          <>{backBar}<ResearchEngine
             mode={mode as 'generate' | 'import'}
             channelId={channelId}
             context={ctx}
             onComplete={handleStageComplete}
             onBack={handleBack}
-          />
+          /></>
         );
 
       case 'draft':
         return (
-          <DraftEngine
+          <>{backBar}<DraftEngine
             mode={mode as 'generate' | 'import'}
             channelId={channelId}
             context={ctx}
             onComplete={handleStageComplete}
             onBack={handleBack}
-          />
+          /></>
         );
 
       case 'review':
@@ -485,7 +502,7 @@ export function PipelineOrchestrator({
           );
         }
         return (
-          <AssetsEngine
+          <>{backBar}<AssetsEngine
             mode={mode as 'generate' | 'import'}
             channelId={channelId}
             context={ctx}
@@ -493,7 +510,7 @@ export function PipelineOrchestrator({
             draftStatus={draftData.status as string}
             onComplete={handleStageComplete}
             onBack={handleBack}
-          />
+          /></>
         );
 
       case 'publish':
