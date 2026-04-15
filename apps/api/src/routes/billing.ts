@@ -9,7 +9,7 @@ import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
 import { getStripe } from '../lib/billing/stripe.js';
 import { PLANS, getPlan, planFromPriceId, ADDON_PACKS, type PlanId, type BillingCycle } from '../lib/billing/plans.js';
-import type { Stripe } from 'stripe';
+import Stripe from 'stripe';
 
 async function getOrg(userId: string) {
   const sb = createServiceClient();
