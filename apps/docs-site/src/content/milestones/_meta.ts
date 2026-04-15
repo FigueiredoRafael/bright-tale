@@ -6,4 +6,5 @@ export default {
   'phase-4-media': 'Fase 4 — Mídia',
   'phase-5-publishing': 'Fase 5 — Publicação',
   'phase-6-polish': 'Fase 6 — Polish',
+  'phase-7-finalization': 'Fase 7 — Finalização',
 }

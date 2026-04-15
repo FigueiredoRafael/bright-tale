@@ -20,6 +20,25 @@ _Phase 2 cresceu de 14 → 47 cards ao longo do desenvolvimento (F2-036..F2-049 
 
 ---
 
+## V2 Finalização — Em Progresso
+
+_Pontas soltas antes do lançamento público. Observabilidade, pricing, integrações, e features de produto._
+
+| Card | Nome | Prioridade | Status |
+|---|---|---|---|
+| [F7-001](/milestones/phase-7-finalization#f7-001--observabilidade-error-logging-com-sentry) | **Sentry (error logging)** | FATAL | 🔲 |
+| [F7-002](/milestones/phase-7-finalization#f7-002--finalizar-pricing-e-ativar-planos) | **Pricing + ativar planos** | FATAL | 🔲 |
+| [F7-003](/milestones/phase-7-finalization#f7-003--testar-integração-blogwordpress-end-to-end) | **Testar Blog/WP e2e** | FATAL | 🔲 |
+| [F7-004](/milestones/phase-7-finalization#f7-004--finalizar-geração-de-imagens) | **Geração de imagens** | FATAL | 🔲 |
+| [F7-005](/milestones/phase-7-finalization#f7-005--séries-múltiplos-conteúdos-sobre-o-mesmo-tema) | **Séries (tema recorrente)** | FATAL | 🔲 |
+| [F7-006](/milestones/phase-7-finalization#f7-006--produtos-adicionar-produtos-na-criação-de-conteúdo) | **Produtos + CTA** | FATAL | 🔲 |
+| [F7-007](/milestones/phase-7-finalization#f7-007--highlight-de-conteúdo-produto-referenciado) | **Highlight de produto** | FATAL | 🔲 |
+| [F7-008](/milestones/phase-7-finalization#f7-008--recomendação-de-shorts-a-partir-de-roteiro) | **Shorts de roteiro** | FATAL | 🔲 |
+| [F7-009](/milestones/phase-7-finalization#f7-009--suporte-chatbot-básico--fallback-para-admin) | **Suporte (chatbot)** | Importante | 🔲 |
+| [F7-010](/milestones/phase-7-finalization#f7-010--notificações-push-e-eventos-thiago) | **Notificações (Thiago)** | Importante | 🔲 |
+
+---
+
 ## V2.1 — Pendente (afiliados)
 
 Cards que precisam ser implementados antes do V3. **Responsável: Thiago.**
@@ -48,6 +67,11 @@ Cards movidos do V2 que dependem de infra externa (FFmpeg, GCP OAuth). O produto
 | F4-006 | Phase 4 | FFmpeg worker: montar vídeo (áudio + clips + legendas) | FFmpeg local ou serviço remoto |
 | F4-007 | Phase 4 | API: Video generation routes (Inngest pipeline) | F4-006 |
 | F4-009 | Phase 4 | UI: Step 4 Mídia (áudio + vídeo) | F4-006/007 |
+| — | Phase 7 | ElevenLabs: finalizar integração de voz | Decisão de escopo |
+| — | Phase 7 | Roteiro de podcast (geração completa) | Agentes de podcast |
+| — | Phase 7 | Controle de features no painel admin (feature flags) | — |
+| — | Phase 7 | Conteúdo agendado (gerar + agendar publicações futuras) | Scheduler infra |
+| — | Phase 7 | Bug report conectado a GitHub Issues | Reavaliar se Sentry é suficiente |
 | F4-010 | Phase 4 | Shorts: geração de vídeo vertical (9:16, batch 3) | F4-006/007 |
 | F4-011 | Phase 4 | Express mode: one-click end-to-end | F4-006/007 |
 | F5-001 | Phase 5 | YouTube upload: OAuth 2.0 + resumable upload | GCP OAuth client |

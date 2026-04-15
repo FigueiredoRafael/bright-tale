@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
-import { buildProxyHeaders, middleware } from '@/middleware';
+import { buildProxyHeaders, proxy as middleware } from '@/proxy';
 
 // Mock the Supabase middleware client so tests don't require real Supabase
 vi.mock('@/lib/supabase/middleware', () => ({
@@ -77,14 +77,14 @@ describe('middleware()', () => {
     else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = originalSupabaseKey;
   });
 
-  it('returns 500 MIDDLEWARE_MISCONFIGURED when INTERNAL_API_KEY is missing for /api routes', async () => {
+  it('returns 500 PROXY_MISCONFIGURED when INTERNAL_API_KEY is missing for /api routes', async () => {
     delete process.env.INTERNAL_API_KEY;
     const request = new Request('http://localhost:3000/api/projects') as unknown as Parameters<typeof middleware>[0];
     (request as unknown as { nextUrl: URL }).nextUrl = new URL('http://localhost:3000/api/projects');
     const response = await middleware(request);
     expect(response.status).toBe(500);
     const body = await response.json();
-    expect(body.error.code).toBe('MIDDLEWARE_MISCONFIGURED');
+    expect(body.error.code).toBe('PROXY_MISCONFIGURED');
     expect(body.data).toBeNull();
   });
 
