@@ -43,8 +43,13 @@ export function PipelineOrchestrator({
   initialPipelineState,
 }: PipelineOrchestratorProps) {
   const [pipelineState, setPipelineState] = useState<PipelineState>(() => {
-    if (initialPipelineState) {
-      return initialPipelineState as unknown as PipelineState;
+    if (initialPipelineState && Object.keys(initialPipelineState).length > 0) {
+      return {
+        ...DEFAULT_STATE,
+        ...initialPipelineState,
+        stageResults: { ...DEFAULT_STATE.stageResults, ...(initialPipelineState as Record<string, unknown>).stageResults as Record<string, unknown> },
+        autoConfig: { ...DEFAULT_STATE.autoConfig, ...(initialPipelineState as Record<string, unknown>).autoConfig as Record<string, unknown> },
+      } as PipelineState;
     }
     return DEFAULT_STATE;
   });
@@ -329,7 +334,7 @@ export function PipelineOrchestrator({
         }
       })();
     }
-  }, [pipelineState.currentStage, pipelineState.stageResults.draft, draftData]);
+  }, [pipelineState.currentStage, pipelineState.stageResults?.draft, draftData]);
 
   // Map PipelineStage to PipelineStep
   function getPipelineStep(): PipelineStep {
