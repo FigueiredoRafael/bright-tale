@@ -307,6 +307,8 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       if (data.winner !== undefined) updateData.winner = data.winner;
       if (data.completed_stages !== undefined)
         updateData.completed_stages = data.completed_stages;
+      if (data.pipelineStateJson !== undefined)
+        updateData.pipeline_state_json = data.pipelineStateJson;
 
       const { data: project, error } = await sb
         .from('projects')
@@ -437,6 +439,8 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       if (data.winner !== undefined) updateData.winner = data.winner;
       if (data.completed_stages !== undefined)
         updateData.completed_stages = data.completed_stages;
+      if (data.pipelineStateJson !== undefined)
+        updateData.pipeline_state_json = data.pipelineStateJson;
 
       const { data: project, error } = await sb
         .from('projects')
