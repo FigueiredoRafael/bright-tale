@@ -282,6 +282,10 @@ export function ResearchEngine({
     }
 
     // Extract summary, validation, knowledge gaps, and refined angle
+    const refinedAngleObj = (obj.refined_angle && typeof obj.refined_angle === 'object')
+      ? obj.refined_angle as Record<string, unknown>
+      : null;
+
     if (typeof obj.research_summary === 'string') {
       setResearchSummary(obj.research_summary);
     }
@@ -291,8 +295,33 @@ export function ResearchEngine({
     if (Array.isArray(obj.knowledge_gaps)) {
       setKnowledgeGaps(obj.knowledge_gaps as string[]);
     }
-    if (obj.refined_angle && typeof obj.refined_angle === 'object') {
-      setRefinedAngle(obj.refined_angle as Record<string, unknown>);
+    if (refinedAngleObj) {
+      setRefinedAngle(refinedAngleObj);
+    }
+
+    // Persist as a research session so downstream engines can fetch the cards
+    try {
+      const res = await fetch('/api/research-sessions/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(channelId ? { channelId } : {}),
+          ...(context.projectId ? { projectId: context.projectId } : {}),
+          ...(context.ideaId ? { ideaId: context.ideaId } : {}),
+          topic: topic || context.ideaTitle || undefined,
+          level,
+          cardsJson: allCards,
+          ...(refinedAngleObj ? { refinedAngleJson: refinedAngleObj } : {}),
+          ...(typeof obj.research_summary === 'string' ? { researchSummary: obj.research_summary } : {}),
+        }),
+      });
+      const json = await res.json();
+      if (json?.data?.sessionId) {
+        setSessionId(json.data.sessionId);
+      }
+    } catch {
+      // Cards are still in state; just won't have a session ID for downstream
+      toast.warning('Cards imported locally but failed to save session to database');
     }
 
     setCards(allCards);

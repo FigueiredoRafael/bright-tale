@@ -281,6 +281,76 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
   });
 
   /**
+   * POST /import — Create a research session from manually imported data.
+   * Used when the user pastes BC_RESEARCH_OUTPUT from an external AI chat.
+   */
+  const importSchema = z.object({
+    channelId: z.string().uuid().optional(),
+    projectId: z.string().optional(),
+    ideaId: z.string().optional(),
+    topic: z.string().optional(),
+    level: z.enum(['surface', 'medium', 'deep']).default('medium'),
+    cardsJson: z.array(z.record(z.unknown())),
+    refinedAngleJson: z.record(z.unknown()).optional(),
+    researchSummary: z.string().optional(),
+  });
+
+  fastify.post('/import', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const body = importSchema.parse(request.body);
+      const orgId = await getOrgId(request.userId);
+      const sb = createServiceClient();
+
+      const inputJson = {
+        topic: body.topic ?? null,
+        level: body.level,
+        source: 'manual_import',
+      };
+
+      const { data: session, error: insertErr } = await (
+        sb.from('research_sessions') as unknown as {
+          insert: (row: Record<string, unknown>) => {
+            select: () => { single: () => Promise<{ data: { id: string } | null; error: unknown }> };
+          };
+        }
+      )
+        .insert({
+          org_id: orgId,
+          user_id: request.userId,
+          channel_id: body.channelId ?? null,
+          project_id: body.projectId ?? null,
+          idea_id: body.ideaId ?? null,
+          level: body.level,
+          focus_tags: [],
+          input_json: inputJson,
+          model_tier: 'manual',
+          status: 'completed',
+          cards_json: body.cardsJson,
+          approved_cards_json: body.cardsJson,
+          refined_angle_json: body.refinedAngleJson ?? null,
+        })
+        .select()
+        .single();
+
+      if (insertErr || !session) throw insertErr ?? new ApiError(500, 'Failed to create session', 'INTERNAL');
+
+      return reply.send({
+        data: {
+          sessionId: session.id,
+          level: body.level,
+          cards: body.cardsJson,
+          refinedAngle: body.refinedAngleJson ?? null,
+          status: 'completed',
+        },
+        error: null,
+      });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
    * GET /:id/events — SSE stream of progress events for the research job.
    */
   fastify.get('/:id/events', { preHandler: [authenticate] }, async (request, reply) => {
