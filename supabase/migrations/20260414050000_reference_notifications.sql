@@ -23,4 +23,4 @@ CREATE INDEX idx_ref_notif_org ON reference_notifications(org_id, read_at);
 ALTER TABLE reference_notifications ENABLE ROW LEVEL SECURITY;
 
 CREATE TRIGGER handle_updated_at BEFORE UPDATE ON reference_notifications
-  FOR EACH ROW EXECUTE FUNCTION moddatetime(updated_at);
+  FOR EACH ROW EXECUTE FUNCTION extensions.moddatetime(updated_at);
