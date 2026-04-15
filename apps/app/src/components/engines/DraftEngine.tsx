@@ -116,6 +116,48 @@ export function DraftEngine({
     })();
   }, [context.researchSessionId, title]);
 
+  // Restore state from existing draft (when revisiting from review)
+  useEffect(() => {
+    if (!context.draftId) return;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/content-drafts/${context.draftId}`);
+        const json = await res.json();
+        if (!json?.data) return;
+        const d = json.data as Record<string, unknown>;
+
+        setDraftId(context.draftId as string);
+        if (d.title && typeof d.title === 'string' && !title) setTitle(d.title);
+        if (d.type && typeof d.type === 'string') setType(d.type as DraftType);
+
+        const core = d.canonical_core_json as Record<string, unknown> | null;
+        const draftJson = d.draft_json as Record<string, unknown> | null;
+
+        if (core && typeof core === 'object' && Object.keys(core).length > 0) {
+          setCanonicalCore(core);
+
+          if (draftJson && typeof draftJson === 'object' && Object.keys(draftJson).length > 0) {
+            // Has both core and produced content — go to done
+            const content = extractProducedContent(d, (d.type as DraftType) ?? 'blog');
+            if (content && content !== '{}') {
+              setProducedContent(content);
+              setPhase('done');
+            } else {
+              setPhase('core-ready');
+            }
+          } else {
+            // Has core but no produced content — go to produce step
+            setPhase('core-ready');
+          }
+          setCoreExpanded(false);
+        }
+      } catch {
+        // silent — will show fresh form
+      }
+    })();
+  }, [context.draftId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Fetch recommended model
   useEffect(() => {
     (async () => {
