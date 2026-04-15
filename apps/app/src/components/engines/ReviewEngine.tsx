@@ -158,8 +158,8 @@ export function ReviewEngine({
 
         // Normalize verdict — score ≥ 90 always means approved
         if (score >= 90) verdict = 'approved';
-        else if (verdict === 'approved' || verdict === 'approve') verdict = 'approved';
-        else if (verdict === 'rejected' || verdict === 'reject') verdict = 'rejected';
+        else if (verdict.includes('approved')) verdict = 'approved';
+        else if (verdict.includes('rejected')) verdict = 'rejected';
         else verdict = 'revision_required';
 
         const patchBody: Record<string, unknown> = {
@@ -268,8 +268,8 @@ export function ReviewEngine({
   // Score ≥ 90 always means approved, regardless of text verdict
   const effectiveVerdict =
     (effectiveScore !== null && effectiveScore >= 90) ? 'approved'
-    : rawVerdict === 'approved' || rawVerdict === 'approve' ? 'approved'
-    : rawVerdict === 'rejected' || rawVerdict === 'reject' ? 'rejected'
+    : (rawVerdict && rawVerdict.includes('approved')) ? 'approved'
+    : (rawVerdict && rawVerdict.includes('rejected')) ? 'rejected'
     : (rawVerdict && rawVerdict !== 'pending') ? 'revision_required'
     : 'pending';
 
