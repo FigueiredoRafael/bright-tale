@@ -26,6 +26,7 @@ import {
 import { ManualModePanel } from '@/components/ai/ManualModePanel';
 import { useManualMode } from '@/hooks/use-manual-mode';
 import { ContextBanner } from './ContextBanner';
+import { ImportPicker } from './ImportPicker';
 import { friendlyAiError } from '@/lib/ai/error-message';
 import type { BaseEngineProps, BrainstormResult } from './types';
 
@@ -425,6 +426,56 @@ export function BrainstormEngine({
   const topic_display = isSessionDetail && initialSession
     ? ((initialSession as Record<string, unknown>).input_json as Record<string, unknown>)?.topic as string
     : topic;
+
+  // Import mode: show ImportPicker when mode='import' and no initial session
+  if (engineMode === 'import' && !initialSession) {
+    return (
+      <div className="space-y-6">
+        <ContextBanner stage="brainstorm" context={context} />
+
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Lightbulb className="h-5 w-5" /> Brainstorm
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Import an idea from your library to continue.
+          </p>
+        </div>
+
+        <ImportPicker
+          entityType="ideas"
+          channelId={channelId}
+          searchPlaceholder="Search ideas..."
+          emptyMessage="No ideas in library yet"
+          renderItem={(item: Record<string, unknown>): React.ReactNode => {
+            const verdict = item.verdict as string;
+            const title = item.title as string;
+            const coreTension = item.core_tension as string | undefined;
+
+            return (
+              <div className="p-3 rounded-lg border hover:border-primary/50 transition-colors">
+                <div className="flex items-center gap-2">
+                  <Badge variant={verdict === 'viable' ? 'default' : verdict === 'weak' ? 'destructive' : 'secondary'} className="text-[10px]">
+                    {verdict}
+                  </Badge>
+                  <span className="text-sm font-medium">{title}</span>
+                </div>
+                {coreTension && <p className="text-xs text-muted-foreground mt-1">{coreTension}</p>}
+              </div>
+            );
+          }}
+          onSelect={(item) => {
+            onComplete({
+              ideaId: (item.id ?? item.idea_id) as string,
+              ideaTitle: item.title as string,
+              ideaVerdict: (item.verdict as string) ?? 'experimental',
+              ideaCoreTension: (item.core_tension as string) ?? '',
+            } as BrainstormResult);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

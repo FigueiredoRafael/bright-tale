@@ -21,6 +21,7 @@ import { GenerationProgressModal } from '@/components/generation/GenerationProgr
 import { WizardStepper } from '@/components/generation/WizardStepper';
 import { MarkdownPreview } from '@/components/preview/MarkdownPreview';
 import { ContextBanner } from './ContextBanner';
+import { ImportPicker } from './ImportPicker';
 import { friendlyAiError } from '@/lib/ai/error-message';
 import { useUpgrade } from '@/components/billing/UpgradeProvider';
 import type { BaseEngineProps, DraftResult } from './types';
@@ -318,6 +319,48 @@ export function DraftEngine({
     : Array.isArray(research?.approved_cards_json)
       ? research.approved_cards_json.length
       : 0;
+
+  // Import mode: show ImportPicker when mode='import' and no initial draft
+  if (engineMode === 'import' && !initialDraft) {
+    return (
+      <div className="space-y-6">
+        <ContextBanner stage="draft" context={context} />
+
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Sparkles className="h-5 w-5" /> Draft
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Import a draft to continue.
+          </p>
+        </div>
+
+        <ImportPicker
+          entityType="content-drafts"
+          channelId={channelId}
+          searchPlaceholder="Search drafts..."
+          emptyMessage="No drafts found"
+          renderItem={(item: Record<string, unknown>): React.ReactNode => (
+            <div className="p-3 rounded-lg border hover:border-primary/50 transition-colors">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-[10px]">{item.type as string}</Badge>
+                <Badge variant="outline" className="text-[10px]">{item.status as string}</Badge>
+                <span className="text-sm font-medium">{item.title as string}</span>
+              </div>
+            </div>
+          )}
+          onSelect={(item) => {
+            const draftJson = item.draft_json as Record<string, unknown> | null;
+            onComplete({
+              draftId: item.id as string,
+              draftTitle: (item.title as string) ?? 'Untitled',
+              draftContent: (draftJson?.full_draft as string) ?? '',
+            } as DraftResult);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

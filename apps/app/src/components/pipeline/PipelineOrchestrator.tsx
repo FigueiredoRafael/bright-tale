@@ -43,7 +43,7 @@ export function PipelineOrchestrator({
 }: PipelineOrchestratorProps) {
   const [pipelineState, setPipelineState] = useState<PipelineState>(() => {
     if (initialPipelineState) {
-      return initialPipelineState as PipelineState;
+      return initialPipelineState as unknown as PipelineState;
     }
     return DEFAULT_STATE;
   });

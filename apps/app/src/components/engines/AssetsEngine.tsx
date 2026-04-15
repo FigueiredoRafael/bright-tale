@@ -3,10 +3,12 @@
 import { useEffect, useState, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowRight } from 'lucide-react';
+import { Loader2, ArrowRight, Database } from 'lucide-react';
 import { toast } from 'sonner';
 import { AssetGallery } from '@/components/preview/AssetGallery';
 import { ContextBanner } from './ContextBanner';
+import { ImportPicker } from './ImportPicker';
+import { Badge } from '@/components/ui/badge';
 import type { BaseEngineProps, AssetsResult } from './types';
 
 interface ContentAsset {
@@ -19,11 +21,12 @@ interface ContentAsset {
 }
 
 interface AssetsEngineProps extends BaseEngineProps {
-  draftId: string;
-  draftStatus: string;
+  draftId?: string;
+  draftStatus?: string;
 }
 
 export function AssetsEngine({
+  mode: engineMode,
   channelId,
   context,
   draftId,
@@ -169,6 +172,76 @@ export function AssetsEngine({
     });
   }
 
+  // Import mode: show ImportPicker when mode='import' and no draftId
+  if (engineMode === 'import' && !draftId) {
+    return (
+      <div className="space-y-6">
+        <ContextBanner stage="assets" context={context} onBack={onBack} />
+
+        <div className="space-y-4">
+          <div>
+            <h1 className="text-2xl font-bold">Assets</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Import assets from your library.
+            </p>
+          </div>
+
+          <ImportPicker
+            entityType="content-assets"
+            channelId={channelId}
+            searchPlaceholder="Search assets..."
+            emptyMessage="No assets in library yet"
+            renderItem={(item: Record<string, unknown>): React.ReactNode => {
+              const url = item.url as string | undefined;
+              const altText = item.alt_text as string | undefined;
+              const role = item.role as string | undefined;
+              const sourceType = item.source_type as string | undefined;
+
+              return (
+                <div className="p-3 rounded-lg border hover:border-primary/50 transition-colors">
+                  <div className="flex items-start gap-3">
+                    {url && (
+                      <img
+                        src={url}
+                        alt={altText || ''}
+                        className="h-16 w-16 rounded object-cover"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        {role && (
+                          <Badge variant="outline" className="text-[10px]">
+                            {role}
+                          </Badge>
+                        )}
+                        {sourceType && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            {sourceType}
+                          </Badge>
+                        )}
+                      </div>
+                      {altText && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {altText}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            }}
+            onSelect={(item) => {
+              onComplete({
+                assetIds: [item.id as string],
+                featuredImageUrl: (item.url as string | undefined) || undefined,
+              } as AssetsResult);
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return <div className="p-6 text-muted-foreground">Loading assets...</div>;
   }
@@ -182,7 +255,7 @@ export function AssetsEngine({
 
       <AssetGallery
         assets={assets}
-        draftStatus={draftStatus}
+        draftStatus={draftStatus ?? ''}
         onGenerateAll={draftStatus === 'approved' ? handleGenerateAll : undefined}
         onRegenerate={draftStatus === 'approved' ? handleRegenerate : undefined}
         onDelete={draftStatus === 'approved' ? handleDelete : undefined}

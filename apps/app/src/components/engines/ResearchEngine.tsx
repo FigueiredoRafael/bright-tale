@@ -27,6 +27,7 @@ import {
 import { ManualModePanel } from '@/components/ai/ManualModePanel';
 import { useManualMode } from '@/hooks/use-manual-mode';
 import { ContextBanner } from './ContextBanner';
+import { ImportPicker } from './ImportPicker';
 import { friendlyAiError } from '@/lib/ai/error-message';
 import type { BaseEngineProps, ResearchResult } from './types';
 
@@ -424,6 +425,50 @@ export function ResearchEngine({
       ? ((initialSession as Record<string, unknown>).input_json as Record<string, unknown>)
           ?.topic as string
       : topic;
+
+  // Import mode: show ImportPicker when mode='import' and no initial session
+  if (engineMode === 'import' && !initialSession) {
+    return (
+      <div className="space-y-6">
+        <ContextBanner stage="research" context={context} />
+
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Search className="h-5 w-5" /> Research
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Import a research session to continue.
+          </p>
+        </div>
+
+        <ImportPicker
+          entityType="research-sessions"
+          channelId={channelId}
+          searchPlaceholder="Search research sessions..."
+          emptyMessage="No research sessions found"
+          renderItem={(item: Record<string, unknown>): React.ReactNode => (
+            <div className="p-3 rounded-lg border hover:border-primary/50 transition-colors">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-[10px]">{item.level as string}</Badge>
+                <Badge variant="outline" className="text-[10px]">{item.status as string}</Badge>
+                <span className="text-xs text-muted-foreground">
+                  {Array.isArray(item.approved_cards_json) ? `${(item.approved_cards_json as unknown[]).length} cards` : 'No cards'}
+                </span>
+              </div>
+            </div>
+          )}
+          onSelect={(item) => {
+            const cards = (item.approved_cards_json ?? item.cards_json ?? []) as unknown[];
+            onComplete({
+              researchSessionId: item.id as string,
+              approvedCardsCount: cards.length,
+              researchLevel: (item.level as string) ?? 'medium',
+            } as ResearchResult);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
