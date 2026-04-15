@@ -10,6 +10,13 @@ import {
   ArrowRight,
   AlertTriangle,
   Sparkles,
+  BookOpen,
+  BarChart3,
+  Quote,
+  ShieldAlert,
+  ExternalLink,
+  Calendar,
+  Award,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -105,6 +112,9 @@ export function ResearchEngine({
   const [regenerating, setRegenerating] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [genMode, setGenMode] = useState<'ai' | 'manual'>('ai');
+  const [researchSummary, setResearchSummary] = useState<string | null>(null);
+  const [ideaValidation, setIdeaValidation] = useState<Record<string, unknown> | null>(null);
+  const [knowledgeGaps, setKnowledgeGaps] = useState<string[]>([]);
   const [refinedAngle, setRefinedAngle] = useState<Record<string, unknown> | null>(null);
 
   // Manual mode
@@ -269,6 +279,20 @@ export function ResearchEngine({
     if (allCards.length === 0) {
       toast.error('No research data found. Expected sources, statistics, expert_quotes, or counterarguments.');
       return;
+    }
+
+    // Extract summary, validation, knowledge gaps, and refined angle
+    if (typeof obj.research_summary === 'string') {
+      setResearchSummary(obj.research_summary);
+    }
+    if (obj.idea_validation && typeof obj.idea_validation === 'object') {
+      setIdeaValidation(obj.idea_validation as Record<string, unknown>);
+    }
+    if (Array.isArray(obj.knowledge_gaps)) {
+      setKnowledgeGaps(obj.knowledge_gaps as string[]);
+    }
+    if (obj.refined_angle && typeof obj.refined_angle === 'object') {
+      setRefinedAngle(obj.refined_angle as Record<string, unknown>);
     }
 
     setCards(allCards);
@@ -630,117 +654,403 @@ export function ResearchEngine({
         </Card>
       )}
 
+      {/* Research summary */}
+      {researchSummary && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <BookOpen className="h-4 w-4 text-primary" />
+              Research Summary
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground leading-relaxed">{researchSummary}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Idea validation */}
+      {ideaValidation && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Award className="h-4 w-4 text-primary" />
+              Idea Validation
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-3">
+              <div className="flex items-center gap-1.5">
+                <div className={`h-2 w-2 rounded-full ${ideaValidation.core_claim_verified ? 'bg-green-500' : 'bg-red-500'}`} />
+                <span className="text-xs">{ideaValidation.core_claim_verified ? 'Claim verified' : 'Claim unverified'}</span>
+              </div>
+              {typeof ideaValidation.evidence_strength === 'string' && (
+                <Badge variant="secondary" className="text-[10px]">
+                  Evidence: {ideaValidation.evidence_strength}
+                </Badge>
+              )}
+              {typeof ideaValidation.confidence_score === 'number' && (
+                <Badge variant="secondary" className="text-[10px]">
+                  Confidence: {Math.round(ideaValidation.confidence_score * 100)}%
+                </Badge>
+              )}
+            </div>
+            {typeof ideaValidation.validation_notes === 'string' && (
+              <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                {ideaValidation.validation_notes}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Pivot recommendation */}
-      {shouldPivot && (
-        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3 flex items-start gap-3">
-          <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">
-              Pivot recommended
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {String(refinedAngle?.updated_title ?? '')}
-            </p>
-          </div>
-        </div>
+      {refinedAngle && (
+        <Card className={shouldPivot ? 'border-yellow-500/30' : 'border-primary/30'}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              {shouldPivot ? (
+                <AlertTriangle className="h-4 w-4 text-yellow-500" />
+              ) : (
+                <Sparkles className="h-4 w-4 text-primary" />
+              )}
+              {shouldPivot ? 'Pivot Recommended' : 'Refined Angle'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {typeof refinedAngle.updated_title === 'string' && (
+              <p className="text-sm font-medium">{refinedAngle.updated_title}</p>
+            )}
+            {typeof refinedAngle.updated_hook === 'string' && (
+              <p className="text-sm italic text-muted-foreground">&ldquo;{refinedAngle.updated_hook}&rdquo;</p>
+            )}
+            {typeof refinedAngle.angle_notes === 'string' && (
+              <p className="text-xs text-muted-foreground">{refinedAngle.angle_notes}</p>
+            )}
+            {typeof refinedAngle.recommendation === 'string' && (
+              <p className="text-xs text-primary font-medium mt-1">{refinedAngle.recommendation}</p>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Research cards */}
       {cards.length > 0 && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <CardTitle className="text-base">Research cards</CardTitle>
-                <Badge variant="secondary" className="text-[10px]">
-                  {cards.length}
-                </Badge>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground font-normal">
-                  {approved.size} approved
-                </span>
-                {isSessionDetail && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleRegenerate}
-                    disabled={regenerating}
-                  >
-                    {regenerating ? (
-                      <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4 mr-1.5" />
-                    )}
-                    Regenerate
-                  </Button>
-                )}
-              </div>
+        <>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-semibold">Research Cards</h3>
+              <Badge variant="secondary" className="text-[10px]">
+                {cards.length}
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                {approved.size} of {cards.length} approved
+              </span>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {cards.map((c, i) => {
-              const isApproved = approved.has(i);
-              return (
-                <div
-                  key={i}
-                  className={`p-3 rounded-lg border ${
-                    isApproved
-                      ? 'border-primary/50 bg-primary/5'
-                      : 'border-border opacity-60'
-                  }`}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (approved.size === cards.length) {
+                    setApproved(new Set());
+                  } else {
+                    setApproved(new Set(cards.map((_, i) => i)));
+                  }
+                }}
+                className="text-xs"
+              >
+                {approved.size === cards.length ? 'Deselect all' : 'Select all'}
+              </Button>
+              {isSessionDetail && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRegenerate}
+                  disabled={regenerating}
                 >
-                  <div className="flex items-start gap-3">
-                    <Checkbox
-                      checked={isApproved}
-                      onCheckedChange={() => toggleApproval(i)}
-                      className="mt-0.5"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        {c.type && (
-                          <Badge variant="outline" className="text-[10px]">
-                            {c.type}
-                          </Badge>
-                        )}
-                        {typeof c.relevance === 'number' && (
-                          <Badge variant="secondary" className="text-[10px]">
-                            relevance {c.relevance}
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="text-sm font-medium mt-1">
-                        {c.title ?? c.claim ?? c.quote ?? '—'}
-                      </div>
-                      {c.author && (
-                        <div className="text-xs text-muted-foreground mt-1">
-                          — {c.author}
-                        </div>
-                      )}
-                      {c.url && (
-                        <a
-                          href={c.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-xs text-primary hover:underline mt-1 inline-block"
-                        >
-                          {c.url}
-                        </a>
-                      )}
+                  {regenerating ? (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4 mr-1.5" />
+                  )}
+                  Regenerate
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Group cards by type */}
+          {(() => {
+            const groups: { type: string; label: string; icon: React.ReactNode; cards: { card: Card; idx: number }[] }[] = [
+              { type: 'source', label: 'Sources', icon: <BookOpen className="h-4 w-4" />, cards: [] },
+              { type: 'statistic', label: 'Statistics', icon: <BarChart3 className="h-4 w-4" />, cards: [] },
+              { type: 'expert_quote', label: 'Expert Quotes', icon: <Quote className="h-4 w-4" />, cards: [] },
+              { type: 'counterargument', label: 'Counterarguments', icon: <ShieldAlert className="h-4 w-4" />, cards: [] },
+            ];
+            const ungrouped: { card: Card; idx: number }[] = [];
+
+            cards.forEach((card, idx) => {
+              const group = groups.find(g => g.type === card.type);
+              if (group) group.cards.push({ card, idx });
+              else ungrouped.push({ card, idx });
+            });
+
+            const activeGroups = groups.filter(g => g.cards.length > 0);
+
+            return (
+              <div className="space-y-4">
+                {activeGroups.map((group) => (
+                  <div key={group.type}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-muted-foreground">{group.icon}</span>
+                      <h4 className="text-sm font-medium">{group.label}</h4>
+                      <Badge variant="outline" className="text-[10px]">{group.cards.length}</Badge>
+                    </div>
+                    <div className="space-y-2">
+                      {group.cards.map(({ card: c, idx: i }) => {
+                        const isApproved = approved.has(i);
+                        return (
+                          <div
+                            key={i}
+                            className={`p-4 rounded-lg border transition-colors cursor-pointer ${
+                              isApproved
+                                ? 'border-primary/40 bg-primary/5'
+                                : 'border-border/50 opacity-50 hover:opacity-75'
+                            }`}
+                            onClick={() => toggleApproval(i)}
+                          >
+                            <div className="flex items-start gap-3">
+                              <Checkbox
+                                checked={isApproved}
+                                onCheckedChange={() => toggleApproval(i)}
+                                className="mt-0.5"
+                              />
+                              <div className="flex-1 min-w-0">
+                                {/* Source cards */}
+                                {c.type === 'source' && (
+                                  <>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      {c.type && (
+                                        <Badge variant="outline" className="text-[10px] capitalize">
+                                          {String((c as Record<string, unknown>).type ?? c.type).replace(/_/g, ' ')}
+                                        </Badge>
+                                      )}
+                                      {typeof (c as Record<string, unknown>).credibility === 'string' && (
+                                        <Badge
+                                          variant="secondary"
+                                          className={`text-[10px] ${
+                                            ((c as Record<string, unknown>).credibility as string).toLowerCase() === 'high'
+                                              ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                                              : ((c as Record<string, unknown>).credibility as string).toLowerCase() === 'medium'
+                                                ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
+                                                : ''
+                                          }`}
+                                        >
+                                          {(c as Record<string, unknown>).credibility as string}
+                                        </Badge>
+                                      )}
+                                      {typeof (c as Record<string, unknown>).date_published === 'string' && (
+                                        <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                          <Calendar className="h-3 w-3" />
+                                          {(c as Record<string, unknown>).date_published as string}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-sm font-medium mt-1.5">{c.title}</p>
+                                    {(c as Record<string, unknown>).key_insight && (
+                                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                                        {String((c as Record<string, unknown>).key_insight)}
+                                      </p>
+                                    )}
+                                    {(c as Record<string, unknown>).quote_excerpt && (
+                                      <blockquote className="text-xs italic text-muted-foreground mt-2 pl-3 border-l-2 border-primary/30">
+                                        &ldquo;{String((c as Record<string, unknown>).quote_excerpt)}&rdquo;
+                                      </blockquote>
+                                    )}
+                                    {c.url && c.url !== 'N/A' && (
+                                      <a
+                                        href={c.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="text-[11px] text-primary hover:underline mt-2 inline-flex items-center gap-1"
+                                      >
+                                        <ExternalLink className="h-3 w-3" />
+                                        {(() => {
+                                          try { return new URL(c.url).hostname; } catch { return c.url.slice(0, 40); }
+                                        })()}
+                                      </a>
+                                    )}
+                                  </>
+                                )}
+
+                                {/* Statistic cards */}
+                                {c.type === 'statistic' && (
+                                  <>
+                                    <div className="flex items-baseline gap-3">
+                                      <span className="text-2xl font-bold text-primary">
+                                        {String((c as Record<string, unknown>).figure ?? '')}
+                                      </span>
+                                      <span className="text-sm font-medium">
+                                        {String((c as Record<string, unknown>).claim ?? c.title ?? '')}
+                                      </span>
+                                    </div>
+                                    {(c as Record<string, unknown>).context && (
+                                      <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                                        {String((c as Record<string, unknown>).context)}
+                                      </p>
+                                    )}
+                                  </>
+                                )}
+
+                                {/* Expert quote cards */}
+                                {c.type === 'expert_quote' && (
+                                  <>
+                                    <blockquote className="text-sm italic leading-relaxed pl-3 border-l-2 border-primary/40">
+                                      &ldquo;{String(c.quote ?? '')}&rdquo;
+                                    </blockquote>
+                                    <div className="mt-2 flex items-center gap-2">
+                                      <span className="text-xs font-medium">{c.author}</span>
+                                      {typeof (c as Record<string, unknown>).credentials === 'string' && (
+                                        <span className="text-[10px] text-muted-foreground">
+                                          — {(c as Record<string, unknown>).credentials as string}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </>
+                                )}
+
+                                {/* Counterargument cards */}
+                                {c.type === 'counterargument' && (
+                                  <>
+                                    <div className="flex items-start gap-2">
+                                      <p className="text-sm font-medium">
+                                        {String((c as Record<string, unknown>).point ?? c.title ?? '')}
+                                      </p>
+                                      {typeof (c as Record<string, unknown>).strength === 'string' && (
+                                        <Badge
+                                          variant="outline"
+                                          className={`text-[10px] shrink-0 ${
+                                            ((c as Record<string, unknown>).strength as string).toLowerCase() === 'high'
+                                              ? 'border-red-500/40 text-red-500'
+                                              : ((c as Record<string, unknown>).strength as string).toLowerCase() === 'medium'
+                                                ? 'border-yellow-500/40 text-yellow-500'
+                                                : 'border-muted-foreground/40'
+                                          }`}
+                                        >
+                                          {(c as Record<string, unknown>).strength as string} risk
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    {(c as Record<string, unknown>).rebuttal && (
+                                      <div className="mt-2 pl-3 border-l-2 border-green-500/30">
+                                        <p className="text-[10px] font-medium text-green-600 dark:text-green-400 mb-0.5">Rebuttal</p>
+                                        <p className="text-xs text-muted-foreground leading-relaxed">
+                                          {String((c as Record<string, unknown>).rebuttal)}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+
+                                {/* Fallback for unknown types */}
+                                {!['source', 'statistic', 'expert_quote', 'counterargument'].includes(c.type ?? '') && (
+                                  <>
+                                    {c.type && (
+                                      <Badge variant="outline" className="text-[10px] capitalize mb-1">
+                                        {c.type.replace(/_/g, ' ')}
+                                      </Badge>
+                                    )}
+                                    <p className="text-sm font-medium">{c.title ?? c.claim ?? c.quote ?? '—'}</p>
+                                    {c.url && (
+                                      <a
+                                        href={c.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="text-xs text-primary hover:underline mt-1 inline-block"
+                                      >
+                                        {c.url}
+                                      </a>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                ))}
 
-            <div className="flex justify-end pt-2">
-              <Button onClick={handleApprove}>
-                <Check className="h-4 w-4 mr-2" /> Approve ({approved.size}){' '}
-                <ArrowRight className="h-4 w-4 ml-2" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+                {/* Ungrouped cards */}
+                {ungrouped.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Other</h4>
+                    <div className="space-y-2">
+                      {ungrouped.map(({ card: c, idx: i }) => {
+                        const isApproved = approved.has(i);
+                        return (
+                          <div
+                            key={i}
+                            className={`p-4 rounded-lg border transition-colors cursor-pointer ${
+                              isApproved
+                                ? 'border-primary/40 bg-primary/5'
+                                : 'border-border/50 opacity-50 hover:opacity-75'
+                            }`}
+                            onClick={() => toggleApproval(i)}
+                          >
+                            <div className="flex items-start gap-3">
+                              <Checkbox
+                                checked={isApproved}
+                                onCheckedChange={() => toggleApproval(i)}
+                                className="mt-0.5"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium">{c.title ?? c.claim ?? c.quote ?? '—'}</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Knowledge gaps */}
+          {knowledgeGaps.length > 0 && (
+            <Card className="border-dashed border-muted-foreground/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2 text-muted-foreground">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Knowledge Gaps
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-1">
+                  {knowledgeGaps.map((gap, i) => (
+                    <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                      <span className="text-muted-foreground/50 mt-0.5">•</span>
+                      {gap}
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="flex justify-end pt-2">
+            <Button onClick={handleApprove} size="lg">
+              <Check className="h-4 w-4 mr-2" /> Approve ({approved.size}){' '}
+              <ArrowRight className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+        </>
       )}
 
       {/* Spacer if no cards yet in session detail */}
