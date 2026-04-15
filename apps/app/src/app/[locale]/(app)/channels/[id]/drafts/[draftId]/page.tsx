@@ -8,13 +8,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { MarkdownPreview } from '@/components/preview/MarkdownPreview';
-import { ReviewFeedbackPanel } from '@/components/preview/ReviewFeedbackPanel';
 import { AssetGallery } from '@/components/preview/AssetGallery';
 import { PublishPanel } from '@/components/preview/PublishPanel';
 import { ManualModePanel } from '@/components/ai/ManualModePanel';
 import { useManualMode } from '@/hooks/use-manual-mode';
 import { Sparkles, ClipboardPaste, Loader2 } from 'lucide-react';
 import { PipelineStages, type PipelineStep } from '@/components/pipeline/PipelineStages';
+import { ReviewEngine } from '@/components/engines/ReviewEngine';
+import type { ReviewResult } from '@/components/engines/types';
 import { toast } from 'sonner';
 
 interface Draft {
@@ -283,133 +284,31 @@ export default function DraftDetailPage() {
 
         {/* Review Tab */}
         <TabsContent value="review">
-          <div className="max-w-2xl space-y-4">
-            {/* Existing review feedback */}
-            {draft.review_feedback_json && (
-              <ReviewFeedbackPanel
-                reviewScore={draft.review_score}
-                reviewVerdict={draft.review_verdict}
-                iterationCount={draft.iteration_count}
-                feedbackJson={draft.review_feedback_json as Record<string, unknown>}
-              />
-            )}
-
-            {/* Approved → next step */}
-            {draft.review_verdict === 'approved' && (
-              <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-green-600 dark:text-green-400">Draft approved</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Proceed to generate assets and publish.</p>
-                </div>
-                <Button size="sm" onClick={() => setActiveTab('assets')}>
-                  Next: Assets →
-                </Button>
-              </div>
-            )}
-
-            {/* Revision required */}
-            {draft.review_verdict === 'revision_required' && (
-              <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-4 space-y-3">
-                <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">Revision required</p>
-                <p className="text-xs text-muted-foreground">Fix the issues above, then resubmit for review.</p>
-                <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setActiveTab('content')}>
-                    Edit Manually
-                  </Button>
-                  <Button
-                    size="sm"
-                    disabled={reviewing}
-                    onClick={async () => {
-                      setReviewing(true);
-                      const res = await fetch(`/api/content-drafts/${draftId}/reproduce`, { method: 'POST' });
-                      const json = await res.json();
-                      if (json.data) {
-                        setDraft(json.data);
-                        setEditedBody((json.data.draft_json as Record<string, unknown>)?.full_draft as string ?? '');
-                        toast.success('Draft revised by AI — review the changes');
-                      } else {
-                        toast.error(json.error?.message ?? 'Revision failed');
-                      }
-                      setReviewing(false);
-                    }}
-                  >
-                    {reviewing ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Revising...</> : <><Sparkles className="h-3.5 w-3.5 mr-1" /> AI Revision</>}
-                  </Button>
-                  {manualEnabled && (
-                    <Button size="sm" variant="outline" onClick={handleRevise}>
-                      Manual Revise & Resubmit
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Submit for review — AI or Manual */}
-            {draft.draft_json && (draft.review_verdict === 'pending' || !draft.review_feedback_json) && (
-              <Tabs defaultValue="ai">
-                <TabsList>
-                  <TabsTrigger value="ai" className="gap-1.5">
-                    <Sparkles className="h-3.5 w-3.5" /> AI Review
-                  </TabsTrigger>
-                  {manualEnabled && (
-                    <TabsTrigger value="manual" className="gap-1.5">
-                      <ClipboardPaste className="h-3.5 w-3.5" /> Manual Review
-                    </TabsTrigger>
-                  )}
-                </TabsList>
-
-                <TabsContent value="ai" className="mt-3 space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    Submit to the AI review agent. Score 90+ with no critical issues = approved.
-                  </p>
-                  <Button onClick={handleSubmitForReview} disabled={reviewing}>
-                    {reviewing ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Reviewing...</>
-                    ) : (
-                      <><Sparkles className="h-4 w-4 mr-2" /> Submit for AI Review</>
-                    )}
-                  </Button>
-                </TabsContent>
-
-                {manualEnabled && (
-                  <TabsContent value="manual" className="mt-3">
-                    <ManualModePanel
-                      agentSlug="review"
-                      inputContext={[
-                        `Draft title: ${draft.title ?? 'Untitled'}`,
-                        `Type: ${draft.type}`,
-                        '',
-                        'Review this content. Output:',
-                        '{"overall_verdict":"approved|revision_required|rejected","blog_review":{"score":0-100,"strengths":[],"critical_issues":[],"minor_issues":[]}}',
-                      ].join('\n')}
-                      pastePlaceholder={'Paste JSON:\n{"overall_verdict":"approved","blog_review":{"score":92,"strengths":["..."],"critical_issues":[],"minor_issues":["..."]}}'}
-                      onImport={async (parsed) => {
-                        const obj = parsed as Record<string, unknown>;
-                        const verdict = String(obj.overall_verdict ?? 'revision_required');
-                        await fetch(`/api/content-drafts/${draftId}`, {
-                          method: 'PATCH',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            reviewFeedbackJson: obj,
-                            status: verdict === 'approved' ? 'approved' : 'in_review',
-                          }),
-                        });
-                        await fetchDraft();
-                      }}
-                      importLabel="Import Review"
-                    />
-                  </TabsContent>
-                )}
-              </Tabs>
-            )}
-
-            {/* No content yet */}
-            {!draft.draft_json && (
-              <p className="text-sm text-muted-foreground">
-                Produce content first before requesting review.
-              </p>
-            )}
-          </div>
+          <ReviewEngine
+            channelId={channelId}
+            context={{
+              draftId,
+              draftTitle: draft.title ?? undefined,
+              projectId,
+              projectTitle,
+            }}
+            draftId={draftId}
+            draft={draft}
+            onComplete={(result) => {
+              const r = result as ReviewResult;
+              if (r.verdict === 'approved') setActiveTab('assets');
+            }}
+            onBack={(stage) => {
+              // For now, just show a toast — full back-navigation handled by orchestrator
+              toast.info(`Would go back to ${stage} (available in project pipeline)`);
+            }}
+            onDraftUpdated={(updated) => {
+              setDraft(updated as unknown as Draft);
+              if ((updated as unknown as Draft).draft_json) {
+                setEditedBody(((updated as unknown as Draft).draft_json as Record<string, unknown>)?.full_draft as string ?? '');
+              }
+            }}
+          />
         </TabsContent>
 
         {/* Assets Tab */}
