@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { adminPath, adminApi } from '@/lib/admin-path';
 import {
@@ -98,15 +98,14 @@ function SortHeader({
   );
 }
 
-function ActionMenu({ user, onEdit, onRole, onDelete }: {
+function ActionMenu({ user, onEdit, onRole, onDelete, openUpward }: {
   user: UserListItem;
   onEdit: () => void;
   onRole: () => void;
   onDelete: () => void;
+  openUpward: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const btnRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
 
   const handleToggleActive = async () => {
@@ -119,22 +118,13 @@ function ActionMenu({ user, onEdit, onRole, onDelete }: {
     router.refresh();
   };
 
-  const handleOpen = () => {
-    if (btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect();
-      setPos({ top: rect.bottom + 4, left: rect.right - 176 });
-    }
-    setOpen((v) => !v);
-  };
-
   const menuCls = "w-full flex items-center gap-2.5 px-3 py-2 text-foreground hover:bg-secondary/80 transition-colors text-left";
 
   return (
-    <div>
+    <div className="relative">
       <button
-        ref={btnRef}
         type="button"
-        onClick={handleOpen}
+        onClick={() => setOpen((v) => !v)}
         className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground transition-colors"
       >
         <MoreHorizontal className="w-4 h-4" />
@@ -142,11 +132,8 @@ function ActionMenu({ user, onEdit, onRole, onDelete }: {
 
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div
-            className="fixed z-50 w-44 bg-card border border-border rounded-xl shadow-lg py-1 text-sm"
-            style={{ top: pos.top, left: pos.left }}
-          >
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className={`absolute right-0 z-20 w-44 bg-card border border-border rounded-xl shadow-lg py-1 text-sm ${openUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
             <button type="button" onClick={() => { setOpen(false); onEdit(); }} className={menuCls}>
               <Pencil className="w-3.5 h-3.5" /> Editar
             </button>
@@ -361,6 +348,7 @@ export function UsersTable({ users }: UsersTableProps) {
                       onEdit={() => setEditUser(user)}
                       onRole={() => setRoleUser(user)}
                       onDelete={() => setDeleteUser(user)}
+                      openUpward={i >= users.length - 2}
                     />
                   </td>
                 </tr>
