@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2, BookOpen, FileText, Video, Zap, Mic, Check, ClipboardPaste, ArrowRight, Sparkles } from 'lucide-react';
+import {
+  Loader2, BookOpen, FileText, Video, Zap, Mic, Check, ClipboardPaste,
+  ArrowRight, Sparkles, ChevronDown, ChevronUp, Pencil,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   ModelPicker,
@@ -18,7 +20,6 @@ import {
 import { ManualModePanel } from '@/components/ai/ManualModePanel';
 import { useManualMode } from '@/hooks/use-manual-mode';
 import { GenerationProgressModal } from '@/components/generation/GenerationProgressModal';
-import { WizardStepper } from '@/components/generation/WizardStepper';
 import { MarkdownPreview } from '@/components/preview/MarkdownPreview';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
@@ -28,7 +29,13 @@ import type { BaseEngineProps, DraftResult } from './types';
 
 type DraftType = 'blog' | 'video' | 'shorts' | 'podcast';
 type DraftMode = 'ai' | 'manual';
-type ProgressStep = 'setup' | 'core' | 'produce' | 'done';
+
+/**
+ * Phase tracks the two-step production workflow:
+ * 1. core — generate or import the canonical core (shared narrative skeleton)
+ * 2. produce — pick format(s) and produce final content from the core
+ */
+type Phase = 'core' | 'core-ready' | 'produce' | 'done';
 
 interface ResearchOption {
   id: string;
@@ -59,21 +66,27 @@ export function DraftEngine({
   // Research context
   const [research, setResearch] = useState<ResearchOption | null>(null);
 
-  // Format and settings
-  const [type, setType] = useState<DraftType>('blog');
+  // Core settings
   const [title, setTitle] = useState('');
   const [provider, setProvider] = useState<ProviderId>('ollama');
   const [model, setModel] = useState<string>('qwen2.5:7b');
+
+  // Phase state
+  const [phase, setPhase] = useState<Phase>('core');
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [canonicalCore, setCanonicalCore] = useState<Record<string, unknown> | null>(null);
+  const [coreExpanded, setCoreExpanded] = useState(true);
+
+  // Produce state
+  const [type, setType] = useState<DraftType>('blog');
   const [targetWords, setTargetWords] = useState<number>(700);
   const [targetMinutes, setTargetMinutes] = useState<number>(8);
   const [targetShortsSeconds, setTargetShortsSeconds] = useState<number>(30);
+  const [producedContent, setProducedContent] = useState<string>('');
 
   // Generation state
-  const [draftId, setDraftId] = useState<string | null>(null);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [progressStep, setProgressStep] = useState<ProgressStep>('setup');
-  const [producedContent, setProducedContent] = useState<string>('');
 
   // Manual mode
   const [draftMode, setDraftMode] = useState<DraftMode>('ai');
@@ -102,14 +115,14 @@ export function DraftEngine({
     })();
   }, [context.researchSessionId, title]);
 
-  // Fetch recommended agent
+  // Fetch recommended model
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch('/api/agents');
         const json = await res.json();
         const agent = (json.data?.agents as Array<Record<string, unknown>>)?.find(
-          (a) => a.slug === 'draft'
+          (a) => a.slug === 'content-core'
         );
         if (agent?.recommended_provider) {
           setProvider(agent.recommended_provider as ProviderId);
@@ -143,79 +156,13 @@ export function DraftEngine({
     }
   }
 
-  async function handleStart() {
-    if (busy || activeDraftId) return;
+  // ── Phase 1: Generate canonical core via AI ───────────────────
+  async function handleGenerateCore() {
+    if (busy) return;
+    if (!research) { toast.error('Select research first'); return; }
+    if (!title.trim()) { toast.error('Enter a title'); return; }
 
-    if (!research) {
-      toast.error('Select or create research before generating content');
-      return;
-    }
-
-    if (!title.trim()) {
-      toast.error('Enter a title');
-      return;
-    }
-
-    // Build production_params based on format
-    const productionParams: Record<string, unknown> = {};
-    if (type === 'blog') productionParams.target_word_count = targetWords;
-    if (type === 'video' || type === 'podcast') productionParams.target_duration_minutes = targetMinutes;
-    if (type === 'shorts') productionParams.target_duration_minutes = targetShortsSeconds / 60;
-
-    // Step 1: Create draft scaffold
-    setProgressStep('setup');
-    const draft = await runStep('create draft', () =>
-      fetch('/api/content-drafts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...(channelId ? { channelId } : {}),
-          ...(context.ideaId ? { ideaId: context.ideaId } : {}),
-          researchSessionId: research.id,
-          type,
-          title,
-          productionParams,
-        }),
-      })
-    );
-
-    if (!draft) return;
-    const newDraftId = (draft as { id: string }).id;
-    setDraftId(newDraftId);
-
-    // Step 2: Start full generation pipeline (canonical-core + produce) with SSE
-    setProgressStep('core');
-    const enqueued = await runStep('start production', () =>
-      fetch(`/api/content-drafts/${newDraftId}/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, model }),
-      })
-    );
-
-    if (!enqueued) return;
-    setActiveDraftId(newDraftId);
-  }
-
-  async function handleManualImport(parsed: unknown) {
-    // Try to extract canonical core from various wrapper formats
-    let canonicalCore = parsed as Record<string, unknown>;
-    if (canonicalCore.BC_CANONICAL_CORE && typeof canonicalCore.BC_CANONICAL_CORE === 'object') {
-      canonicalCore = canonicalCore.BC_CANONICAL_CORE as Record<string, unknown>;
-    }
-
-    if (!research) {
-      toast.error('Select research before importing');
-      return;
-    }
-
-    if (!title.trim()) {
-      toast.error('Enter a title');
-      return;
-    }
-
-    // Step 1: Create draft
-    setProgressStep('setup');
+    // Create draft scaffold
     const draft = await runStep('create draft', () =>
       fetch('/api/content-drafts', {
         method: 'POST',
@@ -230,79 +177,96 @@ export function DraftEngine({
         }),
       })
     );
-
     if (!draft) return;
     const newDraftId = (draft as { id: string }).id;
     setDraftId(newDraftId);
 
-    // Step 2: Patch draft with canonical core content
-    setProgressStep('core');
+    // Start canonical core generation (SSE)
+    const enqueued = await runStep('start canonical core', () =>
+      fetch(`/api/content-drafts/${newDraftId}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, model }),
+      })
+    );
+    if (!enqueued) return;
+    setActiveDraftId(newDraftId);
+  }
+
+  // ── Phase 1: Import canonical core manually ───────────────────
+  async function handleManualCoreImport(parsed: unknown) {
+    let core = parsed as Record<string, unknown>;
+    if (core.BC_CANONICAL_CORE && typeof core.BC_CANONICAL_CORE === 'object') {
+      core = core.BC_CANONICAL_CORE as Record<string, unknown>;
+    }
+
+    if (!research) { toast.error('Select research before importing'); return; }
+    if (!title.trim()) { toast.error('Enter a title'); return; }
+
+    // Create draft scaffold
+    const draft = await runStep('create draft', () =>
+      fetch('/api/content-drafts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(channelId ? { channelId } : {}),
+          ...(context.ideaId ? { ideaId: context.ideaId } : {}),
+          researchSessionId: research.id,
+          type,
+          title,
+          productionParams: {},
+        }),
+      })
+    );
+    if (!draft) return;
+    const newDraftId = (draft as { id: string }).id;
+    setDraftId(newDraftId);
+
+    // Save canonical core to draft
     const updated = await runStep('save canonical core', () =>
       fetch(`/api/content-drafts/${newDraftId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          canonicalCoreJson: canonicalCore,
-        }),
+        body: JSON.stringify({ canonicalCoreJson: core }),
       })
     );
-
     if (!updated) return;
 
-    // Step 3: Produce formatted content
-    setProgressStep('produce');
-    const productionParams: Record<string, unknown> = {};
-    if (type === 'blog') productionParams.target_word_count = targetWords;
-    if (type === 'video' || type === 'podcast') productionParams.target_duration_minutes = targetMinutes;
-    if (type === 'shorts') productionParams.target_duration_minutes = targetShortsSeconds / 60;
-
-    const produced = await runStep('produce content', () =>
-      fetch(`/api/content-drafts/${newDraftId}/produce`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productionParams, provider, model }),
-      })
-    );
-
-    if (!produced) return;
-
-    // Get the produced content
-    const prodData = produced as { produced_content?: string };
-    if (prodData.produced_content) {
-      setProducedContent(prodData.produced_content);
-    }
-
-    setProgressStep('done');
-    toast.success('Content imported and produced');
+    setCanonicalCore(core);
+    setPhase('core-ready');
+    setCoreExpanded(true);
+    toast.success('Canonical core imported');
   }
 
-  function onJobComplete() {
+  // ── SSE completion: canonical core generated ──────────────────
+  function onCoreJobComplete() {
     if (!draftId) return;
-    setProgressStep('done');
-    toast.success('Content generated');
+    setActiveDraftId(null);
 
-    // Fetch the draft to get final content
+    // Fetch the draft to get canonical core
     (async () => {
       try {
         const res = await fetch(`/api/content-drafts/${draftId}`);
         const json = await res.json();
-        if (json.data?.produced_content) {
-          setProducedContent(json.data.produced_content as string);
+        const coreJson = json.data?.canonical_core_json ?? json.data?.canonicalCoreJson;
+        if (coreJson && typeof coreJson === 'object') {
+          setCanonicalCore(coreJson as Record<string, unknown>);
+          setPhase('core-ready');
+          setCoreExpanded(true);
+          toast.success('Canonical core generated — review and proceed to produce');
+        } else {
+          // If the API generates full content in one step, handle that too
+          const produced = json.data?.produced_content;
+          if (produced) {
+            setProducedContent(produced as string);
+            setPhase('done');
+            toast.success('Content generated');
+          } else {
+            toast.error('No canonical core found in draft');
+          }
         }
-        const result: DraftResult = {
-          draftId,
-          draftTitle: title,
-          draftContent: json.data?.produced_content ?? '',
-        };
-        onComplete(result);
       } catch {
-        // Still complete even if fetch fails
-        const result: DraftResult = {
-          draftId,
-          draftTitle: title,
-          draftContent: producedContent,
-        };
-        onComplete(result);
+        toast.error('Failed to load draft');
       }
     })();
   }
@@ -311,16 +275,99 @@ export function DraftEngine({
     const friendly = friendlyAiError(message);
     toast.error(friendly.title, { description: friendly.hint });
     setActiveDraftId(null);
-    setProgressStep('setup');
   }
 
+  // ── Phase 2: Produce formatted content from canonical core ────
+  async function handleProduce() {
+    if (busy || !draftId) return;
+
+    const productionParams: Record<string, unknown> = {};
+    if (type === 'blog') productionParams.target_word_count = targetWords;
+    if (type === 'video' || type === 'podcast') productionParams.target_duration_minutes = targetMinutes;
+    if (type === 'shorts') productionParams.target_duration_minutes = targetShortsSeconds / 60;
+
+    setPhase('produce');
+    const produced = await runStep('produce content', () =>
+      fetch(`/api/content-drafts/${draftId}/produce`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productionParams, provider, model }),
+      })
+    );
+
+    if (!produced) {
+      setPhase('core-ready');
+      return;
+    }
+
+    const prodData = produced as { produced_content?: string };
+    if (prodData.produced_content) {
+      setProducedContent(prodData.produced_content);
+    }
+    setPhase('done');
+    toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} content produced`);
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────
   const cardCount = Array.isArray(research?.cards_json)
     ? research.cards_json.length
     : Array.isArray(research?.approved_cards_json)
       ? research.approved_cards_json.length
       : 0;
 
-  // Import mode: show ImportPicker when mode='import' and no initial draft
+  function renderCoreSummary(core: Record<string, unknown>) {
+    const thesis = core.thesis as string | undefined;
+    const argChain = (core.argument_chain ?? core.argumentChain) as Array<Record<string, unknown>> | undefined;
+    const emotionalArc = (core.emotional_arc ?? core.emotionalArc) as Record<string, unknown> | undefined;
+
+    return (
+      <div className="space-y-3">
+        {thesis && (
+          <div>
+            <Label className="text-xs text-muted-foreground">Thesis</Label>
+            <p className="text-sm font-medium mt-0.5">{thesis}</p>
+          </div>
+        )}
+        {Array.isArray(argChain) && argChain.length > 0 && (
+          <div>
+            <Label className="text-xs text-muted-foreground">Argument Chain ({argChain.length} steps)</Label>
+            <ol className="mt-1 space-y-1.5">
+              {argChain.map((step, i) => (
+                <li key={i} className="text-sm flex gap-2">
+                  <span className="text-muted-foreground font-mono text-xs mt-0.5 shrink-0">{i + 1}.</span>
+                  <span>{String(step.claim ?? step.title ?? step.step ?? '')}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+        {emotionalArc && (
+          <div>
+            <Label className="text-xs text-muted-foreground">Emotional Arc</Label>
+            <div className="flex items-center gap-2 mt-1 text-xs">
+              {typeof emotionalArc.opening === 'string' && (
+                <Badge variant="outline">{emotionalArc.opening}</Badge>
+              )}
+              {typeof emotionalArc.turning_point === 'string' && (
+                <>
+                  <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                  <Badge variant="outline">{emotionalArc.turning_point}</Badge>
+                </>
+              )}
+              {typeof emotionalArc.closing === 'string' && (
+                <>
+                  <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                  <Badge variant="outline">{emotionalArc.closing}</Badge>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Import mode ───────────────────────────────────────────────
   if (engineMode === 'import' && !initialDraft) {
     return (
       <div className="space-y-6">
@@ -362,6 +409,7 @@ export function DraftEngine({
     );
   }
 
+  // ── Main render ───────────────────────────────────────────────
   return (
     <div className="space-y-6">
       <ContextBanner stage="draft" context={context} />
@@ -371,17 +419,48 @@ export function DraftEngine({
           <Sparkles className="h-5 w-5" /> Draft
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Generate formatted content from your research. Write blog posts, video scripts,
-          and more with AI-powered production.
+          Two-step production: generate the canonical core narrative, then produce formatted content.
         </p>
+      </div>
+
+      {/* Phase stepper */}
+      <div className="flex items-center gap-3">
+        <div className={`flex items-center gap-1.5 text-sm ${
+          phase === 'core' ? 'text-primary font-medium' : 'text-muted-foreground'
+        }`}>
+          {phase !== 'core' ? (
+            <Check className="h-4 w-4 text-green-500" />
+          ) : (
+            <div className="h-4 w-4 rounded-full border-2 border-primary flex items-center justify-center">
+              <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+            </div>
+          )}
+          Canonical Core
+        </div>
+        <div className="h-px w-8 bg-border" />
+        <div className={`flex items-center gap-1.5 text-sm ${
+          phase === 'core-ready' || phase === 'produce' ? 'text-primary font-medium'
+            : phase === 'done' ? 'text-muted-foreground' : 'text-muted-foreground/50'
+        }`}>
+          {phase === 'done' ? (
+            <Check className="h-4 w-4 text-green-500" />
+          ) : phase === 'core-ready' || phase === 'produce' ? (
+            <div className="h-4 w-4 rounded-full border-2 border-primary flex items-center justify-center">
+              <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+            </div>
+          ) : (
+            <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />
+          )}
+          Produce Content
+        </div>
       </div>
 
       {/* Research context card */}
       {research && (
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <BookOpen className="h-4 w-4" /> Base Research
+              <BookOpen className="h-4 w-4" /> Research Context
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -406,282 +485,312 @@ export function DraftEngine({
         </Card>
       )}
 
-      {/* Format and generation card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Format + Generate</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {research && (
+      {/* ═══ PHASE 1: Canonical Core ═══ */}
+      {phase === 'core' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Step 1: Canonical Core</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              The canonical core is the shared narrative skeleton — thesis, argument chain, emotional arc.
+              All format-specific content (blog, video, shorts, podcast) derives from it.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Title */}
             <div className="space-y-2">
               <Label>Title</Label>
               <Input
-                placeholder="e.g., Deep work techniques for developers"
+                placeholder="e.g., The 85% Rule: Why Giving Your All Is Sabotaging Your Growth"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
             </div>
-          )}
 
-          <div className="space-y-2">
-            <Label>Format</Label>
-            <div className="grid grid-cols-4 gap-2">
-              {TYPES.map((t) => {
-                const Icon = t.icon;
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => setType(t.id)}
-                    className={`p-3 rounded-lg border-2 text-left transition-all ${
-                      type === t.id
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:border-muted-foreground/30'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4 mb-1.5" />
-                    <div className="text-sm font-medium">{t.label}</div>
-                    <Badge variant="outline" className="text-[10px] mt-1">
-                      {t.cost}c
-                    </Badge>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Per-type target length picker */}
-          {type === 'blog' && (
-            <div className="space-y-2">
-              <Label>Post size</Label>
-              <div className="grid grid-cols-4 gap-2">
-                {[300, 500, 700, 1000, 1500, 2000].slice(0, 4).map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setTargetWords(n)}
-                    className={`p-2 rounded-md border text-sm ${
-                      targetWords === n
-                        ? 'border-primary bg-primary/5 text-primary font-medium'
-                        : 'border-border hover:border-muted-foreground/30'
-                    }`}
-                  >
-                    {n}
-                    <span className="text-xs text-muted-foreground"> words</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {(type === 'video' || type === 'podcast') && (
-            <div className="space-y-2">
-              <Label>Target duration</Label>
-              <div className="grid grid-cols-5 gap-2">
-                {(type === 'video' ? [3, 5, 8, 10, 15] : [10, 20, 30, 45, 60]).map(
-                  (m) => (
-                    <button
-                      key={m}
-                      onClick={() => setTargetMinutes(m)}
-                      className={`p-2 rounded-md border text-sm ${
-                        targetMinutes === m
-                          ? 'border-primary bg-primary/5 text-primary font-medium'
-                          : 'border-border hover:border-muted-foreground/30'
-                      }`}
-                    >
-                      {m}
-                      <span className="text-xs text-muted-foreground">min</span>
-                    </button>
-                  )
-                )}
-              </div>
-            </div>
-          )}
-          {type === 'shorts' && (
-            <div className="space-y-2">
-              <Label>Duration</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {[15, 30, 60].map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => setTargetShortsSeconds(s)}
-                    className={`p-2 rounded-md border text-sm ${
-                      targetShortsSeconds === s
-                        ? 'border-primary bg-primary/5 text-primary font-medium'
-                        : 'border-border hover:border-muted-foreground/30'
-                    }`}
-                  >
-                    {s}
-                    <span className="text-xs text-muted-foreground">s</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* AI/Manual Tabs */}
-          <Tabs
-            value={draftMode}
-            onValueChange={(v) => setDraftMode(v as DraftMode)}
-            className="mt-2"
-          >
-            <TabsList>
-              <TabsTrigger value="ai" className="gap-1.5">
-                <Sparkles className="h-3.5 w-3.5" /> AI Generation
-              </TabsTrigger>
-              {manualEnabled && (
-                <TabsTrigger value="manual" className="gap-1.5">
-                  <ClipboardPaste className="h-3.5 w-3.5" /> Manual (ChatGPT/Gemini)
+            {/* AI/Manual Tabs */}
+            <Tabs
+              value={draftMode}
+              onValueChange={(v) => setDraftMode(v as DraftMode)}
+            >
+              <TabsList>
+                <TabsTrigger value="ai" className="gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5" /> AI Generation
                 </TabsTrigger>
-              )}
-            </TabsList>
-
-            {/* AI mode */}
-            <TabsContent value="ai" className="space-y-4 mt-3">
-              <ModelPicker
-                provider={provider}
-                model={model}
-                recommended={{ provider: null, model: null }}
-                onProviderChange={(p) => {
-                  setProvider(p);
-                  setModel(MODELS_BY_PROVIDER[p][0].id);
-                }}
-                onModelChange={setModel}
-              />
-              <Button onClick={handleStart} disabled={busy || !!activeDraftId || !research}>
-                {busy ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4 mr-2" /> Generate
-                  </>
+                {manualEnabled && (
+                  <TabsTrigger value="manual" className="gap-1.5">
+                    <ClipboardPaste className="h-3.5 w-3.5" /> Manual (ChatGPT/Gemini)
+                  </TabsTrigger>
                 )}
-              </Button>
-              {!research && (
-                <p className="text-xs text-muted-foreground">
-                  Select research first — production without research is weak.
-                </p>
-              )}
-            </TabsContent>
+              </TabsList>
 
-            {/* Manual mode */}
-            {manualEnabled && (
-              <TabsContent value="manual" className="mt-3">
-                <ManualModePanel
-                  agentSlug="content-core"
-                  inputContext={(() => {
-                    const lines: string[] = [
-                      `Title: ${title || '(enter title above)'}`,
-                      `Format: ${type}`,
-                    ];
-                    if (context.ideaTitle) lines.push(`Idea: ${context.ideaTitle}`);
-                    if (context.ideaCoreTension) lines.push(`Core Tension: ${context.ideaCoreTension}`);
-                    if (research?.input_json?.topic) lines.push(`Research Topic: ${research.input_json.topic}`);
-                    if (research?.level) lines.push(`Research Depth: ${research.level}`);
-
-                    // Include approved research cards as context
-                    const researchCards = (research?.approved_cards_json ?? research?.cards_json ?? []) as Record<string, unknown>[];
-                    if (researchCards.length > 0) {
-                      lines.push('', '## Research Data (approved cards)');
-                      lines.push('```json');
-                      lines.push(JSON.stringify(researchCards, null, 2));
-                      lines.push('```');
-                    } else {
-                      lines.push(`Research cards: ${cardCount}`);
-                    }
-
-                    return lines.filter(Boolean).join('\n');
-                  })()}
-                  pastePlaceholder={
-                    'Paste JSON matching BC_CANONICAL_CORE:\n{"section":"...","subsections":[...]}'
-                  }
-                  onImport={handleManualImport}
-                  importLabel="Import Canonical Core"
-                  loading={busy}
+              {/* AI mode */}
+              <TabsContent value="ai" className="space-y-4 mt-3">
+                <ModelPicker
+                  provider={provider}
+                  model={model}
+                  recommended={{ provider: null, model: null }}
+                  onProviderChange={(p) => {
+                    setProvider(p);
+                    setModel(MODELS_BY_PROVIDER[p][0].id);
+                  }}
+                  onModelChange={setModel}
                 />
+                <Button onClick={handleGenerateCore} disabled={busy || !research || !title.trim()}>
+                  {busy ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating Core...</>
+                  ) : (
+                    <><Sparkles className="h-4 w-4 mr-2" /> Generate Canonical Core</>
+                  )}
+                </Button>
+                {!research && (
+                  <p className="text-xs text-muted-foreground">
+                    Select research first — production without research is weak.
+                  </p>
+                )}
               </TabsContent>
-            )}
-          </Tabs>
-        </CardContent>
-      </Card>
 
-      {/* Progress stepper during generation */}
-      {activeDraftId && (
-        <Card className="border-primary/30 bg-primary/5">
-          <CardContent className="py-4 space-y-3">
-            <div className="space-y-2">
-              {(['setup', 'core', 'produce', 'done'] as ProgressStep[]).map((step) => {
-                const stepLabels: Record<ProgressStep, string> = {
-                  setup: 'Setup',
-                  core: 'Generate canonical core',
-                  produce: 'Produce formatted content',
-                  done: 'Complete',
-                };
-                const isActive = progressStep === step;
-                const isDone =
-                  ['setup', 'core', 'produce'].indexOf(progressStep) >=
-                  ['setup', 'core', 'produce'].indexOf(step);
+              {/* Manual mode */}
+              {manualEnabled && (
+                <TabsContent value="manual" className="mt-3">
+                  <ManualModePanel
+                    agentSlug="content-core"
+                    inputContext={(() => {
+                      const lines: string[] = [
+                        `Title: ${title || '(enter title above)'}`,
+                      ];
+                      if (context.ideaTitle) lines.push(`Idea: ${context.ideaTitle}`);
+                      if (context.ideaCoreTension) lines.push(`Core Tension: ${context.ideaCoreTension}`);
+                      if (research?.input_json?.topic) lines.push(`Research Topic: ${research.input_json.topic}`);
+                      if (research?.level) lines.push(`Research Depth: ${research.level}`);
 
-                return (
-                  <div key={step} className="flex items-center gap-2">
-                    {isDone ? (
-                      <Check className="h-4 w-4 text-green-500 shrink-0" />
-                    ) : isActive ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
-                    ) : (
-                      <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 shrink-0" />
-                    )}
-                    <span
-                      className={`text-sm ${
-                        isDone
-                          ? 'text-foreground'
-                          : isActive
-                            ? 'font-medium text-primary'
-                            : 'text-muted-foreground'
-                      }`}
-                    >
-                      {stepLabels[step]}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+                      const researchCards = (research?.approved_cards_json ?? research?.cards_json ?? []) as Record<string, unknown>[];
+                      if (researchCards.length > 0) {
+                        lines.push('', '## Research Data (approved cards)');
+                        lines.push('```json');
+                        lines.push(JSON.stringify(researchCards, null, 2));
+                        lines.push('```');
+                      }
+
+                      return lines.filter(Boolean).join('\n');
+                    })()}
+                    pastePlaceholder={
+                      'Paste JSON matching BC_CANONICAL_CORE:\n{"thesis":"...","argument_chain":[...],"emotional_arc":{...}}'
+                    }
+                    onImport={handleManualCoreImport}
+                    importLabel="Import Canonical Core"
+                    loading={busy}
+                  />
+                </TabsContent>
+              )}
+            </Tabs>
           </CardContent>
         </Card>
       )}
 
-      {/* SSE generation modal */}
+      {/* SSE generation modal for canonical core */}
       {activeDraftId && (
         <GenerationProgressModal
           open={!!activeDraftId}
           sessionId={activeDraftId}
           sseUrl={`/api/content-drafts/${activeDraftId}/events`}
-          title={
-            type === 'video'
-              ? 'Generating video script'
-              : type === 'shorts'
-                ? 'Generating Shorts script'
-                : type === 'podcast'
-                  ? 'Generating podcast script'
-                  : 'Generating blog post'
-          }
-          onComplete={onJobComplete}
+          title="Generating canonical core"
+          onComplete={onCoreJobComplete}
           onFailed={onJobFailed}
           onClose={() => {
             setActiveDraftId(null);
-            setProgressStep('setup');
           }}
         />
       )}
 
-      {/* Content preview after completion */}
-      {progressStep === 'done' && producedContent && (
+      {/* ═══ Canonical Core Preview (shown after Phase 1) ═══ */}
+      {canonicalCore && phase !== 'core' && (
+        <Card className="border-green-500/30">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Check className="h-4 w-4 text-green-500" />
+                Canonical Core
+              </CardTitle>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setPhase('core');
+                    setCanonicalCore(null);
+                    setDraftId(null);
+                    setCoreExpanded(true);
+                  }}
+                  className="text-xs gap-1"
+                >
+                  <Pencil className="h-3 w-3" /> Regenerate
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setCoreExpanded(!coreExpanded)}
+                >
+                  {coreExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          {coreExpanded && (
+            <CardContent>
+              {renderCoreSummary(canonicalCore)}
+            </CardContent>
+          )}
+        </Card>
+      )}
+
+      {/* ═══ PHASE 2: Produce Format-Specific Content ═══ */}
+      {(phase === 'core-ready' || phase === 'produce') && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Step 2: Produce Content</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Choose a format and produce content from the canonical core.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Format picker */}
+            <div className="space-y-2">
+              <Label>Format</Label>
+              <div className="grid grid-cols-4 gap-2">
+                {TYPES.map((t) => {
+                  const Icon = t.icon;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setType(t.id)}
+                      disabled={phase === 'produce'}
+                      className={`p-3 rounded-lg border-2 text-left transition-all ${
+                        type === t.id
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:border-muted-foreground/30'
+                      } disabled:opacity-50`}
+                    >
+                      <Icon className="h-4 w-4 mb-1.5" />
+                      <div className="text-sm font-medium">{t.label}</div>
+                      <Badge variant="outline" className="text-[10px] mt-1">
+                        {t.cost}c
+                      </Badge>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Per-type target length picker */}
+            {type === 'blog' && (
+              <div className="space-y-2">
+                <Label>Post size</Label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[300, 500, 700, 1000].map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setTargetWords(n)}
+                      disabled={phase === 'produce'}
+                      className={`p-2 rounded-md border text-sm ${
+                        targetWords === n
+                          ? 'border-primary bg-primary/5 text-primary font-medium'
+                          : 'border-border hover:border-muted-foreground/30'
+                      } disabled:opacity-50`}
+                    >
+                      {n}
+                      <span className="text-xs text-muted-foreground"> words</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {(type === 'video' || type === 'podcast') && (
+              <div className="space-y-2">
+                <Label>Target duration</Label>
+                <div className="grid grid-cols-5 gap-2">
+                  {(type === 'video' ? [3, 5, 8, 10, 15] : [10, 20, 30, 45, 60]).map(
+                    (m) => (
+                      <button
+                        key={m}
+                        onClick={() => setTargetMinutes(m)}
+                        disabled={phase === 'produce'}
+                        className={`p-2 rounded-md border text-sm ${
+                          targetMinutes === m
+                            ? 'border-primary bg-primary/5 text-primary font-medium'
+                            : 'border-border hover:border-muted-foreground/30'
+                        } disabled:opacity-50`}
+                      >
+                        {m}
+                        <span className="text-xs text-muted-foreground">min</span>
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+            {type === 'shorts' && (
+              <div className="space-y-2">
+                <Label>Duration</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[15, 30, 60].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setTargetShortsSeconds(s)}
+                      disabled={phase === 'produce'}
+                      className={`p-2 rounded-md border text-sm ${
+                        targetShortsSeconds === s
+                          ? 'border-primary bg-primary/5 text-primary font-medium'
+                          : 'border-border hover:border-muted-foreground/30'
+                      } disabled:opacity-50`}
+                    >
+                      {s}
+                      <span className="text-xs text-muted-foreground">s</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Model picker + produce button */}
+            <ModelPicker
+              provider={provider}
+              model={model}
+              recommended={{ provider: null, model: null }}
+              onProviderChange={(p) => {
+                setProvider(p);
+                setModel(MODELS_BY_PROVIDER[p][0].id);
+              }}
+              onModelChange={setModel}
+            />
+
+            <Button onClick={handleProduce} disabled={busy || phase === 'produce'}>
+              {phase === 'produce' ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Producing...</>
+              ) : (
+                <><ArrowRight className="h-4 w-4 mr-2" /> Produce {type.charAt(0).toUpperCase() + type.slice(1)}</>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ═══ Final Content Preview ═══ */}
+      {phase === 'done' && producedContent && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Preview</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <MarkdownPreview content={producedContent} className="bg-muted/20 p-4 rounded" />
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setPhase('core-ready');
+                  setProducedContent('');
+                }}
+              >
+                <Pencil className="h-4 w-4 mr-2" /> Produce Another Format
+              </Button>
               <Button onClick={() => {
                 const result: DraftResult = {
                   draftId: draftId || '',
