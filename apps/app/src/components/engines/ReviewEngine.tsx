@@ -249,27 +249,48 @@ export function ReviewEngine({
     });
   }
 
+  // Derive verdict and score — check DB fields first, then extract from feedback JSON
+  const feedbackObj = draft.review_feedback_json as Record<string, unknown> | null;
+  const blogReview = (feedbackObj?.blog_review ?? feedbackObj?.video_review) as Record<string, unknown> | undefined;
+
+  const effectiveScore = draft.review_score
+    ?? (typeof blogReview?.score === 'number' ? blogReview.score as number : null);
+
+  const rawVerdict = (draft.review_verdict && draft.review_verdict !== 'pending')
+    ? draft.review_verdict
+    : typeof feedbackObj?.overall_verdict === 'string'
+      ? (feedbackObj.overall_verdict as string).toLowerCase().replace(/\s+/g, '_')
+      : typeof blogReview?.verdict === 'string'
+        ? (blogReview.verdict as string).toLowerCase().replace(/\s+/g, '_')
+        : draft.review_verdict;
+
+  const effectiveVerdict = rawVerdict === 'approved' || rawVerdict === 'approve' ? 'approved'
+    : rawVerdict === 'rejected' || rawVerdict === 'reject' ? 'rejected'
+    : (rawVerdict && rawVerdict !== 'pending') ? 'revision_required'
+    : 'pending';
+
   // Check if verdict is approved
   const isApproved =
-    draft.review_verdict === 'approved' ||
-    (draft.review_score !== null && draft.review_score >= 90);
+    effectiveVerdict === 'approved' ||
+    (effectiveScore !== null && effectiveScore >= 90);
 
   // Check if revision is needed
   const needsRevision =
-    draft.review_verdict === 'revision_required' ||
-    (draft.review_score !== null && draft.review_score < 90 && draft.review_score >= 40);
+    effectiveVerdict === 'revision_required' ||
+    (effectiveScore !== null && effectiveScore < 90 && effectiveScore > 0);
 
   // Check if rejected
-  const isRejected =
-    draft.review_verdict === 'rejected' ||
-    (draft.review_score !== null && draft.review_score < 40);
+  const isRejected = effectiveVerdict === 'rejected';
+
+  // Has any review been done (even if DB fields are stale)
+  const hasReview = !!draft.review_feedback_json;
 
   return (
     <div className="space-y-6">
       <ContextBanner stage="review" context={context} onBack={onBack} />
 
       {/* No review yet — submit for review */}
-      {!draft.review_feedback_json && (
+      {!hasReview && (
         <Card>
           <CardContent className="py-6 space-y-4">
             <div className="text-center space-y-2">
@@ -361,7 +382,7 @@ export function ReviewEngine({
       )}
 
       {/* Review feedback exists */}
-      {draft.review_feedback_json && (
+      {hasReview && (
         <>
           {/* Show feedback panel */}
           <Card>
@@ -370,8 +391,8 @@ export function ReviewEngine({
             </CardHeader>
             <CardContent>
               <ReviewFeedbackPanel
-                reviewScore={draft.review_score}
-                reviewVerdict={draft.review_verdict}
+                reviewScore={effectiveScore}
+                reviewVerdict={effectiveVerdict}
                 iterationCount={draft.iteration_count}
                 feedbackJson={draft.review_feedback_json}
               />
