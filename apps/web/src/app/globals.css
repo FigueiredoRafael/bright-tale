@@ -33,6 +33,52 @@
   --color-vivid-yellow: #FBBF24;
   --color-vivid-red: #FF5252;
   --color-vivid-cyan: #22D3EE;
+
+  /* ── shadcn-compatible semantic tokens (used by admin pages) ── */
+  --color-background: var(--color-sh-background);
+  --color-foreground: var(--color-sh-foreground);
+  --color-card: var(--color-sh-card);
+  --color-card-foreground: var(--color-sh-card-foreground);
+  --color-muted: var(--color-sh-muted);
+  --color-muted-foreground: var(--color-sh-muted-foreground);
+  --color-primary: var(--color-sh-primary);
+  --color-primary-foreground: var(--color-sh-primary-foreground);
+  --color-secondary: var(--color-sh-secondary);
+  --color-secondary-foreground: var(--color-sh-secondary-foreground);
+  --color-border: var(--color-sh-border);
+  --color-ring: var(--color-sh-ring);
+}
+
+/* ── shadcn semantic values — dark (default for admin panel) ── */
+:root {
+  --color-sh-background: #0C1017;
+  --color-sh-foreground: #F1F5F9;
+  --color-sh-card: #131A24;
+  --color-sh-card-foreground: #F1F5F9;
+  --color-sh-muted: #1C2635;
+  --color-sh-muted-foreground: #94A3B8;
+  --color-sh-primary: #F1F5F9;
+  --color-sh-primary-foreground: #0C1017;
+  --color-sh-secondary: #1C2635;
+  --color-sh-secondary-foreground: #F1F5F9;
+  --color-sh-border: #1C2635;
+  --color-sh-ring: #4A90D9;
+}
+
+/* ── shadcn semantic values — light ── */
+html.light {
+  --color-sh-background: #FFFFFF;
+  --color-sh-foreground: #0F172A;
+  --color-sh-card: #FFFFFF;
+  --color-sh-card-foreground: #0F172A;
+  --color-sh-muted: #F1F5F9;
+  --color-sh-muted-foreground: #64748B;
+  --color-sh-primary: #0F172A;
+  --color-sh-primary-foreground: #FFFFFF;
+  --color-sh-secondary: #F1F5F9;
+  --color-sh-secondary-foreground: #0F172A;
+  --color-sh-border: #E2E8F0;
+  --color-sh-ring: #3B82F6;
 }
 
 /* Health dot glow pulse — box-shadow based, not opacity */
