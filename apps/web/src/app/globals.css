@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Use class-based dark mode so toggle works (html.dark / html.light) */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Scan admin package for Tailwind class names */
 @source "../../../../node_modules/@tn-figueiredo/admin/dist";
 

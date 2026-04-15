@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { isAdminUser } from '@/lib/admin-check';
 import { adminPath } from '@/lib/admin-path';
-import { AdminShell } from '@tn-figueiredo/admin/client';
+import { AdminSidebar } from '@tn-figueiredo/admin/client';
 import type { AdminLayoutConfig } from '@tn-figueiredo/admin';
 import { ThemeToggle } from './theme-toggle';
 
@@ -36,11 +36,17 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   if (!await isAdminUser(supabase, user.id)) redirect(adminPath('/login?error=unauthorized'));
 
   return (
-    <AdminShell config={config} userEmail={user.email!}>
-      <div className="flex justify-end mb-4">
-        <ThemeToggle />
+    <div className="h-screen bg-slate-50 dark:bg-slate-900 flex overflow-hidden">
+      <div className="relative w-64 shrink-0 h-full">
+        <AdminSidebar config={config} userEmail={user.email!} />
+        {/* Toggle sits above the user-email footer */}
+        <div className="absolute bottom-10 left-0 right-0 px-4 py-2 bg-slate-900">
+          <ThemeToggle />
+        </div>
       </div>
-      {children}
-    </AdminShell>
+      <main className="flex-1 overflow-y-auto p-8">
+        {children}
+      </main>
+    </div>
   );
 }
