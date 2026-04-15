@@ -3,34 +3,17 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useRouter } from '@/i18n/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
-import { toast } from 'sonner';
-import { Search, ArrowRight, RefreshCw, Loader2, Check, Lightbulb, AlertTriangle } from 'lucide-react';
 import { PipelineStages } from '@/components/pipeline/PipelineStages';
-
-interface Card_ {
-  type?: string;
-  title?: string;
-  url?: string;
-  author?: string;
-  quote?: string;
-  claim?: string;
-  relevance?: number;
-  [k: string]: unknown;
-}
+import { ResearchEngine } from '@/components/engines/ResearchEngine';
+import type { ResearchResult, PipelineContext } from '@/components/engines/types';
 
 interface Session {
   id: string;
   idea_id: string | null;
   level: string;
-  status: string;
-  cards_json: Card_[] | null;
-  approved_cards_json: Card_[] | null;
+  cards_json: unknown[] | null;
+  approved_cards_json: unknown[] | null;
   refined_angle_json: Record<string, unknown> | null;
-  channel_id: string | null;
   project_id: string | null;
   input_json: Record<string, unknown>;
 }
@@ -43,97 +26,108 @@ export default function ResearchSessionPage() {
 
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [regenerating, setRegenerating] = useState(false);
-  const [cards, setCards] = useState<Card_[]>([]);
-  const [approved, setApproved] = useState<Set<number>>(new Set());
-  const [linkedIdea, setLinkedIdea] = useState<{ title: string; verdict: string } | null>(null);
+  const [context, setContext] = useState<PipelineContext>({
+    channelId,
+  });
 
   useEffect(() => {
     (async () => {
       try {
+        // Fetch session
         const res = await fetch(`/api/research-sessions/${sessionId}`);
         const json = await res.json();
         if (json.data) {
           const s = json.data as Session;
           setSession(s);
-          const c = (s.approved_cards_json ?? s.cards_json ?? []) as Card_[];
-          setCards(c);
-          setApproved(new Set(c.map((_, i) => i)));
 
-          // Fetch linked idea
-          if (s.idea_id) {
+          // Build context from session + pipeline
+          const newContext: PipelineContext = {
+            channelId,
+            ideaId: s.idea_id ?? undefined,
+            projectId: s.project_id ?? undefined,
+            researchSessionId: s.id,
+          };
+
+          // Fetch pipeline context if project exists
+          if (s.project_id) {
+            try {
+              const pRes = await fetch(`/api/projects/${s.project_id}/pipeline`);
+              const pJson = await pRes.json();
+              if (pJson.data) {
+                newContext.projectTitle = pJson.data.project?.title;
+                const bs = pJson.data.brainstormSessions?.[0];
+                if (bs) newContext.brainstormSessionId = bs.id;
+                const dr = pJson.data.contentDrafts?.[0];
+                if (dr) newContext.draftId = dr.id;
+
+                // Get linked idea title from project
+                const projectIdeas = pJson.data.ideas ?? [];
+                if (projectIdeas.length > 0) {
+                  newContext.ideaTitle = projectIdeas[0].title;
+                  newContext.ideaVerdict = projectIdeas[0].verdict;
+                }
+              }
+            } catch {
+              /* pipeline fetch optional */
+            }
+          }
+
+          // Fallback: fetch linked idea if no project
+          if (!s.project_id && s.idea_id) {
             try {
               const ideaRes = await fetch(`/api/ideas/library?limit=100`);
               const ideaJson = await ideaRes.json();
               const idea = (ideaJson.data?.ideas ?? []).find(
-                (i: Record<string, unknown>) => i.id === s.idea_id || i.idea_id === s.idea_id,
+                (i: Record<string, unknown>) =>
+                  i.id === s.idea_id || i.idea_id === s.idea_id
               );
-              if (idea) setLinkedIdea({ title: idea.title, verdict: idea.verdict });
-            } catch { /* */ }
+              if (idea) {
+                newContext.ideaTitle = idea.title;
+                newContext.ideaVerdict = idea.verdict;
+              }
+            } catch {
+              /* silent */
+            }
           }
+
+          setContext(newContext);
         }
       } finally {
         setLoading(false);
       }
     })();
-  }, [sessionId]);
+  }, [sessionId, channelId]);
 
-  function toggleApproval(i: number) {
-    setApproved((prev) => {
-      const next = new Set(prev);
-      if (next.has(i)) next.delete(i); else next.add(i);
-      return next;
-    });
+  const handleComplete = (result: unknown) => {
+    const r = result as ResearchResult;
+    const params = new URLSearchParams();
+    params.set('researchSessionId', r.researchSessionId);
+    if (session?.idea_id) params.set('ideaId', session.idea_id);
+    if (session?.project_id) params.set('projectId', session.project_id);
+    router.push(`/channels/${channelId}/drafts/new?${params.toString()}`);
+  };
+
+  if (loading) {
+    return <div className="p-6 text-muted-foreground">Loading session...</div>;
   }
 
-  async function handleApprove() {
-    const approvedCards = cards.filter((_, i) => approved.has(i));
-    try {
-      const res = await fetch(`/api/research-sessions/${sessionId}/review`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approvedCardsJson: approvedCards }),
-      });
-      const json = await res.json();
-      if (json.error) { toast.error(json.error.message); return; }
-    } catch {
-      toast.error('Failed to save review');
-      return;
-    }
-
-    toast.success(`${approvedCards.length} cards approved`);
-    const p = new URLSearchParams();
-    p.set('researchSessionId', sessionId);
-    if (session?.idea_id) p.set('ideaId', session.idea_id);
-    if (session?.project_id) p.set('projectId', session.project_id);
-    router.push(`/channels/${channelId}/drafts/new?${p.toString()}`);
+  if (!session) {
+    return <div className="p-6 text-red-500">Session not found.</div>;
   }
 
-  async function handleRegenerate() {
-    setRegenerating(true);
-    try {
-      const res = await fetch(`/api/research-sessions/${sessionId}/regenerate`, {
-        method: 'POST',
-      });
-      const json = await res.json();
-      if (json.error) { toast.error(json.error.message); return; }
-      const newId = json.data?.sessionId ?? json.data?.session?.id;
-      if (newId) {
-        toast.success('Regenerated — loading new session');
-        router.push(`/channels/${channelId}/research/${newId}`);
-      }
-    } catch {
-      toast.error('Regeneration failed');
-    } finally {
-      setRegenerating(false);
-    }
-  }
+  const initialCards = (session.approved_cards_json ?? session.cards_json ?? []) as Record<string, unknown>[];
+  const initialApproved = initialCards.map((_, i) => i);
 
-  if (loading) return <div className="p-6 text-muted-foreground">Loading session...</div>;
-  if (!session) return <div className="p-6 text-red-500">Session not found.</div>;
-
-  const pivot = session.refined_angle_json;
-  const shouldPivot = pivot && Boolean(pivot.should_pivot);
+  const sessionRecord: Record<string, unknown> = {
+    id: session.id,
+    idea_id: session.idea_id,
+    level: session.level,
+    cards_json: session.cards_json,
+    approved_cards_json: session.approved_cards_json,
+    refined_angle_json: session.refined_angle_json,
+    project_id: session.project_id,
+    input_json: session.input_json,
+  };
 
   return (
     <div>
@@ -141,90 +135,22 @@ export default function ResearchSessionPage() {
         currentStep="research"
         channelId={channelId}
         researchSessionId={sessionId}
-        ideaTitle={linkedIdea?.title}
+        brainstormSessionId={context.brainstormSessionId}
+        draftId={context.draftId}
+        projectId={context.projectId}
+        projectTitle={context.projectTitle}
+        ideaTitle={context.ideaTitle}
       />
-      <div className="p-6 max-w-4xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <Search className="h-5 w-5" /> Research Session
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Level: {session.level} &middot; {cards.length} cards &middot; {session.status}
-            </p>
-          </div>
-          <Button variant="outline" size="sm" onClick={handleRegenerate} disabled={regenerating}>
-            {regenerating ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1.5" />}
-            Regenerate
-          </Button>
-        </div>
-
-        {/* Linked idea */}
-        {linkedIdea && (
-          <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 flex items-center gap-3">
-            <Lightbulb className="h-4 w-4 text-primary shrink-0" />
-            <span className="text-sm">{linkedIdea.title}</span>
-            <Badge variant="outline" className="text-[10px]">{linkedIdea.verdict}</Badge>
-          </div>
-        )}
-
-        {/* Pivot recommendation */}
-        {shouldPivot && (
-          <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3 flex items-start gap-3">
-            <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">Pivot recommended</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {String(pivot?.updated_title ?? '')}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Research cards */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center justify-between">
-              <span>Research cards <Badge variant="secondary" className="text-[10px] ml-1">{cards.length}</Badge></span>
-              <span className="text-xs text-muted-foreground font-normal">{approved.size} approved</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {cards.map((c, i) => {
-              const isApproved = approved.has(i);
-              return (
-                <div
-                  key={i}
-                  className={`p-3 rounded-lg border ${isApproved ? 'border-primary/50 bg-primary/5' : 'border-border opacity-60'}`}
-                >
-                  <div className="flex items-start gap-3">
-                    <Checkbox checked={isApproved} onCheckedChange={() => toggleApproval(i)} className="mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        {c.type && <Badge variant="outline" className="text-[10px]">{c.type}</Badge>}
-                      </div>
-                      <div className="text-sm font-medium mt-1">
-                        {c.title ?? c.claim ?? c.quote ?? '—'}
-                      </div>
-                      {c.author && <div className="text-xs text-muted-foreground mt-1">— {c.author}</div>}
-                      {c.url && (
-                        <a href={c.url as string} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline mt-1 inline-block">
-                          {c.url as string}
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            <div className="flex justify-end pt-2">
-              <Button onClick={handleApprove}>
-                <Check className="h-4 w-4 mr-2" /> Approve ({approved.size}) <ArrowRight className="h-4 w-4 ml-2" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="p-6 max-w-4xl mx-auto">
+        <ResearchEngine
+          mode="import"
+          channelId={channelId}
+          context={context}
+          onComplete={handleComplete}
+          initialSession={sessionRecord}
+          initialCards={initialCards}
+          initialApproved={initialApproved}
+        />
       </div>
     </div>
   );
