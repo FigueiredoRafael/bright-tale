@@ -8,13 +8,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { MarkdownPreview } from '@/components/preview/MarkdownPreview';
-import { AssetGallery } from '@/components/preview/AssetGallery';
-import { PublishPanel } from '@/components/preview/PublishPanel';
 import { ManualModePanel } from '@/components/ai/ManualModePanel';
 import { useManualMode } from '@/hooks/use-manual-mode';
 import { Sparkles, ClipboardPaste, Loader2 } from 'lucide-react';
 import { PipelineStages, type PipelineStep } from '@/components/pipeline/PipelineStages';
 import { ReviewEngine } from '@/components/engines/ReviewEngine';
+import { AssetsEngine } from '@/components/engines/AssetsEngine';
+import { PublishEngine } from '@/components/engines/PublishEngine';
 import type { ReviewResult } from '@/components/engines/types';
 import { toast } from 'sonner';
 
@@ -66,7 +66,6 @@ export default function DraftDetailPage() {
   const [reviewing, setReviewing] = useState(false);
   const { enabled: manualEnabled } = useManualMode();
   const [activeTab, setActiveTab] = useState('content');
-  const [publishing, setPublishing] = useState(false);
   const [editedBody, setEditedBody] = useState('');
   const [brainstormSessionId, setBrainstormSessionId] = useState<string | undefined>();
   const [researchSessionId, setResearchSessionId] = useState<string | undefined>();
@@ -159,22 +158,6 @@ export default function DraftDetailPage() {
     if (data) setDraft(data);
   };
 
-  const handlePublish = async (params: { mode: string; configId: string; scheduledDate?: string }) => {
-    setPublishing(true);
-    const res = await fetch('/api/wordpress/publish-draft', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        draftId,
-        configId: params.configId,
-        mode: params.mode,
-        scheduledDate: params.scheduledDate,
-      }),
-    });
-    await res.json();
-    await fetchDraft();
-    setPublishing(false);
-  };
 
   if (loading) {
     return <div className="p-6 text-muted-foreground">Loading draft...</div>;
@@ -313,29 +296,30 @@ export default function DraftDetailPage() {
 
         {/* Assets Tab */}
         <TabsContent value="assets">
-          <AssetGallery
-            assets={assets}
+          <AssetsEngine
+            mode="generate"
+            channelId={channelId}
+            context={{ draftId, draftTitle: draft.title ?? undefined }}
+            draftId={draftId}
             draftStatus={draft.status}
-            onGenerateAll={async () => {
-              await fetch(`/api/content-drafts/${draftId}/generate-assets`, { method: 'POST' });
-              await fetchAssets();
-            }}
+            onComplete={() => setActiveTab('publish')}
           />
         </TabsContent>
 
         {/* Publish Tab */}
         <TabsContent value="publish">
-          <div className="max-w-lg">
-            <PublishPanel
-              draftId={draftId}
-              draftStatus={draft.status}
-              hasAssets={assets.length > 0}
-              wordpressPostId={draft.wordpress_post_id}
-              publishedUrl={draft.published_url}
-              onPublish={handlePublish}
-              isPublishing={publishing}
-            />
-          </div>
+          <PublishEngine
+            channelId={channelId}
+            context={{
+              draftId,
+              draftTitle: draft.title ?? undefined,
+              reviewScore: draft.review_score ?? undefined,
+            }}
+            draftId={draftId}
+            draft={draft}
+            assetCount={assets.length}
+            onComplete={() => void fetchDraft()}
+          />
         </TabsContent>
       </Tabs>
     </div>
