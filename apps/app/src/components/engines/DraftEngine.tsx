@@ -312,47 +312,66 @@ export function DraftEngine({
 
   // ── Phase 2: Import produced content manually ──────────────────
   async function handleManualProduceImport(parsed: unknown) {
+    let obj = parsed as Record<string, unknown>;
+
+    // Unwrap top-level wrapper (BC_BLOG_OUTPUT, BC_VIDEO_OUTPUT, etc.)
+    const WRAPPERS: Record<DraftType, string[]> = {
+      blog: ['BC_BLOG_OUTPUT'],
+      video: ['BC_VIDEO_OUTPUT'],
+      shorts: ['BC_SHORTS_OUTPUT'],
+      podcast: ['BC_PODCAST_OUTPUT'],
+    };
+    for (const key of WRAPPERS[type]) {
+      if (obj[key] && typeof obj[key] === 'object') {
+        obj = obj[key] as Record<string, unknown>;
+        break;
+      }
+    }
+
+    // Extract the displayable content based on format
     let content = '';
 
-    // Try to extract content from various wrapper formats
-    const obj = parsed as Record<string, unknown>;
-    const FORMAT_KEYS: Record<DraftType, string[]> = {
-      blog: ['BC_BLOG_OUTPUT', 'blog', 'full_draft', 'content', 'html', 'markdown'],
-      video: ['BC_VIDEO_OUTPUT', 'video_script', 'script', 'content'],
-      shorts: ['BC_SHORTS_OUTPUT', 'shorts', 'scripts', 'content'],
-      podcast: ['BC_PODCAST_OUTPUT', 'podcast_outline', 'outline', 'content'],
-    };
-
-    // Try format-specific keys
-    for (const key of FORMAT_KEYS[type]) {
-      if (typeof obj[key] === 'string') {
-        content = obj[key] as string;
-        break;
+    if (type === 'blog') {
+      // Blog: full_draft is the markdown content
+      const blog = (obj.blog && typeof obj.blog === 'object') ? obj.blog as Record<string, unknown> : obj;
+      content = typeof blog.full_draft === 'string' ? blog.full_draft : '';
+    } else if (type === 'video') {
+      const video = (obj.video_script ?? obj.video ?? obj) as Record<string, unknown>;
+      content = typeof video.script === 'string' ? video.script
+        : typeof video.full_script === 'string' ? video.full_script : '';
+    } else if (type === 'shorts') {
+      const shorts = (obj.shorts ?? obj.scripts) as unknown[];
+      if (Array.isArray(shorts)) {
+        content = shorts.map((s, i) => {
+          const item = s as Record<string, unknown>;
+          return `## Short ${i + 1}${item.hook ? `: ${item.hook}` : ''}\n\n${item.script ?? item.content ?? JSON.stringify(item, null, 2)}`;
+        }).join('\n\n---\n\n');
       }
-      if (obj[key] && typeof obj[key] === 'object') {
-        // Stringify structured output
-        content = JSON.stringify(obj[key], null, 2);
-        break;
-      }
+    } else if (type === 'podcast') {
+      const podcast = (obj.podcast_outline ?? obj.podcast ?? obj) as Record<string, unknown>;
+      content = typeof podcast.outline === 'string' ? podcast.outline
+        : typeof podcast.full_outline === 'string' ? podcast.full_outline : '';
     }
 
-    // Fallback: stringify entire object
+    // Fallback: try generic content keys
     if (!content) {
-      content = typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2);
+      for (const key of ['full_draft', 'content', 'script', 'outline', 'text', 'markdown']) {
+        if (typeof obj[key] === 'string') { content = obj[key] as string; break; }
+      }
     }
 
-    if (!content.trim()) {
-      toast.error('No content found in pasted output');
+    if (!content) {
+      toast.error('Could not extract content. Expected full_draft (blog), script (video), or outline (podcast).');
       return;
     }
 
-    // If we have a draft, save produced content to it
+    // Save the full JSON as draft_json and the extracted content
     if (draftId) {
       await runStep('save produced content', () =>
         fetch(`/api/content-drafts/${draftId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ producedContent: content, type }),
+          body: JSON.stringify({ draftJson: obj }),
         })
       );
     }
