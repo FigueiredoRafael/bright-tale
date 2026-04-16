@@ -1,11 +1,8 @@
 import { redirect } from 'next/navigation'
-import { createAdminLayout } from '@tn-figueiredo/admin'
 import { createClient } from '@/lib/supabase/server'
 import { isAdminUser } from '@/lib/admin-check'
 import { adminPath } from '@/lib/admin-path'
-import { ADMIN_LAYOUT_CONFIG } from '@/lib/admin-layout-config'
-
-const AdminLayout = createAdminLayout(ADMIN_LAYOUT_CONFIG)
+import { AdminShell } from './admin-shell'
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -14,5 +11,5 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   if (!(await isAdminUser(supabase, user.id))) {
     redirect(adminPath('/login?error=unauthorized'))
   }
-  return <AdminLayout userEmail={user.email!}>{children}</AdminLayout>
+  return <AdminShell userEmail={user.email!}>{children}</AdminShell>
 }
