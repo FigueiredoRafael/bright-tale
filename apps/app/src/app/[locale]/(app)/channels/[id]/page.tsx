@@ -99,6 +99,9 @@ export default function ChannelDetailPage() {
   // YouTube metrics
   const [ytMetrics, setYtMetrics] = useState<YouTubeMetrics | null>(null);
   const [ytLoading, setYtLoading] = useState(false);
+  const [editYoutubeUrl, setEditYoutubeUrl] = useState('');
+  const [editBlogUrl, setEditBlogUrl] = useState('');
+  const [savingUrl, setSavingUrl] = useState(false);
 
   // Editable fields
   const [name, setName] = useState('');
@@ -136,6 +139,8 @@ export default function ChannelDetailPage() {
         setVoiceProvider(c.voice_provider);
         setVoiceId(c.voice_id);
         setVoiceSpeed(c.voice_speed ?? 1.0);
+        setEditYoutubeUrl(c.youtube_url ?? '');
+        setEditBlogUrl(c.blog_url ?? '');
       }
       if (refsJson.data) {
         setReferences(refsJson.data.references ?? []);
@@ -196,6 +201,33 @@ export default function ChannelDetailPage() {
       toast.error('Failed to save');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSaveUrl(field: 'youtubeUrl' | 'blogUrl', value: string) {
+    setSavingUrl(true);
+    try {
+      const res = await fetch(`/api/channels/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value || undefined }),
+      });
+      const json = await res.json();
+      if (json.error) {
+        toast.error(json.error.message);
+      } else {
+        toast.success('URL salva');
+        setChannel((prev) => prev ? {
+          ...prev,
+          [field === 'youtubeUrl' ? 'youtube_url' : 'blog_url']: value || null,
+        } : null);
+        // Re-fetch YouTube metrics if URL changed
+        if (field === 'youtubeUrl' && value) fetchYtMetrics(value);
+      }
+    } catch {
+      toast.error('Falha ao salvar');
+    } finally {
+      setSavingUrl(false);
     }
   }
 
@@ -497,14 +529,30 @@ export default function ChannelDetailPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
+                {/* YouTube URL input */}
+                <div className="space-y-2">
+                  <Label>URL do canal</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="https://youtube.com/@seucanal"
+                      value={editYoutubeUrl}
+                      onChange={(e) => setEditYoutubeUrl(e.target.value)}
+                    />
+                    <Button
+                      size="sm"
+                      className="shrink-0"
+                      disabled={savingUrl || editYoutubeUrl === (channel.youtube_url ?? '')}
+                      onClick={() => handleSaveUrl('youtubeUrl', editYoutubeUrl)}
+                    >
+                      {savingUrl ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Salvar'}
+                    </Button>
+                  </div>
+                </div>
+
                 {!channel.youtube_url ? (
-                  <div className="text-center py-8 space-y-3">
-                    <Youtube className="h-12 w-12 text-muted-foreground mx-auto" />
+                  <div className="text-center py-6 space-y-2">
                     <p className="text-sm text-muted-foreground">
-                      Nenhum canal do YouTube conectado.
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Adicione a URL do canal nas configurações para ver métricas aqui.
+                      Cole a URL do canal acima para ver métricas.
                     </p>
                   </div>
                 ) : ytLoading ? (
@@ -577,30 +625,43 @@ export default function ChannelDetailPage() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>URL do blog / WordPress</Label>
-                  <Input
-                    placeholder="https://meublog.com.br"
-                    value={channel.blog_url ?? ''}
-                    disabled
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="https://meublog.com.br"
+                      value={editBlogUrl}
+                      onChange={(e) => setEditBlogUrl(e.target.value)}
+                    />
+                    <Button
+                      size="sm"
+                      className="shrink-0"
+                      disabled={savingUrl || editBlogUrl === (channel.blog_url ?? '')}
+                      onClick={() => handleSaveUrl('blogUrl', editBlogUrl)}
+                    >
+                      {savingUrl ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Salvar'}
+                    </Button>
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    Configure a URL do blog nas configurações gerais. Se for WordPress, vamos buscar métricas automaticamente.
+                    Se for WordPress, vamos buscar métricas automaticamente.
                   </p>
                 </div>
 
                 {!channel.blog_url ? (
-                  <div className="text-center py-8 space-y-3">
-                    <FileText className="h-12 w-12 text-muted-foreground mx-auto" />
+                  <div className="text-center py-6 space-y-2">
                     <p className="text-sm text-muted-foreground">
-                      Nenhum blog conectado.
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Adicione a URL do blog nas configurações para ver métricas aqui.
+                      Cole a URL do blog acima para conectar.
                     </p>
                   </div>
                 ) : (
-                  <div className="bg-muted/50 rounded-lg p-4 text-center text-sm text-muted-foreground">
-                    Métricas do blog em breve — WordPress REST API integration.
-                  </div>
+                  <>
+                    <Button variant="outline" size="sm" asChild>
+                      <a href={channel.blog_url} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-4 w-4 mr-2" /> Abrir blog
+                      </a>
+                    </Button>
+                    <div className="bg-muted/50 rounded-lg p-4 text-center text-sm text-muted-foreground">
+                      Métricas do blog em breve — WordPress REST API integration.
+                    </div>
+                  </>
                 )}
               </CardContent>
             </Card>
