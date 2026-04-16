@@ -104,11 +104,14 @@ export async function proxy(request: NextRequest) {
   }
 
   // Auth pages — redirect home if already logged in
-  if (pathname.startsWith('/auth/')) {
+  // Check both /auth/* and /{locale}/auth/* paths
+  const isAuthPage = pathname.startsWith('/auth/') ||
+    locales.some((l) => pathname.startsWith(`/${l}/auth/`));
+  if (isAuthPage) {
     if (user) {
       return NextResponse.redirect(new URL('/', request.url));
     }
-    return response;
+    return intlMiddleware(request);
   }
 
   // App pages — redirect to login if not authenticated
@@ -118,7 +121,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Apply i18n locale detection/routing for non-API, non-auth pages
+  // Apply i18n locale detection/routing
   return intlMiddleware(request);
 }
 

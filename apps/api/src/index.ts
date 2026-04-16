@@ -6,6 +6,8 @@
  * so the module evaluates without top-level await (required for
  * Vercel serverless compatibility).
  */
+import "./instrument.js";
+import * as Sentry from "@sentry/node";
 import Fastify from "fastify";
 import fastifyCors from "@fastify/cors";
 import fastifyCookie from "@fastify/cookie";
@@ -93,6 +95,8 @@ server.register(fastifyCors, {
 
 server.register(fastifyCookie);
 
+Sentry.setupFastifyErrorHandler(server);
+
 // Request/response logging — skip Inngest polling noise
 const SILENT_ROUTES = new Set(["/inngest", "/health"]);
 server.addHook("onResponse", (request, reply, done) => {
@@ -173,9 +177,11 @@ if (!process.env.VERCEL) {
   // (mid-request ECONNRESETs on the proxy side often trace back to this).
   process.on("unhandledRejection", (reason) => {
     server.log.error({ reason }, "unhandledRejection — process kept alive");
+    if (reason instanceof Error) Sentry.captureException(reason);
   });
   process.on("uncaughtException", (err) => {
     server.log.error({ err }, "uncaughtException — process kept alive");
+    Sentry.captureException(err);
   });
 
   const PORT = parseInt(process.env.PORT ?? "3001", 10);
