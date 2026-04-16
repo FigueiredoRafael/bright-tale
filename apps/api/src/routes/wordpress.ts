@@ -6,6 +6,7 @@
 import type { FastifyInstance } from 'fastify';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { z } from 'zod';
 import yaml from 'js-yaml';
 import { authenticate } from '../middleware/authenticate.js';
@@ -45,8 +46,12 @@ async function uploadImageToWordPress(
   let mimeType = 'image/jpeg';
 
   if (imageUrl.startsWith('/')) {
-    // Local file — read from disk (relative to apps/api/public/)
-    const localPath = path.resolve(process.cwd(), 'public', imageUrl.replace(/^\//, ''));
+    // Local file — read from disk (apps/api/public/)
+    const apiRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../public');
+    const localPath = path.resolve(apiRoot, imageUrl.replace(/^\//, ''));
+    if (!localPath.startsWith(apiRoot)) {
+      throw new ApiError(400, 'Invalid image path');
+    }
     if (!fs.existsSync(localPath)) {
       throw new ApiError(400, `Local image not found: ${imageUrl}`);
     }
@@ -889,18 +894,22 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
 
         sendEvent('uploading_featured', 'Uploading featured image...');
         let featuredAssetId: string | undefined;
+        request.log.info({ imageMap: body.imageMap, draftId: body.draftId }, 'publish-draft/stream: imageMap received');
         if (body.imageMap?.['featured_image']) {
           featuredAssetId = body.imageMap['featured_image'] as string;
-          const { data: assets } = await sb
+          const { data: assets, error: assetsErr } = await sb
             .from('assets')
             .select('*')
             .eq('content_id', body.draftId);
+
+          request.log.info({ assetCount: assets?.length ?? 0, assetsErr, featuredAssetId }, 'publish-draft/stream: assets fetched');
 
           for (const rawAsset of assets ?? []) {
             const asset = rawAsset as Record<string, unknown>;
             if (asset.id !== featuredAssetId) continue;
 
             const imageUrl = (asset.source_url as string);
+            request.log.info({ imageUrl, assetId: asset.id, role: asset.role }, 'publish-draft/stream: uploading featured');
             if (!imageUrl) continue;
 
             const wpMediaId = await uploadImageToWordPress(
