@@ -21,11 +21,8 @@ import {
   Plus,
   Trash2,
   ExternalLink,
-  Search,
-  Sparkles,
   ArrowLeft,
   RefreshCw,
-  Lightbulb,
 } from 'lucide-react';
 import { NichePicker } from '@/components/channels/NichePicker';
 import { LogoUpload } from '@/components/channels/LogoUpload';
@@ -208,19 +205,6 @@ export default function ChannelDetailPage() {
           <ArrowLeft className="h-4 w-4 mr-1" /> Content Channels
         </Button>
         <h1 className="text-2xl font-bold">{channel.name}</h1>
-      </div>
-
-      {/* Quick actions */}
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" onClick={() => router.push(`/channels/${id}/brainstorm/new`)}>
-          <Lightbulb className="h-4 w-4 mr-2" /> Brainstorm
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => router.push(`/channels/${id}/research/new`)}>
-          <Search className="h-4 w-4 mr-2" /> New Research
-        </Button>
-        <Button size="sm" onClick={() => router.push(`/channels/${id}/create`)}>
-          <Sparkles className="h-4 w-4 mr-2" /> Generate Content
-        </Button>
       </div>
 
       {/* Reference notifications */}
