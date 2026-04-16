@@ -15,6 +15,7 @@ out/
 .env.development
 .env.production
 .env.staging
+.env.sentry-build-plugin
 
 # Supabase local runtime
 supabase/.branches/
