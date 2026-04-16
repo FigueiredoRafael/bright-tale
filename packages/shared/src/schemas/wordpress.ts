@@ -12,20 +12,20 @@ export const testWordPressConnectionSchema = z.object({
 
 // Publish to WordPress schema
 export const publishToWordPressSchema = z.object({
-  project_id: z.string().cuid("Invalid project ID"),
-  config_id: z.string().cuid("Invalid WordPress config ID").optional(),
+  project_id: z.string().uuid("Invalid project ID"),
+  config_id: z.string().uuid("Invalid WordPress config ID").optional(),
   site_url: z.string().url("Invalid WordPress site URL").optional(),
   username: z.string().min(1, "Username is required").optional(),
   password: z.string().min(1, "Password is required").optional(),
   status: z.enum(["draft", "publish", "pending", "private"]).default("draft"),
   categories: z.array(z.string()).optional(), // Changed to string array (category names)
   tags: z.array(z.string()).optional(), // Changed to string array (tag names)
-  featured_image_asset_id: z.string().cuid().optional(), // Asset ID for featured image
+  featured_image_asset_id: z.string().uuid().optional(), // Asset ID for featured image
 });
 
 // Fetch categories query schema
 export const fetchCategoriesQuerySchema = z.object({
-  config_id: z.string().cuid("Invalid WordPress config ID").optional(),
+  config_id: z.string().uuid("Invalid WordPress config ID").optional(),
   site_url: z.string().url("Invalid WordPress site URL").optional(),
   username: z.string().min(1, "Username is required").optional(),
   password: z.string().min(1, "Password is required").optional(),
@@ -33,7 +33,7 @@ export const fetchCategoriesQuerySchema = z.object({
 
 // Fetch tags query schema
 export const fetchTagsQuerySchema = z.object({
-  config_id: z.string().cuid("Invalid WordPress config ID").optional(),
+  config_id: z.string().uuid("Invalid WordPress config ID").optional(),
   site_url: z.string().url("Invalid WordPress site URL").optional(),
   username: z.string().min(1, "Username is required").optional(),
   password: z.string().min(1, "Password is required").optional(),

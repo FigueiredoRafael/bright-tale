@@ -32,7 +32,7 @@ export const createShortsSchema = z.object({
   short_count: z.number().int().min(1).default(3),
   total_duration: z.string().optional(),
   status: z.enum(["draft", "review", "approved", "published"]).default("draft"),
-  project_id: z.string().cuid().optional(),
+  project_id: z.string().uuid().optional(),
   idea_id: z.string().optional(),
 });
 
@@ -43,7 +43,7 @@ export const updateShortsSchema = z.object({
   short_count: z.number().int().min(1).optional(),
   total_duration: z.string().optional(),
   status: z.enum(["draft", "review", "approved", "published"]).optional(),
-  project_id: z.string().cuid().optional(),
+  project_id: z.string().uuid().optional(),
   idea_id: z.string().optional(),
 });
 

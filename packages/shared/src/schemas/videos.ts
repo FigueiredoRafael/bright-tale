@@ -72,7 +72,7 @@ export const createVideoSchema = z.object({
   total_duration_estimate: z.string(),
   word_count: z.number().int().min(0).optional(),
   status: z.enum(["draft", "review", "approved", "published"]).default("draft"),
-  project_id: z.string().cuid().optional(),
+  project_id: z.string().uuid().optional(),
   idea_id: z.string().optional(),
 });
 
@@ -86,7 +86,7 @@ export const updateVideoSchema = z.object({
   total_duration_estimate: z.string().optional(),
   word_count: z.number().int().min(0).optional(),
   status: z.enum(["draft", "review", "approved", "published"]).optional(),
-  project_id: z.string().cuid().optional(),
+  project_id: z.string().uuid().optional(),
   idea_id: z.string().optional(),
 });
 
