@@ -30,6 +30,8 @@ import {
   Users,
   Film,
   Loader2,
+  PenLine,
+  Calendar,
 } from 'lucide-react';
 import { NichePicker } from '@/components/channels/NichePicker';
 import { LogoUpload } from '@/components/channels/LogoUpload';
@@ -84,6 +86,18 @@ interface YouTubeMetrics {
   videoCount: number;
 }
 
+interface BlogMetrics {
+  totalPosts: number;
+  totalPages: number;
+  lastPublished: string | null;
+  recentPosts: Array<{
+    id: number;
+    title: string;
+    date: string;
+    link: string;
+  }>;
+}
+
 export default function ChannelDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -102,6 +116,10 @@ export default function ChannelDetailPage() {
   const [editYoutubeUrl, setEditYoutubeUrl] = useState('');
   const [editBlogUrl, setEditBlogUrl] = useState('');
   const [savingUrl, setSavingUrl] = useState(false);
+
+  // Blog metrics
+  const [blogMetrics, setBlogMetrics] = useState<BlogMetrics | null>(null);
+  const [blogLoading, setBlogLoading] = useState(false);
 
   // Editable fields
   const [name, setName] = useState('');
@@ -179,6 +197,24 @@ export default function ChannelDetailPage() {
     if (channel?.youtube_url) fetchYtMetrics(channel.youtube_url);
   }, [channel?.youtube_url, fetchYtMetrics]);
 
+  // Fetch blog metrics when channel loads and has blog_url
+  const fetchBlogMetrics = useCallback(async (url: string) => {
+    setBlogLoading(true);
+    try {
+      const res = await fetch(`/api/wordpress/blog-metrics?url=${encodeURIComponent(url)}`);
+      const json = await res.json();
+      if (json.data) setBlogMetrics(json.data);
+    } catch {
+      // silent
+    } finally {
+      setBlogLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (channel?.blog_url) fetchBlogMetrics(channel.blog_url);
+  }, [channel?.blog_url, fetchBlogMetrics]);
+
   async function handleSave() {
     setSaving(true);
     try {
@@ -221,8 +257,9 @@ export default function ChannelDetailPage() {
           ...prev,
           [field === 'youtubeUrl' ? 'youtube_url' : 'blog_url']: value || null,
         } : null);
-        // Re-fetch YouTube metrics if URL changed
+        // Re-fetch metrics if URL changed
         if (field === 'youtubeUrl' && value) fetchYtMetrics(value);
+        if (field === 'blogUrl' && value) fetchBlogMetrics(value);
       }
     } catch {
       toast.error('Falha ao salvar');
@@ -618,9 +655,22 @@ export default function ChannelDetailPage() {
           <TabsContent value="blog" className="space-y-6 mt-6">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-blue-500" /> Blog
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-blue-500" /> Blog
+                  </CardTitle>
+                  {channel.blog_url && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fetchBlogMetrics(channel.blog_url!)}
+                      disabled={blogLoading}
+                    >
+                      <RefreshCw className={`h-4 w-4 mr-2 ${blogLoading ? 'animate-spin' : ''}`} />
+                      Atualizar
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
@@ -651,17 +701,71 @@ export default function ChannelDetailPage() {
                       Cole a URL do blog acima para conectar.
                     </p>
                   </div>
-                ) : (
+                ) : blogLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : blogMetrics ? (
                   <>
+                    {/* Blog stats */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-muted/50 rounded-lg p-4 text-center">
+                        <PenLine className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
+                        <div className="text-2xl font-bold">{formatNumber(blogMetrics.totalPosts)}</div>
+                        <div className="text-xs text-muted-foreground">Posts publicados</div>
+                      </div>
+                      <div className="bg-muted/50 rounded-lg p-4 text-center">
+                        <Calendar className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
+                        <div className="text-2xl font-bold">
+                          {blogMetrics.lastPublished
+                            ? new Date(blogMetrics.lastPublished).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+                            : '—'}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Último post</div>
+                      </div>
+                    </div>
+
+                    {/* Recent posts */}
+                    {blogMetrics.recentPosts.length > 0 && (
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-medium">Posts recentes</h3>
+                        <div className="divide-y">
+                          {blogMetrics.recentPosts.map((post) => (
+                            <div key={post.id} className="flex items-center justify-between py-2.5">
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm font-medium truncate" dangerouslySetInnerHTML={{ __html: post.title }} />
+                                <div className="text-xs text-muted-foreground">
+                                  {new Date(post.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                </div>
+                              </div>
+                              <Button variant="ghost" size="sm" asChild className="shrink-0 ml-2">
+                                <a href={post.link} target="_blank" rel="noopener noreferrer">
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                </a>
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <Button variant="outline" size="sm" asChild>
                       <a href={channel.blog_url} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="h-4 w-4 mr-2" /> Abrir blog
                       </a>
                     </Button>
-                    <div className="bg-muted/50 rounded-lg p-4 text-center text-sm text-muted-foreground">
-                      Métricas do blog em breve — WordPress REST API integration.
-                    </div>
                   </>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      Não foi possível carregar métricas. Verifique se o blog tem a REST API do WordPress habilitada.
+                    </p>
+                    <Button variant="outline" size="sm" asChild className="mx-auto block w-fit">
+                      <a href={channel.blog_url} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-4 w-4 mr-2" /> Abrir blog
+                      </a>
+                    </Button>
+                  </div>
                 )}
               </CardContent>
             </Card>
