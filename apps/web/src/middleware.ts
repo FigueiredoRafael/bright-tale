@@ -20,8 +20,14 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // Login page is public
-  if (pathname === adminPath('/login')) {
+  // Public admin paths — no auth required
+  const PUBLIC_ADMIN_PATHS = new Set([
+    adminPath('/login'),
+    adminPath('/forgot-password'),
+    adminPath('/reset-password'),
+    adminPath('/logout'),
+  ]);
+  if (PUBLIC_ADMIN_PATHS.has(pathname)) {
     return response;
   }
 

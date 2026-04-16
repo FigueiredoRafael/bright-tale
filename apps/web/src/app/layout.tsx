@@ -46,8 +46,17 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <WebVitals />
+      <head>
+        {/* FOUC-prevention: set dark/light class before React hydrates.
+            Reads localStorage, falls back to system preference. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('bt-admin-theme');var d=t==='dark'||(t==null&&window.matchMedia('(prefers-color-scheme:dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.classList.toggle('light',!d);}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className={`${fontDisplay.variable} ${fontBody.variable} ${fontMono.variable}`}>
+        <WebVitals />
         <PostHogProvider>
           {children}
         </PostHogProvider>
