@@ -1,19 +1,22 @@
 @import "tailwindcss";
 
+/* Use class-based dark mode so toggle works (html.dark / html.light) */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Scan admin package for Tailwind class names */
 @source "../../../../node_modules/@tn-figueiredo/admin/dist";
 
 /* ═══ Admin component tokens — mirrors TôNaGarantia tailwind.config.ts ═══ */
 @theme {
-  /* Dashboard surface palette (dark mode) */
-  --color-dash-bg: #0C1017;
-  --color-dash-sidebar: #0E1319;
-  --color-dash-card: #131A24;
-  --color-dash-border: #1C2635;
-  --color-dash-surface: #111820;
+  /* Dashboard surface palette (aligned with apps/app dark) */
+  --color-dash-bg: #0A1017;
+  --color-dash-sidebar: #0F1620;
+  --color-dash-card: #141E2A;
+  --color-dash-border: #1E2E40;
+  --color-dash-surface: #0F1620;
 
-  /* Text tokens (v-* namespace) */
-  --color-v-primary: #F1F5F9;
+  /* Text tokens (v-* namespace, aligned with apps/app) */
+  --color-v-primary: #F0F4F8;
   --color-v-secondary: #94A3B8;
   --color-v-dim: #64748B;
   --color-v-green: #00C853;
@@ -33,6 +36,52 @@
   --color-vivid-yellow: #FBBF24;
   --color-vivid-red: #FF5252;
   --color-vivid-cyan: #22D3EE;
+
+  /* ── shadcn-compatible semantic tokens (used by admin pages) ── */
+  --color-background: var(--color-sh-background);
+  --color-foreground: var(--color-sh-foreground);
+  --color-card: var(--color-sh-card);
+  --color-card-foreground: var(--color-sh-card-foreground);
+  --color-muted: var(--color-sh-muted);
+  --color-muted-foreground: var(--color-sh-muted-foreground);
+  --color-primary: var(--color-sh-primary);
+  --color-primary-foreground: var(--color-sh-primary-foreground);
+  --color-secondary: var(--color-sh-secondary);
+  --color-secondary-foreground: var(--color-sh-secondary-foreground);
+  --color-border: var(--color-sh-border);
+  --color-ring: var(--color-sh-ring);
+}
+
+/* ── shadcn semantic values — dark (copied from apps/app .dark) ── */
+:root {
+  --color-sh-background: #0A1017;
+  --color-sh-foreground: #F0F4F8;
+  --color-sh-card: #141E2A;
+  --color-sh-card-foreground: #F0F4F8;
+  --color-sh-muted: #0F1620;
+  --color-sh-muted-foreground: #64748B;
+  --color-sh-primary: #2DD4A8;
+  --color-sh-primary-foreground: #0A1017;
+  --color-sh-secondary: #0F1620;
+  --color-sh-secondary-foreground: #F0F4F8;
+  --color-sh-border: #1E2E40;
+  --color-sh-ring: #2DD4A8;
+}
+
+/* ── shadcn semantic values — light (copied from apps/app :root) ── */
+html.light {
+  --color-sh-background: #F7F9FC;
+  --color-sh-foreground: #0F172A;
+  --color-sh-card: #FFFFFF;
+  --color-sh-card-foreground: #0F172A;
+  --color-sh-muted: #FFFFFF;
+  --color-sh-muted-foreground: #94A3B8;
+  --color-sh-primary: #2DD4BF;
+  --color-sh-primary-foreground: #FFFFFF;
+  --color-sh-secondary: #FFFFFF;
+  --color-sh-secondary-foreground: #0F172A;
+  --color-sh-border: #E2E8F0;
+  --color-sh-ring: #2DD4BF;
 }
 
 /* Health dot glow pulse — box-shadow based, not opacity */

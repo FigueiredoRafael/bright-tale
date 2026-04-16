@@ -1,19 +1,13 @@
 #!/usr/bin/env bash
-# Pre-commit: runs typecheck, lint, and production builds for all workspaces
-# to catch issues that would fail on Vercel deploy.
+# Pre-commit: typecheck + lint to catch build-breaking issues before push.
+# Tests and full builds are left to CI — keeping this hook fast reduces --no-verify temptation.
 
 set -e
 
 echo "→ Typecheck all workspaces..."
 npm run typecheck
 
-echo "→ Lint all workspaces..."
-npm run lint
+echo "→ Lint staged files..."
+npx lint-staged
 
-echo "→ Run tests in all workspaces..."
-npm run test --workspaces --if-present
-
-echo "→ Build all workspaces (same as Vercel)..."
-npm run build --workspaces --if-present
-
-echo "✓ Pre-commit passed — safe to push to Vercel."
+echo "✓ Pre-commit passed."

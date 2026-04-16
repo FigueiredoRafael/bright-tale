@@ -9,7 +9,12 @@ import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
 import { getStripe } from '../lib/billing/stripe.js';
 import { PLANS, getPlan, planFromPriceId, ADDON_PACKS, type PlanId, type BillingCycle } from '../lib/billing/plans.js';
-import type Stripe from 'stripe';
+
+type StripeClient = ReturnType<typeof getStripe>;
+type StripeEvent = ReturnType<StripeClient['webhooks']['constructEvent']>;
+type StripeCheckoutSession = Awaited<ReturnType<StripeClient['checkout']['sessions']['create']>>;
+type StripeSubscription = Awaited<ReturnType<StripeClient['subscriptions']['retrieve']>>;
+type StripeInvoice = Awaited<ReturnType<StripeClient['invoices']['retrieve']>>;
 
 async function getOrg(userId: string) {
   const sb = createServiceClient();
@@ -282,7 +287,7 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
         const raw = (request as { rawBody?: string | Buffer }).rawBody;
         if (!raw) throw new ApiError(400, 'No raw body', 'BAD_REQUEST');
 
-        let event: Stripe.Event;
+        let event: StripeEvent;
         try {
           event = stripe.webhooks.constructEvent(raw, sig, secret);
         } catch (err) {
@@ -300,12 +305,12 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
 
 /* ─── Webhook event dispatch ──────────────────────────────────────────────── */
 
-async function handleStripeEvent(event: Stripe.Event, fastify: FastifyInstance): Promise<void> {
+async function handleStripeEvent(event: StripeEvent, fastify: FastifyInstance): Promise<void> {
   fastify.log.info({ type: event.type, id: event.id }, '[stripe] event');
 
   switch (event.type) {
     case 'checkout.session.completed': {
-      const session = event.data.object as Stripe.Checkout.Session;
+      const session = event.data.object as StripeCheckoutSession;
       // F3-005: one-time addon payments — grant credits to org.
       if (session.metadata?.kind === 'addon') {
         await grantAddonCredits(session);
@@ -316,17 +321,17 @@ async function handleStripeEvent(event: Stripe.Event, fastify: FastifyInstance):
     }
     case 'customer.subscription.created':
     case 'customer.subscription.updated': {
-      const sub = event.data.object as Stripe.Subscription;
+      const sub = event.data.object as StripeSubscription;
       await syncSubscription(sub);
       break;
     }
     case 'customer.subscription.deleted': {
-      const sub = event.data.object as Stripe.Subscription;
+      const sub = event.data.object as StripeSubscription;
       await downgradeToFree(sub);
       break;
     }
     case 'invoice.paid': {
-      const invoice = event.data.object as Stripe.Invoice;
+      const invoice = event.data.object as StripeInvoice;
       await resetCreditsOnRenewal(invoice);
       break;
     }
@@ -336,7 +341,7 @@ async function handleStripeEvent(event: Stripe.Event, fastify: FastifyInstance):
   }
 }
 
-async function grantAddonCredits(session: Stripe.Checkout.Session): Promise<void> {
+async function grantAddonCredits(session: StripeCheckoutSession): Promise<void> {
   const orgId = session.metadata?.org_id;
   const creditsStr = session.metadata?.credits;
   if (!orgId || !creditsStr) return;
@@ -357,7 +362,7 @@ async function grantAddonCredits(session: Stripe.Checkout.Session): Promise<void
     .eq('id', orgId);
 }
 
-async function activateSubscriptionFromSession(session: Stripe.Checkout.Session): Promise<void> {
+async function activateSubscriptionFromSession(session: StripeCheckoutSession): Promise<void> {
   const orgId = session.metadata?.org_id;
   if (!orgId || session.mode !== 'subscription' || !session.subscription) return;
   const stripe = getStripe();
@@ -367,7 +372,7 @@ async function activateSubscriptionFromSession(session: Stripe.Checkout.Session)
   await syncSubscription(subscription);
 }
 
-async function syncSubscription(subscription: Stripe.Subscription): Promise<void> {
+async function syncSubscription(subscription: StripeSubscription): Promise<void> {
   const orgId = subscription.metadata?.org_id;
   const priceId = subscription.items.data[0]?.price.id;
   if (!orgId || !priceId) return;
@@ -395,7 +400,7 @@ async function syncSubscription(subscription: Stripe.Subscription): Promise<void
     .eq('id', orgId);
 }
 
-async function downgradeToFree(subscription: Stripe.Subscription): Promise<void> {
+async function downgradeToFree(subscription: StripeSubscription): Promise<void> {
   const orgId = subscription.metadata?.org_id;
   if (!orgId) return;
   const freePlan = getPlan('free');
@@ -413,7 +418,7 @@ async function downgradeToFree(subscription: Stripe.Subscription): Promise<void>
     .eq('id', orgId);
 }
 
-async function resetCreditsOnRenewal(invoice: Stripe.Invoice): Promise<void> {
+async function resetCreditsOnRenewal(invoice: StripeInvoice): Promise<void> {
   // Only reset on recurring cycle renewals (not the first invoice, which
   // syncSubscription already handled).
   if (invoice.billing_reason !== 'subscription_cycle') return;

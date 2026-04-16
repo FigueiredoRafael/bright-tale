@@ -1,19 +1,27 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { isAdminUser } from '@/lib/admin-check';
+import { adminPath, ADMIN_INTERNAL } from '@/lib/admin-path';
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const pathname = request.nextUrl.pathname;
 
-  // Only run auth logic for /admin routes
-  if (!pathname.startsWith('/admin')) {
+  // Block direct access to internal /zadmin path (must go through rewrite)
+  if (pathname.startsWith(ADMIN_INTERNAL)) {
+    return new NextResponse(null, { status: 404 });
+  }
+
+  const prefix = adminPath();
+
+  // Only run auth logic for admin routes
+  if (!pathname.startsWith(prefix)) {
     return response;
   }
 
-  // /admin/login is public
-  if (pathname === '/admin/login') {
+  // Login page is public
+  if (pathname === adminPath('/login')) {
     return response;
   }
 
@@ -44,11 +52,11 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.redirect(new URL('/admin/login', request.url));
+    return NextResponse.redirect(new URL(adminPath('/login'), request.url));
   }
 
   if (!await isAdminUser(supabase, user.id)) {
-    return NextResponse.redirect(new URL('/admin/login?error=unauthorized', request.url));
+    return NextResponse.redirect(new URL(adminPath('/login?error=unauthorized'), request.url));
   }
 
   return response;
