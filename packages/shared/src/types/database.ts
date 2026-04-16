@@ -986,6 +986,66 @@ export type Database = {
           },
         ]
       }
+      engine_logs: {
+        Row: {
+          channel_id: string | null
+          created_at: string
+          duration_ms: number
+          error: string | null
+          id: string
+          input_json: Json
+          input_tokens: number | null
+          model: string
+          org_id: string | null
+          output_json: Json | null
+          output_tokens: number | null
+          project_id: string | null
+          provider: string
+          session_id: string | null
+          session_type: string
+          stage: string
+          user_id: string
+        }
+        Insert: {
+          channel_id?: string | null
+          created_at?: string
+          duration_ms?: number
+          error?: string | null
+          id?: string
+          input_json: Json
+          input_tokens?: number | null
+          model: string
+          org_id?: string | null
+          output_json?: Json | null
+          output_tokens?: number | null
+          project_id?: string | null
+          provider: string
+          session_id?: string | null
+          session_type: string
+          stage: string
+          user_id: string
+        }
+        Update: {
+          channel_id?: string | null
+          created_at?: string
+          duration_ms?: number
+          error?: string | null
+          id?: string
+          input_json?: Json
+          input_tokens?: number | null
+          model?: string
+          org_id?: string | null
+          output_json?: Json | null
+          output_tokens?: number | null
+          project_id?: string | null
+          provider?: string
+          session_id?: string | null
+          session_type?: string
+          stage?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       idea_archives: {
         Row: {
           brainstorm_session_id: string | null

@@ -24,8 +24,7 @@ export interface EngineLogEntry {
 
 export function logEngineCall(entry: EngineLogEntry): void {
   const sb = createServiceClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (sb.from('engine_logs' as any) as unknown as {
+  (sb.from('engine_logs') as unknown as {
     insert: (row: Record<string, unknown>) => Promise<{ error: unknown }>;
   }).insert({
     user_id: entry.userId,
