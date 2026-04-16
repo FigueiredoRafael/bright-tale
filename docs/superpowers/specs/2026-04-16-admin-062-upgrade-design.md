@@ -627,7 +627,7 @@ Dashboard:
 | R1 | Breaking API changes admin 0.1→0.6 cause typecheck to explode | High | Step 1 accepts type errors; Steps 3–5 fix inline during refactor |
 | R2 | Slate remap causes light-mode regression across login / users / orgs | High | Smoke explicitly tests light mode; remap only the 6 shades actually used by lib; narrow if needed |
 | R3 | Google OAuth callback URL mismatch blocks login | Medium | Fallback plan B (stub action); prerequisite P2/P3 enforced before Step 3 |
-| R4 | Edge runtime incompat for auth-nextjs in middleware | Low | Verified Edge-compatible during research; revert Step 6 if runtime rejects |
+| R4 | Edge runtime incompat for auth-nextjs in middleware | **Medium** | Static probe (grep for CJS `require('fs'|...)` + `Buffer`/`process.versions` tokens) cleans at install time — this is smoke, not proof. Dynamic imports, inlined crypto, and transitive deps from `@supabase/ssr` could still break at runtime. Real verification: `next build` in Task 6.3 catches build-time violations; runtime failures surface on first request in staging. If runtime rejects, revert Step 6 only — other steps retain their value |
 | R5 | Vercel preview build fails (no `NPM_TOKEN`) | Medium | P1 prerequisite; fail fast on first push |
 | R6 | `features.darkMode: true` config flag is type-only (not consumed upstream) | Low | Known, documented; consumer retains local toggle using `useDarkModeGuard` |
 | R7 | LOC estimates off by ±20 per file | Low | Accept; actuals captured in PR diff |

@@ -88,9 +88,11 @@ grep '^NEXT_PUBLIC_APP_URL=' apps/web/.env.local
 ```
 Expected: prints `NEXT_PUBLIC_APP_URL=http://localhost:3002`
 
-### Task 0.3: Capture baseline screenshots
+### Task 0.3: Capture baseline screenshots [OPERATOR, ~20 min]
 
 **Files:** Create: `docs/superpowers/specs/assets/admin-062-baseline/*.png` (7 files)
+
+**⚠ Human-in-loop.** Cannot be automated — requires browser + admin credentials. Agent executors must stop here and request operator run this task, or skip and accept no visual regression baseline (spec §7 "visual regression policy" cannot be fully enforced without it).
 
 - [ ] **Step 1: Start dev server**
 
@@ -158,9 +160,11 @@ Expected:
 "@tn-figueiredo/auth-nextjs": "2.2.0",
 ```
 
-### Task 1.2: Edge-runtime compatibility probe
+### Task 1.2: Edge-runtime compatibility probe (static smoke, not full verification)
 
 **Files:** none (diagnostic only, evidence captured in commit body)
+
+**What this probe is and isn't:** a literal grep for `require('fs'|...)` CJS patterns. It **misses**: dynamic imports, Buffer/process usage inlined without `require`, transitive Node deps via `@supabase/ssr`. A clean grep raises confidence but does **not** prove Edge compatibility. Runtime verification happens in Task 6.3 (`next build` catches most build-time Edge violations) and in staging deploy. See spec §8 R4.
 
 - [ ] **Step 1: Grep dist for Node-only built-ins**
 
@@ -171,6 +175,15 @@ grep -rE "require\(['\"](fs|path|crypto|child_process|os|stream|net|tls)['\"]" \
   apps/web/node_modules/@tn-figueiredo/auth-nextjs/dist/ 2>/dev/null || echo "No Node-only requires"
 ```
 Expected: `No Node-only requires`. Save output for commit body. If matches appear, **skip Phase 6** and update spec R4 mitigation accordingly.
+
+- [ ] **Step 2: Additional smoke — look for Buffer/process global usage**
+
+Run:
+```bash
+grep -rE "\b(Buffer|process\.versions|process\.platform)" \
+  apps/web/node_modules/@tn-figueiredo/auth-nextjs/dist/ 2>/dev/null | head -5 || echo "No Node globals"
+```
+Clean output raises confidence further; matches mean Phase 6 is higher-risk.
 
 ### Task 1.3: Record typecheck baseline errors
 
@@ -324,7 +337,7 @@ git commit -m "feat(web): add admin shell slate remap + AuthTheme color tokens"
 Create `apps/web/src/lib/auth/__tests__/admin-actions.test.ts`:
 
 ```typescript
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('@tn-figueiredo/auth-nextjs/actions', () => ({
   signInWithPassword: vi.fn(),
@@ -340,7 +353,11 @@ import * as actions from '../admin-actions'
 describe('admin-actions wrappers', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    process.env.NEXT_PUBLIC_APP_URL = 'https://brighttale.test'
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://brighttale.test')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
   })
 
   it('signInWithPassword forwards input unchanged', async () => {
@@ -368,7 +385,7 @@ describe('admin-actions wrappers', () => {
   })
 
   it('signInWithGoogle throws if NEXT_PUBLIC_APP_URL missing', async () => {
-    delete process.env.NEXT_PUBLIC_APP_URL
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', '')
     await expect(actions.signInWithGoogle({})).rejects.toThrow(/NEXT_PUBLIC_APP_URL/)
   })
 
@@ -401,6 +418,8 @@ describe('admin-actions wrappers', () => {
   })
 })
 ```
+
+**Note:** `vi.stubEnv` / `vi.unstubAllEnvs` scope env changes to a single test so parallel test runs don't pollute each other.
 
 - [ ] **Step 2: Run tests — must fail (module not found)**
 
@@ -485,9 +504,13 @@ Replace the full content of `apps/web/src/app/zadmin/login/page.tsx` with:
 ```tsx
 'use client'
 
+import { Suspense } from 'react'
 import { AdminLogin } from '@tn-figueiredo/admin/login'
 import { useSearchParams } from 'next/navigation'
+import { adminPath } from '@/lib/admin-path'
 import * as actions from '@/lib/auth/admin-actions'
+
+export const dynamic = 'force-dynamic'
 
 const THEME = {
   bg: 'var(--auth-bg)',
@@ -499,7 +522,7 @@ const THEME = {
   border: 'var(--auth-border)',
 } as const
 
-export default function LoginPage() {
+function LoginForm() {
   const authError = useSearchParams().get('error') ?? undefined
   return (
     <AdminLogin
@@ -509,11 +532,21 @@ export default function LoginPage() {
       }}
       theme={THEME}
       authError={authError}
-      redirectTo="/admin"
+      redirectTo={adminPath()}
     />
   )
 }
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  )
+}
 ```
+
+**Why both `dynamic = 'force-dynamic'` and `<Suspense>`:** Next 16 enforces Suspense-wrapping for `useSearchParams` during build; the `dynamic` export is a belt-and-suspenders guard since the page is inherently runtime-dependent. `adminPath()` replaces hardcoded `/admin` so slug customization propagates.
 
 - [ ] **Step 2: Typecheck just this file**
 
@@ -538,6 +571,8 @@ Create `apps/web/src/app/zadmin/forgot-password/page.tsx`:
 import { AdminForgotPassword } from '@tn-figueiredo/admin/login'
 import { adminPath } from '@/lib/admin-path'
 import * as actions from '@/lib/auth/admin-actions'
+
+export const dynamic = 'force-dynamic'
 
 const THEME = {
   bg: 'var(--auth-bg)',
@@ -572,9 +607,10 @@ Create `apps/web/src/app/zadmin/reset-password/page.tsx`:
 'use client'
 
 import { AdminResetPassword } from '@tn-figueiredo/admin/login'
-import { useRouter } from 'next/navigation'
 import { adminPath } from '@/lib/admin-path'
 import * as actions from '@/lib/auth/admin-actions'
+
+export const dynamic = 'force-dynamic'
 
 const THEME = {
   bg: 'var(--auth-bg)',
@@ -587,7 +623,6 @@ const THEME = {
 } as const
 
 export default function ResetPasswordPage() {
-  const router = useRouter()
   return (
     <AdminResetPassword
       actions={{ resetPassword: actions.resetPassword }}
@@ -661,7 +696,9 @@ Expected: shows the new set with all 4 paths.
 
 **Files:** Modify: `apps/web/src/app/layout.tsx:46-57`
 
-- [ ] **Step 1: Add script tag inside root layout**
+**Note:** current file has a pre-existing bug — `<WebVitals />` sits as a sibling of `<body>` inside `<html>`, which is invalid JSX placement. This task fixes that bug incidentally by moving WebVitals inside `<body>` while adding the FOUC `<head>`.
+
+- [ ] **Step 1: Add script tag and fix WebVitals placement**
 
 Replace lines 46-57 (the `RootLayout` function) in `apps/web/src/app/layout.tsx` with:
 
@@ -678,8 +715,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <WebVitals />
       <body className={`${fontDisplay.variable} ${fontBody.variable} ${fontMono.variable}`}>
+        <WebVitals />
         <PostHogProvider>
           {children}
         </PostHogProvider>
@@ -746,7 +783,13 @@ git commit -m "feat(web): adopt AdminLogin + forgot/reset + logout route
 
 - [ ] **Step 3: Smoke subset (14 items)**
 
-Start dev server (`npm run dev:web`). Run items from spec §7 Level 2 "After Step 3" subset: 14 items covering auth happy paths, error paths, access gating. Record any failures — do NOT proceed to Phase 4 until all 14 pass. If Google OAuth fails due to missing Google Cloud config, activate spec §6 Step 3 Plan B (stub + string override).
+Start dev server (`npm run dev:web`). Run items from spec §7 Level 2 "After Step 3" subset: 14 items covering auth happy paths, error paths, access gating.
+
+**Handling failures:**
+- **All 14 pass:** proceed to Phase 4.
+- **Only Google OAuth fails** (P2/P3 pending): activate Plan B — edit `admin-actions.ts` so `signInWithGoogle` returns `{ ok: false, error: 'google_not_configured' }` and update login `strings` prop: `strings={{ googleButton: 'Google (em breve)' }}`. Make as a **separate commit** on top of the main Phase 3 commit: `chore(web): stub Google OAuth until P2/P3 configured`. This keeps the main Phase 3 commit pristine for when Google lights up.
+- **Other items fail** (forgot/reset email, logout, etc.): **stop**, investigate, fix, and re-run smoke before advancing. Do NOT accumulate regressions across phases.
+- **SMTP unavailable** (P5 pending): skip forgot/reset items and mark them explicitly pending in Phase 7 PR body.
 
 ---
 
@@ -1328,9 +1371,11 @@ npm run test --workspaces --if-present
 ```
 Expected: admin-actions 8/8 pass; other workspaces passWithNoTests or pre-existing green.
 
-### Task 7.2: Capture post-upgrade screenshots
+### Task 7.2: Capture post-upgrade screenshots [OPERATOR, ~20 min]
 
 **Files:** Create: `docs/superpowers/specs/assets/admin-062-post/*.png` (7 files)
+
+**⚠ Human-in-loop.** Cannot be automated — requires browser + admin credentials. Mirror of Task 0.3 setup.
 
 - [ ] **Step 1: Start dev + capture same 7 screenshots as Task 0.3**
 
