@@ -315,6 +315,14 @@ export default function NewDraftPage() {
                                         if (obj.BC_CANONICAL_CORE && typeof obj.BC_CANONICAL_CORE === 'object') {
                                             obj = { canonical_core: obj.BC_CANONICAL_CORE, ...obj };
                                         }
+                                        // Unwrap BC_BLOG_OUTPUT / BC_VIDEO_OUTPUT / etc.
+                                        const outputKeys = ['BC_BLOG_OUTPUT', 'BC_VIDEO_OUTPUT', 'BC_PODCAST_OUTPUT', 'BC_SHORTS_OUTPUT'];
+                                        for (const key of outputKeys) {
+                                            if (obj[key] && typeof obj[key] === 'object') {
+                                                obj = obj[key] as Record<string, unknown>;
+                                                break;
+                                            }
+                                        }
 
                                         // Create draft first
                                         const res = await fetch("/api/content-drafts", {
@@ -326,7 +334,7 @@ export default function NewDraftPage() {
                                                 ideaId: ideaIdParam,
                                                 researchSessionId: researchSessionIdParam,
                                                 type,
-                                                title: title || "Untitled",
+                                                title: (obj.title as string) || title || "Untitled",
                                             }),
                                         });
                                         const json = await res.json();
