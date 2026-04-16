@@ -21,6 +21,7 @@ import {
   fetchCategoriesQuerySchema,
 } from '@brighttale/shared/schemas/wordpress';
 import { publishDraftSchema } from '@brighttale/shared/schemas/pipeline';
+import { ingest, flushAxiom } from '../lib/axiom.js';
 
 const createConfigSchema = z.object({
   site_url: z.string().url('Invalid WordPress site URL'),
@@ -1539,6 +1540,19 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       const { url } = request.query as { url?: string };
       if (!url) throw new ApiError(400, 'url query param is required', 'VALIDATION_ERROR');
 
+      // Axiom test event
+      ingest({
+        type: 'blog_metrics_refresh',
+        userId: request.headers['x-user-id'],
+        blogUrl: url,
+        test: true,
+        customTestObject: {
+          source: 'blog-metrics-button',
+          timestamp: new Date().toISOString(),
+          message: 'Axiom integration test event',
+        },
+      });
+
       // Normalize URL
       const siteUrl = url.replace(/\/+$/, '');
       const apiBase = `${siteUrl}/wp-json/wp/v2`;
@@ -1569,6 +1583,8 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         date: p.date,
         link: p.link,
       }));
+
+      await flushAxiom();
 
       return reply.send({
         data: {

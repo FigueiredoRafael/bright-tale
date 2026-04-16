@@ -41,6 +41,11 @@ export async function proxy(request: NextRequest) {
   const supaUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supaKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+  // Let Sentry tunnel route pass through without middleware interference
+  if (pathname === '/monitoring' || pathname.startsWith('/monitoring/')) {
+    return NextResponse.next();
+  }
+
   // Build a response we'll mutate with cookie updates
   let response = NextResponse.next({ request });
 

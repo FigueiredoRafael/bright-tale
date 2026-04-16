@@ -1,5 +1,6 @@
 import { getLocale } from 'next-intl/server';
 import { Plus_Jakarta_Sans, Inter, JetBrains_Mono } from 'next/font/google';
+import { WebVitals } from '@/lib/axiom/client';
 import './globals.css';
 
 const plusJakarta = Plus_Jakarta_Sans({
@@ -34,6 +35,7 @@ export default async function RootLayout({
       className={`${plusJakarta.variable} ${inter.variable} ${jetbrainsMono.variable}`}
       suppressHydrationWarning
     >
+      <WebVitals />
       <body className="antialiased">
         {children}
       </body>

@@ -4,6 +4,7 @@ import { hasLocale, NextIntlClientProvider } from 'next-intl';
 import { getMessages, setRequestLocale, getTranslations } from 'next-intl/server';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from '@/components/theme/theme-provider';
+import { PostHogProvider } from '@/components/providers/posthog-provider';
 import { locales } from '@/i18n/config';
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
@@ -39,10 +40,12 @@ export default async function LocaleLayout({
 
   return (
     <NextIntlClientProvider messages={messages}>
-      <ThemeProvider>
-        {children}
-        <Toaster richColors position="top-right" />
-      </ThemeProvider>
+      <PostHogProvider>
+        <ThemeProvider>
+          {children}
+          <Toaster richColors position="top-right" />
+        </ThemeProvider>
+      </PostHogProvider>
     </NextIntlClientProvider>
   );
 }

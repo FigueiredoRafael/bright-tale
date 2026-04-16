@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import * as Sentry from '@sentry/nextjs';
+import { useAnalytics } from '@/hooks/use-analytics';
 import { useRouter } from '@/i18n/navigation';
 import { useParams } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -101,6 +104,8 @@ interface BlogMetrics {
 export default function ChannelDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const { track } = useAnalytics();
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [channel, setChannel] = useState<Channel | null>(null);
   const [references, setReferences] = useState<Reference[]>([]);
   const [refLimit, setRefLimit] = useState(0);
@@ -133,6 +138,12 @@ export default function ChannelDetailPage() {
   const [voiceProvider, setVoiceProvider] = useState<string | null>(null);
   const [voiceId, setVoiceId] = useState<string | null>(null);
   const [voiceSpeed, setVoiceSpeed] = useState(1.0);
+
+  // Get user email for Sentry context
+  useEffect(() => {
+    const sb = createClient();
+    sb.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? null));
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -200,6 +211,36 @@ export default function ChannelDetailPage() {
   // Fetch blog metrics when channel loads and has blog_url
   const fetchBlogMetrics = useCallback(async (url: string) => {
     setBlogLoading(true);
+
+    // Axiom custom event (user context injected automatically)
+    track('blog_metrics_refresh', {
+      channelId: id,
+      blogUrl: url,
+      customTestObject: {
+        source: 'atualizar-button',
+        message: 'Axiom client-side test event',
+      },
+    });
+
+    // Send Sentry test event
+    Sentry.captureEvent({
+      message: `Update was button triggered by user: ${userEmail}`,
+      level: 'info',
+      user: { email: userEmail ?? undefined },
+      tags: {
+        action: 'blog_metrics_refresh',
+        channel_id: id,
+      },
+      extra: {
+        userEmail,
+        date: new Date().toISOString(),
+        environment: process.env.NODE_ENV,
+        customTestObject: {
+          testObject1: 'test message',
+        },
+      },
+    });
+
     try {
       const res = await fetch(`/api/wordpress/blog-metrics?url=${encodeURIComponent(url)}`);
       const json = await res.json();
@@ -209,7 +250,7 @@ export default function ChannelDetailPage() {
     } finally {
       setBlogLoading(false);
     }
-  }, []);
+  }, [userEmail, id, track]);
 
   useEffect(() => {
     if (channel?.blog_url) fetchBlogMetrics(channel.blog_url);

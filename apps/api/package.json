@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.72.1",
+    "@axiomhq/js": "1.6.0",
+    "@axiomhq/pino": "1.6.0",
     "@brighttale/shared": "*",
     "@fastify/cookie": "^9.4.0",
     "@fastify/cors": "^9.0.1",
@@ -33,6 +35,7 @@
     "js-yaml": "^4.1.1",
     "marked": "^17.0.1",
     "openai": "^6.17.0",
+    "posthog-node": "5.29.2",
     "sharp": "0.34.5",
     "stripe": "22.0.1",
     "zod": "^3.25.76"
