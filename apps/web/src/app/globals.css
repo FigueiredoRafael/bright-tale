@@ -50,6 +50,20 @@
   --color-secondary-foreground: var(--color-sh-secondary-foreground);
   --color-border: var(--color-sh-border);
   --color-ring: var(--color-sh-ring);
+
+  /* ── slate remap for @tn-figueiredo/admin shell (0.6.2) ── */
+  /* Lib uses hardcoded `bg-slate-50 dark:bg-slate-900`, etc.  */
+  /* Remap to BrightTale tokens so shell inherits brand colors */
+  --color-slate-50: #F7F9FC;
+  --color-slate-100: #EEF2F7;
+  --color-slate-200: #E2E8F0;
+  --color-slate-300: #CBD5E1;
+  --color-slate-400: #94A3B8;
+  --color-slate-500: #64748B;
+  --color-slate-600: #475569;
+  --color-slate-700: #1E2E40;
+  --color-slate-800: #141E2A;
+  --color-slate-900: #0A1017;
 }
 
 /* ── shadcn semantic values — dark (copied from apps/app .dark) ── */
@@ -66,6 +80,15 @@
   --color-sh-secondary-foreground: #F0F4F8;
   --color-sh-border: #1E2E40;
   --color-sh-ring: #2DD4A8;
+
+  /* ── @tn-figueiredo/admin AuthTheme — dark ── */
+  --auth-bg: var(--color-sh-background);
+  --auth-card-bg: var(--color-sh-card);
+  --auth-accent: var(--color-sh-primary);
+  --auth-accent-hover: var(--color-v-teal);
+  --auth-text: var(--color-sh-foreground);
+  --auth-muted: var(--color-v-secondary);
+  --auth-border: var(--color-sh-border);
 }
 
 /* ── shadcn semantic values — light (copied from apps/app :root) ── */
@@ -82,6 +105,15 @@ html.light {
   --color-sh-secondary-foreground: #0F172A;
   --color-sh-border: #E2E8F0;
   --color-sh-ring: #2DD4BF;
+
+  /* ── @tn-figueiredo/admin AuthTheme — light ── */
+  --auth-bg: var(--color-sh-background);
+  --auth-card-bg: var(--color-sh-card);
+  --auth-accent: var(--color-sh-primary);
+  --auth-accent-hover: #14B8A6;
+  --auth-text: var(--color-sh-foreground);
+  --auth-muted: var(--color-sh-muted-foreground);
+  --auth-border: var(--color-sh-border);
 }
 
 /* Health dot glow pulse — box-shadow based, not opacity */
