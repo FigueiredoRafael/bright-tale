@@ -131,6 +131,20 @@ Server actions:
 Utility:
 - `createServerClient(params)` — **Edge-compatible** (verified: uses standard fetch + Next.js `cookies()`, no Node-only APIs)
 
+### Environment variable inventory
+
+| Var | Status | Purpose | Value example |
+|---|---|---|---|
+| `NEXT_PUBLIC_ADMIN_SLUG` | existing | Configurable admin URL prefix | `admin` (default) |
+| `NEXT_PUBLIC_SUPABASE_URL` | existing | Supabase project URL | `https://xyz.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | existing | Supabase anon key (SSR cookie flow) | opaque |
+| `SUPABASE_SERVICE_ROLE_KEY` | existing | service_role key for admin data fetch | opaque |
+| `NPM_TOKEN` | existing locally; **new on Vercel** | GitHub Packages auth for `@tn-figueiredo/*` | opaque; P1 prerequisite |
+| **`NEXT_PUBLIC_APP_URL`** | **new** | Absolute URL of web app, injected into `signInWithGoogle({ appUrl })` and `forgotPassword({ appUrl })` so auth-nextjs builds correct OAuth/reset redirects. Must be set per environment | dev: `http://localhost:3002`; staging: `https://staging.brighttale.io`; prod: `https://brighttale.io` |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | **not added** | Cloudflare Turnstile anti-bot. Decision: **opt-out** for Phase 1 — admin login is restricted (`isAdminUser` check is the real gate); Turnstile adds no value here. Reconsider if abuse spike. | — |
+
+**Phase 2 will add:** env vars for affiliate integration (TBD in that spec).
+
 ---
 
 ## 4. Architecture
@@ -156,7 +170,7 @@ Utility:
 ┌─ apps/web ─────────────────────────────────────────────────────┐
 │  Auth: createClient() + isAdminUser() (user_roles table)       │
 │  Middleware: rewrite /<slug>/* → /zadmin/*; auth gate          │
-│  Config (src/lib/admin-layout-config.ts): sections + branding  │
+│  Config (src/lib/admin-layout-config.tsx): sections + branding  │
 │    + logoutPath — single source reused in Phase 2              │
 │  Pages: data fetching (service_role) + lib primitives          │
 │  Theme (globals.css @theme): remap --color-slate-* + AuthTheme │
@@ -183,17 +197,35 @@ Utility:
 
 | Surface | Mechanism |
 |---|---|
-| Shell + sidebar (lib uses hardcoded `bg-slate-50 dark:bg-slate-900`, `bg-white dark:bg-slate-800`, etc.) | Remap `--color-slate-50/100/800/900` in `@theme` → BrightTale tokens (`--color-dash-*`) |
+| Shell + sidebar (lib uses hardcoded slate classes) | Remap `--color-slate-*` in `@theme` → BrightTale tokens (`--color-dash-*`) |
 | Dark mode | Class-based (`html.dark`/`html.light`) via custom variant — **existing setup** |
 | Login (`AuthTheme`) | Pass `theme={{ bg, card, accent, accentHover, text, muted, border }}` mapping to CSS vars `--auth-bg`, `--auth-card-bg`, `--auth-accent`, `--auth-accent-hover`, `--auth-text`, `--auth-muted`, `--auth-border` — set in `:root`/`html.light` |
 | KPI cards / charts | Per-instance props (`color`, `iconBg`) accept hex or Tailwind classes |
 
-**⚠ Light-mode regression risk:** slate classes appear extensively in existing login/dashboard/users pages. Remapping `--color-slate-*` will shift their light-mode appearance. Mitigation: slate-remap only what the lib actually uses in shell (`slate-50/100/200/700/800/900`); if over-broad, narrow to specific shades. Verified in smoke (Step 7).
+**Exact slate shades the lib uses** (from inspection of `dist/index.js` + `dist/client.js` of 0.6.2):
+
+| Shade | Where |
+|---|---|
+| `slate-50` | Shell main bg (light) |
+| `slate-100` | KPI card text (dark mode); misc hover states |
+| `slate-200` | Topbar/card borders (light) |
+| `slate-300` | Topbar logout link (dark); muted text |
+| `slate-400` | Neutral change color (KPI); dim text |
+| `slate-500` | KPI label text (light); neutral states |
+| `slate-600` | Topbar logout link (light); secondary text |
+| `slate-700` | Topbar borders (dark) |
+| `slate-800` | Topbar bg (dark); KPI card bg (dark) |
+| `slate-900` | Shell main bg (dark); KPI value text (light) |
+
+**Remap all 9 shades in `@theme`**, even the ones that don't immediately match a BrightTale token — partial remap causes asymmetric light/dark (e.g., remap `slate-50` but not `slate-100` → text contrast breaks).
+
+**⚠ Light-mode regression risk:** existing pages (`login/page.tsx`, `(protected)/users/*`, dashboard) use slate classes too. Remapping affects them. Mitigation: map slate shades to values that approximate current light-mode defaults so **un-touched pages render nearly identically**, while dark-mode shades (`700/800/900`) map to BrightTale dark tokens for the new shell. Verified per-page in Step 7 smoke.
 
 ### Dark mode toggle
 
 - Lib's `features.darkMode: true` flag is **declared in the type but not consumed** in the lib's code (upstream gap — grep `features\.` in `packages/admin/src` returns zero matches).
-- Consumer retains a **small** toggle component using `useDarkModeGuard()` hook from `/client` (~20 LOC, down from 54).
+- Lib's `useDarkModeGuard()` hook returns `{ mounted, isDark }` only — **it does not persist preference or toggle state**. Persistence is consumer's responsibility.
+- Consumer retains a toggle component (~20 LOC, down from 54): reads `localStorage['bt-admin-theme']` on mount, applies `html.classList.add('dark'|'light')`, writes back on toggle. Uses `useDarkModeGuard` purely for SSR-safe initial render.
 - **Placement:** inject into `siteSwitcherSlot` prop of `AdminLayoutConfig`. The lib's new topbar (0.6.0+) renders `siteSwitcherSlot` as generic `ReactNode` — semantically it's for `<SiteSwitcher />`, but `ReactNode` permits any chrome. This is the only extension point in the shell; using it for the theme toggle keeps the button visible and persistent across all admin routes. Follow-up: propose upstream a named `utilitySlot` or `themeToggleSlot` prop for clearer intent.
 
 ### Provider hierarchy
@@ -231,7 +263,7 @@ Utility:
 
 | File | LOC (est.) | Purpose |
 |---|---:|---|
-| `src/lib/admin-layout-config.ts` | +45 | `ADMIN_LAYOUT_CONFIG: AdminLayoutConfig` — sections, branding, logoutPath. Single source of truth; Phase 2 adds affiliate sections here |
+| `src/lib/admin-layout-config.tsx` | +45 | `ADMIN_LAYOUT_CONFIG: AdminLayoutConfig` — sections, branding, logoutPath. Single source of truth; Phase 2 adds affiliate sections here |
 | `src/lib/auth/admin-actions.ts` | +50 | Server actions wrapping auth-nextjs: `signInWithPassword`, `signInWithGoogle`, `forgotPassword`, `resetPassword`, `signOut`. Also provides `appUrl` injection from env |
 | `src/app/zadmin/forgot-password/page.tsx` | +25 | Client wrapper for `<AdminForgotPassword>` |
 | `src/app/zadmin/reset-password/page.tsx` | +25 | Client wrapper for `<AdminResetPassword>` |
@@ -294,13 +326,15 @@ NET: −133 LOC  (~5% reduction on 2,634 base)
 | P3 | Google provider enabled in Supabase | Supabase Dashboard → Auth → Providers → Google | Toggle on, credentials pasted, callback URL noted |
 | P4 | Supabase callback URL registered in Google Cloud | Google Cloud Console → Authorized redirect URIs | Saved; also add `localhost:3002/auth/callback` for dev |
 | P5 | Supabase SMTP configured (for forgot/reset emails) | Supabase Dashboard → Auth → Email | Sends test email; if using Supabase built-in SMTP, verify daily quota vs expected usage |
+| P6 | `NEXT_PUBLIC_APP_URL` set in `apps/web/.env.local` (dev), Vercel env vars (staging + prod) | env files + Vercel dashboard | Values per env match the real URL (see §3 env inventory) |
 
 ### Step 0 — Baseline
 
 - `git tag pre-admin-062`
-- Capture 9 baseline screenshots (5 admin routes × dark + login × dark/light) → `docs/superpowers/specs/assets/admin-062-baseline/`
+- Capture **7 baseline screenshots**: 5 protected admin routes in dark mode (dashboard, users, orgs, agents, analytics) + login in dark + login in light → `docs/superpowers/specs/assets/admin-062-baseline/`
 - Commit: `docs: admin baseline screenshots before 0.6.2 upgrade`
 - `rm -rf apps/web/.next` — avoid stale Tailwind scan between steps
+- Verify `NEXT_PUBLIC_APP_URL` is present in `apps/web/.env.local` (dev) before Step 3 runs. If missing, add it now.
 
 ### Step 1 — Package upgrades (foundation)
 
@@ -315,31 +349,37 @@ npm install @tn-figueiredo/admin@0.6.2 @tn-figueiredo/auth-nextjs@^2.2.0 --save-
 
 ### Step 2 — Theme tokens
 
-- Add to `globals.css` `@theme` block: slate remap (`--color-slate-50/100/200/700/800/900` → BrightTale tokens from `--color-dash-*` family)
-- Add `AuthTheme` CSS vars in `:root` + `html.light`
+- Add to `globals.css` `@theme` block: remap all 9 slate shades (`50/100/200/300/400/500/600/700/800/900`) to values that approximate current light-mode Tailwind defaults for untouched pages and map to BrightTale dark tokens where the new shell will use them
+- Add `AuthTheme` CSS vars (`--auth-bg`, `--auth-card-bg`, `--auth-accent`, `--auth-accent-hover`, `--auth-text`, `--auth-muted`, `--auth-border`) in `:root` (dark default) + `html.light`
 - Commit: `feat(web): add admin shell + AuthTheme color tokens`
-- **Accept**: `npm run dev` renders dashboard without regression (current dashboard doesn't use slate classes — safe baseline)
+- **Accept**: `npm run dev` renders; manual: spot-check **light mode** on `(protected)/users/*` and `zadmin/login/*` (slate-heavy pages) for visible regression — minor shade drift acceptable, hue reversal is not. If regression found, narrow the slate remap to only shades the new shell actually needs.
 
 ### Step 3 — Login flow replacement
 
 Reordered ahead of shell swap: exercises auth-nextjs 2.2 early; failure here doesn't leave us with a half-demolished shell.
 
-Files:
-- `src/lib/auth/admin-actions.ts` — 5 server actions wrapping auth-nextjs
+**All files created/modified in this step (single commit):**
+- `src/lib/auth/admin-actions.ts` — 5 server actions wrapping auth-nextjs. Each wrapper closes over `process.env.NEXT_PUBLIC_APP_URL` to inject `appUrl` into the lib actions.
 - `src/app/zadmin/login/page.tsx` — rewrite as `<AdminLogin actions={…} theme={…} authError={searchParams.error} />`
-- `src/app/zadmin/forgot-password/page.tsx` — new
-- `src/app/zadmin/reset-password/page.tsx` — new
-- `src/app/zadmin/logout/route.ts` — new POST handler calling `signOutAction()`
+- `src/app/zadmin/forgot-password/page.tsx` — new client wrapper for `<AdminForgotPassword>`
+- `src/app/zadmin/reset-password/page.tsx` — new client wrapper for `<AdminResetPassword>`
+- `src/app/zadmin/logout/route.ts` — new POST handler: call `signOutAction()`; on `ok` redirect to `adminPath('/login')`; on failure redirect to `adminPath('/login?error=signout_failed')` (never 500 — logout should always appear successful to user)
 
 Commit: `feat(web): adopt AdminLogin + forgot/reset + logout route`
 
-**Accept**: email/password login works; Google OAuth login works (after P2/P3); forgot → email received; reset link updates password; logout clears session.
+**Accept (dev, local):** email/password login works; forgot-password submits without error (email delivery depends on P5); reset-password validates + submits; logout clears session + redirects. Google OAuth tested separately (see below).
 
-**Plan B (Google blocked)**: if P2/P3 not ready, ship with stub `signInWithGoogle` returning `{ ok: false, error: 'google_not_configured' }` + override `strings.googleButton` to indicate disabled. Button stays visible but non-functional; follow-up task enables Google in Supabase without code changes.
+**Google OAuth verification strategy:**
+- **Dev (localhost:3002):** Google callback registered → full flow testable
+- **Vercel PR previews:** Google callback NOT registered (dynamic subdomains) → Google button clicks fail with redirect_uri_mismatch; **expected and acceptable**
+- **Staging canonical URL:** Google callback registered → full flow testable; do this in Level 3 smoke
+- **Prod:** Google callback registered post-deploy
+
+**Plan B (Google Cloud credentials not ready at Step 3 time):** ship with stub `signInWithGoogle` returning `{ ok: false, error: 'google_not_configured' }` + override `strings.googleButton` to indicate disabled. Button stays visible but non-functional; follow-up task enables Google in Supabase without code changes.
 
 ### Step 4 — Shell swap
 
-- `src/lib/admin-layout-config.ts` — new
+- `src/lib/admin-layout-config.tsx` — new
 - `src/app/zadmin/(protected)/layout.tsx` — rewrite to auth check + `<AdminLayout>`
 - Delete `(protected)/admin-sidebar.tsx`
 - Shrink `(protected)/theme-toggle.tsx` to `useDarkModeGuard`-based version
@@ -389,6 +429,8 @@ No new automated tests in this phase:
 - Thin wrappers (~20–50 LOC) don't justify test mass.
 - Risk concentration is in integrations: auth flow, middleware gate, Google OAuth callback, theme render. These are covered by manual smoke + staging.
 
+**Baseline:** `apps/web` today has zero test files (`vitest run --passWithNoTests`). This upgrade does **not** introduce a test suite — that's a separate initiative. Manual smoke is the only regression gate.
+
 ### Level 1 — Automated
 
 | Check | Command | Blocks PR on failure? |
@@ -401,7 +443,13 @@ No new automated tests in this phase:
 
 ### Level 2 — Manual smoke (20 items)
 
-Run after each of Steps 3, 4, 5 (not once at the end).
+Run the **relevant subset** after each step (item availability depends on what's been built):
+
+- **After Step 3 (login flow):** auth happy paths + auth error paths + access gating = **14 items**. Shell/dashboard items not yet applicable.
+- **After Step 4 (shell swap):** add shell & navigation items (3) + recheck auth happy paths (login lands in new shell) = **17 items**.
+- **After Step 5 (dashboard):** all **20 items** — dashboard items now validatable.
+- **After Step 6 (middleware):** spot-check access gating (1 item) + full navigation (3 items).
+- **Step 7 PR gate:** all 20 items green before PR opens.
 
 ```
 Auth happy paths:
@@ -533,7 +581,7 @@ Dashboard:
 
 ## 10. Open Questions
 
-None resolved during brainstorm — all decisions made. If unexpected questions arise during implementation, they get logged as new issues, not silently decided.
+None. All decisions made during brainstorm. If unexpected questions arise during implementation, log them as new issues — do not silently decide.
 
 ---
 
@@ -555,3 +603,207 @@ After Phase 1 merges + stabilizes in production, open a new spec:
 - Packages: `@tn-figueiredo/affiliate@0.4.0` (domain + 5 SQL migrations) + `@tn-figueiredo/affiliate-admin@0.3.3` (RSC admin UI with `AffiliateAdminProvider`)
 - Likely derivatives: fraud-detection link for affiliate fraud scoring; billing integration for commission calculations + payouts
 - New admin section in `admin-layout-config.ts` — Phase 1's config structure directly supports adding it
+
+---
+
+## Appendix A — Code skeletons for new files
+
+These are the exact shapes to implement. Not full code — just enough to remove ambiguity.
+
+### `src/lib/admin-layout-config.tsx`
+
+```typescript
+import type { AdminLayoutConfig } from '@tn-figueiredo/admin'
+import { adminPath } from '@/lib/admin-path'
+import { ThemeToggle } from '@/app/zadmin/(protected)/theme-toggle'
+
+export const ADMIN_LAYOUT_CONFIG: AdminLayoutConfig = {
+  appName: 'BrightTale Admin',
+  sections: [
+    {
+      group: 'Principal',
+      items: [
+        { label: 'Dashboard', path: adminPath(),          icon: 'LayoutDashboard' },
+      ],
+    },
+    {
+      group: 'Gestão',
+      items: [
+        { label: 'Usuários',      path: adminPath('/users'),     icon: 'Users' },
+        { label: 'Organizations', path: adminPath('/orgs'),      icon: 'Building2' },
+        { label: 'Agentes',       path: adminPath('/agents'),    icon: 'Bot' },
+        { label: 'Analytics',     path: adminPath('/analytics'), icon: 'BarChart3' },
+      ],
+    },
+  ],
+  branding: {
+    siteName: 'BrightTale',
+    primaryDomain: 'brighttale.io',
+    defaultLocale: 'pt-BR',
+    primaryColor: '#2DD4A8',
+  },
+  logoutPath: adminPath('/logout'),
+  logoutLabel: 'Sair',
+  siteSwitcherSlot: <ThemeToggle />, // repurposed slot; see §4
+  // features.darkMode omitted — flag is type-only upstream (no-op)
+}
+```
+
+### `src/lib/auth/admin-actions.ts`
+
+```typescript
+'use server'
+
+import {
+  signInWithPassword as _signInWithPassword,
+  signInWithGoogle   as _signInWithGoogle,
+  forgotPassword     as _forgotPassword,
+  resetPassword      as _resetPassword,
+  signOutAction      as _signOut,
+} from '@tn-figueiredo/auth-nextjs/actions'
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL!
+const RESET_PATH = '/admin/reset-password'
+
+export async function signInWithPassword(input: { email: string; password: string }) {
+  return _signInWithPassword(input)
+}
+
+export async function signInWithGoogle(input: { redirectTo?: string }) {
+  return _signInWithGoogle({ appUrl: APP_URL, redirectTo: input.redirectTo ?? '/admin' })
+}
+
+export async function forgotPassword(input: { email: string }) {
+  return _forgotPassword({ email: input.email, appUrl: APP_URL, resetPath: RESET_PATH })
+}
+
+export async function resetPassword(input: { password: string }) {
+  return _resetPassword(input)
+}
+
+export async function signOut() {
+  return _signOut()
+}
+```
+
+### `src/app/zadmin/login/page.tsx`
+
+```tsx
+'use client'
+
+import { AdminLogin } from '@tn-figueiredo/admin/login'
+import { useSearchParams } from 'next/navigation'
+import * as actions from '@/lib/auth/admin-actions'
+
+const THEME = {
+  bg:            'var(--auth-bg)',
+  card:          'var(--auth-card-bg)',
+  accent:        'var(--auth-accent)',
+  accentHover:   'var(--auth-accent-hover)',
+  text:          'var(--auth-text)',
+  muted:         'var(--auth-muted)',
+  border:        'var(--auth-border)',
+}
+
+export default function LoginPage() {
+  const authError = useSearchParams().get('error') ?? undefined
+  return (
+    <AdminLogin
+      actions={{
+        signInWithPassword: actions.signInWithPassword,
+        signInWithGoogle:   actions.signInWithGoogle,
+      }}
+      theme={THEME}
+      authError={authError}
+      redirectTo="/admin"
+    />
+  )
+}
+```
+
+### `src/app/zadmin/forgot-password/page.tsx` and `reset-password/page.tsx`
+
+Same pattern: client wrapper, imports lib component from `/login`, passes matching subset of `actions` + `theme={THEME}`.
+
+### `src/app/zadmin/logout/route.ts`
+
+```typescript
+import { NextResponse } from 'next/server'
+import { signOut } from '@/lib/auth/admin-actions'
+import { adminPath } from '@/lib/admin-path'
+
+export async function POST(request: Request) {
+  await signOut() // swallow errors — logout UX should always appear successful
+  const loginUrl = new URL(adminPath('/login'), request.url)
+  return NextResponse.redirect(loginUrl, { status: 303 })
+}
+```
+
+### Shrunk `src/app/zadmin/(protected)/theme-toggle.tsx`
+
+```tsx
+'use client'
+
+import { useEffect, useState } from 'react'
+import { Moon, Sun } from 'lucide-react'
+import { useDarkModeGuard } from '@tn-figueiredo/admin/client'
+
+const STORAGE_KEY = 'bt-admin-theme'
+
+export function ThemeToggle() {
+  const { mounted, isDark: initialDark } = useDarkModeGuard()
+  const [isDark, setIsDark] = useState(initialDark)
+
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY) as 'dark' | 'light' | null
+    if (stored) {
+      document.documentElement.classList.toggle('dark', stored === 'dark')
+      document.documentElement.classList.toggle('light', stored === 'light')
+      setIsDark(stored === 'dark')
+    }
+  }, [])
+
+  if (!mounted) return null
+
+  function toggle() {
+    const next = isDark ? 'light' : 'dark'
+    document.documentElement.classList.toggle('dark', next === 'dark')
+    document.documentElement.classList.toggle('light', next === 'light')
+    localStorage.setItem(STORAGE_KEY, next)
+    setIsDark(next === 'dark')
+  }
+
+  return (
+    <button onClick={toggle} aria-label={isDark ? 'Modo claro' : 'Modo escuro'}>
+      {isDark ? <Sun size={16} /> : <Moon size={16} />}
+    </button>
+  )
+}
+```
+
+### `src/app/zadmin/(protected)/layout.tsx` (shrunk)
+
+```tsx
+import { redirect } from 'next/navigation'
+import { createAdminLayout } from '@tn-figueiredo/admin'
+import { createClient } from '@/lib/supabase/server'
+import { isAdminUser } from '@/lib/admin-check'
+import { adminPath } from '@/lib/admin-path'
+import { ADMIN_LAYOUT_CONFIG } from '@/lib/admin-layout-config'
+
+const AdminLayout = createAdminLayout(ADMIN_LAYOUT_CONFIG)
+
+export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect(adminPath('/login'))
+  if (!await isAdminUser(supabase, user.id)) redirect(adminPath('/login?error=unauthorized'))
+  return <AdminLayout userEmail={user.email!}>{children}</AdminLayout>
+}
+```
+
+---
+
+## Appendix B — Supabase email templates
+
+Forgot-password emails are sent by Supabase using its default template. For Phase 1, accept the default (functional but unbranded). Follow-up task: customize template in Supabase Dashboard → Auth → Email Templates to include BrightTale branding. Not a blocker for this spec.
