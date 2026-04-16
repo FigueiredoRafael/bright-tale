@@ -48,6 +48,14 @@ export const contentGenerate = inngest.createFunction(
         input: { topic, channelId },
         schema: null,
         systemPrompt,
+      }, {
+        logContext: {
+          userId,
+          orgId,
+          channelId,
+          sessionId: undefined,
+          sessionType: 'brainstorm',
+        },
       });
       await debitCredits(orgId, userId, 'brainstorm', 'text', STAGE_COSTS.brainstorm, { channelId, topic });
       return result;
@@ -61,6 +69,14 @@ export const contentGenerate = inngest.createFunction(
         input: { topic, brainstormData: brainstormResult },
         schema: null,
         systemPrompt,
+      }, {
+        logContext: {
+          userId,
+          orgId,
+          channelId,
+          sessionId: undefined,
+          sessionType: 'research',
+        },
       });
       await debitCredits(orgId, userId, 'research', 'text', STAGE_COSTS.research, { channelId, topic });
       return result;
@@ -75,6 +91,14 @@ export const contentGenerate = inngest.createFunction(
         input: { researchData: researchResult, brainstormData: brainstormResult },
         schema: null,
         systemPrompt,
+      }, {
+        logContext: {
+          userId,
+          orgId,
+          channelId,
+          sessionId: undefined,
+          sessionType: 'production',
+        },
       });
       return result;
     });
@@ -89,6 +113,14 @@ export const contentGenerate = inngest.createFunction(
           input: { format, canonicalCore, researchData: researchResult, brainstormData: brainstormResult },
           schema: null,
           systemPrompt,
+        }, {
+          logContext: {
+            userId,
+            orgId,
+            channelId,
+            sessionId: undefined,
+            sessionType: 'production',
+          },
         });
         await debitCredits(orgId, userId, `production-${format}`, 'text', STAGE_COSTS.production, { channelId, format });
         return result;
@@ -103,6 +135,14 @@ export const contentGenerate = inngest.createFunction(
         input: { productionResults },
         schema: null,
         systemPrompt,
+      }, {
+        logContext: {
+          userId,
+          orgId,
+          channelId,
+          sessionId: undefined,
+          sessionType: 'brainstorm',
+        },
       });
       await debitCredits(orgId, userId, 'review', 'text', STAGE_COSTS.review, { channelId });
       return result;

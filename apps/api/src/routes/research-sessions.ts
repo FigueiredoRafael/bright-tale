@@ -213,7 +213,17 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
             schema: null,
             systemPrompt,
           },
-          { provider: body.provider, model: body.model },
+          {
+            provider: body.provider,
+            model: body.model,
+            logContext: {
+              userId: request.userId!,
+              orgId,
+              channelId: body.channelId,
+              sessionId: sessionData.id,
+              sessionType: 'research',
+            },
+          },
         );
 
         const cards = normalizeCards(result);
@@ -619,6 +629,15 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           'research',
           (orig.model_tier as string) ?? 'standard',
           { agentType: 'research', input: inputJson, schema: null, systemPrompt },
+          {
+            logContext: {
+              userId: request.userId!,
+              orgId,
+              channelId: (orig.channel_id as string | null) ?? undefined,
+              sessionId: sessionData2.id,
+              sessionType: 'research',
+            },
+          },
         );
 
         const cards = normalizeCards(result);

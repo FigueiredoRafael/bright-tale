@@ -444,7 +444,18 @@ export async function contentDraftsRoutes(
             schema: null,
             systemPrompt,
           },
-          { provider: override.provider, model: override.model },
+          {
+            provider: override.provider,
+            model: override.model,
+            logContext: {
+              userId: request.userId!,
+              orgId,
+              projectId: (draft.project_id as string) ?? undefined,
+              channelId: (draft.channel_id as string) ?? undefined,
+              sessionId: id,
+              sessionType: 'production',
+            },
+          },
         );
 
         const { data: updated, error } = await (
@@ -609,7 +620,18 @@ export async function contentDraftsRoutes(
             schema: null,
             systemPrompt,
           },
-          { provider: override.provider, model: override.model },
+          {
+            provider: override.provider,
+            model: override.model,
+            logContext: {
+              userId: request.userId!,
+              orgId,
+              projectId: (draft.project_id as string) ?? undefined,
+              channelId: (draft.channel_id as string) ?? undefined,
+              sessionId: id,
+              sessionType: 'production',
+            },
+          },
         );
 
         // Status stays 'draft' — user manually triggers review when ready
@@ -728,6 +750,16 @@ export async function contentDraftsRoutes(
               },
               schema: null,
               systemPrompt,
+            },
+            {
+              logContext: {
+                userId: request.userId!,
+                orgId,
+                projectId: (draft.project_id as string) ?? undefined,
+                channelId: (draft.channel_id as string) ?? undefined,
+                sessionId: id,
+                sessionType: 'review',
+              },
             },
           );
           result = response.result as Record<string, unknown>;
@@ -1161,6 +1193,16 @@ export async function contentDraftsRoutes(
             },
             schema: null,
             systemPrompt,
+          },
+          {
+            logContext: {
+              userId: request.userId!,
+              orgId,
+              projectId: (draft.project_id as string) ?? undefined,
+              channelId: (draft.channel_id as string) ?? undefined,
+              sessionId: id,
+              sessionType: 'production',
+            },
           },
         );
 

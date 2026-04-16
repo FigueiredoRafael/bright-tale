@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard, Users, Building2, Bot, BarChart3,
+  LayoutDashboard, Users, Building2, Bot, BarChart3, ScrollText,
 } from 'lucide-react';
 import { adminPath } from '@/lib/admin-path';
 import { ThemeToggle } from './theme-toggle';
@@ -22,6 +22,7 @@ const SECTIONS = [
       { label: 'Organizations', path: adminPath('/orgs'), icon: Building2 },
       { label: 'Agentes', path: adminPath('/agents'), icon: Bot },
       { label: 'Analytics', path: adminPath('/analytics'), icon: BarChart3 },
+      { label: 'Engine Logs', path: adminPath('/engine-logs'), icon: ScrollText },
     ],
   },
 ];

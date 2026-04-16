@@ -106,7 +106,17 @@ export const brainstormGenerate = inngest.createFunction(
             schema: null,
             systemPrompt: systemPrompt ?? undefined,
           },
-          { provider, model },
+          {
+            provider,
+            model,
+            logContext: {
+              userId,
+              orgId,
+              channelId,
+              sessionId,
+              sessionType: 'brainstorm',
+            },
+          },
         );
         await logUsage({
           orgId, userId, channelId,

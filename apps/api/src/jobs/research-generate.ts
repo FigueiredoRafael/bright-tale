@@ -113,7 +113,17 @@ export const researchGenerate = inngest.createFunction(
             schema: null,
             systemPrompt,
           },
-          { provider, model },
+          {
+            provider,
+            model,
+            logContext: {
+              userId,
+              orgId,
+              channelId,
+              sessionId,
+              sessionType: 'research',
+            },
+          },
         );
         await logUsage({
           orgId, userId, channelId,

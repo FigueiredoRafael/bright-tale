@@ -114,7 +114,18 @@ export const productionGenerate = inngest.createFunction(
             schema: null,
             systemPrompt: coreSystemPrompt ?? undefined,
           },
-          { provider, model },
+          {
+            provider,
+            model,
+            logContext: {
+              userId,
+              orgId,
+              projectId: undefined,
+              channelId: (draft.channel_id as string | null) ?? undefined,
+              sessionId: draftId,
+              sessionType: 'production',
+            },
+          },
         );
         await logUsage({
           orgId, userId, channelId: (draft.channel_id as string | null) ?? null,
@@ -167,7 +178,18 @@ export const productionGenerate = inngest.createFunction(
             schema: null,
             systemPrompt: produceSystemPrompt ?? undefined,
           },
-          { provider, model },
+          {
+            provider,
+            model,
+            logContext: {
+              userId,
+              orgId,
+              projectId: undefined,
+              channelId: (draft.channel_id as string | null) ?? undefined,
+              sessionId: draftId,
+              sessionType: 'production',
+            },
+          },
         );
         await logUsage({
           orgId, userId, channelId: (draft.channel_id as string | null) ?? null,
@@ -215,7 +237,18 @@ export const productionGenerate = inngest.createFunction(
               schema: null,
               systemPrompt: reviewSystemPrompt ?? undefined,
             },
-            { provider, model },
+            {
+              provider,
+              model,
+              logContext: {
+                userId,
+                orgId,
+                projectId: undefined,
+                channelId: (draft.channel_id as string | null) ?? undefined,
+                sessionId: draftId,
+                sessionType: 'production',
+              },
+            },
           );
           await logUsage({
             orgId, userId, channelId: (draft.channel_id as string | null) ?? null,

@@ -329,6 +329,15 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
           'brainstorm',
           (orig.model_tier as string) ?? 'standard',
           { agentType: 'brainstorm', input: inputJson, schema: null, systemPrompt },
+          {
+            logContext: {
+              userId: request.userId!,
+              orgId,
+              channelId: (orig.channel_id as string | null) ?? undefined,
+              sessionId: session.id,
+              sessionType: 'brainstorm',
+            },
+          },
         );
 
         const ideas = normalizeIdeas(result);

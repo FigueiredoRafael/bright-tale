@@ -14,6 +14,7 @@ import { OpenAIProvider } from './providers/openai.js';
 import { AnthropicProvider } from './providers/anthropic.js';
 import { GeminiProvider } from './providers/gemini.js';
 import { OllamaProvider } from './providers/ollama.js';
+import { logEngineCall } from './engine-log.js';
 
 interface ModelConfig {
   provider: string;
@@ -124,6 +125,14 @@ interface ChainOptions {
   model?: string;
   /** When provider is set, allow falling back to other providers on errors. */
   allowFallback?: boolean;
+  logContext?: {
+    userId: string;
+    orgId?: string | null;
+    projectId?: string | null;
+    channelId?: string | null;
+    sessionId?: string | null;
+    sessionType: string;
+  };
 }
 
 /**
@@ -253,6 +262,7 @@ export async function generateWithFallback(
   // 0 in tests, 800ms in prod. Tests can also set AI_RETRY_BASE_MS=0.
   const baseDelayMs = Number(process.env.AI_RETRY_BASE_MS ?? (process.env.NODE_ENV === 'test' ? 0 : 800));
   const sleep = (ms: number) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve());
+  const startTime = Date.now();
 
   let lastErr: unknown;
   for (let i = 0; i < chain.length; i++) {
@@ -261,12 +271,26 @@ export async function generateWithFallback(
     while (attempt <= SAME_PROVIDER_RETRIES) {
       try {
         const result = await route.provider.generateContent(params);
+        const usage = route.provider.lastUsage;
+        if (options.logContext) {
+          logEngineCall({
+            ...options.logContext,
+            stage,
+            provider: route.providerName,
+            model: route.model,
+            input: { agentType: params.agentType, systemPrompt: params.systemPrompt, inputData: params.input },
+            output: typeof result === 'object' && result !== null ? result as Record<string, unknown> : { content: result },
+            durationMs: Date.now() - startTime,
+            inputTokens: usage?.inputTokens,
+            outputTokens: usage?.outputTokens,
+          });
+        }
         return {
           result,
           providerName: route.providerName,
           model: route.model,
           attempts: i + 1,
-          usage: route.provider.lastUsage,
+          usage,
         };
       } catch (err) {
         lastErr = err;
@@ -288,6 +312,17 @@ export async function generateWithFallback(
     }
     if (i === chain.length - 1) break;
     if (!isProviderFailover(lastErr)) break;
+  }
+  if (options.logContext) {
+    logEngineCall({
+      ...options.logContext,
+      stage,
+      provider: chain[0]?.providerName ?? 'unknown',
+      model: chain[0]?.model ?? 'unknown',
+      input: { agentType: params.agentType, systemPrompt: params.systemPrompt, inputData: params.input },
+      durationMs: Date.now() - startTime,
+      error: String((lastErr as { message?: string })?.message ?? lastErr),
+    });
   }
   throw lastErr;
 }
