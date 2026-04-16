@@ -182,7 +182,8 @@ Utility:
 
 ### Server / Client boundary
 
-- `(protected)/layout.tsx` — **Server Component**; imports `createAdminLayout` from root barrel (server-safe), runs auth check, renders `<AdminLayout>`. `AdminShell` (inside) carries its own `'use client'` — no RSC crash.
+- `(protected)/layout.tsx` — **Server Component**; runs auth check, delegates render to `<AdminShell>` (local client shim).
+- `(protected)/admin-shell.tsx` — **Client shim** (`'use client'`); invokes `createAdminLayout(ADMIN_LAYOUT_CONFIG)` and renders `<AdminLayout>`. **Required** because the admin root barrel re-exports `SiteSwitcherProvider` (which uses `createContext`) for backward compat — `transpilePackages` alone does not inject `'use client'` into those re-exports in Turbopack dev, causing RSC crash on server-side module evaluation. Upstream CHANGELOG 0.6.1 acknowledges this and recommends exactly this shim pattern.
 - `(protected)/page.tsx` (dashboard) — **Server Component**; fetches via `createAdminClient` (service_role); renders lib components from `/client` as children (React 19 RSC allows).
 - `login/page.tsx`, `forgot-password/page.tsx`, `reset-password/page.tsx` — **Client wrappers** over lib components. Server actions imported from a dedicated `src/lib/auth/admin-actions.ts`.
 
@@ -917,24 +918,42 @@ describe('admin-actions wrappers', () => {
 })
 ```
 
-### `src/app/zadmin/(protected)/layout.tsx` (shrunk)
+### `src/app/zadmin/(protected)/admin-shell.tsx` (new client shim)
 
 ```tsx
-import { redirect } from 'next/navigation'
+'use client'
+
 import { createAdminLayout } from '@tn-figueiredo/admin'
-import { createClient } from '@/lib/supabase/server'
-import { isAdminUser } from '@/lib/admin-check'
-import { adminPath } from '@/lib/admin-path'
 import { ADMIN_LAYOUT_CONFIG } from '@/lib/admin-layout-config'
 
 const AdminLayout = createAdminLayout(ADMIN_LAYOUT_CONFIG)
+
+export function AdminShell({
+  userEmail,
+  children,
+}: {
+  userEmail: string
+  children: React.ReactNode
+}) {
+  return <AdminLayout userEmail={userEmail}>{children}</AdminLayout>
+}
+```
+
+### `src/app/zadmin/(protected)/layout.tsx` (shrunk, Server Component)
+
+```tsx
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+import { isAdminUser } from '@/lib/admin-check'
+import { adminPath } from '@/lib/admin-path'
+import { AdminShell } from './admin-shell'
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect(adminPath('/login'))
   if (!(await isAdminUser(supabase, user.id))) redirect(adminPath('/login?error=unauthorized'))
-  return <AdminLayout userEmail={user.email!}>{children}</AdminLayout>
+  return <AdminShell userEmail={user.email!}>{children}</AdminShell>
 }
 ```
 

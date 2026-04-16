@@ -893,23 +893,47 @@ export function ThemeToggle() {
 }
 ```
 
-### Task 4.3: Rewrite protected layout.tsx
+### Task 4.3: Create admin-shell client shim + rewrite protected layout.tsx
 
-**Files:** Modify (full rewrite): `apps/web/src/app/zadmin/(protected)/layout.tsx`
+**Files:**
+- Create: `apps/web/src/app/zadmin/(protected)/admin-shell.tsx`
+- Modify (full rewrite): `apps/web/src/app/zadmin/(protected)/layout.tsx`
 
-- [ ] **Step 1: Replace entire file content**
+**Why a shim:** `@tn-figueiredo/admin@0.6.2` root barrel re-exports `SiteSwitcherProvider` (which uses `createContext`) for backward compat. In Next 16 with Turbopack dev, `transpilePackages` alone does NOT inject `'use client'` into those re-exports on the server bundle, causing runtime RSC crash: `createContext only works in Client Components`. The lib's CHANGELOG 0.6.1 recommends a consumer 'use client' shim — this task creates it.
+
+- [ ] **Step 1: Create admin-shell.tsx (client)**
+
+Create `apps/web/src/app/zadmin/(protected)/admin-shell.tsx`:
+
+```tsx
+'use client'
+
+import { createAdminLayout } from '@tn-figueiredo/admin'
+import { ADMIN_LAYOUT_CONFIG } from '@/lib/admin-layout-config'
+
+const AdminLayout = createAdminLayout(ADMIN_LAYOUT_CONFIG)
+
+export function AdminShell({
+  userEmail,
+  children,
+}: {
+  userEmail: string
+  children: React.ReactNode
+}) {
+  return <AdminLayout userEmail={userEmail}>{children}</AdminLayout>
+}
+```
+
+- [ ] **Step 2: Rewrite protected layout.tsx (server)**
 
 Replace full content of `apps/web/src/app/zadmin/(protected)/layout.tsx` with:
 
 ```tsx
 import { redirect } from 'next/navigation'
-import { createAdminLayout } from '@tn-figueiredo/admin'
 import { createClient } from '@/lib/supabase/server'
 import { isAdminUser } from '@/lib/admin-check'
 import { adminPath } from '@/lib/admin-path'
-import { ADMIN_LAYOUT_CONFIG } from '@/lib/admin-layout-config'
-
-const AdminLayout = createAdminLayout(ADMIN_LAYOUT_CONFIG)
+import { AdminShell } from './admin-shell'
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -918,7 +942,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   if (!(await isAdminUser(supabase, user.id))) {
     redirect(adminPath('/login?error=unauthorized'))
   }
-  return <AdminLayout userEmail={user.email!}>{children}</AdminLayout>
+  return <AdminShell userEmail={user.email!}>{children}</AdminShell>
 }
 ```
 
