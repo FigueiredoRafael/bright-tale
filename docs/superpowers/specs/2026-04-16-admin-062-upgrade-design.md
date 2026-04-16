@@ -191,7 +191,40 @@ Utility:
 - `NEXT_PUBLIC_ADMIN_SLUG` (default `admin`) is inlined at build time for both server and client (Next.js standard).
 - `adminPath('/users')` → `/<slug>/users` — the **exposed** path visible to users.
 - `next.config.ts` rewrites `/<slug>/:path*` → `/zadmin/:path*` internally.
-- Sidebar config (`admin-layout-config.ts`) uses `adminPath()` for every item → slug changes propagate without code edits.
+- Sidebar config (`admin-layout-config.tsx`) uses `adminPath()` for every item → slug changes propagate without code edits.
+
+### Post-upgrade route tree (`apps/web/src/app/zadmin/`)
+
+```
+zadmin/
+├── login/page.tsx                 ← PUBLIC (sibling of (protected))
+├── forgot-password/page.tsx       ← PUBLIC (sibling)
+├── reset-password/page.tsx        ← PUBLIC (sibling; accessible via token link even if unauth)
+├── logout/route.ts                ← PUBLIC (POST only; server action invalidates session then redirects)
+└── (protected)/                   ← auth-gated by layout.tsx
+    ├── layout.tsx                 ← auth check + createAdminLayout render
+    ├── theme-toggle.tsx           ← client component (shrunk)
+    ├── page.tsx                   ← dashboard
+    ├── agents/
+    ├── users/
+    ├── orgs/
+    └── analytics/
+```
+
+Only routes under `(protected)/` run the auth check inline in `layout.tsx`. Public routes (login, forgot-password, reset-password, logout) must be **explicitly exempted** in `src/middleware.ts`:
+
+```typescript
+// inside middleware.ts, after slug resolution
+const PUBLIC_ADMIN_PATHS = new Set([
+  adminPath('/login'),
+  adminPath('/forgot-password'),
+  adminPath('/reset-password'),
+  adminPath('/logout'),
+])
+if (PUBLIC_ADMIN_PATHS.has(pathname)) return response
+```
+
+The existing middleware only exempts `adminPath('/login')` — Step 3 commit must broaden this to the full list above or the new pages will redirect to login on first visit.
 
 ### Theming
 
@@ -225,7 +258,8 @@ Utility:
 
 - Lib's `features.darkMode: true` flag is **declared in the type but not consumed** in the lib's code (upstream gap — grep `features\.` in `packages/admin/src` returns zero matches).
 - Lib's `useDarkModeGuard()` hook returns `{ mounted, isDark }` only — **it does not persist preference or toggle state**. Persistence is consumer's responsibility.
-- Consumer retains a toggle component (~20 LOC, down from 54): reads `localStorage['bt-admin-theme']` on mount, applies `html.classList.add('dark'|'light')`, writes back on toggle. Uses `useDarkModeGuard` purely for SSR-safe initial render.
+- Consumer retains a toggle component (~20 LOC, down from 54): reads `localStorage['bt-admin-theme']` on mount, applies `html.classList.add('dark'|'light')`, writes back on toggle.
+- **FOUC prevention:** reading `localStorage` inside `useEffect` runs *after* first paint → user sees a flash in the wrong mode before hydration. Mitigation: add a small **blocking inline script** in root `layout.tsx` (before `<body>` children) that reads the preference and sets `html.classList` pre-hydration. Skeleton in Appendix A. The current custom `theme-toggle.tsx` happens to avoid this by also being a client component that mounts before visual content, but in the new shell (which renders server-first) the blocking script is required.
 - **Placement:** inject into `siteSwitcherSlot` prop of `AdminLayoutConfig`. The lib's new topbar (0.6.0+) renders `siteSwitcherSlot` as generic `ReactNode` — semantically it's for `<SiteSwitcher />`, but `ReactNode` permits any chrome. This is the only extension point in the shell; using it for the theme toggle keeps the button visible and persistent across all admin routes. Follow-up: propose upstream a named `utilitySlot` or `themeToggleSlot` prop for clearer intent.
 
 ### Provider hierarchy
@@ -291,12 +325,16 @@ Utility:
 DELETES              −92
 SHRINKS             −232  (layout 8 + dashboard 118 + theme-toggle 34 + login 58 + middleware 14)
 NEW FILES          +165   (config 45 + actions 50 + forgot 25 + reset 25 + logout route 20)
-THEME CSS          +26   (slate remap 12 + auth vars 14)
+NEW TESTS          +80   (admin-actions.test.ts — see §7.1)
+MIDDLEWARE EXEMPT   +8    (explicit public-path list in middleware.ts)
+THEME CSS          +26    (slate remap 12 + auth vars 14)
 ─────────────────────────
-NET: −133 LOC  (~5% reduction on 2,634 base)
+NET: ~−45 LOC  (range: −20 to −85 depending on per-file actuals)
 ```
 
-**Functional gains at this cost:** (1) forgot-password flow, (2) reset-password flow, (3) Google OAuth SSO, (4) topbar with branding + logout form, (5) single source of truth for sidebar config (Phase 2 leverage).
+The ~5% reduction framing was optimistic — each new/shrunk file carries ±20 LOC uncertainty (R7) and new tests add ~80 LOC we didn't budget for initially. Actual delta in PR diff may be anywhere from a small reduction to roughly neutral. **The headline gain isn't line reduction — it's redundancy elimination + functional additions below.**
+
+**Functional gains at this cost:** (1) forgot-password flow, (2) reset-password flow, (3) Google OAuth SSO, (4) topbar with branding + logout form, (5) single source of truth for sidebar config (Phase 2 leverage), (6) first test coverage for auth wrappers.
 
 ### 1:1 dashboard mapping
 
@@ -335,6 +373,12 @@ NET: −133 LOC  (~5% reduction on 2,634 base)
 - Commit: `docs: admin baseline screenshots before 0.6.2 upgrade`
 - `rm -rf apps/web/.next` — avoid stale Tailwind scan between steps
 - Verify `NEXT_PUBLIC_APP_URL` is present in `apps/web/.env.local` (dev) before Step 3 runs. If missing, add it now.
+- **Edge-runtime compat probe** (evidence for R4): after Step 1 installs auth-nextjs 2.2.0, run:
+  ```bash
+  grep -rE "require\(['\"](fs|path|crypto|child_process|os|stream|net|tls)['\"]" \
+    apps/web/node_modules/@tn-figueiredo/auth-nextjs/dist/ || echo "No Node-only requires"
+  ```
+  Expected output: `No Node-only requires`. If matches appear, Step 6 is skipped and middleware keeps the direct `@supabase/ssr` import. Paste output into commit body for Step 6 (or into R4 mitigation if Step 6 is skipped).
 
 ### Step 1 — Package upgrades (foundation)
 
@@ -424,12 +468,36 @@ Rollback: revert this commit only; previous steps retained.
 
 ### Philosophy
 
-No new automated tests in this phase:
-- Lib primitives are upstream-tested (244+ tests).
-- Thin wrappers (~20–50 LOC) don't justify test mass.
-- Risk concentration is in integrations: auth flow, middleware gate, Google OAuth callback, theme render. These are covered by manual smoke + staging.
+- Lib primitives are upstream-tested (244+ tests) — don't retest.
+- UI wrappers (`login/page.tsx`, `forgot-password/page.tsx`, `reset-password/page.tsx`) are thin enough that visual smoke catches regressions faster than tests would.
+- **Exception:** `src/lib/auth/admin-actions.ts` is the only non-trivial net-new code — it closes over `process.env.NEXT_PUBLIC_APP_URL`, transforms inputs, and in some paths swallows errors (logout). It has **no upstream coverage** because the lib doesn't know about this consumer shim. It is the **single point of failure between the user and a broken auth flow in production**. It gets unit tests (§7.1).
 
-**Baseline:** `apps/web` today has zero test files (`vitest run --passWithNoTests`). This upgrade does **not** introduce a test suite — that's a separate initiative. Manual smoke is the only regression gate.
+**Baseline:** `apps/web` today has zero test files (`vitest run --passWithNoTests`). This upgrade adds the first test file at `src/lib/auth/__tests__/admin-actions.test.ts`.
+
+### 7.1 Unit tests for `admin-actions.ts` (new)
+
+File: `apps/web/src/lib/auth/__tests__/admin-actions.test.ts` (~80 LOC, 8 tests).
+
+Mock `@tn-figueiredo/auth-nextjs/actions` at the module boundary. Cover:
+
+| # | Test | Asserts |
+|---|---|---|
+| 1 | `signInWithPassword` forwards input unchanged | lib `_signInWithPassword` called with `{email, password}` |
+| 2 | `signInWithGoogle` injects `appUrl` from env | lib called with `{appUrl: NEXT_PUBLIC_APP_URL, redirectTo: '/admin'}` when no override |
+| 3 | `signInWithGoogle` respects caller-provided `redirectTo` | lib called with the caller's value, not default |
+| 4 | `signInWithGoogle` when `NEXT_PUBLIC_APP_URL` is missing | throws meaningful error (not silent `undefined` injection) |
+| 5 | `forgotPassword` injects `appUrl` + `resetPath` | lib called with `{email, appUrl, resetPath: '/admin/reset-password'}` |
+| 6 | `resetPassword` forwards input unchanged | lib called with `{password}` |
+| 7 | `signOut` returns the lib's result | lib's `_signOut` result propagates |
+| 8 | `signOut` swallows lib errors and returns `{ ok: true }` | confirms logout-UX-always-succeeds contract (§6 Step 3 logout route comment) |
+
+Run alongside existing `vitest` config — no new tooling. Blocks PR on failure.
+
+### Philosophy cont. — no E2E in Phase 1
+
+- No Playwright/Cypress — no E2E infrastructure in repo today. Adding it = scope creep.
+- Manual smoke + staging remain the integration-level gate for login/Google/forgot/reset flows.
+- **Follow-up post-Phase-1:** open a separate spec for adding a minimal Playwright suite covering the admin auth happy-path; the wrapper unit tests above are a scoped pre-commitment of that direction.
 
 ### Level 1 — Automated
 
@@ -662,7 +730,12 @@ import {
   signOutAction      as _signOut,
 } from '@tn-figueiredo/auth-nextjs/actions'
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL!
+function requireAppUrl(): string {
+  const url = process.env.NEXT_PUBLIC_APP_URL
+  if (!url) throw new Error('NEXT_PUBLIC_APP_URL is not configured (see spec §3 env inventory)')
+  return url
+}
+
 const RESET_PATH = '/admin/reset-password'
 
 export async function signInWithPassword(input: { email: string; password: string }) {
@@ -670,11 +743,11 @@ export async function signInWithPassword(input: { email: string; password: strin
 }
 
 export async function signInWithGoogle(input: { redirectTo?: string }) {
-  return _signInWithGoogle({ appUrl: APP_URL, redirectTo: input.redirectTo ?? '/admin' })
+  return _signInWithGoogle({ appUrl: requireAppUrl(), redirectTo: input.redirectTo ?? '/admin' })
 }
 
 export async function forgotPassword(input: { email: string }) {
-  return _forgotPassword({ email: input.email, appUrl: APP_URL, resetPath: RESET_PATH })
+  return _forgotPassword({ email: input.email, appUrl: requireAppUrl(), resetPath: RESET_PATH })
 }
 
 export async function resetPassword(input: { password: string }) {
@@ -682,7 +755,12 @@ export async function resetPassword(input: { password: string }) {
 }
 
 export async function signOut() {
-  return _signOut()
+  // Logout UX must always appear successful. Swallow lib errors.
+  try {
+    return await _signOut()
+  } catch {
+    return { ok: true as const }
+  }
 }
 ```
 
@@ -781,6 +859,64 @@ export function ThemeToggle() {
 }
 ```
 
+### FOUC-prevention script — add to root `apps/web/src/app/layout.tsx`
+
+Add inside `<head>` (before any `<body>` content), as a blocking inline script. Must run before React hydrates to avoid flash:
+
+```tsx
+// in the root layout.tsx JSX
+<head>
+  <script
+    dangerouslySetInnerHTML={{
+      __html: `(function(){try{var t=localStorage.getItem('bt-admin-theme');var d=t==='dark'||(t==null&&window.matchMedia('(prefers-color-scheme:dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.classList.toggle('light',!d);}catch(e){}})();`,
+    }}
+  />
+</head>
+```
+
+Reads `bt-admin-theme` (same key as `ThemeToggle`), falls back to system preference when unset, applies class before paint. Try/catch in case of SSR or storage-disabled browsers.
+
+### `apps/web/src/lib/auth/__tests__/admin-actions.test.ts` (new, ~80 LOC)
+
+```typescript
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+vi.mock('@tn-figueiredo/auth-nextjs/actions', () => ({
+  signInWithPassword: vi.fn(),
+  signInWithGoogle: vi.fn(),
+  forgotPassword: vi.fn(),
+  resetPassword: vi.fn(),
+  signOutAction: vi.fn(),
+}))
+
+import * as lib from '@tn-figueiredo/auth-nextjs/actions'
+import * as actions from '../admin-actions'
+
+describe('admin-actions wrappers', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.NEXT_PUBLIC_APP_URL = 'https://brighttale.test'
+  })
+
+  it('signInWithGoogle injects appUrl from env', async () => {
+    vi.mocked(lib.signInWithGoogle).mockResolvedValue({ ok: true, url: 'https://…' })
+    await actions.signInWithGoogle({})
+    expect(lib.signInWithGoogle).toHaveBeenCalledWith({
+      appUrl: 'https://brighttale.test',
+      redirectTo: '/admin',
+    })
+  })
+
+  it('signOut swallows lib errors and returns ok', async () => {
+    vi.mocked(lib.signOutAction).mockRejectedValue(new Error('supabase down'))
+    const result = await actions.signOut()
+    expect(result).toEqual({ ok: true })
+  })
+
+  // remaining 6 tests per §7.1 table
+})
+```
+
 ### `src/app/zadmin/(protected)/layout.tsx` (shrunk)
 
 ```tsx
@@ -797,7 +933,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect(adminPath('/login'))
-  if (!await isAdminUser(supabase, user.id)) redirect(adminPath('/login?error=unauthorized'))
+  if (!(await isAdminUser(supabase, user.id))) redirect(adminPath('/login?error=unauthorized'))
   return <AdminLayout userEmail={user.email!}>{children}</AdminLayout>
 }
 ```
