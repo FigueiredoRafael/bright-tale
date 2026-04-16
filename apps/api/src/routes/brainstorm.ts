@@ -17,13 +17,21 @@ import { inngest } from '../jobs/client.js';
 import { emitJobEvent } from '../jobs/emitter.js';
 
 interface RawIdea {
+  idea_id?: string;
   title?: string;
   angle?: string;
   core_tension?: string;
   target_audience?: string;
-  verdict?: string;
-  monetization?: string;
+  search_intent?: string;
+  primary_keyword?: { term?: string; difficulty?: string; monthly_volume_estimate?: string };
+  scroll_stopper?: string;
+  curiosity_gap?: string;
+  monetization?: string | { affiliate_angle?: string; product_fit?: string; sponsor_appeal?: string };
+  repurpose_potential?: { blog_angle?: string; video_angle?: string; shorts_hooks?: string[]; podcast_angle?: string };
   repurposing?: string[];
+  risk_flags?: string[];
+  verdict?: string;
+  verdict_rationale?: string;
 }
 
 function normalizeIdeas(raw: unknown): RawIdea[] {
@@ -342,6 +350,12 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
 
         const ideas = normalizeIdeas(result);
 
+        // Extract recommendation from AI output
+        let recommendation: { pick?: string; rationale?: string } | null = null;
+        if (result && typeof result === 'object' && 'recommendation' in (result as Record<string, unknown>)) {
+          recommendation = (result as Record<string, unknown>).recommendation as { pick?: string; rationale?: string } | null;
+        }
+
         const { count } = await sb.from('idea_archives').select('*', { count: 'exact', head: true });
         const startNum = (count ?? 0) + 1;
 
@@ -351,7 +365,18 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
           core_tension: idea.core_tension ?? '',
           target_audience: idea.target_audience ?? '',
           verdict: idea.verdict === 'viable' || idea.verdict === 'weak' || idea.verdict === 'experimental' ? idea.verdict : 'experimental',
-          discovery_data: JSON.stringify({ angle: idea.angle, monetization: idea.monetization, repurposing: idea.repurposing }),
+          discovery_data: JSON.stringify({
+            angle: idea.angle,
+            search_intent: idea.search_intent,
+            primary_keyword: idea.primary_keyword,
+            scroll_stopper: idea.scroll_stopper,
+            curiosity_gap: idea.curiosity_gap,
+            monetization: idea.monetization,
+            repurpose_potential: idea.repurpose_potential,
+            repurposing: idea.repurposing,
+            risk_flags: idea.risk_flags,
+            verdict_rationale: idea.verdict_rationale,
+          }),
           source_type: 'brainstorm',
           channel_id: orig.channel_id ?? null,
           project_id: orig.project_id ?? null,
@@ -368,7 +393,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
 
         await (sb.from('brainstorm_sessions') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        }).update({ status: 'completed' }).eq('id', session.id);
+        }).update({ status: 'completed', ...(recommendation ? { recommendation_json: recommendation } : {}) }).eq('id', session.id);
 
         await debitCredits(orgId, request.userId, 'brainstorm', 'text', STAGE_COSTS.brainstorm, { regeneratedFrom: id });
 

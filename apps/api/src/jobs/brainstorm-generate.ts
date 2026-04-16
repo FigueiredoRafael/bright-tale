@@ -30,13 +30,21 @@ interface BrainstormGenerateEvent {
 }
 
 interface RawIdea {
+  idea_id?: string;
   title?: string;
   angle?: string;
   core_tension?: string;
   target_audience?: string;
-  verdict?: string;
-  monetization?: string;
+  search_intent?: string;
+  primary_keyword?: { term?: string; difficulty?: string; monthly_volume_estimate?: string };
+  scroll_stopper?: string;
+  curiosity_gap?: string;
+  monetization?: string | { affiliate_angle?: string; product_fit?: string; sponsor_appeal?: string };
+  repurpose_potential?: { blog_angle?: string; video_angle?: string; shorts_hooks?: string[]; podcast_angle?: string };
   repurposing?: string[];
+  risk_flags?: string[];
+  verdict?: string;
+  verdict_rationale?: string;
 }
 
 function normalizeIdeas(raw: unknown): RawIdea[] {
@@ -134,6 +142,12 @@ export const brainstormGenerate = inngest.createFunction(
 
       const ideas = normalizeIdeas(result);
 
+      // Extract recommendation from AI output
+      let recommendation: { pick?: string; rationale?: string } | null = null;
+      if (result && typeof result === 'object' && 'recommendation' in (result as Record<string, unknown>)) {
+        recommendation = (result as Record<string, unknown>).recommendation as { pick?: string; rationale?: string } | null;
+      }
+
       // F2-037: enforce target_count at the job level as a safety net in
       // case the model ignored the prompt directive.
       const capped = typeof targetCount === 'number' ? ideas.slice(0, targetCount) : ideas;
@@ -159,8 +173,15 @@ export const brainstormGenerate = inngest.createFunction(
               : 'experimental',
           discovery_data: JSON.stringify({
             angle: idea.angle,
+            search_intent: idea.search_intent,
+            primary_keyword: idea.primary_keyword,
+            scroll_stopper: idea.scroll_stopper,
+            curiosity_gap: idea.curiosity_gap,
             monetization: idea.monetization,
+            repurpose_potential: idea.repurpose_potential,
             repurposing: idea.repurposing,
+            risk_flags: idea.risk_flags,
+            verdict_rationale: idea.verdict_rationale,
           }),
           position: i,
         }));
@@ -177,7 +198,7 @@ export const brainstormGenerate = inngest.createFunction(
         await (sb.from('brainstorm_sessions') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
-          .update({ status: 'completed' })
+          .update({ status: 'completed', ...(recommendation ? { recommendation_json: recommendation } : {}) })
           .eq('id', sessionId);
 
         const charge = provider === 'ollama' ? 0 : STAGE_COSTS.brainstorm;

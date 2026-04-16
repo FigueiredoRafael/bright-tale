@@ -439,6 +439,7 @@ export type Database = {
           model_tier: string
           org_id: string
           project_id: string | null
+          recommendation_json: Json | null
           status: string
           updated_at: string
           user_id: string
@@ -453,6 +454,7 @@ export type Database = {
           model_tier?: string
           org_id: string
           project_id?: string | null
+          recommendation_json?: Json | null
           status?: string
           updated_at?: string
           user_id: string
@@ -467,6 +469,7 @@ export type Database = {
           model_tier?: string
           org_id?: string
           project_id?: string | null
+          recommendation_json?: Json | null
           status?: string
           updated_at?: string
           user_id?: string
