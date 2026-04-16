@@ -74,15 +74,13 @@ export function PublishEngine({
       <ContextBanner stage="publish" context={context} onBack={onBack} />
 
       {publishing && publishBody ? (
-        <div className="max-w-lg">
-          <PublishProgress
-            publishBody={publishBody}
-            onComplete={handleStreamComplete}
-            onError={handleStreamError}
-          />
-        </div>
+        <PublishProgress
+          publishBody={publishBody}
+          onComplete={handleStreamComplete}
+          onError={handleStreamError}
+        />
       ) : (
-        <div className="max-w-lg">
+        <div>
           <PublishPanel
             draftId={draftId}
             draftStatus={draft.status}

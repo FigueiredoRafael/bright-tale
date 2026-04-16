@@ -40,7 +40,7 @@ interface PipelineOrchestratorProps {
 export function PipelineOrchestrator({
   projectId,
   channelId,
-  projectTitle,
+  projectTitle: initialProjectTitle,
   initialPipelineState,
 }: PipelineOrchestratorProps) {
   const [pipelineState, setPipelineState] = useState<PipelineState>(() => {
@@ -55,6 +55,9 @@ export function PipelineOrchestrator({
     return DEFAULT_STATE;
   });
 
+  const [projectTitle, setProjectTitle] = useState(initialProjectTitle);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(initialProjectTitle);
   const [engineMode, setEngineMode] = useState<'generate' | 'import' | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [draftData, setDraftData] = useState<Record<string, unknown> | null>(null);
@@ -112,6 +115,21 @@ export function PipelineOrchestrator({
     return ctx;
   }
 
+  // Save project title to database
+  async function saveProjectTitle(newTitle: string) {
+    setProjectTitle(newTitle);
+    setTitleDraft(newTitle);
+    try {
+      await fetch(`/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle }),
+      });
+    } catch {
+      // Silent — title is cosmetic
+    }
+  }
+
   // Save pipeline state to database
   async function savePipelineState(newState: PipelineState) {
     setPipelineState(newState);
@@ -135,6 +153,11 @@ export function PipelineOrchestrator({
   async function handleStageComplete(result: StageResult) {
     const stage = pipelineState.currentStage;
     const completedAt = new Date().toISOString();
+
+    // Auto-update project title from brainstorm idea
+    if (stage === 'brainstorm' && 'ideaTitle' in result && result.ideaTitle) {
+      void saveProjectTitle(result.ideaTitle);
+    }
 
     // Merge result into stageResults
     const newStageResults = {
@@ -598,8 +621,40 @@ export function PipelineOrchestrator({
     <div className="space-y-6">
       {/* Project Header */}
       <div>
-        <h2 className="text-2xl font-bold">{projectTitle}</h2>
-        <p className="text-sm text-muted-foreground">
+        {editingTitle ? (
+          <input
+            autoFocus
+            className="text-2xl font-bold bg-transparent border-b-2 border-primary outline-none w-full"
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={() => {
+              setEditingTitle(false);
+              if (titleDraft.trim() && titleDraft !== projectTitle) {
+                void saveProjectTitle(titleDraft.trim());
+              } else {
+                setTitleDraft(projectTitle);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                (e.target as HTMLInputElement).blur();
+              }
+              if (e.key === 'Escape') {
+                setTitleDraft(projectTitle);
+                setEditingTitle(false);
+              }
+            }}
+          />
+        ) : (
+          <h2
+            className="text-2xl font-bold cursor-pointer hover:text-primary/80 transition-colors"
+            title="Click to edit"
+            onClick={() => { setTitleDraft(projectTitle); setEditingTitle(true); }}
+          >
+            {projectTitle}
+          </h2>
+        )}
+        <p className="text-sm text-muted-foreground mt-1">
           Project ID: <code className="text-xs bg-muted px-2 py-1 rounded">{projectId}</code>
         </p>
       </div>
