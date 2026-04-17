@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans, Inter, JetBrains_Mono } from 'next/font/google';
+import { PostHogProvider } from '@/components/providers/posthog-provider';
+import { WebVitals } from '@/lib/axiom/client';
 import './globals.css';
 
 const fontDisplay = Plus_Jakarta_Sans({
@@ -44,8 +46,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <WebVitals />
       <body className={`${fontDisplay.variable} ${fontBody.variable} ${fontMono.variable}`}>
-        {children}
+        <PostHogProvider>
+          {children}
+        </PostHogProvider>
       </body>
     </html>
   );

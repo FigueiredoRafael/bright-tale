@@ -6,6 +6,8 @@
  * so the module evaluates without top-level await (required for
  * Vercel serverless compatibility).
  */
+import "./instrument.js";
+import * as Sentry from "@sentry/node";
 import Fastify from "fastify";
 import fastifyCors from "@fastify/cors";
 import fastifyCookie from "@fastify/cookie";
@@ -52,6 +54,8 @@ import { voiceRoutes } from "./routes/voice.js";
 import { publishingDestinationsRoutes } from "./routes/publishing-destinations.js";
 import { notificationsRoutes } from "./routes/notifications.js";
 import { affiliateRoutes } from "./routes/affiliate.js";
+import { logRequest, flushAxiom } from "./lib/axiom.js";
+import { flushPostHog } from "./lib/posthog.js";
 
 const server = Fastify({
   bodyLimit: 25 * 1024 * 1024, // 25 MB — needed for base64 image uploads
@@ -93,6 +97,8 @@ server.register(fastifyCors, {
 
 server.register(fastifyCookie);
 
+Sentry.setupFastifyErrorHandler(server);
+
 // Request/response logging — skip Inngest polling noise
 const SILENT_ROUTES = new Set(["/inngest", "/health"]);
 server.addHook("onResponse", (request, reply, done) => {
@@ -102,11 +108,20 @@ server.addHook("onResponse", (request, reply, done) => {
     return;
   }
   const ms = reply.elapsedTime.toFixed(0);
+  const durationMs = Math.round(reply.elapsedTime);
   const status = reply.statusCode;
   const color = status >= 500 ? "❌" : status >= 400 ? "⚠️" : "✅";
   server.log.info(
     `${color} ${request.method} ${request.url} → ${status} (${ms}ms)`,
   );
+  logRequest({
+    method: request.method,
+    path: url,
+    statusCode: status,
+    durationMs,
+    userId: request.headers["x-user-id"] as string | undefined,
+    requestId: request.headers["x-request-id"] as string | undefined,
+  });
   done();
 });
 
@@ -173,10 +188,21 @@ if (!process.env.VERCEL) {
   // (mid-request ECONNRESETs on the proxy side often trace back to this).
   process.on("unhandledRejection", (reason) => {
     server.log.error({ reason }, "unhandledRejection — process kept alive");
+    if (reason instanceof Error) Sentry.captureException(reason);
   });
   process.on("uncaughtException", (err) => {
     server.log.error({ err }, "uncaughtException — process kept alive");
+    Sentry.captureException(err);
   });
+
+  // Flush Axiom logs before shutdown
+  const shutdown = async () => {
+    await Promise.all([flushAxiom(), flushPostHog()]);
+    await server.close();
+    process.exit(0);
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 
   const PORT = parseInt(process.env.PORT ?? "3001", 10);
   server.listen({ port: PORT, host: "0.0.0.0" }).catch((err) => {

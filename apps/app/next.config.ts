@@ -28,11 +28,11 @@ const securityHeaders = [
       : "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      `script-src 'self' 'unsafe-inline' ${isDev ? "'unsafe-eval'" : ""} https://js.stripe.com https://checkout.stripe.com`.trim(),
+      `script-src 'self' 'unsafe-inline' ${isDev ? "'unsafe-eval'" : ""} https://js.stripe.com https://checkout.stripe.com https://us.i.posthog.com`.trim(),
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' https://*.supabase.co https://api.stripe.com wss://*.supabase.co https://*.ingest.us.sentry.io",
+      "connect-src 'self' https://*.supabase.co https://api.stripe.com wss://*.supabase.co https://*.ingest.us.sentry.io https://us.i.posthog.com https://cloud.axiom.co",
       "frame-src https://js.stripe.com https://checkout.stripe.com https://hooks.stripe.com",
       "object-src 'none'",
       "base-uri 'self'",

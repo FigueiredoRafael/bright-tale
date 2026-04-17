@@ -41,6 +41,11 @@ export async function proxy(request: NextRequest) {
   const supaUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supaKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+  // Let Sentry tunnel route pass through without middleware interference
+  if (pathname === '/monitoring' || pathname.startsWith('/monitoring/')) {
+    return NextResponse.next();
+  }
+
   // Build a response we'll mutate with cookie updates
   let response = NextResponse.next({ request });
 
@@ -104,11 +109,14 @@ export async function proxy(request: NextRequest) {
   }
 
   // Auth pages — redirect home if already logged in
-  if (pathname.startsWith('/auth/')) {
+  // Check both /auth/* and /{locale}/auth/* paths
+  const isAuthPage = pathname.startsWith('/auth/') ||
+    locales.some((l) => pathname.startsWith(`/${l}/auth/`));
+  if (isAuthPage) {
     if (user) {
       return NextResponse.redirect(new URL('/', request.url));
     }
-    return response;
+    return intlMiddleware(request);
   }
 
   // App pages — redirect to login if not authenticated
@@ -118,7 +126,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Apply i18n locale detection/routing for non-API, non-auth pages
+  // Apply i18n locale detection/routing
   return intlMiddleware(request);
 }
 

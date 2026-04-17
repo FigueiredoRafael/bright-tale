@@ -23,6 +23,7 @@ import {
   fetchCategoriesQuerySchema,
 } from '@brighttale/shared/schemas/wordpress';
 import { publishDraftSchema } from '@brighttale/shared/schemas/pipeline';
+import { ingest, flushAxiom } from '../lib/axiom.js';
 
 const createConfigSchema = z.object({
   site_url: z.string().url('Invalid WordPress site URL'),
@@ -1588,6 +1589,75 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       request.log.error({ err: error }, 'WordPress publish-draft error');
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * GET /blog-metrics — Fetch public blog metrics from a WordPress site
+   * Calls the WP REST API (no auth needed for published posts).
+   */
+  fastify.get('/blog-metrics', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const { url } = request.query as { url?: string };
+      if (!url) throw new ApiError(400, 'url query param is required', 'VALIDATION_ERROR');
+
+      // Axiom test event
+      ingest({
+        type: 'blog_metrics_refresh',
+        userId: request.headers['x-user-id'],
+        blogUrl: url,
+        test: true,
+        customTestObject: {
+          source: 'blog-metrics-button',
+          timestamp: new Date().toISOString(),
+          message: 'Axiom integration test event',
+        },
+      });
+
+      // Normalize URL
+      const siteUrl = url.replace(/\/+$/, '');
+      const apiBase = `${siteUrl}/wp-json/wp/v2`;
+
+      // Fetch recent posts (just 5, with total count from headers)
+      const postsRes = await fetch(`${apiBase}/posts?per_page=5&_fields=id,title,date,link,status&orderby=date&order=desc`, {
+        headers: { 'User-Agent': 'BrightTale/1.0' },
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (!postsRes.ok) {
+        throw new ApiError(502, 'Could not reach WordPress REST API. Make sure the site has WP REST API enabled.', 'WP_API_ERROR');
+      }
+
+      const totalPosts = parseInt(postsRes.headers.get('X-WP-Total') ?? '0', 10);
+      const totalPages = parseInt(postsRes.headers.get('X-WP-TotalPages') ?? '0', 10);
+      const posts = (await postsRes.json()) as Array<{
+        id: number;
+        title: { rendered: string };
+        date: string;
+        link: string;
+        status: string;
+      }>;
+
+      const recentPosts = posts.map((p) => ({
+        id: p.id,
+        title: p.title.rendered,
+        date: p.date,
+        link: p.link,
+      }));
+
+      await flushAxiom();
+
+      return reply.send({
+        data: {
+          totalPosts,
+          totalPages,
+          recentPosts,
+          lastPublished: recentPosts[0]?.date ?? null,
+        },
+        error: null,
+      });
+    } catch (error) {
       return sendError(reply, error);
     }
   });

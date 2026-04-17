@@ -78,6 +78,9 @@ npm run db:seed       # runs scripts/generate-seed.ts → seed.sql → supabase 
 - **Zod** for request/response validation
 - **shadcn/ui** + Tailwind CSS 4 for UI
 - **Vitest 4** for tests
+- **Sentry** for error tracking (`apps/app`, `apps/api`)
+- **Axiom** for structured logging (`apps/api/src/lib/axiom.ts`) — logs all API requests + AI usage
+- **PostHog** for product analytics — client-side (`apps/app`, `apps/web`), server-side (`apps/api/src/lib/posthog.ts`)
 
 ### 4-Agent Content Workflow
 
@@ -158,8 +161,9 @@ Run single test: `npx vitest run apps/api/src/lib/__tests__/crypto.test.ts`
 
 ```
 .env.local                     ← root: SUPABASE_ACCESS_TOKEN for CLI
-apps/app/.env.local            ← API_URL, INTERNAL_API_KEY, NEXT_PUBLIC_SUPABASE_*
-apps/api/.env.local            ← INTERNAL_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+apps/app/.env.local            ← API_URL, INTERNAL_API_KEY, NEXT_PUBLIC_SUPABASE_*, NEXT_PUBLIC_POSTHOG_KEY, NEXT_PUBLIC_AXIOM_TOKEN
+apps/api/.env.local            ← INTERNAL_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, AXIOM_TOKEN, POSTHOG_API_KEY
+apps/web/.env.local            ← NEXT_PUBLIC_POSTHOG_KEY, NEXT_PUBLIC_AXIOM_TOKEN
 ```
 
 ### Canonical Decisions

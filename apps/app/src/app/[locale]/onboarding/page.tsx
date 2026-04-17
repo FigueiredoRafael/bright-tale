@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import { useRouter } from '@/i18n/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +12,10 @@ import { toast } from 'sonner';
 import {
   Sparkles, ArrowRight, ArrowLeft, Check, Globe,
   PenLine, Video, Zap, Mic, Ghost, User as UserIcon, Layers,
+  Youtube, FileText, Loader2,
 } from 'lucide-react';
+
+/* ───────────────── constants ───────────────── */
 
 const NICHE_OPTIONS = [
   'Tecnologia', 'Finanças', 'Produtividade', 'Saúde / Fitness',
@@ -32,14 +36,90 @@ const VIDEO_STYLES = [
   { value: 'hybrid', label: 'Híbrido', icon: Layers, desc: 'Mix: alguns com rosto, alguns dark' },
 ] as const;
 
-const MARKETS = [
-  { value: 'br', label: 'Brasil', lang: 'pt-BR' },
-  { value: 'us', label: 'Estados Unidos', lang: 'en-US' },
-  { value: 'uk', label: 'United Kingdom', lang: 'en-GB' },
-  { value: 'international', label: 'Internacional', lang: 'en-US' },
+const FEATURED_MARKETS = [
+  { value: 'br', label: 'Brasil', flag: '🇧🇷', lang: 'pt-BR' },
+  { value: 'us', label: 'Estados Unidos', flag: '🇺🇸', lang: 'en-US' },
+  { value: 'uk', label: 'United Kingdom', flag: '🇬🇧', lang: 'en-GB' },
+  { value: 'international', label: 'Internacional', flag: '🌍', lang: 'en-US' },
 ];
 
+const ALL_LANGUAGES = [
+  { value: 'pt-BR', label: 'Português (Brasil)' },
+  { value: 'pt-PT', label: 'Português (Portugal)' },
+  { value: 'en-US', label: 'English (US)' },
+  { value: 'en-GB', label: 'English (UK)' },
+  { value: 'es-ES', label: 'Español (España)' },
+  { value: 'es-MX', label: 'Español (México)' },
+  { value: 'fr-FR', label: 'Français' },
+  { value: 'de-DE', label: 'Deutsch' },
+  { value: 'it-IT', label: 'Italiano' },
+  { value: 'nl-NL', label: 'Nederlands' },
+  { value: 'pl-PL', label: 'Polski' },
+  { value: 'ru-RU', label: 'Русский' },
+  { value: 'uk-UA', label: 'Українська' },
+  { value: 'ja-JP', label: '日本語' },
+  { value: 'ko-KR', label: '한국어' },
+  { value: 'zh-CN', label: '中文 (简体)' },
+  { value: 'zh-TW', label: '中文 (繁體)' },
+  { value: 'ar-SA', label: 'العربية' },
+  { value: 'hi-IN', label: 'हिन्दी' },
+  { value: 'tr-TR', label: 'Türkçe' },
+  { value: 'sv-SE', label: 'Svenska' },
+  { value: 'da-DK', label: 'Dansk' },
+  { value: 'no-NO', label: 'Norsk' },
+  { value: 'fi-FI', label: 'Suomi' },
+  { value: 'id-ID', label: 'Bahasa Indonesia' },
+  { value: 'th-TH', label: 'ไทย' },
+  { value: 'vi-VN', label: 'Tiếng Việt' },
+  { value: 'cs-CZ', label: 'Čeština' },
+  { value: 'ro-RO', label: 'Română' },
+  { value: 'el-GR', label: 'Ελληνικά' },
+  { value: 'he-IL', label: 'עברית' },
+  { value: 'hu-HU', label: 'Magyar' },
+  { value: 'bg-BG', label: 'Български' },
+];
+
+/** Map YouTube country code → market + language */
+function countryToMarket(country?: string): { market: string; lang: string } {
+  switch (country?.toUpperCase()) {
+    case 'BR': return { market: 'br', lang: 'pt-BR' };
+    case 'PT': return { market: 'international', lang: 'pt-PT' };
+    case 'US': return { market: 'us', lang: 'en-US' };
+    case 'GB': return { market: 'uk', lang: 'en-GB' };
+    case 'ES': return { market: 'international', lang: 'es-ES' };
+    case 'MX': case 'AR': case 'CO': case 'CL': return { market: 'international', lang: 'es-MX' };
+    case 'FR': return { market: 'international', lang: 'fr-FR' };
+    case 'DE': case 'AT': case 'CH': return { market: 'international', lang: 'de-DE' };
+    case 'IT': return { market: 'international', lang: 'it-IT' };
+    case 'JP': return { market: 'international', lang: 'ja-JP' };
+    case 'KR': return { market: 'international', lang: 'ko-KR' };
+    default: return { market: 'international', lang: 'en-US' };
+  }
+}
+
+function formatNumber(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+/* ───────────────── types ───────────────── */
+
+interface YouTubeChannelData {
+  id: string;
+  title: string;
+  description: string;
+  customUrl: string;
+  thumbnail: string;
+  country?: string;
+  subscribers: number;
+  totalViews: number;
+  videoCount: number;
+}
+
 type Step = 'welcome' | 'has-channel' | 'connect' | 'market' | 'media' | 'video-style' | 'name';
+
+/* ───────────────── component ───────────────── */
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -55,9 +135,14 @@ export default function OnboardingPage() {
       })
       .catch(() => { /* silent */ });
   }, []);
+
   const [hasChannel, setHasChannel] = useState<boolean | null>(null);
+  const [existingPlatforms, setExistingPlatforms] = useState<string[]>([]);
   const [youtubeUrl, setYoutubeUrl] = useState('');
-  const [selectedNiches, setSelectedNiches] = useState<string[]>([]);
+  const [blogUrl, setBlogUrl] = useState('');
+  const [ytChannel, setYtChannel] = useState<YouTubeChannelData | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [selectedNiche, setSelectedNiche] = useState('');
   const [customNiche, setCustomNiche] = useState('');
   const [market, setMarket] = useState('br');
   const [language, setLanguage] = useState('pt-BR');
@@ -65,9 +150,15 @@ export default function OnboardingPage() {
   const [videoStyle, setVideoStyle] = useState<string>('face');
   const [channelName, setChannelName] = useState('');
   const [creating, setCreating] = useState(false);
+  const [showAllLanguages, setShowAllLanguages] = useState(false);
 
-  // Dynamic step order (video-style only shown if video is selected)
-  const steps: Step[] = ['welcome', 'has-channel', 'connect', 'market', 'media'];
+  // When YouTube data is available, skip market step (already inferred)
+  const hasYoutubeProfile = !!ytChannel;
+
+  // Dynamic step order
+  const steps: Step[] = ['welcome', 'has-channel', 'connect'];
+  if (!hasYoutubeProfile) steps.push('market');
+  steps.push('media');
   if (mediaTypes.includes('video') || mediaTypes.includes('shorts')) {
     steps.push('video-style');
   }
@@ -86,8 +177,8 @@ export default function OnboardingPage() {
     setStep(steps[prevIdx]);
   }
 
-  function toggleNiche(n: string) {
-    setSelectedNiches((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]));
+  function selectNiche(n: string) {
+    setSelectedNiche((prev) => (prev === n ? '' : n));
   }
 
   function toggleMedia(m: string) {
@@ -95,10 +186,47 @@ export default function OnboardingPage() {
       prev.includes(m)
         ? prev.length > 1
           ? prev.filter((x) => x !== m)
-          : prev // don't allow removing last
+          : prev
         : [...prev, m],
     );
   }
+
+  /** Analyze YouTube channel and pre-fill onboarding data */
+  const analyzeYouTube = useCallback(async () => {
+    if (!youtubeUrl.trim()) return;
+    setAnalyzing(true);
+    try {
+      const res = await fetch('/api/youtube/analyze-channel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: youtubeUrl }),
+      });
+      const json = await res.json();
+      if (json.error) {
+        toast.error(json.error.message ?? 'Canal não encontrado');
+        setAnalyzing(false);
+        return;
+      }
+
+      const data = json.data as YouTubeChannelData;
+      setYtChannel(data);
+
+      // Pre-fill from channel data
+      setChannelName(data.title);
+      const { market: m, lang } = countryToMarket(data.country);
+      setMarket(m);
+      setLanguage(lang);
+
+      // Pre-select video media type since they have a YouTube channel
+      setMediaTypes((prev) => (prev.includes('video') ? prev : [...prev, 'video']));
+
+      toast.success(`Canal "${data.title}" encontrado!`);
+    } catch {
+      toast.error('Erro ao analisar canal');
+    } finally {
+      setAnalyzing(false);
+    }
+  }, [youtubeUrl]);
 
   async function createChannel() {
     if (!channelName.trim()) {
@@ -108,7 +236,7 @@ export default function OnboardingPage() {
 
     setCreating(true);
     try {
-      const niche = selectedNiches[0] ?? customNiche ?? null;
+      const niche = selectedNiche || customNiche || undefined;
       const needsVideoStyle = mediaTypes.includes('video') || mediaTypes.includes('shorts');
 
       const res = await fetch('/api/channels', {
@@ -117,12 +245,14 @@ export default function OnboardingPage() {
         body: JSON.stringify({
           name: channelName,
           niche,
-          nicheTags: selectedNiches.length > 0 ? selectedNiches : undefined,
+          nicheTags: selectedNiche ? [selectedNiche] : undefined,
           market,
           language,
           mediaTypes,
           videoStyle: needsVideoStyle ? videoStyle : undefined,
           youtubeUrl: youtubeUrl || undefined,
+          blogUrl: blogUrl || undefined,
+          logoUrl: ytChannel?.thumbnail || undefined,
         }),
       });
 
@@ -151,7 +281,6 @@ export default function OnboardingPage() {
 
   return (
     <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center px-4 py-8 relative">
-      {/* Cancel button — only if user has channels already */}
       {hasExistingChannels && (
         <button
           onClick={() => router.push('/channels')}
@@ -174,6 +303,8 @@ export default function OnboardingPage() {
 
       <Card className="w-full max-w-lg">
         <CardContent className="p-8">
+
+          {/* ── WELCOME ── */}
           {step === 'welcome' && (
             <div className="text-center space-y-6">
               <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
@@ -191,50 +322,149 @@ export default function OnboardingPage() {
             </div>
           )}
 
+          {/* ── HAS CHANNEL ── */}
           {step === 'has-channel' && (
             <div className="space-y-6">
-              <h2 className="text-xl font-bold text-center">Você já tem um canal?</h2>
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  onClick={() => { setHasChannel(true); next(); }}
-                  className={`p-6 rounded-lg border-2 text-center transition-all hover:border-primary ${hasChannel === true ? 'border-primary bg-primary/5' : 'border-border'}`}
-                >
-                  <Check className="h-6 w-6 mx-auto mb-2 text-green-500" />
-                  <div className="font-medium">Sim, tenho</div>
-                  <p className="text-xs text-muted-foreground mt-1">Vou analisar o canal</p>
-                </button>
-                <button
-                  onClick={() => { setHasChannel(false); next(); }}
-                  className={`p-6 rounded-lg border-2 text-center transition-all hover:border-primary ${hasChannel === false ? 'border-primary bg-primary/5' : 'border-border'}`}
-                >
-                  <Sparkles className="h-6 w-6 mx-auto mb-2 text-purple-500" />
-                  <div className="font-medium">Estou começando</div>
-                  <p className="text-xs text-muted-foreground mt-1">Ajudo a escolher nicho</p>
-                </button>
+              <div className="text-center">
+                <h2 className="text-xl font-bold">Você já produz conteúdo?</h2>
+                <p className="text-sm text-muted-foreground mt-1">Selecione onde você já publica (pode marcar os dois)</p>
               </div>
-              <Button variant="ghost" onClick={back} className="w-full">
-                <ArrowLeft className="h-4 w-4 mr-2" /> Voltar
-              </Button>
+              <div className="grid grid-cols-2 gap-4">
+                {([
+                  { value: 'youtube', label: 'YouTube', icon: Youtube, desc: 'Tenho um canal', color: 'text-red-500' },
+                  { value: 'blog', label: 'Blog', icon: FileText, desc: 'Tenho um blog', color: 'text-blue-500' },
+                ] as const).map((platform) => {
+                  const Icon = platform.icon;
+                  const selected = existingPlatforms.includes(platform.value);
+                  return (
+                    <button
+                      key={platform.value}
+                      onClick={() => setExistingPlatforms((prev) =>
+                        prev.includes(platform.value) ? prev.filter((p) => p !== platform.value) : [...prev, platform.value],
+                      )}
+                      className={`p-6 rounded-lg border-2 text-center transition-all hover:border-primary relative ${selected ? 'border-primary bg-primary/5' : 'border-border'}`}
+                    >
+                      {selected && (
+                        <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                          <Check className="h-3 w-3 text-primary-foreground" />
+                        </div>
+                      )}
+                      <Icon className={`h-6 w-6 mx-auto mb-2 ${platform.color}`} />
+                      <div className="font-medium">{platform.label}</div>
+                      <p className="text-xs text-muted-foreground mt-1">{platform.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex flex-col gap-2">
+                <Button
+                  onClick={() => { setHasChannel(existingPlatforms.length > 0); next(); }}
+                  className="w-full"
+                >
+                  {existingPlatforms.length > 0 ? 'Continuar' : 'Estou começando do zero'}
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
+                <Button variant="ghost" onClick={back} className="w-full">
+                  <ArrowLeft className="h-4 w-4 mr-2" /> Voltar
+                </Button>
+              </div>
             </div>
           )}
 
+          {/* ── CONNECT ── */}
           {step === 'connect' && (
             <div className="space-y-6">
               {hasChannel ? (
                 <>
-                  <h2 className="text-xl font-bold">Conecte seu canal</h2>
-                  <div className="space-y-2">
-                    <Label>URL do canal do YouTube</Label>
-                    <Input placeholder="https://youtube.com/@seucanal" value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} />
+                  <div>
+                    <h2 className="text-xl font-bold">Conecte seus canais</h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Vamos analisar e montar o perfil do seu conteúdo automaticamente.
+                    </p>
+                  </div>
+
+                  {/* YouTube URL + analyze */}
+                  {existingPlatforms.includes('youtube') && (
+                    <div className="space-y-3">
+                      <Label className="flex items-center gap-2">
+                        <Youtube className="h-4 w-4 text-red-500" /> URL do canal do YouTube
+                      </Label>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="https://youtube.com/@seucanal"
+                          value={youtubeUrl}
+                          onChange={(e) => { setYoutubeUrl(e.target.value); setYtChannel(null); }}
+                          disabled={analyzing}
+                        />
+                        <Button
+                          onClick={analyzeYouTube}
+                          disabled={analyzing || !youtubeUrl.trim()}
+                          size="sm"
+                          className="shrink-0"
+                        >
+                          {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Analisar'}
+                        </Button>
+                      </div>
+
+                      {/* YouTube channel preview */}
+                      {ytChannel && (
+                        <div className="bg-muted/50 rounded-lg p-4 flex items-start gap-3">
+                          <Image
+                            src={ytChannel.thumbnail}
+                            alt={ytChannel.title}
+                            width={48}
+                            height={48}
+                            className="rounded-full shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium">{ytChannel.title}</div>
+                            <div className="text-xs text-muted-foreground">{ytChannel.customUrl}</div>
+                            <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
+                              <span>{formatNumber(ytChannel.subscribers)} inscritos</span>
+                              <span>{formatNumber(ytChannel.videoCount)} vídeos</span>
+                              <span>{formatNumber(ytChannel.totalViews)} views</span>
+                            </div>
+                            {ytChannel.country && (
+                              <div className="text-xs text-muted-foreground mt-1">
+                                País: {ytChannel.country} → {ALL_LANGUAGES.find((l) => l.value === language)?.label}
+                              </div>
+                            )}
+                          </div>
+                          <Check className="h-5 w-5 text-green-500 shrink-0" />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Blog URL */}
+                  {existingPlatforms.includes('blog') && (
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-blue-500" /> URL do blog
+                      </Label>
+                      <Input placeholder="https://meublog.com.br" value={blogUrl} onChange={(e) => setBlogUrl(e.target.value)} />
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-medium">Qual o tema principal?</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {NICHE_OPTIONS.map((n) => (
+                        <Badge key={n} variant={selectedNiche === n ? 'default' : 'outline'} className="cursor-pointer text-sm py-1.5 px-3" onClick={() => selectNiche(n)}>
+                          {n}
+                        </Badge>
+                      ))}
+                    </div>
+                    <Input placeholder="Ou digite um nicho custom..." value={customNiche} onChange={(e) => setCustomNiche(e.target.value)} />
                   </div>
                 </>
               ) : (
                 <>
-                  <h2 className="text-xl font-bold">Que temas te interessam?</h2>
-                  <p className="text-sm text-muted-foreground">Pode marcar um ou mais. Vamos analisar as melhores oportunidades.</p>
+                  <h2 className="text-xl font-bold">Qual tema te interessa?</h2>
+                  <p className="text-sm text-muted-foreground">Escolha o nicho principal do seu conteúdo.</p>
                   <div className="flex flex-wrap gap-2">
                     {NICHE_OPTIONS.map((n) => (
-                      <Badge key={n} variant={selectedNiches.includes(n) ? 'default' : 'outline'} className="cursor-pointer text-sm py-1.5 px-3" onClick={() => toggleNiche(n)}>
+                      <Badge key={n} variant={selectedNiche === n ? 'default' : 'outline'} className="cursor-pointer text-sm py-1.5 px-3" onClick={() => selectNiche(n)}>
                         {n}
                       </Badge>
                     ))}
@@ -244,29 +474,74 @@ export default function OnboardingPage() {
               )}
               <div className="flex gap-2">
                 <Button variant="ghost" onClick={back} className="flex-1"><ArrowLeft className="h-4 w-4 mr-2" /> Voltar</Button>
-                <Button onClick={next} className="flex-1">Continuar <ArrowRight className="h-4 w-4 ml-2" /></Button>
+                <Button
+                  onClick={next}
+                  className="flex-1"
+                  disabled={!!hasChannel && existingPlatforms.includes('youtube') && !ytChannel && !!youtubeUrl.trim()}
+                >
+                  Continuar <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
               </div>
+              {hasChannel && !ytChannel && (
+                <button
+                  onClick={() => { setYoutubeUrl(''); next(); }}
+                  className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Configurar mais tarde →
+                </button>
+              )}
             </div>
           )}
 
+          {/* ── MARKET (skipped when YouTube profile available) ── */}
           {step === 'market' && (
             <div className="space-y-6">
-              <h2 className="text-xl font-bold">Qual seu público?</h2>
-              <div className="space-y-3">
-                {MARKETS.map((m) => (
-                  <button
-                    key={m.value}
-                    onClick={() => { setMarket(m.value); setLanguage(m.lang); }}
-                    className={`w-full p-4 rounded-lg border-2 text-left transition-all flex items-center gap-3 ${market === m.value ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground/30'}`}
-                  >
-                    <Globe className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <div className="font-medium">{m.label}</div>
-                      <div className="text-xs text-muted-foreground">{m.lang}</div>
-                    </div>
-                  </button>
-                ))}
+              <div>
+                <h2 className="text-xl font-bold">Qual seu público?</h2>
+                <p className="text-sm text-muted-foreground mt-1">Escolha o idioma principal do conteúdo.</p>
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {FEATURED_MARKETS.map((m) => {
+                  const selected = market === m.value && language === m.lang;
+                  return (
+                    <button
+                      key={m.value}
+                      onClick={() => { setMarket(m.value); setLanguage(m.lang); setShowAllLanguages(false); }}
+                      className={`p-4 rounded-lg border-2 text-center transition-all ${selected ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground/30'}`}
+                    >
+                      <span className="text-2xl">{m.flag}</span>
+                      <div className="font-medium text-sm mt-1">{m.label}</div>
+                      <div className="text-xs text-muted-foreground">{m.lang}</div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {!showAllLanguages ? (
+                <button
+                  onClick={() => setShowAllLanguages(true)}
+                  className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center gap-1"
+                >
+                  <Globe className="h-3.5 w-3.5" /> Outro idioma...
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground">Selecione o idioma</Label>
+                  <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                    {ALL_LANGUAGES.map((l) => (
+                      <button
+                        key={l.value}
+                        onClick={() => { setLanguage(l.value); setMarket('international'); }}
+                        className={`px-3 py-2 rounded-md border text-left text-sm transition-all ${language === l.value ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-muted-foreground/30'}`}
+                      >
+                        {l.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <Button variant="ghost" onClick={back} className="flex-1"><ArrowLeft className="h-4 w-4 mr-2" /> Voltar</Button>
                 <Button onClick={next} className="flex-1">Continuar <ArrowRight className="h-4 w-4 ml-2" /></Button>
@@ -274,7 +549,7 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* NEW: Media types (multi-select) */}
+          {/* ── MEDIA TYPES ── */}
           {step === 'media' && (
             <div className="space-y-6">
               <div>
@@ -311,7 +586,7 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* NEW: Video style (conditional) */}
+          {/* ── VIDEO STYLE ── */}
           {step === 'video-style' && (
             <div className="space-y-6">
               <div>
@@ -347,6 +622,7 @@ export default function OnboardingPage() {
             </div>
           )}
 
+          {/* ── NAME + REVIEW ── */}
           {step === 'name' && (
             <div className="space-y-6">
               <h2 className="text-xl font-bold">Nomeie seu canal</h2>
@@ -359,10 +635,14 @@ export default function OnboardingPage() {
               <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm">
                 <h3 className="font-medium">Resumo</h3>
                 <div className="grid grid-cols-[100px_1fr] gap-y-1.5 text-muted-foreground">
-                  <span>Nicho:</span>
-                  <span className="text-foreground">{selectedNiches[0] ?? customNiche ?? '—'}</span>
-                  <span>Mercado:</span>
-                  <span className="text-foreground">{MARKETS.find((m) => m.value === market)?.label} ({language})</span>
+                  {(selectedNiche || customNiche) && (
+                    <>
+                      <span>Nicho:</span>
+                      <span className="text-foreground">{selectedNiche || customNiche}</span>
+                    </>
+                  )}
+                  <span>Idioma:</span>
+                  <span className="text-foreground">{ALL_LANGUAGES.find((l) => l.value === language)?.label ?? language}</span>
                   <span>Mídias:</span>
                   <span className="text-foreground">
                     {mediaTypes.map((m) => MEDIA_OPTIONS.find((o) => o.value === m)?.label).join(', ')}
@@ -373,10 +653,16 @@ export default function OnboardingPage() {
                       <span className="text-foreground">{VIDEO_STYLES.find((s) => s.value === videoStyle)?.label}</span>
                     </>
                   )}
-                  {youtubeUrl && (
+                  {ytChannel && (
                     <>
                       <span>YouTube:</span>
-                      <span className="text-foreground truncate">{youtubeUrl}</span>
+                      <span className="text-foreground truncate">{ytChannel.title} ({formatNumber(ytChannel.subscribers)} subs)</span>
+                    </>
+                  )}
+                  {blogUrl && (
+                    <>
+                      <span>Blog:</span>
+                      <span className="text-foreground truncate">{blogUrl}</span>
                     </>
                   )}
                 </div>
