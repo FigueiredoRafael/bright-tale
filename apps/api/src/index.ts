@@ -54,6 +54,11 @@ import { voiceRoutes } from "./routes/voice.js";
 import { publishingDestinationsRoutes } from "./routes/publishing-destinations.js";
 import { notificationsRoutes } from "./routes/notifications.js";
 import { affiliateLegacyRoutes } from "./routes/affiliate-legacy.js";
+import rateLimit from "@fastify/rate-limit";
+// Side-effect import: activates `rawBody?: boolean` on FastifyContextConfig
+// so routes/billing.ts can use `{ config: { rawBody: true } }` without a
+// direct import of the plugin (webhook route reads request.rawBody directly).
+import "fastify-raw-body";
 import {
   registerAffiliateRedirectRoute,
   registerAffiliateInternalRoutes,
@@ -67,6 +72,7 @@ import { flushPostHog } from "./lib/posthog.js";
 
 const server = Fastify({
   bodyLimit: 25 * 1024 * 1024, // 25 MB — needed for base64 image uploads
+  trustProxy: true, // required for @fastify/rate-limit on Vercel (sets req.ip from X-Forwarded-For)
   logger: {
     level: process.env.LOG_LEVEL ?? "info",
     transport:
@@ -194,7 +200,29 @@ server.register(affiliateLegacyRoutes, { prefix: "/affiliate-legacy" });
 // Affiliate platform — @tn-figueiredo/affiliate@0.4.0 (Phase 2A.3 wires /ref + /internal)
 const affiliateContainer = buildAffiliateContainer();
 
+function parseRefRateLimitMax(): number {
+  const raw = process.env.REF_RATE_LIMIT_MAX;
+  if (raw === undefined || raw === "") return 30;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 30;
+}
+
 server.register(async (scope) => {
+  await scope.register(rateLimit, {
+    max: parseRefRateLimitMax(),
+    timeWindow: process.env.REF_RATE_LIMIT_WINDOW ?? "1 minute",
+    cache: 10_000,
+    keyGenerator: (req) => req.ip,
+    continueExceeding: false,
+    errorResponseBuilder: (_req, ctx) => ({
+      statusCode: 429,
+      data: null,
+      error: {
+        code: "RATE_LIMITED",
+        message: `Too many requests. Try again in ${Math.ceil(ctx.ttl / 1000)}s.`,
+      },
+    }),
+  });
   registerAffiliateRedirectRoute(scope as never, {
     webBaseUrl: affiliateContainer.config.webBaseUrl,
     trackClickUseCase: affiliateContainer.trackClickUseCase,
