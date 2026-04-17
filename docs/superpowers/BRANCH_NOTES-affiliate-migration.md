@@ -96,6 +96,7 @@ Post-2B-recovery state (HEAD = `1ae6490`):
 - `npm run typecheck` — 4 workspaces green
 - `npm test` — monorepo total: 1064 tests passing (api 930, app 90, web 27, shared 17); 10 skipped
 - `npm run test:integration` (apps/api, with MailHog running) — 4 integration tests passing
+- **Runtime boot:** `node --env-file=.env.local --import tsx/esm src/index.ts` starts cleanly within ~1s, logs `Server listening at http://0.0.0.0:3001`. No plugin registration errors, no container-wiring errors, no module-augmentation clashes. Confirms that `fastify-raw-body` + `@fastify/rate-limit` + the affiliate routes + SP0 email provider all compose at runtime, not just under `tsc --noEmit`.
 - Working tree: clean (only `.claude/scheduled_tasks.lock` + `next-env.d.ts` auto-regenerations)
 
 ---
