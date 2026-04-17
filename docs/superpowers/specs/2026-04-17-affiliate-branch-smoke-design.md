@@ -1,7 +1,7 @@
 # Affiliate-Migration Branch Smoke Automation — Design Spec
 
 **Date:** 2026-04-17
-**Status:** draft (post-brainstorm, pre-plan; iteration 3)
+**Status:** draft (post-brainstorm, pre-plan; iteration 4 — package contracts verified against `node_modules/@tn-figueiredo/affiliate` and `@tn-figueiredo/affiliate-admin` source)
 **Context:** One-shot, deterministic rehearsal for the `feat/affiliate-2a-foundation` branch before PR review/merge. Targets the runtime-wiring gap that unit tests mock out across SP1 (2B end-user), SP2 (2C admin), SP3 (2E fraud + rate-limit), SP4 (2F billing hook). SP0 (email provider) is exercised only as a side-effect of probes that generate outbound mail; no explicit SP0 probe.
 **Related:** `BRANCH_NOTES-affiliate-migration.md` §"Known residual gaps" item 1.
 
@@ -98,8 +98,9 @@ export interface SeedHandles {
   referralId: string;
   organizationId: string;
   commissionId: string;        // the seeded pending commission (used by SP1-2)
-  contentSubmissionId: string;
   fraudFlagId: string;
+  // Note: no contentSubmissionId — no GET-list endpoint exists in @tn-figueiredo/affiliate;
+  // content-submission seeding was removed in v4.
 }
 
 export interface Baselines {
@@ -111,20 +112,20 @@ export interface Baselines {
 
 ### Probe execution order
 
-Strict, sequential, enforced by the main loop — the order matters because SP2 mutates state used by SP3.
+Strict, sequential, enforced by the main loop. Pause is the only irreversible admin mutation exposed by `@tn-figueiredo/affiliate-admin` (there is no re-activate endpoint; the "approve" endpoint takes full contract params and is for pending→approved, not paused→active). SP2-pause therefore runs LAST so earlier probes see an `active` affiliate.
 
 ```
-SP1-1, SP1-2, SP1-3      ← read-only, establish baseline wiring
-SP4-1, SP4-2, SP4-3      ← billing webhook probes; mutates affiliate_commissions
-SP2-1, SP2-4, SP2-5,     ← admin reads (no state change)
-SP2-6 (resolve flag),    ← resolves seeded fraud flag
-SP2-2 (pause),           ← flips affiliate status=paused
-SP2-3 (re-approve),      ← flips back to status=approved   (MUST precede SP3)
-SP3-1, SP3-2, SP3-3,     ← rate-limit on /ref/<code>; requires approved affiliate
+SP1-1, SP1-2, SP1-3      ← end-user reads; no state mutation
+SP4-1, SP4-2, SP4-3      ← billing webhook; appends to affiliate_commissions
+SP2-1, SP2-2, SP2-3,     ← admin reads (fraud-flags list, overview, detail)
+SP2-4                    ← admin read (payouts list)
+SP2-5 (resolve flag)     ← mutates fraud_flags.status (affiliate status unchanged)
+SP3-1, SP3-2, SP3-3,     ← rate-limit on /ref/<code>; requires affiliates.status='active'
 SP3-4                    ← scope isolation check
+SP2-6 (pause) ← TERMINAL  ← flips affiliates.status to 'paused'; no subsequent probe depends on active
 ```
 
-`--only=SP<N>` runs only that sub-project's probes but still runs seed + cleanup and still computes baselines.
+`--only=SP<N>` runs only that sub-project's probes; seed + cleanup + baselines always execute. Note: with `--only=SP2`, the terminal pause still runs (it's the last SP2 probe); cleanup removes the affiliate afterward.
 
 ---
 
@@ -146,11 +147,12 @@ Mixing them would either (a) gate admin on self-affiliate (confusing), or (b) le
 | `user_roles` | admin grant | `user_id = <admin>`, `role = 'admin'` |
 | `organizations` | referred user's org | `name = 'Smoke Org <runId>'`, `slug = 'smoke-<runId>'` (unique constraint), `plan = 'free'` (schema default sufficient). **No owner column** — ownership is expressed via `org_memberships` per the schema in `20260412224635_organizations.sql`. |
 | `org_memberships` | primary membership | `org_id = <smoke org>`, `user_id = <referred>`, `created_at = now()` — the `getOrg` convention (`apps/api/src/routes/billing.ts:19-27`) picks the earliest-created membership as the billing-recipient user |
-| `affiliates` | approved, tier=nano | `user_id = <affiliate-owner>`, `code = 'SMK<runId>'` (9 chars; schema `VARCHAR(12)`), `status = 'approved'`, `tier = 'nano'`, `commission_rate = 0.1500` (schema default asserted explicitly), `name` + `email` set from affiliate-owner fields |
+| `affiliates` | **active**, tier=nano | `user_id = <affiliate-owner>`, `code = 'SMK<runId>'` (9 chars; schema `VARCHAR(12)`), `status = 'active'` (**not `'approved'`** — verified: `CalculateAffiliateCommissionUseCase` gates on `status === 'active'`; an `'approved'` affiliate silently no-ops the commission hook, which would mask a real wire break), `tier = 'nano'`, `commission_rate = 0.1500`, `name` + `email` set from affiliate-owner fields, `contract_version = 1`, `contract_accepted_at = now()` (approval prerequisites typically set by the approve use case; seeded directly to skip the approval flow in smoke) |
 | `affiliate_referrals` | active | `affiliate_id = <affiliate>`, `affiliate_code = 'SMK…'`, `user_id = <referred>` (UNIQUE constraint), `attribution_status = 'active'`, `signup_date = now()`, `window_end = now() + INTERVAL '12 months'` |
-| `affiliate_commissions` | pending (SP1 fixture) | `affiliate_id = <affiliate>`, `referral_id = <referral>` (NOT NULL FK), `user_id = <referred>`, `payment_amount = 9900`, `stripe_fee = 434`, `net_amount = 9466`, `commission_rate = 0.1500`, `commission_brl = 1420`, `total_brl = 1420` (all INTEGER centavos — note the column is INT not NUMERIC), `payment_type = 'monthly'`, `status = 'pending'` |
-| `affiliate_content_submissions` | pending | `affiliate_id = <affiliate>`, `url = 'https://example.com/smoke-<runId>'`, `status = 'pending'` |
-| `affiliate_fraud_flags` | open | `affiliate_id = <affiliate>`, `flag_type = 'self_referral_ip_match'`, `severity = 'low'`, `status = 'open'` |
+| `affiliate_commissions` | pending (SP1-2 fixture) | `affiliate_id = <affiliate>`, `referral_id = <referral>` (NOT NULL FK), `user_id = <referred>`, `payment_amount = 9900`, `stripe_fee = 434`, `net_amount = 9466`, `commission_rate = 0.1500`, `commission_brl = 1420`, `total_brl = 1420` (all INTEGER centavos). Values verified to match `CalculateAffiliateCommissionUseCase` formula exactly (`netAmount = paymentAmount - stripeFee`; `commissionBrl = Math.round(netAmount * commissionRate)`; `totalBrl = commissionBrl + (fixedFeeBrl ?? 0)`). `payment_type = 'monthly'`, `status = 'pending'` |
+| `affiliate_fraud_flags` | open (SP2-1, SP2-5 fixture) | `affiliate_id = <affiliate>`, `flag_type = 'self_referral_ip_match'`, `severity = 'low'`, `status = 'open'` |
+
+`affiliate_content_submissions` was seeded in v3 for an SP1-3/SP2-5 pair of probes, but verification against `@tn-figueiredo/affiliate` showed there is no GET-list endpoint for content submissions (only `POST /content-submissions` for create and `PUT /content-submissions/:id/review` for review). The row would be unobservable through the API. Dropped from the fixture in v4 to avoid seeding dead state.
 
 ### Identifier scheme
 
@@ -161,8 +163,8 @@ The fingerprint makes orphans trivially discoverable: `--cleanup-orphans` mode q
 ### Cleanup order (reverse FK)
 
 ```
-affiliate_fraud_flags → affiliate_content_submissions → affiliate_commissions →
-  affiliate_referrals → affiliates → org_memberships → organizations →
+affiliate_fraud_flags → affiliate_commissions → affiliate_referrals →
+  affiliates → org_memberships → organizations →
   user_roles → auth.users ×3
 ```
 
@@ -183,26 +185,30 @@ After the fixture settles, `baselines.pendingCommissionCountForAffiliate = SELEC
 
 Headers on every probe: `X-Internal-Key: <key>`, `x-user-id: <affiliateOwnerUserId>`.
 
+**Envelope contract** (verified against `node_modules/@tn-figueiredo/affiliate/dist/routes.js`): successful responses are `{success: true, data: <T>, error?: unknown}` — **not** the `{data, error: null}` convention. Error responses from admin gate failures are `{success: false, error: "Forbidden"}` (raw string). Probes assert `success === true` + `data` shape; error-path probes assert `success === false`.
+
 | ID | URL + method | Assertions |
 |---|---|---|
-| SP1-1 | `GET /affiliate/me` | HTTP 200; body `data.code === fixture.affiliateCode` (exact); `data.tier === 'nano'`; `error === null` |
-| SP1-2 | `GET /affiliate/commissions/recent` | HTTP 200; `data.items[].id` array contains `fixture.commissionId` |
-| SP1-3 | `GET /affiliate/content` | HTTP 200; `data.items[].id` array contains `fixture.contentSubmissionId` |
-
-Shape detail (`data.items[]` vs other nesting): plan task reads `@tn-figueiredo/affiliate-api` (or equivalent package) type exports to pin exact paths before coding; any divergence from the above is a docs-task, not a smoke failure.
+| SP1-1 | `GET /affiliate/me` | HTTP 200; `body.success === true`; `body.data.code === fixture.affiliateCode` (exact); `body.data.tier === 'nano'`; `body.data.status === 'active'` |
+| SP1-2 | `GET /affiliate/me/commissions` (confirmed route — not `/commissions/recent`) | HTTP 200; `body.success === true`; `body.data` is a **bare array** (not wrapped in `items`); at least one element has `id === fixture.commissionId` |
+| SP1-3 | `GET /affiliate/referrals` (substitutes the nonexistent `GET /content` — the package exposes `POST /content-submissions` only; `GET /referrals` is the closest read endpoint that has fixture data to match) | HTTP 200; `body.success === true`; `body.data` is a bare array; at least one element has `id === fixture.referralId` and `attribution_status === 'active'` |
 
 ### SP2 — admin backend (6)
 
-Headers on every probe: `X-Internal-Key: <key>`, `x-user-id: <adminUserId>`.
+Headers on every probe: `X-Internal-Key: <key>`, `x-user-id: <adminUserId>`. Admin gate is inline per-handler (`await deps.isAdmin(req) ? continue : 403 {success:false, error:'Forbidden'}`) — verified in `node_modules/@tn-figueiredo/affiliate-admin/dist/routes.js`.
+
+Route paths resolved (package verified): prefix `/admin/affiliate` + local paths. No filterable list endpoint for affiliates (only `/` overview + `/:id` detail). No standalone content-submissions list endpoint. Fraud-flags HAS a filterable list with `affiliateId` query — used for SP2-1 instead of the nonexistent affiliates filter.
 
 | ID | URL + method | Assertions |
 |---|---|---|
-| SP2-1 | `GET /admin/affiliate/affiliates?code=<affiliateCode>` (or equivalent filtered list) | HTTP 200; response contains exactly one item with `id === fixture.affiliateId`. Filtering by code avoids pagination ambiguity in a populated dev DB. |
-| SP2-4 | `GET /admin/affiliate/payouts/pending` | HTTP 200; response is a well-formed list (may be empty — seeded commission is `pending`, not payout-queued). Validates route + auth wire only. |
-| SP2-5 | `GET /admin/affiliate/content/pending` | HTTP 200; items include `fixture.contentSubmissionId` |
-| SP2-6 | `POST /admin/affiliate/fraud-flags/<fraudFlagId>/resolve` body `{resolution:'false_positive', notes:'smoke', pauseAffiliate:false}` | HTTP 200; DB re-read of `affiliate_fraud_flags.status` is `'resolved'` |
-| SP2-2 | `POST /admin/affiliate/affiliates/<affiliateId>/pause` body `{reason:'smoke'}` | HTTP 200; DB re-read of `affiliates.status` is `'paused'` |
-| SP2-3 | `POST /admin/affiliate/affiliates/<affiliateId>/approve` | HTTP 200; DB re-read is `'approved'`. **Must run before SP3** so rate-limit probes hit an approved affiliate. |
+| SP2-1 | `GET /admin/affiliate/fraud-flags?affiliateId=<fixture.affiliateId>` (filterable fraud-flags list; confirmed route) | HTTP 200; `body.success === true`; `body.data` contains exactly one element with `id === fixture.fraudFlagId` + `status === 'open'` |
+| SP2-2 | `GET /admin/affiliate/` (overview — no filter param exists; pagination may apply) | HTTP 200; `body.success === true`; among the returned affiliates, at least one has `id === fixture.affiliateId`. If the default page size truncates below the fixture, the probe paginates (up to 5 pages) before failing. |
+| SP2-3 | `GET /admin/affiliate/<fixture.affiliateId>` (detail route) | HTTP 200; `body.success === true`; `body.data.id === fixture.affiliateId`; `body.data.status === 'active'` |
+| SP2-4 | `GET /admin/affiliate/payouts` (confirmed route — not `/payouts/pending`) | HTTP 200; `body.success === true`; `body.data` is well-formed (may be empty — seeded commission is `pending`, not payout-queued). Validates route + admin-gate wire. |
+| SP2-5 | `POST /admin/affiliate/fraud-flags/<fixture.fraudFlagId>/resolve` body `{status:'false_positive', notes:'smoke', pauseAffiliate:false}` (field is `status`, **not `resolution`** — verified in package Zod schema) | HTTP 200; `body.success === true`; DB re-read `affiliate_fraud_flags.status === 'resolved'` |
+| SP2-6 | `POST /admin/affiliate/<fixture.affiliateId>/pause` with **no body** (implementation ignores request body; confirmed `deps.pauseUseCase.execute(id)` with no schema parsing) | HTTP 200; `body.success === true`; DB re-read `affiliates.status === 'paused'`. Terminal probe — affiliate stays paused until cleanup. |
+
+**Admin-gate negative probe (optional, SP2-7 — deferred):** a probe that calls SP2-4 with `x-user-id: <affiliateOwnerUserId>` (non-admin) and asserts `403 {success:false, error:'Forbidden'}` would round out admin-gate wire verification. Deferred to keep the probe count at 16; the package's own tests already exercise the gate.
 
 ### SP3 — rate-limit wire (4)
 
@@ -273,33 +279,32 @@ Seed
   ✓ 3 auth users   smoke-a3f1e2-{admin,owner,ref}@brighttale.test
   ✓ admin grant
   ✓ org + membership
-  ✓ affiliate SMKa3f1e2 (tier=nano, rate=0.1500)
+  ✓ affiliate SMKa3f1e2 (tier=nano, rate=0.1500, status=active)
   ✓ referral (attribution_status=active)
   ✓ commission (pending, total_brl=1420 centavos)
-  ✓ content submission (pending)
   ✓ fraud flag (open)
   ℹ baseline.pendingCommissions = 1
 
 Probes (16)
   SP1-1  GET /affiliate/me                             pass    12 ms
-  SP1-2  GET /affiliate/commissions/recent             pass     8 ms
-  SP1-3  GET /affiliate/content                        pass     9 ms
+  SP1-2  GET /affiliate/me/commissions                 pass     8 ms
+  SP1-3  GET /affiliate/referrals                      pass     9 ms
   SP4-1  webhook subscription_cycle → commission +1    pass    47 ms   (new row, total_brl>0, rate=0.1500)
   SP4-2  webhook subscription_update → no delta        pass    39 ms
   SP4-3  webhook amount_paid=0 → short-circuit         pass    22 ms
-  SP2-1  GET /admin/affiliate/affiliates?code=…        pass    15 ms
-  SP2-4  GET /admin/affiliate/payouts/pending          pass    10 ms
-  SP2-5  GET /admin/affiliate/content/pending          pass    11 ms
-  SP2-6  resolve fraud flag                            pass    19 ms
-  SP2-2  pause affiliate                               pass    23 ms
-  SP2-3  re-approve affiliate                          pass    20 ms
+  SP2-1  GET /admin/affiliate/fraud-flags?affiliateId= pass    14 ms
+  SP2-2  GET /admin/affiliate/ overview                pass    15 ms
+  SP2-3  GET /admin/affiliate/<id> detail              pass    11 ms
+  SP2-4  GET /admin/affiliate/payouts                  pass    10 ms
+  SP2-5  POST /admin/affiliate/fraud-flags/<id>/resolve pass   19 ms
   SP3-1  /ref × 30 (IP .1, within limit)               pass   345 ms
   SP3-2  /ref 31st (IP .1) → 429 + headers             pass    12 ms
   SP3-3  /ref (IP .2) → 302 fresh bucket               pass     9 ms
   SP3-4  /affiliate/me after exhaustion                pass    10 ms
+  SP2-6  pause affiliate (TERMINAL)                    pass    23 ms
 
 Cleanup
-  ✓ 11 rows removed (1 flag, 1 content, 2 commissions, 1 referral, 1 affiliate, 1 membership, 1 org, 1 role, 3 users)
+  ✓ 10 rows removed (1 flag, 2 commissions, 1 referral, 1 affiliate, 1 membership, 1 org, 1 role, 3 users)
 
 Summary
   16 pass · 0 fail · 0 skip · elapsed 842 ms · exit 0
@@ -356,7 +361,7 @@ Env:
 ## 9. Assumptions & risks (residual)
 
 1. **Service-to-service trust model** — direct probes on `:3001` set `x-user-id` themselves. In production, `apps/app/middleware.ts` strips client-supplied `x-user-id` and injects the session-derived one; the security model is "anyone with `INTERNAL_API_KEY` can act as any user". This smoke leverages that deliberately. Any reader who expects session-cookie auth should stop here — the spec relies on the INTERNAL_API_KEY + x-user-id contract documented in `CLAUDE.md §Security` and `apps/api/src/middleware/authenticate.ts`.
-2. **External package response shapes** — SP1 probes assume `@tn-figueiredo/affiliate-…` returns `{data:{code,tier},error:null}` at `/affiliate/me`. If the package wraps data under another key (e.g., `data.affiliate.code`), SP1-1 fails with an explicit path mismatch. Plan task 1 reads the package's type declarations to pin paths before coding.
+2. **Package envelope is `{success, data, error?}`, not `{data, error}`** — verified in v4 against `@tn-figueiredo/affiliate/dist/routes.js` and `@tn-figueiredo/affiliate-admin/dist/routes.js`. This is a pre-existing deviation from CLAUDE.md's `{data, error}` canonical envelope; the affiliate packages emit Express-style envelopes. Probes assert the package shape, not the project convention. If the packages ever conform to `{data, error}` (via major version bump), SP1/SP2 assertions break loudly — that's a welcome smoke signal, not a bug.
 3. **Commission math decoupled from smoke on purpose** — SP4-1 asserts only `total_brl > 0` + `commission_rate = 0.1500` + row-identity fields. The exact centavo-by-centavo math (fee formula, rounding mode, rate × net vs × gross) is unit-tested territory owned by `CalculateAffiliateCommissionUseCase`'s test suite. A smoke that duplicated the math would silently absorb drift when the formula changes. The wire-level check here proves "hook fired and a well-shaped row landed", which is what runtime smoke exists to prove.
 4. **`affiliate_commissions` schema drift** — seed uses a fixed column set; if a migration adds a `NOT NULL` column without default, seed fails explicitly (insert error → exit 3), which is the correct behavior.
 5. **Concurrent runs against same local stack** — two humans running simultaneously would fight over synthetic IPs (collision on `198.51.100.1`). Script documents "one at a time per host" in its `--help` text; no coordination primitive (lock-file is disposable complexity).
@@ -371,7 +376,7 @@ Env:
 Meta-assertion — how do we know the smoke script itself is correct?
 
 1. **Happy-path run** — on a clean checkout at branch tip, `npm run smoke:affiliate` exits 0, 16 pass, 0 fail.
-2. **Intentional break** (exercised manually once, documented in PR): disable fraud flag resolve endpoint in admin routes, re-run, verify SP2-6 fails with exit 1 and diagnostic `"expected affiliate_fraud_flags.status='resolved', got 'open'"`. Revert.
+2. **Intentional break** (exercised manually once, documented in PR): disable fraud flag resolve endpoint in admin routes, re-run, verify SP2-5 fails with exit 1 and diagnostic `"expected affiliate_fraud_flags.status='resolved', got 'open'"`. Revert.
 3. **Orphan cleanup** — run with `--no-cleanup`, capture row count, re-run with `--cleanup-orphans`, verify row count returns to baseline.
 4. **SIGINT during SP3-1** — press Ctrl-C mid-30-request burst, verify cleanup runs, exit 130, DB has no smoke-prefixed rows.
 5. **Idempotency** — run twice back-to-back, verify exit 0 both times (runId differs; no collisions on unique constraints).
@@ -397,9 +402,10 @@ Mapping probes back to the BRANCH_NOTES §"Known residual gaps" item 1 sub-point
 
 | Gap (from BRANCH_NOTES) | Probes that close it |
 |---|---|
-| Admin UI (SP2) → fraud service (SP3) end-to-end flow | SP2-6 (resolve fraud flag via admin route → DB status flip) — proves the admin route + service-role DB + package fraud-repo wire composes at runtime |
-| Billing webhook (SP4) → commission hook (2A container) | SP4-1/2/3 — prove the Stripe webhook dispatcher → `CalculateAffiliateCommissionUseCase` → `SupabaseAffiliateCommissionRepository` chain is wired and reacts to event-type filters |
-| End-user UI (SP1) → /api/affiliate/* routes | SP1-1/2/3 — prove the /affiliate scope + authenticate middleware + repository chain returns seeded data |
+| Admin UI (SP2) → fraud service (SP3) end-to-end flow | SP2-1 (list fraud flags filtered by affiliateId, confirms list route + admin gate) + SP2-5 (resolve flag via admin route → DB status flip, confirms mutation route + service-role DB + package fraud-repo wire) |
+| Billing webhook (SP4) → commission hook (2A container) | SP4-1/2/3 — prove the Stripe webhook dispatcher → `CalculateAffiliateCommissionUseCase` → `SupabaseAffiliateCommissionRepository` chain is wired, reacts to event-type filters, and returns the null-no-op on non-matching events |
+| End-user UI (SP1) → /api/affiliate/* routes | SP1-1/2/3 — prove the /affiliate scope + authenticate middleware + end-user use cases (me, commissions, referrals) return seeded data with the expected `{success, data}` envelope |
+| Admin route registration (SP2 wire at all) | SP2-2 (overview), SP2-3 (detail), SP2-4 (payouts), SP2-6 (pause) — prove `registerAffiliateAdminRoutes` is composed into the `/admin/affiliate` scope and the inline `isAdmin` gate fires per handler |
 | Rate-limit plugin registered at /ref scope (SP3) | SP3-1/2 — prove `@fastify/rate-limit` registration took effect on the /ref scope; SP3-3 proves keyGenerator uses forwarded IP (trustProxy wired); SP3-4 proves scope isolation |
 | Container ctor-chain composes at boot (SP0 + SP2 + SP3 + SP4) | Implicitly exercised by every probe — any wiring regression surfaces as a 500 or a missing-dep error on the first call that needs the broken dep |
 
