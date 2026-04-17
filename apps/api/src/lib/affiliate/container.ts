@@ -7,6 +7,11 @@ import {
   UpdateAffiliateProfileUseCase,
   ApproveAffiliateUseCase,
   PauseAffiliateUseCase,
+  TrackAffiliateLinkClickUseCase,
+  AttributeSignupToAffiliateUseCase,
+  CalculateAffiliateCommissionUseCase,
+  ExpirePendingReferralsUseCase,
+  GetAffiliateClicksByPlatformUseCase,
   type AffiliateConfig,
 } from '@tn-figueiredo/affiliate'
 import { createServiceClient } from '@/lib/supabase'
@@ -26,6 +31,7 @@ export interface AffiliateContainer {
   taxId: StubTaxIdRepository
   getAuthenticatedUser: typeof getAuthenticatedUser
   isAdmin: typeof isAdmin
+  // 2A.2: 8 use cases
   applyUseCase: ApplyAsAffiliateUseCase
   getMyAffiliateUseCase: GetMyAffiliateUseCase
   getStatsUseCase: GetAffiliateStatsUseCase
@@ -34,6 +40,12 @@ export interface AffiliateContainer {
   updateProfileUseCase: UpdateAffiliateProfileUseCase
   approveUseCase: ApproveAffiliateUseCase
   pauseUseCase: PauseAffiliateUseCase
+  // 2A.3: 5 tracking use cases
+  trackClickUseCase: TrackAffiliateLinkClickUseCase
+  attributeUseCase: AttributeSignupToAffiliateUseCase
+  calcCommissionUseCase: CalculateAffiliateCommissionUseCase
+  expirePendingUseCase: ExpirePendingReferralsUseCase
+  clicksByPlatformUseCase: GetAffiliateClicksByPlatformUseCase
 }
 
 let cached: AffiliateContainer | null = null
@@ -50,7 +62,7 @@ export function buildAffiliateContainer(): AffiliateContainer {
   cached = {
     config, repo, email, taxId,
     getAuthenticatedUser, isAdmin,
-    // 2A.2: 8 of 35 use cases. Remaining 27 wired in 2A.3 (tracking) + 2A.4 (payouts/admin).
+    // 2A.2:
     applyUseCase: new ApplyAsAffiliateUseCase(repo, email, taxId),
     getMyAffiliateUseCase: new GetMyAffiliateUseCase(repo),
     getStatsUseCase: new GetAffiliateStatsUseCase(repo),
@@ -59,6 +71,12 @@ export function buildAffiliateContainer(): AffiliateContainer {
     updateProfileUseCase: new UpdateAffiliateProfileUseCase(repo),
     approveUseCase: new ApproveAffiliateUseCase(repo, email, config, taxId),
     pauseUseCase: new PauseAffiliateUseCase(repo),
+    // 2A.3 (verified constructor signatures):
+    trackClickUseCase: new TrackAffiliateLinkClickUseCase(repo, config),
+    attributeUseCase: new AttributeSignupToAffiliateUseCase(repo, config, undefined /* fraud — 2E */),
+    calcCommissionUseCase: new CalculateAffiliateCommissionUseCase(repo, config),
+    expirePendingUseCase: new ExpirePendingReferralsUseCase(repo),
+    clicksByPlatformUseCase: new GetAffiliateClicksByPlatformUseCase(repo),
   }
   return cached
 }

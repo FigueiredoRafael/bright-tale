@@ -54,6 +54,12 @@ import { voiceRoutes } from "./routes/voice.js";
 import { publishingDestinationsRoutes } from "./routes/publishing-destinations.js";
 import { notificationsRoutes } from "./routes/notifications.js";
 import { affiliateLegacyRoutes } from "./routes/affiliate-legacy.js";
+import {
+  registerAffiliateRedirectRoute,
+  registerAffiliateInternalRoutes,
+} from "@tn-figueiredo/affiliate/routes";
+import { buildAffiliateContainer } from "./lib/affiliate/container.js";
+import { authenticate } from "./middleware/authenticate.js";
 import { logRequest, flushAxiom } from "./lib/axiom.js";
 import { flushPostHog } from "./lib/posthog.js";
 
@@ -182,6 +188,25 @@ server.register(publishingDestinationsRoutes, {
 });
 server.register(notificationsRoutes, { prefix: "/channels" });
 server.register(affiliateLegacyRoutes, { prefix: "/affiliate-legacy" });
+
+// Affiliate platform — @tn-figueiredo/affiliate@0.4.0 (Phase 2A.3 wires /ref + /internal)
+const affiliateContainer = buildAffiliateContainer();
+
+server.register(async (scope) => {
+  registerAffiliateRedirectRoute(scope as never, {
+    webBaseUrl: affiliateContainer.config.webBaseUrl,
+    trackClickUseCase: affiliateContainer.trackClickUseCase,
+  });
+}, { prefix: "/ref" });
+
+server.register(async (scope) => {
+  scope.addHook("preHandler", authenticate);
+  registerAffiliateInternalRoutes(scope as never, {
+    getAuthenticatedUser: affiliateContainer.getAuthenticatedUser,
+    isAdmin: affiliateContainer.isAdmin,
+    expirePendingUseCase: affiliateContainer.expirePendingUseCase,
+  });
+}, { prefix: "/internal/affiliate" });
 
 if (!process.env.VERCEL) {
   // Surface async errors that would otherwise crash the dev process silently
