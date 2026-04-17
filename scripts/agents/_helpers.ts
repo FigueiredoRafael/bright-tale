@@ -10,6 +10,9 @@ export function emptySections(): SectionsJson {
   };
 }
 
+// Must stay in sync with packages/shared/src/agents/ruleLibrary.ts STANDARD_JSON_RULES.
+// Duplicated here because tsx script execution resolves `@brighttale/shared` differently
+// than Next.js and re-export from root index fails.
 export const STANDARD_JSON_RULES = [
   'Output must be valid JSON, parseable by JSON.parse()',
   'No em-dashes (—), use regular dashes (-)',

@@ -45,22 +45,23 @@ export function buildSchemaExample(fields: SchemaField[]): string {
 
 export function assembleInstructions(sections: SectionsJson): string {
   const lines: string[] = [];
+  const blocks: string[][] = [];
 
-  // 1. Header
-  lines.push(`<context>`);
-  lines.push(sections.header.context);
-  lines.push('');
-  lines.push(`<role>`);
-  lines.push(sections.header.role);
-  lines.push('');
-  lines.push(`<guiding principles>`);
-  for (const p of sections.header.principles) {
-    lines.push(`- ${p}`);
+  if (sections.header.role.trim()) {
+    blocks.push([`<role>`, sections.header.role]);
   }
-  lines.push('');
-  lines.push(`<specific for the agent purpose>`);
-  for (const p of sections.header.purpose) {
-    lines.push(`- ${p}`);
+  if (sections.header.context.trim()) {
+    blocks.push([`<context>`, sections.header.context]);
+  }
+  if (sections.header.principles.length > 0) {
+    blocks.push([`<guiding principles>`, ...sections.header.principles.map((p) => `- ${p}`)]);
+  }
+  if (sections.header.purpose.length > 0) {
+    blocks.push([`<purpose>`, ...sections.header.purpose.map((p) => `- ${p}`)]);
+  }
+  for (let i = 0; i < blocks.length; i++) {
+    if (i > 0) lines.push('');
+    lines.push(...blocks[i]);
   }
 
   // 2. Input Schema

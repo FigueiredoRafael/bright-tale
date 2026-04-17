@@ -119,4 +119,29 @@ describe('assembleInstructions', () => {
     const result = assembleInstructions(minimal);
     expect(result).toContain('Output must be valid JSON. No markdown fences, no commentary.');
   });
+
+  it('skips empty header blocks instead of rendering empty tags', () => {
+    const sparse: SectionsJson = {
+      header: { role: 'You are a test agent.', context: '', principles: [], purpose: [] },
+      inputSchema: { name: '', fields: [] },
+      outputSchema: { name: '', fields: [] },
+      rules: { formatting: [], content: [], validation: [] },
+      customSections: [],
+    };
+    const result = assembleInstructions(sparse);
+    expect(result).not.toContain('<context>');
+    expect(result).not.toContain('<guiding principles>');
+    expect(result).not.toContain('<purpose>');
+    expect(result).not.toContain('<specific for the agent purpose>');
+    expect(result).toContain('<role>');
+    expect(result).toContain('You are a test agent.');
+  });
+
+  it('renders all header blocks when populated', () => {
+    const result = assembleInstructions(minimal);
+    expect(result).toContain('<role>');
+    expect(result).toContain('<context>');
+    expect(result).toContain('<guiding principles>');
+    expect(result).toContain('<purpose>');
+  });
 });
