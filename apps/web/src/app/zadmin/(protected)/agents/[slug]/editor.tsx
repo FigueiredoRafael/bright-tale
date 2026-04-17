@@ -4,8 +4,7 @@ import { useState, useTransition, useMemo } from 'react';
 import Link from 'next/link';
 import { adminPath } from '@/lib/admin-path';
 import { updateAgentAction } from './actions';
-import { assembleInstructions } from '@/lib/agents/assembleInstructions';
-import type { SectionsJson } from '@/lib/agents/types';
+import { assembleInstructions, type SectionsJson } from '@brighttale/shared';
 import { SchemaBuilder } from '@/components/agents/SchemaBuilder';
 
 interface Agent {

@@ -1,4 +1,4 @@
-// apps/web/src/lib/agents/__tests__/assembleInstructions.test.ts
+// packages/shared/src/agents/__tests__/assembleInstructions.test.ts
 import { describe, it, expect } from 'vitest';
 import { assembleInstructions, buildSchemaExample } from '../assembleInstructions';
 import type { SectionsJson, SchemaField } from '../types';

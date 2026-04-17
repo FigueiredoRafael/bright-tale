@@ -1,4 +1,4 @@
-// apps/web/src/lib/agents/types.ts
+// packages/shared/src/agents/types.ts
 
 export interface SchemaField {
   name: string;

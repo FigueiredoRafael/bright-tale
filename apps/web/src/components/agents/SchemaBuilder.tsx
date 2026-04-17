@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import type { SchemaField, PromptSchema } from '@/lib/agents/types';
-import { buildSchemaExample } from '@/lib/agents/assembleInstructions';
+import type { SchemaField, PromptSchema } from '@brighttale/shared';
+import { buildSchemaExample } from '@brighttale/shared';
 
 const FIELD_TYPES: SchemaField['type'][] = ['string', 'number', 'boolean', 'array', 'object'];
 const ITEMS_TYPES = ['string', 'number', 'boolean', 'object'] as const;

@@ -1,4 +1,4 @@
-// apps/web/src/lib/agents/assembleInstructions.ts
+// packages/shared/src/agents/assembleInstructions.ts
 import type { SectionsJson, SchemaField } from './types';
 
 function defaultValue(type: SchemaField['type']): unknown {
