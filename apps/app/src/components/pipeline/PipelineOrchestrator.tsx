@@ -700,6 +700,16 @@ export function PipelineOrchestrator({
         ideaTitle={ctx.ideaTitle}
         brainstormSessionId={ctx.brainstormSessionId}
         researchSessionId={ctx.researchSessionId}
+        viewingStep={viewingStage ? (viewingStage === 'publish' ? 'published' : viewingStage) : null}
+        onStepClick={(step) => {
+          const stage: PipelineStage = step === 'published' ? 'publish' : step;
+          // Clicking the current active stage clears the viewer
+          if (stage === pipelineState.currentStage) {
+            setViewingStage(null);
+          } else if (pipelineState.stageResults[stage]) {
+            handleView(stage);
+          }
+        }}
       />
 
       {/* Completed Stage Summaries */}
