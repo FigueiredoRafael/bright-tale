@@ -57,6 +57,8 @@ import { affiliateLegacyRoutes } from "./routes/affiliate-legacy.js";
 import {
   registerAffiliateRedirectRoute,
   registerAffiliateInternalRoutes,
+  registerAffiliateRoutes,
+  registerAffiliateAdminRoutes,
 } from "@tn-figueiredo/affiliate/routes";
 import { buildAffiliateContainer } from "./lib/affiliate/container.js";
 import { authenticate } from "./middleware/authenticate.js";
@@ -207,6 +209,16 @@ server.register(async (scope) => {
     expirePendingUseCase: affiliateContainer.expirePendingUseCase,
   });
 }, { prefix: "/internal/affiliate" });
+
+server.register(async (scope) => {
+  scope.addHook("preHandler", authenticate);
+  registerAffiliateRoutes(scope as never, affiliateContainer.endUserDeps);
+}, { prefix: "/affiliate" });
+
+server.register(async (scope) => {
+  scope.addHook("preHandler", authenticate);
+  registerAffiliateAdminRoutes(scope as never, affiliateContainer.adminDeps);
+}, { prefix: "/admin/affiliate" });
 
 if (!process.env.VERCEL) {
   // Surface async errors that would otherwise crash the dev process silently

@@ -1,19 +1,25 @@
 import {
-  ApplyAsAffiliateUseCase,
-  GetMyAffiliateUseCase,
-  GetAffiliateStatsUseCase,
-  GetMyCommissionsUseCase,
-  GetAffiliateReferralsUseCase,
-  UpdateAffiliateProfileUseCase,
-  ApproveAffiliateUseCase,
-  PauseAffiliateUseCase,
-  TrackAffiliateLinkClickUseCase,
-  AttributeSignupToAffiliateUseCase,
-  CalculateAffiliateCommissionUseCase,
-  ExpirePendingReferralsUseCase,
-  GetAffiliateClicksByPlatformUseCase,
+  ApplyAsAffiliateUseCase, ApproveAffiliateUseCase, PauseAffiliateUseCase,
+  GetMyAffiliateUseCase, GetMyCommissionsUseCase, GetAffiliateStatsUseCase,
+  GetAffiliateReferralsUseCase, TrackAffiliateLinkClickUseCase,
+  AttributeSignupToAffiliateUseCase, CalculateAffiliateCommissionUseCase,
+  UpdateAffiliateProfileUseCase, ExpirePendingReferralsUseCase,
+  CreateAffiliatePayoutUseCase, AddPixKeyUseCase, SetDefaultPixKeyUseCase,
+  DeletePixKeyUseCase, ListPixKeysUseCase, SubmitContentUseCase,
+  AcceptContractProposalUseCase, RejectContractProposalUseCase,
+  GetAffiliateClicksByPlatformUseCase, GetAdminAffiliateOverviewUseCase,
+  GetAdminAffiliateDetailUseCase, RenewAffiliateContractUseCase,
+  GetPendingContractsAffiliatesUseCase, ProposeContractChangeUseCase,
+  CancelProposalUseCase, ApprovePayoutUseCase, RejectPayoutUseCase,
+  CompletePayoutUseCase, ListAllPayoutsUseCase, ReviewContentSubmissionUseCase,
+  ListAffiliateFraudFlagsUseCase, ListAffiliateRiskScoresUseCase,
+  ResolveFraudFlagUseCase,
   type AffiliateConfig,
 } from '@tn-figueiredo/affiliate'
+import type {
+  AffiliateRouteDeps,
+  AffiliateAdminRouteDeps,
+} from '@tn-figueiredo/affiliate/routes'
 import { createServiceClient } from '@/lib/supabase'
 import { SupabaseAffiliateRepository } from './repository'
 import { ResendAffiliateEmailService } from './email-service'
@@ -22,8 +28,7 @@ import { AFFILIATE_CONFIG } from './config'
 import { getAuthenticatedUser, isAdmin } from './auth-context'
 
 // Explicit interface (NOT `ReturnType<typeof buildAffiliateContainer>`) — that
-// pattern self-references and triggers TS2456. Container shape grows in 2A.3+
-// so we use a wide-then-narrow approach with explicit annotation.
+// pattern self-references and triggers TS2456.
 export interface AffiliateContainer {
   config: AffiliateConfig
   repo: SupabaseAffiliateRepository
@@ -31,21 +36,14 @@ export interface AffiliateContainer {
   taxId: StubTaxIdRepository
   getAuthenticatedUser: typeof getAuthenticatedUser
   isAdmin: typeof isAdmin
-  // 2A.2: 8 use cases
-  applyUseCase: ApplyAsAffiliateUseCase
-  getMyAffiliateUseCase: GetMyAffiliateUseCase
-  getStatsUseCase: GetAffiliateStatsUseCase
-  getMyCommissionsUseCase: GetMyCommissionsUseCase
-  getReferralsUseCase: GetAffiliateReferralsUseCase
-  updateProfileUseCase: UpdateAffiliateProfileUseCase
-  approveUseCase: ApproveAffiliateUseCase
-  pauseUseCase: PauseAffiliateUseCase
-  // 2A.3: 5 tracking use cases
+  // Standalone use cases also referenced outside route helpers
   trackClickUseCase: TrackAffiliateLinkClickUseCase
   attributeUseCase: AttributeSignupToAffiliateUseCase
   calcCommissionUseCase: CalculateAffiliateCommissionUseCase
   expirePendingUseCase: ExpirePendingReferralsUseCase
-  clicksByPlatformUseCase: GetAffiliateClicksByPlatformUseCase
+  // Pre-shaped deps for package route helpers
+  endUserDeps: AffiliateRouteDeps
+  adminDeps: AffiliateAdminRouteDeps
 }
 
 let cached: AffiliateContainer | null = null
@@ -59,24 +57,58 @@ export function buildAffiliateContainer(): AffiliateContainer {
   const taxId = new StubTaxIdRepository()
   const config: AffiliateConfig = AFFILIATE_CONFIG
 
-  cached = {
-    config, repo, email, taxId,
+  const trackClickUseCase = new TrackAffiliateLinkClickUseCase(repo, config)
+  const expirePendingUseCase = new ExpirePendingReferralsUseCase(repo)
+  const attributeUseCase = new AttributeSignupToAffiliateUseCase(repo, config, undefined /* fraud — 2E */)
+  const calcCommissionUseCase = new CalculateAffiliateCommissionUseCase(repo, config)
+
+  const endUserDeps: AffiliateRouteDeps = {
     getAuthenticatedUser, isAdmin,
-    // 2A.2:
     applyUseCase: new ApplyAsAffiliateUseCase(repo, email, taxId),
     getMyAffiliateUseCase: new GetMyAffiliateUseCase(repo),
     getStatsUseCase: new GetAffiliateStatsUseCase(repo),
     getMyCommissionsUseCase: new GetMyCommissionsUseCase(repo),
     getReferralsUseCase: new GetAffiliateReferralsUseCase(repo),
+    createPayoutUseCase: new CreateAffiliatePayoutUseCase(repo, taxId, config),
     updateProfileUseCase: new UpdateAffiliateProfileUseCase(repo),
+    addPixKeyUseCase: new AddPixKeyUseCase(repo, taxId),
+    setDefaultPixKeyUseCase: new SetDefaultPixKeyUseCase(repo),
+    deletePixKeyUseCase: new DeletePixKeyUseCase(repo),
+    listPixKeysUseCase: new ListPixKeysUseCase(repo),
+    submitContentUseCase: new SubmitContentUseCase(repo),
+    acceptProposalUseCase: new AcceptContractProposalUseCase(repo),
+    rejectProposalUseCase: new RejectContractProposalUseCase(repo),
+    clicksByPlatformUseCase: new GetAffiliateClicksByPlatformUseCase(repo),
+    trackClickUseCase,
+  }
+
+  const adminDeps: AffiliateAdminRouteDeps = {
+    getAuthenticatedUser, isAdmin,
+    overviewUseCase: new GetAdminAffiliateOverviewUseCase(repo),
+    detailUseCase: new GetAdminAffiliateDetailUseCase(repo),
     approveUseCase: new ApproveAffiliateUseCase(repo, email, config, taxId),
     pauseUseCase: new PauseAffiliateUseCase(repo),
-    // 2A.3 (verified constructor signatures):
-    trackClickUseCase: new TrackAffiliateLinkClickUseCase(repo, config),
-    attributeUseCase: new AttributeSignupToAffiliateUseCase(repo, config, undefined /* fraud — 2E */),
-    calcCommissionUseCase: new CalculateAffiliateCommissionUseCase(repo, config),
-    expirePendingUseCase: new ExpirePendingReferralsUseCase(repo),
-    clicksByPlatformUseCase: new GetAffiliateClicksByPlatformUseCase(repo),
+    renewUseCase: new RenewAffiliateContractUseCase(repo),
+    expirePendingUseCase,
+    pendingContractsUseCase: new GetPendingContractsAffiliatesUseCase(repo),
+    proposeChangeUseCase: new ProposeContractChangeUseCase(repo, email, config),
+    cancelProposalUseCase: new CancelProposalUseCase(repo),
+    approvePayoutUseCase: new ApprovePayoutUseCase(repo),
+    rejectPayoutUseCase: new RejectPayoutUseCase(repo),
+    completePayoutUseCase: new CompletePayoutUseCase(repo),
+    listPayoutsUseCase: new ListAllPayoutsUseCase(repo),
+    reviewContentUseCase: new ReviewContentSubmissionUseCase(repo),
+    listFraudFlagsUseCase: new ListAffiliateFraudFlagsUseCase(repo),
+    listRiskScoresUseCase: new ListAffiliateRiskScoresUseCase(repo),
+    resolveFraudFlagUseCase: new ResolveFraudFlagUseCase(repo),
+  }
+
+  cached = {
+    config, repo, email, taxId,
+    getAuthenticatedUser, isAdmin,
+    trackClickUseCase, attributeUseCase, calcCommissionUseCase, expirePendingUseCase,
+    endUserDeps,
+    adminDeps,
   }
   return cached
 }
