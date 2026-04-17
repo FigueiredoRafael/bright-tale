@@ -3,7 +3,7 @@ import type { NextConfig } from 'next';
 const adminSlug = process.env.NEXT_PUBLIC_ADMIN_SLUG || 'admin';
 
 const nextConfig: NextConfig = {
-  transpilePackages: ['@tn-figueiredo/admin', '@brighttale/shared'],
+  transpilePackages: ['@tn-figueiredo/admin', '@tn-figueiredo/affiliate-admin', '@brighttale/shared'],
   async rewrites() {
     return [
       // Map public admin slug → internal /zadmin filesystem routes

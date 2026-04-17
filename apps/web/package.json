@@ -17,6 +17,7 @@
     "@axiomhq/react": "0.2.0",
     "@tailwindcss/postcss": "4.2.2",
     "@tn-figueiredo/admin": "0.6.2",
+    "@tn-figueiredo/affiliate-admin": "0.3.3",
     "@tn-figueiredo/auth-nextjs": "2.2.0",
     "lucide-react": "0.563.0",
     "next": "16.1.6",
