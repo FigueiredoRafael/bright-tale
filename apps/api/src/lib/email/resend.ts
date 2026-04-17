@@ -80,3 +80,7 @@ export async function sendCreditsLowEmail(to: string, remaining: number, total: 
     `,
   });
 }
+
+// Alias for email/provider.ts dispatcher. Removed in the atomic refactor commit
+// alongside consumer migration (Commit B); kept here for additive safety.
+export const send = sendEmail;

@@ -36,6 +36,9 @@
     "db:types": "bash scripts/db-with-token.sh gen types typescript --project-id fxwykfyiicalcgbxslng > packages/shared/src/types/database.ts",
     "db:seed": "tsx scripts/generate-seed.ts && supabase db reset",
     "db:which": "bash scripts/db-which.sh",
+    "email:start": "docker compose -f apps/api/docker-compose.dev.yml up -d",
+    "email:stop": "docker compose -f apps/api/docker-compose.dev.yml down",
+    "email:ui": "open http://localhost:8025",
     "generate:secret": "node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
     "prepare": "[ -x node_modules/.bin/husky ] && husky || true"
   },
