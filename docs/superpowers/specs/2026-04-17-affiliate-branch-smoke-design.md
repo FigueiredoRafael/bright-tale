@@ -1,7 +1,7 @@
 # Affiliate-Migration Branch Smoke Automation — Design Spec
 
 **Date:** 2026-04-17
-**Status:** draft (post-brainstorm, pre-plan; iteration 4 — package contracts verified against `node_modules/@tn-figueiredo/affiliate` and `@tn-figueiredo/affiliate-admin` source)
+**Status:** draft (post-brainstorm, pre-plan; iteration 5 — post-self-review: envelope-path consistency, NUMERIC serialization, cleanup-failure exit policy, seed ordering)
 **Context:** One-shot, deterministic rehearsal for the `feat/affiliate-2a-foundation` branch before PR review/merge. Targets the runtime-wiring gap that unit tests mock out across SP1 (2B end-user), SP2 (2C admin), SP3 (2E fraud + rate-limit), SP4 (2F billing hook). SP0 (email provider) is exercised only as a side-effect of probes that generate outbound mail; no explicit SP0 probe.
 **Related:** `BRANCH_NOTES-affiliate-migration.md` §"Known residual gaps" item 1.
 
@@ -54,7 +54,7 @@ scripts/
     ├── cli.ts                      ← flag parsing (--only, --json, --no-cleanup, --help, --force, --cleanup-orphans, --timeout)
     ├── preflight.ts                ← 2 health checks + env validation; also resolves apiUrl, supabaseUrl, internalKey
     ├── fixture.ts                  ← seed() + cleanup(); single module because they share handles and table order
-    ├── http.ts                     ← fetch wrapper: injects X-Internal-Key + x-user-id, parses { data, error } envelope, surfaces HTTP status
+    ├── http.ts                     ← fetch wrapper: injects X-Internal-Key + x-user-id, returns { status, headers, body } (body parsed as JSON if possible). Envelope interpretation is per-probe — affiliate package uses `{success, data, error?}`, /ref rate-limit errors use `{data, error}`, /billing/webhook is opaque. The wrapper stays envelope-agnostic.
     ├── stripe-helpers.ts           ← builds signed Stripe test events via stripe.webhooks.generateTestHeaderString
     ├── reporter.ts                 ← normal/quiet/verbose/JSON output; collects {id, sp, desc, status, detail, durationMs}
     └── probes/
@@ -173,6 +173,20 @@ Delete scoping:
 - All other tables scoped by id from returned `SeedHandles`.
 - `--cleanup-orphans` mode instead scopes everything by `auth.users.email LIKE 'smoke-%@brighttale.test'`, deleted bottom-up.
 
+### Seed order (explicit, respects FK chain)
+
+```
+auth.users ×3  →  user_roles (admin grant; needs admin user)  →
+  organizations (standalone, no FK)  →
+  org_memberships (FK → org + user)  →
+  affiliates (FK → affiliate-owner user)  →
+  affiliate_referrals (FK → affiliate + referred user)  →
+  affiliate_commissions (FK → affiliate + referral + referred user)  →
+  affiliate_fraud_flags (FK → affiliate)
+```
+
+On any insert failure mid-chain, the partial handles collected so far drive a best-effort reverse-order cleanup before exit 3.
+
 ### Baselines captured post-seed
 
 After the fixture settles, `baselines.pendingCommissionCountForAffiliate = SELECT count(*) FROM affiliate_commissions WHERE affiliate_id = <smoke> AND status = 'pending'` (= 1 from the seeded row). SP4 probes assert **deltas** against this baseline, not absolute counts — eliminates state-pollution ambiguity.
@@ -191,7 +205,7 @@ Headers on every probe: `X-Internal-Key: <key>`, `x-user-id: <affiliateOwnerUser
 |---|---|---|
 | SP1-1 | `GET /affiliate/me` | HTTP 200; `body.success === true`; `body.data.code === fixture.affiliateCode` (exact); `body.data.tier === 'nano'`; `body.data.status === 'active'` |
 | SP1-2 | `GET /affiliate/me/commissions` (confirmed route — not `/commissions/recent`) | HTTP 200; `body.success === true`; `body.data` is a **bare array** (not wrapped in `items`); at least one element has `id === fixture.commissionId` |
-| SP1-3 | `GET /affiliate/referrals` (substitutes the nonexistent `GET /content` — the package exposes `POST /content-submissions` only; `GET /referrals` is the closest read endpoint that has fixture data to match) | HTTP 200; `body.success === true`; `body.data` is a bare array; at least one element has `id === fixture.referralId` and `attribution_status === 'active'` |
+| SP1-3 | `GET /affiliate/referrals` (substitutes the nonexistent `GET /content` — the package exposes `POST /content-submissions` only; `GET /referrals` is the closest read endpoint that has fixture data to match) | HTTP 200; `body.success === true`; `body.data` is a bare array; at least one element has `id === fixture.referralId` and `attributionStatus === 'active'` (camelCase — the package deserializes to camelCase; the DB column is `attribution_status` but the JSON key is `attributionStatus`). |
 
 ### SP2 — admin backend (6)
 
@@ -233,7 +247,7 @@ Event payloads are hand-built `Stripe.Invoice` literals. Each carries `subscript
 
 | ID | Event shape | Assertions |
 |---|---|---|
-| SP4-1 | `invoice.payment_succeeded`, `billing_reason='subscription_cycle'`, `amount_paid=9900` (99 BRL, integer centavos) | HTTP 200. DB re-read: exactly one NEW `affiliate_commissions` row for `fixture.affiliateId` beyond the baseline — i.e. `count(status='pending') === baselines.pendingCommissionCountForAffiliate + 1`. The new row asserts: `status='pending'`, `affiliate_id=fixture.affiliateId`, `referral_id=fixture.referralId`, `commission_rate=0.1500` (matches seeded affiliate), `payment_amount=9900`, `total_brl > 0` (actual value validated by the use-case unit tests, not here — smoke asserts the wire, not the math). |
+| SP4-1 | `invoice.payment_succeeded`, `billing_reason='subscription_cycle'`, `amount_paid=9900` (99 BRL, integer centavos) | HTTP 200. DB re-read: exactly one NEW `affiliate_commissions` row for `fixture.affiliateId` beyond the baseline — i.e. `count(status='pending') === baselines.pendingCommissionCountForAffiliate + 1`. New-row assertions: `status='pending'`, `affiliate_id=fixture.affiliateId`, `referral_id=fixture.referralId`, `payment_amount=9900` (integer, direct), `Number(commission_rate) === 0.15` (NUMERIC(5,4) arrives from supabase-js as a string `"0.1500"`; coerce before compare), `total_brl > 0` (actual centavo value is unit-tested territory — smoke asserts the wire, not the math). |
 | SP4-2 | Same event shape, but `billing_reason='subscription_update'` | HTTP 200; post-run commission count equals SP4-1's post-count (no new row). Event-type filter wire verified. |
 | SP4-3 | `billing_reason='subscription_cycle'`, `amount_paid=0` | HTTP 200; post-run commission count equals SP4-2's post-count (no new row). The `amount_paid=0` short-circuit is verified by the count assertion alone — no timing heuristic, no log scraping. |
 
@@ -244,9 +258,9 @@ Event payloads are hand-built `Stripe.Invoice` literals. Each carries `subscript
 - **Preflight failure** → exit 2 (distinguishes pre-run from run failures), no seed, no cleanup.
 - **Seed failure** → exit 3, best-effort cleanup on whatever handles succeeded.
 - **Probe failure** → collected, non-halting. Report shows exact `expected vs. actual`.
-- **Cleanup failure** → logged (prefixed `[cleanup-warn]`), does not mutate exit code.
+- **Cleanup failure** → if *any* cleanup row fails to delete, exit code becomes 5 (previously-silent foot-gun). Report prints the list of orphan IDs so `--cleanup-orphans` can reconcile. Intentionally disjoint from probe-failure exit 1, so CI can distinguish "test caught a regression" from "test left rows behind".
 - **Script-level timeout** → `--timeout=N` (default 180s). On expiry: print "timeout", run cleanup, exit 124 (timeout exit convention).
-- **Signal handling** → explicit `process.on('SIGINT', handleSignal)` and `SIGTERM`. Handler runs cleanup once (re-entrance guarded by flag), then `process.exit(130)` (SIGINT convention). Second signal while cleanup runs bypasses cleanup — prints `orphan IDs`, exits 1, leaves orphans for `--cleanup-orphans`.
+- **Signal handling** → explicit `process.on('SIGINT', handleSignal)` and `SIGTERM`. Handler runs cleanup once (re-entrance guarded by flag), then `process.exit(130)` (SIGINT convention). Second signal while cleanup runs short-circuits: prints orphan IDs to stderr for `--cleanup-orphans` reconciliation, then `process.exit(130)` regardless (the signal exit code dominates — cleanup abort is implied by the orphan log, not a separate exit code).
 
 ### Exit-code matrix
 
@@ -256,6 +270,7 @@ Event payloads are hand-built `Stripe.Invoice` literals. Each carries `subscript
 | 1 | ≥1 FAIL among probes |
 | 2 | Preflight failure |
 | 3 | Seed failure |
+| 5 | Cleanup failure (probes may have passed; rows leaked) |
 | 124 | Timeout hit |
 | 130 | SIGINT |
 
@@ -304,7 +319,7 @@ Probes (16)
   SP2-6  pause affiliate (TERMINAL)                    pass    23 ms
 
 Cleanup
-  ✓ 10 rows removed (1 flag, 2 commissions, 1 referral, 1 affiliate, 1 membership, 1 org, 1 role, 3 users)
+  ✓ 11 rows removed (1 flag, 2 commissions, 1 referral, 1 affiliate, 1 membership, 1 org, 1 role, 3 users)
 
 Summary
   16 pass · 0 fail · 0 skip · elapsed 842 ms · exit 0
@@ -368,6 +383,8 @@ Env:
 6. **Rate-limit header name contract** — `@fastify/rate-limit` emits `x-ratelimit-*` headers by default; asserted in `apps/api/src/__tests__/ref-rate-limit.test.ts` test #3. Plan task 1 re-runs that test and grep-confirms header names before the SP3-2 probe is written, catching package upgrades that silently rename headers.
 7. **Supabase Admin API latency** — `auth.admin.createUser` occasionally takes ~1 s on a cold local Supabase. Seed has no per-step timeout; the global `--timeout=180` (default) absorbs cold starts. Users with `SUPABASE_ANALYTICS_ENABLED` disabled and the stack warm should expect `<2 s` for the 3-user seed.
 8. **Stripe SDK version** — `stripe.webhooks.generateTestHeaderString` exists since SDK v13+. Script reads `node_modules/stripe/package.json` version in preflight to fail clearly if older.
+9. **PauseUseCase synchronicity** — SP2-6's DB-reread assertion assumes `pauseUseCase.execute(id)` is synchronous-enough that a follow-up SELECT sees `status='paused'`. Verified: `node_modules/@tn-figueiredo/affiliate/dist/index.js:785-789` shows `execute` is `async execute(id) { const a = await repo.findById(id); if (!a) throw …; return repo.pause(id); }` — no queue, no background job, direct await on repo.pause (which is a supabase `UPDATE ... RETURNING ...`). The HTTP reply lands AFTER the UPDATE commits, so probe's post-reply DB re-read is causally correct.
+10. **NUMERIC serialization** — Postgres `NUMERIC(5,4)` columns (e.g. `commission_rate`) arrive as JavaScript strings through `@supabase/supabase-js` (driver-level, not package-level). All equality checks on NUMERIC columns use `Number(col) === expected`. Integer columns (`payment_amount`, `total_brl`, etc.) arrive as numbers and compare directly.
 
 ---
 
@@ -386,7 +403,7 @@ Meta-assertion — how do we know the smoke script itself is correct?
 ## 11. Done criteria
 
 - [ ] `npm run smoke:affiliate` registered in root `package.json`.
-- [ ] `tsx scripts/smoke-affiliate.ts` with prerequisites running: exit 0, 16 PASS, 0 FAIL on two consecutive runs without intermediate cleanup (idempotency).
+- [ ] `tsx scripts/smoke-affiliate.ts` with prerequisites running: exit 0, 0 FAIL, ≥13 PASS (16 PASS if `STRIPE_WEBHOOK_SECRET` is set; else 13 PASS + 3 SKIP), on two consecutive runs without intermediate cleanup (idempotency).
 - [ ] `--json` output validates against a schema type declared in `scripts/smoke/types.ts` (self-documenting).
 - [ ] `--cleanup-orphans` mode verified to remove rows left by `--no-cleanup`.
 - [ ] `SIGINT` during probes verified to leave 0 orphan rows.
