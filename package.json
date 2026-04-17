@@ -35,6 +35,7 @@
     "db:push:prod": "npm run db:link:prod && bash scripts/db-push-prod.sh",
     "db:types": "bash scripts/db-with-token.sh gen types typescript --project-id fxwykfyiicalcgbxslng > packages/shared/src/types/database.ts",
     "db:seed": "tsx scripts/generate-seed.ts && supabase db reset",
+    "db:seed:agents": "tsx scripts/seed-agents.ts",
     "db:which": "bash scripts/db-which.sh",
     "generate:secret": "node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
     "prepare": "[ -x node_modules/.bin/husky ] && husky || true"
