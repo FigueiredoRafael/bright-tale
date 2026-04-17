@@ -1,3 +1,13 @@
+/**
+ * @deprecated since Phase 2A.5 (2026-04-17). To be removed in Phase 2D cutover.
+ * Use new package routes from @tn-figueiredo/affiliate at /api/affiliate/*,
+ * /api/admin/affiliate/*, /api/internal/affiliate/*, /api/ref/* instead.
+ *
+ * This file backs the legacy /api/affiliate-legacy/* namespace, which exists
+ * solely to keep apps/app/(app)/settings/affiliate/page.tsx working until 2B
+ * rewrites it against the new schema. Do NOT add new routes here.
+ */
+
 import type { FastifyInstance } from 'fastify';
 import { authenticate } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
