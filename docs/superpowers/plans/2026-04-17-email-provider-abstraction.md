@@ -365,7 +365,13 @@ Expected: 3 tests pass (vitest tolerates the missing `./provider.js` because the
 - Create: `apps/api/src/lib/email/__tests__/smtp.test.ts`
 - Create: `apps/api/src/lib/email/smtp.ts`
 
-**Note on `nodemailer-mock` API (v2.0.10):** The methods you'll use are on `nodemailerMock.mock`: `reset()`, `getSentMail()`, and `setShouldFailOnce()`. If your installed version exposes `shouldFailOnce()` (no `set` prefix) instead, adjust the test accordingly — the API varied between minor versions. Run `npm ls nodemailer-mock --workspace @brighttale/api` to confirm `2.0.10` is installed, then check `node_modules/nodemailer-mock/dist/index.d.ts` for the exact method names.
+**Note on `nodemailer-mock` API (v2.0.10):** Methods used are on `nodemailerMock.mock`: `.reset()`, `.getSentMail()`, `.setShouldFailOnce()` (no argument — it's a one-shot flag, not a boolean setter). Before starting this task, verify against the installed version:
+
+```bash
+cat node_modules/nodemailer-mock/dist/index.d.ts | grep -E "setShouldFail|getSentMail|reset"
+```
+
+Expected output includes method signatures for `reset()`, `getSentMail()`, `setShouldFailOnce()`. If the installed package has different method names (e.g., `shouldFailOnce()` without `set` prefix), adjust the tests accordingly — the API varied across 1.x → 2.x.
 
 - [ ] **Step 1: Write failing test**
 
@@ -440,13 +446,13 @@ describe('email/smtp', () => {
   });
 
   it('wraps transport error with [email:smtp] prefix + cause', async () => {
-    nodemailerMock.mock.setShouldFailOnce(true);
+    nodemailerMock.mock.setShouldFailOnce();
     const { send } = await import('../smtp.js');
     await expect(send({ to: 'a@b.com', subject: 's' })).rejects.toThrow(/\[email:smtp\]/);
   });
 
   it('preserves Error.cause on wrap', async () => {
-    nodemailerMock.mock.setShouldFailOnce(true);
+    nodemailerMock.mock.setShouldFailOnce();
     const { send } = await import('../smtp.js');
     try {
       await send({ to: 'a@b.com', subject: 's' });
@@ -1277,8 +1283,6 @@ Edit `apps/api/src/lib/affiliate/email-service.ts`:
    ```
 
 2. Grep the file for `isResendConfigured()` — you should find exactly 4 occurrences, each on its own line as `if (!isResendConfigured()) return`, each at the top of one of the four `async send*` methods on the `ResendAffiliateEmailService` class. Remove all 4 lines entirely. The `await sendEmail({...})` that follows in each method remains unchanged.
-
-Line numbers to expect (subject to minor drift if file changed): approximately 32, 41, 53, 68 in the current version. Use grep to find actual positions if they've shifted.
 
 After these edits: zero references to `isResendConfigured` anywhere in `apps/api/src/lib/affiliate/email-service.ts`. The four methods call `sendEmail` unconditionally. Silent-skip behavior is now governed by `EMAIL_PROVIDER=none` set in env.
 
