@@ -16,6 +16,7 @@ import { ApiError } from '../lib/api/errors.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { markdownToHtml } from '../lib/utils.js';
 import { convertToWebP } from '../lib/image/webp.js';
+import { getKeyByToken, createKey, consumeKey } from '../lib/idempotency.js';
 import {
   publishToWordPressSchema,
   fetchTagsQuerySchema,
@@ -842,6 +843,15 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       const sb = createServiceClient();
       const body = publishDraftSchema.parse(request.body);
 
+      // Idempotency: replay cached result if token already consumed
+      if (body.idempotencyToken) {
+        const existing = await getKeyByToken(body.idempotencyToken);
+        if (existing && existing.consumed && existing.response) {
+          return reply.send({ data: existing.response, error: null });
+        }
+        await createKey(body.idempotencyToken, { purpose: 'wordpress:publish-draft' });
+      }
+
       // Set SSE headers
       reply.raw.writeHead(200, {
         'Content-Type': 'text/event-stream',
@@ -872,9 +882,16 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         const draftRaw = await loadDraftForPublish(sb, body.draftId);
         if (!draftRaw) throw new ApiError(404, 'Draft not found');
         const draft = draftRaw as Record<string, unknown>;
-        if ((draft.status as string) !== 'approved' && (draft.status as string) !== 'scheduled') {
+        const draftStatus = draft.status as string;
+        if (draftStatus === 'publishing') {
+          throw new ApiError(409, 'Draft is already being published');
+        }
+        if (draftStatus !== 'approved' && draftStatus !== 'scheduled') {
           throw new ApiError(400, 'Draft must be approved before publishing');
         }
+
+        // Set status to 'publishing' to prevent concurrent publishes
+        await sb.from('content_drafts').update({ status: 'publishing' } as never).eq('id', body.draftId);
 
         sendEvent('preparing', 'Loading WordPress configuration...');
         const wpConfig = await resolveWpConfig(sb, body.configId);
@@ -1122,14 +1139,23 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
           .update(updateFields as never)
           .eq('id', body.draftId);
 
-        // Send completion event
-        sendDone({
+        // Consume idempotency token on success
+        const doneResult = {
           published: true,
           wordpress_post_id: wpPost.id,
           published_url: wpPost.link,
           status: wpPost.status,
-        });
+        };
+        if (body.idempotencyToken) {
+          await consumeKey(body.idempotencyToken, doneResult);
+        }
+
+        // Send completion event
+        sendDone(doneResult);
       } catch (innerError) {
+        // Revert status from 'publishing' back to 'approved' on failure
+        try { await sb.from('content_drafts').update({ status: 'approved' } as never).eq('id', body.draftId); } catch { /* best-effort */ }
+
         if (innerError instanceof ApiError) {
           sendSseError('error', innerError.message);
         } else {
@@ -1321,6 +1347,15 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       const sb = createServiceClient();
       const body = publishDraftSchema.parse(request.body);
 
+      // Idempotency: replay cached result if token already consumed
+      if (body.idempotencyToken) {
+        const existing = await getKeyByToken(body.idempotencyToken);
+        if (existing && existing.consumed && existing.response) {
+          return reply.send({ data: existing.response, error: null });
+        }
+        await createKey(body.idempotencyToken, { purpose: 'wordpress:publish-draft' });
+      }
+
       // Load draft (cast to Record — new columns not yet in generated types)
       const { data: draftRaw, error: draftErr } = await sb
         .from('content_drafts')
@@ -1330,9 +1365,16 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       if (draftErr) throw draftErr;
       if (!draftRaw) throw new ApiError(404, 'Draft not found');
       const draft = draftRaw as Record<string, unknown>;
-      if ((draft.status as string) !== 'approved' && (draft.status as string) !== 'scheduled') {
+      const draftStatus = draft.status as string;
+      if (draftStatus === 'publishing') {
+        throw new ApiError(409, 'Draft is already being published');
+      }
+      if (draftStatus !== 'approved' && draftStatus !== 'scheduled') {
         throw new ApiError(400, 'Draft must be approved before publishing');
       }
+
+      // Set status to 'publishing' to prevent concurrent publishes
+      await sb.from('content_drafts').update({ status: 'publishing' } as never).eq('id', body.draftId);
 
       // Get WordPress credentials
       let site_url: string;
@@ -1524,16 +1566,27 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         .update(updateFields as never)
         .eq('id', body.draftId);
 
-      return reply.status(201).send({
-        data: {
-          published: true,
-          wordpress_post_id: wpPost.id,
-          wordpress_url: wpPost.link,
-          status: wpPost.status,
-        },
-        error: null,
-      });
+      const result = {
+        published: true,
+        wordpress_post_id: wpPost.id,
+        wordpress_url: wpPost.link,
+        status: wpPost.status,
+      };
+
+      // Consume idempotency token on success
+      if (body.idempotencyToken) {
+        await consumeKey(body.idempotencyToken, result);
+      }
+
+      return reply.status(201).send({ data: result, error: null });
     } catch (error) {
+      // Revert status from 'publishing' back to 'approved' on failure
+      const sb = createServiceClient();
+      const body = (request.body as Record<string, unknown>) ?? {};
+      if (body.draftId) {
+        try { await sb.from('content_drafts').update({ status: 'approved' } as never).eq('id', body.draftId as string); } catch { /* best-effort */ }
+      }
+
       request.log.error({ err: error }, 'WordPress publish-draft error');
       return sendError(reply, error);
     }

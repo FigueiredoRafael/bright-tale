@@ -62,6 +62,7 @@ export function PipelineOrchestrator({
   const [isRunning, setIsRunning] = useState(false);
   const [draftData, setDraftData] = useState<Record<string, unknown> | null>(null);
   const [researchData, setResearchData] = useState<Record<string, unknown> | null>(null);
+  const [viewingStage, setViewingStage] = useState<PipelineStage | null>(null);
 
   // Build accumulated context from stageResults
   function buildContext(): PipelineContext {
@@ -291,16 +292,35 @@ export function PipelineOrchestrator({
     }
   }
 
-  // Handle revisit (go back to a stage)
-  async function handleRevisit(targetStage: PipelineStage) {
-    const targetIndex = PIPELINE_STAGES.indexOf(targetStage);
+  // View a completed stage without losing downstream data
+  function handleView(targetStage: PipelineStage) {
+    setViewingStage(targetStage);
+  }
 
-    // Clear all downstream stageResults
+  // Return from viewing to the active stage
+  function handleReturnToCurrent() {
+    setViewingStage(null);
+  }
+
+  // Redo from a stage — destructive, clears downstream results
+  async function handleRedo(targetStage: PipelineStage) {
+    const targetIndex = PIPELINE_STAGES.indexOf(targetStage);
+    const downstreamStages = PIPELINE_STAGES.slice(targetIndex + 1)
+      .filter((s) => pipelineState.stageResults[s]);
+
+    if (downstreamStages.length > 0) {
+      const names = downstreamStages.join(', ');
+      if (!window.confirm(`This will discard results for: ${names}. Continue?`)) {
+        return;
+      }
+    }
+
     const newStageResults = { ...pipelineState.stageResults };
     for (let i = targetIndex + 1; i < PIPELINE_STAGES.length; i++) {
-      const stage = PIPELINE_STAGES[i];
-      delete newStageResults[stage];
+      delete newStageResults[PIPELINE_STAGES[i]];
     }
+    // Also clear the target stage itself so the engine re-runs
+    delete newStageResults[targetStage];
 
     const newState: PipelineState = {
       ...pipelineState,
@@ -309,11 +329,12 @@ export function PipelineOrchestrator({
     };
 
     await savePipelineState(newState);
+    setViewingStage(null);
     setEngineMode(null);
     setDraftData(null);
     setResearchData(null);
 
-    toast.info(`Revisiting ${targetStage}`);
+    toast.info(`Redoing from ${targetStage}`);
   }
 
   // Handle mode toggle
@@ -378,6 +399,7 @@ export function PipelineOrchestrator({
         }
       })();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pipelineState.currentStage, pipelineState.stageResults?.draft, draftData]);
 
   // Map PipelineStage to PipelineStep
@@ -451,13 +473,11 @@ export function PipelineOrchestrator({
 
     const handleBack = (targetStage?: PipelineStage) => {
       if (targetStage) {
-        handleRevisit(targetStage);
+        handleView(targetStage);
       } else {
-        // Go back to previous stage
         const currentIndex = PIPELINE_STAGES.indexOf(stage);
         if (currentIndex > 0) {
-          const prevStage = PIPELINE_STAGES[currentIndex - 1];
-          handleRevisit(prevStage);
+          handleView(PIPELINE_STAGES[currentIndex - 1]);
         }
       }
     };
@@ -689,15 +709,44 @@ export function PipelineOrchestrator({
             key={stage}
             stage={stage}
             stageResults={pipelineState.stageResults}
-            onRevisit={handleRevisit}
+            currentStage={pipelineState.currentStage}
+            viewingStage={viewingStage}
+            onView={handleView}
+            onRedo={handleRedo}
           />
         ))}
       </div>
 
       <Separator />
 
-      {/* Active Engine */}
-      {renderActiveEngine()}
+      {/* Viewing a completed stage */}
+      {viewingStage && pipelineState.stageResults[viewingStage] && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardHeader className="py-3 px-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm">
+                Viewing: {viewingStage.charAt(0).toUpperCase() + viewingStage.slice(1)} results
+              </CardTitle>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleReturnToCurrent}>
+                  <ArrowLeft className="h-3 w-3 mr-1" /> Return to {pipelineState.currentStage}
+                </Button>
+                <Button variant="destructive" size="sm" className="h-7 text-xs" onClick={() => handleRedo(viewingStage)}>
+                  Redo from here
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0 pb-4">
+            <pre className="text-xs text-muted-foreground whitespace-pre-wrap bg-muted/50 rounded-lg p-3 max-h-96 overflow-auto">
+              {JSON.stringify(pipelineState.stageResults[viewingStage], null, 2)}
+            </pre>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Active Engine (hidden when viewing a past stage) */}
+      {!viewingStage && renderActiveEngine()}
     </div>
   );
 }

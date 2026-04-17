@@ -36,11 +36,14 @@ export function PublishEngine({
   const [publishBody, setPublishBody] = useState<Record<string, unknown> | null>(null);
 
   function handlePublish(params: { mode: string; configId: string; scheduledDate?: string }) {
+    if (publishing) return;
+
     const body: Record<string, unknown> = {
       draftId,
       configId: params.configId,
       mode: params.mode,
       scheduledDate: params.scheduledDate,
+      idempotencyToken: crypto.randomUUID(),
     };
 
     // Inject preview data from pipeline context
