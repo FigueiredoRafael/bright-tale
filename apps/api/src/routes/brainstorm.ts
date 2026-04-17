@@ -15,6 +15,8 @@ import { buildChannelContext } from '../lib/ai/channelContext.js';
 import { checkCredits, debitCredits } from '../lib/credits.js';
 import { inngest } from '../jobs/client.js';
 import { emitJobEvent } from '../jobs/emitter.js';
+import { buildBrainstormMessage } from '../lib/ai/prompts/brainstorm.js';
+import type { BrainstormInput } from '../lib/ai/prompts/brainstorm.js';
 
 interface RawIdea {
   idea_id?: string;
@@ -411,10 +413,30 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       try {
         const systemPrompt = (await loadAgentPrompt('brainstorm')) ?? undefined;
 
+        // Load channel context from the original session
+        const channelContext = orig.channel_id
+          ? await (async () => {
+              const { data } = await createServiceClient()
+                .from('channels')
+                .select('name, niche, language, tone, presentation_style')
+                .eq('id', orig.channel_id as string)
+                .maybeSingle();
+              return data;
+            })()
+          : null;
+
+        const userMessage = buildBrainstormMessage({
+          topic: (inputJson.topic as string) ?? undefined,
+          ideasRequested: (inputJson.ideasRequested as number) ?? undefined,
+          fineTuning: inputJson.fineTuning as BrainstormInput['fineTuning'],
+          referenceUrl: (inputJson.referenceUrl as string) ?? undefined,
+          channel: channelContext as BrainstormInput['channel'],
+        });
+
         const { result } = await generateWithFallback(
           'brainstorm',
           (orig.model_tier as string) ?? 'standard',
-          { agentType: 'brainstorm', input: inputJson, schema: null, systemPrompt },
+          { agentType: 'brainstorm', systemPrompt: systemPrompt ?? '', userMessage },
           {
             logContext: {
               userId: request.userId!,

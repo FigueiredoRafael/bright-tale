@@ -12,6 +12,8 @@ import { debitCredits } from '../lib/credits.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
+import { buildBrainstormMessage } from '../lib/ai/prompts/brainstorm.js';
+import type { BrainstormInput } from '../lib/ai/prompts/brainstorm.js';
 
 interface BrainstormGenerateEvent {
   name: 'brainstorm/generate';
@@ -105,14 +107,21 @@ export const brainstormGenerate = inngest.createFunction(
       })) as Record<string, unknown> | null;
 
       const result = (await step.run('call-provider', async () => {
+        const userMessage = buildBrainstormMessage({
+          topic: (inputJson.topic as string) ?? undefined,
+          ideasRequested: (inputJson.ideasRequested as number) ?? undefined,
+          fineTuning: inputJson.fineTuning as BrainstormInput['fineTuning'],
+          referenceUrl: (inputJson.referenceUrl as string) ?? undefined,
+          channel: channelContext as BrainstormInput['channel'],
+        });
+
         const call = await generateWithFallback(
           'brainstorm',
           modelTier,
           {
             agentType: 'brainstorm',
-            input: { ...inputJson, channel: channelContext },
-            schema: null,
-            systemPrompt: systemPrompt ?? undefined,
+            systemPrompt: systemPrompt ?? '',
+            userMessage,
           },
           {
             provider,

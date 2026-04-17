@@ -278,7 +278,11 @@ export async function generateWithFallback(
             stage,
             provider: route.providerName,
             model: route.model,
-            input: { agentType: params.agentType, systemPrompt: params.systemPrompt, inputData: params.input },
+            input: {
+              agentType: params.agentType,
+              systemPrompt: params.systemPrompt,
+              ...(params.userMessage ? { userMessage: params.userMessage } : { inputData: params.input }),
+            },
             output: typeof result === 'object' && result !== null ? result as Record<string, unknown> : { content: result },
             durationMs: Date.now() - startTime,
             inputTokens: usage?.inputTokens,
@@ -319,7 +323,11 @@ export async function generateWithFallback(
       stage,
       provider: chain[0]?.providerName ?? 'unknown',
       model: chain[0]?.model ?? 'unknown',
-      input: { agentType: params.agentType, systemPrompt: params.systemPrompt, inputData: params.input },
+      input: {
+        agentType: params.agentType,
+        systemPrompt: params.systemPrompt,
+        ...(params.userMessage ? { userMessage: params.userMessage } : { inputData: params.input }),
+      },
       durationMs: Date.now() - startTime,
       error: String((lastErr as { message?: string })?.message ?? lastErr),
     });
