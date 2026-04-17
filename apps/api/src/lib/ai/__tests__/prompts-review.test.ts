@@ -39,7 +39,12 @@ describe('buildReviewMessage', () => {
       type: 'blog',
       title: 'test',
       draftJson: {},
-      idea: { title: 'Great idea' },
+      idea: {
+        id: 'idea-1',
+        title: 'Great idea',
+        core_tension: 'tension',
+        target_audience: 'audience',
+      },
       research: { cards: ['card1'] },
     });
     expect(msg).toContain('Great idea');

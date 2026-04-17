@@ -28,6 +28,7 @@ import { inngest } from "../jobs/client.js";
 import { emitJobEvent } from "../jobs/emitter.js";
 import { buildCanonicalCoreMessage, buildProduceMessage, buildReproduceMessage } from "../lib/ai/prompts/production.js";
 import { buildReviewMessage } from "../lib/ai/prompts/review.js";
+import { loadIdeaContext, type IdeaContext } from "../lib/ai/loadIdeaContext.js";
 
 const FORMAT_COSTS: Record<string, number> = {
   blog: 200,
@@ -733,14 +734,9 @@ export async function contentDraftsRoutes(
         await checkCredits(orgId, request.userId, REVIEW_COST);
 
         // Build review input from draft context
-        let ideaData: unknown = null;
+        let ideaData: IdeaContext | null = null;
         if (draft.idea_id) {
-          const { data: idea } = await sb
-            .from("idea_archives")
-            .select("*")
-            .eq("id", draft.idea_id as string)
-            .maybeSingle();
-          ideaData = idea;
+          ideaData = await loadIdeaContext(draft.idea_id as string);
         }
 
         let researchData: unknown = null;

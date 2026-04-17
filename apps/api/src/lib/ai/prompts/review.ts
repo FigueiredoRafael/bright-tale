@@ -1,9 +1,11 @@
+import type { IdeaContext } from '../loadIdeaContext.js';
+
 export interface ReviewInput {
   type: string;
   title: string;
   draftJson: unknown;
   canonicalCore?: unknown;
-  idea?: unknown;
+  idea?: IdeaContext | null;
   research?: unknown;
   contentTypesRequested?: string[];
   channel?: { name?: string; niche?: string; language?: string; tone?: string };
