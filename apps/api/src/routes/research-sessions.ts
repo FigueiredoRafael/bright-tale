@@ -146,7 +146,12 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           user_id: request.userId,
           channel_id: body.channelId ?? null,
           project_id: body.projectId ?? null,
-          idea_id: body.ideaId ?? null,
+          // Only set idea_id if it exists in idea_archives (FK constraint).
+          // Brainstorm drafts may not be promoted yet.
+          idea_id: body.ideaId ? await (async () => {
+            const { data } = await sb.from('idea_archives').select('id').eq('id', body.ideaId!).maybeSingle();
+            return data ? body.ideaId : null;
+          })() : null,
           level: body.level,
           focus_tags: body.focusTags,
           input_json: inputJson,
