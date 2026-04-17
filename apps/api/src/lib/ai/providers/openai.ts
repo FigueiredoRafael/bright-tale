@@ -6,7 +6,6 @@
  */
 
 import { OpenAI } from "openai";
-import yaml from "js-yaml";
 import type { AIProvider, GenerateContentParams, AgentType, TokenUsage } from "../provider.js";
 
 export class OpenAIProvider implements AIProvider {
@@ -26,15 +25,13 @@ export class OpenAIProvider implements AIProvider {
   }
 
   async generateContent({
-    agentType,
-    input,
     schema,
     systemPrompt,
     userMessage,
   }: GenerateContentParams): Promise<any> {
     try {
-      // Build prompt from input
-      const userPrompt = userMessage ?? this.buildPrompt(agentType, input);
+      // Use provided user message
+      const userPrompt = userMessage;
 
       // Call OpenAI with JSON mode
       const response = await this.client.chat.completions.create({
@@ -74,14 +71,4 @@ export class OpenAIProvider implements AIProvider {
     }
   }
 
-  private buildPrompt(agentType: AgentType, input: any): string {
-    // Convert input to YAML for better readability
-    const yamlInput = yaml.dump(input, { lineWidth: -1 });
-
-    return `You are a ${agentType} agent. Generate structured output based on the following input:
-
-${yamlInput}
-
-Return your response as a valid JSON object that matches the expected schema. Be thorough and creative.`;
-  }
 }

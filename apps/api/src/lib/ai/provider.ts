@@ -9,12 +9,9 @@ export type AgentType = "brainstorm" | "research" | "production" | "review";
 
 export interface GenerateContentParams {
   agentType: AgentType;
-  input?: unknown;
+  systemPrompt: string;
+  userMessage: string;
   schema?: unknown;
-  systemPrompt?: string;
-  /** Pre-built user message from prompts/ builders. When set, providers use this
-   *  instead of building their own prompt from `input`. */
-  userMessage?: string;
 }
 
 export interface TokenUsage {

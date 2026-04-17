@@ -63,7 +63,7 @@ describe('getProviderChain', () => {
 });
 
 describe('generateWithFallback', () => {
-  const params = { agentType: 'brainstorm' as const, input: {}, schema: null };
+  const params = { agentType: 'brainstorm' as const, systemPrompt: 'test', userMessage: 'test message', schema: null };
 
   it('returns first provider result on success', async () => {
     const out = await generateWithFallback('brainstorm', 'standard', params);

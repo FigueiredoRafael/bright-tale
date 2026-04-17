@@ -281,7 +281,7 @@ export async function generateWithFallback(
             input: {
               agentType: params.agentType,
               systemPrompt: params.systemPrompt,
-              ...(params.userMessage ? { userMessage: params.userMessage } : { inputData: params.input }),
+              userMessage: params.userMessage,
             },
             output: typeof result === 'object' && result !== null ? result as Record<string, unknown> : { content: result },
             durationMs: Date.now() - startTime,
@@ -326,7 +326,7 @@ export async function generateWithFallback(
       input: {
         agentType: params.agentType,
         systemPrompt: params.systemPrompt,
-        ...(params.userMessage ? { userMessage: params.userMessage } : { inputData: params.input }),
+        userMessage: params.userMessage,
       },
       durationMs: Date.now() - startTime,
       error: String((lastErr as { message?: string })?.message ?? lastErr),

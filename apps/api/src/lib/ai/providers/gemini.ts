@@ -4,8 +4,7 @@
  * limits, ideal for brainstorm/research stages.
  */
 import { GoogleGenAI } from '@google/genai';
-import yaml from 'js-yaml';
-import type { AIProvider, GenerateContentParams, AgentType, TokenUsage } from '../provider.js';
+import type { AIProvider, GenerateContentParams, TokenUsage } from '../provider.js';
 
 export class GeminiProvider implements AIProvider {
   readonly name = 'gemini';
@@ -21,14 +20,11 @@ export class GeminiProvider implements AIProvider {
   }
 
   async generateContent({
-    agentType,
-    input,
     schema,
     systemPrompt,
     userMessage,
   }: GenerateContentParams): Promise<unknown> {
-    const userPrompt = userMessage ?? this.buildPrompt(agentType, input);
-    const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${userPrompt}` : userPrompt;
+    const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${userMessage}` : userMessage;
 
     const response = await this.client.models.generateContent({
       model: this.model,
@@ -55,8 +51,4 @@ export class GeminiProvider implements AIProvider {
     return parsed;
   }
 
-  private buildPrompt(agentType: AgentType, input: unknown): string {
-    const yamlInput = yaml.dump(input, { lineWidth: -1 });
-    return `You are a ${agentType} agent. Generate structured output based on the following input:\n\n${yamlInput}\n\nRespond with a valid JSON object only, matching the schema described above. Be thorough.`;
-  }
 }

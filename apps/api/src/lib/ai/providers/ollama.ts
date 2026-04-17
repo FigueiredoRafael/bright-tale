@@ -3,8 +3,7 @@
  * Talks to a local Ollama server (default http://localhost:11434) — zero cost
  * and works offline. Best paired with llama3.1:8b or qwen2.5:7b for JSON output.
  */
-import yaml from 'js-yaml';
-import type { AIProvider, GenerateContentParams, AgentType, TokenUsage } from '../provider.js';
+import type { AIProvider, GenerateContentParams, TokenUsage } from '../provider.js';
 
 export class OllamaProvider implements AIProvider {
   readonly name = 'ollama';
@@ -20,16 +19,13 @@ export class OllamaProvider implements AIProvider {
   }
 
   async generateContent({
-    agentType,
-    input,
     schema,
     systemPrompt,
     userMessage,
   }: GenerateContentParams): Promise<unknown> {
-    const userPrompt = userMessage ?? this.buildPrompt(agentType, input);
     const messages: Array<{ role: string; content: string }> = [];
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
-    messages.push({ role: 'user', content: userPrompt });
+    messages.push({ role: 'user', content: userMessage });
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 1_200_000); // 20 min
@@ -143,90 +139,6 @@ export class OllamaProvider implements AIProvider {
     return parsed;
   }
 
-  private buildPrompt(agentType: AgentType, input: unknown): string {
-    const inputObj = (input && typeof input === 'object') ? input as Record<string, unknown> : {};
-    const topic = (inputObj.topic as string) ?? '';
-
-    // Use structured prompts for known agent types — all Ollama models
-    // need explicit output examples to produce the right JSON shape.
-    if (agentType === 'brainstorm') {
-      return this.buildBrainstormPrompt(topic, inputObj);
-    }
-
-    const isSmallModel = this.model.includes('tinyllama') || this.model.includes(':1b') || this.model.includes(':3b');
-    if (isSmallModel) {
-      return this.buildSimplePrompt(agentType, topic, inputObj);
-    }
-
-    const yamlInput = yaml.dump(input, { lineWidth: -1 });
-    return `You are a ${agentType} agent. Generate structured output based on the following input:\n\n${yamlInput}\n\nRespond ONLY with a valid JSON object (no markdown, no commentary). Keep output concise to avoid truncation.`;
-  }
-
-  private buildBrainstormPrompt(topic: string, input: Record<string, unknown>): string {
-    const count = (input.ideasRequested as number) ?? 5;
-    const ft = input.fineTuning as Record<string, string> | undefined;
-    const channel = input.channel as Record<string, string> | undefined;
-
-    let context = `Generate ${count} content ideas about "${topic}".`;
-    if (ft) {
-      const parts: string[] = [];
-      if (ft.niche) parts.push(`Niche: ${ft.niche}`);
-      if (ft.audience) parts.push(`Target audience: ${ft.audience}`);
-      if (ft.tone) parts.push(`Tone: ${ft.tone}`);
-      if (ft.goal) parts.push(`Goal: ${ft.goal}`);
-      if (ft.constraints) parts.push(`Constraints: ${ft.constraints}`);
-      if (parts.length > 0) context += '\n\n' + parts.join('\n');
-    }
-    if (channel) {
-      const parts: string[] = [];
-      if (channel.name) parts.push(`Channel: ${channel.name}`);
-      if (channel.niche) parts.push(`Channel niche: ${channel.niche}`);
-      if (channel.language) parts.push(`Language: ${channel.language}`);
-      if (parts.length > 0) context += '\n\n' + parts.join('\n');
-    }
-
-    return `${context}
-
-Return a JSON object with an "ideas" array and a "recommendation" object.
-
-Example output:
-{"ideas":[{"title":"Idea Title","angle":"Unique perspective","core_tension":"Why this matters","target_audience":"Who cares","search_intent":"What people search for","primary_keyword":{"term":"keyword","difficulty":"low","monthly_volume_estimate":"1000"},"scroll_stopper":"Hook line","curiosity_gap":"What makes them click","monetization":{"affiliate_angle":"Product tie-in","product_fit":"How it fits","sponsor_appeal":"Brand appeal"},"repurpose_potential":{"blog_angle":"Blog version","video_angle":"Video version","shorts_hooks":["Hook 1"],"podcast_angle":"Podcast version"},"risk_flags":["Flag 1"],"verdict":"viable","verdict_rationale":"Why this verdict"}],"recommendation":{"pick":"Idea Title","rationale":"Why this is the best pick"}}
-
-Rules:
-- Return ONLY a valid JSON object, no markdown, no commentary, no thinking
-- Each idea needs ALL fields shown above
-- verdict must be one of: viable, weak, experimental
-- recommendation.pick must match one idea's title
-- Be a skeptical content strategist — label weak ideas as "weak"
-- Keep each text field under 20 words to avoid truncation
-- Keep shorts_hooks to max 2 items
-- Keep risk_flags to max 2 items`;
-  }
-
-  /**
-   * Simplified prompt for tiny models (<3B params).
-   * Uses few-shot example so model understands the exact output shape.
-   */
-  private buildSimplePrompt(agentType: AgentType, topic: string, input: Record<string, unknown>): string {
-    if (agentType === 'research') {
-      return `Research the topic "${topic}". Find evidence for or against it.
-
-Return JSON: {"cards":[{"title":"Finding","summary":"What was found","source":"Where from","credibility":"high/medium/low"}]}
-
-Keep it short. Max 3 cards. No markdown.`;
-    }
-
-    if (agentType === 'review') {
-      return `Review this content and score it 0-100.
-
-Return JSON: {"overall_verdict":"approved","blog_review":{"score":85,"strengths":["good"],"critical_issues":[],"minor_issues":["fix typo"]}}
-
-No markdown.`;
-    }
-
-    // Generic fallback
-    return `You are a ${agentType} agent. Topic: "${topic}". Return a short JSON object with your output. No markdown.`;
-  }
 }
 
 /**

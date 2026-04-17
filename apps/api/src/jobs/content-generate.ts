@@ -10,6 +10,10 @@ import { STAGE_COSTS, generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
 import { checkCredits, debitCredits } from '../lib/credits.js';
 import { createServiceClient } from '../lib/supabase/index.js';
+import { buildBrainstormMessage } from '../lib/ai/prompts/brainstorm.js';
+import { buildResearchMessage } from '../lib/ai/prompts/research.js';
+import { buildCanonicalCoreMessage, buildProduceMessage } from '../lib/ai/prompts/production.js';
+import { buildReviewMessage } from '../lib/ai/prompts/review.js';
 
 interface ContentGenerateEvent {
   name: 'content/generate';
@@ -42,12 +46,13 @@ export const contentGenerate = inngest.createFunction(
 
     // Step 2: Brainstorm
     const brainstormResult = await step.run('brainstorm', async () => {
-      const systemPrompt = (await loadAgentPrompt('brainstorm')) ?? undefined;
+      const systemPrompt = (await loadAgentPrompt('brainstorm')) ?? '';
+      const userMessage = buildBrainstormMessage({ topic });
       const { result } = await generateWithFallback('brainstorm', tier, {
         agentType: 'brainstorm',
-        input: { topic, channelId },
-        schema: null,
         systemPrompt,
+        userMessage,
+        schema: null,
       }, {
         logContext: {
           userId,
@@ -63,12 +68,13 @@ export const contentGenerate = inngest.createFunction(
 
     // Step 3: Research
     const researchResult = await step.run('research', async () => {
-      const systemPrompt = (await loadAgentPrompt('research')) ?? undefined;
+      const systemPrompt = (await loadAgentPrompt('research')) ?? '';
+      const userMessage = buildResearchMessage({ ideaTitle: topic });
       const { result } = await generateWithFallback('research', tier, {
         agentType: 'research',
-        input: { topic, brainstormData: brainstormResult },
-        schema: null,
         systemPrompt,
+        userMessage,
+        schema: null,
       }, {
         logContext: {
           userId,
@@ -85,12 +91,17 @@ export const contentGenerate = inngest.createFunction(
     // Step 4: Production — canonical core first, then per-format output
     const canonicalCore = await step.run('canonical-core', async () => {
       const systemPrompt =
-        (await loadAgentPrompt('content-core')) ?? (await loadAgentPrompt('production')) ?? undefined;
+        (await loadAgentPrompt('content-core')) ?? (await loadAgentPrompt('production')) ?? '';
+      const userMessage = buildCanonicalCoreMessage({
+        type: 'blog',
+        title: topic ?? 'Untitled',
+        researchCards: Array.isArray(researchResult) ? researchResult : undefined,
+      });
       const { result } = await generateWithFallback('production', tier, {
         agentType: 'production',
-        input: { researchData: researchResult, brainstormData: brainstormResult },
-        schema: null,
         systemPrompt,
+        userMessage,
+        schema: null,
       }, {
         logContext: {
           userId,
@@ -107,12 +118,17 @@ export const contentGenerate = inngest.createFunction(
     for (const format of formats) {
       productionResults[format] = await step.run(`production-${format}`, async () => {
         const systemPrompt =
-          (await loadAgentPrompt(format)) ?? (await loadAgentPrompt('production')) ?? undefined;
+          (await loadAgentPrompt(format)) ?? (await loadAgentPrompt('production')) ?? '';
+        const userMessage = buildProduceMessage({
+          type: format,
+          title: topic ?? 'Untitled',
+          canonicalCore,
+        });
         const { result } = await generateWithFallback('production', tier, {
           agentType: 'production',
-          input: { format, canonicalCore, researchData: researchResult, brainstormData: brainstormResult },
-          schema: null,
           systemPrompt,
+          userMessage,
+          schema: null,
         }, {
           logContext: {
             userId,
@@ -129,12 +145,17 @@ export const contentGenerate = inngest.createFunction(
 
     // Step 5: Review
     await step.run('review', async () => {
-      const systemPrompt = (await loadAgentPrompt('review')) ?? undefined;
+      const systemPrompt = (await loadAgentPrompt('review')) ?? '';
+      const userMessage = buildReviewMessage({
+        type: 'blog',
+        title: topic ?? 'Untitled',
+        draftJson: productionResults,
+      });
       const { result } = await generateWithFallback('review', tier, {
         agentType: 'review',
-        input: { productionResults },
-        schema: null,
         systemPrompt,
+        userMessage,
+        schema: null,
       }, {
         logContext: {
           userId,
