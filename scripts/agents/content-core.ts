@@ -18,8 +18,8 @@ export const contentCore: AgentDefinition = {
         'The emotional arc drives the audience\'s journey — opening in one emotional state, shifting at the turning point, closing in another. This arc is the same across all formats.',
         'Key_stats and key_quotes are the shared assets. Only include statistics and quotes that are verified in the research.',
         'Do NOT invent statistics. If the research didn\'t validate a claim, don\'t include it.',
-        'The affiliate_context defines exactly where in the narrative a product recommendation feels natural — not forced. Identify the specific argument step or emotional beat where it fits.',
-        'Output YAML only, no markdown fences, follow the contract exactly.',
+        'The affiliate_moment defines exactly where in the narrative a product recommendation feels natural — not forced. Identify the specific argument step or emotional beat where it fits.',
+        'Output JSON only, no markdown fences, follow the contract exactly.',
       ],
       purpose: [],
     },
@@ -99,7 +99,7 @@ export const contentCore: AgentDefinition = {
           str('author', 'Who said it'),
           str('credentials', 'Their authority or credentials'),
         ], false),
-        obj('affiliate_context', 'Where the product recommendation fits naturally (optional)', [
+        obj('affiliate_moment', 'Where the product recommendation fits naturally (optional)', [
           str('trigger_context', 'Describe the specific moment in argument_chain where recommendation fits'),
           str('product_angle', 'How the product solves the problem at this moment'),
           str('cta_primary', 'The exact CTA text'),
@@ -111,7 +111,7 @@ export const contentCore: AgentDefinition = {
     rules: {
       formatting: [
         ...STANDARD_JSON_RULES,
-        'Output YAML only, no markdown fences.',
+        'Output JSON only, no markdown fences.',
         'Do not add, remove, or rename keys in the output schema.',
         'Use ONLY pipe | for ALL multi-line strings.',
         'NO triple backticks (```) anywhere in the output.',
@@ -124,7 +124,7 @@ export const contentCore: AgentDefinition = {
         'Key_stats: Only stats from research.key_statistics. Do not fabricate figures.',
         'Key_quotes: Only quotes from research.expert_quotes. Do not fabricate quotes.',
         'Knowledge_gaps in input: If research has knowledge gaps, do NOT make claims in argument_chain that depend on those gaps.',
-        'Affiliate_context: Point to a specific step number in argument_chain in trigger_context.',
+        'Affiliate_moment: Point to a specific step number in argument_chain in trigger_context.',
       ],
       validation: [
         'If refined_angle.recommendation is "pivot", update the thesis and argument chain to reflect the recommended angle.',
@@ -179,8 +179,8 @@ turning_point: "Clarity — Ah! The problem isn't effort, it's timing and recove
 closing_emotion: "Confidence — I know exactly what to change to see progress"`,
       },
       {
-        title: 'Field Guidance: Affiliate Context',
-        content: `Affiliate_context identifies the NATURAL place for a product recommendation:
+        title: 'Field Guidance: Affiliate Moment',
+        content: `Affiliate_moment identifies the NATURAL place for a product recommendation:
 - NOT forced or promotional
 - Solves a problem revealed in the argument chain
 - Trigger_context must reference a specific step number in argument_chain
@@ -188,7 +188,7 @@ closing_emotion: "Confidence — I know exactly what to change to see progress"`
 - Cta_primary: The actual call-to-action text (e.g., "Get started with Notion")
 
 Example (if affiliate_moment applies):
-affiliate_context:
+affiliate_moment:
   trigger_context: |
     Step 2 reveals that unorganized research wastes hours. A research tool
     solves this directly by providing templates and auto-linking.
@@ -197,7 +197,7 @@ affiliate_context:
     findings immediately instead of building from scratch.
   cta_primary: "Start organizing your research with Notion — free tier available"
 
-If monetization should be skipped for this content, omit affiliate_context entirely.`,
+If monetization should be skipped for this content, omit affiliate_moment entirely.`,
       },
       {
         title: 'Field Guidance: Key Stats and Key Quotes',
