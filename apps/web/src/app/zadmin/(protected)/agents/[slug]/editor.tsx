@@ -6,6 +6,7 @@ import { adminPath } from '@/lib/admin-path';
 import { updateAgentAction } from './actions';
 import { assembleInstructions } from '@/lib/agents/assembleInstructions';
 import type { SectionsJson } from '@/lib/agents/types';
+import { SchemaBuilder } from '@/components/agents/SchemaBuilder';
 
 interface Agent {
   id: string;
@@ -145,14 +146,16 @@ export function AgentEditor({ agent }: { agent: Agent }) {
             <HeaderTab sections={sections} onChange={setSections} name={name} onNameChange={setName} />
           )}
           {activeTab === 'Input Schema' && (
-            <div className="text-sm text-muted-foreground p-8 border rounded-md text-center">
-              Schema builder coming in next task.
-            </div>
+            <SchemaBuilder
+              schema={sections.inputSchema}
+              onChange={(inputSchema) => setSections({ ...sections, inputSchema })}
+            />
           )}
           {activeTab === 'Output Schema' && (
-            <div className="text-sm text-muted-foreground p-8 border rounded-md text-center">
-              Schema builder coming in next task.
-            </div>
+            <SchemaBuilder
+              schema={sections.outputSchema}
+              onChange={(outputSchema) => setSections({ ...sections, outputSchema })}
+            />
           )}
           {activeTab === 'Rules' && (
             <RulesTab sections={sections} onChange={setSections} />
