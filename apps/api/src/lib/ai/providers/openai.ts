@@ -62,7 +62,7 @@ export class OpenAIProvider implements AIProvider {
       const parsed = JSON.parse(content);
 
       // Validate with Zod schema
-      const validated = schema.parse(parsed);
+      const validated = (schema as any).parse(parsed);
 
       return validated;
     } catch (error: any) {

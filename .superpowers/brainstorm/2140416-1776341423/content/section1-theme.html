@@ -1,0 +1,122 @@
+<h2>Section 1: Theme System & Design Tokens</h2>
+<p class="subtitle">Foundation layer — CSS custom properties for light/dark with glassmorphism</p>
+
+<div class="section">
+  <h3>Architecture</h3>
+  <p>Use <code>next-themes</code> for system-preference detection + toggle. All colors defined as CSS custom properties in <code>globals.css</code> with <code>:root</code> (light) and <code>.dark</code> (dark) scopes. Components reference tokens, never raw hex values.</p>
+</div>
+
+<div class="split">
+  <!-- DARK THEME MOCKUP -->
+  <div class="mockup">
+    <div class="mockup-header">Dark Theme (Elevated)</div>
+    <div class="mockup-body" style="background: #0C1017; padding: 24px; border-radius: 8px;">
+
+      <!-- Surface layers demo -->
+      <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+        <div style="flex:1; background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px;">
+          <div style="font-size: 11px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Card Surface</div>
+          <div style="font-size: 24px; font-weight: 700; color: #F1F5F9; margin-top: 4px;">4,231</div>
+          <div style="font-size: 12px; color: #00C853; margin-top: 4px;">+12.5%</div>
+        </div>
+        <div style="flex:1; background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px;">
+          <div style="font-size: 11px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">With Glow Accent</div>
+          <div style="font-size: 24px; font-weight: 700; color: #F1F5F9; margin-top: 4px;">$530</div>
+          <div style="font-size: 12px; color: #4A90D9; margin-top: 4px;">Credits used</div>
+          <div style="position: absolute; top: -1px; left: 20%; right: 20%; height: 2px; background: linear-gradient(90deg, transparent, #1DB990, transparent); border-radius: 2px;"></div>
+        </div>
+      </div>
+
+      <!-- Color tokens -->
+      <div style="font-size: 13px; color: #94A3B8; margin-bottom: 8px; font-weight: 600;">Dark Palette</div>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <div style="text-align: center;">
+          <div style="width: 48px; height: 48px; background: #0C1017; border-radius: 8px; border: 1px solid #1C2635;"></div>
+          <div style="font-size: 10px; color: #64748B; margin-top: 4px;">bg</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="width: 48px; height: 48px; background: #131A24; border-radius: 8px; border: 1px solid #1C2635;"></div>
+          <div style="font-size: 10px; color: #64748B; margin-top: 4px;">card</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="width: 48px; height: 48px; background: #1C2635; border-radius: 8px; border: 1px solid #2a3545;"></div>
+          <div style="font-size: 10px; color: #64748B; margin-top: 4px;">border</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #1DB990, #0D9B6A); border-radius: 8px;"></div>
+          <div style="font-size: 10px; color: #64748B; margin-top: 4px;">brand</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #FF6B35, #E85D26); border-radius: 8px;"></div>
+          <div style="font-size: 10px; color: #64748B; margin-top: 4px;">accent</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #A78BFA, #8B5CF6); border-radius: 8px;"></div>
+          <div style="font-size: 10px; color: #64748B; margin-top: 4px;">purple</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LIGHT THEME MOCKUP -->
+  <div class="mockup">
+    <div class="mockup-header">Light Theme (Clean)</div>
+    <div class="mockup-body" style="background: #F8FAFC; padding: 24px; border-radius: 8px;">
+
+      <!-- Surface layers demo -->
+      <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+        <div style="flex:1; background: white; border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+          <div style="font-size: 11px; color: #94A3B8; text-transform: uppercase; letter-spacing: 1px;">Card Surface</div>
+          <div style="font-size: 24px; font-weight: 700; color: #0F172A; margin-top: 4px;">4,231</div>
+          <div style="font-size: 12px; color: #16A34A; margin-top: 4px;">+12.5%</div>
+        </div>
+        <div style="flex:1; background: white; border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); position: relative; overflow: hidden;">
+          <div style="font-size: 11px; color: #94A3B8; text-transform: uppercase; letter-spacing: 1px;">With Brand Accent</div>
+          <div style="font-size: 24px; font-weight: 700; color: #0F172A; margin-top: 4px;">$530</div>
+          <div style="font-size: 12px; color: #1DB990; margin-top: 4px;">Credits used</div>
+          <div style="position: absolute; top: 0; left: 20%; right: 20%; height: 2px; background: linear-gradient(90deg, transparent, #1DB990, transparent);"></div>
+        </div>
+      </div>
+
+      <!-- Color tokens -->
+      <div style="font-size: 13px; color: #64748B; margin-bottom: 8px; font-weight: 600;">Light Palette</div>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <div style="text-align: center;">
+          <div style="width: 48px; height: 48px; background: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0;"></div>
+          <div style="font-size: 10px; color: #94A3B8; margin-top: 4px;">bg</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="width: 48px; height: 48px; background: #FFFFFF; border-radius: 8px; border: 1px solid #E2E8F0;"></div>
+          <div style="font-size: 10px; color: #94A3B8; margin-top: 4px;">card</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="width: 48px; height: 48px; background: #E2E8F0; border-radius: 8px; border: 1px solid #CBD5E1;"></div>
+          <div style="font-size: 10px; color: #94A3B8; margin-top: 4px;">border</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #1DB990, #0D9B6A); border-radius: 8px;"></div>
+          <div style="font-size: 10px; color: #94A3B8; margin-top: 4px;">brand</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #FF6B35, #E85D26); border-radius: 8px;"></div>
+          <div style="font-size: 10px; color: #94A3B8; margin-top: 4px;">accent</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #A78BFA, #8B5CF6); border-radius: 8px;"></div>
+          <div style="font-size: 10px; color: #94A3B8; margin-top: 4px;">purple</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px;">
+  <h3>Key Design Decisions</h3>
+  <ul style="color: #ccc; line-height: 1.8;">
+    <li><strong>Glassmorphism cards:</strong> Semi-transparent backgrounds with <code>backdrop-filter: blur()</code> + subtle white border in dark mode. Clean white cards with soft shadows in light mode.</li>
+    <li><strong>Glow accents:</strong> Top-edge gradient lines on featured cards (brand teal). Pulsing glow on health indicators.</li>
+    <li><strong>Token system:</strong> ~20 semantic CSS vars (<code>--admin-bg</code>, <code>--admin-card</code>, <code>--admin-border</code>, <code>--admin-text-primary</code>, etc.) scoped under <code>:root</code> / <code>.dark</code>.</li>
+    <li><strong>Brand colors stay constant:</strong> Teal, orange, purple don't change between themes — only surfaces and text adapt.</li>
+    <li><strong>next-themes:</strong> <code>ThemeProvider</code> wrapping admin layout, <code>useTheme()</code> for toggle button in header.</li>
+  </ul>
+</div>

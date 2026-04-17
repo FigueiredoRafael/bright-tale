@@ -1,0 +1,204 @@
+<h2>Section 2: Agents Page — Interactive Pipeline</h2>
+<p class="subtitle">Replace plain boxes with styled, interactive card-based pipeline graph</p>
+
+<div class="mockup">
+  <div class="mockup-header">Agents Pipeline — Dark Theme</div>
+  <div class="mockup-body" style="background: #0C1017; padding: 32px 24px; border-radius: 8px; overflow-x: auto;">
+
+    <!-- Pipeline Flow -->
+    <div style="display: flex; align-items: center; gap: 0; min-width: 900px; justify-content: center;">
+
+      <!-- Stage 1: Brainstorm -->
+      <div style="position: relative; width: 160px; flex-shrink: 0;">
+        <div style="background: linear-gradient(135deg, rgba(167,139,250,0.15), rgba(167,139,250,0.05)); backdrop-filter: blur(8px); border: 1px solid rgba(167,139,250,0.3); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='rgba(167,139,250,0.6)'; this.style.boxShadow='0 0 20px rgba(167,139,250,0.15)'" onmouseout="this.style.borderColor='rgba(167,139,250,0.3)'; this.style.boxShadow='none'">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+            <div style="width: 32px; height: 32px; background: linear-gradient(135deg, #A78BFA, #8B5CF6); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px;">💡</div>
+            <div style="font-size: 11px; color: #A78BFA; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Stage 1</div>
+          </div>
+          <div style="font-size: 14px; font-weight: 600; color: #F1F5F9;">Brainstorm</div>
+          <div style="font-size: 11px; color: #64748B; margin-top: 4px;">Agent 1 — Ideas</div>
+          <div style="display: flex; align-items: center; gap: 4px; margin-top: 8px;">
+            <div style="width: 6px; height: 6px; background: #4ADE80; border-radius: 50%; box-shadow: 0 0 6px #4ADE80;"></div>
+            <span style="font-size: 10px; color: #4ADE80;">Active</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arrow -->
+      <div style="width: 48px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+        <svg width="48" height="24" viewBox="0 0 48 24">
+          <defs>
+            <linearGradient id="g1" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#A78BFA" stop-opacity="0.6"/>
+              <stop offset="100%" stop-color="#4A90D9" stop-opacity="0.6"/>
+            </linearGradient>
+          </defs>
+          <line x1="0" y1="12" x2="38" y2="12" stroke="url(#g1)" stroke-width="2" stroke-dasharray="4 3">
+            <animate attributeName="stroke-dashoffset" from="0" to="-14" dur="1.5s" repeatCount="indefinite"/>
+          </line>
+          <polygon points="36,6 48,12 36,18" fill="#4A90D9" opacity="0.6"/>
+        </svg>
+      </div>
+
+      <!-- Stage 2: Research -->
+      <div style="position: relative; width: 160px; flex-shrink: 0;">
+        <div style="background: linear-gradient(135deg, rgba(74,144,217,0.15), rgba(74,144,217,0.05)); backdrop-filter: blur(8px); border: 1px solid rgba(74,144,217,0.3); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='rgba(74,144,217,0.6)'; this.style.boxShadow='0 0 20px rgba(74,144,217,0.15)'" onmouseout="this.style.borderColor='rgba(74,144,217,0.3)'; this.style.boxShadow='none'">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+            <div style="width: 32px; height: 32px; background: linear-gradient(135deg, #4A90D9, #3B82F6); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px;">🔬</div>
+            <div style="font-size: 11px; color: #4A90D9; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Stage 2</div>
+          </div>
+          <div style="font-size: 14px; font-weight: 600; color: #F1F5F9;">Research</div>
+          <div style="font-size: 11px; color: #64748B; margin-top: 4px;">Agent 2 — Analysis</div>
+          <div style="display: flex; align-items: center; gap: 4px; margin-top: 8px;">
+            <div style="width: 6px; height: 6px; background: #4ADE80; border-radius: 50%; box-shadow: 0 0 6px #4ADE80;"></div>
+            <span style="font-size: 10px; color: #4ADE80;">Active</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arrow -->
+      <div style="width: 48px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+        <svg width="48" height="24" viewBox="0 0 48 24">
+          <defs>
+            <linearGradient id="g2" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#4A90D9" stop-opacity="0.6"/>
+              <stop offset="100%" stop-color="#1DB990" stop-opacity="0.6"/>
+            </linearGradient>
+          </defs>
+          <line x1="0" y1="12" x2="38" y2="12" stroke="url(#g2)" stroke-width="2" stroke-dasharray="4 3">
+            <animate attributeName="stroke-dashoffset" from="0" to="-14" dur="1.5s" repeatCount="indefinite"/>
+          </line>
+          <polygon points="36,6 48,12 36,18" fill="#1DB990" opacity="0.6"/>
+        </svg>
+      </div>
+
+      <!-- Stage 3: Production -->
+      <div style="position: relative; width: 160px; flex-shrink: 0;">
+        <div style="background: linear-gradient(135deg, rgba(29,185,144,0.15), rgba(29,185,144,0.05)); backdrop-filter: blur(8px); border: 1px solid rgba(29,185,144,0.3); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='rgba(29,185,144,0.6)'; this.style.boxShadow='0 0 20px rgba(29,185,144,0.15)'" onmouseout="this.style.borderColor='rgba(29,185,144,0.3)'; this.style.boxShadow='none'">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+            <div style="width: 32px; height: 32px; background: linear-gradient(135deg, #1DB990, #0D9B6A); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px;">✍️</div>
+            <div style="font-size: 11px; color: #1DB990; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Stage 3</div>
+          </div>
+          <div style="font-size: 14px; font-weight: 600; color: #F1F5F9;">Production</div>
+          <div style="font-size: 11px; color: #64748B; margin-top: 4px;">Agent 3 — Content</div>
+          <div style="display: flex; align-items: center; gap: 4px; margin-top: 8px;">
+            <div style="width: 6px; height: 6px; background: #4ADE80; border-radius: 50%; box-shadow: 0 0 6px #4ADE80;"></div>
+            <span style="font-size: 10px; color: #4ADE80;">Active</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arrow -->
+      <div style="width: 48px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+        <svg width="48" height="24" viewBox="0 0 48 24">
+          <defs>
+            <linearGradient id="g3" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#1DB990" stop-opacity="0.6"/>
+              <stop offset="100%" stop-color="#F59E0B" stop-opacity="0.6"/>
+            </linearGradient>
+          </defs>
+          <line x1="0" y1="12" x2="38" y2="12" stroke="url(#g3)" stroke-width="2" stroke-dasharray="4 3">
+            <animate attributeName="stroke-dashoffset" from="0" to="-14" dur="1.5s" repeatCount="indefinite"/>
+          </line>
+          <polygon points="36,6 48,12 36,18" fill="#F59E0B" opacity="0.6"/>
+        </svg>
+      </div>
+
+      <!-- Stage 4: Review -->
+      <div style="position: relative; width: 160px; flex-shrink: 0;">
+        <div style="background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05)); backdrop-filter: blur(8px); border: 1px solid rgba(245,158,11,0.3); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='rgba(245,158,11,0.6)'; this.style.boxShadow='0 0 20px rgba(245,158,11,0.15)'" onmouseout="this.style.borderColor='rgba(245,158,11,0.3)'; this.style.boxShadow='none'">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+            <div style="width: 32px; height: 32px; background: linear-gradient(135deg, #F59E0B, #D97706); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px;">🔍</div>
+            <div style="font-size: 11px; color: #F59E0B; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Stage 4</div>
+          </div>
+          <div style="font-size: 14px; font-weight: 600; color: #F1F5F9;">Review</div>
+          <div style="font-size: 11px; color: #64748B; margin-top: 4px;">Agent 4 — QA</div>
+          <div style="display: flex; align-items: center; gap: 4px; margin-top: 8px;">
+            <div style="width: 6px; height: 6px; background: #4ADE80; border-radius: 50%; box-shadow: 0 0 6px #4ADE80;"></div>
+            <span style="font-size: 10px; color: #4ADE80;">Active</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interaction hints -->
+    <div style="text-align: center; margin-top: 24px; display: flex; gap: 24px; justify-content: center;">
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <div style="width: 20px; height: 20px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #64748B;">👆</div>
+        <span style="font-size: 11px; color: #64748B;">Click card to edit agent prompt</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <div style="width: 20px; height: 20px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #64748B;">🔄</div>
+        <span style="font-size: 11px; color: #64748B;">Animated dashed lines show data flow</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <div style="width: 20px; height: 20px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #64748B;">✨</div>
+        <span style="font-size: 11px; color: #64748B;">Hover for glow effect + details tooltip</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Agent Table Below Pipeline -->
+<div class="mockup" style="margin-top: 20px;">
+  <div class="mockup-header">Agent Table (Below Pipeline)</div>
+  <div class="mockup-body" style="background: #0C1017; padding: 24px; border-radius: 8px;">
+
+    <!-- Table header -->
+    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 80px; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #1C2635; margin-bottom: 4px;">
+      <div style="font-size: 11px; color: #64748B; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Agent</div>
+      <div style="font-size: 11px; color: #64748B; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Slug</div>
+      <div style="font-size: 11px; color: #64748B; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Stage</div>
+      <div style="font-size: 11px; color: #64748B; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Updated</div>
+      <div style="font-size: 11px; color: #64748B; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;"></div>
+    </div>
+
+    <!-- Row 1 -->
+    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 80px; gap: 12px; padding: 12px 16px; border-radius: 8px; transition: background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 8px; height: 8px; background: #A78BFA; border-radius: 2px;"></div>
+        <span style="font-size: 13px; color: #F1F5F9; font-weight: 500;">Brainstorm Agent</span>
+      </div>
+      <div style="font-size: 12px; color: #64748B; font-family: monospace;">agent-1</div>
+      <div><span style="font-size: 11px; background: rgba(167,139,250,0.15); color: #A78BFA; padding: 3px 10px; border-radius: 20px;">brainstorm</span></div>
+      <div style="font-size: 12px; color: #64748B;">2 days ago</div>
+      <div><a style="font-size: 12px; color: #1DB990; text-decoration: none; cursor: pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">Edit →</a></div>
+    </div>
+
+    <!-- Row 2 -->
+    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 80px; gap: 12px; padding: 12px 16px; border-radius: 8px; transition: background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 8px; height: 8px; background: #4A90D9; border-radius: 2px;"></div>
+        <span style="font-size: 13px; color: #F1F5F9; font-weight: 500;">Research Agent</span>
+      </div>
+      <div style="font-size: 12px; color: #64748B; font-family: monospace;">agent-2</div>
+      <div><span style="font-size: 11px; background: rgba(74,144,217,0.15); color: #4A90D9; padding: 3px 10px; border-radius: 20px;">research</span></div>
+      <div style="font-size: 12px; color: #64748B;">5 days ago</div>
+      <div><a style="font-size: 12px; color: #1DB990; text-decoration: none; cursor: pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">Edit →</a></div>
+    </div>
+
+    <!-- Row 3 -->
+    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 80px; gap: 12px; padding: 12px 16px; border-radius: 8px; transition: background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 8px; height: 8px; background: #1DB990; border-radius: 2px;"></div>
+        <span style="font-size: 13px; color: #F1F5F9; font-weight: 500;">Content Core Agent</span>
+      </div>
+      <div style="font-size: 12px; color: #64748B; font-family: monospace;">agent-3</div>
+      <div><span style="font-size: 11px; background: rgba(29,185,144,0.15); color: #1DB990; padding: 3px 10px; border-radius: 20px;">production</span></div>
+      <div style="font-size: 12px; color: #64748B;">1 week ago</div>
+      <div><a style="font-size: 12px; color: #1DB990; text-decoration: none; cursor: pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">Edit →</a></div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px;">
+  <h3>Interactions</h3>
+  <ul style="color: #ccc; line-height: 1.8;">
+    <li><strong>Click pipeline card</strong> → navigates to agent editor page</li>
+    <li><strong>Hover card</strong> → glow border in stage color + subtle scale-up</li>
+    <li><strong>Animated dashed arrows</strong> → CSS stroke-dashoffset animation showing data flow direction</li>
+    <li><strong>Status dots</strong> → green (active), amber (draft), red (error) with subtle box-shadow glow</li>
+    <li><strong>Stage color coding</strong> → purple (brainstorm), blue (research), teal (production), amber (review) — consistent across pipeline + table badges</li>
+    <li><strong>Table row hover</strong> → subtle background highlight, not full color change</li>
+  </ul>
+</div>

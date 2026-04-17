@@ -1,0 +1,74 @@
+<h2>Admin Redesign — Implementation Approaches</h2>
+<p class="subtitle">Three strategies for achieving the visual + UX overhaul</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Component-Level Overhaul (Recommended)</h3>
+      <p><strong>Strategy:</strong> Redesign shared primitives first (KpiCard, AdminShell sidebar, tables, charts), then restyle each page using those new building blocks.</p>
+      <p><strong>Theme:</strong> Build a proper theme system with CSS custom properties for light/dark. Replace hardcoded Tailwind colors with semantic tokens (--surface, --card, --accent-glow).</p>
+      <p><strong>Charts:</strong> Recharts (already React-native, tree-shakeable, composable). Sparklines as a small reusable component.</p>
+      <p><strong>Pipeline:</strong> Custom React component with SVG connections, draggable nodes (react-dnd or native drag), animated flow lines via CSS.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul>
+          <li>Consistent design system across all pages</li>
+          <li>Theme toggle works everywhere automatically</li>
+          <li>Reusable — new admin pages inherit the look</li>
+          <li>Incremental — can ship page by page</li>
+        </ul></div>
+        <div class="cons"><h4>Cons</h4><ul>
+          <li>More upfront work on primitives</li>
+          <li>Need to refactor existing page code to use new components</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Page-by-Page Restyle</h3>
+      <p><strong>Strategy:</strong> Take each page in priority order (Agents → Dashboard → Analytics → Users → Orgs) and restyle inline. No shared component extraction — each page gets bespoke styling.</p>
+      <p><strong>Theme:</strong> next-themes for toggle, update Tailwind classes per page with dark: variants.</p>
+      <p><strong>Charts:</strong> Same Recharts approach.</p>
+      <p><strong>Pipeline:</strong> Same custom component approach.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul>
+          <li>Faster to start — jump straight into priority pages</li>
+          <li>Less abstraction overhead</li>
+          <li>Can ship one page at a time</li>
+        </ul></div>
+        <div class="cons"><h4>Cons</h4><ul>
+          <li>Design drift between pages</li>
+          <li>Duplicate styling logic</li>
+          <li>Theme toggle harder to maintain (scattered dark: classes)</li>
+          <li>New pages don't inherit the look</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Drop External Package + Full Rebuild</h3>
+      <p><strong>Strategy:</strong> Remove <code>@tn-figueiredo/admin</code> dependency entirely. Rebuild AdminShell, KpiCard, and all shared components in-house using shadcn/ui primitives. Full control over every pixel.</p>
+      <p><strong>Theme:</strong> shadcn/ui's built-in theme system (CSS variables in globals.css) — already has light/dark support.</p>
+      <p><strong>Charts:</strong> Recharts with custom themed wrappers.</p>
+      <p><strong>Pipeline:</strong> Same custom component approach.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul>
+          <li>Zero external UI dependency — full control</li>
+          <li>Consistent with apps/app (same shadcn foundation)</li>
+          <li>Theme system built into framework</li>
+          <li>Most maintainable long-term</li>
+        </ul></div>
+        <div class="cons"><h4>Cons</h4><ul>
+          <li>Largest scope — need to rebuild AdminShell sidebar from scratch</li>
+          <li>More work upfront than A or B</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+</div>
