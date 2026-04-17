@@ -73,9 +73,8 @@ export const podcast: AgentDefinition = {
         ...STANDARD_JSON_RULES,
         'Output JSON only, no markdown fences.',
         'Do not add, remove, or rename keys in the output schema.',
-        'Use ONLY pipe | for ALL multi-line strings.',
-        'NO triple backticks (```) anywhere in the output.',
-        'Every multi-line block must be indented exactly 2 spaces more than its key.',
+        'For multi-line string values, embed literal newline characters inside the JSON string. Do NOT use YAML pipe (|) syntax.',
+        'No markdown code fences anywhere in the output.',
         'No em-dashes (-), use regular dashes (-)',
         'No curly quotes, use straight quotes only',
       ],
@@ -109,16 +108,15 @@ Structure each talking_point:
   3. Any relevant key_quote (with full attribution: "author, credentials")
   4. A verbal transition to the next point (e.g., "Which brings us to...")
 
-Example:
-
-  talking_points:
-    - point: "Sleep timing matters more than sleep duration"
-      notes: |
-        So the first thing to understand is that most people obsess over getting 8 hours.
-        But what the research shows — and Dr. Matthew Walker, sleep researcher, put it perfectly:
-        "sleep is the foundation of health" — it's not just WHEN you sleep.
-        Your body has a natural peak window, usually 2-4 hours in your personal cycle.
-        Outside that window, 8 hours feels like 5. Which brings us to how you actually find yours.`,
+Example (JSON — use embedded \\n for line breaks):
+{
+  "talking_points": [
+    {
+      "point": "Sleep timing matters more than sleep duration",
+      "notes": "So the first thing to understand is that most people obsess over getting 8 hours.\\nBut what the research shows - and Dr. Matthew Walker, sleep researcher, put it perfectly: 'sleep is the foundation of health' - it's not just WHEN you sleep.\\nYour body has a natural peak window, usually 2-4 hours in your personal cycle.\\nOutside that window, 8 hours feels like 5. Which brings us to how you actually find yours."
+    }
+  ]
+}`,
       },
       {
         title: 'Field Guidance: Personal Angle',
@@ -131,13 +129,10 @@ This is where the host says:
 
 It can slightly contradict the thesis — that\'s authentic.
 
-Example:
-
-  personal_angle: |
-    I used to be obsessed with the 8-hour rule. Sleep tracking apps, perfect darkness, white noise.
-    I was still exhausted. Then I tracked my actual peak sleep window for a month, and everything changed.
-    I shifted just 1.5 hours earlier, and suddenly I was waking up at 6 AM with energy.
-    That\'s when I realized the problem wasn\'t how much I was sleeping — it was when.`,
+Example (JSON):
+{
+  "personal_angle": "I used to be obsessed with the 8-hour rule. Sleep tracking apps, perfect darkness, white noise.\\nI was still exhausted. Then I tracked my actual peak sleep window for a month, and everything changed.\\nI shifted just 1.5 hours earlier, and suddenly I was waking up at 6 AM with energy.\\nThat's when I realized the problem wasn't how much I was sleeping - it was when."
+}`,
       },
       {
         title: 'Field Guidance: Duration Estimate',
@@ -164,16 +159,10 @@ Must include:
 2. cta_subscribe text (verbatim or paraphrased)
 3. End with cta_comment_prompt as a direct listener question
 
-Example:
-
-  outro: |
-    So here's what we covered: sleep timing isn't just a hack — it's a fundamental lever
-    for how you feel every single day. If you're exhausted despite sleeping enough, it might
-    be time to experiment with your window.
-
-    If this resonated with you, subscribe for more research-backed productivity insights.
-    And drop a comment: what's your experience? Are you a morning person or night owl?
-    Let me know in the comments below.`,
+Example (JSON):
+{
+  "outro": "So here's what we covered: sleep timing isn't just a hack - it's a fundamental lever for how you feel every single day. If you're exhausted despite sleeping enough, it might be time to experiment with your window.\\n\\nIf this resonated with you, subscribe for more research-backed productivity insights.\\nAnd drop a comment: what's your experience? Are you a morning person or night owl?\\nLet me know in the comments below."
+}`,
       },
       {
         title: 'Target Duration (F2-047)',
@@ -205,8 +194,8 @@ Never pad with filler or repetition.`,
 5. Verify outro includes cta_subscribe (verbatim or paraphrased)
 6. Verify outro ends with a listener question (from cta_comment_prompt)
 7. Verify no fabricated stats — only use figures from key_stats
-8. Verify all multi-line strings use pipe |
-9. No em-dashes (-), use regular dashes (-)
+8. Verify multi-line string values use embedded newline characters (never YAML pipe syntax)
+9. No em-dashes, use regular dashes (-)
 10. No curly quotes, use straight quotes only`,
       },
     ],

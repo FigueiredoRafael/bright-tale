@@ -67,9 +67,8 @@ export const shorts: AgentDefinition = {
         ...STANDARD_JSON_RULES,
         'Output JSON only, no markdown fences.',
         'Do not add, remove, or rename keys in the output schema.',
-        'Use ONLY pipe | for ALL multi-line strings.',
-        'NO triple backticks (```) anywhere in the output.',
-        'Every multi-line block must be indented exactly 2 spaces more than its key.',
+        'For multi-line string values, embed literal newline characters inside the JSON string. Do NOT use YAML pipe (|) syntax.',
+        'No markdown code fences anywhere in the output.',
         'No em-dashes (—), use regular dashes (-)',
         'No curly quotes, use straight quotes only',
       ],
@@ -272,8 +271,8 @@ Never pad with filler or repetition.`,
 9. Verify at least one short includes cta_comment_prompt as a question
 10. Verify at least one short includes cta_subscribe reference
 11. Verify no fabricated stats — only use key_stats from input
-12. Verify all multi-line strings use pipe |
-13. No em-dashes (—), use regular dashes (-)
+12. Verify multi-line string values use embedded newline characters (never YAML pipe syntax)
+13. No em-dashes, use regular dashes (-)
 14. No curly quotes, use straight quotes only`,
       },
     ],

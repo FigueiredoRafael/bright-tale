@@ -49,9 +49,8 @@ export const engagement: AgentDefinition = {
         ...STANDARD_JSON_RULES,
         'Output JSON only, no markdown fences.',
         'Do not add, remove, or rename keys in the output schema.',
-        'Use ONLY pipe | for ALL multi-line strings.',
-        'NO triple backticks (```) anywhere in the output.',
-        'Every multi-line block must be indented exactly 2 spaces more than its key.',
+        'For multi-line string values, embed literal newline characters inside the JSON string. Do NOT use YAML pipe (|) syntax.',
+        'No markdown code fences anywhere in the output.',
         'No em-dashes (-), use regular dashes (-)',
         'No curly quotes, use straight quotes only',
       ],
@@ -86,12 +85,10 @@ Rules:
 - Invites personal reflection or experience-sharing
 - Do NOT include a subscribe CTA
 
-Example:
-
-  pinned_comment: |
-    Have you noticed a difference in how you feel based on WHEN you sleep, not just how much?
-    I used to think 8 hours was the magic number, but timing changed everything for me.
-    What's your experience? Are you a morning person or night owl, and does your sleep timing match?`,
+Example (JSON):
+{
+  "pinned_comment": "Have you noticed a difference in how you feel based on WHEN you sleep, not just how much?\\n\\nI used to think 8 hours was the magic number, but timing changed everything for me.\\n\\nWhat's your experience? Are you a morning person or night owl, and does your sleep timing match?"
+}`,
       },
       {
         title: 'Field Guidance: Community Post',
@@ -107,21 +104,10 @@ Lead with surprise:
 - "It's not what you think..." (reframes assumptions)
 - "The research shows..." (surprising finding)
 
-Example:
-
-  community_post: |
-    Most people obsess over the 8-hour rule. But sleep timing matters MORE than duration.
-
-    Think about it:
-    - Your body has a natural peak sleep window (usually 2-4 hours in your cycle)
-    - 8 hours outside that window feels like 5
-    - Even 6 hours in your peak window leaves you refreshed
-
-    If you're exhausted despite "enough sleep," it's not laziness — it's timing.
-    You don't need more sleep. You need the right sleep.
-
-    Try shifting your sleep schedule 1-2 hours earlier or later for a week and track how you feel.
-    Subscribe for more research-backed productivity hacks that actually work.`,
+Example (JSON — use embedded \\n for line breaks inside the string):
+{
+  "community_post": "Most people obsess over the 8-hour rule. But sleep timing matters MORE than duration.\\n\\nThink about it:\\n- Your body has a natural peak sleep window (usually 2-4 hours in your cycle)\\n- 8 hours outside that window feels like 5\\n- Even 6 hours in your peak window leaves you refreshed\\n\\nIf you're exhausted despite \\"enough sleep,\\" it's not laziness - it's timing.\\nYou don't need more sleep. You need the right sleep.\\n\\nTry shifting your sleep schedule 1-2 hours earlier or later for a week and track how you feel.\\nSubscribe for more research-backed productivity hacks that actually work."
+}`,
       },
       {
         title: 'Field Guidance: Twitter Thread (Hook Tweet)',
@@ -188,8 +174,8 @@ Example thread_outline for 5 tweets:
 4. Verify the last item in thread_outline is a CTA
 5. Verify community_post closes with closing_emotion followed by cta_subscribe
 6. Verify no fabricated stats — only use figures from key_stats
-7. Verify all multi-line strings use pipe |
-8. No em-dashes (-), use regular dashes (-)
+7. Verify multi-line string values use embedded newline characters (never YAML pipe syntax)
+8. No em-dashes, use regular dashes (-)
 9. No curly quotes, use straight quotes only
 10. Verify hook_tweet is 1-2 sentences and has no thread numbering`,
       },

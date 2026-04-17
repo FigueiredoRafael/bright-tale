@@ -113,9 +113,7 @@ export const contentCore: AgentDefinition = {
         ...STANDARD_JSON_RULES,
         'Output JSON only, no markdown fences.',
         'Do not add, remove, or rename keys in the output schema.',
-        'Use ONLY pipe | for ALL multi-line strings.',
-        'NO triple backticks (```) anywhere in the output.',
-        'Every multi-line block must be indented exactly 2 spaces more than its key.',
+        'For multi-line string values, embed literal newline characters inside the JSON string. Do NOT use YAML pipe (|) syntax.',
       ],
       content: [
         'Thesis: Max 2 sentences. Must be falsifiable (a claim that can be supported or refuted).',
@@ -154,14 +152,13 @@ Good: "Evergreen content with strong structural foundations outperforms trending
 - Evidence: Specific data point(s) from research that prove it
 - Source_ids: Array of IDs from research.key_sources that back this step
 
-Example:
-step: 1
-claim: |
-  Sleep deprivation reduces focus and decision quality by measurable amounts.
-evidence: |
-  Research from Harvard Medical School found that 24 hours of sleep loss impairs
-  cognitive performance equivalent to a 0.10 BAC (blood alcohol content).
-source_ids: ["SRC-001", "SRC-003"]`,
+Example (JSON):
+{
+  "step": 1,
+  "claim": "Sleep deprivation reduces focus and decision quality by measurable amounts.",
+  "evidence": "Research from Harvard Medical School found that 24 hours of sleep loss impairs cognitive performance equivalent to a 0.10 BAC (blood alcohol content).",
+  "source_ids": ["SRC-001", "SRC-003"]
+}`,
       },
       {
         title: 'Field Guidance: Emotional Arc',
@@ -173,10 +170,12 @@ source_ids: ["SRC-001", "SRC-003"]`,
 The same arc applies across ALL formats (blog, video, shorts, podcast). Format agents
 will shape the content to hit these emotional beats in their medium.
 
-Example:
-opening_emotion: "Frustration — I feel like I'm working hard but not seeing results"
-turning_point: "Clarity — Ah! The problem isn't effort, it's timing and recovery"
-closing_emotion: "Confidence — I know exactly what to change to see progress"`,
+Example (JSON):
+{
+  "opening_emotion": "Frustration - I feel like I'm working hard but not seeing results",
+  "turning_point": "Clarity - Ah! The problem isn't effort, it's timing and recovery",
+  "closing_emotion": "Confidence - I know exactly what to change to see progress"
+}`,
       },
       {
         title: 'Field Guidance: Affiliate Moment',
@@ -187,17 +186,16 @@ closing_emotion: "Confidence — I know exactly what to change to see progress"`
 - Product_angle: How the product directly solves the problem in that step
 - Cta_primary: The actual call-to-action text (e.g., "Get started with Notion")
 
-Example (if affiliate_moment applies):
-affiliate_moment:
-  trigger_context: |
-    Step 2 reveals that unorganized research wastes hours. A research tool
-    solves this directly by providing templates and auto-linking.
-  product_angle: |
-    Notion templates eliminate the setup cost and let researchers start organizing
-    findings immediately instead of building from scratch.
-  cta_primary: "Start organizing your research with Notion — free tier available"
+Example (JSON, if affiliate_moment applies):
+{
+  "affiliate_moment": {
+    "trigger_context": "Step 2 reveals that unorganized research wastes hours. A research tool solves this directly by providing templates and auto-linking.",
+    "product_angle": "Notion templates eliminate the setup cost and let researchers start organizing findings immediately instead of building from scratch.",
+    "cta_primary": "Start organizing your research with Notion - free tier available"
+  }
+}
 
-If monetization should be skipped for this content, omit affiliate_moment entirely.`,
+If monetization should be skipped for this content, set affiliate_moment to null or omit it entirely.`,
       },
       {
         title: 'Field Guidance: Key Stats and Key Quotes',
@@ -225,9 +223,9 @@ Format agents (blog, video, podcast, etc.) will:
         content: `1. Verify every source_id in key_stats and argument_chain steps exists in research.key_sources
 2. If refined_angle.recommendation = "pivot", thesis and argument chain must reflect it
 3. If recommendation = "abandon", return ONLY the abandoned state (no argument chain)
-4. All multi-line strings use pipe |
-5. No triple backticks anywhere
-6. No em-dashes (—), use regular dashes (-)
+4. Multi-line string values use embedded newline characters inside the JSON string (never YAML pipe)
+5. No markdown code fences (\`\`\`) anywhere in the output
+6. No em-dashes, use regular dashes (-)
 7. No curly quotes, use straight quotes only`,
       },
     ],

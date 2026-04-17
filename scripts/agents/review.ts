@@ -206,9 +206,8 @@ export const review: AgentDefinition = {
         ...STANDARD_JSON_RULES,
         'Output JSON only, no markdown fences.',
         'Do not add, remove, or rename keys in the output schema.',
-        'Use ONLY pipe | for ALL multi-line strings.',
-        'NO triple backticks (```) anywhere in the output.',
-        'Every multi-line block must be indented exactly 2 spaces more than its key.',
+        'For multi-line string values, embed literal newline characters inside the JSON string. Do NOT use YAML pipe (|) syntax.',
+        'No markdown code fences anywhere in the output.',
         'No em-dashes (-), use regular dashes (-)',
         'No curly quotes, use straight quotes only',
       ],
@@ -505,8 +504,8 @@ Example:
 6. Verify ready_to_publish: true ONLY when all requested content is approved
 7. Verify publication_plan is only included if overall_verdict is approved
 8. Verify no fabricated feedback — cite specific locations
-9. Verify all multi-line strings use pipe |
-10. No em-dashes (-), use regular dashes (-)
+9. Verify multi-line string values use embedded newline characters (never YAML pipe syntax)
+10. No em-dashes, use regular dashes (-)
 11. No curly quotes, use straight quotes only`,
       },
     ],
