@@ -18,7 +18,7 @@ describe.skip('affiliate end-to-end flow', () => {
     //     affiliates.total_clicks +1
     // 8.  attributeUseCase.execute(code, userId, today, options?) →
     //     cria affiliate_referrals attribution_status pending_contract|active
-    // 9.  calcCommissionUseCase.execute({...}) → cria affiliate_commissions
+    // 9.  POST /billing/webhook (invoice.paid) → __fireAffiliateCommissionHook → calcCommissionUseCase.execute({...}) → cria affiliate_commissions
     // 10. POST /api/affiliate/payouts (user A com R$50+ pending) → cria payout pending
     // 11. POST /api/admin/affiliate/:id/payouts/:payoutId/approve (admin)
     // 12. POST /api/internal/affiliate/expire-pending → expira referrals

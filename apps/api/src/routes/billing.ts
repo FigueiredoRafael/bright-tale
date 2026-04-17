@@ -9,6 +9,7 @@ import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
 import { getStripe } from '../lib/billing/stripe.js';
 import { PLANS, getPlan, planFromPriceId, ADDON_PACKS, type PlanId, type BillingCycle } from '../lib/billing/plans.js';
+import { buildAffiliateContainer } from '../lib/affiliate/container.js';
 
 type StripeClient = ReturnType<typeof getStripe>;
 type StripeEvent = ReturnType<StripeClient['webhooks']['constructEvent']>;
@@ -70,6 +71,93 @@ const addonCheckoutSchema = z.object({
   successUrl: z.string().url().optional(),
   cancelUrl: z.string().url().optional(),
 });
+
+/* ─── Affiliate commission hook (2F minimal) ─────────────────────────────── */
+
+const STRIPE_FEE_RATE = 0.0399;         // Stripe BR card standard
+const STRIPE_FEE_FIXED_CENTAVOS = 39;   // R$ 0,39
+
+export function __computeStripeFee(amountCentavos: number): number {
+  return Math.round(amountCentavos * STRIPE_FEE_RATE) + STRIPE_FEE_FIXED_CENTAVOS;
+}
+
+export async function __resolveOrgPrimaryUserId(orgId: string): Promise<string | null> {
+  const sb = createServiceClient();
+  const { data } = await sb
+    .from('org_memberships')
+    .select('user_id')
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .single();
+  return (data?.user_id as string | undefined) ?? null;
+}
+
+export async function __fireAffiliateCommissionHook(
+  invoice: StripeInvoice,
+  fastify: FastifyInstance,
+): Promise<void> {
+  try {
+    const reason = invoice.billing_reason;
+    if (reason !== 'subscription_cycle' && reason !== 'subscription_create') return;
+
+    const paymentAmount = invoice.amount_paid ?? 0;
+    if (paymentAmount <= 0) return;
+
+    const subscriptionId = (invoice as unknown as { subscription?: string }).subscription;
+    if (!subscriptionId) return;
+
+    const subscription = await getStripe().subscriptions.retrieve(subscriptionId);
+    const orgId = subscription.metadata?.org_id;
+    const priceId = subscription.items.data[0]?.price.id;
+    if (!orgId || !priceId) return;
+
+    const mapping = planFromPriceId(priceId);
+    if (!mapping) return;
+
+    const userId = await __resolveOrgPrimaryUserId(orgId);
+    if (!userId) return;
+
+    const paymentType: 'monthly' | 'annual' = mapping.cycle === 'annual' ? 'annual' : 'monthly';
+    const today = new Date().toISOString().slice(0, 10);
+    const period = (invoice as unknown as { period?: { start?: number; end?: number } }).period;
+    const paymentPeriodStart = period?.start
+      ? new Date(period.start * 1000).toISOString().slice(0, 10)
+      : undefined;
+    const paymentPeriodEnd = period?.end
+      ? new Date(period.end * 1000).toISOString().slice(0, 10)
+      : undefined;
+
+    const { calcCommissionUseCase } = buildAffiliateContainer();
+    const commission = await calcCommissionUseCase.execute({
+      userId,
+      paymentAmount,
+      stripeFee: __computeStripeFee(paymentAmount),
+      paymentType,
+      today,
+      paymentPeriodStart,
+      paymentPeriodEnd,
+      isRetroactive: false,
+    });
+
+    if (commission) {
+      fastify.log.info(
+        {
+          userId,
+          invoiceId: invoice.id,
+          commissionId: commission.id,
+          totalBrl: commission.totalBrl,
+        },
+        '[affiliate] commission created from Stripe invoice',
+      );
+    }
+  } catch (err) {
+    fastify.log.error(
+      { err, invoiceId: invoice.id },
+      '[affiliate] commission hook failed (isolated)',
+    );
+  }
+}
 
 export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
   /**
@@ -333,6 +421,7 @@ async function handleStripeEvent(event: StripeEvent, fastify: FastifyInstance): 
     case 'invoice.paid': {
       const invoice = event.data.object as StripeInvoice;
       await resetCreditsOnRenewal(invoice);
+      await __fireAffiliateCommissionHook(invoice, fastify);
       break;
     }
     default:
