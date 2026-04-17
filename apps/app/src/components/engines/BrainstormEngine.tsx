@@ -199,6 +199,71 @@ export function BrainstormEngine({
     }
   }, [initialSession, initialIdeas, preSelectedIdeaId]);
 
+  // Load existing session from context when navigating back in the pipeline
+  useEffect(() => {
+    if (initialSession || initialIdeas) return;
+    const ctxSessionId = context.brainstormSessionId;
+    if (!ctxSessionId) return;
+
+    // Already loaded this session
+    if (sessionId === ctxSessionId && ideas.length > 0) return;
+
+    (async () => {
+      try {
+        // Fetch session details (restores form fields)
+        const sessRes = await fetch(`/api/brainstorm/sessions/${ctxSessionId}`);
+        const sessJson = await sessRes.json();
+        const sess = sessJson.data?.session ?? sessJson.data;
+        if (sess) {
+          setSessionId(sess.id as string);
+          if (sess.input_json && typeof sess.input_json === 'object') {
+            const input = sess.input_json as Record<string, unknown>;
+            if (input.topic) setTopic(input.topic as string);
+            if (input.inputMode) setMode(input.inputMode as Mode);
+            const ft = input.fineTuning as Record<string, string> | undefined;
+            if (ft && typeof ft === 'object') {
+              if (ft.niche) setNiche(ft.niche);
+              if (ft.tone) setTone(ft.tone);
+              if (ft.audience) setAudience(ft.audience);
+              if (ft.goal) setGoal(ft.goal);
+              if (ft.constraints) setConstraints(ft.constraints);
+            }
+            if (input.referenceUrl) setReferenceUrl(input.referenceUrl as string);
+          }
+        }
+
+        // Fetch ideas (drafts) for this session
+        const ideasRes = await fetch(`/api/brainstorm/sessions/${ctxSessionId}/drafts`);
+        const ideasJson = await ideasRes.json();
+        const drafts = (ideasJson.data?.drafts ?? []) as Array<Record<string, unknown>>;
+        if (drafts.length > 0) {
+          const mapped: Idea[] = drafts.map((d) => {
+            let verdict: 'viable' | 'weak' | 'experimental' = 'experimental';
+            const v = d.verdict as string;
+            if (v === 'viable' || v === 'weak' || v === 'experimental') verdict = v;
+            return {
+              id: d.id as string,
+              idea_id: (d.id as string) ?? `draft-${d.position}`,
+              title: d.title as string,
+              core_tension: (d.core_tension as string) || undefined,
+              target_audience: (d.target_audience as string) || '',
+              verdict,
+              discovery_data: d.discovery_data as string | undefined,
+            };
+          });
+          setIdeas(mapped);
+          // Pre-select the idea that was chosen before
+          if (context.ideaId) {
+            setSelectedIdeaId(context.ideaId);
+          }
+        }
+      } catch {
+        // silent — form stays empty, user can regenerate
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.brainstormSessionId]);
+
   // Reconnect to running session after page reload
   useEffect(() => {
     if (initialSession || activeGenerationId) return;

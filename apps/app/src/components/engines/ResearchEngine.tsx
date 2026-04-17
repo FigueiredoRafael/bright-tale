@@ -165,6 +165,56 @@ export function ResearchEngine({
     }
   }, [initialSession, initialCards, initialApproved]);
 
+  // Load existing session from context when navigating back in the pipeline
+  useEffect(() => {
+    if (initialSession || initialCards) return;
+    const ctxSessionId = context.researchSessionId;
+    if (!ctxSessionId) return;
+    if (sessionId === ctxSessionId && cards.length > 0) return;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/research-sessions/${ctxSessionId}`);
+        const json = await res.json();
+        const sess = json.data?.session ?? json.data;
+        if (sess) {
+          setSessionId(sess.id as string);
+          if (sess.level) setLevel(sess.level as Level);
+          if (sess.input_json && typeof sess.input_json === 'object') {
+            const input = sess.input_json as Record<string, unknown>;
+            if (input.topic) setTopic(input.topic as string);
+            if (input.focusTags && Array.isArray(input.focusTags)) {
+              setFocusTags(input.focusTags as string[]);
+            }
+          }
+          if (sess.refined_angle_json && typeof sess.refined_angle_json === 'object') {
+            setRefinedAngle(sess.refined_angle_json as Record<string, unknown>);
+          }
+
+          // Load cards
+          const cardsData = (sess.cards ?? sess.research_cards ?? []) as Array<Record<string, unknown>>;
+          if (cardsData.length > 0) {
+            const mapped = cardsData.map((c: Record<string, unknown>) => ({
+              type: c.type as string | undefined,
+              title: c.title as string | undefined,
+              url: c.url as string | undefined,
+              author: c.author as string | undefined,
+              quote: c.quote as string | undefined,
+              claim: c.claim as string | undefined,
+              relevance: c.relevance as number | undefined,
+              ...c,
+            } as Card));
+            setCards(mapped);
+            setApproved(new Set(mapped.map((_, i) => i)));
+          }
+        }
+      } catch {
+        // silent — form stays empty, user can regenerate
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.researchSessionId]);
+
   // Fetch recommended agent
   useEffect(() => {
     (async () => {
