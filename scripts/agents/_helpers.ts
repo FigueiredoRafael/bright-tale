@@ -1,0 +1,42 @@
+import type { SchemaField, SectionsJson } from '@brighttale/shared';
+
+export function emptySections(): SectionsJson {
+  return {
+    header: { role: '', context: '', principles: [], purpose: [] },
+    inputSchema: { name: '', fields: [] },
+    outputSchema: { name: '', fields: [] },
+    rules: { formatting: [], content: [], validation: [] },
+    customSections: [],
+  };
+}
+
+export const STANDARD_JSON_RULES = [
+  'Output must be valid JSON, parseable by JSON.parse()',
+  'No em-dashes (—), use regular dashes (-)',
+  'No curly quotes, use straight quotes only',
+  'Use literal newlines in string values for multi-line content',
+];
+
+export function str(name: string, description: string, required = true): SchemaField {
+  return { name, type: 'string', required, description };
+}
+
+export function num(name: string, description: string, required = true): SchemaField {
+  return { name, type: 'number', required, description };
+}
+
+export function bool(name: string, description: string, required = true): SchemaField {
+  return { name, type: 'boolean', required, description };
+}
+
+export function obj(name: string, description: string, fields: SchemaField[], required = true): SchemaField {
+  return { name, type: 'object', required, description, fields };
+}
+
+export function arr(name: string, description: string, itemType: 'string' | 'number' | 'boolean', required = true): SchemaField {
+  return { name, type: 'array', required, description, items: { type: itemType } };
+}
+
+export function arrOf(name: string, description: string, fields: SchemaField[], required = true): SchemaField {
+  return { name, type: 'array', required, description, items: { type: 'object', fields } };
+}
