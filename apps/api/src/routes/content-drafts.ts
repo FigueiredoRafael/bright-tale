@@ -446,10 +446,15 @@ export async function contentDraftsRoutes(
             })()
           : null;
 
+        const idea = draft.idea_id
+          ? await loadIdeaContext(draft.idea_id as string)
+          : null;
+
         const userMessage = buildCanonicalCoreMessage({
           type: draft.type as string,
           title: draft.title as string,
           ideaId: draft.idea_id as string | undefined,
+          idea,
           researchCards: approvedCards as unknown[] | undefined,
           channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
         });
@@ -490,7 +495,12 @@ export async function contentDraftsRoutes(
             };
           }
         )
-          .update({ canonical_core_json: result, status: "draft" })
+          .update({
+            canonical_core_json: draft.idea_id && result && typeof result === 'object' && !Array.isArray(result)
+              ? { ...(result as Record<string, unknown>), idea_id: draft.idea_id }
+              : result,
+            status: "draft",
+          })
           .eq("id", id)
           .select()
           .single();
@@ -637,10 +647,15 @@ export async function contentDraftsRoutes(
             })()
           : null;
 
+        const idea = draft.idea_id
+          ? await loadIdeaContext(draft.idea_id as string)
+          : null;
+
         const userMessage = buildProduceMessage({
           type: type as string,
           title: draft.title as string,
           canonicalCore: draft.canonical_core_json,
+          idea,
           productionParams: (draft.production_params as Record<string, unknown> | null) ?? undefined,
           channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
         });
@@ -1049,12 +1064,17 @@ export async function contentDraftsRoutes(
           }
         }
 
+        const idea = draft.idea_id
+          ? await loadIdeaContext(draft.idea_id as string)
+          : null;
+
         return reply.send({
           data: {
             title: (draft.title as string) ?? "Untitled",
             content_type: contentType,
             sections,
             channel_context: channelContext,
+            idea_context: idea,
           },
           error: null,
         });
