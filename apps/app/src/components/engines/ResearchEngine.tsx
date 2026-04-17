@@ -33,6 +33,7 @@ import {
 } from '@/components/ai/ModelPicker';
 import { ManualModePanel } from '@/components/ai/ManualModePanel';
 import { useManualMode } from '@/hooks/use-manual-mode';
+import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
 import { friendlyAiError } from '@/lib/ai/error-message';
@@ -120,6 +121,8 @@ export function ResearchEngine({
   // Manual mode
   const { enabled: manualEnabled } = useManualMode();
 
+  const tracker = usePipelineTracker('research', context);
+
   // When initialSession is provided, we're in "session detail" mode
   const isSessionDetail = !!initialSession;
 
@@ -164,6 +167,62 @@ export function ResearchEngine({
       }
     }
   }, [initialSession, initialCards, initialApproved]);
+
+  // Load existing session from context when navigating back in the pipeline
+  useEffect(() => {
+    if (initialSession || initialCards) return;
+    const ctxSessionId = context.researchSessionId;
+    if (!ctxSessionId) return;
+    if (sessionId === ctxSessionId && cards.length > 0) return;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/research-sessions/${ctxSessionId}`);
+        const json = await res.json();
+        const sess = json.data?.session ?? json.data;
+        if (sess) {
+          setSessionId(sess.id as string);
+          if (sess.level) setLevel(sess.level as Level);
+          if (sess.input_json && typeof sess.input_json === 'object') {
+            const input = sess.input_json as Record<string, unknown>;
+            if (input.topic) setTopic(input.topic as string);
+            if (input.focusTags && Array.isArray(input.focusTags)) {
+              setFocusTags(input.focusTags as string[]);
+            }
+          }
+          if (sess.refined_angle_json && typeof sess.refined_angle_json === 'object') {
+            setRefinedAngle(sess.refined_angle_json as Record<string, unknown>);
+          }
+
+          // Load cards from cards_json column
+          const cardsData = (Array.isArray(sess.cards_json) ? sess.cards_json : []) as Array<Record<string, unknown>>;
+          if (cardsData.length > 0) {
+            const mapped = cardsData.map((c: Record<string, unknown>) => ({
+              type: c.type as string | undefined,
+              title: c.title as string | undefined,
+              url: c.url as string | undefined,
+              author: c.author as string | undefined,
+              quote: c.quote as string | undefined,
+              claim: c.claim as string | undefined,
+              relevance: c.relevance as number | undefined,
+              ...c,
+            } as Card));
+            setCards(mapped);
+            // Restore approved set from approved_cards_json, or approve all
+            const approvedIdx = sess.approved_cards_json as number[] | null;
+            if (Array.isArray(approvedIdx)) {
+              setApproved(new Set(approvedIdx));
+            } else {
+              setApproved(new Set(mapped.map((_, i) => i)));
+            }
+          }
+        }
+      } catch {
+        // silent — form stays empty, user can regenerate
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.researchSessionId]);
 
   // Fetch recommended agent
   useEffect(() => {
@@ -326,6 +385,7 @@ export function ResearchEngine({
 
     setCards(allCards);
     setApproved(new Set(allCards.map((_, i) => i)));
+    tracker.trackAction('imported', { cardCount: allCards.length, source: 'manual' });
     toast.success(
       `${allCards.length} research cards imported (${sources.length} sources, ${stats.length} stats, ${quotes.length} quotes, ${counters.length} counterarguments)`
     );
@@ -340,6 +400,8 @@ export function ResearchEngine({
     setRunning(true);
     setCards([]);
     setApproved(new Set());
+
+    tracker.trackStarted({ topic: topic.trim(), level, focusTags, provider, model });
 
     try {
       const res = await fetch('/api/research-sessions', {
@@ -370,6 +432,7 @@ export function ResearchEngine({
 
       if (json?.error) {
         const friendly = friendlyAiError(json.error.message ?? '');
+        tracker.trackFailed(json.error.message ?? '');
         toast.error(friendly.title, { description: friendly.hint });
         return;
       }
@@ -378,6 +441,8 @@ export function ResearchEngine({
       setCards(generatedCards);
       setSessionId(json?.data?.sessionId || null);
       setApproved(new Set(generatedCards.map((_, i) => i)));
+
+      tracker.trackCompleted({ sessionId: json?.data?.sessionId || '', cardCount: generatedCards.length, approvedCount: generatedCards.length, level });
 
       if (generatedCards.length === 0) {
         toast.warning('No research cards recognized in output', {
@@ -390,6 +455,7 @@ export function ResearchEngine({
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const friendly = friendlyAiError(message);
+      tracker.trackFailed(message);
       toast.error(friendly.title, { description: friendly.hint });
     } finally {
       setRunning(false);
@@ -428,6 +494,7 @@ export function ResearchEngine({
             if (sess.refined_angle_json && typeof sess.refined_angle_json === 'object') {
               setRefinedAngle(sess.refined_angle_json as Record<string, unknown>);
             }
+            tracker.trackAction('regenerated', { sessionId: newId, previousCardCount: cards.length });
             toast.success('Regenerated successfully');
           }
         } catch {
@@ -443,6 +510,8 @@ export function ResearchEngine({
 
   async function handleApprove() {
     const approvedCards = cards.filter((_, i) => approved.has(i));
+
+    tracker.trackAction('cards.approved', { sessionId: sessionId || '', approvedCount: approved.size, totalCount: cards.length, approvedIndexes: Array.from(approved) });
 
     if (sessionId) {
       // Save approved cards to session
@@ -980,24 +1049,59 @@ export function ResearchEngine({
                                   </>
                                 )}
 
-                                {/* Fallback for unknown types */}
+                                {/* Fallback for unknown types — show all available fields */}
                                 {!['source', 'statistic', 'expert_quote', 'counterargument'].includes(c.type ?? '') && (
                                   <>
-                                    {c.type && (
-                                      <Badge variant="outline" className="text-[10px] capitalize mb-1">
-                                        {c.type.replace(/_/g, ' ')}
-                                      </Badge>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      {c.type && (
+                                        <Badge variant="outline" className="text-[10px] capitalize">
+                                          {c.type.replace(/_/g, ' ')}
+                                        </Badge>
+                                      )}
+                                      {typeof (c as Record<string, unknown>).credibility === 'string' && (
+                                        <Badge
+                                          variant="secondary"
+                                          className={`text-[10px] ${
+                                            ((c as Record<string, unknown>).credibility as string).toLowerCase() === 'high'
+                                              ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                                              : ((c as Record<string, unknown>).credibility as string).toLowerCase() === 'medium'
+                                                ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
+                                                : ''
+                                          }`}
+                                        >
+                                          {(c as Record<string, unknown>).credibility as string}
+                                        </Badge>
+                                      )}
+                                      {typeof (c as Record<string, unknown>).date_published === 'string' && (
+                                        <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                          <Calendar className="h-3 w-3" />
+                                          {(c as Record<string, unknown>).date_published as string}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-sm font-medium mt-1.5">{c.title ?? c.claim ?? c.quote ?? '—'}</p>
+                                    {(c as Record<string, unknown>).key_insight && (
+                                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                                        {String((c as Record<string, unknown>).key_insight)}
+                                      </p>
                                     )}
-                                    <p className="text-sm font-medium">{c.title ?? c.claim ?? c.quote ?? '—'}</p>
-                                    {c.url && (
+                                    {(c as Record<string, unknown>).quote_excerpt && (
+                                      <blockquote className="text-xs italic text-muted-foreground mt-2 pl-3 border-l-2 border-primary/30">
+                                        &ldquo;{String((c as Record<string, unknown>).quote_excerpt)}&rdquo;
+                                      </blockquote>
+                                    )}
+                                    {c.url && c.url !== 'N/A' && (
                                       <a
                                         href={c.url}
                                         target="_blank"
                                         rel="noreferrer"
                                         onClick={(e) => e.stopPropagation()}
-                                        className="text-xs text-primary hover:underline mt-1 inline-block"
+                                        className="text-[11px] text-primary hover:underline mt-2 inline-flex items-center gap-1"
                                       >
-                                        {c.url}
+                                        <ExternalLink className="h-3 w-3" />
+                                        {(() => {
+                                          try { return new URL(c.url).hostname; } catch { return c.url.slice(0, 40); }
+                                        })()}
                                       </a>
                                     )}
                                   </>

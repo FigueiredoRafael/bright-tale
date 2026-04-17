@@ -6,8 +6,7 @@
  */
 
 import { Anthropic } from "@anthropic-ai/sdk";
-import yaml from "js-yaml";
-import type { AIProvider, GenerateContentParams, AgentType, TokenUsage } from "../provider.js";
+import type { AIProvider, GenerateContentParams, TokenUsage } from "../provider.js";
 
 export class AnthropicProvider implements AIProvider {
   name = "anthropic";
@@ -28,14 +27,13 @@ export class AnthropicProvider implements AIProvider {
   }
 
   async generateContent({
-    agentType,
-    input,
     schema,
     systemPrompt,
+    userMessage,
   }: GenerateContentParams): Promise<any> {
     try {
-      // Build prompt from input
-      const userPrompt = this.buildPrompt(agentType, input);
+      // Use provided user message
+      const userPrompt = userMessage;
 
       // Call Anthropic API
       const response = await this.client.messages.create({
@@ -61,14 +59,11 @@ export class AnthropicProvider implements AIProvider {
         throw new Error("Unexpected response type from Anthropic");
       }
 
-      // Extract YAML from response (Claude often wraps it in markdown)
-      const yamlContent = this.extractYaml(content.text);
-
-      // Parse YAML
-      const parsed = yaml.load(yamlContent) as any;
+      // Parse JSON from response
+      const parsed = this.extractAndParseJson(content.text);
 
       // Validate with Zod schema
-      const validated = schema.parse(parsed);
+      const validated = (schema as any).parse(parsed);
 
       return validated;
     } catch (error: any) {
@@ -79,31 +74,36 @@ export class AnthropicProvider implements AIProvider {
     }
   }
 
-  private buildPrompt(agentType: AgentType, input: any): string {
-    // Convert input to YAML
-    const yamlInput = yaml.dump(input, { lineWidth: -1 });
 
-    return `You are a ${agentType} agent. Generate structured YAML output based on the following input:
+  private extractAndParseJson(text: string): any {
+    // Try to parse as direct JSON first
+    try {
+      return JSON.parse(text);
+    } catch {
+      // Fall through to markdown extraction
+    }
 
-${yamlInput}
-
-Return your response as valid YAML. Be thorough and creative. Format your response properly with correct YAML syntax.`;
-  }
-
-  private extractYaml(text: string): string {
-    // Try to extract YAML from markdown code blocks
-    const yamlBlockMatch = text.match(/```ya?ml\n([\s\S]*?)\n```/);
-    if (yamlBlockMatch) {
-      return yamlBlockMatch[1];
+    // Try to extract JSON from markdown code blocks
+    const jsonBlockMatch = text.match(/```json\n([\s\S]*?)\n```/);
+    if (jsonBlockMatch) {
+      try {
+        return JSON.parse(jsonBlockMatch[1]);
+      } catch {
+        // Fall through to generic code blocks
+      }
     }
 
     // Try to extract from generic code blocks
     const codeBlockMatch = text.match(/```\n([\s\S]*?)\n```/);
     if (codeBlockMatch) {
-      return codeBlockMatch[1];
+      try {
+        return JSON.parse(codeBlockMatch[1]);
+      } catch {
+        // Fall through to raw text
+      }
     }
 
-    // Return as-is if no code blocks found
-    return text;
+    // Last resort: try to parse the raw text as JSON
+    return JSON.parse(text);
   }
 }

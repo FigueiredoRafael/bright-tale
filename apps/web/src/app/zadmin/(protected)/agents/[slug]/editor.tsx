@@ -1,9 +1,20 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
+import {
+  ArrowLeft, Check, Copy, Eye, EyeOff, Plus, Save, Sparkles, Trash2, X,
+  AlertTriangle, ChevronUp, ChevronDown,
+} from 'lucide-react';
 import { adminPath } from '@/lib/admin-path';
 import { updateAgentAction } from './actions';
+import {
+  assembleInstructions,
+  RULE_LIBRARY,
+  type SectionsJson,
+} from '@brighttale/shared';
+import { SchemaBuilder } from '@/components/agents/SchemaBuilder';
+import { validateAgent, errorsByScope, type AgentValidationError } from '@/components/agents/validateAgent';
 
 interface Agent {
   id: string;
@@ -13,178 +24,870 @@ interface Agent {
   instructions: string;
   input_schema: string | null;
   output_schema: string | null;
+  sections_json: SectionsJson | null;
   recommended_provider: string | null;
   recommended_model: string | null;
   updated_at: string;
 }
 
+const TABS = ['Header', 'Input Schema', 'Output Schema', 'Rules', 'Custom Sections', 'Settings'] as const;
+type Tab = typeof TABS[number];
+
+const TAB_TO_SCOPE: Record<Tab, AgentValidationError['scope'] | null> = {
+  'Header': 'header',
+  'Input Schema': 'inputSchema',
+  'Output Schema': 'outputSchema',
+  'Rules': 'rules',
+  'Custom Sections': 'customSections',
+  'Settings': null,
+};
+
+const STAGE_COLORS: Record<string, string> = {
+  brainstorm: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+  research: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
+  production: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+  review: 'bg-pink-500/15 text-pink-300 border-pink-500/30',
+  assets: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+};
+
 const PROVIDER_OPTIONS = [
-  { value: '', label: '— sem recomendação —' },
+  { value: '', label: '-- no recommendation --' },
   { value: 'gemini', label: 'Gemini (Google)' },
   { value: 'openai', label: 'OpenAI' },
   { value: 'anthropic', label: 'Anthropic (Claude)' },
 ];
 
-// Suggested models per provider — admin can override with a custom model name.
 const MODEL_SUGGESTIONS: Record<string, string[]> = {
   gemini: ['gemini-2.5-flash', 'gemini-2.5-pro'],
   openai: ['gpt-4o-mini', 'gpt-4o', 'o1-mini'],
   anthropic: ['claude-sonnet-4-5-20250514', 'claude-opus-4-5-20250514', 'claude-haiku-4-5-20251001'],
 };
 
+function emptySections(): SectionsJson {
+  return {
+    header: { role: '', context: '', principles: [], purpose: [] },
+    inputSchema: { name: '', fields: [] },
+    outputSchema: { name: '', fields: [] },
+    rules: { formatting: [], content: [], validation: [] },
+    customSections: [],
+  };
+}
+
 export function AgentEditor({ agent }: { agent: Agent }) {
-  const [name, setName] = useState(agent.name);
-  const [instructions, setInstructions] = useState(agent.instructions);
-  const [inputSchema, setInputSchema] = useState(agent.input_schema ?? '');
-  const [outputSchema, setOutputSchema] = useState(agent.output_schema ?? '');
-  const [provider, setProvider] = useState(agent.recommended_provider ?? '');
-  const [model, setModel] = useState(agent.recommended_model ?? '');
+  const initial = useMemo(
+    () => ({
+      name: agent.name,
+      sections: agent.sections_json ?? emptySections(),
+      provider: agent.recommended_provider ?? '',
+      model: agent.recommended_model ?? '',
+    }),
+    [agent],
+  );
+
+  const [activeTab, setActiveTab] = useState<Tab>('Header');
+  const [name, setName] = useState(initial.name);
+  const [sections, setSections] = useState<SectionsJson>(initial.sections);
+  const [provider, setProvider] = useState(initial.provider);
+  const [model, setModel] = useState(initial.model);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const showImportBanner = !agent.sections_json;
 
-  function handleSave() {
+  const isDirty = useMemo(() => {
+    return (
+      name !== initial.name ||
+      provider !== initial.provider ||
+      model !== initial.model ||
+      JSON.stringify(sections) !== JSON.stringify(initial.sections)
+    );
+  }, [name, sections, provider, model, initial]);
+
+  const errors = useMemo(() => validateAgent(sections, name), [sections, name]);
+  const errorsByTab = useMemo(() => errorsByScope(errors), [errors]);
+  const canSave = isDirty && errors.length === 0 && !pending;
+
+  const preview = useMemo(() => {
+    try {
+      return assembleInstructions(sections);
+    } catch {
+      return '(Error assembling preview)';
+    }
+  }, [sections]);
+
+  const handleSave = useCallback(() => {
+    if (errors.length > 0) {
+      setMessage({ kind: 'err', text: `Fix ${errors.length} validation issue${errors.length === 1 ? '' : 's'} before saving.` });
+      return;
+    }
     setMessage(null);
     startTransition(async () => {
+      const assembled = assembleInstructions(sections);
       const res = await updateAgentAction({
         id: agent.id,
         name,
-        instructions,
-        input_schema: inputSchema || null,
-        output_schema: outputSchema || null,
+        instructions: assembled,
+        input_schema: null,
+        output_schema: null,
         recommended_provider: provider || null,
         recommended_model: model || null,
+        sections_json: sections as unknown as Record<string, unknown>,
       });
       if (res.ok) {
-        setMessage({ kind: 'ok', text: 'Salvo. Nova versão refletirá na próxima geração (cache 5min).' });
+        setMessage({ kind: 'ok', text: 'Saved. Changes reflect on next generation (5min cache).' });
       } else {
         setMessage({ kind: 'err', text: res.message });
       }
     });
-  }
+  }, [agent.id, errors.length, model, name, provider, sections]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (canSave) handleSave();
+      }
+      if (e.key === 'Escape' && previewOpen) {
+        setPreviewOpen(false);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [canSave, handleSave, previewOpen]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [isDirty]);
+
+  const stageColor = STAGE_COLORS[agent.stage] ?? 'bg-muted text-muted-foreground border-border';
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <Link href={adminPath('/agents')} className="text-xs text-muted-foreground hover:underline">
-            ← Voltar
-          </Link>
-          <h1 className="text-2xl font-bold mt-1">{agent.name}</h1>
-          <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-            <span className="font-mono">{agent.slug}</span>
-            <span>·</span>
-            <span>{agent.stage}</span>
-            <span>·</span>
-            <span>Atualizado {new Date(agent.updated_at).toLocaleString('pt-BR')}</span>
+    <div className="min-h-full">
+      {/* Top header — sticky */}
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border -mx-8 px-8 py-4 mb-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <Link
+              href={adminPath('/agents')}
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ArrowLeft size={12} /> Back to Agents
+            </Link>
+            <h1 className="text-2xl font-bold mt-1 truncate">{agent.name}</h1>
+            <div className="flex items-center gap-2 mt-1.5">
+              <code className="text-xs font-mono text-muted-foreground">{agent.slug}</code>
+              <span className="text-muted-foreground">·</span>
+              <span className={`text-[11px] uppercase tracking-wider px-2 py-0.5 rounded-full border ${stageColor}`}>
+                {agent.stage}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {isDirty && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-[#2DD4A8]" title="Unsaved changes">
+                <span className="w-2 h-2 rounded-full bg-[#2DD4A8] animate-pulse" />
+                Unsaved
+              </span>
+            )}
+            {errors.length > 0 && (
+              <span className="inline-flex items-center gap-1 text-xs text-destructive" title={errors.map((e) => e.message).join('\n')}>
+                <AlertTriangle size={12} />
+                {errors.length} issue{errors.length === 1 ? '' : 's'}
+              </span>
+            )}
+            {message && (
+              <span className={`inline-flex items-center gap-1 text-xs ${message.kind === 'ok' ? 'text-[#2DD4A8]' : 'text-destructive'}`}>
+                {message.kind === 'ok' && <Check size={12} />}
+                {message.text}
+              </span>
+            )}
+            <button
+              onClick={() => setPreviewOpen(!previewOpen)}
+              type="button"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-card transition-colors"
+              title="Toggle live preview"
+            >
+              {previewOpen ? <EyeOff size={14} /> : <Eye size={14} />}
+              <span className="hidden sm:inline">{previewOpen ? 'Hide preview' : 'Preview'}</span>
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={!canSave}
+              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                canSave
+                  ? 'bg-[#2DD4A8] text-[#0A1017] shadow-[0_0_0_0_rgba(45,212,168,0.4)] hover:shadow-[0_0_24px_-4px_rgba(45,212,168,0.5)]'
+                  : 'bg-muted text-muted-foreground cursor-not-allowed opacity-60'
+              }`}
+              title="Save (⌘S)"
+            >
+              <Save size={14} />
+              {pending ? 'Saving…' : 'Save'}
+              <kbd className="hidden md:inline ml-1 text-[10px] opacity-60 font-mono">⌘S</kbd>
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="space-y-4">
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">Nome</label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full px-3 py-2 rounded-md border bg-background text-sm"
-          />
+      {showImportBanner && (
+        <div className="mb-4 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 text-sm flex items-start gap-2">
+          <Sparkles size={14} className="mt-0.5 text-yellow-500 shrink-0" />
+          <span>
+            This agent uses raw instructions. The structured editor starts empty.
+            Fill each section, or use <strong>Import JSON</strong> on schema tabs to infer fields from a sample.
+          </span>
         </div>
+      )}
 
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">
-            Instructions <span className="text-xs text-muted-foreground">(prompt system)</span>
-          </label>
-          <textarea
-            value={instructions}
-            onChange={(e) => setInstructions(e.target.value)}
-            rows={24}
-            className="w-full px-3 py-2 rounded-md border bg-background text-sm font-mono"
-          />
-        </div>
-
-        <div className="space-y-3 p-4 rounded-md border bg-muted/20">
-          <div>
-            <h3 className="text-sm font-medium">Modelo recomendado</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              O app vai mostrar este modelo como &ldquo;Recommended&rdquo; para essa etapa do pipeline.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium">Provider</label>
-              <select
-                value={provider}
-                onChange={(e) => {
-                  setProvider(e.target.value);
-                  setModel('');
-                }}
-                className="w-full px-2 py-1.5 rounded-md border bg-background text-sm"
+      {/* Main layout: responsive */}
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Tab nav */}
+        <nav
+          className="flex lg:flex-col gap-1 lg:w-48 shrink-0 overflow-x-auto lg:overflow-x-visible -mx-8 px-8 lg:mx-0 lg:px-0 pb-2 lg:pb-0 border-b border-border lg:border-b-0"
+          aria-label="Editor sections"
+        >
+          {TABS.map((tab) => {
+            const scope = TAB_TO_SCOPE[tab];
+            const tabErrors = scope ? errorsByTab[scope]?.length ?? 0 : 0;
+            const active = activeTab === tab;
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                type="button"
+                className={`shrink-0 flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm transition-all whitespace-nowrap ${
+                  active
+                    ? 'bg-[rgba(45,212,168,0.10)] text-[#2DD4A8] font-medium lg:shadow-[inset_3px_0_0_#2DD4A8]'
+                    : 'text-muted-foreground hover:bg-card hover:text-foreground'
+                }`}
               >
-                {PROVIDER_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium">Model</label>
-              <input
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                disabled={!provider}
-                list={`models-${provider}`}
-                placeholder={provider ? 'ex: gemini-2.5-flash' : 'escolha um provider primeiro'}
-                className="w-full px-2 py-1.5 rounded-md border bg-background text-sm disabled:opacity-50"
-              />
-              {provider && MODEL_SUGGESTIONS[provider] && (
-                <datalist id={`models-${provider}`}>
-                  {MODEL_SUGGESTIONS[provider].map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-                </datalist>
-              )}
-            </div>
-          </div>
-        </div>
+                <span>{tab}</span>
+                {tabErrors > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-destructive text-destructive-foreground leading-none">
+                    {tabErrors}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">
-              Input schema <span className="text-xs text-muted-foreground">(opcional)</span>
-            </label>
-            <textarea
-              value={inputSchema}
-              onChange={(e) => setInputSchema(e.target.value)}
-              rows={8}
-              className="w-full px-3 py-2 rounded-md border bg-background text-xs font-mono"
+        {/* Content area */}
+        <div className="flex-1 min-w-0">
+          {activeTab === 'Header' && (
+            <HeaderTab
+              sections={sections}
+              onChange={setSections}
+              name={name}
+              onNameChange={setName}
+              errors={errorsByTab.header ?? []}
             />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">
-              Output schema <span className="text-xs text-muted-foreground">(opcional)</span>
-            </label>
-            <textarea
-              value={outputSchema}
-              onChange={(e) => setOutputSchema(e.target.value)}
-              rows={8}
-              className="w-full px-3 py-2 rounded-md border bg-background text-xs font-mono"
+          )}
+          {activeTab === 'Input Schema' && (
+            <SchemaBuilder
+              schema={sections.inputSchema}
+              onChange={(inputSchema) => setSections({ ...sections, inputSchema })}
+              errors={errorsByTab.inputSchema ?? []}
             />
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleSave}
-            disabled={pending}
-            className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
-          >
-            {pending ? 'Salvando...' : 'Salvar'}
-          </button>
-          {message && (
-            <span className={`text-xs ${message.kind === 'ok' ? 'text-green-600' : 'text-destructive'}`}>
-              {message.text}
-            </span>
+          )}
+          {activeTab === 'Output Schema' && (
+            <SchemaBuilder
+              schema={sections.outputSchema}
+              onChange={(outputSchema) => setSections({ ...sections, outputSchema })}
+              errors={errorsByTab.outputSchema ?? []}
+            />
+          )}
+          {activeTab === 'Rules' && (
+            <RulesTab sections={sections} onChange={setSections} />
+          )}
+          {activeTab === 'Custom Sections' && (
+            <CustomSectionsTab
+              sections={sections}
+              onChange={setSections}
+              errors={errorsByTab.customSections ?? []}
+            />
+          )}
+          {activeTab === 'Settings' && (
+            <SettingsTab
+              slug={agent.slug}
+              stage={agent.stage}
+              provider={provider}
+              model={model}
+              onProviderChange={setProvider}
+              onModelChange={setModel}
+              updatedAt={agent.updated_at}
+            />
           )}
         </div>
+      </div>
+
+      {/* Live preview — overlay drawer */}
+      <PreviewDrawer preview={preview} open={previewOpen} onClose={() => setPreviewOpen(false)} />
+    </div>
+  );
+}
+
+function PreviewDrawer({
+  preview,
+  open,
+  onClose,
+}: {
+  preview: string;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(preview);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* noop */
+    }
+  }
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity ${
+          open ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        onClick={onClose}
+      />
+      {/* Drawer */}
+      <aside
+        className={`fixed right-0 top-0 bottom-0 z-50 w-full max-w-[600px] bg-[#0F1620] border-l border-[#1E2E40] shadow-2xl transform transition-transform duration-200 ${
+          open ? 'translate-x-0' : 'translate-x-full'
+        }`}
+        aria-hidden={!open}
+      >
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1E2E40]">
+          <div className="flex items-center gap-2">
+            <Eye size={14} className="text-[#2DD4A8]" />
+            <h3 className="text-sm font-medium">Live Preview</h3>
+            <span className="text-xs text-muted-foreground">· {preview.length.toLocaleString()} chars</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={copy}
+              type="button"
+              className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md border border-[#1E2E40] hover:bg-[#1A2535] transition-colors"
+            >
+              {copied ? <Check size={12} /> : <Copy size={12} />}
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+            <button
+              onClick={onClose}
+              type="button"
+              className="p-1.5 rounded-md hover:bg-[#1A2535] transition-colors"
+              title="Close (Esc)"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+        <pre className="px-5 py-4 text-xs font-mono whitespace-pre-wrap overflow-y-auto h-[calc(100vh-3.5rem)] text-[#CBD5E1]">
+          <HighlightedPreview source={preview} />
+        </pre>
+      </aside>
+    </>
+  );
+}
+
+function HighlightedPreview({ source }: { source: string }) {
+  // Minimal highlighting: tags, markdown headers, code fences
+  const parts = source.split(/(<[^>]+>|^#{1,3} .+$|^---$|^```.*$)/gm);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (/^<[^>]+>$/.test(part)) return <span key={i} className="text-[#2DD4A8]">{part}</span>;
+        if (/^#{1,3} /.test(part)) return <span key={i} className="text-amber-300 font-semibold">{part}</span>;
+        if (part === '---') return <span key={i} className="text-[#475569]">{part}</span>;
+        if (/^```/.test(part)) return <span key={i} className="text-[#64748B]">{part}</span>;
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
+
+function Card({ title, hint, children }: { title?: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+      {(title || hint) && (
+        <div>
+          {title && <h3 className="text-sm font-semibold">{title}</h3>}
+          {hint && <p className="text-xs text-muted-foreground mt-0.5">{hint}</p>}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+function HeaderTab({
+  sections,
+  onChange,
+  name,
+  onNameChange,
+  errors,
+}: {
+  sections: SectionsJson;
+  onChange: (s: SectionsJson) => void;
+  name: string;
+  onNameChange: (n: string) => void;
+  errors: AgentValidationError[];
+}) {
+  const nameError = errors.find((e) => e.path === 'name')?.message;
+  const roleError = errors.find((e) => e.path === 'role')?.message;
+  return (
+    <div className="space-y-5">
+      <Card title="Identity" hint="The agent name shown in admin UI. Role is the system prompt's opening — the most load-bearing field.">
+        <Field label="Agent Name" error={nameError}>
+          <input
+            value={name}
+            onChange={(e) => onNameChange(e.target.value)}
+            className={inputClass(!!nameError)}
+          />
+        </Field>
+        <Field
+          label="Role"
+          required
+          meta={`${sections.header.role.length} chars`}
+          error={roleError}
+        >
+          <textarea
+            value={sections.header.role}
+            onChange={(e) => onChange({ ...sections, header: { ...sections.header, role: e.target.value } })}
+            rows={3}
+            placeholder="You are [role name]. Your job is to…"
+            className={textareaClass(!!roleError)}
+          />
+        </Field>
+        <Field label="Context" hint="Optional. Background about the brand, audience, or pipeline.">
+          <textarea
+            value={sections.header.context}
+            onChange={(e) => onChange({ ...sections, header: { ...sections.header, context: e.target.value } })}
+            rows={3}
+            placeholder="e.g. BrightTale produces long-form, evergreen-first content for a 25–40 audience…"
+            className={textareaClass(false)}
+          />
+        </Field>
+      </Card>
+
+      <Card title="Principles & Purpose" hint="Bullet points the agent reads before task specifics.">
+        <ListEditor
+          label="Guiding Principles"
+          items={sections.header.principles}
+          onChange={(principles) => onChange({ ...sections, header: { ...sections.header, principles } })}
+          placeholder="e.g. Default to skepticism over optimism"
+        />
+        <ListEditor
+          label="Agent Purpose"
+          items={sections.header.purpose}
+          onChange={(purpose) => onChange({ ...sections, header: { ...sections.header, purpose } })}
+          placeholder="e.g. Generate exactly the number of ideas requested"
+        />
+      </Card>
+    </div>
+  );
+}
+
+function RulesTab({ sections, onChange }: { sections: SectionsJson; onChange: (s: SectionsJson) => void }) {
+  return (
+    <div className="space-y-5">
+      <Card title="JSON Formatting Rules" hint="Applied at the output layer. Pull from library for consistency.">
+        <ListEditor
+          label=""
+          items={sections.rules.formatting}
+          onChange={(formatting) => onChange({ ...sections, rules: { ...sections.rules, formatting } })}
+          library={RULE_LIBRARY.filter((e) => e.category === 'formatting')}
+          placeholder="e.g. Output must be valid JSON"
+        />
+      </Card>
+      <Card title="Content Rules" hint="Behavioral expectations for what the agent produces.">
+        <ListEditor
+          label=""
+          items={sections.rules.content}
+          onChange={(content) => onChange({ ...sections, rules: { ...sections.rules, content } })}
+          library={RULE_LIBRARY.filter((e) => e.category === 'content')}
+          placeholder="e.g. Do not invent statistics"
+        />
+      </Card>
+      <Card title="Validation Checks" hint="Self-review checklist run before emitting final JSON.">
+        <ListEditor
+          label=""
+          items={sections.rules.validation}
+          onChange={(validation) => onChange({ ...sections, rules: { ...sections.rules, validation } })}
+          library={RULE_LIBRARY.filter((e) => e.category === 'validation')}
+          placeholder="e.g. Verify every required field is populated"
+        />
+      </Card>
+    </div>
+  );
+}
+
+function CustomSectionsTab({
+  sections,
+  onChange,
+  errors,
+}: {
+  sections: SectionsJson;
+  onChange: (s: SectionsJson) => void;
+  errors: AgentValidationError[];
+}) {
+  function addSection() {
+    onChange({
+      ...sections,
+      customSections: [...sections.customSections, { title: '', content: '' }],
+    });
+  }
+
+  function updateSection(index: number, field: 'title' | 'content', value: string) {
+    const updated = [...sections.customSections];
+    updated[index] = { ...updated[index], [field]: value };
+    onChange({ ...sections, customSections: updated });
+  }
+
+  function removeSection(index: number) {
+    onChange({
+      ...sections,
+      customSections: sections.customSections.filter((_, i) => i !== index),
+    });
+  }
+
+  function moveSection(index: number, dir: -1 | 1) {
+    const target = index + dir;
+    if (target < 0 || target >= sections.customSections.length) return;
+    const updated = [...sections.customSections];
+    [updated[index], updated[target]] = [updated[target], updated[index]];
+    onChange({ ...sections, customSections: updated });
+  }
+
+  if (sections.customSections.length === 0) {
+    return (
+      <Card title="Custom Sections" hint="Appear below rules in the final prompt. Use for field guidance, examples, handoff notes, or amendments.">
+        <button
+          onClick={addSection}
+          type="button"
+          className="w-full flex items-center justify-center gap-2 px-3 py-6 rounded-lg border border-dashed border-border hover:border-[#2DD4A8] hover:bg-[rgba(45,212,168,0.05)] text-sm text-muted-foreground transition-colors"
+        >
+          <Plus size={14} /> Add first section
+        </button>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {sections.customSections.map((section, i) => {
+        const titleError = errors.find((e) => e.path === `customSections[${i}].title`)?.message;
+        return (
+          <Card key={i}>
+            <div className="flex items-start gap-2">
+              <input
+                value={section.title}
+                onChange={(e) => updateSection(i, 'title', e.target.value)}
+                placeholder="Section title"
+                className={`flex-1 px-3 py-2 rounded-lg border bg-background text-sm font-semibold ${titleError ? 'border-destructive' : 'border-border'}`}
+              />
+              <div className="flex items-center gap-0.5">
+                <IconButton onClick={() => moveSection(i, -1)} disabled={i === 0} title="Move up">
+                  <ChevronUp size={14} />
+                </IconButton>
+                <IconButton onClick={() => moveSection(i, 1)} disabled={i === sections.customSections.length - 1} title="Move down">
+                  <ChevronDown size={14} />
+                </IconButton>
+                <IconButton onClick={() => removeSection(i)} title="Remove" destructive>
+                  <Trash2 size={14} />
+                </IconButton>
+              </div>
+            </div>
+            {titleError && <p className="text-xs text-destructive">{titleError}</p>}
+            <textarea
+              value={section.content}
+              onChange={(e) => updateSection(i, 'content', e.target.value)}
+              rows={8}
+              placeholder="Section content (markdown supported)"
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#2DD4A8]/40"
+            />
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>Supports markdown</span>
+              <span>{section.content.length} chars</span>
+            </div>
+          </Card>
+        );
+      })}
+      <button
+        onClick={addSection}
+        type="button"
+        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm hover:bg-card transition-colors"
+      >
+        <Plus size={14} /> Add section
+      </button>
+    </div>
+  );
+}
+
+function SettingsTab({
+  slug,
+  stage,
+  provider,
+  model,
+  onProviderChange,
+  onModelChange,
+  updatedAt,
+}: {
+  slug: string;
+  stage: string;
+  provider: string;
+  model: string;
+  onProviderChange: (v: string) => void;
+  onModelChange: (v: string) => void;
+  updatedAt: string;
+}) {
+  return (
+    <div className="space-y-5">
+      <Card title="Identity" hint="Slug and stage are locked — they define how this agent wires into the pipeline.">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Slug">
+            <input value={slug} disabled className={inputClass(false) + ' opacity-60 font-mono'} />
+          </Field>
+          <Field label="Stage">
+            <input value={stage} disabled className={inputClass(false) + ' opacity-60'} />
+          </Field>
+        </div>
+      </Card>
+      <Card title="Recommended Model" hint="Suggestion only. Admins can override at runtime.">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Provider">
+            <select
+              value={provider}
+              onChange={(e) => { onProviderChange(e.target.value); onModelChange(''); }}
+              className={inputClass(false)}
+            >
+              {PROVIDER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Model">
+            <input
+              value={model}
+              onChange={(e) => onModelChange(e.target.value)}
+              disabled={!provider}
+              list={`models-${provider}`}
+              placeholder={provider ? 'e.g. gemini-2.5-flash' : 'choose provider first'}
+              className={inputClass(false) + (!provider ? ' opacity-50' : '')}
+            />
+            {provider && MODEL_SUGGESTIONS[provider] && (
+              <datalist id={`models-${provider}`}>
+                {MODEL_SUGGESTIONS[provider].map((m) => (
+                  <option key={m} value={m} />
+                ))}
+              </datalist>
+            )}
+          </Field>
+        </div>
+      </Card>
+      <div className="text-xs text-muted-foreground text-right">
+        Last updated: {new Date(updatedAt).toLocaleString()}
+      </div>
+    </div>
+  );
+}
+
+/* ─── building blocks ───────────────────────────────────────────── */
+
+function Field({
+  label,
+  required,
+  hint,
+  meta,
+  error,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  hint?: string;
+  meta?: string;
+  error?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          {label}
+          {required && <span className="text-destructive ml-0.5">*</span>}
+          {hint && <span className="normal-case text-muted-foreground/70 font-normal ml-1">({hint})</span>}
+        </label>
+        {meta && <span className="text-[11px] text-muted-foreground/70">{meta}</span>}
+      </div>
+      {children}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+function IconButton({
+  onClick,
+  disabled,
+  destructive,
+  title,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  destructive?: boolean;
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className={`p-1.5 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+        destructive ? 'hover:bg-destructive/10 text-destructive' : 'hover:bg-card text-muted-foreground hover:text-foreground'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function inputClass(hasError: boolean) {
+  return `w-full px-3 py-2 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-[#2DD4A8]/40 disabled:cursor-not-allowed ${
+    hasError ? 'border-destructive' : 'border-border'
+  }`;
+}
+
+function textareaClass(hasError: boolean) {
+  return `w-full px-3 py-2 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-[#2DD4A8]/40 resize-y ${
+    hasError ? 'border-destructive' : 'border-border'
+  }`;
+}
+
+interface LibraryEntry {
+  category: string;
+  label: string;
+  rules: readonly string[];
+}
+
+function ListEditor({
+  label,
+  items,
+  onChange,
+  placeholder,
+  library,
+}: {
+  label: string;
+  items: string[];
+  onChange: (items: string[]) => void;
+  placeholder?: string;
+  library?: readonly LibraryEntry[];
+}) {
+  const libraryRules = library?.flatMap((e) => e.rules) ?? [];
+  const availableFromLibrary = libraryRules.filter((r) => !items.includes(r));
+
+  function addAllFromLibrary(entry: LibraryEntry) {
+    const missing = entry.rules.filter((r) => !items.includes(r));
+    if (missing.length === 0) return;
+    onChange([...items, ...missing]);
+  }
+
+  function moveItem(i: number, dir: -1 | 1) {
+    const target = i + dir;
+    if (target < 0 || target >= items.length) return;
+    const next = [...items];
+    [next[i], next[target]] = [next[target], next[i]];
+    onChange(next);
+  }
+
+  return (
+    <div className="space-y-2">
+      {(label || (library && library.length > 0)) && (
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          {label && <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</label>}
+          {library && library.length > 0 && (
+            <div className="flex items-center gap-1 flex-wrap">
+              {library.map((entry) => {
+                const added = entry.rules.every((r) => items.includes(r));
+                return (
+                  <button
+                    key={entry.label}
+                    onClick={() => addAllFromLibrary(entry)}
+                    type="button"
+                    disabled={added}
+                    className={`text-[11px] inline-flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all ${
+                      added
+                        ? 'opacity-40 cursor-not-allowed border-border'
+                        : 'border-[#2DD4A8]/30 text-[#2DD4A8] hover:bg-[rgba(45,212,168,0.08)]'
+                    }`}
+                    title={added ? 'All rules added' : `Add ${entry.rules.length} rules from ${entry.label}`}
+                  >
+                    <Plus size={10} /> {entry.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+      {items.map((item, i) => {
+        const fromLibrary = libraryRules.includes(item);
+        return (
+          <div key={i} className="group flex items-center gap-1.5">
+            {fromLibrary && (
+              <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded bg-[rgba(45,212,168,0.12)] text-[#2DD4A8] font-mono uppercase" title="From standard library">
+                lib
+              </span>
+            )}
+            <input
+              value={item}
+              onChange={(e) => {
+                const updated = [...items];
+                updated[i] = e.target.value;
+                onChange(updated);
+              }}
+              placeholder={placeholder}
+              className="flex-1 min-w-0 px-3 py-1.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-[#2DD4A8]/40"
+            />
+            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <IconButton onClick={() => moveItem(i, -1)} disabled={i === 0} title="Move up">
+                <ChevronUp size={12} />
+              </IconButton>
+              <IconButton onClick={() => moveItem(i, 1)} disabled={i === items.length - 1} title="Move down">
+                <ChevronDown size={12} />
+              </IconButton>
+              <IconButton onClick={() => onChange(items.filter((_, idx) => idx !== i))} title="Remove" destructive>
+                <X size={12} />
+              </IconButton>
+            </div>
+          </div>
+        );
+      })}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={() => onChange([...items, ''])}
+          type="button"
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border text-xs hover:bg-card transition-colors"
+        >
+          <Plus size={12} /> Add
+        </button>
+        {availableFromLibrary.length > 0 && library && (
+          <span className="text-[11px] text-muted-foreground">
+            {availableFromLibrary.length} more available from library
+          </span>
+        )}
       </div>
     </div>
   );

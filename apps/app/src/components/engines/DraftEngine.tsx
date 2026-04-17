@@ -19,6 +19,7 @@ import {
 } from '@/components/ai/ModelPicker';
 import { ManualModePanel } from '@/components/ai/ManualModePanel';
 import { useManualMode } from '@/hooks/use-manual-mode';
+import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { GenerationProgressModal } from '@/components/generation/GenerationProgressModal';
 import { MarkdownPreview } from '@/components/preview/MarkdownPreview';
 import { ContextBanner } from './ContextBanner';
@@ -95,6 +96,9 @@ export function DraftEngine({
 
   // Upgrade handling
   const { handleMaybeCreditsError } = useUpgrade();
+
+  // Pipeline tracker
+  const tracker = usePipelineTracker('draft', context);
 
   // Fetch research data if researchSessionId is in context
   useEffect(() => {
@@ -205,6 +209,13 @@ export function DraftEngine({
     if (!research) { toast.error('Select research first'); return; }
     if (!title.trim()) { toast.error('Enter a title'); return; }
 
+    tracker.trackStarted({
+      draftId: draftId || '',
+      phase: 'core',
+      provider,
+      model,
+    });
+
     // Create draft scaffold
     const draft = await runStep('create draft', () =>
       fetch('/api/content-drafts', {
@@ -276,6 +287,10 @@ export function DraftEngine({
     if (!updated) return;
 
     setCanonicalCore(core);
+    tracker.trackAction('imported', {
+      phase: 'core',
+      source: 'manual',
+    });
     setPhase('core-ready');
     setCoreExpanded(true);
     toast.success('Canonical core imported');
@@ -294,6 +309,10 @@ export function DraftEngine({
         const coreJson = json.data?.canonical_core_json ?? json.data?.canonicalCoreJson;
         if (coreJson && typeof coreJson === 'object') {
           setCanonicalCore(coreJson as Record<string, unknown>);
+          tracker.trackAction('core.generated', {
+            draftId,
+            canonicalCoreJson: coreJson,
+          });
           setPhase('core-ready');
           setCoreExpanded(true);
           toast.success('Canonical core generated — review and proceed to produce');
@@ -317,6 +336,11 @@ export function DraftEngine({
   function onJobFailed(message: string) {
     const friendly = friendlyAiError(message);
     toast.error(friendly.title, { description: friendly.hint });
+    tracker.trackFailed(message, {
+      phase: 'core',
+      provider,
+      model,
+    });
     setActiveDraftId(null);
   }
 
@@ -328,6 +352,15 @@ export function DraftEngine({
     if (type === 'blog') productionParams.target_word_count = targetWords;
     if (type === 'video' || type === 'podcast') productionParams.target_duration_minutes = targetMinutes;
     if (type === 'shorts') productionParams.target_duration_minutes = targetShortsSeconds / 60;
+
+    tracker.trackStarted({
+      draftId,
+      phase: 'produce',
+      provider,
+      model,
+      format: type,
+      targetLength: type === 'blog' ? targetWords : type === 'shorts' ? targetShortsSeconds : targetMinutes,
+    });
 
     setPhase('produce');
     const produced = await runStep('produce content', () =>
@@ -347,6 +380,13 @@ export function DraftEngine({
     const content = extractProducedContent(produced as Record<string, unknown>, type);
     if (content) {
       setProducedContent(content);
+      const wordCount = content.split(/\s+/).length;
+      tracker.trackAction('content.produced', {
+        draftId,
+        format: type,
+        wordCount,
+        draftJson: (produced as Record<string, unknown>).draft_json ?? (produced as Record<string, unknown>).draftJson,
+      });
     }
     setPhase('done');
     toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} content produced`);
@@ -419,6 +459,10 @@ export function DraftEngine({
     }
 
     setProducedContent(content);
+    tracker.trackAction('imported', {
+      phase: 'produce',
+      source: 'manual',
+    });
     setPhase('done');
     toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} content imported`);
   }
@@ -1011,6 +1055,13 @@ export function DraftEngine({
                 <Pencil className="h-4 w-4 mr-2" /> Produce Another Format
               </Button>
               <Button onClick={() => {
+                const wordCount = producedContent.split(/\s+/).length;
+                tracker.trackCompleted({
+                  draftId: draftId || '',
+                  draftTitle: title,
+                  wordCount,
+                  format: type,
+                });
                 const result: DraftResult = {
                   draftId: draftId || '',
                   draftTitle: title,

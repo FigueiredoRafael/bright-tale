@@ -1,0 +1,217 @@
+<h2>Section 3: Dashboard Redesign</h2>
+<p class="subtitle">KPI cards with sparklines, glassmorphism surfaces, better information hierarchy</p>
+
+<div class="mockup">
+  <div class="mockup-header">Dashboard — Dark Theme</div>
+  <div class="mockup-body" style="background: #0C1017; padding: 24px; border-radius: 8px;">
+
+    <!-- Header row -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+      <div>
+        <div style="font-size: 22px; font-weight: 700; color: #F1F5F9;">Dashboard</div>
+        <div style="font-size: 12px; color: #64748B; margin-top: 2px;">Wednesday, April 16, 2026 &nbsp;·&nbsp; <span style="color: #4ADE80;">● All systems OK</span></div>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px 14px; font-size: 12px; color: #94A3B8; cursor: pointer;">Last 7 days</div>
+        <div style="background: rgba(29,185,144,0.12); border: 1px solid rgba(29,185,144,0.3); border-radius: 8px; padding: 6px 14px; font-size: 12px; color: #1DB990; cursor: pointer;">Last 30 days</div>
+      </div>
+    </div>
+
+    <!-- Top KPI Row — 4 cards -->
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px;">
+
+      <!-- Users -->
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #A78BFA, transparent); border-radius: 2px;"></div>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Total Users</div>
+            <div style="font-size: 28px; font-weight: 700; color: #F1F5F9; margin-top: 4px;">4</div>
+            <div style="display: flex; align-items: center; gap: 4px; margin-top: 4px;">
+              <span style="font-size: 11px; color: #4ADE80;">▲ 2</span>
+              <span style="font-size: 10px; color: #64748B;">this week</span>
+            </div>
+          </div>
+          <!-- Sparkline -->
+          <svg width="64" height="32" viewBox="0 0 64 32" style="margin-top: 8px;">
+            <defs><linearGradient id="sp1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#A78BFA" stop-opacity="0.3"/><stop offset="100%" stop-color="#A78BFA" stop-opacity="0"/></linearGradient></defs>
+            <path d="M0,28 L10,24 L20,26 L30,18 L40,14 L50,10 L64,4" fill="none" stroke="#A78BFA" stroke-width="2"/>
+            <path d="M0,28 L10,24 L20,26 L30,18 L40,14 L50,10 L64,4 L64,32 L0,32 Z" fill="url(#sp1)"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Pipeline Active -->
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #1DB990, transparent); border-radius: 2px;"></div>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Active Projects</div>
+            <div style="font-size: 28px; font-weight: 700; color: #F1F5F9; margin-top: 4px;">8</div>
+            <div style="display: flex; align-items: center; gap: 4px; margin-top: 4px;">
+              <span style="font-size: 11px; color: #4ADE80;">▲ 3</span>
+              <span style="font-size: 10px; color: #64748B;">this week</span>
+            </div>
+          </div>
+          <svg width="64" height="32" viewBox="0 0 64 32" style="margin-top: 8px;">
+            <defs><linearGradient id="sp2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1DB990" stop-opacity="0.3"/><stop offset="100%" stop-color="#1DB990" stop-opacity="0"/></linearGradient></defs>
+            <path d="M0,20 L12,22 L24,16 L36,18 L48,8 L64,4" fill="none" stroke="#1DB990" stroke-width="2"/>
+            <path d="M0,20 L12,22 L24,16 L36,18 L48,8 L64,4 L64,32 L0,32 Z" fill="url(#sp2)"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Published -->
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #4A90D9, transparent); border-radius: 2px;"></div>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Published</div>
+            <div style="font-size: 28px; font-weight: 700; color: #F1F5F9; margin-top: 4px;">1</div>
+            <div style="display: flex; align-items: center; gap: 4px; margin-top: 4px;">
+              <span style="font-size: 11px; color: #4ADE80;">▲ 1</span>
+              <span style="font-size: 10px; color: #64748B;">this week</span>
+            </div>
+          </div>
+          <svg width="64" height="32" viewBox="0 0 64 32" style="margin-top: 8px;">
+            <defs><linearGradient id="sp3" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4A90D9" stop-opacity="0.3"/><stop offset="100%" stop-color="#4A90D9" stop-opacity="0"/></linearGradient></defs>
+            <path d="M0,28 L16,26 L32,28 L48,20 L64,10" fill="none" stroke="#4A90D9" stroke-width="2"/>
+            <path d="M0,28 L16,26 L32,28 L48,20 L64,10 L64,32 L0,32 Z" fill="url(#sp3)"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Credits -->
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #FF6B35, transparent); border-radius: 2px;"></div>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Credits Used</div>
+            <div style="font-size: 28px; font-weight: 700; color: #F1F5F9; margin-top: 4px;">530</div>
+            <div style="display: flex; align-items: center; gap: 4px; margin-top: 4px;">
+              <span style="font-size: 11px; color: #FF5252;">▼ 12%</span>
+              <span style="font-size: 10px; color: #64748B;">vs last month</span>
+            </div>
+          </div>
+          <svg width="64" height="32" viewBox="0 0 64 32" style="margin-top: 8px;">
+            <defs><linearGradient id="sp4" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FF6B35" stop-opacity="0.3"/><stop offset="100%" stop-color="#FF6B35" stop-opacity="0"/></linearGradient></defs>
+            <path d="M0,8 L12,12 L24,10 L36,16 L48,22 L64,26" fill="none" stroke="#FF6B35" stroke-width="2"/>
+            <path d="M0,8 L12,12 L24,10 L36,16 L48,22 L64,26 L64,32 L0,32 Z" fill="url(#sp4)"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Second Row: Pipeline Overview + System Health -->
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 20px;">
+
+      <!-- Pipeline Stage Distribution -->
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 20px;">
+        <div style="font-size: 13px; font-weight: 600; color: #F1F5F9; margin-bottom: 16px;">Pipeline by Stage</div>
+        <!-- Horizontal stacked bar -->
+        <div style="display: flex; height: 28px; border-radius: 6px; overflow: hidden; margin-bottom: 14px;">
+          <div style="width: 30%; background: linear-gradient(90deg, #A78BFA, #9370DB); display: flex; align-items: center; justify-content: center; font-size: 10px; color: white; font-weight: 600;">3</div>
+          <div style="width: 25%; background: linear-gradient(90deg, #4A90D9, #3B82F6); display: flex; align-items: center; justify-content: center; font-size: 10px; color: white; font-weight: 600;">2</div>
+          <div style="width: 20%; background: linear-gradient(90deg, #1DB990, #0D9B6A); display: flex; align-items: center; justify-content: center; font-size: 10px; color: white; font-weight: 600;">2</div>
+          <div style="width: 15%; background: linear-gradient(90deg, #F59E0B, #D97706); display: flex; align-items: center; justify-content: center; font-size: 10px; color: white; font-weight: 600;">1</div>
+          <div style="width: 10%; background: linear-gradient(90deg, #4ADE80, #16A34A); display: flex; align-items: center; justify-content: center; font-size: 10px; color: white; font-weight: 600;">1</div>
+        </div>
+        <!-- Legend -->
+        <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 5px;"><div style="width: 8px; height: 8px; background: #A78BFA; border-radius: 2px;"></div><span style="font-size: 10px; color: #94A3B8;">Brainstorm (3)</span></div>
+          <div style="display: flex; align-items: center; gap: 5px;"><div style="width: 8px; height: 8px; background: #4A90D9; border-radius: 2px;"></div><span style="font-size: 10px; color: #94A3B8;">Research (2)</span></div>
+          <div style="display: flex; align-items: center; gap: 5px;"><div style="width: 8px; height: 8px; background: #1DB990; border-radius: 2px;"></div><span style="font-size: 10px; color: #94A3B8;">Production (2)</span></div>
+          <div style="display: flex; align-items: center; gap: 5px;"><div style="width: 8px; height: 8px; background: #F59E0B; border-radius: 2px;"></div><span style="font-size: 10px; color: #94A3B8;">Review (1)</span></div>
+          <div style="display: flex; align-items: center; gap: 5px;"><div style="width: 8px; height: 8px; background: #4ADE80; border-radius: 2px;"></div><span style="font-size: 10px; color: #94A3B8;">Published (1)</span></div>
+        </div>
+      </div>
+
+      <!-- System Health -->
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 20px;">
+        <div style="font-size: 13px; font-weight: 600; color: #F1F5F9; margin-bottom: 16px;">System Status</div>
+        <div style="space-y: 12px;">
+          <!-- API -->
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+            <span style="font-size: 12px; color: #94A3B8;">API</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 8px; height: 8px; background: #4ADE80; border-radius: 50%; box-shadow: 0 0 8px rgba(74,222,128,0.5); animation: pulse 2s infinite;"></div>
+              <span style="font-size: 11px; color: #4ADE80;">Healthy</span>
+            </div>
+          </div>
+          <!-- Database -->
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+            <span style="font-size: 12px; color: #94A3B8;">Database</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 8px; height: 8px; background: #4ADE80; border-radius: 50%; box-shadow: 0 0 8px rgba(74,222,128,0.5);"></div>
+              <span style="font-size: 11px; color: #4ADE80;">Healthy</span>
+            </div>
+          </div>
+          <!-- AI Providers -->
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+            <span style="font-size: 12px; color: #94A3B8;">AI Providers</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 8px; height: 8px; background: #4ADE80; border-radius: 50%; box-shadow: 0 0 8px rgba(74,222,128,0.5);"></div>
+              <span style="font-size: 11px; color: #4ADE80;">3 active</span>
+            </div>
+          </div>
+          <!-- WordPress -->
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0;">
+            <span style="font-size: 12px; color: #94A3B8;">WordPress</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 8px; height: 8px; background: #4ADE80; border-radius: 50%; box-shadow: 0 0 8px rgba(74,222,128,0.5);"></div>
+              <span style="font-size: 11px; color: #4ADE80;">Connected</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Third Row: Recent Activity -->
+    <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+        <div style="font-size: 13px; font-weight: 600; color: #F1F5F9;">Recent Activity</div>
+        <a style="font-size: 11px; color: #1DB990; cursor: pointer; text-decoration: none;">View all →</a>
+      </div>
+      <!-- Activity items -->
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 8px;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+          <div style="width: 32px; height: 32px; background: linear-gradient(135deg, #A78BFA, #8B5CF6); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">📝</div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-size: 12px; color: #F1F5F9;">New draft created: <span style="color: #1DB990;">"10 Tips for Better SEO"</span></div>
+            <div style="font-size: 10px; color: #64748B; margin-top: 2px;">hector@brighttale.io · 5 min ago</div>
+          </div>
+          <span style="font-size: 10px; background: rgba(29,185,144,0.15); color: #1DB990; padding: 3px 8px; border-radius: 12px; flex-shrink: 0;">production</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 8px;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+          <div style="width: 32px; height: 32px; background: linear-gradient(135deg, #4ADE80, #16A34A); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">🚀</div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-size: 12px; color: #F1F5F9;">Published to WordPress: <span style="color: #4A90D9;">"AI in Healthcare 2026"</span></div>
+            <div style="font-size: 10px; color: #64748B; margin-top: 2px;">hector@brighttale.io · 2 hours ago</div>
+          </div>
+          <span style="font-size: 10px; background: rgba(74,222,128,0.15); color: #4ADE80; padding: 3px 8px; border-radius: 12px; flex-shrink: 0;">published</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 8px;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+          <div style="width: 32px; height: 32px; background: linear-gradient(135deg, #4A90D9, #3B82F6); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">👤</div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-size: 12px; color: #F1F5F9;">New user registered: <span style="color: #A78BFA;">maria@example.com</span></div>
+            <div style="font-size: 10px; color: #64748B; margin-top: 2px;">System · 1 day ago</div>
+          </div>
+          <span style="font-size: 10px; background: rgba(167,139,250,0.15); color: #A78BFA; padding: 3px 8px; border-radius: 12px; flex-shrink: 0;">user</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px;">
+  <h3>Dashboard Changes Summary</h3>
+  <ul style="color: #ccc; line-height: 1.8;">
+    <li><strong>Top KPI row:</strong> 4 glassmorphism cards with SVG sparklines (7-day trend), colored glow top-edge, delta indicators</li>
+    <li><strong>Pipeline overview:</strong> Horizontal stacked bar chart showing projects per stage (consistent stage colors)</li>
+    <li><strong>System health:</strong> Compact status panel with pulsing green dots + service labels</li>
+    <li><strong>Recent activity feed:</strong> Timeline replacing the old "recent users" card — shows all platform events (drafts, publishes, signups)</li>
+    <li><strong>Date range toggle:</strong> 7-day / 30-day filter in header affects KPI deltas and sparkline data</li>
+    <li><strong>Recharts integration:</strong> Sparklines are inline SVG (lightweight). Dedicated chart sections (analytics) use Recharts for interactivity</li>
+  </ul>
+</div>

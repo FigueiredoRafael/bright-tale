@@ -9,10 +9,9 @@ export type AgentType = "brainstorm" | "research" | "production" | "review";
 
 export interface GenerateContentParams {
   agentType: AgentType;
-  input: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  schema: any;
-  systemPrompt?: string;
+  systemPrompt: string;
+  userMessage: string;
+  schema?: unknown;
 }
 
 export interface TokenUsage {

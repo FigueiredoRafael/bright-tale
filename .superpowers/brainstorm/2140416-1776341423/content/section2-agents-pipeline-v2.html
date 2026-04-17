@@ -1,0 +1,133 @@
+<h2>Section 2 (v2): Agents Pipeline — Production Branching</h2>
+<p class="subtitle">Production stage fans out to media-specific sub-agents, then converges back to Review</p>
+
+<div class="mockup">
+  <div class="mockup-header">Pipeline with Production Sub-Agents</div>
+  <div class="mockup-body" style="background: #0C1017; padding: 32px 16px; border-radius: 8px; overflow-x: auto;">
+
+    <div style="min-width: 1050px; position: relative;">
+
+      <!-- Row 1: Main flow line -->
+      <div style="display: flex; align-items: center; justify-content: center;">
+
+        <!-- Brainstorm -->
+        <div style="width: 148px; flex-shrink: 0;">
+          <div style="background: linear-gradient(135deg, rgba(167,139,250,0.15), rgba(167,139,250,0.05)); backdrop-filter: blur(8px); border: 1px solid rgba(167,139,250,0.3); border-radius: 12px; padding: 14px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='rgba(167,139,250,0.6)'; this.style.boxShadow='0 0 20px rgba(167,139,250,0.15)'" onmouseout="this.style.borderColor='rgba(167,139,250,0.3)'; this.style.boxShadow='none'">
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+              <div style="width: 28px; height: 28px; background: linear-gradient(135deg, #A78BFA, #8B5CF6); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px;">💡</div>
+              <div style="font-size: 10px; color: #A78BFA; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Stage 1</div>
+            </div>
+            <div style="font-size: 13px; font-weight: 600; color: #F1F5F9;">Brainstorm</div>
+            <div style="font-size: 10px; color: #64748B; margin-top: 3px;">1 agent</div>
+          </div>
+        </div>
+
+        <!-- Arrow -->
+        <div style="width: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+          <svg width="40" height="20" viewBox="0 0 40 20"><line x1="0" y1="10" x2="30" y2="10" stroke="#A78BFA" stroke-opacity="0.4" stroke-width="2" stroke-dasharray="4 3"><animate attributeName="stroke-dashoffset" from="0" to="-14" dur="1.5s" repeatCount="indefinite"/></line><polygon points="28,5 40,10 28,15" fill="#4A90D9" opacity="0.5"/></svg>
+        </div>
+
+        <!-- Research -->
+        <div style="width: 148px; flex-shrink: 0;">
+          <div style="background: linear-gradient(135deg, rgba(74,144,217,0.15), rgba(74,144,217,0.05)); backdrop-filter: blur(8px); border: 1px solid rgba(74,144,217,0.3); border-radius: 12px; padding: 14px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='rgba(74,144,217,0.6)'; this.style.boxShadow='0 0 20px rgba(74,144,217,0.15)'" onmouseout="this.style.borderColor='rgba(74,144,217,0.3)'; this.style.boxShadow='none'">
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+              <div style="width: 28px; height: 28px; background: linear-gradient(135deg, #4A90D9, #3B82F6); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px;">🔬</div>
+              <div style="font-size: 10px; color: #4A90D9; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Stage 2</div>
+            </div>
+            <div style="font-size: 13px; font-weight: 600; color: #F1F5F9;">Research</div>
+            <div style="font-size: 10px; color: #64748B; margin-top: 3px;">1 agent</div>
+          </div>
+        </div>
+
+        <!-- Arrow to fan-out -->
+        <div style="width: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+          <svg width="40" height="20" viewBox="0 0 40 20"><line x1="0" y1="10" x2="30" y2="10" stroke="#4A90D9" stroke-opacity="0.4" stroke-width="2" stroke-dasharray="4 3"><animate attributeName="stroke-dashoffset" from="0" to="-14" dur="1.5s" repeatCount="indefinite"/></line><polygon points="28,5 40,10 28,15" fill="#1DB990" opacity="0.5"/></svg>
+        </div>
+
+        <!-- PRODUCTION FAN-OUT -->
+        <div style="width: 320px; flex-shrink: 0; position: relative;">
+          <!-- Container label -->
+          <div style="position: absolute; top: -22px; left: 0; right: 0; text-align: center;">
+            <span style="font-size: 10px; color: #1DB990; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; background: #0C1017; padding: 0 12px;">Stage 3 — Production</span>
+          </div>
+
+          <!-- Dashed border group -->
+          <div style="border: 1px dashed rgba(29,185,144,0.25); border-radius: 16px; padding: 16px 12px; background: rgba(29,185,144,0.03);">
+            <!-- Top row: Blog + Video -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+              <!-- Blog -->
+              <div style="background: linear-gradient(135deg, rgba(29,185,144,0.18), rgba(29,185,144,0.05)); border: 1px solid rgba(29,185,144,0.3); border-radius: 10px; padding: 10px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='rgba(29,185,144,0.6)'; this.style.boxShadow='0 0 16px rgba(29,185,144,0.12)'" onmouseout="this.style.borderColor='rgba(29,185,144,0.3)'; this.style.boxShadow='none'">
+                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                  <div style="width: 22px; height: 22px; background: linear-gradient(135deg, #1DB990, #0D9B6A); border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px;">📝</div>
+                  <span style="font-size: 11px; font-weight: 600; color: #F1F5F9;">Blog</span>
+                </div>
+                <div style="font-size: 10px; color: #64748B;">Agent 3a</div>
+                <div style="display: flex; align-items: center; gap: 3px; margin-top: 5px;"><div style="width: 5px; height: 5px; background: #4ADE80; border-radius: 50%; box-shadow: 0 0 4px #4ADE80;"></div><span style="font-size: 9px; color: #4ADE80;">Active</span></div>
+              </div>
+              <!-- Video -->
+              <div style="background: linear-gradient(135deg, rgba(29,185,144,0.18), rgba(29,185,144,0.05)); border: 1px solid rgba(29,185,144,0.3); border-radius: 10px; padding: 10px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='rgba(29,185,144,0.6)'; this.style.boxShadow='0 0 16px rgba(29,185,144,0.12)'" onmouseout="this.style.borderColor='rgba(29,185,144,0.3)'; this.style.boxShadow='none'">
+                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                  <div style="width: 22px; height: 22px; background: linear-gradient(135deg, #1DB990, #0D9B6A); border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px;">🎬</div>
+                  <span style="font-size: 11px; font-weight: 600; color: #F1F5F9;">Video</span>
+                </div>
+                <div style="font-size: 10px; color: #64748B;">Agent 3b</div>
+                <div style="display: flex; align-items: center; gap: 3px; margin-top: 5px;"><div style="width: 5px; height: 5px; background: #4ADE80; border-radius: 50%; box-shadow: 0 0 4px #4ADE80;"></div><span style="font-size: 9px; color: #4ADE80;">Active</span></div>
+              </div>
+            </div>
+            <!-- Bottom row: Podcast + Shorts -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <!-- Podcast -->
+              <div style="background: linear-gradient(135deg, rgba(29,185,144,0.18), rgba(29,185,144,0.05)); border: 1px solid rgba(29,185,144,0.3); border-radius: 10px; padding: 10px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='rgba(29,185,144,0.6)'; this.style.boxShadow='0 0 16px rgba(29,185,144,0.12)'" onmouseout="this.style.borderColor='rgba(29,185,144,0.3)'; this.style.boxShadow='none'">
+                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                  <div style="width: 22px; height: 22px; background: linear-gradient(135deg, #1DB990, #0D9B6A); border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px;">🎙️</div>
+                  <span style="font-size: 11px; font-weight: 600; color: #F1F5F9;">Podcast</span>
+                </div>
+                <div style="font-size: 10px; color: #64748B;">Agent 3c</div>
+                <div style="display: flex; align-items: center; gap: 3px; margin-top: 5px;"><div style="width: 5px; height: 5px; background: #4ADE80; border-radius: 50%; box-shadow: 0 0 4px #4ADE80;"></div><span style="font-size: 9px; color: #4ADE80;">Active</span></div>
+              </div>
+              <!-- Shorts -->
+              <div style="background: linear-gradient(135deg, rgba(29,185,144,0.18), rgba(29,185,144,0.05)); border: 1px solid rgba(29,185,144,0.3); border-radius: 10px; padding: 10px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='rgba(29,185,144,0.6)'; this.style.boxShadow='0 0 16px rgba(29,185,144,0.12)'" onmouseout="this.style.borderColor='rgba(29,185,144,0.3)'; this.style.boxShadow='none'">
+                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                  <div style="width: 22px; height: 22px; background: linear-gradient(135deg, #1DB990, #0D9B6A); border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px;">⚡</div>
+                  <span style="font-size: 11px; font-weight: 600; color: #F1F5F9;">Shorts</span>
+                </div>
+                <div style="font-size: 10px; color: #64748B;">Agent 3d</div>
+                <div style="display: flex; align-items: center; gap: 3px; margin-top: 5px;"><div style="width: 5px; height: 5px; background: #F59E0B; border-radius: 50; box-shadow: 0 0 4px #F59E0B;"></div><span style="font-size: 9px; color: #F59E0B;">Draft</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Arrow from fan-out to Review -->
+        <div style="width: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+          <svg width="40" height="20" viewBox="0 0 40 20"><line x1="0" y1="10" x2="30" y2="10" stroke="#1DB990" stroke-opacity="0.4" stroke-width="2" stroke-dasharray="4 3"><animate attributeName="stroke-dashoffset" from="0" to="-14" dur="1.5s" repeatCount="indefinite"/></line><polygon points="28,5 40,10 28,15" fill="#F59E0B" opacity="0.5"/></svg>
+        </div>
+
+        <!-- Review -->
+        <div style="width: 148px; flex-shrink: 0;">
+          <div style="background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05)); backdrop-filter: blur(8px); border: 1px solid rgba(245,158,11,0.3); border-radius: 12px; padding: 14px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='rgba(245,158,11,0.6)'; this.style.boxShadow='0 0 20px rgba(245,158,11,0.15)'" onmouseout="this.style.borderColor='rgba(245,158,11,0.3)'; this.style.boxShadow='none'">
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+              <div style="width: 28px; height: 28px; background: linear-gradient(135deg, #F59E0B, #D97706); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px;">🔍</div>
+              <div style="font-size: 10px; color: #F59E0B; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Stage 4</div>
+            </div>
+            <div style="font-size: 13px; font-weight: 600; color: #F1F5F9;">Review</div>
+            <div style="font-size: 10px; color: #64748B; margin-top: 3px;">1 agent</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px;">
+  <h3>Key Changes from v1</h3>
+  <ul style="color: #ccc; line-height: 1.8;">
+    <li><strong>Production fan-out:</strong> Dashed teal border groups 4 sub-agent cards in a 2x2 grid — Blog, Video, Podcast, Shorts</li>
+    <li><strong>Visual grouping:</strong> "Stage 3 — Production" label floats above the dashed container, making the hierarchy clear</li>
+    <li><strong>Individual status:</strong> Each sub-agent has its own status dot (some Active, some Draft)</li>
+    <li><strong>Converges back:</strong> Single arrow from production group → Review, showing all media types feed into one review agent</li>
+    <li><strong>Compact sub-cards:</strong> Smaller cards inside the group to keep overall pipeline width manageable</li>
+    <li><strong>Same interactions:</strong> Click any sub-card → edit that specific agent's prompt</li>
+  </ul>
+</div>

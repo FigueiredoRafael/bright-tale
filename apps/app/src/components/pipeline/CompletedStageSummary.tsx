@@ -23,15 +23,18 @@ const STAGE_META: Record<PipelineStage, { icon: typeof Lightbulb; label: string;
 interface CompletedStageSummaryProps {
   stage: PipelineStage;
   stageResults: PipelineState['stageResults'];
-  onRevisit: (stage: PipelineStage) => void;
+  currentStage: PipelineStage;
+  onNavigate: (stage: PipelineStage) => void;
 }
 
-export function CompletedStageSummary({ stage, stageResults, onRevisit }: CompletedStageSummaryProps) {
+export function CompletedStageSummary({ stage, stageResults, currentStage, onNavigate }: CompletedStageSummaryProps) {
   const [expanded, setExpanded] = useState(false);
   const meta = STAGE_META[stage];
   const Icon = meta.icon;
   const result = stageResults[stage];
   if (!result) return null;
+
+  const isCurrent = currentStage === stage;
 
   function getSummary(): string {
     switch (stage) {
@@ -69,7 +72,7 @@ export function CompletedStageSummary({ stage, stageResults, onRevisit }: Comple
   }
 
   return (
-    <Card className="border-green-500/30 bg-green-500/5">
+    <Card className={isCurrent ? 'border-primary/40 bg-primary/5' : 'border-green-500/30 bg-green-500/5'}>
       <CardContent className="py-3 px-4">
         <div className="flex items-center gap-3">
           <Icon className={`h-4 w-4 ${meta.color} shrink-0`} />
@@ -78,9 +81,11 @@ export function CompletedStageSummary({ stage, stageResults, onRevisit }: Comple
           </Badge>
           <span className="text-sm font-medium">{meta.label}</span>
           <span className="text-xs text-muted-foreground truncate flex-1">{getSummary()}</span>
-          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onRevisit(stage)}>
-            <RotateCcw className="h-3 w-3 mr-1" /> Change
-          </Button>
+          {!isCurrent && (
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onNavigate(stage)}>
+              <RotateCcw className="h-3 w-3 mr-1" /> Go to
+            </Button>
+          )}
           <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setExpanded(!expanded)}>
             {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </Button>

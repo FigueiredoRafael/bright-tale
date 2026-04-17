@@ -28,7 +28,7 @@ export function normalizeStageType(stage: string): string {
 
 // Create/Update stage schema
 export const createStageSchema = z.object({
-  project_id: z.string().cuid(),
+  project_id: z.string().uuid(),
   stage_type: z.enum(validStageTypes),
   yaml_artifact: z.string().min(10),
 });

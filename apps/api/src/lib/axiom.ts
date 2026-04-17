@@ -46,9 +46,10 @@ export async function flushAxiom(): Promise<void> {
 }
 
 interface AiUsageEvent {
-  userId: string;
-  orgId?: string;
+  userId?: string | null;
+  orgId?: string | null;
   action: string;
+  provider: string;
   model: string;
   inputTokens: number;
   outputTokens: number;
@@ -56,7 +57,7 @@ interface AiUsageEvent {
   cost?: number;
   durationMs: number;
   status: 'success' | 'error';
-  error?: string;
+  error?: string | null;
   metadata?: Record<string, unknown>;
 }
 

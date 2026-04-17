@@ -12,6 +12,8 @@ import { debitCredits } from '../lib/credits.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
+import { buildBrainstormMessage } from '../lib/ai/prompts/brainstorm.js';
+import type { BrainstormInput } from '../lib/ai/prompts/brainstorm.js';
 
 interface BrainstormGenerateEvent {
   name: 'brainstorm/generate';
@@ -30,13 +32,21 @@ interface BrainstormGenerateEvent {
 }
 
 interface RawIdea {
+  idea_id?: string;
   title?: string;
   angle?: string;
   core_tension?: string;
   target_audience?: string;
-  verdict?: string;
-  monetization?: string;
+  search_intent?: string;
+  primary_keyword?: { term?: string; difficulty?: string; monthly_volume_estimate?: string };
+  scroll_stopper?: string;
+  curiosity_gap?: string;
+  monetization?: string | { affiliate_angle?: string; product_fit?: string; sponsor_appeal?: string };
+  repurpose_potential?: { blog_angle?: string; video_angle?: string; shorts_hooks?: string[]; podcast_angle?: string };
   repurposing?: string[];
+  risk_flags?: string[];
+  verdict?: string;
+  verdict_rationale?: string;
 }
 
 function normalizeIdeas(raw: unknown): RawIdea[] {
@@ -97,16 +107,33 @@ export const brainstormGenerate = inngest.createFunction(
       })) as Record<string, unknown> | null;
 
       const result = (await step.run('call-provider', async () => {
+        const userMessage = buildBrainstormMessage({
+          topic: (inputJson.topic as string) ?? undefined,
+          ideasRequested: (inputJson.ideasRequested as number) ?? undefined,
+          fineTuning: inputJson.fineTuning as BrainstormInput['fineTuning'],
+          referenceUrl: (inputJson.referenceUrl as string) ?? undefined,
+          channel: channelContext as BrainstormInput['channel'],
+        });
+
         const call = await generateWithFallback(
           'brainstorm',
           modelTier,
           {
             agentType: 'brainstorm',
-            input: { ...inputJson, channel: channelContext },
-            schema: null,
-            systemPrompt: systemPrompt ?? undefined,
+            systemPrompt: systemPrompt ?? '',
+            userMessage,
           },
-          { provider, model },
+          {
+            provider,
+            model,
+            logContext: {
+              userId,
+              orgId,
+              channelId,
+              sessionId,
+              sessionType: 'brainstorm',
+            },
+          },
         );
         await logUsage({
           orgId, userId, channelId,
@@ -123,6 +150,16 @@ export const brainstormGenerate = inngest.createFunction(
       });
 
       const ideas = normalizeIdeas(result);
+
+      if (ideas.length === 0) {
+        throw new Error('AI returned a response but no ideas could be parsed from the output. Try a different model or re-run.');
+      }
+
+      // Extract recommendation from AI output
+      let recommendation: { pick?: string; rationale?: string } | null = null;
+      if (result && typeof result === 'object' && 'recommendation' in (result as Record<string, unknown>)) {
+        recommendation = (result as Record<string, unknown>).recommendation as { pick?: string; rationale?: string } | null;
+      }
 
       // F2-037: enforce target_count at the job level as a safety net in
       // case the model ignored the prompt directive.
@@ -149,8 +186,15 @@ export const brainstormGenerate = inngest.createFunction(
               : 'experimental',
           discovery_data: JSON.stringify({
             angle: idea.angle,
+            search_intent: idea.search_intent,
+            primary_keyword: idea.primary_keyword,
+            scroll_stopper: idea.scroll_stopper,
+            curiosity_gap: idea.curiosity_gap,
             monetization: idea.monetization,
+            repurpose_potential: idea.repurpose_potential,
             repurposing: idea.repurposing,
+            risk_flags: idea.risk_flags,
+            verdict_rationale: idea.verdict_rationale,
           }),
           position: i,
         }));
@@ -167,7 +211,7 @@ export const brainstormGenerate = inngest.createFunction(
         await (sb.from('brainstorm_sessions') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
-          .update({ status: 'completed' })
+          .update({ status: 'completed', ...(recommendation ? { recommendation_json: recommendation } : {}) })
           .eq('id', sessionId);
 
         const charge = provider === 'ollama' ? 0 : STAGE_COSTS.brainstorm;

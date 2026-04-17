@@ -30,49 +30,28 @@ export class ProviderAIAdapter implements AIAdapter {
   constructor(private provider: AIProvider) {}
 
   async generateDiscovery(input: DiscoveryInput): Promise<DiscoveryOutput> {
-    // Discovery uses Brainstorm agent
-    return this.provider.generateContent({
-      agentType: "brainstorm",
-      input,
-      schema: discoveryOutputSchema,
-      systemPrompt: this.getBrainstormSystemPrompt(),
-    });
+    // This adapter is deprecated — use generateWithFallback + buildBrainstormMessage instead
+    throw new Error('ProviderAIAdapter is deprecated. Use generateWithFallback + message builders.');
   }
 
   async generateBrainstorm(input: BrainstormInput): Promise<BrainstormOutput> {
-    return this.provider.generateContent({
-      agentType: "brainstorm",
-      input,
-      schema: brainstormOutputSchema,
-      systemPrompt: this.getBrainstormSystemPrompt(),
-    });
+    // This adapter is deprecated — use generateWithFallback + buildBrainstormMessage instead
+    throw new Error('ProviderAIAdapter is deprecated. Use generateWithFallback + message builders.');
   }
 
   async generateResearch(input: ResearchInput): Promise<ResearchOutput> {
-    return this.provider.generateContent({
-      agentType: "research",
-      input,
-      schema: researchOutputSchema,
-      systemPrompt: this.getResearchSystemPrompt(),
-    });
+    // This adapter is deprecated — use generateWithFallback + buildResearchMessage instead
+    throw new Error('ProviderAIAdapter is deprecated. Use generateWithFallback + message builders.');
   }
 
   async generateProduction(input: ProductionInput): Promise<ProductionOutput> {
-    return this.provider.generateContent({
-      agentType: "production",
-      input,
-      schema: productionOutputSchema,
-      systemPrompt: this.getProductionSystemPrompt(),
-    });
+    // This adapter is deprecated — use generateWithFallback + buildProduceMessage instead
+    throw new Error('ProviderAIAdapter is deprecated. Use generateWithFallback + message builders.');
   }
 
   async generateReview(input: ReviewInput): Promise<ReviewOutput> {
-    return this.provider.generateContent({
-      agentType: "review",
-      input,
-      schema: reviewOutputSchema,
-      systemPrompt: this.getReviewSystemPrompt(),
-    });
+    // This adapter is deprecated — use generateWithFallback + buildReviewMessage instead
+    throw new Error('ProviderAIAdapter is deprecated. Use generateWithFallback + message builders.');
   }
 
   private getBrainstormSystemPrompt(): string {

@@ -9,6 +9,8 @@ import { debitCredits } from '../lib/credits.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
+import { buildResearchMessage } from '../lib/ai/prompts/research.js';
+import type { ResearchInput } from '../lib/ai/prompts/research.js';
 
 const LEVEL_COSTS: Record<'surface' | 'medium' | 'deep', number> = {
   surface: 60,
@@ -104,16 +106,35 @@ export const researchGenerate = inngest.createFunction(
       })) as Record<string, unknown> | null;
 
       const result = (await step.run('call-provider', async () => {
+        const userMessage = buildResearchMessage({
+          ideaId: (inputJson.ideaId as string) ?? undefined,
+          ideaTitle: (inputJson.topic as string) ?? undefined,
+          coreTension: undefined,
+          targetAudience: undefined,
+          level: (inputJson.level as string) ?? undefined,
+          instruction: (inputJson.instruction as string) ?? undefined,
+          channel: channelContext as ResearchInput['channel'],
+        });
+
         const call = await generateWithFallback(
           'research',
           modelTier,
           {
             agentType: 'research',
-            input: { ...inputJson, channel: channelContext },
-            schema: null,
-            systemPrompt,
+            systemPrompt: systemPrompt ?? '',
+            userMessage,
           },
-          { provider, model },
+          {
+            provider,
+            model,
+            logContext: {
+              userId,
+              orgId,
+              channelId,
+              sessionId,
+              sessionType: 'research',
+            },
+          },
         );
         await logUsage({
           orgId, userId, channelId,

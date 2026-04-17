@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { adminPath, ADMIN_INTERNAL } from '@/lib/admin-path';
+import { ADMIN_INTERNAL } from '@/lib/admin-path';
 
 interface UpdatePayload {
   id: string;
@@ -12,6 +12,7 @@ interface UpdatePayload {
   output_schema: string | null;
   recommended_provider: string | null;
   recommended_model: string | null;
+  sections_json: Record<string, unknown> | null;
 }
 
 export async function updateAgentAction(payload: UpdatePayload) {
@@ -25,6 +26,7 @@ export async function updateAgentAction(payload: UpdatePayload) {
       output_schema: payload.output_schema,
       recommended_provider: payload.recommended_provider,
       recommended_model: payload.recommended_model,
+      sections_json: payload.sections_json,
     })
     .eq('id', payload.id);
 

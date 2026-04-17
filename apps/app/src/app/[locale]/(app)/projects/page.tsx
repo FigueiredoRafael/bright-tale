@@ -18,10 +18,6 @@ export default function ProjectsDashboard() {
     const [viewMode, setViewMode] = useState<"card" | "list">(() => (typeof window !== "undefined" ? (localStorage.getItem("projects:view") as "card" | "list" | null) ?? "card" : "card"));
     const { toast } = useToast();
 
-    useEffect(() => {
-        fetchProjects({ ...filters, search });
-    }, []);
-
     const fetchProjects = useCallback(async (opts?: { search?: string; stage?: string | null; status?: string | null; sort?: string }) => {
         try {
             const params = new URLSearchParams();
@@ -55,7 +51,12 @@ export default function ProjectsDashboard() {
             setLoading(false);
         }
     }, [toast]);
-    // // Stable handlers to avoid re-creating functions each render (prevents SearchBar effect loop)
+
+    useEffect(() => {
+        fetchProjects({ ...filters, search });
+    }, [fetchProjects, filters, search]);
+
+    // Stable handlers to avoid re-creating functions each render (prevents SearchBar effect loop)
     const handleSearch = useCallback((v: string) => {
         setSearch(v);
         fetchProjects({ search: v, stage: filters.stage, status: filters.status, sort: filters.sort });
@@ -107,7 +108,7 @@ export default function ProjectsDashboard() {
                     <div>No projects yet</div>
                 ) : (
                     projects.map((p) => (
-                        <ProjectCard key={p.id} project={p} checked={selectedIds.includes(p.id)} onCheck={onCheck} />
+                        <ProjectCard key={p.id} project={p} checked={selectedIds.includes(p.id)} onCheck={onCheck} onDeleted={() => fetchProjects({ search, stage: filters.stage, status: filters.status, sort: filters.sort })} />
                     ))
                 )}
             </div>

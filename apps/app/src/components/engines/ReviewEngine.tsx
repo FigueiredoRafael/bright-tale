@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ReviewFeedbackPanel } from '@/components/preview/ReviewFeedbackPanel';
 import { ManualModePanel } from '@/components/ai/ManualModePanel';
 import { useManualMode } from '@/hooks/use-manual-mode';
+import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { GenerationProgressModal } from '@/components/generation/GenerationProgressModal';
 import { ContextBanner } from './ContextBanner';
 import { friendlyAiError } from '@/lib/ai/error-message';
@@ -52,6 +53,7 @@ export function ReviewEngine({
   const { enabled: manualEnabled } = useManualMode();
   const { handleMaybeCreditsError } = useUpgrade();
   const inFlightRef = useRef(false);
+  const tracker = usePipelineTracker('review', context);
 
   // Load fresh data if needed
   async function refetchDraft() {
@@ -81,6 +83,8 @@ export function ReviewEngine({
   async function handleSubmitForReview() {
     await withGuard(async () => {
       try {
+        tracker.trackStarted({ draftId, iterationCount: draft.iteration_count });
+
         // First, set status to in_review
         const patchRes = await fetch(`/api/content-drafts/${draftId}`, {
           method: 'PATCH',
@@ -89,6 +93,7 @@ export function ReviewEngine({
         });
         const patchJson = await patchRes.json();
         if (patchJson?.error) {
+          tracker.trackFailed('Failed to update status');
           toast.error(patchJson.error.message ?? 'Failed to update status');
           return;
         }
@@ -102,6 +107,7 @@ export function ReviewEngine({
         const json = await res.json();
 
         if (json?.error) {
+          tracker.trackFailed(json.error.message ?? 'Review failed');
           if (handleMaybeCreditsError(json.error)) {
             setReviewing(false);
             return;
@@ -115,7 +121,22 @@ export function ReviewEngine({
         await refetchDraft();
         setReviewing(false);
         toast.success('Review completed');
-      } catch {
+
+        const feedbackObj = json.data?.review_feedback_json as Record<string, unknown> | null;
+        const blogReview = (feedbackObj?.blog_review ?? feedbackObj?.video_review) as Record<string, unknown> | undefined;
+        const score = (typeof blogReview?.score === 'number' ? blogReview.score as number : json.data?.review_score ?? 0);
+        const verdict = json.data?.review_verdict ?? 'pending';
+        const iterationCount = json.data?.iteration_count ?? draft.iteration_count + 1;
+
+        tracker.trackCompleted({
+          draftId,
+          score,
+          verdict,
+          iterationCount,
+          feedbackJson: feedbackObj ?? {},
+        });
+      } catch (e) {
+        tracker.trackFailed(e instanceof Error ? e.message : 'Failed to submit for review');
         setReviewing(false);
         toast.error('Failed to submit for review');
       }

@@ -1,0 +1,218 @@
+<h2>Section 5: Users & Organizations Pages</h2>
+<p class="subtitle">Table polish, better filters, glassmorphism cards — consistent with new design system</p>
+
+<!-- USERS PAGE -->
+<div class="mockup">
+  <div class="mockup-header">Users Page</div>
+  <div class="mockup-body" style="background: #0C1017; padding: 24px; border-radius: 8px;">
+
+    <!-- Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <div>
+        <div style="font-size: 22px; font-weight: 700; color: #F1F5F9;">Users</div>
+        <div style="font-size: 12px; color: #64748B; margin-top: 2px;">Manage accounts and permissions</div>
+      </div>
+    </div>
+
+    <!-- KPI row -->
+    <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px;">
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 14px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #A78BFA, transparent);"></div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">Total</div>
+        <div style="font-size: 24px; font-weight: 700; color: #F1F5F9; margin-top: 2px;">4</div>
+      </div>
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 14px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #4ADE80, transparent);"></div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">Active</div>
+        <div style="font-size: 24px; font-weight: 700; color: #F1F5F9; margin-top: 2px;">4</div>
+      </div>
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 14px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #1DB990, transparent);"></div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">Premium</div>
+        <div style="font-size: 24px; font-weight: 700; color: #F1F5F9; margin-top: 2px;">0</div>
+      </div>
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 14px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #FF6B35, transparent);"></div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">Admins</div>
+        <div style="font-size: 24px; font-weight: 700; color: #F1F5F9; margin-top: 2px;">1</div>
+      </div>
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 14px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #4A90D9, transparent);"></div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">New Today</div>
+        <div style="font-size: 24px; font-weight: 700; color: #F1F5F9; margin-top: 2px;">0</div>
+      </div>
+    </div>
+
+    <!-- Search + Filters bar -->
+    <div style="display: flex; gap: 10px; margin-bottom: 16px; align-items: center;">
+      <div style="flex: 1; position: relative;">
+        <div style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #64748B; font-size: 14px;">🔍</div>
+        <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px 12px 8px 36px; font-size: 12px; color: #94A3B8;">Search by name or email...</div>
+      </div>
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px 14px; font-size: 11px; color: #94A3B8; cursor: pointer; display: flex; align-items: center; gap: 6px;">Plan <span style="color: #64748B;">▼</span></div>
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px 14px; font-size: 11px; color: #94A3B8; cursor: pointer; display: flex; align-items: center; gap: 6px;">Status <span style="color: #64748B;">▼</span></div>
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px 14px; font-size: 11px; color: #94A3B8; cursor: pointer; display: flex; align-items: center; gap: 6px;">Role <span style="color: #64748B;">▼</span></div>
+    </div>
+
+    <!-- Table -->
+    <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; overflow: hidden;">
+      <!-- Header -->
+      <div style="display: grid; grid-template-columns: 2.5fr 1fr 0.8fr 0.8fr 1fr 60px; gap: 8px; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">User</div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Plan</div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Role</div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Status</div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Joined</div>
+        <div></div>
+      </div>
+      <!-- Row 1 -->
+      <div style="display: grid; grid-template-columns: 2.5fr 1fr 0.8fr 0.8fr 1fr 60px; gap: 8px; padding: 12px 16px; align-items: center; transition: background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 34px; height: 34px; background: linear-gradient(135deg, #A78BFA, #8B5CF6); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; color: white; font-weight: 600;">HS</div>
+          <div>
+            <div style="font-size: 13px; color: #F1F5F9; font-weight: 500;">Hector Siman</div>
+            <div style="font-size: 11px; color: #64748B;">hector@brighttale.io</div>
+          </div>
+        </div>
+        <div><span style="font-size: 10px; background: rgba(29,185,144,0.15); color: #1DB990; padding: 3px 10px; border-radius: 12px;">Pro</span></div>
+        <div><span style="font-size: 10px; background: rgba(255,107,53,0.15); color: #FF6B35; padding: 3px 10px; border-radius: 12px;">Admin</span></div>
+        <div style="display: flex; align-items: center; gap: 5px;"><div style="width: 6px; height: 6px; background: #4ADE80; border-radius: 50%; box-shadow: 0 0 4px #4ADE80;"></div><span style="font-size: 11px; color: #4ADE80;">Active</span></div>
+        <div style="font-size: 11px; color: #64748B;">Mar 15, 2026</div>
+        <div style="display: flex; gap: 6px;">
+          <div style="width: 28px; height: 28px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px;" onmouseover="this.style.borderColor='rgba(255,255,255,0.15)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'">✏️</div>
+          <div style="width: 28px; height: 28px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px;" onmouseover="this.style.borderColor='rgba(255,82,82,0.3)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'">🗑️</div>
+        </div>
+      </div>
+      <!-- Row 2 -->
+      <div style="display: grid; grid-template-columns: 2.5fr 1fr 0.8fr 0.8fr 1fr 60px; gap: 8px; padding: 12px 16px; align-items: center; border-top: 1px solid rgba(255,255,255,0.03); transition: background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 34px; height: 34px; background: linear-gradient(135deg, #4A90D9, #3B82F6); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; color: white; font-weight: 600;">MC</div>
+          <div>
+            <div style="font-size: 13px; color: #F1F5F9; font-weight: 500;">Maria Costa</div>
+            <div style="font-size: 11px; color: #64748B;">maria@example.com</div>
+          </div>
+        </div>
+        <div><span style="font-size: 10px; background: rgba(255,255,255,0.06); color: #94A3B8; padding: 3px 10px; border-radius: 12px;">Free</span></div>
+        <div><span style="font-size: 10px; background: rgba(255,255,255,0.06); color: #94A3B8; padding: 3px 10px; border-radius: 12px;">User</span></div>
+        <div style="display: flex; align-items: center; gap: 5px;"><div style="width: 6px; height: 6px; background: #4ADE80; border-radius: 50%; box-shadow: 0 0 4px #4ADE80;"></div><span style="font-size: 11px; color: #4ADE80;">Active</span></div>
+        <div style="font-size: 11px; color: #64748B;">Apr 10, 2026</div>
+        <div style="display: flex; gap: 6px;">
+          <div style="width: 28px; height: 28px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px;">✏️</div>
+          <div style="width: 28px; height: 28px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px;">🗑️</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ORGANIZATIONS PAGE -->
+<div class="mockup" style="margin-top: 24px;">
+  <div class="mockup-header">Organizations Page</div>
+  <div class="mockup-body" style="background: #0C1017; padding: 24px; border-radius: 8px;">
+
+    <!-- Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <div>
+        <div style="font-size: 22px; font-weight: 700; color: #F1F5F9;">Organizations</div>
+        <div style="font-size: 12px; color: #64748B; margin-top: 2px;">Manage plans, credits, and organization settings</div>
+      </div>
+    </div>
+
+    <!-- KPI row -->
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;">
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 14px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #A78BFA, transparent);"></div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">Total Orgs</div>
+        <div style="font-size: 24px; font-weight: 700; color: #F1F5F9; margin-top: 2px;">4</div>
+      </div>
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 14px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #1DB990, transparent);"></div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">Paid Plans</div>
+        <div style="font-size: 24px; font-weight: 700; color: #F1F5F9; margin-top: 2px;">0</div>
+      </div>
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 14px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #FF6B35, transparent);"></div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">Credits Used</div>
+        <div style="font-size: 24px; font-weight: 700; color: #F1F5F9; margin-top: 2px;">530</div>
+      </div>
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 14px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #4A90D9, transparent);"></div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">Total Members</div>
+        <div style="font-size: 24px; font-weight: 700; color: #F1F5F9; margin-top: 2px;">6</div>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; overflow: hidden;">
+      <!-- Header -->
+      <div style="display: grid; grid-template-columns: 2fr 0.8fr 1.2fr 0.8fr 1fr 60px; gap: 8px; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Organization</div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Plan</div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Credits</div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Members</div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Created</div>
+        <div></div>
+      </div>
+      <!-- Row 1 -->
+      <div style="display: grid; grid-template-columns: 2fr 0.8fr 1.2fr 0.8fr 1fr 60px; gap: 8px; padding: 14px 16px; align-items: center; transition: background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 34px; height: 34px; background: linear-gradient(135deg, #1DB990, #0D9B6A); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 13px; color: white; font-weight: 600;">HS</div>
+          <div>
+            <div style="font-size: 13px; color: #F1F5F9; font-weight: 500;">hectorsiman</div>
+            <div style="font-size: 10px; color: #64748B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;">uuid-1234-5678</div>
+          </div>
+        </div>
+        <div><span style="font-size: 10px; background: rgba(255,255,255,0.06); color: #94A3B8; padding: 3px 10px; border-radius: 12px;">Free</span></div>
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="flex: 1; height: 6px; background: rgba(255,255,255,0.04); border-radius: 3px; overflow: hidden;">
+              <div style="width: 68%; height: 100%; background: linear-gradient(90deg, #1DB990, #0D9B6A); border-radius: 3px;"></div>
+            </div>
+            <span style="font-size: 10px; color: #94A3B8; white-space: nowrap;">67 / 1,000</span>
+          </div>
+        </div>
+        <div style="font-size: 12px; color: #F1F5F9;">1</div>
+        <div style="font-size: 11px; color: #64748B;">Apr 7, 2026</div>
+        <div style="display: flex; gap: 6px;">
+          <div style="width: 28px; height: 28px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px;">✏️</div>
+        </div>
+      </div>
+      <!-- Row 2 -->
+      <div style="display: grid; grid-template-columns: 2fr 0.8fr 1.2fr 0.8fr 1fr 60px; gap: 8px; padding: 14px 16px; align-items: center; border-top: 1px solid rgba(255,255,255,0.03); transition: background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 34px; height: 34px; background: linear-gradient(135deg, #4A90D9, #3B82F6); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 13px; color: white; font-weight: 600;">AC</div>
+          <div>
+            <div style="font-size: 13px; color: #F1F5F9; font-weight: 500;">acme-corp</div>
+            <div style="font-size: 10px; color: #64748B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;">uuid-abcd-efgh</div>
+          </div>
+        </div>
+        <div><span style="font-size: 10px; background: rgba(29,185,144,0.15); color: #1DB990; padding: 3px 10px; border-radius: 12px;">Pro</span></div>
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="flex: 1; height: 6px; background: rgba(255,255,255,0.04); border-radius: 3px; overflow: hidden;">
+              <div style="width: 12%; height: 100%; background: linear-gradient(90deg, #4A90D9, #3B82F6); border-radius: 3px;"></div>
+            </div>
+            <span style="font-size: 10px; color: #94A3B8; white-space: nowrap;">186 / 1,600</span>
+          </div>
+        </div>
+        <div style="font-size: 12px; color: #F1F5F9;">3</div>
+        <div style="font-size: 11px; color: #64748B;">Apr 2, 2026</div>
+        <div style="display: flex; gap: 6px;">
+          <div style="width: 28px; height: 28px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px;">✏️</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px;">
+  <h3>Key Changes</h3>
+  <ul style="color: #ccc; line-height: 1.8;">
+    <li><strong>Users table:</strong> Gradient avatar circles with initials, pill badges for plan/role/status, icon action buttons (edit/delete), glow status dots</li>
+    <li><strong>Users filters:</strong> Glassmorphism search bar + dropdown pills — same styling as rest of admin</li>
+    <li><strong>Orgs table:</strong> Square gradient avatars (to distinguish from user circles), credit usage progress bar inline, plan badge</li>
+    <li><strong>KPI cards:</strong> Same glassmorphism pattern with colored top glow — consistent with dashboard</li>
+    <li><strong>Action buttons:</strong> Small icon-only buttons with subtle borders, hover states (red border on delete hover)</li>
+    <li><strong>Consistent:</strong> Same table patterns, same card patterns, same color tokens as rest of admin</li>
+  </ul>
+</div>

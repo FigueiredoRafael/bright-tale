@@ -34,6 +34,7 @@ interface PipelineStagesProps {
   ideaTitle?: string;
   brainstormSessionId?: string;
   researchSessionId?: string;
+  onStepClick?: (step: PipelineStep) => void;
 }
 
 function buildStepUrl(
@@ -80,6 +81,7 @@ export function PipelineStages({
   ideaTitle,
   brainstormSessionId,
   researchSessionId,
+  onStepClick,
 }: PipelineStagesProps) {
   const router = useRouter();
   const currentIndex = STEPS.findIndex((s) => s.key === currentStep);
@@ -109,7 +111,18 @@ export function PipelineStages({
           const isDone = i < currentIndex;
           const isActive = i === currentIndex;
           const isClickable = isDone || isActive;
-          const url = isClickable ? buildStepUrl(step.key, channelId, draftId, projectId, brainstormSessionId, researchSessionId) : null;
+
+          function handleClick() {
+            if (!isClickable) return;
+            // If onStepClick provided (pipeline orchestrator), use in-page navigation
+            if (onStepClick) {
+              onStepClick(step.key);
+              return;
+            }
+            // Fallback: standalone page navigation
+            const url = buildStepUrl(step.key, channelId, draftId, projectId, brainstormSessionId, researchSessionId);
+            if (url) router.push(url);
+          }
 
           return (
             <div key={step.key} className="flex items-center shrink-0">
@@ -118,15 +131,15 @@ export function PipelineStages({
               )}
               <button
                 type="button"
-                disabled={!url}
-                onClick={() => url && router.push(url)}
+                disabled={!isClickable}
+                onClick={handleClick}
                 className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
                   isDone
                     ? 'text-green-600 dark:text-green-400 hover:bg-green-500/10 cursor-pointer'
                     : isActive
                     ? 'text-primary font-medium bg-primary/10'
                     : 'text-muted-foreground cursor-default'
-                } ${url ? '' : 'cursor-default'}`}
+                } ${isClickable ? 'cursor-pointer' : 'cursor-default'}`}
               >
                 {isDone ? (
                   <Check className="h-3 w-3" />

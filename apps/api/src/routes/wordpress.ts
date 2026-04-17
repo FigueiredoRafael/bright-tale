@@ -6,6 +6,7 @@
 import type { FastifyInstance } from 'fastify';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { z } from 'zod';
 import yaml from 'js-yaml';
 import { authenticate } from '../middleware/authenticate.js';
@@ -15,6 +16,7 @@ import { ApiError } from '../lib/api/errors.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { markdownToHtml } from '../lib/utils.js';
 import { convertToWebP } from '../lib/image/webp.js';
+import { getKeyByToken, createKey, consumeKey } from '../lib/idempotency.js';
 import {
   publishToWordPressSchema,
   fetchTagsQuerySchema,
@@ -46,8 +48,12 @@ async function uploadImageToWordPress(
   let mimeType = 'image/jpeg';
 
   if (imageUrl.startsWith('/')) {
-    // Local file — read from disk (relative to apps/api/public/)
-    const localPath = path.resolve(process.cwd(), 'public', imageUrl.replace(/^\//, ''));
+    // Local file — read from disk (apps/api/public/)
+    const apiRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../public');
+    const localPath = path.resolve(apiRoot, imageUrl.replace(/^\//, ''));
+    if (!localPath.startsWith(apiRoot)) {
+      throw new ApiError(400, 'Invalid image path');
+    }
     if (!fs.existsSync(localPath)) {
       throw new ApiError(400, `Local image not found: ${imageUrl}`);
     }
@@ -694,7 +700,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         );
         if (featuredAsset) {
           featuredMediaId = await uploadImageToWordPress(
-            featuredAsset.source_url ?? '',
+            featuredAsset.webp_url ?? featuredAsset.source_url ?? '',
             featuredAsset.alt_text || blogContent.title,
             site_url,
             auth,
@@ -722,7 +728,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
           let wpMediaId = asset.wordpress_id;
           if (!wpMediaId) {
             wpMediaId = await uploadImageToWordPress(
-              asset.source_url ?? '',
+              asset.webp_url ?? asset.source_url ?? '',
               asset.alt_text || '',
               site_url,
               auth,
@@ -838,6 +844,15 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       const sb = createServiceClient();
       const body = publishDraftSchema.parse(request.body);
 
+      // Idempotency: replay cached result if token already consumed
+      if (body.idempotencyToken) {
+        const existing = await getKeyByToken(body.idempotencyToken);
+        if (existing && existing.consumed && existing.response) {
+          return reply.send({ data: existing.response, error: null });
+        }
+        await createKey(body.idempotencyToken, { purpose: 'wordpress:publish-draft' });
+      }
+
       // Set SSE headers
       reply.raw.writeHead(200, {
         'Content-Type': 'text/event-stream',
@@ -868,9 +883,16 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         const draftRaw = await loadDraftForPublish(sb, body.draftId);
         if (!draftRaw) throw new ApiError(404, 'Draft not found');
         const draft = draftRaw as Record<string, unknown>;
-        if ((draft.status as string) !== 'approved' && (draft.status as string) !== 'scheduled') {
+        const draftStatus = draft.status as string;
+        if (draftStatus === 'publishing') {
+          throw new ApiError(409, 'Draft is already being published');
+        }
+        if (draftStatus !== 'approved' && draftStatus !== 'scheduled') {
           throw new ApiError(400, 'Draft must be approved before publishing');
         }
+
+        // Set status to 'publishing' to prevent concurrent publishes
+        await sb.from('content_drafts').update({ status: 'publishing' } as never).eq('id', body.draftId);
 
         sendEvent('preparing', 'Loading WordPress configuration...');
         const wpConfig = await resolveWpConfig(sb, body.configId);
@@ -890,18 +912,22 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
 
         sendEvent('uploading_featured', 'Uploading featured image...');
         let featuredAssetId: string | undefined;
+        request.log.info({ imageMap: body.imageMap, draftId: body.draftId }, 'publish-draft/stream: imageMap received');
         if (body.imageMap?.['featured_image']) {
           featuredAssetId = body.imageMap['featured_image'] as string;
-          const { data: assets } = await sb
+          const { data: assets, error: assetsErr } = await sb
             .from('assets')
             .select('*')
             .eq('content_id', body.draftId);
+
+          request.log.info({ assetCount: assets?.length ?? 0, assetsErr, featuredAssetId }, 'publish-draft/stream: assets fetched');
 
           for (const rawAsset of assets ?? []) {
             const asset = rawAsset as Record<string, unknown>;
             if (asset.id !== featuredAssetId) continue;
 
-            const imageUrl = (asset.source_url as string);
+            const imageUrl = (asset.webp_url as string) || (asset.source_url as string);
+            request.log.info({ imageUrl, assetId: asset.id, role: asset.role }, 'publish-draft/stream: uploading featured');
             if (!imageUrl) continue;
 
             const wpMediaId = await uploadImageToWordPress(
@@ -952,7 +978,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
               total,
             );
 
-            const imageUrl = (asset.source_url as string);
+            const imageUrl = (asset.webp_url as string) || (asset.source_url as string);
             if (!imageUrl) continue;
 
             const wpMediaId = await uploadImageToWordPress(
@@ -1005,7 +1031,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
               total,
             );
 
-            const imageUrl = (asset.source_url as string);
+            const imageUrl = (asset.webp_url as string) || (asset.source_url as string);
             if (!imageUrl) continue;
 
             const wpMediaId = await uploadImageToWordPress(
@@ -1114,14 +1140,23 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
           .update(updateFields as never)
           .eq('id', body.draftId);
 
-        // Send completion event
-        sendDone({
+        // Consume idempotency token on success
+        const doneResult = {
           published: true,
           wordpress_post_id: wpPost.id,
           published_url: wpPost.link,
           status: wpPost.status,
-        });
+        };
+        if (body.idempotencyToken) {
+          await consumeKey(body.idempotencyToken, doneResult);
+        }
+
+        // Send completion event
+        sendDone(doneResult);
       } catch (innerError) {
+        // Revert status from 'publishing' back to 'approved' on failure
+        try { await sb.from('content_drafts').update({ status: 'approved' } as never).eq('id', body.draftId); } catch { /* best-effort */ }
+
         if (innerError instanceof ApiError) {
           sendSseError('error', innerError.message);
         } else {
@@ -1313,6 +1348,15 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       const sb = createServiceClient();
       const body = publishDraftSchema.parse(request.body);
 
+      // Idempotency: replay cached result if token already consumed
+      if (body.idempotencyToken) {
+        const existing = await getKeyByToken(body.idempotencyToken);
+        if (existing && existing.consumed && existing.response) {
+          return reply.send({ data: existing.response, error: null });
+        }
+        await createKey(body.idempotencyToken, { purpose: 'wordpress:publish-draft' });
+      }
+
       // Load draft (cast to Record — new columns not yet in generated types)
       const { data: draftRaw, error: draftErr } = await sb
         .from('content_drafts')
@@ -1322,9 +1366,16 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       if (draftErr) throw draftErr;
       if (!draftRaw) throw new ApiError(404, 'Draft not found');
       const draft = draftRaw as Record<string, unknown>;
-      if ((draft.status as string) !== 'approved' && (draft.status as string) !== 'scheduled') {
+      const draftStatus = draft.status as string;
+      if (draftStatus === 'publishing') {
+        throw new ApiError(409, 'Draft is already being published');
+      }
+      if (draftStatus !== 'approved' && draftStatus !== 'scheduled') {
         throw new ApiError(400, 'Draft must be approved before publishing');
       }
+
+      // Set status to 'publishing' to prevent concurrent publishes
+      await sb.from('content_drafts').update({ status: 'publishing' } as never).eq('id', body.draftId);
 
       // Get WordPress credentials
       let site_url: string;
@@ -1372,7 +1423,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
           // Only process assets in the imageMap
           if (!Object.values(body.imageMap).includes(assetId)) continue;
 
-          const imageUrl = (asset.source_url as string);
+          const imageUrl = (asset.webp_url as string) || (asset.source_url as string);
           if (!imageUrl) continue;
 
           const wpMediaId = await uploadImageToWordPress(
@@ -1411,7 +1462,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
 
         for (const rawAsset of assets ?? []) {
           const asset = rawAsset as Record<string, unknown>;
-          const imageUrl = (asset.source_url as string);
+          const imageUrl = (asset.webp_url as string) || (asset.source_url as string);
           if (!imageUrl) continue;
 
           const wpMediaId = await uploadImageToWordPress(
@@ -1516,16 +1567,27 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         .update(updateFields as never)
         .eq('id', body.draftId);
 
-      return reply.status(201).send({
-        data: {
-          published: true,
-          wordpress_post_id: wpPost.id,
-          wordpress_url: wpPost.link,
-          status: wpPost.status,
-        },
-        error: null,
-      });
+      const result = {
+        published: true,
+        wordpress_post_id: wpPost.id,
+        wordpress_url: wpPost.link,
+        status: wpPost.status,
+      };
+
+      // Consume idempotency token on success
+      if (body.idempotencyToken) {
+        await consumeKey(body.idempotencyToken, result);
+      }
+
+      return reply.status(201).send({ data: result, error: null });
     } catch (error) {
+      // Revert status from 'publishing' back to 'approved' on failure
+      const sb = createServiceClient();
+      const body = (request.body as Record<string, unknown>) ?? {};
+      if (body.draftId) {
+        try { await sb.from('content_drafts').update({ status: 'approved' } as never).eq('id', body.draftId as string); } catch { /* best-effort */ }
+      }
+
       request.log.error({ err: error }, 'WordPress publish-draft error');
       return sendError(reply, error);
     }

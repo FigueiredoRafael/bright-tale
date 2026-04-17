@@ -15,15 +15,25 @@ import { buildChannelContext } from '../lib/ai/channelContext.js';
 import { checkCredits, debitCredits } from '../lib/credits.js';
 import { inngest } from '../jobs/client.js';
 import { emitJobEvent } from '../jobs/emitter.js';
+import { buildBrainstormMessage } from '../lib/ai/prompts/brainstorm.js';
+import type { BrainstormInput } from '../lib/ai/prompts/brainstorm.js';
 
 interface RawIdea {
+  idea_id?: string;
   title?: string;
   angle?: string;
   core_tension?: string;
   target_audience?: string;
-  verdict?: string;
-  monetization?: string;
+  search_intent?: string;
+  primary_keyword?: { term?: string; difficulty?: string; monthly_volume_estimate?: string };
+  scroll_stopper?: string;
+  curiosity_gap?: string;
+  monetization?: string | { affiliate_angle?: string; product_fit?: string; sponsor_appeal?: string };
+  repurpose_potential?: { blog_angle?: string; video_angle?: string; shorts_hooks?: string[]; podcast_angle?: string };
   repurposing?: string[];
+  risk_flags?: string[];
+  verdict?: string;
+  verdict_rationale?: string;
 }
 
 function normalizeIdeas(raw: unknown): RawIdea[] {
@@ -108,6 +118,84 @@ async function getOrgId(userId: string): Promise<string> {
 }
 
 export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> {
+  /**
+   * GET /sessions/running — Check if the user has a brainstorm session currently
+   * in progress. Returns the most recent running session so the frontend can
+   * reconnect to its SSE stream after a page reload.
+   */
+  fastify.get('/sessions/running', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const sb = createServiceClient();
+      const { channelId } = request.query as { channelId?: string };
+
+      // Only return sessions created in the last 20 minutes — older ones are stale
+      const cutoff = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+
+      let query = sb
+        .from('brainstorm_sessions')
+        .select('id, status, input_json, created_at')
+        .eq('user_id', request.userId)
+        .eq('status', 'running')
+        .gte('created_at', cutoff)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (channelId) {
+        query = query.eq('channel_id', channelId);
+      }
+
+      const { data, error } = await query.maybeSingle();
+      if (error) throw error;
+
+      return reply.send({ data: { session: data ?? null }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * POST /sessions/:id/cancel — Cancel a running brainstorm session.
+   */
+  fastify.post('/sessions/:id/cancel', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const { id } = request.params as { id: string };
+      const sb = createServiceClient();
+
+      const { data: session } = await sb
+        .from('brainstorm_sessions')
+        .select('id, status, user_id')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
+      if (session.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
+      if (session.status !== 'running') {
+        return reply.send({ data: { status: session.status }, error: null });
+      }
+
+      await (sb.from('brainstorm_sessions') as unknown as {
+        update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+      })
+        .update({ status: 'failed', error_message: 'Cancelled by user' })
+        .eq('id', id);
+
+      await emitJobEvent(id, 'brainstorm', 'failed', 'Cancelled by user');
+
+      // Cancel the Inngest function run if possible
+      try {
+        await inngest.send({ name: 'inngest/function.cancelled', data: { function_id: 'brainstorm-generate', run_id: id } });
+      } catch {
+        // Best-effort — Inngest may not support this or the run may already be done
+      }
+
+      return reply.send({ data: { status: 'cancelled' }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
   /**
    * POST /sessions — Run a brainstorm and persist ideas.
    */
@@ -325,13 +413,48 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       try {
         const systemPrompt = (await loadAgentPrompt('brainstorm')) ?? undefined;
 
+        // Load channel context from the original session
+        const channelContext = orig.channel_id
+          ? await (async () => {
+              const { data } = await createServiceClient()
+                .from('channels')
+                .select('name, niche, language, tone, presentation_style')
+                .eq('id', orig.channel_id as string)
+                .maybeSingle();
+              return data;
+            })()
+          : null;
+
+        const userMessage = buildBrainstormMessage({
+          topic: (inputJson.topic as string) ?? undefined,
+          ideasRequested: (inputJson.ideasRequested as number) ?? undefined,
+          fineTuning: inputJson.fineTuning as BrainstormInput['fineTuning'],
+          referenceUrl: (inputJson.referenceUrl as string) ?? undefined,
+          channel: channelContext as BrainstormInput['channel'],
+        });
+
         const { result } = await generateWithFallback(
           'brainstorm',
           (orig.model_tier as string) ?? 'standard',
-          { agentType: 'brainstorm', input: inputJson, schema: null, systemPrompt },
+          { agentType: 'brainstorm', systemPrompt: systemPrompt ?? '', userMessage },
+          {
+            logContext: {
+              userId: request.userId!,
+              orgId,
+              channelId: (orig.channel_id as string | null) ?? undefined,
+              sessionId: session.id,
+              sessionType: 'brainstorm',
+            },
+          },
         );
 
         const ideas = normalizeIdeas(result);
+
+        // Extract recommendation from AI output
+        let recommendation: { pick?: string; rationale?: string } | null = null;
+        if (result && typeof result === 'object' && 'recommendation' in (result as Record<string, unknown>)) {
+          recommendation = (result as Record<string, unknown>).recommendation as { pick?: string; rationale?: string } | null;
+        }
 
         const { count } = await sb.from('idea_archives').select('*', { count: 'exact', head: true });
         const startNum = (count ?? 0) + 1;
@@ -342,7 +465,18 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
           core_tension: idea.core_tension ?? '',
           target_audience: idea.target_audience ?? '',
           verdict: idea.verdict === 'viable' || idea.verdict === 'weak' || idea.verdict === 'experimental' ? idea.verdict : 'experimental',
-          discovery_data: JSON.stringify({ angle: idea.angle, monetization: idea.monetization, repurposing: idea.repurposing }),
+          discovery_data: JSON.stringify({
+            angle: idea.angle,
+            search_intent: idea.search_intent,
+            primary_keyword: idea.primary_keyword,
+            scroll_stopper: idea.scroll_stopper,
+            curiosity_gap: idea.curiosity_gap,
+            monetization: idea.monetization,
+            repurpose_potential: idea.repurpose_potential,
+            repurposing: idea.repurposing,
+            risk_flags: idea.risk_flags,
+            verdict_rationale: idea.verdict_rationale,
+          }),
           source_type: 'brainstorm',
           channel_id: orig.channel_id ?? null,
           project_id: orig.project_id ?? null,
@@ -359,7 +493,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
 
         await (sb.from('brainstorm_sessions') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        }).update({ status: 'completed' }).eq('id', session.id);
+        }).update({ status: 'completed', ...(recommendation ? { recommendation_json: recommendation } : {}) }).eq('id', session.id);
 
         await debitCredits(orgId, request.userId, 'brainstorm', 'text', STAGE_COSTS.brainstorm, { regeneratedFrom: id });
 

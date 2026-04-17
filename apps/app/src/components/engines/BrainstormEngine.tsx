@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Loader2,
   Lightbulb,
@@ -25,8 +25,10 @@ import {
 } from '@/components/ai/ModelPicker';
 import { ManualModePanel } from '@/components/ai/ManualModePanel';
 import { useManualMode } from '@/hooks/use-manual-mode';
+import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
+import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
 import { friendlyAiError } from '@/lib/ai/error-message';
 import type { BaseEngineProps, BrainstormResult } from './types';
 
@@ -96,21 +98,63 @@ export function BrainstormEngine({
   const [running, setRunning] = useState(false);
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(null);
-  const [elapsed, setElapsed] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Manual mode
   const [generationMode, setGenerationMode] = useState<'ai' | 'manual'>('ai');
   const { enabled: manualEnabled } = useManualMode();
 
+  const tracker = usePipelineTracker('brainstorm', context);
+
   // Regenerate state
   const [regenerating, setRegenerating] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
 
+  // Generation progress modal
+  const [activeGenerationId, setActiveGenerationId] = useState<string | null>(null);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+
   // When initialSession is provided, we're in "session detail" mode
   const isSessionDetail = !!initialSession;
 
-  // Initialize from initial values
+  // localStorage key for persisting form state before a session exists
+  const storageKey = channelId
+    ? `brainstorm-form-${channelId}`
+    : 'brainstorm-form-global';
+  const [formRestored, setFormRestored] = useState(false);
+
+  // Restore form state from localStorage on mount (only for new brainstorm, not session detail)
+  useEffect(() => {
+    if (initialSession) { setFormRestored(true); return; }
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const s = JSON.parse(saved) as Record<string, string>;
+        if (s.mode) setMode(s.mode as Mode);
+        if (s.topic) setTopic(s.topic);
+        if (s.niche) setNiche(s.niche);
+        if (s.tone) setTone(s.tone);
+        if (s.audience) setAudience(s.audience);
+        if (s.goal) setGoal(s.goal);
+        if (s.constraints) setConstraints(s.constraints);
+        if (s.referenceUrl) setReferenceUrl(s.referenceUrl);
+      }
+    } catch {
+      // ignore corrupt localStorage
+    }
+    // Delay setting restored so the save effect waits for the re-render
+    // with the restored values before it starts persisting.
+    setTimeout(() => setFormRestored(true), 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist form state to localStorage on change (only after restore completes)
+  useEffect(() => {
+    if (initialSession || !formRestored) return;
+    const state = { mode, topic, niche, tone, audience, goal, constraints, referenceUrl };
+    localStorage.setItem(storageKey, JSON.stringify(state));
+  }, [initialSession, formRestored, storageKey, mode, topic, niche, tone, audience, goal, constraints, referenceUrl]);
+
+  // Initialize from initial values (session detail)
   useEffect(() => {
     if (initialSession && typeof initialSession === 'object') {
       const sess = initialSession as Record<string, unknown>;
@@ -121,6 +165,16 @@ export function BrainstormEngine({
         if (input.inputMode) {
           setMode(input.inputMode as Mode);
         }
+        // Restore fine-tuning fields
+        const ft = input.fineTuning as Record<string, string> | undefined;
+        if (ft && typeof ft === 'object') {
+          if (ft.niche) setNiche(ft.niche);
+          if (ft.tone) setTone(ft.tone);
+          if (ft.audience) setAudience(ft.audience);
+          if (ft.goal) setGoal(ft.goal);
+          if (ft.constraints) setConstraints(ft.constraints);
+        }
+        if (input.referenceUrl) setReferenceUrl(input.referenceUrl as string);
       }
     }
     if (initialIdeas && Array.isArray(initialIdeas)) {
@@ -147,6 +201,101 @@ export function BrainstormEngine({
       }
     }
   }, [initialSession, initialIdeas, preSelectedIdeaId]);
+
+  // Load existing session from context when navigating back in the pipeline
+  useEffect(() => {
+    if (initialSession || initialIdeas) return;
+    const ctxSessionId = context.brainstormSessionId;
+    if (!ctxSessionId) return;
+
+    // Already loaded this session
+    if (sessionId === ctxSessionId && ideas.length > 0) return;
+
+    (async () => {
+      try {
+        // Fetch session details (restores form fields)
+        const sessRes = await fetch(`/api/brainstorm/sessions/${ctxSessionId}`);
+        const sessJson = await sessRes.json();
+        const sess = sessJson.data?.session ?? sessJson.data;
+        if (sess) {
+          setSessionId(sess.id as string);
+          if (sess.input_json && typeof sess.input_json === 'object') {
+            const input = sess.input_json as Record<string, unknown>;
+            if (input.topic) setTopic(input.topic as string);
+            if (input.inputMode) setMode(input.inputMode as Mode);
+            const ft = input.fineTuning as Record<string, string> | undefined;
+            if (ft && typeof ft === 'object') {
+              if (ft.niche) setNiche(ft.niche);
+              if (ft.tone) setTone(ft.tone);
+              if (ft.audience) setAudience(ft.audience);
+              if (ft.goal) setGoal(ft.goal);
+              if (ft.constraints) setConstraints(ft.constraints);
+            }
+            if (input.referenceUrl) setReferenceUrl(input.referenceUrl as string);
+          }
+        }
+
+        // Load ideas from session response (idea_archives) or fall back to drafts
+        const ideasRaw = (sessJson.data?.ideas ?? []) as Array<Record<string, unknown>>;
+        let drafts = ideasRaw;
+        if (drafts.length === 0) {
+          // Fallback: try staged drafts
+          const draftsRes = await fetch(`/api/brainstorm/sessions/${ctxSessionId}/drafts`);
+          const draftsJson = await draftsRes.json();
+          drafts = (draftsJson.data?.drafts ?? []) as Array<Record<string, unknown>>;
+        }
+        if (drafts.length > 0) {
+          const mapped: Idea[] = drafts.map((d) => {
+            let verdict: 'viable' | 'weak' | 'experimental' = 'experimental';
+            const v = d.verdict as string;
+            if (v === 'viable' || v === 'weak' || v === 'experimental') verdict = v;
+            return {
+              id: d.id as string,
+              idea_id: (d.id as string) ?? `draft-${d.position}`,
+              title: d.title as string,
+              core_tension: (d.core_tension as string) || undefined,
+              target_audience: (d.target_audience as string) || '',
+              verdict,
+              discovery_data: d.discovery_data as string | undefined,
+            };
+          });
+          setIdeas(mapped);
+          if (context.ideaId) {
+            setSelectedIdeaId(context.ideaId);
+          }
+        }
+      } catch {
+        // silent — form stays empty, user can regenerate
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.brainstormSessionId]);
+
+  // Reconnect to running session after page reload
+  useEffect(() => {
+    if (initialSession || activeGenerationId) return;
+    (async () => {
+      try {
+        const url = channelId
+          ? `/api/brainstorm/sessions/running?channelId=${channelId}`
+          : '/api/brainstorm/sessions/running';
+        const res = await fetch(url);
+        const json = await res.json();
+        const session = json.data?.session;
+        if (session?.id && session.status === 'running') {
+          // Only reconnect if session is less than 20 minutes old
+          const ageMs = Date.now() - new Date(session.created_at).getTime();
+          if (ageMs > 20 * 60 * 1000) return;
+          setSessionId(session.id);
+          setActiveGenerationId(session.id);
+          setIsReconnecting(true);
+          setRunning(true);
+        }
+      } catch {
+        // silent — no running session
+      }
+    })();
+  }, [initialSession, channelId, activeGenerationId]);
 
   // Fetch recommended agent
   useEffect(() => {
@@ -186,8 +335,6 @@ export function BrainstormEngine({
     setRunning(true);
     setIdeas([]);
     setSelectedIdeaId(null);
-    setElapsed(0);
-    timerRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
 
     try {
       const body: Record<string, unknown> = {
@@ -204,6 +351,15 @@ export function BrainstormEngine({
         body.referenceUrl = referenceUrl.trim();
       }
 
+      tracker.trackStarted({
+        topic,
+        mode,
+        provider,
+        model,
+        fineTuning: mode === 'fine_tuned' ? { niche, tone, audience, goal, constraints } : undefined,
+        referenceUrl: mode === 'reference_guided' ? referenceUrl : undefined,
+      });
+
       const res = await fetch('/api/brainstorm/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -211,45 +367,96 @@ export function BrainstormEngine({
       });
 
       let json: {
-        data?: { sessionId?: string; ideas?: Idea[] };
+        data?: { sessionId?: string; status?: string };
         error?: { message?: string; code?: string };
       } | null = null;
       try {
         json = await res.json();
       } catch {
         toast.error(`Server returned ${res.status} without JSON`);
+        setRunning(false);
         return;
       }
 
       if (json?.error) {
         const friendly = friendlyAiError(json.error.message ?? '');
         toast.error(friendly.title, { description: friendly.hint });
+        setRunning(false);
         return;
       }
 
-      const generatedIdeas = json?.data?.ideas ?? [];
-      setIdeas(generatedIdeas);
-      setSessionId(json?.data?.sessionId || null);
-
-      if (generatedIdeas.length === 0) {
-        toast.warning('No ideas recognized in output', {
-          description:
-            "AI responded but format didn't match. Try a different model or re-run.",
-        });
-      } else {
-        toast.success(`${generatedIdeas.length} ideas generated`);
+      const newSessionId = json?.data?.sessionId;
+      if (!newSessionId) {
+        toast.error('No session ID returned');
+        setRunning(false);
+        return;
       }
+
+      setSessionId(newSessionId);
+      setActiveGenerationId(newSessionId);
+      // Clear persisted form state after successful submission
+      localStorage.removeItem(storageKey);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const friendly = friendlyAiError(message);
       toast.error(friendly.title, { description: friendly.hint });
+      setRunning(false);
+    }
+  }
+
+  async function handleGenerationComplete() {
+    setActiveGenerationId(null);
+    if (!sessionId) {
+      setRunning(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/brainstorm/sessions/${sessionId}/drafts`);
+      const json = await res.json();
+      const drafts = (json.data?.drafts ?? []) as Array<Record<string, unknown>>;
+
+      const mapped: Idea[] = drafts.map((d) => {
+        let verdict: 'viable' | 'weak' | 'experimental' = 'experimental';
+        const v = d.verdict as string;
+        if (v === 'viable' || v === 'weak' || v === 'experimental') verdict = v;
+        return {
+          id: d.id as string,
+          idea_id: (d.id as string) ?? `draft-${d.position}`,
+          title: d.title as string,
+          core_tension: (d.core_tension as string) || undefined,
+          target_audience: (d.target_audience as string) || '',
+          verdict,
+          discovery_data: d.discovery_data as string | undefined,
+        };
+      });
+
+      setIdeas(mapped);
+      tracker.trackCompleted({
+        sessionId: sessionId || undefined,
+        ideaCount: mapped.length,
+        ideas: mapped,
+      });
+      if (mapped.length === 0) {
+        toast.warning('No ideas recognized in output', {
+          description: "AI responded but format didn't match. Try a different model or re-run.",
+        });
+      } else {
+        toast.success(`${mapped.length} ideas generated`);
+      }
+    } catch {
+      toast.error('Failed to load generated ideas');
     } finally {
       setRunning(false);
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
     }
+  }
+
+  function handleGenerationFailed(message: string) {
+    setActiveGenerationId(null);
+    setRunning(false);
+    tracker.trackFailed(message);
+    const friendly = friendlyAiError(message);
+    toast.error(friendly.title, { description: friendly.hint });
   }
 
   async function handleManualImport(parsed: unknown) {
@@ -349,6 +556,10 @@ export function BrainstormEngine({
 
     if (saved.length > 0) {
       setIdeas(saved);
+      tracker.trackAction('imported', {
+        ideaCount: saved.length,
+        source: 'manual',
+      });
       toast.success(`${saved.length} of ${rawIdeas.length} ideas saved`);
     }
     if (errors.length > 0) {
@@ -390,6 +601,10 @@ export function BrainstormEngine({
           if (reloadJson.data) {
             setIdeas(reloadJson.data.ideas ?? []);
             setSelectedIdeaId(null);
+            tracker.trackAction('regenerated', {
+              sessionId: newId,
+              previousIdeaCount: ideas.length,
+            });
             toast.success('Regenerated successfully');
           }
         } catch {
@@ -416,6 +631,13 @@ export function BrainstormEngine({
       ideaCoreTension: selectedIdea.core_tension || '',
       brainstormSessionId: sessionId || undefined,
     };
+
+    tracker.trackAction('idea.selected', {
+      ideaId: result.ideaId,
+      ideaTitle: result.ideaTitle,
+      verdict: result.ideaVerdict,
+      coreTension: result.ideaCoreTension,
+    });
 
     onComplete(result);
   }
@@ -465,6 +687,10 @@ export function BrainstormEngine({
             );
           }}
           onSelect={(item) => {
+            tracker.trackAction('imported', {
+              ideaCount: 1,
+              source: 'library',
+            });
             onComplete({
               ideaId: (item.id ?? item.idea_id) as string,
               ideaTitle: item.title as string,
@@ -665,35 +891,28 @@ export function BrainstormEngine({
         </Card>
       )}
 
-      {/* Progress Panel */}
-      {running && (
-        <Card className="border-primary/30 bg-primary/5">
-          <CardContent className="py-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                <span className="text-sm font-medium">
-                  Generating ideas with {model}...
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-[10px]">
-                  {provider}
-                </Badge>
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {elapsed}s
-                </span>
-              </div>
-            </div>
-            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-              <div
-                className="h-full bg-primary rounded-full animate-pulse"
-                style={{ width: '60%' }}
-              />
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Floating progress indicator — non-blocking, bottom-right */}
+      <GenerationProgressFloat
+        open={!!activeGenerationId}
+        sessionId={activeGenerationId ?? ''}
+        sseUrl={activeGenerationId ? `/api/brainstorm/sessions/${activeGenerationId}/events` : ''}
+        cancelUrl={activeGenerationId ? `/api/brainstorm/sessions/${activeGenerationId}/cancel` : undefined}
+        title={`Generating with ${model}`}
+        reconnecting={isReconnecting}
+        onComplete={() => {
+          setIsReconnecting(false);
+          handleGenerationComplete();
+        }}
+        onFailed={(msg) => {
+          setIsReconnecting(false);
+          handleGenerationFailed(msg);
+        }}
+        onClose={() => {
+          setActiveGenerationId(null);
+          setIsReconnecting(false);
+          setRunning(false);
+        }}
+      />
 
       {/* Ideas Selection */}
       {!running && ideas.length > 0 && (

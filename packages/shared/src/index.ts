@@ -1,3 +1,4 @@
+export * from './agents';
 export * from './types/agents';
 export * from './schemas';
 export * from './mappers/db';

@@ -20,7 +20,7 @@ const validStageTypes = [
 // Create project schema
 export const createProjectSchema = z.object({
   title: z.string().min(3).max(200),
-  research_id: z.string().cuid().optional(),
+  research_id: z.string().uuid().optional(),
   current_stage: z.enum(validStageTypes),
   auto_advance: z.boolean().default(true),
   status: z.enum(["active", "paused", "completed", "archived"]),
@@ -32,7 +32,7 @@ export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 // Update project schema
 export const updateProjectSchema = z.object({
   title: z.string().min(3).max(200).optional(),
-  research_id: z.string().cuid().nullable().optional(),
+  research_id: z.string().uuid().nullable().optional(),
   current_stage: z.enum(validStageTypes).optional(),
   auto_advance: z.boolean().optional(),
   status: z.enum(["active", "paused", "completed", "archived"]).optional(),
@@ -48,7 +48,7 @@ export const listProjectsQuerySchema = z.object({
   status: z.enum(["active", "paused", "completed", "archived"]).optional(),
   current_stage: z.enum(validStageTypes).optional(),
   winner: z.coerce.boolean().optional(),
-  research_id: z.string().cuid().optional(),
+  research_id: z.string().uuid().optional(),
   search: z.string().optional(),
   page: z.coerce.number().int().positive().default(1).optional(),
   limit: z.coerce.number().int().positive().max(100).default(20).optional(),
@@ -72,7 +72,7 @@ export const bulkOperationSchema = z.object({
     "export",
     "change_status",
   ]),
-  project_ids: z.array(z.string().cuid()).min(1).max(100),
+  project_ids: z.array(z.string().uuid()).min(1).max(100),
   // optional export format
   format: z.enum(["json"]).optional(),
   new_status: z.string().optional(),

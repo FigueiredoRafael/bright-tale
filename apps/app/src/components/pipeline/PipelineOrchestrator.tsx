@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, Sparkles, Copy, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAnalytics } from '@/hooks/use-analytics';
 
 import { BrainstormEngine } from '@/components/engines/BrainstormEngine';
 import { ResearchEngine } from '@/components/engines/ResearchEngine';
@@ -40,7 +41,7 @@ interface PipelineOrchestratorProps {
 export function PipelineOrchestrator({
   projectId,
   channelId,
-  projectTitle,
+  projectTitle: initialProjectTitle,
   initialPipelineState,
 }: PipelineOrchestratorProps) {
   const [pipelineState, setPipelineState] = useState<PipelineState>(() => {
@@ -55,10 +56,14 @@ export function PipelineOrchestrator({
     return DEFAULT_STATE;
   });
 
+  const [projectTitle, setProjectTitle] = useState(initialProjectTitle);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(initialProjectTitle);
   const [engineMode, setEngineMode] = useState<'generate' | 'import' | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [draftData, setDraftData] = useState<Record<string, unknown> | null>(null);
   const [researchData, setResearchData] = useState<Record<string, unknown> | null>(null);
+  const { track } = useAnalytics();
 
   // Build accumulated context from stageResults
   function buildContext(): PipelineContext {
@@ -112,6 +117,21 @@ export function PipelineOrchestrator({
     return ctx;
   }
 
+  // Save project title to database
+  async function saveProjectTitle(newTitle: string) {
+    setProjectTitle(newTitle);
+    setTitleDraft(newTitle);
+    try {
+      await fetch(`/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle }),
+      });
+    } catch {
+      // Silent — title is cosmetic
+    }
+  }
+
   // Save pipeline state to database
   async function savePipelineState(newState: PipelineState) {
     setPipelineState(newState);
@@ -135,15 +155,37 @@ export function PipelineOrchestrator({
   async function handleStageComplete(result: StageResult) {
     const stage = pipelineState.currentStage;
     const completedAt = new Date().toISOString();
+    const currentIndex = PIPELINE_STAGES.indexOf(stage);
 
-    // Merge result into stageResults
+    // Check for downstream stages that will be invalidated
+    const downstreamWithResults = PIPELINE_STAGES.slice(currentIndex + 1)
+      .filter((s) => pipelineState.stageResults[s]);
+
+    if (downstreamWithResults.length > 0) {
+      const names = downstreamWithResults.join(', ');
+      if (!window.confirm(
+        `Completing "${stage}" will discard results for: ${names}.\n\nContinue?`
+      )) {
+        return;
+      }
+      track('pipeline.stage.redone', { projectId, channelId, stage, discardedStages: downstreamWithResults });
+    }
+
+    // Auto-update project title from brainstorm idea
+    if (stage === 'brainstorm' && 'ideaTitle' in result && result.ideaTitle) {
+      void saveProjectTitle(result.ideaTitle);
+    }
+
+    // Merge result into stageResults, clearing downstream
     const newStageResults = {
       ...pipelineState.stageResults,
       [stage]: { ...result, completedAt },
     };
+    for (const downstream of downstreamWithResults) {
+      delete newStageResults[downstream];
+    }
 
     // Find next stage
-    const currentIndex = PIPELINE_STAGES.indexOf(stage);
     const nextStage =
       currentIndex < PIPELINE_STAGES.length - 1
         ? PIPELINE_STAGES[currentIndex + 1]
@@ -268,33 +310,41 @@ export function PipelineOrchestrator({
     }
   }
 
-  // Handle revisit (go back to a stage)
-  async function handleRevisit(targetStage: PipelineStage) {
-    const targetIndex = PIPELINE_STAGES.indexOf(targetStage);
-
-    // Clear all downstream stageResults
-    const newStageResults = { ...pipelineState.stageResults };
-    for (let i = targetIndex + 1; i < PIPELINE_STAGES.length; i++) {
-      const stage = PIPELINE_STAGES[i];
-      delete newStageResults[stage];
-    }
-
+  // Navigate to a stage without clearing any results.
+  // The engine will render with existing data; user can regenerate.
+  // Downstream data is only cleared when handleStageComplete fires.
+  async function handleNavigate(targetStage: PipelineStage) {
+    track('pipeline.stage.navigated', {
+      projectId,
+      channelId,
+      from: pipelineState.currentStage,
+      to: targetStage,
+      hasDownstreamResults: PIPELINE_STAGES.slice(PIPELINE_STAGES.indexOf(targetStage) + 1).some((s) => !!pipelineState.stageResults[s]),
+    });
     const newState: PipelineState = {
       ...pipelineState,
       currentStage: targetStage,
-      stageResults: newStageResults,
     };
-
     await savePipelineState(newState);
     setEngineMode(null);
-    setDraftData(null);
-    setResearchData(null);
+  }
 
-    toast.info(`Revisiting ${targetStage}`);
+  // Compute the furthest stage that has results (or current if none)
+  function getFurthestStage(): PipelineStage {
+    let furthest = pipelineState.currentStage;
+    for (let i = PIPELINE_STAGES.length - 1; i >= 0; i--) {
+      if (pipelineState.stageResults[PIPELINE_STAGES[i]]) {
+        const next = PIPELINE_STAGES[i + 1];
+        furthest = next ?? PIPELINE_STAGES[i];
+        break;
+      }
+    }
+    return furthest;
   }
 
   // Handle mode toggle
   async function handleToggleMode(mode: 'step-by-step' | 'auto') {
+    track('pipeline.mode.changed', { projectId, channelId, from: pipelineState.mode, to: mode });
     const newState: PipelineState = {
       ...pipelineState,
       mode,
@@ -355,6 +405,7 @@ export function PipelineOrchestrator({
         }
       })();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pipelineState.currentStage, pipelineState.stageResults?.draft, draftData]);
 
   // Map PipelineStage to PipelineStep
@@ -428,13 +479,11 @@ export function PipelineOrchestrator({
 
     const handleBack = (targetStage?: PipelineStage) => {
       if (targetStage) {
-        handleRevisit(targetStage);
+        handleNavigate(targetStage);
       } else {
-        // Go back to previous stage
         const currentIndex = PIPELINE_STAGES.indexOf(stage);
         if (currentIndex > 0) {
-          const prevStage = PIPELINE_STAGES[currentIndex - 1];
-          handleRevisit(prevStage);
+          handleNavigate(PIPELINE_STAGES[currentIndex - 1]);
         }
       }
     };
@@ -598,8 +647,40 @@ export function PipelineOrchestrator({
     <div className="space-y-6">
       {/* Project Header */}
       <div>
-        <h2 className="text-2xl font-bold">{projectTitle}</h2>
-        <p className="text-sm text-muted-foreground">
+        {editingTitle ? (
+          <input
+            autoFocus
+            className="text-2xl font-bold bg-transparent border-b-2 border-primary outline-none w-full"
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={() => {
+              setEditingTitle(false);
+              if (titleDraft.trim() && titleDraft !== projectTitle) {
+                void saveProjectTitle(titleDraft.trim());
+              } else {
+                setTitleDraft(projectTitle);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                (e.target as HTMLInputElement).blur();
+              }
+              if (e.key === 'Escape') {
+                setTitleDraft(projectTitle);
+                setEditingTitle(false);
+              }
+            }}
+          />
+        ) : (
+          <h2
+            className="text-2xl font-bold cursor-pointer hover:text-primary/80 transition-colors"
+            title="Click to edit"
+            onClick={() => { setTitleDraft(projectTitle); setEditingTitle(true); }}
+          >
+            {projectTitle}
+          </h2>
+        )}
+        <p className="text-sm text-muted-foreground mt-1">
           Project ID: <code className="text-xs bg-muted px-2 py-1 rounded">{projectId}</code>
         </p>
       </div>
@@ -625,6 +706,12 @@ export function PipelineOrchestrator({
         ideaTitle={ctx.ideaTitle}
         brainstormSessionId={ctx.brainstormSessionId}
         researchSessionId={ctx.researchSessionId}
+        onStepClick={(step) => {
+          const stage: PipelineStage = step === 'published' ? 'publish' : step;
+          if (stage !== pipelineState.currentStage && pipelineState.stageResults[stage]) {
+            handleNavigate(stage);
+          }
+        }}
       />
 
       {/* Completed Stage Summaries */}
@@ -634,12 +721,33 @@ export function PipelineOrchestrator({
             key={stage}
             stage={stage}
             stageResults={pipelineState.stageResults}
-            onRevisit={handleRevisit}
+            currentStage={pipelineState.currentStage}
+            onNavigate={handleNavigate}
           />
         ))}
       </div>
 
       <Separator />
+
+      {/* "Continue to furthest" banner when user navigated back */}
+      {(() => {
+        const furthest = getFurthestStage();
+        const furthestIdx = PIPELINE_STAGES.indexOf(furthest);
+        const currentIdx = PIPELINE_STAGES.indexOf(pipelineState.currentStage);
+        if (furthestIdx > currentIdx) {
+          return (
+            <div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-2">
+              <span className="text-sm text-amber-600 dark:text-amber-400">
+                You have progress up to <strong>{furthest}</strong>. Regenerating here will discard downstream stages.
+              </span>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleNavigate(furthest)}>
+                Continue to {furthest}
+              </Button>
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {/* Active Engine */}
       {renderActiveEngine()}

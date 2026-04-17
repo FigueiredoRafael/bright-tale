@@ -30,6 +30,9 @@ const TYPES: { id: DraftType; label: string; icon: typeof FileText; cost: number
 ];
 
 interface LinkedIdea {
+    /** idea_archives.id (UUID) — used as FK target */
+    id: string;
+    /** idea_archives.idea_id (slug like BC-IDEA-001) — used for display/context */
     idea_id: string;
     title: string;
     core_tension: string;
@@ -77,6 +80,7 @@ export default function NewDraftPage() {
                 );
                 if (idea) {
                     setLinkedIdea({
+                        id: idea.id,
                         idea_id: idea.idea_id,
                         title: idea.title,
                         core_tension: idea.core_tension ?? "",
@@ -86,6 +90,7 @@ export default function NewDraftPage() {
                 }
             } catch { /* silent */ }
         })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [ideaIdParam]);
 
     // Fetch research context
@@ -140,7 +145,7 @@ export default function NewDraftPage() {
                 body: JSON.stringify({
                     channelId,
                     projectId: projectIdParam,
-                    ideaId: ideaIdParam,
+                    ideaId: linkedIdea?.id ?? ideaIdParam,
                     researchSessionId: researchSessionIdParam,
                     type,
                     title,
@@ -315,6 +320,14 @@ export default function NewDraftPage() {
                                         if (obj.BC_CANONICAL_CORE && typeof obj.BC_CANONICAL_CORE === 'object') {
                                             obj = { canonical_core: obj.BC_CANONICAL_CORE, ...obj };
                                         }
+                                        // Unwrap BC_BLOG_OUTPUT / BC_VIDEO_OUTPUT / etc.
+                                        const outputKeys = ['BC_BLOG_OUTPUT', 'BC_VIDEO_OUTPUT', 'BC_PODCAST_OUTPUT', 'BC_SHORTS_OUTPUT'];
+                                        for (const key of outputKeys) {
+                                            if (obj[key] && typeof obj[key] === 'object') {
+                                                obj = obj[key] as Record<string, unknown>;
+                                                break;
+                                            }
+                                        }
 
                                         // Create draft first
                                         const res = await fetch("/api/content-drafts", {
@@ -323,10 +336,10 @@ export default function NewDraftPage() {
                                             body: JSON.stringify({
                                                 channelId,
                                                 projectId: projectIdParam,
-                                                ideaId: ideaIdParam,
+                                                ideaId: linkedIdea?.id ?? ideaIdParam,
                                                 researchSessionId: researchSessionIdParam,
                                                 type,
-                                                title: title || "Untitled",
+                                                title: (obj.title as string) || title || "Untitled",
                                             }),
                                         });
                                         const json = await res.json();

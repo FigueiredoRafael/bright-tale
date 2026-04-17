@@ -14,6 +14,8 @@ import { OpenAIProvider } from './providers/openai.js';
 import { AnthropicProvider } from './providers/anthropic.js';
 import { GeminiProvider } from './providers/gemini.js';
 import { OllamaProvider } from './providers/ollama.js';
+import { logEngineCall } from './engine-log.js';
+import { logAiUsage } from '../axiom.js';
 
 interface ModelConfig {
   provider: string;
@@ -24,10 +26,10 @@ interface ModelConfig {
 // `local` uses Ollama (zero cost, runs offline).
 const ROUTE_TABLE: Record<string, Record<AgentType, ModelConfig>> = {
   local: {
-    brainstorm: { provider: 'ollama', model: 'llama3.1:8b' },
-    research: { provider: 'ollama', model: 'llama3.1:8b' },
-    production: { provider: 'ollama', model: 'llama3.1:8b' },
-    review: { provider: 'ollama', model: 'llama3.1:8b' },
+    brainstorm: { provider: 'ollama', model: 'gemma4:e4b' },
+    research: { provider: 'ollama', model: 'gemma4:e4b' },
+    production: { provider: 'ollama', model: 'gemma4:e4b' },
+    review: { provider: 'ollama', model: 'gemma4:e4b' },
   },
   free: {
     brainstorm: { provider: 'gemini', model: 'gemini-2.5-flash' },
@@ -69,7 +71,7 @@ const DEFAULT_MODELS: Record<string, string> = {
   openai: 'gpt-4o-mini',
   anthropic: 'claude-sonnet-4-5-20250514',
   gemini: 'gemini-2.5-flash',
-  ollama: 'llama3.1:8b',
+  ollama: 'gemma4:e4b',
 };
 
 // Credit costs per stage (debited per call; runtime fallback does NOT double-debit).
@@ -124,6 +126,15 @@ interface ChainOptions {
   model?: string;
   /** When provider is set, allow falling back to other providers on errors. */
   allowFallback?: boolean;
+  logContext?: {
+    userId: string;
+    orgId?: string | null;
+    projectId?: string | null;
+    channelId?: string | null;
+    sessionId?: string | null;
+    draftId?: string | null;
+    sessionType: string;
+  };
 }
 
 /**
@@ -253,6 +264,7 @@ export async function generateWithFallback(
   // 0 in tests, 800ms in prod. Tests can also set AI_RETRY_BASE_MS=0.
   const baseDelayMs = Number(process.env.AI_RETRY_BASE_MS ?? (process.env.NODE_ENV === 'test' ? 0 : 800));
   const sleep = (ms: number) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve());
+  const startTime = Date.now();
 
   let lastErr: unknown;
   for (let i = 0; i < chain.length; i++) {
@@ -261,12 +273,51 @@ export async function generateWithFallback(
     while (attempt <= SAME_PROVIDER_RETRIES) {
       try {
         const result = await route.provider.generateContent(params);
+        const usage = route.provider.lastUsage;
+        const durationMs = Date.now() - startTime;
+        if (options.logContext) {
+          logEngineCall({
+            ...options.logContext,
+            stage,
+            provider: route.providerName,
+            model: route.model,
+            input: {
+              agentType: params.agentType,
+              systemPrompt: params.systemPrompt,
+              userMessage: params.userMessage,
+            },
+            output: typeof result === 'object' && result !== null ? result as Record<string, unknown> : { content: result },
+            durationMs,
+            inputTokens: usage?.inputTokens,
+            outputTokens: usage?.outputTokens,
+          });
+        }
+        logAiUsage({
+          userId: options.logContext?.userId ?? null,
+          orgId: options.logContext?.orgId ?? null,
+          action: stage,
+          provider: route.providerName,
+          model: route.model,
+          inputTokens: usage?.inputTokens ?? 0,
+          outputTokens: usage?.outputTokens ?? 0,
+          totalTokens: (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0),
+          durationMs,
+          status: 'success',
+          error: null,
+          metadata: {
+            sessionId: options.logContext?.sessionId,
+            draftId: options.logContext?.draftId,
+            projectId: options.logContext?.projectId,
+            prompt: params.userMessage,
+            response: typeof result === 'string' ? result : JSON.stringify(result),
+          },
+        });
         return {
           result,
           providerName: route.providerName,
           model: route.model,
           attempts: i + 1,
-          usage: route.provider.lastUsage,
+          usage,
         };
       } catch (err) {
         lastErr = err;
@@ -289,5 +340,40 @@ export async function generateWithFallback(
     if (i === chain.length - 1) break;
     if (!isProviderFailover(lastErr)) break;
   }
+  if (options.logContext) {
+    logEngineCall({
+      ...options.logContext,
+      stage,
+      provider: chain[0]?.providerName ?? 'unknown',
+      model: chain[0]?.model ?? 'unknown',
+      input: {
+        agentType: params.agentType,
+        systemPrompt: params.systemPrompt,
+        userMessage: params.userMessage,
+      },
+      durationMs: Date.now() - startTime,
+      error: String((lastErr as { message?: string })?.message ?? lastErr),
+    });
+  }
+  const errMsg = String((lastErr as { message?: string })?.message ?? lastErr);
+  logAiUsage({
+    userId: options.logContext?.userId ?? null,
+    orgId: options.logContext?.orgId ?? null,
+    action: stage,
+    provider: chain[0]?.providerName ?? 'unknown',
+    model: chain[0]?.model ?? 'unknown',
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    durationMs: Date.now() - startTime,
+    status: 'error',
+    error: errMsg,
+    metadata: {
+      sessionId: options.logContext?.sessionId,
+      draftId: options.logContext?.draftId,
+      projectId: options.logContext?.projectId,
+      prompt: params.userMessage,
+    },
+  });
   throw lastErr;
 }

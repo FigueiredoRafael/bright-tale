@@ -1,0 +1,282 @@
+<h2>Section 4: Analytics Page Redesign</h2>
+<p class="subtitle">Cost tracking, credit usage, provider breakdown — with proper data visualization</p>
+
+<div class="mockup">
+  <div class="mockup-header">Analytics — Dark Theme</div>
+  <div class="mockup-body" style="background: #0C1017; padding: 24px; border-radius: 8px;">
+
+    <!-- Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+      <div>
+        <div style="font-size: 22px; font-weight: 700; color: #F1F5F9;">Analytics</div>
+        <div style="font-size: 12px; color: #64748B; margin-top: 2px;">Platform usage, costs, and credit consumption</div>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px 14px; font-size: 12px; color: #94A3B8; cursor: pointer;">7 days</div>
+        <div style="background: rgba(29,185,144,0.12); border: 1px solid rgba(29,185,144,0.3); border-radius: 8px; padding: 6px 14px; font-size: 12px; color: #1DB990; cursor: pointer;">30 days</div>
+        <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px 14px; font-size: 12px; color: #94A3B8; cursor: pointer;">90 days</div>
+      </div>
+    </div>
+
+    <!-- Row 1: Cost KPI cards -->
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px;">
+      <!-- Total Cost -->
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #FF6B35, transparent);"></div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Total Cost</div>
+        <div style="font-size: 28px; font-weight: 700; color: #F1F5F9; margin-top: 4px;">$0.00</div>
+        <div style="font-size: 10px; color: #64748B; margin-top: 4px;">All stages combined</div>
+      </div>
+      <!-- Credits Used -->
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #1DB990, transparent);"></div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Credits Used</div>
+        <div style="font-size: 28px; font-weight: 700; color: #F1F5F9; margin-top: 4px;">1,136</div>
+        <div style="font-size: 10px; color: #64748B; margin-top: 4px;">of 2,500 total</div>
+      </div>
+      <!-- Tokens -->
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #4A90D9, transparent);"></div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Total Tokens</div>
+        <div style="font-size: 28px; font-weight: 700; color: #F1F5F9; margin-top: 4px;">248K</div>
+        <div style="font-size: 10px; color: #64748B; margin-top: 4px;">Input + Output</div>
+      </div>
+      <!-- API Calls -->
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #A78BFA, transparent);"></div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">API Calls</div>
+        <div style="font-size: 28px; font-weight: 700; color: #F1F5F9; margin-top: 4px;">89</div>
+        <div style="font-size: 10px; color: #64748B; margin-top: 4px;">Across all providers</div>
+      </div>
+    </div>
+
+    <!-- Row 2: Credit Usage Over Time (line chart) + Cost by Stage (bar chart) -->
+    <div style="display: grid; grid-template-columns: 3fr 2fr; gap: 14px; margin-bottom: 16px;">
+
+      <!-- Credit Usage Line Chart -->
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 20px;">
+        <div style="font-size: 13px; font-weight: 600; color: #F1F5F9; margin-bottom: 16px;">Credit Usage Over Time</div>
+        <div style="position: relative; height: 160px; border-left: 1px solid rgba(255,255,255,0.06); border-bottom: 1px solid rgba(255,255,255,0.06); margin-left: 28px;">
+          <div style="position: absolute; top: 25%; left: 0; right: 0; border-top: 1px dashed rgba(255,255,255,0.04);"></div>
+          <div style="position: absolute; top: 50%; left: 0; right: 0; border-top: 1px dashed rgba(255,255,255,0.04);"></div>
+          <div style="position: absolute; top: 75%; left: 0; right: 0; border-top: 1px dashed rgba(255,255,255,0.04);"></div>
+          <svg width="100%" height="100%" viewBox="0 0 500 160" preserveAspectRatio="none" style="position: absolute; top: 0; left: 0;">
+            <defs><linearGradient id="gc" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1DB990" stop-opacity="0.15"/><stop offset="100%" stop-color="#1DB990" stop-opacity="0"/></linearGradient></defs>
+            <path d="M0,140 C40,135 80,120 120,110 C160,100 200,85 240,75 C280,80 320,60 360,45 C400,40 440,30 500,20" fill="none" stroke="#1DB990" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M0,140 C40,135 80,120 120,110 C160,100 200,85 240,75 C280,80 320,60 360,45 C400,40 440,30 500,20 L500,160 L0,160Z" fill="url(#gc)"/>
+          </svg>
+          <div style="position: absolute; bottom: -18px; left: 0; right: 0; display: flex; justify-content: space-between;">
+            <span style="font-size: 9px; color: #64748B;">Mar 17</span>
+            <span style="font-size: 9px; color: #64748B;">Mar 24</span>
+            <span style="font-size: 9px; color: #64748B;">Mar 31</span>
+            <span style="font-size: 9px; color: #64748B;">Apr 7</span>
+            <span style="font-size: 9px; color: #64748B;">Apr 14</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cost by Stage (horizontal bar) -->
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 20px;">
+        <div style="font-size: 13px; font-weight: 600; color: #F1F5F9; margin-bottom: 16px;">Cost by Stage</div>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <!-- Brainstorm -->
+          <div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span style="font-size: 11px; color: #94A3B8;">Brainstorm</span>
+              <span style="font-size: 11px; color: #F1F5F9; font-weight: 600;">$0.00</span>
+            </div>
+            <div style="height: 8px; background: rgba(255,255,255,0.04); border-radius: 4px; overflow: hidden;">
+              <div style="width: 35%; height: 100%; background: linear-gradient(90deg, #A78BFA, #8B5CF6); border-radius: 4px;"></div>
+            </div>
+          </div>
+          <!-- Research -->
+          <div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span style="font-size: 11px; color: #94A3B8;">Research</span>
+              <span style="font-size: 11px; color: #F1F5F9; font-weight: 600;">$0.00</span>
+            </div>
+            <div style="height: 8px; background: rgba(255,255,255,0.04); border-radius: 4px; overflow: hidden;">
+              <div style="width: 25%; height: 100%; background: linear-gradient(90deg, #4A90D9, #3B82F6); border-radius: 4px;"></div>
+            </div>
+          </div>
+          <!-- Production -->
+          <div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span style="font-size: 11px; color: #94A3B8;">Production</span>
+              <span style="font-size: 11px; color: #F1F5F9; font-weight: 600;">$0.00</span>
+            </div>
+            <div style="height: 8px; background: rgba(255,255,255,0.04); border-radius: 4px; overflow: hidden;">
+              <div style="width: 55%; height: 100%; background: linear-gradient(90deg, #1DB990, #0D9B6A); border-radius: 4px;"></div>
+            </div>
+          </div>
+          <!-- Review -->
+          <div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span style="font-size: 11px; color: #94A3B8;">Review</span>
+              <span style="font-size: 11px; color: #F1F5F9; font-weight: 600;">$0.00</span>
+            </div>
+            <div style="height: 8px; background: rgba(255,255,255,0.04); border-radius: 4px; overflow: hidden;">
+              <div style="width: 15%; height: 100%; background: linear-gradient(90deg, #F59E0B, #D97706); border-radius: 4px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 3: Top Orgs + Provider Distribution -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px;">
+
+      <!-- Top Organizations -->
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 20px;">
+        <div style="font-size: 13px; font-weight: 600; color: #F1F5F9; margin-bottom: 14px;">Top Organizations</div>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <!-- Org 1 -->
+          <div style="display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+            <div style="width: 24px; height: 24px; background: linear-gradient(135deg, #1DB990, #0D9B6A); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: white; font-weight: 700;">1</div>
+            <div style="flex: 1;">
+              <div style="font-size: 12px; color: #F1F5F9; font-weight: 500;">hectorsiman</div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 12px; color: #F1F5F9; font-weight: 600;">1,136 <span style="font-size: 10px; color: #64748B; font-weight: 400;">credits</span></div>
+            </div>
+            <div style="width: 80px; height: 6px; background: rgba(255,255,255,0.04); border-radius: 3px; overflow: hidden;">
+              <div style="width: 85%; height: 100%; background: linear-gradient(90deg, #1DB990, #0D9B6A); border-radius: 3px;"></div>
+            </div>
+          </div>
+          <!-- Org 2 -->
+          <div style="display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+            <div style="width: 24px; height: 24px; background: linear-gradient(135deg, #4A90D9, #3B82F6); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: white; font-weight: 700;">2</div>
+            <div style="flex: 1;">
+              <div style="font-size: 12px; color: #F1F5F9; font-weight: 500;">acme-corp</div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 12px; color: #F1F5F9; font-weight: 600;">240 <span style="font-size: 10px; color: #64748B; font-weight: 400;">credits</span></div>
+            </div>
+            <div style="width: 80px; height: 6px; background: rgba(255,255,255,0.04); border-radius: 3px; overflow: hidden;">
+              <div style="width: 30%; height: 100%; background: linear-gradient(90deg, #4A90D9, #3B82F6); border-radius: 3px;"></div>
+            </div>
+          </div>
+          <!-- Org 3 -->
+          <div style="display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+            <div style="width: 24px; height: 24px; background: linear-gradient(135deg, #A78BFA, #8B5CF6); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: white; font-weight: 700;">3</div>
+            <div style="flex: 1;">
+              <div style="font-size: 12px; color: #F1F5F9; font-weight: 500;">startup-labs</div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 12px; color: #F1F5F9; font-weight: 600;">89 <span style="font-size: 10px; color: #64748B; font-weight: 400;">credits</span></div>
+            </div>
+            <div style="width: 80px; height: 6px; background: rgba(255,255,255,0.04); border-radius: 3px; overflow: hidden;">
+              <div style="width: 12%; height: 100%; background: linear-gradient(90deg, #A78BFA, #8B5CF6); border-radius: 3px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Provider Distribution (donut) -->
+      <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 20px;">
+        <div style="font-size: 13px; font-weight: 600; color: #F1F5F9; margin-bottom: 14px;">Usage by Provider</div>
+        <div style="display: flex; align-items: center; gap: 20px;">
+          <!-- Donut chart mockup -->
+          <div style="position: relative; width: 120px; height: 120px; flex-shrink: 0;">
+            <svg width="120" height="120" viewBox="0 0 120 120">
+              <!-- Background ring -->
+              <circle cx="60" cy="60" r="48" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="16"/>
+              <!-- OpenAI segment (60%) -->
+              <circle cx="60" cy="60" r="48" fill="none" stroke="#1DB990" stroke-width="16" stroke-dasharray="181 120" stroke-dashoffset="0" transform="rotate(-90 60 60)" stroke-linecap="round"/>
+              <!-- Anthropic segment (30%) -->
+              <circle cx="60" cy="60" r="48" fill="none" stroke="#A78BFA" stroke-width="16" stroke-dasharray="90.5 210.5" stroke-dashoffset="-181" transform="rotate(-90 60 60)" stroke-linecap="round"/>
+              <!-- Google segment (10%) -->
+              <circle cx="60" cy="60" r="48" fill="none" stroke="#4A90D9" stroke-width="16" stroke-dasharray="30 271" stroke-dashoffset="-271.5" transform="rotate(-90 60 60)" stroke-linecap="round"/>
+            </svg>
+            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
+              <div style="font-size: 18px; font-weight: 700; color: #F1F5F9;">89</div>
+              <div style="font-size: 9px; color: #64748B;">calls</div>
+            </div>
+          </div>
+          <!-- Legend -->
+          <div style="display: flex; flex-direction: column; gap: 10px; flex: 1;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 10px; height: 10px; background: #1DB990; border-radius: 3px;"></div>
+                <span style="font-size: 12px; color: #F1F5F9;">OpenAI</span>
+              </div>
+              <span style="font-size: 12px; color: #94A3B8;">60%</span>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 10px; height: 10px; background: #A78BFA; border-radius: 3px;"></div>
+                <span style="font-size: 12px; color: #F1F5F9;">Anthropic</span>
+              </div>
+              <span style="font-size: 12px; color: #94A3B8;">30%</span>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 10px; height: 10px; background: #4A90D9; border-radius: 3px;"></div>
+                <span style="font-size: 12px; color: #F1F5F9;">Google</span>
+              </div>
+              <span style="font-size: 12px; color: #94A3B8;">10%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 4: Recent Usage Table -->
+    <div style="background: linear-gradient(135deg, rgba(19,26,36,0.8), rgba(19,26,36,0.4)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+        <div style="font-size: 13px; font-weight: 600; color: #F1F5F9;">Recent Usage</div>
+        <div style="display: flex; gap: 8px;">
+          <span style="font-size: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); padding: 4px 10px; border-radius: 6px; color: #94A3B8; cursor: pointer;">All providers</span>
+          <span style="font-size: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); padding: 4px 10px; border-radius: 6px; color: #94A3B8; cursor: pointer;">All stages</span>
+        </div>
+      </div>
+      <!-- Table -->
+      <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 0.8fr 0.8fr 0.6fr; gap: 8px; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.06); margin-bottom: 4px;">
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Provider</div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Model</div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Stage</div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Tokens</div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Cost</div>
+        <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Time</div>
+      </div>
+      <!-- Row -->
+      <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 0.8fr 0.8fr 0.6fr; gap: 8px; padding: 10px 12px; border-radius: 6px;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+        <div style="font-size: 12px; color: #F1F5F9;">openai</div>
+        <div style="font-size: 12px; color: #94A3B8; font-family: monospace;">gpt-4.1</div>
+        <div><span style="font-size: 10px; background: rgba(29,185,144,0.15); color: #1DB990; padding: 2px 8px; border-radius: 12px;">production</span></div>
+        <div style="font-size: 12px; color: #F1F5F9;">14,231</div>
+        <div style="font-size: 12px; color: #F1F5F9;">$0.12</div>
+        <div style="font-size: 11px; color: #64748B;">5m</div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 0.8fr 0.8fr 0.6fr; gap: 8px; padding: 10px 12px; border-radius: 6px;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+        <div style="font-size: 12px; color: #F1F5F9;">anthropic</div>
+        <div style="font-size: 12px; color: #94A3B8; font-family: monospace;">claude-4</div>
+        <div><span style="font-size: 10px; background: rgba(167,139,250,0.15); color: #A78BFA; padding: 2px 8px; border-radius: 12px;">brainstorm</span></div>
+        <div style="font-size: 12px; color: #F1F5F9;">8,400</div>
+        <div style="font-size: 12px; color: #F1F5F9;">$0.08</div>
+        <div style="font-size: 11px; color: #64748B;">1h</div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 0.8fr 0.8fr 0.6fr; gap: 8px; padding: 10px 12px; border-radius: 6px;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+        <div style="font-size: 12px; color: #F1F5F9;">openai</div>
+        <div style="font-size: 12px; color: #94A3B8; font-family: monospace;">gpt-4.1</div>
+        <div><span style="font-size: 10px; background: rgba(245,158,11,0.15); color: #F59E0B; padding: 2px 8px; border-radius: 12px;">review</span></div>
+        <div style="font-size: 12px; color: #F1F5F9;">6,120</div>
+        <div style="font-size: 12px; color: #F1F5F9;">$0.05</div>
+        <div style="font-size: 11px; color: #64748B;">2h</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px;">
+  <h3>Analytics Layout Summary</h3>
+  <ul style="color: #ccc; line-height: 1.8;">
+    <li><strong>Row 1:</strong> 4 KPI cards — Total Cost, Credits Used, Tokens, API Calls</li>
+    <li><strong>Row 2:</strong> Credit usage line chart (Recharts AreaChart) + Cost by Stage horizontal bars (Recharts BarChart)</li>
+    <li><strong>Row 3:</strong> Top organizations leaderboard with progress bars + Provider donut chart (Recharts PieChart)</li>
+    <li><strong>Row 4:</strong> Recent usage table with provider/model/stage/tokens/cost columns, filterable by provider and stage</li>
+    <li><strong>Recharts components:</strong> AreaChart, BarChart (horizontal), PieChart (donut), all with dark theme config</li>
+    <li><strong>Date range:</strong> 7d / 30d / 90d toggle in header — affects all cards and charts</li>
+  </ul>
+</div>

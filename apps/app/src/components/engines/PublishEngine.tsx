@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
+import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { PublishPanel } from '@/components/preview/PublishPanel';
 import { PublishProgress } from '@/components/publish/PublishProgress';
 import { ContextBanner } from './ContextBanner';
@@ -34,13 +35,21 @@ export function PublishEngine({
 }: PublishEngineProps) {
   const [publishing, setPublishing] = useState(false);
   const [publishBody, setPublishBody] = useState<Record<string, unknown> | null>(null);
+  const modeRef = useRef<string | null>(null);
+  const tracker = usePipelineTracker('publish', context);
 
   function handlePublish(params: { mode: string; configId: string; scheduledDate?: string }) {
+    if (publishing) return;
+
+    modeRef.current = params.mode;
+    tracker.trackStarted({ draftId, mode: params.mode, configId: params.configId });
+
     const body: Record<string, unknown> = {
       draftId,
       configId: params.configId,
       mode: params.mode,
       scheduledDate: params.scheduledDate,
+      idempotencyToken: crypto.randomUUID(),
     };
 
     // Inject preview data from pipeline context
@@ -60,29 +69,34 @@ export function PublishEngine({
       wordpressPostId: result.wordpressPostId,
       publishedUrl: result.publishedUrl,
     };
+    tracker.trackCompleted({
+      draftId,
+      wordpressPostId: result.wordpressPostId,
+      publishedUrl: result.publishedUrl,
+      mode: modeRef.current ?? 'unknown',
+    });
     onComplete(publishResult);
-  }, [onComplete]);
+  }, [draftId, tracker, onComplete]);
 
   const handleStreamError = useCallback((message: string) => {
     toast.error(message);
+    tracker.trackFailed(message);
     setPublishing(false);
     setPublishBody(null);
-  }, []);
+  }, [tracker]);
 
   return (
     <div className="space-y-6">
       <ContextBanner stage="publish" context={context} onBack={onBack} />
 
       {publishing && publishBody ? (
-        <div className="max-w-lg">
-          <PublishProgress
-            publishBody={publishBody}
-            onComplete={handleStreamComplete}
-            onError={handleStreamError}
-          />
-        </div>
+        <PublishProgress
+          publishBody={publishBody}
+          onComplete={handleStreamComplete}
+          onError={handleStreamError}
+        />
       ) : (
-        <div className="max-w-lg">
+        <div>
           <PublishPanel
             draftId={draftId}
             draftStatus={draft.status}

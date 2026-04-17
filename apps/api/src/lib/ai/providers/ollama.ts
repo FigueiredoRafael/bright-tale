@@ -3,8 +3,7 @@
  * Talks to a local Ollama server (default http://localhost:11434) — zero cost
  * and works offline. Best paired with llama3.1:8b or qwen2.5:7b for JSON output.
  */
-import yaml from 'js-yaml';
-import type { AIProvider, GenerateContentParams, AgentType, TokenUsage } from '../provider.js';
+import type { AIProvider, GenerateContentParams, TokenUsage } from '../provider.js';
 
 export class OllamaProvider implements AIProvider {
   readonly name = 'ollama';
@@ -20,47 +19,100 @@ export class OllamaProvider implements AIProvider {
   }
 
   async generateContent({
-    agentType,
-    input,
     schema,
     systemPrompt,
+    userMessage,
   }: GenerateContentParams): Promise<unknown> {
-    const userPrompt = this.buildPrompt(agentType, input);
     const messages: Array<{ role: string; content: string }> = [];
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
-    messages.push({ role: 'user', content: userPrompt });
+    messages.push({ role: 'user', content: userMessage });
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1_200_000); // 20 min
 
     const res = await fetch(`${this.baseUrl}/api/chat`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      signal: AbortSignal.timeout(300_000), // 5 min — local models are slow on CPU
+      signal: controller.signal,
       body: JSON.stringify({
         model: this.model,
         messages,
-        stream: false,
-        format: 'json', // Ollama coerces output to valid JSON when set
+        stream: true,
+        format: 'json',
         options: {
           temperature: this.model.includes('tinyllama') ? 0.3 : this.temperature,
-          num_predict: 4096,
+          num_predict: 8192,
         },
       }),
     });
+
+    clearTimeout(timeout);
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       throw new Error(`Ollama ${res.status}: ${body || res.statusText}`);
     }
 
-    const data = (await res.json()) as {
-      message?: { content?: string };
-      prompt_eval_count?: number;
-      eval_count?: number;
-    };
-    this.lastUsage = {
-      inputTokens: data.prompt_eval_count,
-      outputTokens: data.eval_count,
-    };
-    const text = data.message?.content;
+    // Stream response — accumulate content and detect degenerate output
+    let text = '';
+    let inputTokens: number | undefined;
+    let outputTokens: number | undefined;
+    let degenerateCount = 0;
+    const MAX_DEGENERATE = 20; // abort after 20 consecutive repeated tokens
+
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error('No response body from Ollama');
+    const decoder = new TextDecoder();
+
+    let lastChunk = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n').filter(Boolean);
+
+      for (const line of lines) {
+        try {
+          const data = JSON.parse(line) as {
+            message?: { content?: string };
+            done?: boolean;
+            prompt_eval_count?: number;
+            eval_count?: number;
+          };
+
+          const content = data.message?.content ?? '';
+          text += content;
+
+          // Detect degenerate output (repeated commas, spaces, etc.)
+          if (content.trim() === lastChunk.trim() && content.trim().length <= 2) {
+            degenerateCount++;
+            if (degenerateCount >= MAX_DEGENERATE) {
+              console.warn(`[Ollama] Degenerate output detected after ${text.length} chars — aborting stream`);
+              reader.cancel();
+              // Strip trailing degenerate tokens
+              text = text.replace(/[,\s]+$/, '');
+              break;
+            }
+          } else {
+            degenerateCount = 0;
+          }
+          lastChunk = content;
+
+          if (data.done) {
+            inputTokens = data.prompt_eval_count;
+            outputTokens = data.eval_count;
+          }
+        } catch {
+          // ignore malformed stream chunks
+        }
+      }
+
+      if (degenerateCount >= MAX_DEGENERATE) break;
+    }
+
+    this.lastUsage = { inputTokens, outputTokens };
+
     if (!text) throw new Error('No content generated from Ollama');
 
     console.log(`[Ollama] Raw response (${this.model}, ${text.length} chars):\n${text.slice(0, 1000)}`);
@@ -87,57 +139,6 @@ export class OllamaProvider implements AIProvider {
     return parsed;
   }
 
-  private buildPrompt(agentType: AgentType, input: unknown): string {
-    const inputObj = (input && typeof input === 'object') ? input as Record<string, unknown> : {};
-    const topic = (inputObj.topic as string) ?? '';
-    const isSmallModel = this.model.includes('tinyllama') || this.model.includes(':1b') || this.model.includes(':3b');
-
-    if (isSmallModel) {
-      return this.buildSimplePrompt(agentType, topic, inputObj);
-    }
-
-    const yamlInput = yaml.dump(input, { lineWidth: -1 });
-    return `You are a ${agentType} agent. Generate structured output based on the following input:\n\n${yamlInput}\n\nRespond ONLY with a valid JSON object (no markdown, no commentary). Keep output concise to avoid truncation.`;
-  }
-
-  /**
-   * Simplified prompt for tiny models (<3B params).
-   * Uses few-shot example so model understands the exact output shape.
-   */
-  private buildSimplePrompt(agentType: AgentType, topic: string, input: Record<string, unknown>): string {
-    if (agentType === 'brainstorm') {
-      const count = (input.ideasRequested as number) ?? 3;
-      return `Generate ${count} content ideas about "${topic}".
-
-Example output:
-{"ideas":[{"title":"Example Title","core_tension":"Why this matters","target_audience":"Who cares","verdict":"viable"}]}
-
-Rules:
-- Return ONLY a JSON object with an "ideas" array
-- Each idea needs: title, core_tension, target_audience, verdict (viable/weak/experimental)
-- Keep each field under 30 words
-- No markdown, no explanation`;
-    }
-
-    if (agentType === 'research') {
-      return `Research the topic "${topic}". Find evidence for or against it.
-
-Return JSON: {"cards":[{"title":"Finding","summary":"What was found","source":"Where from","credibility":"high/medium/low"}]}
-
-Keep it short. Max 3 cards. No markdown.`;
-    }
-
-    if (agentType === 'review') {
-      return `Review this content and score it 0-100.
-
-Return JSON: {"overall_verdict":"approved","blog_review":{"score":85,"strengths":["good"],"critical_issues":[],"minor_issues":["fix typo"]}}
-
-No markdown.`;
-    }
-
-    // Generic fallback
-    return `You are a ${agentType} agent. Topic: "${topic}". Return a short JSON object with your output. No markdown.`;
-  }
 }
 
 /**
