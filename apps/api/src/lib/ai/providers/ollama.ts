@@ -30,37 +30,92 @@ export class OllamaProvider implements AIProvider {
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
     messages.push({ role: 'user', content: userPrompt });
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1_200_000); // 20 min
+
     const res = await fetch(`${this.baseUrl}/api/chat`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      signal: AbortSignal.timeout(300_000), // 5 min — local models are slow on CPU
+      signal: controller.signal,
       body: JSON.stringify({
         model: this.model,
         messages,
-        stream: false,
-        format: 'json', // Ollama coerces output to valid JSON when set
+        stream: true,
+        format: 'json',
         options: {
           temperature: this.model.includes('tinyllama') ? 0.3 : this.temperature,
-          num_predict: 4096,
+          num_predict: 8192,
         },
       }),
     });
+
+    clearTimeout(timeout);
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       throw new Error(`Ollama ${res.status}: ${body || res.statusText}`);
     }
 
-    const data = (await res.json()) as {
-      message?: { content?: string };
-      prompt_eval_count?: number;
-      eval_count?: number;
-    };
-    this.lastUsage = {
-      inputTokens: data.prompt_eval_count,
-      outputTokens: data.eval_count,
-    };
-    const text = data.message?.content;
+    // Stream response — accumulate content and detect degenerate output
+    let text = '';
+    let inputTokens: number | undefined;
+    let outputTokens: number | undefined;
+    let degenerateCount = 0;
+    const MAX_DEGENERATE = 20; // abort after 20 consecutive repeated tokens
+
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error('No response body from Ollama');
+    const decoder = new TextDecoder();
+
+    let lastChunk = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n').filter(Boolean);
+
+      for (const line of lines) {
+        try {
+          const data = JSON.parse(line) as {
+            message?: { content?: string };
+            done?: boolean;
+            prompt_eval_count?: number;
+            eval_count?: number;
+          };
+
+          const content = data.message?.content ?? '';
+          text += content;
+
+          // Detect degenerate output (repeated commas, spaces, etc.)
+          if (content.trim() === lastChunk.trim() && content.trim().length <= 2) {
+            degenerateCount++;
+            if (degenerateCount >= MAX_DEGENERATE) {
+              console.warn(`[Ollama] Degenerate output detected after ${text.length} chars — aborting stream`);
+              reader.cancel();
+              // Strip trailing degenerate tokens
+              text = text.replace(/[,\s]+$/, '');
+              break;
+            }
+          } else {
+            degenerateCount = 0;
+          }
+          lastChunk = content;
+
+          if (data.done) {
+            inputTokens = data.prompt_eval_count;
+            outputTokens = data.eval_count;
+          }
+        } catch {
+          // ignore malformed stream chunks
+        }
+      }
+
+      if (degenerateCount >= MAX_DEGENERATE) break;
+    }
+
+    this.lastUsage = { inputTokens, outputTokens };
+
     if (!text) throw new Error('No content generated from Ollama');
 
     console.log(`[Ollama] Raw response (${this.model}, ${text.length} chars):\n${text.slice(0, 1000)}`);
@@ -90,8 +145,14 @@ export class OllamaProvider implements AIProvider {
   private buildPrompt(agentType: AgentType, input: unknown): string {
     const inputObj = (input && typeof input === 'object') ? input as Record<string, unknown> : {};
     const topic = (inputObj.topic as string) ?? '';
-    const isSmallModel = this.model.includes('tinyllama') || this.model.includes(':1b') || this.model.includes(':3b');
 
+    // Use structured prompts for known agent types — all Ollama models
+    // need explicit output examples to produce the right JSON shape.
+    if (agentType === 'brainstorm') {
+      return this.buildBrainstormPrompt(topic, inputObj);
+    }
+
+    const isSmallModel = this.model.includes('tinyllama') || this.model.includes(':1b') || this.model.includes(':3b');
     if (isSmallModel) {
       return this.buildSimplePrompt(agentType, topic, inputObj);
     }
@@ -100,25 +161,52 @@ export class OllamaProvider implements AIProvider {
     return `You are a ${agentType} agent. Generate structured output based on the following input:\n\n${yamlInput}\n\nRespond ONLY with a valid JSON object (no markdown, no commentary). Keep output concise to avoid truncation.`;
   }
 
+  private buildBrainstormPrompt(topic: string, input: Record<string, unknown>): string {
+    const count = (input.ideasRequested as number) ?? 5;
+    const ft = input.fineTuning as Record<string, string> | undefined;
+    const channel = input.channel as Record<string, string> | undefined;
+
+    let context = `Generate ${count} content ideas about "${topic}".`;
+    if (ft) {
+      const parts: string[] = [];
+      if (ft.niche) parts.push(`Niche: ${ft.niche}`);
+      if (ft.audience) parts.push(`Target audience: ${ft.audience}`);
+      if (ft.tone) parts.push(`Tone: ${ft.tone}`);
+      if (ft.goal) parts.push(`Goal: ${ft.goal}`);
+      if (ft.constraints) parts.push(`Constraints: ${ft.constraints}`);
+      if (parts.length > 0) context += '\n\n' + parts.join('\n');
+    }
+    if (channel) {
+      const parts: string[] = [];
+      if (channel.name) parts.push(`Channel: ${channel.name}`);
+      if (channel.niche) parts.push(`Channel niche: ${channel.niche}`);
+      if (channel.language) parts.push(`Language: ${channel.language}`);
+      if (parts.length > 0) context += '\n\n' + parts.join('\n');
+    }
+
+    return `${context}
+
+Return a JSON object with an "ideas" array and a "recommendation" object.
+
+Example output:
+{"ideas":[{"title":"Idea Title","angle":"Unique perspective","core_tension":"Why this matters","target_audience":"Who cares","search_intent":"What people search for","primary_keyword":{"term":"keyword","difficulty":"low","monthly_volume_estimate":"1000"},"scroll_stopper":"Hook line","curiosity_gap":"What makes them click","monetization":{"affiliate_angle":"Product tie-in","product_fit":"How it fits","sponsor_appeal":"Brand appeal"},"repurpose_potential":{"blog_angle":"Blog version","video_angle":"Video version","shorts_hooks":["Hook 1"],"podcast_angle":"Podcast version"},"risk_flags":["Flag 1"],"verdict":"viable","verdict_rationale":"Why this verdict"}],"recommendation":{"pick":"Idea Title","rationale":"Why this is the best pick"}}
+
+Rules:
+- Return ONLY a valid JSON object, no markdown, no commentary, no thinking
+- Each idea needs ALL fields shown above
+- verdict must be one of: viable, weak, experimental
+- recommendation.pick must match one idea's title
+- Be a skeptical content strategist — label weak ideas as "weak"
+- Keep each text field under 20 words to avoid truncation
+- Keep shorts_hooks to max 2 items
+- Keep risk_flags to max 2 items`;
+  }
+
   /**
    * Simplified prompt for tiny models (<3B params).
    * Uses few-shot example so model understands the exact output shape.
    */
   private buildSimplePrompt(agentType: AgentType, topic: string, input: Record<string, unknown>): string {
-    if (agentType === 'brainstorm') {
-      const count = (input.ideasRequested as number) ?? 3;
-      return `Generate ${count} content ideas about "${topic}".
-
-Example output:
-{"ideas":[{"title":"Example Title","core_tension":"Why this matters","target_audience":"Who cares","verdict":"viable"}]}
-
-Rules:
-- Return ONLY a JSON object with an "ideas" array
-- Each idea needs: title, core_tension, target_audience, verdict (viable/weak/experimental)
-- Keep each field under 30 words
-- No markdown, no explanation`;
-    }
-
     if (agentType === 'research') {
       return `Research the topic "${topic}". Find evidence for or against it.
 

@@ -142,6 +142,10 @@ export const brainstormGenerate = inngest.createFunction(
 
       const ideas = normalizeIdeas(result);
 
+      if (ideas.length === 0) {
+        throw new Error('AI returned a response but no ideas could be parsed from the output. Try a different model or re-run.');
+      }
+
       // Extract recommendation from AI output
       let recommendation: { pick?: string; rationale?: string } | null = null;
       if (result && typeof result === 'object' && 'recommendation' in (result as Record<string, unknown>)) {

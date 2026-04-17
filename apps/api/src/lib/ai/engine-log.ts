@@ -23,26 +23,35 @@ export interface EngineLogEntry {
 }
 
 export function logEngineCall(entry: EngineLogEntry): void {
-  const sb = createServiceClient();
-  (sb.from('engine_logs') as unknown as {
-    insert: (row: Record<string, unknown>) => Promise<{ error: unknown }>;
-  }).insert({
-    user_id: entry.userId,
-    org_id: entry.orgId ?? null,
-    project_id: entry.projectId ?? null,
-    channel_id: entry.channelId ?? null,
-    session_id: entry.sessionId ?? null,
-    session_type: entry.sessionType,
-    stage: entry.stage,
-    provider: entry.provider,
-    model: entry.model,
-    input_json: entry.input,
-    output_json: entry.output ?? null,
-    duration_ms: entry.durationMs,
-    input_tokens: entry.inputTokens ?? null,
-    output_tokens: entry.outputTokens ?? null,
-    error: entry.error ?? null,
-  }).catch((err: unknown) => {
-    console.warn('[engine-log] failed to write engine log:', err);
-  });
+  try {
+    const sb = createServiceClient();
+    const row = {
+      user_id: entry.userId,
+      org_id: entry.orgId ?? null,
+      project_id: entry.projectId ?? null,
+      channel_id: entry.channelId ?? null,
+      session_id: entry.sessionId ?? null,
+      session_type: entry.sessionType,
+      stage: entry.stage,
+      provider: entry.provider,
+      model: entry.model,
+      input_json: entry.input as unknown,
+      output_json: (entry.output ?? null) as unknown,
+      duration_ms: entry.durationMs,
+      input_tokens: entry.inputTokens ?? null,
+      output_tokens: entry.outputTokens ?? null,
+      error: entry.error ?? null,
+    };
+    Promise.resolve(
+      (sb.from('engine_logs') as unknown as {
+        insert: (r: typeof row) => PromiseLike<{ error: { message: string } | null }>;
+      }).insert(row),
+    ).then(({ error }) => {
+      if (error) console.warn('[engine-log] insert failed:', error.message);
+    }).catch((err: unknown) => {
+      console.warn('[engine-log] failed to write engine log:', err);
+    });
+  } catch (err) {
+    console.warn('[engine-log] failed to create engine log:', err);
+  }
 }

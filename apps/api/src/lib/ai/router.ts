@@ -25,10 +25,10 @@ interface ModelConfig {
 // `local` uses Ollama (zero cost, runs offline).
 const ROUTE_TABLE: Record<string, Record<AgentType, ModelConfig>> = {
   local: {
-    brainstorm: { provider: 'ollama', model: 'llama3.1:8b' },
-    research: { provider: 'ollama', model: 'llama3.1:8b' },
-    production: { provider: 'ollama', model: 'llama3.1:8b' },
-    review: { provider: 'ollama', model: 'llama3.1:8b' },
+    brainstorm: { provider: 'ollama', model: 'gemma4:e4b' },
+    research: { provider: 'ollama', model: 'gemma4:e4b' },
+    production: { provider: 'ollama', model: 'gemma4:e4b' },
+    review: { provider: 'ollama', model: 'gemma4:e4b' },
   },
   free: {
     brainstorm: { provider: 'gemini', model: 'gemini-2.5-flash' },
@@ -70,7 +70,7 @@ const DEFAULT_MODELS: Record<string, string> = {
   openai: 'gpt-4o-mini',
   anthropic: 'claude-sonnet-4-5-20250514',
   gemini: 'gemini-2.5-flash',
-  ollama: 'llama3.1:8b',
+  ollama: 'gemma4:e4b',
 };
 
 // Credit costs per stage (debited per call; runtime fallback does NOT double-debit).

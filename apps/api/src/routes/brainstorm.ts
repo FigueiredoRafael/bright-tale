@@ -117,6 +117,84 @@ async function getOrgId(userId: string): Promise<string> {
 
 export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> {
   /**
+   * GET /sessions/running — Check if the user has a brainstorm session currently
+   * in progress. Returns the most recent running session so the frontend can
+   * reconnect to its SSE stream after a page reload.
+   */
+  fastify.get('/sessions/running', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const sb = createServiceClient();
+      const { channelId } = request.query as { channelId?: string };
+
+      // Only return sessions created in the last 20 minutes — older ones are stale
+      const cutoff = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+
+      let query = sb
+        .from('brainstorm_sessions')
+        .select('id, status, input_json, created_at')
+        .eq('user_id', request.userId)
+        .eq('status', 'running')
+        .gte('created_at', cutoff)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (channelId) {
+        query = query.eq('channel_id', channelId);
+      }
+
+      const { data, error } = await query.maybeSingle();
+      if (error) throw error;
+
+      return reply.send({ data: { session: data ?? null }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * POST /sessions/:id/cancel — Cancel a running brainstorm session.
+   */
+  fastify.post('/sessions/:id/cancel', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const { id } = request.params as { id: string };
+      const sb = createServiceClient();
+
+      const { data: session } = await sb
+        .from('brainstorm_sessions')
+        .select('id, status, user_id')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
+      if (session.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
+      if (session.status !== 'running') {
+        return reply.send({ data: { status: session.status }, error: null });
+      }
+
+      await (sb.from('brainstorm_sessions') as unknown as {
+        update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+      })
+        .update({ status: 'failed', error_message: 'Cancelled by user' })
+        .eq('id', id);
+
+      await emitJobEvent(id, 'brainstorm', 'failed', 'Cancelled by user');
+
+      // Cancel the Inngest function run if possible
+      try {
+        await inngest.send({ name: 'inngest/function.cancelled', data: { function_id: 'brainstorm-generate', run_id: id } });
+      } catch {
+        // Best-effort — Inngest may not support this or the run may already be done
+      }
+
+      return reply.send({ data: { status: 'cancelled' }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
    * POST /sessions — Run a brainstorm and persist ideas.
    */
   fastify.post('/sessions', { preHandler: [authenticate] }, async (request, reply) => {
