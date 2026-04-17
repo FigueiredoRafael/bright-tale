@@ -9,7 +9,7 @@ export default async function AgentEditPage({ params }: { params: Promise<{ slug
   const db = createAdminClient();
   const { data: agent, error } = await db
     .from('agent_prompts')
-    .select('id, name, slug, stage, instructions, input_schema, output_schema, recommended_provider, recommended_model, updated_at')
+    .select('id, name, slug, stage, instructions, input_schema, output_schema, recommended_provider, recommended_model, sections_json, updated_at')
     .eq('slug', decodeURIComponent(slug))
     .maybeSingle();
 

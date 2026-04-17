@@ -15,6 +15,7 @@ interface Agent {
   output_schema: string | null;
   recommended_provider: string | null;
   recommended_model: string | null;
+  sections_json: Record<string, unknown> | null;
   updated_at: string;
 }
 
@@ -53,6 +54,7 @@ export function AgentEditor({ agent }: { agent: Agent }) {
         output_schema: outputSchema || null,
         recommended_provider: provider || null,
         recommended_model: model || null,
+        sections_json: agent.sections_json,
       });
       if (res.ok) {
         setMessage({ kind: 'ok', text: 'Salvo. Nova versão refletirá na próxima geração (cache 5min).' });
