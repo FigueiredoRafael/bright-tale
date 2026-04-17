@@ -1,9 +1,10 @@
-import yaml from 'js-yaml';
+import type { IdeaContext } from '../loadIdeaContext.js';
 
 export interface CanonicalCoreInput {
   type: string;
   title: string;
   ideaId?: string;
+  idea?: IdeaContext | null;
   researchCards?: unknown[];
   productionParams?: unknown;
   channel?: { name?: string; niche?: string; language?: string; tone?: string };
@@ -13,7 +14,7 @@ export interface ProduceInput {
   type: string;
   title: string;
   canonicalCore: unknown;
-  researchSessionId?: string;
+  idea?: IdeaContext | null;
   productionParams?: unknown;
   channel?: { name?: string; niche?: string; language?: string; tone?: string };
 }
@@ -23,6 +24,7 @@ export interface ReproduceInput {
   title: string;
   canonicalCore?: unknown;
   previousDraft?: unknown;
+  idea?: IdeaContext | null;
   reviewFeedback: {
     overall_verdict?: string;
     score?: number | null;
@@ -43,22 +45,32 @@ function channelBlock(ch?: { name?: string; niche?: string; language?: string; t
   return parts.length > 0 ? '\n' + parts.join('\n') : '';
 }
 
+function jsonBlock(data: unknown): string {
+  return typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+}
+
 export function buildCanonicalCoreMessage(input: CanonicalCoreInput): string {
   const lines: string[] = [];
   lines.push(`Generate a canonical core for a ${input.type} content piece.`);
   lines.push(`Title: "${input.title}"`);
   if (input.ideaId) lines.push(`Idea ID: ${input.ideaId}`);
 
+  if (input.idea) {
+    lines.push('');
+    lines.push('Selected idea:');
+    lines.push(jsonBlock(input.idea));
+  }
+
   if (input.researchCards && Array.isArray(input.researchCards) && input.researchCards.length > 0) {
     lines.push('');
     lines.push('Approved research cards:');
-    lines.push(yaml.dump(input.researchCards, { lineWidth: -1 }));
+    lines.push(jsonBlock(input.researchCards));
   }
 
   if (input.productionParams) {
     lines.push('');
     lines.push('Production parameters:');
-    lines.push(yaml.dump(input.productionParams, { lineWidth: -1 }));
+    lines.push(jsonBlock(input.productionParams));
   }
 
   lines.push(channelBlock(input.channel));
@@ -71,14 +83,21 @@ export function buildProduceMessage(input: ProduceInput): string {
   const lines: string[] = [];
   lines.push(`Produce a ${input.type} draft from the canonical core below.`);
   lines.push(`Title: "${input.title}"`);
+
+  if (input.idea) {
+    lines.push('');
+    lines.push('Original idea context:');
+    lines.push(jsonBlock(input.idea));
+  }
+
   lines.push('');
   lines.push('Canonical core:');
-  lines.push(typeof input.canonicalCore === 'string' ? input.canonicalCore : JSON.stringify(input.canonicalCore, null, 2));
+  lines.push(jsonBlock(input.canonicalCore));
 
   if (input.productionParams) {
     lines.push('');
     lines.push('Production parameters:');
-    lines.push(yaml.dump(input.productionParams, { lineWidth: -1 }));
+    lines.push(jsonBlock(input.productionParams));
   }
 
   lines.push(channelBlock(input.channel));
@@ -110,16 +129,22 @@ export function buildReproduceMessage(input: ReproduceInput): string {
     input.reviewFeedback.strengths.forEach((s) => lines.push(`- ${s}`));
   }
 
+  if (input.idea) {
+    lines.push('');
+    lines.push('Original idea context:');
+    lines.push(jsonBlock(input.idea));
+  }
+
   if (input.canonicalCore) {
     lines.push('');
     lines.push('Canonical core:');
-    lines.push(typeof input.canonicalCore === 'string' ? input.canonicalCore : JSON.stringify(input.canonicalCore, null, 2));
+    lines.push(jsonBlock(input.canonicalCore));
   }
 
   if (input.previousDraft) {
     lines.push('');
     lines.push('Previous draft:');
-    lines.push(typeof input.previousDraft === 'string' ? input.previousDraft : JSON.stringify(input.previousDraft, null, 2));
+    lines.push(jsonBlock(input.previousDraft));
   }
 
   lines.push(channelBlock(input.channel));
