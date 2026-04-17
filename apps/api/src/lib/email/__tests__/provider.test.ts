@@ -104,7 +104,7 @@ describe('email/provider', () => {
       new Response('rate limited', { status: 429 }),
     );
     const { sendEmail } = await import('../provider.js');
-    await expect(sendEmail({ to: 'a@b.com', subject: 's' })).rejects.toThrow(/Resend 429/);
+    await expect(sendEmail({ to: 'a@b.com', subject: 's' })).rejects.toThrow(/HTTP 429/);
     fetchSpy.mockRestore();
   });
 

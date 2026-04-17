@@ -1,5 +1,12 @@
 # Affiliate Platform — Phase 2A Foundation — Design Spec
 
+> **Errata — 2026-04-17 post-publication:** The `isResendConfigured()` silent-skip
+> pattern and the `@/lib/email/resend` import paths referenced throughout this
+> document (§3, §4, §5, §6, Appendix A.3) were superseded by the email provider
+> abstraction (sub-project 0 of the affiliate migration). See
+> `docs/superpowers/specs/2026-04-17-email-provider-abstraction-design.md`.
+> Inline text is preserved as historical record.
+
 **Status:** rewritten v2 (verified against package source `@tn-figueiredo/affiliate@0.4.0`)
 **Date:** 2026-04-17 (v1) · 2026-04-17 rewrite (v2)
 **Author:** Thiago Figueiredo (with Claude)

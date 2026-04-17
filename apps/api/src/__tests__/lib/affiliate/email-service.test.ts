@@ -1,11 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
 
-vi.mock('@/lib/email/resend', () => ({
-  sendEmail: vi.fn().mockResolvedValue({ id: 'r1', provider: 'resend' }),
-  isResendConfigured: vi.fn().mockReturnValue(true),
+vi.mock('@/lib/email/provider', () => ({
+  sendEmail: vi.fn().mockResolvedValue({ id: 'p1', provider: 'none' }),
 }))
 
-import * as resend from '@/lib/email/resend'
+import * as provider from '@/lib/email/provider'
 import { ResendAffiliateEmailService } from '@/lib/affiliate/email-service'
 
 describe('ResendAffiliateEmailService', () => {
@@ -15,7 +14,6 @@ describe('ResendAffiliateEmailService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.AFFILIATE_ADMIN_EMAIL = 'admin@brighttale.test'
-    vi.mocked(resend.isResendConfigured).mockReturnValue(true)
   })
 
   afterAll(() => {
@@ -31,7 +29,7 @@ describe('ResendAffiliateEmailService', () => {
       name: 'Maria', email: 'maria@example.com',
       channelPlatform: 'youtube', channelUrl: 'https://youtube.com/maria',
     })
-    expect(resend.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+    expect(provider.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
       to: 'admin@brighttale.test',
       subject: expect.stringContaining('Maria'),
     }))
@@ -42,7 +40,7 @@ describe('ResendAffiliateEmailService', () => {
       name: '<script>alert(1)</script>', email: 'x@y.com',
       channelPlatform: 'youtube', channelUrl: 'https://y.com',
     })
-    const arg = vi.mocked(resend.sendEmail).mock.calls[0][0]
+    const arg = vi.mocked(provider.sendEmail).mock.calls[0][0]
     expect(arg.html).not.toContain('<script>')
     expect(arg.html).toContain('&lt;script&gt;')
   })
@@ -52,22 +50,16 @@ describe('ResendAffiliateEmailService', () => {
       name: 'X', email: 'x@y.com',
       channelPlatform: 'web', channelUrl: 'javascript:alert(1)',
     })
-    const arg = vi.mocked(resend.sendEmail).mock.calls[0][0]
+    const arg = vi.mocked(provider.sendEmail).mock.calls[0][0]
     expect(arg.html).toContain('href="#"')
   })
 
   it('sendAffiliateApprovalEmail includes tier + commission percent', async () => {
     await svc.sendAffiliateApprovalEmail('joao@x.com', 'João', 'nano', 0.15, 'https://app.com')
-    expect(resend.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+    expect(provider.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
       to: 'joao@x.com',
       html: expect.stringContaining('15%'),
     }))
-  })
-
-  it('returns early when Resend not configured', async () => {
-    vi.mocked(resend.isResendConfigured).mockReturnValue(false)
-    await svc.sendAffiliateApplicationConfirmation('x@x.com', 'X')
-    expect(resend.sendEmail).not.toHaveBeenCalled()
   })
 
   it('sendAffiliateContractProposalEmail includes both currentRate AND proposedRate as percentages', async () => {
@@ -78,31 +70,16 @@ describe('ResendAffiliateEmailService', () => {
       'https://app.com/portal',
       'upgrade offer',
     )
-    const arg = vi.mocked(resend.sendEmail).mock.calls[0][0]
+    const arg = vi.mocked(provider.sendEmail).mock.calls[0][0]
     expect(arg.to).toBe('pedro@x.com')
     expect(arg.html).toContain('15%')
     expect(arg.html).toContain('20%')
     expect(arg.html).toContain('Pedro')
   })
 
-  it.each([
-    ['sendAffiliateApplicationReceivedAdmin', () => svc.sendAffiliateApplicationReceivedAdmin({
-      name: 'A', email: 'a@x.com', channelPlatform: 'youtube', channelUrl: 'https://y.com',
-    })],
-    ['sendAffiliateApplicationConfirmation', () => svc.sendAffiliateApplicationConfirmation('a@x.com', 'A')],
-    ['sendAffiliateApprovalEmail', () => svc.sendAffiliateApprovalEmail('a@x.com', 'A', 'nano', 0.15, 'https://app.com')],
-    ['sendAffiliateContractProposalEmail', () => svc.sendAffiliateContractProposalEmail(
-      'a@x.com', 'A', 'nano', 0.15, 'micro', 0.20, 'https://app.com',
-    )],
-  ])('%s short-circuits when Resend is not configured', async (_name, fn) => {
-    vi.mocked(resend.isResendConfigured).mockReturnValue(false)
-    await fn()
-    expect(resend.sendEmail).not.toHaveBeenCalled()
-  })
-
-  it('sendAffiliateApprovalEmail subject includes recipient name body', async () => {
+  it('sendAffiliateApprovalEmail body includes recipient name', async () => {
     await svc.sendAffiliateApprovalEmail('joao@x.com', 'João Silva', 'nano', 0.15, 'https://app.com')
-    const arg = vi.mocked(resend.sendEmail).mock.calls[0][0]
+    const arg = vi.mocked(provider.sendEmail).mock.calls[0][0]
     expect(arg.html).toContain('João Silva')
   })
 
@@ -111,7 +88,7 @@ describe('ResendAffiliateEmailService', () => {
       name: 'X', email: 'x@y.com',
       channelPlatform: 'web', channelUrl: 'vbscript:msgbox(1)',
     })
-    let arg = vi.mocked(resend.sendEmail).mock.calls[0][0]
+    let arg = vi.mocked(provider.sendEmail).mock.calls[0][0]
     expect(arg.html).toContain('href="#"')
     expect(arg.html).not.toContain('href="vbscript:')
 
@@ -120,7 +97,7 @@ describe('ResendAffiliateEmailService', () => {
       name: 'X', email: 'x@y.com',
       channelPlatform: 'web', channelUrl: 'data:text/html,<script>alert(1)</script>',
     })
-    arg = vi.mocked(resend.sendEmail).mock.calls[0][0]
+    arg = vi.mocked(provider.sendEmail).mock.calls[0][0]
     expect(arg.html).toContain('href="#"')
     expect(arg.html).not.toContain('href="data:')
   })

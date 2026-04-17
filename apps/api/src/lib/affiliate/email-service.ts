@@ -1,5 +1,5 @@
 import type { IAffiliateEmailService, AffiliateTier } from '@tn-figueiredo/affiliate'
-import { sendEmail, isResendConfigured } from '@/lib/email/resend'
+import { sendEmail } from '@/lib/email/provider'
 
 function adminEmail(): string {
   return process.env.AFFILIATE_ADMIN_EMAIL ?? 'admin@brighttale.io'
@@ -29,7 +29,6 @@ export class ResendAffiliateEmailService implements IAffiliateEmailService {
     name: string; email: string; channelPlatform: string; channelUrl: string
     subscribersCount?: number; suggestedCode?: string; notes?: string
   }): Promise<void> {
-    if (!isResendConfigured()) return
     await sendEmail({
       to: adminEmail(),
       subject: `Nova aplicação de afiliado: ${data.name}`,
@@ -38,7 +37,6 @@ export class ResendAffiliateEmailService implements IAffiliateEmailService {
   }
 
   async sendAffiliateApplicationConfirmation(email: string, name: string): Promise<void> {
-    if (!isResendConfigured()) return
     await sendEmail({
       to: email,
       subject: 'Recebemos sua aplicação de afiliado BrightTale',
@@ -50,7 +48,6 @@ export class ResendAffiliateEmailService implements IAffiliateEmailService {
     email: string, name: string, tier: AffiliateTier, commissionRate: number,
     portalUrl: string, fixedFeeBrl?: number | null,
   ): Promise<void> {
-    if (!isResendConfigured()) return
     await sendEmail({
       to: email,
       subject: '🎉 Sua aplicação de afiliado foi aprovada',
@@ -65,7 +62,6 @@ export class ResendAffiliateEmailService implements IAffiliateEmailService {
     portalUrl: string, notes?: string,
     currentFixedFeeBrl?: number | null, proposedFixedFeeBrl?: number | null,
   ): Promise<void> {
-    if (!isResendConfigured()) return
     await sendEmail({
       to: email,
       subject: 'Nova proposta de contrato de afiliado',

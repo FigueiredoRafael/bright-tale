@@ -1,5 +1,12 @@
 # Affiliate Platform — Phase 2A Foundation Implementation Plan
 
+> **Errata — 2026-04-17 post-publication:** The `isResendConfigured()` silent-skip
+> pattern and the `@/lib/email/resend` import paths referenced in Tasks 2.3,
+> 2.8, and 4.8 were superseded by the email provider abstraction (sub-project 0
+> of the affiliate migration). See
+> `docs/superpowers/specs/2026-04-17-email-provider-abstraction-design.md`.
+> Inline task mocks preserved as historical record.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > **v2 rewrite:** all column names, signatures, mappers, and migration content verified against `@tn-figueiredo/affiliate@0.4.0` package source (extracted via `npm pack`). v1 had 18 critical inaccuracies — see spec `## v2 rewrite changes`.

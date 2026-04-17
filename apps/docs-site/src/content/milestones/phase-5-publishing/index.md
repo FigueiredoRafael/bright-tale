@@ -149,10 +149,12 @@ Inngest cron `reference-check-weekly` (segunda 6h UTC) varre todas as referênci
 ### F5-006 — Email transacional: setup Resend
 ✅ **Concluído (pending RESEND_API_KEY)**
 
-`lib/email/resend.ts` com `sendEmail()` genérico + templates prontos:
+Email transport é gerenciado pela abstração de provider (`lib/email/provider.ts`,
+dispatch via `EMAIL_PROVIDER=resend|smtp|none`). Templates pré-construídos em
+`lib/email/templates.ts`:
 - `sendContentPublishedEmail(to, title, url)` — notifica publicação
 - `sendCreditsLowEmail(to, remaining, total)` — alerta de créditos
-Free tier: 3k emails/mês. DNS precisa SPF/DKIM configurado no domínio.
+Resend free tier: 3k emails/mês. DNS precisa SPF/DKIM configurado no domínio.
 
 **Concluído em:** 2026-04-14
 
