@@ -26,6 +26,8 @@ import { ResendAffiliateEmailService } from './email-service'
 import { StubTaxIdRepository } from './tax-id-service'
 import { AFFILIATE_CONFIG } from './config'
 import { getAuthenticatedUser, isAdmin } from './auth-context'
+import { buildFraudEngine } from './fraud/engine'
+import { AffiliateFraudAdapter } from './fraud/service'
 
 // Explicit interface (NOT `ReturnType<typeof buildAffiliateContainer>`) — that
 // pattern self-references and triggers TS2456.
@@ -59,7 +61,10 @@ export function buildAffiliateContainer(): AffiliateContainer {
 
   const trackClickUseCase = new TrackAffiliateLinkClickUseCase(repo, config)
   const expirePendingUseCase = new ExpirePendingReferralsUseCase(repo)
-  const attributeUseCase = new AttributeSignupToAffiliateUseCase(repo, config, undefined /* fraud — 2E */)
+  const fraudService = process.env.FRAUD_DETECTION_ENABLED === 'true'
+    ? new AffiliateFraudAdapter(buildFraudEngine({ sb, repo }), sb)
+    : undefined
+  const attributeUseCase = new AttributeSignupToAffiliateUseCase(repo, config, fraudService)
   const calcCommissionUseCase = new CalculateAffiliateCommissionUseCase(repo, config)
 
   const endUserDeps: AffiliateRouteDeps = {
