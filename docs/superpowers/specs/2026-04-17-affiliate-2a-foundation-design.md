@@ -19,6 +19,16 @@
 > `docs/superpowers/specs/2026-04-17-email-provider-abstraction-design.md`.
 > Inline text is preserved as historical record.
 
+> **Errata — 2026-04-17 post-publication:** The two High-risk gaps accepted
+> in §9 (R9 self-referral fraud service + R15 `/ref/:code` rate-limit) are
+> addressed in sub-project 3 of the affiliate migration — see
+> `docs/superpowers/specs/2026-04-17-affiliate-2e-fraud-detection-design.md`
+> and `docs/superpowers/plans/2026-04-17-affiliate-2e-fraud-detection.md`.
+> The `undefined /* fraud — 2E */` placeholder at `container.ts:62` is
+> replaced with an env-gated `AffiliateFraudAdapter` (kill-switch:
+> `FRAUD_DETECTION_ENABLED`). Inline text in §9 is preserved as historical
+> record.
+
 **Status:** rewritten v2 (verified against package source `@tn-figueiredo/affiliate@0.4.0`)
 **Date:** 2026-04-17 (v1) · 2026-04-17 rewrite (v2)
 **Author:** Thiago Figueiredo (with Claude)

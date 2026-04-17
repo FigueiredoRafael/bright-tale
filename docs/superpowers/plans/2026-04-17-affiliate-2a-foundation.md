@@ -7,6 +7,12 @@
 > `docs/superpowers/specs/2026-04-17-email-provider-abstraction-design.md`.
 > Inline task mocks preserved as historical record.
 
+> **Errata — 2026-04-17 post-publication:** The `undefined /* fraud — 2E */`
+> argument at `container.ts:62` (referenced throughout this plan) is replaced
+> in sub-project 3 — see
+> `docs/superpowers/plans/2026-04-17-affiliate-2e-fraud-detection.md`.
+> Inline task text is preserved as historical record.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > **v2 rewrite:** all column names, signatures, mappers, and migration content verified against `@tn-figueiredo/affiliate@0.4.0` package source (extracted via `npm pack`). v1 had 18 critical inaccuracies — see spec `## v2 rewrite changes`.
