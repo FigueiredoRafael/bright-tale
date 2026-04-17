@@ -279,6 +279,7 @@ export async function assetsRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       // Save all generated images and create Asset records
+      const { convertToWebP } = await import('../lib/image/webp.js');
       const assets = await Promise.all(
         results.map(async (result: { base64: string; mimeType: string }) => {
           const { localPath, publicUrl } = await saveImageLocally(
@@ -286,6 +287,19 @@ export async function assetsRoutes(fastify: FastifyInstance): Promise<void> {
             result.mimeType,
             validated.project_id,
           );
+
+          // Convert to WebP
+          const buffer = Buffer.from(result.base64, 'base64');
+          const webpBuffer = await convertToWebP(buffer, 80);
+          let webpPublicUrl: string | null = null;
+          if (webpBuffer) {
+            const webpResult = await saveImageLocally(
+              webpBuffer.toString('base64'),
+              'image/webp',
+              validated.project_id,
+            );
+            webpPublicUrl = webpResult.publicUrl;
+          }
 
           const { data, error } = await sb
             .from('assets')
@@ -299,6 +313,7 @@ export async function assetsRoutes(fastify: FastifyInstance): Promise<void> {
               role: validated.role ?? null,
               content_type: validated.content_type ?? null,
               content_id: validated.content_id ?? null,
+              webp_url: webpPublicUrl,
             })
             .select()
             .single();
@@ -512,6 +527,7 @@ export async function assetsRoutes(fastify: FastifyInstance): Promise<void> {
           content_type: 'blog',
           content_id: body.draftId,
           alt_text: body.altText ?? null,
+          webp_url: webpPublicUrl,
         })
         .select()
         .single();

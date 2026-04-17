@@ -218,6 +218,7 @@ export type Database = {
           source_url: string | null
           updated_at: string
           user_id: string | null
+          webp_url: string | null
           wordpress_id: number | null
           wordpress_url: string | null
         }
@@ -237,6 +238,7 @@ export type Database = {
           source_url?: string | null
           updated_at?: string
           user_id?: string | null
+          webp_url?: string | null
           wordpress_id?: number | null
           wordpress_url?: string | null
         }
@@ -256,6 +258,7 @@ export type Database = {
           source_url?: string | null
           updated_at?: string
           user_id?: string | null
+          webp_url?: string | null
           wordpress_id?: number | null
           wordpress_url?: string | null
         }

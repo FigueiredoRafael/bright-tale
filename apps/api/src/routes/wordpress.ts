@@ -698,7 +698,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         );
         if (featuredAsset) {
           featuredMediaId = await uploadImageToWordPress(
-            featuredAsset.source_url ?? '',
+            featuredAsset.webp_url ?? featuredAsset.source_url ?? '',
             featuredAsset.alt_text || blogContent.title,
             site_url,
             auth,
@@ -726,7 +726,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
           let wpMediaId = asset.wordpress_id;
           if (!wpMediaId) {
             wpMediaId = await uploadImageToWordPress(
-              asset.source_url ?? '',
+              asset.webp_url ?? asset.source_url ?? '',
               asset.alt_text || '',
               site_url,
               auth,
@@ -908,7 +908,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
             const asset = rawAsset as Record<string, unknown>;
             if (asset.id !== featuredAssetId) continue;
 
-            const imageUrl = (asset.source_url as string);
+            const imageUrl = (asset.webp_url as string) || (asset.source_url as string);
             request.log.info({ imageUrl, assetId: asset.id, role: asset.role }, 'publish-draft/stream: uploading featured');
             if (!imageUrl) continue;
 
@@ -960,7 +960,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
               total,
             );
 
-            const imageUrl = (asset.source_url as string);
+            const imageUrl = (asset.webp_url as string) || (asset.source_url as string);
             if (!imageUrl) continue;
 
             const wpMediaId = await uploadImageToWordPress(
@@ -1013,7 +1013,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
               total,
             );
 
-            const imageUrl = (asset.source_url as string);
+            const imageUrl = (asset.webp_url as string) || (asset.source_url as string);
             if (!imageUrl) continue;
 
             const wpMediaId = await uploadImageToWordPress(
@@ -1380,7 +1380,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
           // Only process assets in the imageMap
           if (!Object.values(body.imageMap).includes(assetId)) continue;
 
-          const imageUrl = (asset.source_url as string);
+          const imageUrl = (asset.webp_url as string) || (asset.source_url as string);
           if (!imageUrl) continue;
 
           const wpMediaId = await uploadImageToWordPress(
@@ -1419,7 +1419,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
 
         for (const rawAsset of assets ?? []) {
           const asset = rawAsset as Record<string, unknown>;
-          const imageUrl = (asset.source_url as string);
+          const imageUrl = (asset.webp_url as string) || (asset.source_url as string);
           if (!imageUrl) continue;
 
           const wpMediaId = await uploadImageToWordPress(
