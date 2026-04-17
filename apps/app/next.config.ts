@@ -52,16 +52,26 @@ const nextConfig: NextConfig = {
     ],
   },
   async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${API_URL}/:path*`,
-      },
-      {
-        source: "/generated-images/:path*",
-        destination: `${API_URL}/generated-images/:path*`,
-      },
-    ];
+    return {
+      beforeFiles: [
+        // Affiliate 2B — shim package-emitted URLs onto real app routes.
+        // beforeFiles runs BEFORE next-intl middleware; preserves ?ref automatically.
+        { source: "/signup", destination: "/auth/signup" },
+        { source: "/parceiros/login", destination: "/auth/login" },
+        { source: "/parceiros/dashboard", destination: "/settings/affiliate" },
+      ],
+      afterFiles: [
+        {
+          source: "/api/:path*",
+          destination: `${API_URL}/:path*`,
+        },
+        {
+          source: "/generated-images/:path*",
+          destination: `${API_URL}/generated-images/:path*`,
+        },
+      ],
+      fallback: [],
+    };
   },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

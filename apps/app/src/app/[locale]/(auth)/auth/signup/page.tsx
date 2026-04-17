@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Link } from '@/i18n/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,7 @@ export default function SignupPage() {
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const ref = useSearchParams().get('ref');
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
@@ -53,6 +55,10 @@ export default function SignupPage() {
       toast.error(error.message);
       setLoading(false);
       return;
+    }
+
+    if (ref && typeof window !== 'undefined') {
+      window.localStorage.setItem('bt.ref', ref);
     }
 
     setEmailSent(true);
