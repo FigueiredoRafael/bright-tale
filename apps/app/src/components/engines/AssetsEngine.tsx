@@ -15,6 +15,7 @@ import {
 import { toast } from 'sonner';
 import { AssetGallery } from '@/components/preview/AssetGallery';
 import { ManualModePanel } from '@/components/ai/ManualModePanel';
+import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
 import type { BaseEngineProps, AssetsResult } from './types';
@@ -169,6 +170,7 @@ export function AssetsEngine({
   const [generating, setGenerating] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const inFlightRef = useRef(false);
+  const tracker = usePipelineTracker('assets', context);
 
   // maxPhaseReached starts at 'done' if existing assets were found on mount
   // (handled in fetchAssets below)
@@ -270,12 +272,14 @@ export function AssetsEngine({
   async function handleGenerateAll() {
     await withGuard(async () => {
       try {
+        tracker.trackStarted({ draftId, mode: 'generate' });
         setGenerating(true);
         const res = await fetch(`/api/content-drafts/${draftId}/generate-assets`, {
           method: 'POST',
         });
         const json = await res.json();
         if (json?.error) {
+          tracker.trackFailed(json.error.message ?? 'Failed to generate assets');
           toast.error(json.error.message ?? 'Failed to generate assets');
           return;
         }
@@ -285,21 +289,31 @@ export function AssetsEngine({
         const items = Array.isArray(assetsJson.data)
           ? assetsJson.data
           : (assetsJson.data?.assets ?? assetsJson.data?.items ?? []);
-        if (items.length > 0) {
-          setExistingAssets(
-            (items as Array<Record<string, unknown>>).map((a) => ({
+        const mapped = items.length > 0
+          ? (items as Array<Record<string, unknown>>).map((a) => ({
               id: a.id as string,
               url: (a.source_url as string) ?? (a.url as string) ?? '',
               webpUrl: (a.webp_url as string) ?? null,
               role: (a.role as string) ?? null,
               altText: (a.alt_text as string) ?? null,
               sourceType: (a.source as string) ?? 'ai_generated',
-            })),
-          );
+            }))
+          : [];
+        if (mapped.length > 0) {
+          setExistingAssets(mapped);
         }
         goToPhase('done');
         toast.success('Assets generated');
-      } catch {
+        const assetIds = mapped.map((a) => a.id);
+        const featuredUrl = mapped.find((a) => a.role === 'featured_image')?.url;
+        tracker.trackCompleted({
+          draftId,
+          assetCount: mapped.length,
+          assetIds,
+          featuredImageUrl: featuredUrl,
+        });
+      } catch (e) {
+        tracker.trackFailed(e instanceof Error ? e.message : 'Failed to generate assets');
         toast.error('Failed to generate assets');
       } finally {
         setGenerating(false);
@@ -338,6 +352,7 @@ export function AssetsEngine({
     inFlightRef.current = true;
     setFinishing(true);
     try {
+      tracker.trackStarted({ draftId, mode: 'upload' });
       const saved: UploadedAsset[] = [];
       for (const pending of pendingUploads) {
         const card = slotCards.find((c) => c.slot === pending.slot);
@@ -348,7 +363,9 @@ export function AssetsEngine({
           await fetch(`/api/assets/${existing.id}`, { method: 'DELETE' }).catch(() => null);
         }
         let body: Record<string, unknown>;
+        let uploadSource: 'file' | 'url';
         if (pending.file) {
+          uploadSource = 'file';
           const base64 = await fileToBase64(pending.file);
           body = {
             base64,
@@ -360,6 +377,7 @@ export function AssetsEngine({
             styleRationale: card?.styleRationale ?? '',
           };
         } else {
+          uploadSource = 'url';
           body = {
             url: pending.sourceUrl,
             draftId,
@@ -381,13 +399,20 @@ export function AssetsEngine({
         }
         // Revoke blob URL after successful save
         if (pending.preview?.startsWith('blob:')) URL.revokeObjectURL(pending.preview);
-        saved.push({
+        const uploadedAsset = {
           id: json.data.id,
           slot: pending.slot,
           url: json.data.url ?? json.data.source_url,
           webpUrl: json.data.webp_url ?? null,
           role: slotToRole(pending.slot),
           altText: card?.sectionTitle ?? '',
+        };
+        saved.push(uploadedAsset);
+        tracker.trackAction('uploaded', {
+          draftId,
+          role,
+          mimeType: pending.file?.type ?? 'image/unknown',
+          source: uploadSource,
         });
       }
       setUploadedAssets((prev) => {
@@ -415,7 +440,17 @@ export function AssetsEngine({
       }
       goToPhase('done');
       toast.success('Images saved');
-    } catch {
+      const allAssets = [...existingAssets, ...saved];
+      const assetIds = allAssets.map((a) => a.id);
+      const featuredUrl = allAssets.find((a) => a.role === 'featured_image')?.url;
+      tracker.trackCompleted({
+        draftId,
+        assetCount: allAssets.length,
+        assetIds,
+        featuredImageUrl: featuredUrl,
+      });
+    } catch (e) {
+      tracker.trackFailed(e instanceof Error ? e.message : 'Failed to save images');
       toast.error('Failed to save images');
     } finally {
       setFinishing(false);
@@ -449,6 +484,7 @@ export function AssetsEngine({
                 <div className="p-3 rounded-lg border hover:border-primary/50 transition-colors">
                   <div className="flex items-start gap-3">
                     {url && (
+                      /* eslint-disable-next-line @next/next/no-img-element */
                       <img src={url} alt={altText ?? ''} className="h-16 w-16 rounded object-cover" />
                     )}
                     <div className="flex-1 min-w-0">
@@ -792,6 +828,7 @@ export function AssetsEngine({
                 <div className="grid grid-cols-2 gap-4">
                   {uploadedAssets.map((asset) => (
                     <div key={asset.id} className="space-y-2">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={asset.url}
                         alt={asset.altText}
@@ -922,6 +959,7 @@ function SlotUploadCard({ card, visualDirection, pendingPreview, onFileUpload, o
         {pendingPreview ? (
           /* Image preview (staged, not yet saved) */
           <div className="space-y-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={pendingPreview}
               alt={card.sectionTitle}

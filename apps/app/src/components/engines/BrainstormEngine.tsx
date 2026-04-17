@@ -25,6 +25,7 @@ import {
 } from '@/components/ai/ModelPicker';
 import { ManualModePanel } from '@/components/ai/ManualModePanel';
 import { useManualMode } from '@/hooks/use-manual-mode';
+import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
 import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
@@ -101,6 +102,8 @@ export function BrainstormEngine({
   // Manual mode
   const [generationMode, setGenerationMode] = useState<'ai' | 'manual'>('ai');
   const { enabled: manualEnabled } = useManualMode();
+
+  const tracker = usePipelineTracker('brainstorm', context);
 
   // Regenerate state
   const [regenerating, setRegenerating] = useState(false);
@@ -348,6 +351,15 @@ export function BrainstormEngine({
         body.referenceUrl = referenceUrl.trim();
       }
 
+      tracker.trackStarted({
+        topic,
+        mode,
+        provider,
+        model,
+        fineTuning: mode === 'fine_tuned' ? { niche, tone, audience, goal, constraints } : undefined,
+        referenceUrl: mode === 'reference_guided' ? referenceUrl : undefined,
+      });
+
       const res = await fetch('/api/brainstorm/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -420,6 +432,11 @@ export function BrainstormEngine({
       });
 
       setIdeas(mapped);
+      tracker.trackCompleted({
+        sessionId: sessionId || undefined,
+        ideaCount: mapped.length,
+        ideas: mapped,
+      });
       if (mapped.length === 0) {
         toast.warning('No ideas recognized in output', {
           description: "AI responded but format didn't match. Try a different model or re-run.",
@@ -437,6 +454,7 @@ export function BrainstormEngine({
   function handleGenerationFailed(message: string) {
     setActiveGenerationId(null);
     setRunning(false);
+    tracker.trackFailed(message);
     const friendly = friendlyAiError(message);
     toast.error(friendly.title, { description: friendly.hint });
   }
@@ -538,6 +556,10 @@ export function BrainstormEngine({
 
     if (saved.length > 0) {
       setIdeas(saved);
+      tracker.trackAction('imported', {
+        ideaCount: saved.length,
+        source: 'manual',
+      });
       toast.success(`${saved.length} of ${rawIdeas.length} ideas saved`);
     }
     if (errors.length > 0) {
@@ -579,6 +601,10 @@ export function BrainstormEngine({
           if (reloadJson.data) {
             setIdeas(reloadJson.data.ideas ?? []);
             setSelectedIdeaId(null);
+            tracker.trackAction('regenerated', {
+              sessionId: newId,
+              previousIdeaCount: ideas.length,
+            });
             toast.success('Regenerated successfully');
           }
         } catch {
@@ -605,6 +631,13 @@ export function BrainstormEngine({
       ideaCoreTension: selectedIdea.core_tension || '',
       brainstormSessionId: sessionId || undefined,
     };
+
+    tracker.trackAction('idea.selected', {
+      ideaId: result.ideaId,
+      ideaTitle: result.ideaTitle,
+      verdict: result.ideaVerdict,
+      coreTension: result.ideaCoreTension,
+    });
 
     onComplete(result);
   }
@@ -654,6 +687,10 @@ export function BrainstormEngine({
             );
           }}
           onSelect={(item) => {
+            tracker.trackAction('imported', {
+              ideaCount: 1,
+              source: 'library',
+            });
             onComplete({
               ideaId: (item.id ?? item.idea_id) as string,
               ideaTitle: item.title as string,

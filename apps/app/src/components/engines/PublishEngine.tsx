@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
+import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { PublishPanel } from '@/components/preview/PublishPanel';
 import { PublishProgress } from '@/components/publish/PublishProgress';
 import { ContextBanner } from './ContextBanner';
@@ -34,9 +35,14 @@ export function PublishEngine({
 }: PublishEngineProps) {
   const [publishing, setPublishing] = useState(false);
   const [publishBody, setPublishBody] = useState<Record<string, unknown> | null>(null);
+  const modeRef = useRef<string | null>(null);
+  const tracker = usePipelineTracker('publish', context);
 
   function handlePublish(params: { mode: string; configId: string; scheduledDate?: string }) {
     if (publishing) return;
+
+    modeRef.current = params.mode;
+    tracker.trackStarted({ draftId, mode: params.mode, configId: params.configId });
 
     const body: Record<string, unknown> = {
       draftId,
@@ -63,14 +69,21 @@ export function PublishEngine({
       wordpressPostId: result.wordpressPostId,
       publishedUrl: result.publishedUrl,
     };
+    tracker.trackCompleted({
+      draftId,
+      wordpressPostId: result.wordpressPostId,
+      publishedUrl: result.publishedUrl,
+      mode: modeRef.current ?? 'unknown',
+    });
     onComplete(publishResult);
-  }, [onComplete]);
+  }, [draftId, tracker, onComplete]);
 
   const handleStreamError = useCallback((message: string) => {
     toast.error(message);
+    tracker.trackFailed(message);
     setPublishing(false);
     setPublishBody(null);
-  }, []);
+  }, [tracker]);
 
   return (
     <div className="space-y-6">

@@ -33,6 +33,7 @@ import {
 } from '@/components/ai/ModelPicker';
 import { ManualModePanel } from '@/components/ai/ManualModePanel';
 import { useManualMode } from '@/hooks/use-manual-mode';
+import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
 import { friendlyAiError } from '@/lib/ai/error-message';
@@ -119,6 +120,8 @@ export function ResearchEngine({
 
   // Manual mode
   const { enabled: manualEnabled } = useManualMode();
+
+  const tracker = usePipelineTracker('research', context);
 
   // When initialSession is provided, we're in "session detail" mode
   const isSessionDetail = !!initialSession;
@@ -382,6 +385,7 @@ export function ResearchEngine({
 
     setCards(allCards);
     setApproved(new Set(allCards.map((_, i) => i)));
+    tracker.trackAction('imported', { cardCount: allCards.length, source: 'manual' });
     toast.success(
       `${allCards.length} research cards imported (${sources.length} sources, ${stats.length} stats, ${quotes.length} quotes, ${counters.length} counterarguments)`
     );
@@ -396,6 +400,8 @@ export function ResearchEngine({
     setRunning(true);
     setCards([]);
     setApproved(new Set());
+
+    tracker.trackStarted({ topic: topic.trim(), level, focusTags, provider, model });
 
     try {
       const res = await fetch('/api/research-sessions', {
@@ -426,6 +432,7 @@ export function ResearchEngine({
 
       if (json?.error) {
         const friendly = friendlyAiError(json.error.message ?? '');
+        tracker.trackFailed(json.error.message ?? '');
         toast.error(friendly.title, { description: friendly.hint });
         return;
       }
@@ -434,6 +441,8 @@ export function ResearchEngine({
       setCards(generatedCards);
       setSessionId(json?.data?.sessionId || null);
       setApproved(new Set(generatedCards.map((_, i) => i)));
+
+      tracker.trackCompleted({ sessionId: json?.data?.sessionId || '', cardCount: generatedCards.length, approvedCount: generatedCards.length, level });
 
       if (generatedCards.length === 0) {
         toast.warning('No research cards recognized in output', {
@@ -446,6 +455,7 @@ export function ResearchEngine({
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const friendly = friendlyAiError(message);
+      tracker.trackFailed(message);
       toast.error(friendly.title, { description: friendly.hint });
     } finally {
       setRunning(false);
@@ -484,6 +494,7 @@ export function ResearchEngine({
             if (sess.refined_angle_json && typeof sess.refined_angle_json === 'object') {
               setRefinedAngle(sess.refined_angle_json as Record<string, unknown>);
             }
+            tracker.trackAction('regenerated', { sessionId: newId, previousCardCount: cards.length });
             toast.success('Regenerated successfully');
           }
         } catch {
@@ -499,6 +510,8 @@ export function ResearchEngine({
 
   async function handleApprove() {
     const approvedCards = cards.filter((_, i) => approved.has(i));
+
+    tracker.trackAction('cards.approved', { sessionId: sessionId || '', approvedCount: approved.size, totalCount: cards.length, approvedIndexes: Array.from(approved) });
 
     if (sessionId) {
       // Save approved cards to session

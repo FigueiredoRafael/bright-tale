@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, Sparkles, Copy, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAnalytics } from '@/hooks/use-analytics';
 
 import { BrainstormEngine } from '@/components/engines/BrainstormEngine';
 import { ResearchEngine } from '@/components/engines/ResearchEngine';
@@ -62,6 +63,7 @@ export function PipelineOrchestrator({
   const [isRunning, setIsRunning] = useState(false);
   const [draftData, setDraftData] = useState<Record<string, unknown> | null>(null);
   const [researchData, setResearchData] = useState<Record<string, unknown> | null>(null);
+  const { track } = useAnalytics();
 
   // Build accumulated context from stageResults
   function buildContext(): PipelineContext {
@@ -166,6 +168,7 @@ export function PipelineOrchestrator({
       )) {
         return;
       }
+      track('pipeline.stage.redone', { projectId, channelId, stage, discardedStages: downstreamWithResults });
     }
 
     // Auto-update project title from brainstorm idea
@@ -311,6 +314,13 @@ export function PipelineOrchestrator({
   // The engine will render with existing data; user can regenerate.
   // Downstream data is only cleared when handleStageComplete fires.
   async function handleNavigate(targetStage: PipelineStage) {
+    track('pipeline.stage.navigated', {
+      projectId,
+      channelId,
+      from: pipelineState.currentStage,
+      to: targetStage,
+      hasDownstreamResults: PIPELINE_STAGES.slice(PIPELINE_STAGES.indexOf(targetStage) + 1).some((s) => !!pipelineState.stageResults[s]),
+    });
     const newState: PipelineState = {
       ...pipelineState,
       currentStage: targetStage,
@@ -334,6 +344,7 @@ export function PipelineOrchestrator({
 
   // Handle mode toggle
   async function handleToggleMode(mode: 'step-by-step' | 'auto') {
+    track('pipeline.mode.changed', { projectId, channelId, from: pipelineState.mode, to: mode });
     const newState: PipelineState = {
       ...pipelineState,
       mode,

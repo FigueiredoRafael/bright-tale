@@ -15,6 +15,7 @@ import { AnthropicProvider } from './providers/anthropic.js';
 import { GeminiProvider } from './providers/gemini.js';
 import { OllamaProvider } from './providers/ollama.js';
 import { logEngineCall } from './engine-log.js';
+import { logAiUsage } from '../axiom.js';
 
 interface ModelConfig {
   provider: string;
@@ -131,6 +132,7 @@ interface ChainOptions {
     projectId?: string | null;
     channelId?: string | null;
     sessionId?: string | null;
+    draftId?: string | null;
     sessionType: string;
   };
 }
@@ -272,6 +274,7 @@ export async function generateWithFallback(
       try {
         const result = await route.provider.generateContent(params);
         const usage = route.provider.lastUsage;
+        const durationMs = Date.now() - startTime;
         if (options.logContext) {
           logEngineCall({
             ...options.logContext,
@@ -284,11 +287,31 @@ export async function generateWithFallback(
               userMessage: params.userMessage,
             },
             output: typeof result === 'object' && result !== null ? result as Record<string, unknown> : { content: result },
-            durationMs: Date.now() - startTime,
+            durationMs,
             inputTokens: usage?.inputTokens,
             outputTokens: usage?.outputTokens,
           });
         }
+        logAiUsage({
+          userId: options.logContext?.userId ?? null,
+          orgId: options.logContext?.orgId ?? null,
+          action: stage,
+          provider: route.providerName,
+          model: route.model,
+          inputTokens: usage?.inputTokens ?? 0,
+          outputTokens: usage?.outputTokens ?? 0,
+          totalTokens: (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0),
+          durationMs,
+          status: 'success',
+          error: null,
+          metadata: {
+            sessionId: options.logContext?.sessionId,
+            draftId: options.logContext?.draftId,
+            projectId: options.logContext?.projectId,
+            prompt: params.userMessage,
+            response: typeof result === 'string' ? result : JSON.stringify(result),
+          },
+        });
         return {
           result,
           providerName: route.providerName,
@@ -332,5 +355,25 @@ export async function generateWithFallback(
       error: String((lastErr as { message?: string })?.message ?? lastErr),
     });
   }
+  const errMsg = String((lastErr as { message?: string })?.message ?? lastErr);
+  logAiUsage({
+    userId: options.logContext?.userId ?? null,
+    orgId: options.logContext?.orgId ?? null,
+    action: stage,
+    provider: chain[0]?.providerName ?? 'unknown',
+    model: chain[0]?.model ?? 'unknown',
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    durationMs: Date.now() - startTime,
+    status: 'error',
+    error: errMsg,
+    metadata: {
+      sessionId: options.logContext?.sessionId,
+      draftId: options.logContext?.draftId,
+      projectId: options.logContext?.projectId,
+      prompt: params.userMessage,
+    },
+  });
   throw lastErr;
 }

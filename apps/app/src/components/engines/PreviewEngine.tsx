@@ -18,6 +18,7 @@ import {
   Loader2, ArrowRight, Eye, X, Plus, ImageIcon, AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { markdownToHtml } from '@/lib/utils';
 import type { PipelineContext, PipelineStage, PreviewResult, StageResult } from './types';
@@ -214,6 +215,7 @@ export function PreviewEngine({
   const [draft, setDraft] = useState<DraftData | null>(null);
   const [assets, setAssets] = useState<ContentAsset[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const tracker = usePipelineTracker('preview', context);
 
   // Draft data
   const [markdown, setMarkdown] = useState('');
@@ -383,6 +385,14 @@ export function PreviewEngine({
       composedHtml,
     };
 
+    tracker.trackCompleted({
+      draftId,
+      imageMap,
+      categories,
+      tags,
+      seoOverrides: result.seoOverrides,
+    });
+
     onComplete(result);
   };
 
@@ -473,6 +483,7 @@ export function PreviewEngine({
                     <div className="flex gap-2 items-start">
                       <div className="h-10 w-14 rounded bg-muted shrink-0 overflow-hidden">
                         {assignedAsset?.source_url ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
                           <img
                             src={assignedAsset.webp_url ?? assignedAsset.source_url}
                             alt=""
