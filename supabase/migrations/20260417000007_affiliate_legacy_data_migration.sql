@@ -36,40 +36,48 @@ WHERE NOT EXISTS (
 
 -- 2. Copy affiliate_referrals_legacy → affiliate_referrals
 --    Resolve referred_org_id → user via org_memberships earliest member.
---    Skip rows where resolution is NULL (E7) or the user already has a referral (E3/R10).
+--    DISTINCT ON deduplicates within the source batch first (handles E3 — same user referred
+--    by two programs in source data). NOT EXISTS then skips users already in destination.
+WITH resolved AS (
+    SELECT DISTINCT ON (resolved_user_id)
+        a.id                                                             AS affiliate_id,
+        a.code                                                           AS affiliate_code,
+        (SELECT user_id FROM public.org_memberships
+          WHERE org_id = arl.referred_org_id
+          ORDER BY created_at ASC LIMIT 1)                              AS resolved_user_id,
+        CASE arl.status WHEN 'refunded' THEN 'expired' ELSE 'active' END AS attribution_status,
+        arl.first_touch_at,
+        arl.conversion_at,
+        arl.created_at
+    FROM public.affiliate_referrals_legacy arl
+    JOIN public.affiliate_programs ap ON ap.id = arl.affiliate_program_id
+    JOIN public.affiliates a ON a.user_id = ap.user_id AND a.code = ap.code
+    WHERE (SELECT user_id FROM public.org_memberships
+            WHERE org_id = arl.referred_org_id
+            ORDER BY created_at ASC LIMIT 1) IS NOT NULL
+    ORDER BY resolved_user_id, arl.first_touch_at ASC, arl.id ASC
+)
 INSERT INTO public.affiliate_referrals (
     affiliate_id, affiliate_code, user_id, click_id, attribution_status,
     signup_date, window_end, converted_at, platform, signup_ip_hash, created_at
 )
 SELECT
-    a.id,
-    a.code,
-    (SELECT user_id FROM public.org_memberships
-      WHERE org_id = arl.referred_org_id
-      ORDER BY created_at ASC LIMIT 1),
+    r.affiliate_id,
+    r.affiliate_code,
+    r.resolved_user_id,
     NULL,
-    CASE arl.status
-      WHEN 'refunded' THEN 'expired'
-      ELSE 'active'
-    END,
-    arl.first_touch_at,
-    arl.first_touch_at + INTERVAL '12 months',
-    arl.conversion_at,
+    r.attribution_status,
+    r.first_touch_at,
+    r.first_touch_at + INTERVAL '12 months',
+    r.conversion_at,
     NULL,
     NULL,
-    arl.created_at
-FROM public.affiliate_referrals_legacy arl
-JOIN public.affiliate_programs ap ON ap.id = arl.affiliate_program_id
-JOIN public.affiliates a ON a.user_id = ap.user_id AND a.code = ap.code
-WHERE (SELECT user_id FROM public.org_memberships
-        WHERE org_id = arl.referred_org_id
-        ORDER BY created_at ASC LIMIT 1) IS NOT NULL
-  AND NOT EXISTS (
-      SELECT 1 FROM public.affiliate_referrals ar
-      WHERE ar.user_id = (SELECT user_id FROM public.org_memberships
-                            WHERE org_id = arl.referred_org_id
-                            ORDER BY created_at ASC LIMIT 1)
-  );
+    r.created_at
+FROM resolved r
+WHERE NOT EXISTS (
+    SELECT 1 FROM public.affiliate_referrals ar
+    WHERE ar.user_id = r.resolved_user_id
+);
 
 -- 3. Derive affiliate_commissions from approved/paid/refunded legacy referrals
 INSERT INTO public.affiliate_commissions (

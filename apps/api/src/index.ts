@@ -53,7 +53,6 @@ import { bulkRoutes } from "./routes/bulk.js";
 import { voiceRoutes } from "./routes/voice.js";
 import { publishingDestinationsRoutes } from "./routes/publishing-destinations.js";
 import { notificationsRoutes } from "./routes/notifications.js";
-import { affiliateLegacyRoutes } from "./routes/affiliate-legacy.js";
 import rateLimit from "@fastify/rate-limit";
 // Side-effect import: activates `rawBody?: boolean` on FastifyContextConfig
 // so routes/billing.ts can use `{ config: { rawBody: true } }` without a
@@ -195,7 +194,6 @@ server.register(publishingDestinationsRoutes, {
   prefix: "/publishing-destinations",
 });
 server.register(notificationsRoutes, { prefix: "/channels" });
-server.register(affiliateLegacyRoutes, { prefix: "/affiliate-legacy" });
 
 // Affiliate platform — @tn-figueiredo/affiliate@0.4.0 (Phase 2A.3 wires /ref + /internal)
 const affiliateContainer = buildAffiliateContainer();
