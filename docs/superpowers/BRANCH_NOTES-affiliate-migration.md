@@ -71,7 +71,7 @@ The parallel execution produced several mislabeled or phantom commits. This tabl
    - Admin UI (SP2) → fraud service (SP3) end-to-end flow: not exercised. Action wrappers hit BFF routes that proxy to API. The entire flow is unit-tested at each layer, but no clicks-through-the-UI rehearsal.
    - Billing webhook (SP4) → commission hook (2A container): unit-tested with mocked `stripe` events. No real Stripe Test Mode replay.
    - End-user UI (SP1) → /api/affiliate/* routes: mocked at the fetch layer in tests; no running-backend rehearsal.
-   - **Reviewer action:** run `npm run dev` (all workspaces), seed an affiliate via SQL, exercise the 12-item manual smoke from each sub-project's spec §5.
+   - **Status (2026-04-17):** ✅ Automated smoke rehearsal implemented at `scripts/smoke-affiliate.ts`. Run via `npm run smoke:affiliate` (requires `npm run db:start` + `npm run dev:api`). Design spec: `docs/superpowers/specs/2026-04-17-affiliate-branch-smoke-design.md`. Implementation plan: `docs/superpowers/plans/2026-04-17-affiliate-branch-smoke.md`. 16-probe TDD: 40 unit tests + 2 integration tests (gated on local Supabase). Full E2E run pending — local Supabase was not running at verification time (Task 15, 2026-04-17); `apps/api` was UP on :3001. Reviewer can run full E2E with `npm run db:start && npm run dev:api && npm run smoke:affiliate`. First green run not yet captured; exit code and SHA TBD by reviewer.
 
 2. **MailHog arm64 platform warning.** Docker reports `linux/amd64 image on linux/arm64/v8 host`. MailHog runs fine under emulation; noise only. If this becomes an issue, swap image to `axllent/mailpit` (native multi-arch fork).
 
