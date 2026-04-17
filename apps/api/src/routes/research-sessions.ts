@@ -18,6 +18,14 @@ import { fetchTrends } from '../lib/signals/trends.js';
 import { buildResearchMessage } from '../lib/ai/prompts/research.js';
 import type { ResearchInput } from '../lib/ai/prompts/research.js';
 
+/** Check idea exists in idea_archives before using as FK. Brainstorm drafts may not be promoted yet. */
+async function resolveIdeaId(ideaId: string | null | undefined): Promise<string | null> {
+  if (!ideaId) return null;
+  const sb = createServiceClient();
+  const { data } = await sb.from('idea_archives').select('id').eq('id', ideaId).maybeSingle();
+  return data ? ideaId : null;
+}
+
 function normalizeCards(raw: unknown): Array<Record<string, unknown>> {
   function looksLikeCard(item: unknown): boolean {
     if (!item || typeof item !== 'object') return false;
@@ -146,12 +154,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           user_id: request.userId,
           channel_id: body.channelId ?? null,
           project_id: body.projectId ?? null,
-          // Only set idea_id if it exists in idea_archives (FK constraint).
-          // Brainstorm drafts may not be promoted yet.
-          idea_id: body.ideaId ? await (async () => {
-            const { data } = await sb.from('idea_archives').select('id').eq('id', body.ideaId!).maybeSingle();
-            return data ? body.ideaId : null;
-          })() : null,
+          idea_id: await resolveIdeaId(body.ideaId),
           level: body.level,
           focus_tags: body.focusTags,
           input_json: inputJson,
@@ -339,7 +342,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           user_id: request.userId,
           channel_id: body.channelId ?? null,
           project_id: body.projectId ?? null,
-          idea_id: body.ideaId ?? null,
+          idea_id: await resolveIdeaId(body.ideaId),
           level: body.level,
           focus_tags: [],
           input_json: inputJson,
@@ -616,7 +619,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           user_id: request.userId,
           channel_id: orig.channel_id ?? null,
           project_id: orig.project_id ?? null,
-          idea_id: orig.idea_id ?? null,
+          idea_id: await resolveIdeaId(orig.idea_id as string | null),
           level,
           focus_tags: focusTags,
           input_json: inputJson,
