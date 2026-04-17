@@ -324,11 +324,15 @@ export async function send(_params: SendEmailParams): Promise<SendEmailResult> {
 }
 ```
 
-Note: `provider.ts` doesn't exist yet. The TypeScript import will fail. Proceed anyway — Task 8 will create `provider.ts`. Typecheck will be red until then. This is intentional: tests are written first, types follow.
+Note: `provider.ts` doesn't exist yet. The `import type` on line 1 is type-only and gets erased at runtime (vitest uses esbuild which strips type-only imports). So the test WILL run even though typecheck is broken until Task 8.
 
-- [ ] **Step 4: Skip verify for now**
+- [ ] **Step 4: Run test to verify it passes**
 
-Typecheck will stay red until Task 8 (provider.ts). Move on to Task 6.
+Run from `apps/api/`: `npx vitest run src/lib/email/__tests__/noop.test.ts`
+
+Expected: 3 tests pass (vitest tolerates the missing `./provider.js` because the import is type-only).
+
+**Do NOT run `npm run typecheck` yet** — it will be red until Task 8 creates `provider.ts`. This is the only point in the plan where typecheck is intentionally skipped.
 
 ## Task 6: smtp.ts (TDD)
 
@@ -482,9 +486,11 @@ export async function send(params: SendEmailParams): Promise<SendEmailResult> {
 }
 ```
 
-- [ ] **Step 4: Skip verify for now**
+- [ ] **Step 4: Run test to verify it passes**
 
-Typecheck still red until Task 8. Move on.
+Run from `apps/api/`: `npx vitest run src/lib/email/__tests__/smtp.test.ts`
+
+Expected: 7 tests pass. Same typecheck-red tolerance as Task 5 Step 4 — type-only import from `./provider.js` is erased at runtime.
 
 ## Task 7: Add `send` alias to resend.ts
 
