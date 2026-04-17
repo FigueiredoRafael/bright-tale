@@ -26,6 +26,8 @@ import {
 } from "@brighttale/shared/schemas/pipeline";
 import { inngest } from "../jobs/client.js";
 import { emitJobEvent } from "../jobs/emitter.js";
+import { buildCanonicalCoreMessage, buildProduceMessage, buildReproduceMessage } from "../lib/ai/prompts/production.js";
+import { buildReviewMessage } from "../lib/ai/prompts/review.js";
 
 const FORMAT_COSTS: Record<string, number> = {
   blog: 200,
@@ -422,27 +424,42 @@ export async function contentDraftsRoutes(
           undefined;
 
         // Inject channel context into system prompt
-        const channelContext = await buildChannelContext(
+        const channelContextStr = await buildChannelContext(
           draft.channel_id as string | null | undefined,
         );
-        if (channelContext && systemPrompt) {
-          systemPrompt = `${systemPrompt}\n\n${channelContext}`;
+        if (channelContextStr && systemPrompt) {
+          systemPrompt = `${systemPrompt}\n\n${channelContextStr}`;
         }
+
+        // Load channel data for builder
+        const channelData = draft.channel_id
+          ? await (async () => {
+              const { data } = await (
+                createServiceClient() as any
+              )
+                .from("channels")
+                .select("name, niche, language, tone, presentation_style")
+                .eq("id", draft.channel_id as string)
+                .maybeSingle();
+              return data;
+            })()
+          : null;
+
+        const userMessage = buildCanonicalCoreMessage({
+          type: draft.type as string,
+          title: draft.title as string,
+          ideaId: draft.idea_id as string | undefined,
+          researchCards: approvedCards as unknown[] | undefined,
+          channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+        });
 
         const { result } = await generateWithFallback(
           "production",
           override.modelTier ?? (draft.model_tier as string) ?? "standard",
           {
             agentType: "production",
-            input: {
-              stage: "canonical-core",
-              type: draft.type,
-              title: draft.title,
-              ideaId: draft.idea_id,
-              researchCards: approvedCards,
-            },
-            schema: null,
-            systemPrompt,
+            systemPrompt: systemPrompt ?? '',
+            userMessage,
           },
           {
             provider: override.provider,
@@ -598,27 +615,42 @@ export async function contentDraftsRoutes(
         }
 
         // Inject channel context into system prompt
-        const channelContext = await buildChannelContext(
+        const channelContextStr = await buildChannelContext(
           draft.channel_id as string | null | undefined,
         );
-        if (channelContext && systemPrompt) {
-          systemPrompt = `${systemPrompt}\n\n${channelContext}`;
+        if (channelContextStr && systemPrompt) {
+          systemPrompt = `${systemPrompt}\n\n${channelContextStr}`;
         }
+
+        // Load channel data for builder
+        const channelData = draft.channel_id
+          ? await (async () => {
+              const { data } = await (
+                createServiceClient() as any
+              )
+                .from("channels")
+                .select("name, niche, language, tone, presentation_style")
+                .eq("id", draft.channel_id as string)
+                .maybeSingle();
+              return data;
+            })()
+          : null;
+
+        const userMessage = buildProduceMessage({
+          type: type as string,
+          title: draft.title as string,
+          canonicalCore: draft.canonical_core_json,
+          productionParams: (draft.production_params as Record<string, unknown> | null) ?? undefined,
+          channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+        });
 
         const { result } = await generateWithFallback(
           "production",
           override.modelTier ?? (draft.model_tier as string) ?? "standard",
           {
             agentType: "production",
-            input: {
-              stage: "produce",
-              type,
-              title: draft.title,
-              canonicalCore: draft.canonical_core_json,
-              researchSessionId: draft.research_session_id,
-            },
-            schema: null,
-            systemPrompt,
+            systemPrompt: systemPrompt ?? '',
+            userMessage,
           },
           {
             provider: override.provider,
@@ -724,32 +756,47 @@ export async function contentDraftsRoutes(
         let systemPrompt = (await loadAgentPrompt("review")) ?? undefined;
 
         // Inject channel context into system prompt
-        const channelContext = await buildChannelContext(
+        const channelContextStr = await buildChannelContext(
           draft.channel_id as string | null | undefined,
         );
-        if (channelContext && systemPrompt) {
-          systemPrompt = `${systemPrompt}\n\n${channelContext}`;
+        if (channelContextStr && systemPrompt) {
+          systemPrompt = `${systemPrompt}\n\n${channelContextStr}`;
         }
+
+        // Load channel data for builder
+        const channelData = draft.channel_id
+          ? await (async () => {
+              const { data } = await (
+                createServiceClient() as any
+              )
+                .from("channels")
+                .select("name, niche, language, tone, presentation_style")
+                .eq("id", draft.channel_id as string)
+                .maybeSingle();
+              return data;
+            })()
+          : null;
 
         let result: Record<string, unknown>;
         try {
+          const userMessage = buildReviewMessage({
+            type: draft.type as string,
+            title: draft.title as string,
+            draftJson: draft.draft_json,
+            canonicalCore: draft.canonical_core_json,
+            idea: ideaData,
+            research: researchData,
+            contentTypesRequested: [draft.type as string],
+            channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+          });
+
           const response = await generateWithFallback(
             "review",
             (draft.model_tier as string) ?? "standard",
             {
               agentType: "review",
-              input: {
-                stage: "review",
-                type: draft.type,
-                title: draft.title,
-                draftJson: draft.draft_json,
-                canonicalCore: draft.canonical_core_json,
-                idea: ideaData,
-                research: researchData,
-                contentTypesRequested: [draft.type],
-              },
-              schema: null,
-              systemPrompt,
+              systemPrompt: systemPrompt ?? '',
+              userMessage,
             },
             {
               logContext: {
@@ -1170,29 +1217,42 @@ export async function contentDraftsRoutes(
           | Record<string, unknown>
           | undefined;
 
+        // Load channel data for builder
+        const channelData = draft.channel_id
+          ? await (async () => {
+              const { data } = await (
+                createServiceClient() as any
+              )
+                .from("channels")
+                .select("name, niche, language, tone, presentation_style")
+                .eq("id", draft.channel_id as string)
+                .maybeSingle();
+              return data;
+            })()
+          : null;
+
+        const userMessage = buildReproduceMessage({
+          type: type as string,
+          title: draft.title as string,
+          canonicalCore: draft.canonical_core_json,
+          previousDraft: draft.draft_json,
+          reviewFeedback: {
+            overall_verdict: reviewFeedback.overall_verdict as string | undefined,
+            score: formatReview?.score as number | null | undefined,
+            critical_issues: (formatReview?.critical_issues ?? []) as string[],
+            minor_issues: (formatReview?.minor_issues ?? []) as string[],
+            strengths: (formatReview?.strengths ?? []) as string[],
+          },
+          channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+        });
+
         const { result } = await generateWithFallback(
           "production",
           (draft.model_tier as string) ?? "standard",
           {
             agentType: "production",
-            input: {
-              stage: "reproduce",
-              type,
-              title: draft.title,
-              canonicalCore: draft.canonical_core_json,
-              previousDraft: draft.draft_json,
-              reviewFeedback: {
-                overall_verdict: reviewFeedback.overall_verdict,
-                score: formatReview?.score ?? null,
-                critical_issues: formatReview?.critical_issues ?? [],
-                minor_issues: formatReview?.minor_issues ?? [],
-                strengths: formatReview?.strengths ?? [],
-              },
-              instruction:
-                "Fix the critical and minor issues identified in the review. Keep the strengths. Produce an improved version.",
-            },
-            schema: null,
-            systemPrompt,
+            systemPrompt: systemPrompt ?? '',
+            userMessage,
           },
           {
             logContext: {

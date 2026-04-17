@@ -15,6 +15,8 @@ import { checkCredits, debitCredits } from '../lib/credits.js';
 import { inngest } from '../jobs/client.js';
 import { emitJobEvent } from '../jobs/emitter.js';
 import { fetchTrends } from '../lib/signals/trends.js';
+import { buildResearchMessage } from '../lib/ai/prompts/research.js';
+import type { ResearchInput } from '../lib/ai/prompts/research.js';
 
 function normalizeCards(raw: unknown): Array<Record<string, unknown>> {
   function looksLikeCard(item: unknown): boolean {
@@ -161,6 +163,9 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       try {
         // Build BC_RESEARCH_INPUT with linked idea context
         let selectedIdea: Record<string, unknown> | null = null;
+        let ideaTitle: string | undefined;
+        let coreTension: string | undefined;
+        let targetAudience: string | undefined;
         if (body.ideaId) {
           const { data: idea } = await sb
             .from('idea_archives')
@@ -174,6 +179,9 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
               core_tension: (idea as Record<string, unknown>).core_tension,
               target_audience: (idea as Record<string, unknown>).target_audience,
             };
+            ideaTitle = (idea as Record<string, unknown>).title as string | undefined;
+            coreTension = (idea as Record<string, unknown>).core_tension as string | undefined;
+            targetAudience = (idea as Record<string, unknown>).target_audience as string | undefined;
           }
         }
 
@@ -188,30 +196,26 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           if (ch) channelContext = ch as Record<string, unknown>;
         }
 
-        const researchInput: Record<string, unknown> = {
-          selected_idea: selectedIdea ?? { title: body.topic ?? '' },
-          research_focus: body.focusTags.length > 0 ? body.focusTags : ['general research'],
-          depth: body.level,
-        };
-        if (channelContext) researchInput.channel = channelContext;
-
         const baseSystem = (await loadAgentPrompt('research')) ?? '';
-        const systemPrompt = [
-          baseSystem,
-          `\nLevel directive: ${inputJson.instruction}`,
-          '\nIMPORTANT: Output valid JSON matching the BC_RESEARCH_OUTPUT schema.',
-          'Include: idea_validation, sources, statistics, expert_quotes, counterarguments, knowledge_gaps, research_summary, refined_angle.',
-          channelContext?.language ? `\nWrite ALL content in ${channelContext.language}. Do NOT mix languages.` : '',
-        ].filter(Boolean).join('\n').trim();
+        const systemPrompt = baseSystem;
+
+        const userMessage = buildResearchMessage({
+          ideaId: body.ideaId ?? undefined,
+          ideaTitle: ideaTitle ?? body.topic ?? undefined,
+          coreTension,
+          targetAudience,
+          level: body.level,
+          instruction: inputJson.instruction as string,
+          channel: channelContext as ResearchInput['channel'],
+        });
 
         const { result } = await generateWithFallback(
           'research',
           body.modelTier,
           {
             agentType: 'research',
-            input: researchInput,
-            schema: null,
-            systemPrompt,
+            systemPrompt: systemPrompt ?? '',
+            userMessage,
           },
           {
             provider: body.provider,
@@ -622,13 +626,55 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       const sessionData2 = session!; // Narrowed after null check above
 
       try {
+        // Fetch idea context for the userMessage builder
+        let ideaTitle: string | undefined;
+        let coreTension: string | undefined;
+        let targetAudience: string | undefined;
+        if (orig.idea_id) {
+          const { data: idea } = await sb
+            .from('idea_archives')
+            .select('*')
+            .eq('id', orig.idea_id as string)
+            .maybeSingle();
+          if (idea) {
+            ideaTitle = (idea as Record<string, unknown>).title as string | undefined;
+            coreTension = (idea as Record<string, unknown>).core_tension as string | undefined;
+            targetAudience = (idea as Record<string, unknown>).target_audience as string | undefined;
+          }
+        }
+
+        // Fetch channel context
+        let channelContext: Record<string, unknown> | null = null;
+        if (orig.channel_id) {
+          const { data: ch } = await sb
+            .from('channels')
+            .select('name, language, tone, niche')
+            .eq('id', orig.channel_id as string)
+            .maybeSingle();
+          if (ch) channelContext = ch as Record<string, unknown>;
+        }
+
         const baseSystem = (await loadAgentPrompt('research')) ?? '';
-        const systemPrompt = `${baseSystem}\n\nLevel directive: ${instruction}`.trim();
+        const systemPrompt = baseSystem;
+
+        const userMessage = buildResearchMessage({
+          ideaId: (orig.idea_id as string) ?? undefined,
+          ideaTitle: ideaTitle ?? ((inputJson as Record<string, unknown>).topic as string) ?? undefined,
+          coreTension,
+          targetAudience,
+          level,
+          instruction,
+          channel: channelContext as ResearchInput['channel'],
+        });
 
         const { result } = await generateWithFallback(
           'research',
           (orig.model_tier as string) ?? 'standard',
-          { agentType: 'research', input: inputJson, schema: null, systemPrompt },
+          {
+            agentType: 'research',
+            systemPrompt: systemPrompt ?? '',
+            userMessage,
+          },
           {
             logContext: {
               userId: request.userId!,

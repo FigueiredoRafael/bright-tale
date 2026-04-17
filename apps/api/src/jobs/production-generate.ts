@@ -9,6 +9,8 @@ import { debitCredits } from '../lib/credits.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
+import { buildCanonicalCoreMessage, buildProduceMessage } from '../lib/ai/prompts/production.js';
+import { buildReviewMessage } from '../lib/ai/prompts/review.js';
 
 const FORMAT_COSTS: Record<string, number> = {
   blog: 200,
@@ -97,22 +99,21 @@ export const productionGenerate = inngest.createFunction(
       });
 
       const canonicalCore = await step.run('generate-core', async () => {
+        const userMessage = buildCanonicalCoreMessage({
+          type: type as string,
+          title: draft.title as string,
+          ideaId: draft.idea_id as string | undefined,
+          researchCards: approvedCards as unknown[] | undefined,
+          productionParams,
+          channel: channelContext as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+        });
         const call = await generateWithFallback(
           'production',
           modelTier,
           {
             agentType: 'production',
-            input: {
-              stage: 'canonical-core',
-              type,
-              title: draft.title,
-              ideaId: draft.idea_id,
-              researchCards: approvedCards,
-              production_params: productionParams ?? null,
-              channel: channelContext,
-            },
-            schema: null,
-            systemPrompt: coreSystemPrompt ?? undefined,
+            systemPrompt: coreSystemPrompt ?? '',
+            userMessage,
           },
           {
             provider,
@@ -161,22 +162,20 @@ export const productionGenerate = inngest.createFunction(
       });
 
       const draftJson = await step.run('generate-produce', async () => {
+        const userMessage = buildProduceMessage({
+          type: type as string,
+          title: draft.title as string,
+          canonicalCore,
+          productionParams,
+          channel: channelContext as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+        });
         const call = await generateWithFallback(
           'production',
           modelTier,
           {
             agentType: 'production',
-            input: {
-              stage: 'produce',
-              type,
-              title: draft.title,
-              canonicalCore,
-              researchSessionId: draft.research_session_id,
-              production_params: productionParams ?? null,
-              channel: channelContext,
-            },
-            schema: null,
-            systemPrompt: produceSystemPrompt ?? undefined,
+            systemPrompt: produceSystemPrompt ?? '',
+            userMessage,
           },
           {
             provider,
@@ -228,14 +227,20 @@ export const productionGenerate = inngest.createFunction(
         })) as string | null;
 
         const reviewResult = await step.run('generate-review', async () => {
+          const userMessage = buildReviewMessage({
+            type: type as string,
+            title: draft.title as string,
+            draftJson,
+            canonicalCore,
+            channel: channelContext as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+          });
           const call = await generateWithFallback(
             'review',
             modelTier,
             {
               agentType: 'review',
-              input: { type, title: draft.title, draft: draftJson, canonicalCore },
-              schema: null,
-              systemPrompt: reviewSystemPrompt ?? undefined,
+              systemPrompt: reviewSystemPrompt ?? '',
+              userMessage,
             },
             {
               provider,
