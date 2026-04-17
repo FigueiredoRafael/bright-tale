@@ -143,7 +143,7 @@ Mixing them would either (a) gate admin on self-affiliate (confusing), or (b) le
 
 | Table | Row | Key fields |
 |---|---|---|
-| `auth.users` ×3 | admin, affiliate-owner, referred | Created via `supabase.auth.admin.createUser({ email, password, email_confirm: true })` — the Admin API. Never direct SQL into `auth.users`. |
+| `auth.users` ×3 | admin, affiliate-owner, referred | Created via `supabase.auth.admin.createUser({ email, password, email_confirm: true })` — the Admin API. Password is `crypto.randomUUID()` per user (unreferenced — probes never sign in with password, they use `X-Internal-Key` + `x-user-id`; the value exists only to satisfy gotrue's password-not-empty check). Never direct SQL into `auth.users`. |
 | `user_roles` | admin grant | `user_id = <admin>`, `role = 'admin'` |
 | `organizations` | referred user's org | `name = 'Smoke Org <runId>'`, `slug = 'smoke-<runId>'` (unique constraint), `plan = 'free'` (schema default sufficient). **No owner column** — ownership is expressed via `org_memberships` per the schema in `20260412224635_organizations.sql`. |
 | `org_memberships` | primary membership | `org_id = <smoke org>`, `user_id = <referred>`, `created_at = now()` — the `getOrg` convention (`apps/api/src/routes/billing.ts:19-27`) picks the earliest-created membership as the billing-recipient user |
