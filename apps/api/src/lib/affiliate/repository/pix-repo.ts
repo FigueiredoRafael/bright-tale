@@ -23,9 +23,21 @@ export function createPixRepo(sb: SupabaseClient<Database>) {
     },
 
     async setDefaultPixKey(affiliateId: string, pixKeyId: string): Promise<void> {
-      // Two-step: unset all then set chosen. Tiny race window acceptable for MVP.
+      // Two-step: unset all then set chosen.
+      // SECURITY: step 2 MUST filter by affiliate_id — otherwise a caller could
+      // promote ANY pix_key (belonging to another affiliate) as default.
+      // Race window between the two updates can violate the unique partial
+      // index `idx_affiliate_pix_keys_unique_default` (one default per affiliate
+      // when is_default = TRUE). On constraint violation the 2nd update throws
+      // and the affiliate is left with NO default — caller must retry. For 2A
+      // MVP this is acceptable; 2F should consolidate via PG function with
+      // SELECT ... FOR UPDATE for atomicity.
       await sb.from('affiliate_pix_keys').update({ is_default: false }).eq('affiliate_id', affiliateId)
-      const { error } = await sb.from('affiliate_pix_keys').update({ is_default: true }).eq('id', pixKeyId)
+      const { error } = await sb
+        .from('affiliate_pix_keys')
+        .update({ is_default: true })
+        .eq('id', pixKeyId)
+        .eq('affiliate_id', affiliateId)
       if (error) throw error
     },
 

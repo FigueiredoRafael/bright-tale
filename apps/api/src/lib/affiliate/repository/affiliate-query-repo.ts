@@ -1,7 +1,35 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@brighttale/shared/types/database'
-import type { IAffiliateRepository } from '@tn-figueiredo/affiliate'
+import type { AffiliateAdminSummary, IAffiliateRepository } from '@tn-figueiredo/affiliate'
 import { mapAffiliateFromDb } from './mappers'
+
+type DbAffiliate = Database['public']['Tables']['affiliates']['Row']
+
+// Narrow projection — package's AffiliateAdminSummary intentionally omits
+// taxId, knownIpHashes, notes, channelUrl, etc. Returning the full Affiliate
+// shape would leak those fields to admin endpoints. Keep this in sync with
+// the package's AffiliateAdminSummary interface (dist/fraud-admin-*.d.ts).
+function mapAffiliateAdminSummaryFromDb(r: DbAffiliate): AffiliateAdminSummary {
+  return {
+    id: r.id,
+    code: r.code,
+    name: r.name,
+    email: r.email,
+    status: r.status as AffiliateAdminSummary['status'],
+    tier: r.tier as AffiliateAdminSummary['tier'],
+    commissionRate: Number(r.commission_rate),
+    fixedFeeBrl: r.fixed_fee_brl,
+    totalReferrals: r.total_referrals,
+    totalClicks: r.total_clicks,
+    totalConversions: r.total_conversions,
+    totalEarningsBrl: r.total_earnings_brl,
+    contractAcceptanceVersion: r.contract_acceptance_version,
+    contractAcceptedAt: r.contract_accepted_at,
+    contractEndDate: r.contract_end_date,
+    affiliateType: r.affiliate_type as AffiliateAdminSummary['affiliateType'],
+    createdAt: r.created_at,
+  }
+}
 
 export function createQueryRepo(sb: SupabaseClient<Database>) {
   return {
@@ -73,17 +101,27 @@ export function createQueryRepo(sb: SupabaseClient<Database>) {
     },
 
     async listAll(options?: Parameters<IAffiliateRepository['listAll']>[0]) {
-      let q = sb.from('affiliates').select('*')
+      // Project columns to AffiliateAdminSummary shape — never SELECT *
+      // (avoids leaking taxId, knownIpHashes, notes, channelUrl to admin UI).
+      let q = sb
+        .from('affiliates')
+        .select(
+          'id, code, name, email, status, tier, commission_rate, fixed_fee_brl, ' +
+          'total_referrals, total_clicks, total_conversions, total_earnings_brl, ' +
+          'contract_acceptance_version, contract_accepted_at, contract_end_date, ' +
+          'affiliate_type, created_at',
+        )
       if (options?.status) q = q.eq('status', options.status)
       if (options?.limit) q = q.limit(options.limit)
-      if (options?.offset && options?.limit) {
+      if (options?.offset !== undefined && options?.limit) {
         q = q.range(options.offset, options.offset + options.limit - 1)
       }
       const { data, error } = await q.order('created_at', { ascending: false })
       if (error) throw error
-      // Affiliate (full) is wider than AffiliateAdminSummary; cast through unknown
-      // because TS's structural assignability complains about extra-property width.
-      return (data ?? []).map(mapAffiliateFromDb) as unknown as Awaited<ReturnType<IAffiliateRepository['listAll']>>
+      // The narrow projection produces a typed-string select inference that
+      // doesn't structurally match DbAffiliate. Pick only the columns we need
+      // via unknown; the runtime row IS a subset of DbAffiliate.
+      return ((data ?? []) as unknown as DbAffiliate[]).map(mapAffiliateAdminSummaryFromDb)
     },
   }
 }

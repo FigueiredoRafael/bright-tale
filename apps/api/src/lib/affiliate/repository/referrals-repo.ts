@@ -32,7 +32,9 @@ export function createReferralsRepo(sb: SupabaseClient<Database>) {
     ) {
       let q = sb.from('affiliate_referrals').select('*').eq('affiliate_id', affiliateId)
       if (options?.limit) q = q.limit(options.limit)
-      if (options?.offset && options?.limit) {
+      // `offset && limit` was a bug: offset=0 is falsy so page 0 was silently
+      // dropped. Use explicit undefined check.
+      if (options?.offset !== undefined && options?.limit) {
         q = q.range(options.offset, options.offset + options.limit - 1)
       }
       const { data, error } = await q.order('created_at', { ascending: false })

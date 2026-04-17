@@ -26,21 +26,40 @@ const rowBase = {
 }
 
 describe('affiliate-lifecycle-repo', () => {
-  it('approve sets status=approved + applies tier/rate/contract dates', async () => {
-    const { sb, update } = makeChain({ ...rowBase, status: 'approved', tier: 'nano', commission_rate: 0.15 })
-    await createLifecycleRepo(sb as any).approve('a1', {
-      affiliateId: 'a1', tier: 'nano', commissionRate: 0.15,
+  it('approve sets status=approved + applies tier/rate/contract dates AND maps row to Affiliate', async () => {
+    // Row returned reflects the post-update state — the mapper must transform
+    // snake_case → camelCase for the function's domain return value.
+    const { sb, update } = makeChain({
+      ...rowBase,
+      status: 'approved', tier: 'nano', commission_rate: 0.15,
+      contract_start_date: '2026-04-17', contract_end_date: '2027-04-17',
+      contract_version: 1, fixed_fee_brl: 1000,
+    })
+    const result = await createLifecycleRepo(sb as any).approve('a1', {
+      affiliateId: 'a1', tier: 'nano', commissionRate: 0.15, fixedFeeBrl: 1000,
       contractStartDate: '2026-04-17', contractEndDate: '2027-04-17', contractVersion: 1,
     })
+    // Assert Postgres write payload (snake_case)
     expect(update).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'approved', tier: 'nano', commission_rate: 0.15,
+      status: 'approved', tier: 'nano', commission_rate: 0.15, fixed_fee_brl: 1000,
       contract_start_date: '2026-04-17', contract_end_date: '2027-04-17', contract_version: 1,
     }))
+    // Assert mapper output (camelCase) — guards against silent regressions in
+    // mapAffiliateFromDb (e.g., snake_case leaking through, NaN coercion)
+    expect(result.status).toBe('approved')
+    expect(result.tier).toBe('nano')
+    expect(result.commissionRate).toBe(0.15)
+    expect(result.fixedFeeBrl).toBe(1000)
+    expect(result.contractStartDate).toBe('2026-04-17')
+    expect(result.contractEndDate).toBe('2027-04-17')
+    expect(result.contractVersion).toBe(1)
   })
 
-  it('pause sets status=paused', async () => {
+  it('pause sets status=paused AND returns mapped Affiliate', async () => {
     const { sb, update } = makeChain(rowBase)
-    await createLifecycleRepo(sb as any).pause('a1')
+    const result = await createLifecycleRepo(sb as any).pause('a1')
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ status: 'paused' }))
+    expect(result.status).toBe('paused')
+    expect(result.id).toBe('a1')
   })
 })
