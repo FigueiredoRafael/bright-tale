@@ -1,21 +1,28 @@
 /**
- * Singleton Stripe client. Throws a helpful error if the key is missing so
- * billing endpoints fail early with a clear message instead of silently.
+ * Stripe v22's CJS declaration entry resolves `Stripe` as a namespace (not
+ * class+namespace), so naked `Stripe` type annotations fail on Vercel with
+ * TS2709 despite compiling locally under `moduleResolution: "Bundler"`.
+ * Deriving the instance type via `ReturnType<>` off a factory sidesteps
+ * the type half; the value-level `new Stripe(key)` still carries a
+ * construct signature and works unchanged.
  */
 import Stripe from 'stripe';
 
-export type { Stripe };
-
-let _client: Stripe | null = null;
-
-export function getStripe(): Stripe {
-  if (_client) return _client;
+function createStripeClient() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) {
     throw new Error(
-      'STRIPE_SECRET_KEY not set. Add it to apps/api/.env.local before using billing endpoints.',
+      'STRIPE_SECRET_KEY is not set. Configure it in the deployment environment (or apps/api/.env.local for local dev).',
     );
   }
-  _client = new Stripe(key);
+  return new Stripe(key);
+}
+
+type StripeClient = ReturnType<typeof createStripeClient>;
+
+let _client: StripeClient | null = null;
+
+export function getStripe(): StripeClient {
+  if (!_client) _client = createStripeClient();
   return _client;
 }
