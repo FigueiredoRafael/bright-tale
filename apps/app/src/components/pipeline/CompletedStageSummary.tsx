@@ -24,19 +24,16 @@ interface CompletedStageSummaryProps {
   stage: PipelineStage;
   stageResults: PipelineState['stageResults'];
   currentStage: PipelineStage;
-  viewingStage: PipelineStage | null;
-  onView: (stage: PipelineStage) => void;
-  onRedo: (stage: PipelineStage) => void;
+  onNavigate: (stage: PipelineStage) => void;
 }
 
-export function CompletedStageSummary({ stage, stageResults, currentStage, viewingStage, onView, onRedo }: CompletedStageSummaryProps) {
+export function CompletedStageSummary({ stage, stageResults, currentStage, onNavigate }: CompletedStageSummaryProps) {
   const [expanded, setExpanded] = useState(false);
   const meta = STAGE_META[stage];
   const Icon = meta.icon;
   const result = stageResults[stage];
   if (!result) return null;
 
-  const isViewing = viewingStage === stage;
   const isCurrent = currentStage === stage;
 
   function getSummary(): string {
@@ -75,7 +72,7 @@ export function CompletedStageSummary({ stage, stageResults, currentStage, viewi
   }
 
   return (
-    <Card className={isViewing ? 'border-primary/40 bg-primary/5' : 'border-green-500/30 bg-green-500/5'}>
+    <Card className={isCurrent ? 'border-primary/40 bg-primary/5' : 'border-green-500/30 bg-green-500/5'}>
       <CardContent className="py-3 px-4">
         <div className="flex items-center gap-3">
           <Icon className={`h-4 w-4 ${meta.color} shrink-0`} />
@@ -85,13 +82,10 @@ export function CompletedStageSummary({ stage, stageResults, currentStage, viewi
           <span className="text-sm font-medium">{meta.label}</span>
           <span className="text-xs text-muted-foreground truncate flex-1">{getSummary()}</span>
           {!isCurrent && (
-            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onView(stage)}>
-              <Eye className="h-3 w-3 mr-1" /> View
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onNavigate(stage)}>
+              <RotateCcw className="h-3 w-3 mr-1" /> Go to
             </Button>
           )}
-          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={() => onRedo(stage)}>
-            <RotateCcw className="h-3 w-3 mr-1" /> Redo
-          </Button>
           <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setExpanded(!expanded)}>
             {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </Button>

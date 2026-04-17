@@ -62,7 +62,6 @@ export function PipelineOrchestrator({
   const [isRunning, setIsRunning] = useState(false);
   const [draftData, setDraftData] = useState<Record<string, unknown> | null>(null);
   const [researchData, setResearchData] = useState<Record<string, unknown> | null>(null);
-  const [viewingStage, setViewingStage] = useState<PipelineStage | null>(null);
 
   // Build accumulated context from stageResults
   function buildContext(): PipelineContext {
@@ -154,20 +153,36 @@ export function PipelineOrchestrator({
   async function handleStageComplete(result: StageResult) {
     const stage = pipelineState.currentStage;
     const completedAt = new Date().toISOString();
+    const currentIndex = PIPELINE_STAGES.indexOf(stage);
+
+    // Check for downstream stages that will be invalidated
+    const downstreamWithResults = PIPELINE_STAGES.slice(currentIndex + 1)
+      .filter((s) => pipelineState.stageResults[s]);
+
+    if (downstreamWithResults.length > 0) {
+      const names = downstreamWithResults.join(', ');
+      if (!window.confirm(
+        `Completing "${stage}" will discard results for: ${names}.\n\nContinue?`
+      )) {
+        return;
+      }
+    }
 
     // Auto-update project title from brainstorm idea
     if (stage === 'brainstorm' && 'ideaTitle' in result && result.ideaTitle) {
       void saveProjectTitle(result.ideaTitle);
     }
 
-    // Merge result into stageResults
+    // Merge result into stageResults, clearing downstream
     const newStageResults = {
       ...pipelineState.stageResults,
       [stage]: { ...result, completedAt },
     };
+    for (const downstream of downstreamWithResults) {
+      delete newStageResults[downstream];
+    }
 
     // Find next stage
-    const currentIndex = PIPELINE_STAGES.indexOf(stage);
     const nextStage =
       currentIndex < PIPELINE_STAGES.length - 1
         ? PIPELINE_STAGES[currentIndex + 1]
@@ -292,49 +307,29 @@ export function PipelineOrchestrator({
     }
   }
 
-  // View a completed stage without losing downstream data
-  function handleView(targetStage: PipelineStage) {
-    setViewingStage(targetStage);
-  }
-
-  // Return from viewing to the active stage
-  function handleReturnToCurrent() {
-    setViewingStage(null);
-  }
-
-  // Redo from a stage — destructive, clears downstream results
-  async function handleRedo(targetStage: PipelineStage) {
-    const targetIndex = PIPELINE_STAGES.indexOf(targetStage);
-    const downstreamStages = PIPELINE_STAGES.slice(targetIndex + 1)
-      .filter((s) => pipelineState.stageResults[s]);
-
-    if (downstreamStages.length > 0) {
-      const names = downstreamStages.join(', ');
-      if (!window.confirm(`This will discard results for: ${names}. Continue?`)) {
-        return;
-      }
-    }
-
-    const newStageResults = { ...pipelineState.stageResults };
-    for (let i = targetIndex + 1; i < PIPELINE_STAGES.length; i++) {
-      delete newStageResults[PIPELINE_STAGES[i]];
-    }
-    // Also clear the target stage itself so the engine re-runs
-    delete newStageResults[targetStage];
-
+  // Navigate to a stage without clearing any results.
+  // The engine will render with existing data; user can regenerate.
+  // Downstream data is only cleared when handleStageComplete fires.
+  async function handleNavigate(targetStage: PipelineStage) {
     const newState: PipelineState = {
       ...pipelineState,
       currentStage: targetStage,
-      stageResults: newStageResults,
     };
-
     await savePipelineState(newState);
-    setViewingStage(null);
     setEngineMode(null);
-    setDraftData(null);
-    setResearchData(null);
+  }
 
-    toast.info(`Redoing from ${targetStage}`);
+  // Compute the furthest stage that has results (or current if none)
+  function getFurthestStage(): PipelineStage {
+    let furthest = pipelineState.currentStage;
+    for (let i = PIPELINE_STAGES.length - 1; i >= 0; i--) {
+      if (pipelineState.stageResults[PIPELINE_STAGES[i]]) {
+        const next = PIPELINE_STAGES[i + 1];
+        furthest = next ?? PIPELINE_STAGES[i];
+        break;
+      }
+    }
+    return furthest;
   }
 
   // Handle mode toggle
@@ -473,11 +468,11 @@ export function PipelineOrchestrator({
 
     const handleBack = (targetStage?: PipelineStage) => {
       if (targetStage) {
-        handleView(targetStage);
+        handleNavigate(targetStage);
       } else {
         const currentIndex = PIPELINE_STAGES.indexOf(stage);
         if (currentIndex > 0) {
-          handleView(PIPELINE_STAGES[currentIndex - 1]);
+          handleNavigate(PIPELINE_STAGES[currentIndex - 1]);
         }
       }
     };
@@ -700,14 +695,10 @@ export function PipelineOrchestrator({
         ideaTitle={ctx.ideaTitle}
         brainstormSessionId={ctx.brainstormSessionId}
         researchSessionId={ctx.researchSessionId}
-        viewingStep={viewingStage ? (viewingStage === 'publish' ? 'published' : viewingStage) : null}
         onStepClick={(step) => {
           const stage: PipelineStage = step === 'published' ? 'publish' : step;
-          // Clicking the current active stage clears the viewer
-          if (stage === pipelineState.currentStage) {
-            setViewingStage(null);
-          } else if (pipelineState.stageResults[stage]) {
-            handleView(stage);
+          if (stage !== pipelineState.currentStage && pipelineState.stageResults[stage]) {
+            handleNavigate(stage);
           }
         }}
       />
@@ -720,43 +711,35 @@ export function PipelineOrchestrator({
             stage={stage}
             stageResults={pipelineState.stageResults}
             currentStage={pipelineState.currentStage}
-            viewingStage={viewingStage}
-            onView={handleView}
-            onRedo={handleRedo}
+            onNavigate={handleNavigate}
           />
         ))}
       </div>
 
       <Separator />
 
-      {/* Viewing a completed stage */}
-      {viewingStage && pipelineState.stageResults[viewingStage] && (
-        <Card className="border-primary/30 bg-primary/5">
-          <CardHeader className="py-3 px-4">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm">
-                Viewing: {viewingStage.charAt(0).toUpperCase() + viewingStage.slice(1)} results
-              </CardTitle>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleReturnToCurrent}>
-                  <ArrowLeft className="h-3 w-3 mr-1" /> Return to {pipelineState.currentStage}
-                </Button>
-                <Button variant="destructive" size="sm" className="h-7 text-xs" onClick={() => handleRedo(viewingStage)}>
-                  Redo from here
-                </Button>
-              </div>
+      {/* "Continue to furthest" banner when user navigated back */}
+      {(() => {
+        const furthest = getFurthestStage();
+        const furthestIdx = PIPELINE_STAGES.indexOf(furthest);
+        const currentIdx = PIPELINE_STAGES.indexOf(pipelineState.currentStage);
+        if (furthestIdx > currentIdx) {
+          return (
+            <div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-2">
+              <span className="text-sm text-amber-600 dark:text-amber-400">
+                You have progress up to <strong>{furthest}</strong>. Regenerating here will discard downstream stages.
+              </span>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleNavigate(furthest)}>
+                Continue to {furthest}
+              </Button>
             </div>
-          </CardHeader>
-          <CardContent className="pt-0 pb-4">
-            <pre className="text-xs text-muted-foreground whitespace-pre-wrap bg-muted/50 rounded-lg p-3 max-h-96 overflow-auto">
-              {JSON.stringify(pipelineState.stageResults[viewingStage], null, 2)}
-            </pre>
-          </CardContent>
-        </Card>
-      )}
+          );
+        }
+        return null;
+      })()}
 
-      {/* Active Engine (hidden when viewing a past stage) */}
-      {!viewingStage && renderActiveEngine()}
+      {/* Active Engine */}
+      {renderActiveEngine()}
     </div>
   );
 }

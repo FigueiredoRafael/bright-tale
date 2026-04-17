@@ -34,7 +34,6 @@ interface PipelineStagesProps {
   ideaTitle?: string;
   brainstormSessionId?: string;
   researchSessionId?: string;
-  viewingStep?: PipelineStep | null;
   onStepClick?: (step: PipelineStep) => void;
 }
 
@@ -82,7 +81,6 @@ export function PipelineStages({
   ideaTitle,
   brainstormSessionId,
   researchSessionId,
-  viewingStep,
   onStepClick,
 }: PipelineStagesProps) {
   const router = useRouter();
@@ -112,7 +110,6 @@ export function PipelineStages({
           const Icon = step.icon;
           const isDone = i < currentIndex;
           const isActive = i === currentIndex;
-          const isViewing = viewingStep === step.key;
           const isClickable = isDone || isActive;
 
           function handleClick() {
@@ -137,9 +134,7 @@ export function PipelineStages({
                 disabled={!isClickable}
                 onClick={handleClick}
                 className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
-                  isViewing
-                    ? 'text-primary font-medium bg-primary/10 ring-1 ring-primary/30'
-                    : isDone
+                  isDone
                     ? 'text-green-600 dark:text-green-400 hover:bg-green-500/10 cursor-pointer'
                     : isActive
                     ? 'text-primary font-medium bg-primary/10'
