@@ -18,6 +18,7 @@ export const ADMIN_LAYOUT_CONFIG: AdminLayoutConfig = {
         { label: 'Organizations', path: adminPath('/orgs'), icon: 'Building2' },
         { label: 'Agentes', path: adminPath('/agents'), icon: 'Bot' },
         { label: 'Analytics', path: adminPath('/analytics'), icon: 'BarChart3' },
+        { label: 'Afiliados', path: adminPath('/affiliates'), icon: 'Users2' },
       ],
     },
   ],

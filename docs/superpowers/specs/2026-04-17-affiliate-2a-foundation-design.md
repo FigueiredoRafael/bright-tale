@@ -1,5 +1,17 @@
 # Affiliate Platform — Phase 2A Foundation — Design Spec
 
+> **Errata — 2026-04-17:** The `/signup` drift documented in §2 (and the
+> `KNOWN GAP` comment in `apps/api/src/lib/affiliate/config.ts`) was resolved
+> in Phase 2B via Next.js `beforeFiles` rewrites.
+> See `docs/superpowers/specs/2026-04-17-affiliate-2b-end-user-ui-design.md` §6.3.
+> The §11.2B handoff checklist items are complete. Inline text preserved as historical record.
+
+> **Errata (2026-04-17):** §11.2F handoff item (R-5: "`CalculateAffiliateCommissionUseCase` is wired in the container but NOT invoked — the call-site lives inside the Stripe webhook handler and is 2F's concern") is now resolved by the minimal 2F sub-project. See
+> `docs/superpowers/specs/2026-04-17-affiliate-2f-billing-hook-design.md` and
+> `docs/superpowers/plans/2026-04-17-affiliate-2f-billing-hook.md`. The full
+> migration to `@tn-figueiredo/billing@0.2.1` remains deferred to a later
+> sub-project (working name "2F-mega" or "2G").
+
 > **Errata — 2026-04-17 post-publication:** The `isResendConfigured()` silent-skip
 > pattern and the `@/lib/email/resend` import paths referenced throughout this
 > document (§3, §4, §5, §6, Appendix A.3) were superseded by the email provider
@@ -632,6 +644,13 @@ See §1 Non-goals.
 - Legacy routes still alive — 2B uses new routes; legacy retires in 2D
 
 ### For 2C (admin UI adoption)
+
+> **Update 2026-04-17:** Phase 2C plan and spec are now shipped. See
+> `docs/superpowers/specs/2026-04-17-affiliate-2c-admin-ui-design.md` and
+> `docs/superpowers/plans/2026-04-17-affiliate-2c-admin-ui.md`. The 4 orphan
+> actions from the `AffiliateAdminActions` contract are formally skipped in
+> 2C and tracked via `apps/web/src/app/zadmin/(protected)/affiliates/TODO-2F.md`.
+
 - Routes `/api/admin/affiliate/*` ready after 2A.4
 - 4 admin Provider actions have no package route (`revalidateTaxId`, `addSocialLink`, `deleteSocialLink`, `verifySocialLinks`) — 2C decides: skip / custom routes / upstream PR (`VerifySocialLinksUseCase` is in the package; no HTTP wire)
 - Phase 1 admin layout config (`apps/web/src/lib/admin-layout-config.tsx`) gets new section: `{ label: 'Afiliados', path: adminPath('/affiliates'), icon: 'Users2' }`
