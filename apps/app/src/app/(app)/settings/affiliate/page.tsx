@@ -38,7 +38,7 @@ export default function AffiliatePage() {
 
   const fetchProgram = useCallback(async () => {
     try {
-      const res = await fetch('/api/affiliate/program');
+      const res = await fetch('/api/affiliate-legacy/program');
       const json = await res.json();
       if (json.data) {
         setEligible(json.data.eligible);
@@ -53,7 +53,7 @@ export default function AffiliatePage() {
   }, []);
 
   const fetchReferrals = useCallback(async () => {
-    const res = await fetch('/api/affiliate/referrals');
+    const res = await fetch('/api/affiliate-legacy/referrals');
     const json = await res.json();
     if (json.data) setReferrals(json.data.referrals ?? []);
   }, []);
@@ -69,7 +69,7 @@ export default function AffiliatePage() {
   async function handleCreate() {
     setCreating(true);
     try {
-      const res = await fetch('/api/affiliate/program', { method: 'POST' });
+      const res = await fetch('/api/affiliate-legacy/program', { method: 'POST' });
       const json = await res.json();
       if (json.error) {
         toast.error(json.error.message);

@@ -53,7 +53,7 @@ import { bulkRoutes } from "./routes/bulk.js";
 import { voiceRoutes } from "./routes/voice.js";
 import { publishingDestinationsRoutes } from "./routes/publishing-destinations.js";
 import { notificationsRoutes } from "./routes/notifications.js";
-import { affiliateRoutes } from "./routes/affiliate.js";
+import { affiliateLegacyRoutes } from "./routes/affiliate-legacy.js";
 import { logRequest, flushAxiom } from "./lib/axiom.js";
 import { flushPostHog } from "./lib/posthog.js";
 
@@ -181,7 +181,7 @@ server.register(publishingDestinationsRoutes, {
   prefix: "/publishing-destinations",
 });
 server.register(notificationsRoutes, { prefix: "/channels" });
-server.register(affiliateRoutes, { prefix: "/affiliate" });
+server.register(affiliateLegacyRoutes, { prefix: "/affiliate-legacy" });
 
 if (!process.env.VERCEL) {
   // Surface async errors that would otherwise crash the dev process silently

@@ -31,7 +31,7 @@ function generateCode(): string {
   return 'BT-' + crypto.randomBytes(4).toString('hex').toUpperCase();
 }
 
-export async function affiliateRoutes(fastify: FastifyInstance): Promise<void> {
+export async function affiliateLegacyRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get('/program', { preHandler: [authenticate] }, async (request, reply) => {
     try {
       if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
@@ -119,7 +119,7 @@ export async function affiliateRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const { data: referrals, error } = await sb
-        .from('affiliate_referrals')
+        .from('affiliate_referrals_legacy' as never)
         .select('*')
         .eq('affiliate_program_id', program.id)
         .order('created_at', { ascending: false })
