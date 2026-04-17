@@ -191,8 +191,8 @@ export function ResearchEngine({
             setRefinedAngle(sess.refined_angle_json as Record<string, unknown>);
           }
 
-          // Load cards
-          const cardsData = (sess.cards ?? sess.research_cards ?? []) as Array<Record<string, unknown>>;
+          // Load cards from cards_json column
+          const cardsData = (Array.isArray(sess.cards_json) ? sess.cards_json : []) as Array<Record<string, unknown>>;
           if (cardsData.length > 0) {
             const mapped = cardsData.map((c: Record<string, unknown>) => ({
               type: c.type as string | undefined,
@@ -205,7 +205,13 @@ export function ResearchEngine({
               ...c,
             } as Card));
             setCards(mapped);
-            setApproved(new Set(mapped.map((_, i) => i)));
+            // Restore approved set from approved_cards_json, or approve all
+            const approvedIdx = sess.approved_cards_json as number[] | null;
+            if (Array.isArray(approvedIdx)) {
+              setApproved(new Set(approvedIdx));
+            } else {
+              setApproved(new Set(mapped.map((_, i) => i)));
+            }
           }
         }
       } catch {

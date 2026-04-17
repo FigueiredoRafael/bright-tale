@@ -232,10 +232,15 @@ export function BrainstormEngine({
           }
         }
 
-        // Fetch ideas (drafts) for this session
-        const ideasRes = await fetch(`/api/brainstorm/sessions/${ctxSessionId}/drafts`);
-        const ideasJson = await ideasRes.json();
-        const drafts = (ideasJson.data?.drafts ?? []) as Array<Record<string, unknown>>;
+        // Load ideas from session response (idea_archives) or fall back to drafts
+        const ideasRaw = (sessJson.data?.ideas ?? []) as Array<Record<string, unknown>>;
+        let drafts = ideasRaw;
+        if (drafts.length === 0) {
+          // Fallback: try staged drafts
+          const draftsRes = await fetch(`/api/brainstorm/sessions/${ctxSessionId}/drafts`);
+          const draftsJson = await draftsRes.json();
+          drafts = (draftsJson.data?.drafts ?? []) as Array<Record<string, unknown>>;
+        }
         if (drafts.length > 0) {
           const mapped: Idea[] = drafts.map((d) => {
             let verdict: 'viable' | 'weak' | 'experimental' = 'experimental';
@@ -252,7 +257,6 @@ export function BrainstormEngine({
             };
           });
           setIdeas(mapped);
-          // Pre-select the idea that was chosen before
           if (context.ideaId) {
             setSelectedIdeaId(context.ideaId);
           }
