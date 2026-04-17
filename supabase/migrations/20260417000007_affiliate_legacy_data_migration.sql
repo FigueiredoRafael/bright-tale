@@ -95,6 +95,7 @@ SELECT
     0,
     arl.subscription_amount_cents,
     a.commission_rate,
+    -- Prefer legacy-stored commission_cents when present; audit §4 surfaces any drift.
     COALESCE(arl.commission_cents, ROUND(arl.subscription_amount_cents * a.commission_rate)::INTEGER),
     NULL,
     COALESCE(arl.commission_cents, ROUND(arl.subscription_amount_cents * a.commission_rate)::INTEGER),
