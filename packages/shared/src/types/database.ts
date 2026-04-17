@@ -115,6 +115,7 @@ export type Database = {
           output_schema: string | null
           recommended_model: string | null
           recommended_provider: string | null
+          sections_json: Json | null
           slug: string
           stage: string
           updated_at: string
@@ -129,6 +130,7 @@ export type Database = {
           output_schema?: string | null
           recommended_model?: string | null
           recommended_provider?: string | null
+          sections_json?: Json | null
           slug: string
           stage: string
           updated_at?: string
@@ -143,6 +145,7 @@ export type Database = {
           output_schema?: string | null
           recommended_model?: string | null
           recommended_provider?: string | null
+          sections_json?: Json | null
           slug?: string
           stage?: string
           updated_at?: string
