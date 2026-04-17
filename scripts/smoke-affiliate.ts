@@ -10,7 +10,7 @@ import { probeApiHealth, probeSupabaseHealth } from './smoke/preflight.js'
 import { seed, cleanup, cleanupOrphans, captureBaselines, makeRunId } from './smoke/fixture.js'
 import { renderNormal, renderQuiet, renderJson, summarize } from './smoke/reporter.js'
 import { orderedProbes, filterByOnly } from './smoke/probes/index.js'
-import { ExitCode, type ProbeResult, type SeedHandles } from './smoke/types.js'
+import { ExitCode, type Env, type ProbeResult, type SeedHandles } from './smoke/types.js'
 
 async function main(): Promise<number> {
   let opts
@@ -19,7 +19,12 @@ async function main(): Promise<number> {
 
   if (opts.help) { console.log(HELP_TEXT); return ExitCode.Ok }
 
-  const env = loadEnv(opts.force)
+  let env: Env
+  try { env = loadEnv(opts.force) }
+  catch (err) {
+    console.error(`error: ${(err as Error).message}`)
+    return ExitCode.PreflightFailed
+  }
   const supabase = createClient(env.supabaseUrl, env.supabaseServiceRoleKey, {
     auth: { persistSession: false },
   })

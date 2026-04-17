@@ -15,7 +15,7 @@ describe('buildSignedInvoiceEvent', () => {
     const stripe = new Stripe('sk_test_dummy', { apiVersion: '2024-06-20' as any })
     const event = stripe.webhooks.constructEvent(rawBody, signature, SECRET)
     expect(event.type).toBe('invoice.payment_succeeded')
-    const invoice = event.data.object as Stripe.Invoice
+    const invoice = event.data.object as { amount_paid: number; billing_reason: string }
     expect(invoice.amount_paid).toBe(9900)
     expect(invoice.billing_reason).toBe('subscription_cycle')
   })

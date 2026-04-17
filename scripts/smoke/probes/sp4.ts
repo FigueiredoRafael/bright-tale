@@ -25,8 +25,11 @@ async function postWebhook(
   return smokeRequest({
     apiUrl: ctx.apiUrl, internalKey: ctx.internalKey, userId: null,
     method: 'POST', path: '/billing/webhook',
-    body: JSON.parse(rawBody),
-    extraHeaders: { 'stripe-signature': signature },
+    rawBody,
+    extraHeaders: {
+      'content-type': 'application/json',
+      'stripe-signature': signature,
+    },
   })
 }
 

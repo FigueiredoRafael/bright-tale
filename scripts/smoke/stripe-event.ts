@@ -52,6 +52,6 @@ export function buildSignedInvoiceEvent(input: BuildEventInput): SignedEvent {
   const signature = Stripe.webhooks.generateTestHeaderString({
     payload: rawBody,
     secret: input.secret,
-  })
+  } as Parameters<typeof Stripe.webhooks.generateTestHeaderString>[0])
   return { rawBody, signature }
 }

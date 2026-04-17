@@ -142,7 +142,7 @@ export async function cleanup(
 ): Promise<CleanupResult> {
   let rowsRemoved = 0
   const failures: CleanupResult['failures'] = []
-  const tryDelete = async (table: string, fn: () => Promise<{ error: unknown; count: number | null }>) => {
+  const tryDelete = async (table: string, fn: () => PromiseLike<{ error: unknown; count: number | null }>) => {
     try {
       const { error, count } = await fn()
       if (error) failures.push({ table, error: String((error as any).message ?? error) })

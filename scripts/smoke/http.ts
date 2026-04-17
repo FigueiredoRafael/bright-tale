@@ -6,6 +6,7 @@ export interface SmokeRequestInput {
   userId: string | null
   forwardedFor?: string
   body?: unknown
+  rawBody?: string
   extraHeaders?: Record<string, string>
 }
 
@@ -17,17 +18,22 @@ export interface SmokeResponse {
 
 export async function smokeRequest(input: SmokeRequestInput): Promise<SmokeResponse> {
   const url = new URL(input.path, input.apiUrl).toString()
+  const hasRawBody = input.rawBody !== undefined
+  const hasJsonBody = input.body !== undefined && !hasRawBody
   const headers: Record<string, string> = {
     'X-Internal-Key': input.internalKey,
     ...(input.userId ? { 'x-user-id': input.userId } : {}),
     ...(input.forwardedFor ? { 'x-forwarded-for': input.forwardedFor } : {}),
-    ...(input.body !== undefined ? { 'content-type': 'application/json' } : {}),
+    ...(hasJsonBody ? { 'content-type': 'application/json' } : {}),
     ...(input.extraHeaders ?? {}),
   }
+  const requestBody = hasRawBody
+    ? input.rawBody
+    : hasJsonBody ? JSON.stringify(input.body) : undefined
   const res = await fetch(url, {
     method: input.method,
     headers,
-    body: input.body !== undefined ? JSON.stringify(input.body) : undefined,
+    body: requestBody,
     redirect: 'manual',
   })
   const outHeaders: Record<string, string> = {}
