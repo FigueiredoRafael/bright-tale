@@ -112,17 +112,24 @@ Edit root `/Users/figueiredo/Workspace/BrightCurios/bright-tale/package.json`. U
 "email:ui": "open http://localhost:8025"
 ```
 
-- [ ] **Step 3: Smoke test MailHog**
+- [ ] **Step 3: Smoke test MailHog (poll-until-ready, not fixed sleep)**
 
 Run:
 ```bash
 npm run email:start
-sleep 3
-curl -sS http://localhost:8025/api/v2/messages | head -c 50
+# Poll until MailHog HTTP API responds, up to 15s
+for i in $(seq 1 30); do
+  if curl -sS --max-time 1 http://localhost:8025/api/v2/messages > /dev/null 2>&1; then
+    echo "MailHog ready after ${i} * 500ms"
+    break
+  fi
+  sleep 0.5
+done
+curl -sS http://localhost:8025/api/v2/messages | head -c 80
 npm run email:stop
 ```
 
-Expected: the curl returns a JSON structure (likely `{"total":0,"count":0,"start":0,"items":[]}`) within 3 seconds, then MailHog stops cleanly.
+Expected: "MailHog ready after N * 500ms" (N usually 2-6 on local, up to ~30 on slow CI), then a JSON body like `{"total":0,"count":0,"start":0,"items":[]}`, then MailHog stops cleanly.
 
 If `docker compose` unavailable, install Docker Desktop first.
 
@@ -165,6 +172,9 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/lib/email/**/*.ts'],
+      // templates.ts is excluded from tooling-enforced thresholds because
+      // HTML-rendering code is output-heavy; its ≥80% target from the spec
+      // is a code-review-level check, not tool-gated.
       exclude: ['src/lib/email/templates.ts', 'src/lib/email/__tests__/**'],
       thresholds: {
         branches: 95,
@@ -262,6 +272,21 @@ export async function clearMailhog(): Promise<void> {
   const res = await fetch(`http://${host}:${apiPort}/api/v1/messages`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`MailHog clear ${res.status}`);
 }
+
+/**
+ * Poll MailHog API until at least `minCount` messages appear, or timeout.
+ * More robust than a fixed setTimeout: handles slow CI machines without
+ * flake and returns fast when MailHog ingests quickly.
+ */
+export async function pollForMessages(minCount: number, timeoutMs = 5000): Promise<MailhogMessage[]> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const msgs = await getMailhogMessages();
+    if (msgs.length >= minCount) return msgs;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error(`pollForMessages timed out waiting for ${minCount} message(s)`);
+}
 ```
 
 - [ ] **Step 2: Typecheck**
@@ -339,6 +364,8 @@ Expected: 3 tests pass (vitest tolerates the missing `./provider.js` because the
 **Files:**
 - Create: `apps/api/src/lib/email/__tests__/smtp.test.ts`
 - Create: `apps/api/src/lib/email/smtp.ts`
+
+**Note on `nodemailer-mock` API (v2.0.10):** The methods you'll use are on `nodemailerMock.mock`: `reset()`, `getSentMail()`, and `setShouldFailOnce()`. If your installed version exposes `shouldFailOnce()` (no `set` prefix) instead, adjust the test accordingly — the API varied between minor versions. Run `npm ls nodemailer-mock --workspace @brighttale/api` to confirm `2.0.10` is installed, then check `node_modules/nodemailer-mock/dist/index.d.ts` for the exact method names.
 
 - [ ] **Step 1: Write failing test**
 
@@ -755,7 +782,7 @@ Create `apps/api/src/lib/email/__tests__/smtp.integration.test.ts`:
 
 ```ts
 import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
-import { preflightMailhog, clearMailhog, getMailhogMessages } from '@/test/mailhog';
+import { preflightMailhog, clearMailhog, getMailhogMessages, pollForMessages } from '@/test/mailhog';
 
 // Set SMTP envs BEFORE importing provider so cache resolves correctly.
 process.env.EMAIL_PROVIDER = 'smtp';
@@ -785,9 +812,7 @@ describe.skipIf(!preflightOk)('SMTP integration via MailHog', () => {
     expect(res.provider).toBe('smtp');
     expect(res.id).toBeTruthy();
 
-    // Small wait for MailHog to ingest
-    await new Promise((r) => setTimeout(r, 200));
-    const msgs = await getMailhogMessages();
+    const msgs = await pollForMessages(1);
     expect(msgs.length).toBe(1);
     expect(msgs[0].Content.Headers.Subject).toContain('integration-basic');
   });
@@ -798,8 +823,7 @@ describe.skipIf(!preflightOk)('SMTP integration via MailHog', () => {
       to: ['a@brighttale.local', 'b@brighttale.local'],
       subject: 'multi',
     });
-    await new Promise((r) => setTimeout(r, 200));
-    const msgs = await getMailhogMessages();
+    const msgs = await pollForMessages(1);
     expect(msgs.length).toBe(1);
     expect(msgs[0].To.length).toBe(2);
   });
@@ -812,8 +836,7 @@ describe.skipIf(!preflightOk)('SMTP integration via MailHog', () => {
       replyTo: 'reply@brighttale.local',
       html: '<p>x</p>',
     });
-    await new Promise((r) => setTimeout(r, 200));
-    const msgs = await getMailhogMessages();
+    const msgs = await pollForMessages(1);
     const replyToHeader = msgs[0].Content.Headers['Reply-To'];
     expect(replyToHeader?.[0]).toContain('reply@brighttale.local');
   });
@@ -826,8 +849,7 @@ describe.skipIf(!preflightOk)('SMTP integration via MailHog', () => {
       html: '<p>html body</p>',
       text: 'text body',
     });
-    await new Promise((r) => setTimeout(r, 200));
-    const msgs = await getMailhogMessages();
+    const msgs = await pollForMessages(1);
     expect(msgs[0].Content.Headers['Content-Type']?.[0]).toMatch(/multipart/);
   });
 });
@@ -876,6 +898,8 @@ Expected: 4 integration tests pass.
 ```bash
 cd ../.. && npm run email:stop
 ```
+
+**Skip `npm run test:coverage` at this commit.** `resend.ts` still lacks a test file (that lands in Commit B as `resend.test.ts`), which would cause the configured 95% branch threshold to fail at this intermediate state. Full coverage verification happens at Task 19 (Commit B). A partial coverage run can be done informationally with `npm run test:coverage -- --no-coverage-thresholds` if desired, but it's not required for Commit A sign-off.
 
 - [ ] **Step 2: Review staged diff**
 
@@ -1243,7 +1267,7 @@ Expected: 5 tests pass.
 
 Edit `apps/api/src/lib/affiliate/email-service.ts`:
 
-1. On line 2, change:
+1. Change the import line (currently line 2):
    ```ts
    import { sendEmail, isResendConfigured } from '@/lib/email/resend'
    ```
@@ -1252,9 +1276,11 @@ Edit `apps/api/src/lib/affiliate/email-service.ts`:
    import { sendEmail } from '@/lib/email/provider'
    ```
 
-2. Remove all 4 occurrences of `if (!isResendConfigured()) return` (lines 32, 41, 53, 68 in current file). The `await sendEmail({...})` that follows remains unchanged.
+2. Grep the file for `isResendConfigured()` — you should find exactly 4 occurrences, each on its own line as `if (!isResendConfigured()) return`, each at the top of one of the four `async send*` methods on the `ResendAffiliateEmailService` class. Remove all 4 lines entirely. The `await sendEmail({...})` that follows in each method remains unchanged.
 
-After these edits, the file should have 4 methods that directly call `sendEmail` without guards, and the import line references `provider` instead of `resend`.
+Line numbers to expect (subject to minor drift if file changed): approximately 32, 41, 53, 68 in the current version. Use grep to find actual positions if they've shifted.
+
+After these edits: zero references to `isResendConfigured` anywhere in `apps/api/src/lib/affiliate/email-service.ts`. The four methods call `sendEmail` unconditionally. Silent-skip behavior is now governed by `EMAIL_PROVIDER=none` set in env.
 
 - [ ] **Step 2: Typecheck**
 
@@ -1391,17 +1417,18 @@ Run from `apps/api/`: `npx vitest run src/__tests__/lib/affiliate/email-service.
 
 Expected: 7 tests pass (was 9 before; the 2 short-circuit tests removed).
 
-## Task 17: Doc drift reconciliation
+## Task 17a: Doc drift — .env.example
 
 **Files:**
 - Modify: `apps/api/.env.example`
-- Modify: `docs/superpowers/specs/2026-04-17-affiliate-2a-foundation-design.md`
-- Modify: `docs/superpowers/plans/2026-04-17-affiliate-2a-foundation.md`
-- Modify: `apps/docs-site/src/content/milestones/phase-5-publishing/index.md`
 
-- [ ] **Step 1: .env.example email section**
+- [ ] **Step 1: Replace email section**
 
-Edit `apps/api/.env.example`. Locate the email section (around line 80–95 which currently mentions `RESEND_API_KEY` and `isResendConfigured()`). Replace the email section with:
+Edit `apps/api/.env.example`. The current email block is at:
+- **Lines 73–75**: active `RESEND_API_KEY=` and `RESEND_FROM="BrightTale <noreply@brighttale.io>"`
+- **Line 92**: commented reference `#   - Email service no-ops via isResendConfigured() guard`
+
+Replace the active block at lines 73–75 (and remove the comment at line 92 that references the now-removed `isResendConfigured()` pattern) with:
 
 ```bash
 # ─── Email transport ──────────────────────────────────────────────────
@@ -1427,9 +1454,20 @@ Edit `apps/api/.env.example`. Locate the email section (around line 80–95 whic
 
 Preserve all other sections of `.env.example` unchanged.
 
-- [ ] **Step 2: Affiliate 2A spec errata note**
+- [ ] **Step 2: Verify grep of isResendConfigured in env file**
 
-Edit `docs/superpowers/specs/2026-04-17-affiliate-2a-foundation-design.md`. Insert a new section at the very top (before the title or directly after the title block), formatted as:
+Run: Grep for `isResendConfigured` in `apps/api/.env.example`.
+
+Expected: zero matches.
+
+## Task 17b: Doc drift — affiliate 2A spec errata
+
+**Files:**
+- Modify: `docs/superpowers/specs/2026-04-17-affiliate-2a-foundation-design.md`
+
+- [ ] **Step 1: Insert errata block at top**
+
+Open `docs/superpowers/specs/2026-04-17-affiliate-2a-foundation-design.md`. Insert this block directly after the first-line `# ...` title (before `## 1. Context & Goals` or whichever is the first section):
 
 ```markdown
 > **Errata — 2026-04-17 post-publication:** The `isResendConfigured()` silent-skip
@@ -1440,60 +1478,59 @@ Edit `docs/superpowers/specs/2026-04-17-affiliate-2a-foundation-design.md`. Inse
 > Inline text is preserved as historical record.
 ```
 
-Do not modify any other section of this spec.
+Do not modify any other section.
 
-- [ ] **Step 3: Affiliate 2A plan errata note**
-
-Same approach on `docs/superpowers/plans/2026-04-17-affiliate-2a-foundation.md`. Insert identical errata block at the top, adjusting the reference path to the same provider-abstraction spec. Preserve all other content.
-
-- [ ] **Step 4: phase-5-publishing milestone**
-
-Edit `apps/docs-site/src/content/milestones/phase-5-publishing/index.md`. Find any mention of:
-- `sendContentPublishedEmail(to, title, url)`
-- `sendCreditsLowEmail(to, remaining, total)`
-- `@/lib/email/resend` (as the import path for the above)
-
-Update the import path references to `@/lib/email/templates`. Do not rewrite surrounding prose unnecessarily — only the paths. This is a live doc; no errata approach here.
-
-## Task 18: Side-fix draft_idea_id.sql idempotency
+## Task 17c: Doc drift — affiliate 2A plan errata
 
 **Files:**
-- Modify: `supabase/migrations/20260414060000_draft_idea_id.sql`
+- Modify: `docs/superpowers/plans/2026-04-17-affiliate-2a-foundation.md`
 
-- [ ] **Step 1: Read current file**
+- [ ] **Step 1: Insert identical errata block at top**
 
-Read `supabase/migrations/20260414060000_draft_idea_id.sql` to understand the current ALTER/CREATE statements.
+Same approach as 17b. Insert the errata block directly after the first-line `# ...` title. Do not modify inline task mocks that still reference `isResendConfigured` — the errata at top covers it.
 
-- [ ] **Step 2: Apply idempotency guards**
+## Task 17d: Doc drift — phase-5-publishing milestone
 
-For any `ALTER TABLE ... ADD COLUMN` statement, replace with `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.
+**Files:**
+- Modify: `apps/docs-site/src/content/milestones/phase-5-publishing/index.md`
 
-For any `CREATE INDEX` statement, replace with `CREATE INDEX IF NOT EXISTS`.
+- [ ] **Step 1: Update template import paths only**
 
-For any `ALTER TABLE ... ADD CONSTRAINT` statement (which does NOT support `IF NOT EXISTS`), wrap in a `DO $$ ... END $$` block with an existence check:
+Open `apps/docs-site/src/content/milestones/phase-5-publishing/index.md`. Find any lines mentioning:
+- `sendContentPublishedEmail(to, title, url)`
+- `sendCreditsLowEmail(to, remaining, total)`
+- `@/lib/email/resend` as the import path for the above
 
-```sql
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'your_constraint_name'
-  ) THEN
-    ALTER TABLE ... ADD CONSTRAINT your_constraint_name ...;
-  END IF;
-END $$;
-```
+Update the import path references from `@/lib/email/resend` to `@/lib/email/templates`. Leave the function signatures, descriptions, and prose unchanged — this is a live doc, not historical record; update precisely and move on.
 
-Apply the principle: re-running this migration on a DB where it's already been applied should be a no-op. This is the "side-fix" orphan from the PR #4 resume prompt.
+## Task 18: Verify draft_idea_id.sql idempotency (no-op — already applied)
 
-- [ ] **Step 3: Verify migration still parses**
+**Files:**
+- Read-only verification: `supabase/migrations/20260414060000_draft_idea_id.sql`
 
-If you have local Supabase running:
+**Status:** The "side-fix" referenced in the PR #4 resume prompt appears to have already been applied in a prior commit. The current file uses `ADD COLUMN IF NOT EXISTS` on the four `ALTER TABLE` statements (lines 4–7), `CREATE INDEX IF NOT EXISTS` on the indexes (lines 9–12), and a `DO $$ ... IF EXISTS ... END $$` guard around the backfill `UPDATE` block (lines 19–55) that only fires when the dev-only `stages.idea_archive_id` column exists.
+
+- [ ] **Step 1: Confirm file is already idempotent**
+
+Read `supabase/migrations/20260414060000_draft_idea_id.sql`. Verify these patterns are present:
+- All `ALTER TABLE ... ADD COLUMN` use `IF NOT EXISTS`
+- All `CREATE INDEX` use `IF NOT EXISTS`
+- The backfill `UPDATE` block is wrapped in `DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE ...) THEN ... END IF; END $$`
+
+If all three patterns are present → no changes needed. Proceed to Step 2.
+
+If any pattern is absent (unexpected — file was previously fixed), apply the pattern transformations: `ADD COLUMN` → `ADD COLUMN IF NOT EXISTS`; `CREATE INDEX` → `CREATE INDEX IF NOT EXISTS`; bare `ALTER TABLE ADD CONSTRAINT` → `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = '<name>') THEN ALTER TABLE ... END IF; END $$;`.
+
+- [ ] **Step 2: Smoke-test idempotency (optional if local Supabase unavailable)**
+
+Run from repo root if local Supabase is running:
 ```bash
-npm run db:reset
+npm run db:reset        # clean apply
+# re-apply same migration via psql or db:push to verify idempotent:
+# (skipped if db:reset is not feasible — the file-pattern check in Step 1 is sufficient)
 ```
-Expected: the migration runs clean on a fresh DB.
 
-If local DB isn't running, skip — the idempotency is the critical property; full reset test can happen in Task 19 verification.
+**Key change vs original plan:** this task is now verification-only. The side-fix was applied in a prior commit; no modification needed. Commit B proceeds without touching this file.
 
 ## Task 19: Commit B verification + commit
 
@@ -1565,14 +1602,13 @@ Expected files modified/created in Commit B:
 
 - [ ] **Step 4: Grep for leftover `isResendConfigured`**
 
+Run from repo root:
+
 ```bash
-cd /Users/figueiredo/Workspace/BrightCurios/bright-tale
-# Use the Grep tool in-tool, NOT bash grep.
-# Expected: zero matches in apps/api/src/** (docs may still mention it
-# in errata notes — that's expected and intentional).
+grep -r "isResendConfigured" apps/api/src/ || echo "zero matches — clean"
 ```
 
-Via tool call: Grep pattern `isResendConfigured` in `apps/api/src` — must return 0 matches.
+Expected: exactly "zero matches — clean". Docs (spec/plan errata notes) and the inline-task examples in the 2A plan may still contain the term — that's expected and intentional.
 
 - [ ] **Step 5: Commit**
 
