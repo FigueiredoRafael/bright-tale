@@ -32,10 +32,11 @@ export class AnthropicProvider implements AIProvider {
     input,
     schema,
     systemPrompt,
+    userMessage,
   }: GenerateContentParams): Promise<any> {
     try {
       // Build prompt from input
-      const userPrompt = this.buildPrompt(agentType, input);
+      const userPrompt = userMessage ?? this.buildPrompt(agentType, input);
 
       // Call Anthropic API
       const response = await this.client.messages.create({
@@ -61,11 +62,18 @@ export class AnthropicProvider implements AIProvider {
         throw new Error("Unexpected response type from Anthropic");
       }
 
-      // Extract YAML from response (Claude often wraps it in markdown)
-      const yamlContent = this.extractYaml(content.text);
+      let parsed: any;
 
-      // Parse YAML
-      const parsed = yaml.load(yamlContent) as any;
+      // If userMessage was provided, parse as JSON; otherwise parse as YAML
+      if (userMessage) {
+        // Try to parse as JSON (from markdown blocks or direct)
+        parsed = this.extractAndParseJson(content.text);
+      } else {
+        // Extract YAML from response (Claude often wraps it in markdown)
+        const yamlContent = this.extractYaml(content.text);
+        // Parse YAML
+        parsed = yaml.load(yamlContent) as any;
+      }
 
       // Validate with Zod schema
       const validated = (schema as any).parse(parsed);
@@ -105,5 +113,37 @@ Return your response as valid YAML. Be thorough and creative. Format your respon
 
     // Return as-is if no code blocks found
     return text;
+  }
+
+  private extractAndParseJson(text: string): any {
+    // Try to parse as direct JSON first
+    try {
+      return JSON.parse(text);
+    } catch {
+      // Fall through to markdown extraction
+    }
+
+    // Try to extract JSON from markdown code blocks
+    const jsonBlockMatch = text.match(/```json\n([\s\S]*?)\n```/);
+    if (jsonBlockMatch) {
+      try {
+        return JSON.parse(jsonBlockMatch[1]);
+      } catch {
+        // Fall through to generic code blocks
+      }
+    }
+
+    // Try to extract from generic code blocks
+    const codeBlockMatch = text.match(/```\n([\s\S]*?)\n```/);
+    if (codeBlockMatch) {
+      try {
+        return JSON.parse(codeBlockMatch[1]);
+      } catch {
+        // Fall through to raw text
+      }
+    }
+
+    // Last resort: try to parse the raw text as JSON
+    return JSON.parse(text);
   }
 }

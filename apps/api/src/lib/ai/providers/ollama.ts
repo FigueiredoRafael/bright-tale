@@ -24,8 +24,9 @@ export class OllamaProvider implements AIProvider {
     input,
     schema,
     systemPrompt,
+    userMessage,
   }: GenerateContentParams): Promise<unknown> {
-    const userPrompt = this.buildPrompt(agentType, input);
+    const userPrompt = userMessage ?? this.buildPrompt(agentType, input);
     const messages: Array<{ role: string; content: string }> = [];
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
     messages.push({ role: 'user', content: userPrompt });

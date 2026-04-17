@@ -30,10 +30,11 @@ export class OpenAIProvider implements AIProvider {
     input,
     schema,
     systemPrompt,
+    userMessage,
   }: GenerateContentParams): Promise<any> {
     try {
       // Build prompt from input
-      const userPrompt = this.buildPrompt(agentType, input);
+      const userPrompt = userMessage ?? this.buildPrompt(agentType, input);
 
       // Call OpenAI with JSON mode
       const response = await this.client.chat.completions.create({

@@ -25,8 +25,9 @@ export class GeminiProvider implements AIProvider {
     input,
     schema,
     systemPrompt,
+    userMessage,
   }: GenerateContentParams): Promise<unknown> {
-    const userPrompt = this.buildPrompt(agentType, input);
+    const userPrompt = userMessage ?? this.buildPrompt(agentType, input);
     const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${userPrompt}` : userPrompt;
 
     const response = await this.client.models.generateContent({
