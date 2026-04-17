@@ -980,24 +980,59 @@ export function ResearchEngine({
                                   </>
                                 )}
 
-                                {/* Fallback for unknown types */}
+                                {/* Fallback for unknown types — show all available fields */}
                                 {!['source', 'statistic', 'expert_quote', 'counterargument'].includes(c.type ?? '') && (
                                   <>
-                                    {c.type && (
-                                      <Badge variant="outline" className="text-[10px] capitalize mb-1">
-                                        {c.type.replace(/_/g, ' ')}
-                                      </Badge>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      {c.type && (
+                                        <Badge variant="outline" className="text-[10px] capitalize">
+                                          {c.type.replace(/_/g, ' ')}
+                                        </Badge>
+                                      )}
+                                      {typeof (c as Record<string, unknown>).credibility === 'string' && (
+                                        <Badge
+                                          variant="secondary"
+                                          className={`text-[10px] ${
+                                            ((c as Record<string, unknown>).credibility as string).toLowerCase() === 'high'
+                                              ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                                              : ((c as Record<string, unknown>).credibility as string).toLowerCase() === 'medium'
+                                                ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
+                                                : ''
+                                          }`}
+                                        >
+                                          {(c as Record<string, unknown>).credibility as string}
+                                        </Badge>
+                                      )}
+                                      {typeof (c as Record<string, unknown>).date_published === 'string' && (
+                                        <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                          <Calendar className="h-3 w-3" />
+                                          {(c as Record<string, unknown>).date_published as string}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-sm font-medium mt-1.5">{c.title ?? c.claim ?? c.quote ?? '—'}</p>
+                                    {(c as Record<string, unknown>).key_insight && (
+                                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                                        {String((c as Record<string, unknown>).key_insight)}
+                                      </p>
                                     )}
-                                    <p className="text-sm font-medium">{c.title ?? c.claim ?? c.quote ?? '—'}</p>
-                                    {c.url && (
+                                    {(c as Record<string, unknown>).quote_excerpt && (
+                                      <blockquote className="text-xs italic text-muted-foreground mt-2 pl-3 border-l-2 border-primary/30">
+                                        &ldquo;{String((c as Record<string, unknown>).quote_excerpt)}&rdquo;
+                                      </blockquote>
+                                    )}
+                                    {c.url && c.url !== 'N/A' && (
                                       <a
                                         href={c.url}
                                         target="_blank"
                                         rel="noreferrer"
                                         onClick={(e) => e.stopPropagation()}
-                                        className="text-xs text-primary hover:underline mt-1 inline-block"
+                                        className="text-[11px] text-primary hover:underline mt-2 inline-flex items-center gap-1"
                                       >
-                                        {c.url}
+                                        <ExternalLink className="h-3 w-3" />
+                                        {(() => {
+                                          try { return new URL(c.url).hostname; } catch { return c.url.slice(0, 40); }
+                                        })()}
                                       </a>
                                     )}
                                   </>
