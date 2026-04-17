@@ -7,7 +7,9 @@
  * Qualidade aceitável pra narração rápida, mas emotion range é limitada.
  * Recomendado só quando budget é prioridade absoluta.
  */
-import OpenAI from 'openai';
+// Named import, not default: Vercel's CJS resolver returns the module namespace
+// object for the default import, failing with TS2709 (type) and TS2351 (value).
+import { OpenAI } from 'openai';
 import type { VoiceProvider, VoiceSynthesisParams, VoiceSynthesisResult, VoiceOption } from './provider.js';
 
 const VOICES: VoiceOption[] = [

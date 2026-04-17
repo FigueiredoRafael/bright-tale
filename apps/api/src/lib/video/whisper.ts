@@ -5,7 +5,9 @@
  * paga mas barata ($0.006/min). Para grandes volumes, considerar
  * whisper.cpp self-hosted no worker FFmpeg.
  */
-import OpenAI from 'openai';
+// Named import, not default: Vercel's CJS resolver returns the module namespace
+// object for the default import, failing with TS2709 (type) and TS2351 (value).
+import { OpenAI } from 'openai';
 
 export interface TranscriptionResult {
   text: string;
