@@ -119,6 +119,19 @@ export async function contentDraftsRoutes(
       const orgId = await getOrgId(request.userId);
       const sb = createServiceClient();
 
+      // Resolve ideaId — UI may pass idea_archives.id (UUID) OR idea_archives.idea_id (slug).
+      // content_drafts.idea_id FK references idea_archives.id, so slugs need translating.
+      let resolvedIdeaId: string | null = null;
+      if (body.ideaId) {
+        const column = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.ideaId) ? "id" : "idea_id";
+        const { data: match } = await sb
+          .from("idea_archives")
+          .select("id")
+          .eq(column, body.ideaId)
+          .maybeSingle();
+        resolvedIdeaId = (match as { id: string } | null)?.id ?? null;
+      }
+
       const { data, error } = await (
         sb.from("content_drafts") as unknown as {
           insert: (row: Record<string, unknown>) => {
@@ -132,7 +145,7 @@ export async function contentDraftsRoutes(
           org_id: orgId,
           user_id: request.userId,
           channel_id: body.channelId ?? null,
-          idea_id: body.ideaId ?? null,
+          idea_id: resolvedIdeaId,
           research_session_id: body.researchSessionId ?? null,
           project_id: body.projectId ?? null,
           type: body.type,

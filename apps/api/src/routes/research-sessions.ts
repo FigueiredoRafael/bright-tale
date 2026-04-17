@@ -19,11 +19,17 @@ import { buildResearchMessage } from '../lib/ai/prompts/research.js';
 import type { ResearchInput } from '../lib/ai/prompts/research.js';
 
 /** Check idea exists in idea_archives before using as FK. Brainstorm drafts may not be promoted yet. */
+/**
+ * Resolve an idea identifier to the `idea_archives.id` (UUID-as-text) used by FK.
+ * Accepts either the UUID `id` or the slug `idea_id` (e.g. BC-IDEA-001). Returns null
+ * if the archive row does not exist — prevents FK violation on insert.
+ */
 async function resolveIdeaId(ideaId: string | null | undefined): Promise<string | null> {
   if (!ideaId) return null;
   const sb = createServiceClient();
-  const { data } = await sb.from('idea_archives').select('id').eq('id', ideaId).maybeSingle();
-  return data ? ideaId : null;
+  const column = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ideaId) ? 'id' : 'idea_id';
+  const { data } = await sb.from('idea_archives').select('id').eq(column, ideaId).maybeSingle();
+  return (data as { id: string } | null)?.id ?? null;
 }
 
 function normalizeCards(raw: unknown): Array<Record<string, unknown>> {
