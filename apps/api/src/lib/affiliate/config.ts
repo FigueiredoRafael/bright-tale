@@ -2,11 +2,10 @@ import type { AffiliateConfig } from '@tn-figueiredo/affiliate'
 
 // Convention: codebase uses APP_ORIGIN (see apps/api/src/index.ts:98,
 // lib/email/resend.ts:78); default to apps/app prod origin.
-// KNOWN GAP (resolves in 2B): package builds `${webBaseUrl}/signup?ref=X` and
-// `${webBaseUrl}/affiliate/portal`. apps/app actual routes are
-// `/[locale]/auth/signup` and (TBD) `/[locale]/settings/affiliate`. Click
-// tracking still records correctly (use case fires BEFORE redirect), but the
-// browser lands on a 404 until 2B adds the matching URLs or apps/app rewrites.
+// /signup drift resolved in Phase 2B via Next.js beforeFiles rewrites in
+// apps/app/next.config.ts: /signup → /auth/signup, /parceiros/login → /auth/login,
+// /parceiros/dashboard → /settings/affiliate. See
+// docs/superpowers/specs/2026-04-17-affiliate-2b-end-user-ui-design.md §6.3.
 const APP_ORIGIN = process.env.APP_ORIGIN ?? 'https://app.brighttale.io'
 
 export const AFFILIATE_CONFIG: AffiliateConfig = {
