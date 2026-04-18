@@ -31,8 +31,7 @@ import {
   MODELS_BY_PROVIDER,
   type ProviderId,
 } from '@/components/ai/ModelPicker';
-import { ManualModePanel } from '@/components/ai/ManualModePanel';
-import { useManualMode } from '@/hooks/use-manual-mode';
+import { ManualOutputDialog } from '@/components/engines/ManualOutputDialog';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
@@ -86,11 +85,14 @@ const FOCUS_OPTIONS = [
   { id: 'validated_processes', label: 'Validated processes' },
 ];
 
+const RESEARCH_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
+
 export function ResearchEngine({
   mode: engineMode,
   channelId,
   context,
   onComplete,
+  onStageProgress,
   initialSession,
   initialCards,
   initialApproved,
@@ -112,14 +114,13 @@ export function ResearchEngine({
   const [running, setRunning] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [genMode, setGenMode] = useState<'ai' | 'manual'>('ai');
   const [researchSummary, setResearchSummary] = useState<string | null>(null);
   const [ideaValidation, setIdeaValidation] = useState<Record<string, unknown> | null>(null);
   const [knowledgeGaps, setKnowledgeGaps] = useState<string[]>([]);
   const [refinedAngle, setRefinedAngle] = useState<Record<string, unknown> | null>(null);
 
-  // Manual mode
-  const { enabled: manualEnabled } = useManualMode();
+  // Manual provider — open dialog when API responds with awaiting_manual
+  const [manualSessionId, setManualSessionId] = useState<string | null>(null);
 
   const tracker = usePipelineTracker('research', context);
 
@@ -181,6 +182,12 @@ export function ResearchEngine({
         const json = await res.json();
         const sess = json.data?.session ?? json.data;
         if (sess) {
+          // Check if session is awaiting manual output
+          if (sess.status === 'awaiting_manual') {
+            setManualSessionId(sess.id as string);
+            return;
+          }
+
           setSessionId(sess.id as string);
           if (sess.level) setLevel(sess.level as Level);
           if (sess.input_json && typeof sess.input_json === 'object') {
@@ -420,7 +427,7 @@ export function ResearchEngine({
       });
 
       let json: {
-        data?: { sessionId?: string; cards?: Card[] };
+        data?: { sessionId?: string; status?: string; cards?: Card[] };
         error?: { message?: string; code?: string };
       } | null = null;
       try {
@@ -434,6 +441,13 @@ export function ResearchEngine({
         const friendly = friendlyAiError(json.error.message ?? '');
         tracker.trackFailed(json.error.message ?? '');
         toast.error(friendly.title, { description: friendly.hint });
+        return;
+      }
+
+      // Check for manual provider awaiting output
+      if (json?.data?.status === 'awaiting_manual') {
+        setManualSessionId(json?.data?.sessionId || null);
+        toast.success('Prompt copied to Axiom. Paste the output when ready.');
         return;
       }
 
@@ -506,6 +520,42 @@ export function ResearchEngine({
     } finally {
       setRegenerating(false);
     }
+  }
+
+  async function handleManualOutputSubmit(parsed: unknown) {
+    if (!manualSessionId) return;
+    const res = await fetch(`/api/research-sessions/${manualSessionId}/manual-output`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ output: parsed }),
+    });
+    const json = await res.json();
+    if (json.error) {
+      toast.error(json.error.message);
+      return;
+    }
+
+    const newCards = (json.data?.cards ?? []) as Card[];
+    setCards(newCards);
+    setSessionId(manualSessionId);
+    setApproved(new Set(newCards.map((_, i) => i)));
+    setManualSessionId(null);
+    tracker.trackCompleted({ sessionId: manualSessionId, cardCount: newCards.length, approvedCount: newCards.length, level });
+    toast.success(`${newCards.length} research cards imported`);
+    onStageProgress?.({ researchSessionId: manualSessionId });
+  }
+
+  async function handleManualAbandon() {
+    if (!manualSessionId) return;
+    try {
+      await fetch(`/api/research-sessions/${manualSessionId}/cancel`, { method: 'POST' });
+    } catch {
+      // silent — best-effort cancel
+    }
+    setManualSessionId(null);
+    setCards([]);
+    setSessionId(null);
+    onStageProgress?.({ researchSessionId: undefined });
   }
 
   async function handleApprove() {
@@ -677,74 +727,31 @@ export function ResearchEngine({
               </div>
             </div>
 
-            <Tabs
-              value={genMode}
-              onValueChange={(v) => setGenMode(v as 'ai' | 'manual')}
-              className="mt-2"
-            >
-              <TabsList>
-                <TabsTrigger value="ai" className="gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5" /> AI Research
-                </TabsTrigger>
-                {manualEnabled && (
-                  <TabsTrigger value="manual" className="gap-1.5">
-                    <ClipboardPaste className="h-3.5 w-3.5" /> Manual
-                    (ChatGPT/Gemini)
-                  </TabsTrigger>
+            <div className="space-y-4 mt-2">
+              <ModelPicker
+                providers={RESEARCH_PROVIDERS}
+                provider={provider}
+                model={model}
+                recommended={recommended}
+                onProviderChange={(p) => {
+                  setProvider(p);
+                  setModel(MODELS_BY_PROVIDER[p][0].id);
+                }}
+                onModelChange={setModel}
+              />
+              <Button onClick={handleRun} disabled={running}>
+                {running ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />{' '}
+                    Researching...
+                  </>
+                ) : (
+                  <>
+                    <Search className="h-4 w-4 mr-2" /> Research
+                  </>
                 )}
-              </TabsList>
-
-              <TabsContent value="ai" className="space-y-4 mt-3">
-                <ModelPicker
-                  provider={provider}
-                  model={model}
-                  recommended={recommended}
-                  onProviderChange={(p) => {
-                    setProvider(p);
-                    setModel(MODELS_BY_PROVIDER[p][0].id);
-                  }}
-                  onModelChange={setModel}
-                />
-                <Button onClick={handleRun} disabled={running}>
-                  {running ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />{' '}
-                      Researching...
-                    </>
-                  ) : (
-                    <>
-                      <Search className="h-4 w-4 mr-2" /> Research
-                    </>
-                  )}
-                </Button>
-              </TabsContent>
-
-              {manualEnabled && (
-                <TabsContent value="manual" className="mt-3">
-                  <ManualModePanel
-                    agentSlug="research"
-                    inputContext={[
-                      context.ideaTitle
-                        ? `Selected Idea: ${context.ideaTitle}`
-                        : `Topic: ${topic || '(enter topic above)'}`,
-                      context.ideaCoreTension
-                        ? `Core Tension: ${context.ideaCoreTension}`
-                        : '',
-                      `Depth: ${level}`,
-                      `Research Focus: ${focusTags.join(', ') || 'general'}`,
-                    ]
-                      .filter(Boolean)
-                      .join('\n')}
-                    pastePlaceholder={
-                      'Paste JSON matching BC_RESEARCH_OUTPUT:\n{"idea_validation":{...},"sources":[...],"statistics":[...],"expert_quotes":[...],"counterarguments":[...],"research_summary":"...","refined_angle":{...}}'
-                    }
-                    onImport={handleManualResearchImport}
-                    importLabel="Import Research"
-                    loading={running}
-                  />
-                </TabsContent>
-              )}
-            </Tabs>
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -1191,6 +1198,20 @@ export function ResearchEngine({
           </CardContent>
         </Card>
       )}
+
+      <ManualOutputDialog
+        open={!!manualSessionId}
+        onOpenChange={(open) => {
+          if (!open) {
+            setManualSessionId(null);
+          }
+        }}
+        title="Paste research output"
+        description="Copy the prompt from Axiom, run it in your AI tool, then paste the JSON output below."
+        submitLabel="Import Research"
+        onSubmit={handleManualOutputSubmit}
+        onAbandon={handleManualAbandon}
+      />
     </div>
   );
 }

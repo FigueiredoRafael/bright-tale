@@ -17,6 +17,7 @@ import { emitJobEvent } from '../jobs/emitter.js';
 import { fetchTrends } from '../lib/signals/trends.js';
 import { buildResearchMessage } from '../lib/ai/prompts/research.js';
 import type { ResearchInput } from '../lib/ai/prompts/research.js';
+import { logAiUsage } from '../lib/axiom.js';
 
 /** Check idea exists in idea_archives before using as FK. Brainstorm drafts may not be promoted yet. */
 /**
@@ -76,7 +77,7 @@ const createSchema = z.object({
   level: z.enum(['surface', 'medium', 'deep']),
   focusTags: z.array(z.string()).default([]),
   modelTier: z.string().default('standard'),
-  provider: z.enum(['gemini', 'openai', 'anthropic', 'ollama']).optional(),
+  provider: z.enum(['gemini', 'openai', 'anthropic', 'ollama', 'manual']).optional(),
   model: z.string().optional(),
 });
 
@@ -109,6 +110,48 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
    * POST / — start a research session for an idea.
    */
   /**
+   * POST /:id/cancel — Cancel a running or awaiting_manual research session.
+   */
+  fastify.post('/:id/cancel', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const { id } = request.params as { id: string };
+      const sb = createServiceClient();
+
+      const { data: session } = await sb
+        .from('research_sessions')
+        .select('id, status, user_id')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
+      if (session.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
+      if (session.status !== 'running' && session.status !== 'awaiting_manual') {
+        return reply.send({ data: { status: session.status }, error: null });
+      }
+
+      await (sb.from('research_sessions') as unknown as {
+        update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+      })
+        .update({ status: 'failed', error_message: 'Cancelled by user' })
+        .eq('id', id);
+
+      await emitJobEvent(id, 'research', 'failed', 'Cancelled by user');
+
+      // Cancel the Inngest function run if possible
+      try {
+        await inngest.send({ name: 'inngest/function.cancelled', data: { function_id: 'research-generate', run_id: id } });
+      } catch {
+        // Best-effort — Inngest may not support this or the run may already be done
+      }
+
+      return reply.send({ data: { status: 'cancelled' }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
    * GET / — list research sessions (optionally filtered by channel + status).
    */
   fastify.get('/', { preHandler: [authenticate] }, async (request, reply) => {
@@ -136,8 +179,8 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       const body = createSchema.parse(request.body);
       const orgId = await getOrgId(request.userId);
       const sb = createServiceClient();
-      // Local Ollama runs cost us nothing → no internal credit charge.
-      const cost = body.provider === 'ollama' ? 0 : LEVEL_COSTS[body.level];
+      // Local Ollama and Manual provider cost us nothing → no internal credit charge.
+      const cost = body.provider === 'ollama' || body.provider === 'manual' ? 0 : LEVEL_COSTS[body.level];
       if (cost > 0) await checkCredits(orgId, request.userId, cost);
 
       const inputJson = {
@@ -147,6 +190,106 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
         focusTags: body.focusTags,
         instruction: buildLevelInstruction(body.level, body.focusTags),
       };
+
+      // Manual provider short-circuits the LLM call: build the prompt
+      // synchronously, emit the full payload to Axiom, persist the session in
+      // awaiting_manual state, and return early. The user pastes the output
+      // produced externally via POST /:id/manual-output.
+      if (body.provider === 'manual') {
+        const systemPrompt = (await loadAgentPrompt('research')) ?? '';
+        const channelContext = body.channelId
+          ? await (async () => {
+              const { data } = await sb
+                .from('channels')
+                .select('name, niche, language, tone, presentation_style')
+                .eq('id', body.channelId as string)
+                .maybeSingle();
+              return data;
+            })()
+          : null;
+
+        let ideaTitle: string | undefined;
+        let coreTension: string | undefined;
+        let targetAudience: string | undefined;
+        if (body.ideaId) {
+          const { data: idea } = await sb
+            .from('idea_archives')
+            .select('*')
+            .eq('id', body.ideaId)
+            .maybeSingle();
+          if (idea) {
+            ideaTitle = (idea as Record<string, unknown>).title as string | undefined;
+            coreTension = (idea as Record<string, unknown>).core_tension as string | undefined;
+            targetAudience = (idea as Record<string, unknown>).target_audience as string | undefined;
+          }
+        }
+
+        const userMessage = buildResearchMessage({
+          ideaId: body.ideaId ?? undefined,
+          ideaTitle: ideaTitle ?? body.topic ?? undefined,
+          coreTension,
+          targetAudience,
+          level: body.level,
+          instruction: inputJson.instruction as string,
+          channel: channelContext as ResearchInput['channel'],
+        });
+
+        const { data: manualSession, error: manualInsertErr } = await (
+          sb.from('research_sessions') as unknown as {
+            insert: (row: Record<string, unknown>) => {
+              select: () => { single: () => Promise<{ data: { id: string } | null; error: unknown }> };
+            };
+          }
+        )
+          .insert({
+            org_id: orgId,
+            user_id: request.userId,
+            channel_id: body.channelId ?? null,
+            project_id: body.projectId ?? null,
+            idea_id: await resolveIdeaId(body.ideaId),
+            level: body.level,
+            focus_tags: body.focusTags,
+            input_json: inputJson,
+            model_tier: body.modelTier,
+            status: 'awaiting_manual',
+          })
+          .select()
+          .single();
+        if (manualInsertErr || !manualSession) {
+          throw manualInsertErr ?? new ApiError(500, 'Failed to create session', 'DB_ERROR');
+        }
+
+        // Combine system + user message so the operator can copy ONE prompt
+        // from Axiom and paste it into ChatGPT/Claude without reassembling.
+        const combinedPrompt = systemPrompt
+          ? `${systemPrompt}\n\n${userMessage}`
+          : userMessage;
+
+        logAiUsage({
+          userId: request.userId,
+          orgId,
+          action: 'manual.awaiting',
+          provider: 'manual',
+          model: 'manual',
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          durationMs: 0,
+          status: 'awaiting_manual',
+          metadata: {
+            sessionId: manualSession.id,
+            stage: 'research',
+            channelId: body.channelId ?? null,
+            prompt: combinedPrompt,
+            input: inputJson,
+          },
+        });
+
+        return reply.status(202).send({
+          data: { sessionId: manualSession.id, status: 'awaiting_manual' },
+          error: null,
+        });
+      }
 
       const { data: session, error: insertErr } = await (
         sb.from('research_sessions') as unknown as {
@@ -443,6 +586,74 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       if (error) throw error;
       if (!data) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
       return reply.send({ data, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * POST /:id/manual-output — Submit the output produced externally
+   * for a session in `awaiting_manual` status. Persists the cards, flips the
+   * session to `completed`, and emits a `manual.completed` Axiom event.
+   */
+  fastify.post('/:id/manual-output', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const { id } = request.params as { id: string };
+      const body = z.object({ output: z.unknown() }).parse(request.body);
+      const sb = createServiceClient();
+
+      const { data: session, error: fetchErr } = await sb
+        .from('research_sessions')
+        .select('id, status, channel_id, project_id, org_id, user_id')
+        .eq('id', id)
+        .maybeSingle();
+      if (fetchErr) throw fetchErr;
+      if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
+      const row = session as Record<string, unknown>;
+      if (row.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
+      if (row.status !== 'awaiting_manual') {
+        throw new ApiError(409, `Session is not awaiting manual output (status=${row.status})`, 'CONFLICT');
+      }
+
+      const rawCards = normalizeCards(body.output);
+      if (rawCards.length === 0) {
+        throw new ApiError(400, 'No cards found in pasted output', 'INVALID_OUTPUT');
+      }
+
+      // Update session with cards and flip to completed
+      const { error: updErr } = await (sb.from('research_sessions') as unknown as {
+        update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<{ error: unknown }> };
+      })
+        .update({
+          status: 'completed',
+          cards_json: rawCards,
+        })
+        .eq('id', id);
+      if (updErr) {
+        throw new ApiError(500, `Failed to mark session completed: ${String((updErr as { message?: string })?.message ?? updErr)}`, 'DB_ERROR');
+      }
+
+      logAiUsage({
+        userId: request.userId,
+        orgId: (row.org_id as string) ?? null,
+        action: 'manual.completed',
+        provider: 'manual',
+        model: 'manual',
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        durationMs: 0,
+        status: 'success',
+        metadata: {
+          sessionId: id,
+          stage: 'research',
+          output: body.output,
+          cardCount: rawCards.length,
+        },
+      });
+
+      return reply.send({ data: { cards: rawCards }, error: null });
     } catch (error) {
       return sendError(reply, error);
     }
