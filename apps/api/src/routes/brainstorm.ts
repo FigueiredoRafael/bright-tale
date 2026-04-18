@@ -231,7 +231,10 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       const startNum = (count ?? 0) + 1;
 
       const ideaRows = rawIdeas.map((idea, i) => ({
-        idea_id: idea.idea_id ?? `BC-IDEA-${String(startNum + i).padStart(3, '0')}`,
+        // Always generate a fresh BC-IDEA-NNN id. Trusting the agent's
+        // idea_id (e.g., "P001") collides with prior sessions and the upsert
+        // silently drops the row, leaving the session with no linked ideas.
+        idea_id: `BC-IDEA-${String(startNum + i).padStart(3, '0')}`,
         title: idea.title ?? `Untitled ${i + 1}`,
         core_tension: idea.core_tension ?? '',
         target_audience: idea.target_audience ?? '',
@@ -268,15 +271,20 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         recommendation = (body.output as Record<string, unknown>).recommendation as { pick?: string; rationale?: string } | null;
       }
 
-      await (sb.from('brainstorm_sessions') as unknown as {
-        update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+      // The brainstorm_sessions table has no output_json column today; the
+      // full pasted output is already captured in Axiom via the
+      // manual.completed event below, so we only flip status here.
+      const { error: updErr } = await (sb.from('brainstorm_sessions') as unknown as {
+        update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<{ error: unknown }> };
       })
         .update({
           status: 'completed',
-          output_json: body.output,
           ...(recommendation ? { recommendation_json: recommendation } : {}),
         })
         .eq('id', id);
+      if (updErr) {
+        throw new ApiError(500, `Failed to mark session completed: ${String((updErr as { message?: string })?.message ?? updErr)}`, 'DB_ERROR');
+      }
 
       logAiUsage({
         userId: request.userId,
