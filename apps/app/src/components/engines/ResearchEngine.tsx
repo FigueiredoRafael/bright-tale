@@ -33,6 +33,7 @@ import {
 } from '@/components/ai/ModelPicker';
 import { ManualOutputDialog } from '@/components/engines/ManualOutputDialog';
 import { ResearchFindingsReport } from '@/components/engines/ResearchFindingsReport';
+import { synthesizeFindingsFromLegacy } from '@/lib/research/synthesize-findings';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
@@ -87,43 +88,6 @@ const FOCUS_OPTIONS = [
 ];
 
 const RESEARCH_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
-
-/**
- * Group a legacy cards array into a findings object so the ResearchFindingsReport
- * can render it. Classifies each card by shape (statistic has `figure`+`claim`,
- * quote has `quote`+`author`, counterargument has `point`+`rebuttal`,
- * anything with `url` is treated as a source). Unknowns fall into `misc`.
- */
-function synthesizeFindingsFromLegacy(
-  cards: Array<Record<string, unknown>>,
-): Record<string, unknown> {
-  const grouped: Record<string, Array<Record<string, unknown>>> = {
-    sources: [],
-    statistics: [],
-    expert_quotes: [],
-    counterarguments: [],
-    misc: [],
-  };
-  for (const c of cards) {
-    const type = typeof c.type === 'string' ? c.type.toLowerCase() : '';
-    if (type === 'statistic' || type === 'stat' || ('figure' in c && 'claim' in c)) {
-      grouped.statistics.push(c);
-    } else if (type === 'expert_quote' || type === 'quote' || ('quote' in c && 'author' in c)) {
-      grouped.expert_quotes.push(c);
-    } else if (type === 'counterargument' || ('point' in c && 'rebuttal' in c)) {
-      grouped.counterarguments.push(c);
-    } else if (type === 'source' || 'url' in c || 'credibility' in c || 'key_insight' in c) {
-      grouped.sources.push(c);
-    } else {
-      grouped.misc.push(c);
-    }
-  }
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(grouped)) {
-    if (v.length > 0) out[k] = v;
-  }
-  return out;
-}
 
 export function ResearchEngine({
   mode: engineMode,
