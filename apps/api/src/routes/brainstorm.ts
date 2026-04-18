@@ -172,7 +172,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
 
       if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
       if (session.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
-      if (session.status !== 'running') {
+      if (session.status !== 'running' && session.status !== 'awaiting_manual') {
         return reply.send({ data: { status: session.status }, error: null });
       }
 

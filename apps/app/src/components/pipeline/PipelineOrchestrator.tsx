@@ -151,6 +151,18 @@ export function PipelineOrchestrator({
     }
   }
 
+  // Persist partial progress (e.g., session id) without advancing the stage.
+  async function handleStageProgress(partial: Partial<StageResult>) {
+    const stage = pipelineState.currentStage;
+    const existing = (pipelineState.stageResults[stage] ?? {}) as Record<string, unknown>;
+    const merged = { ...existing, ...partial } as StageResult;
+    const newState: PipelineState = {
+      ...pipelineState,
+      stageResults: { ...pipelineState.stageResults, [stage]: merged },
+    };
+    await savePipelineState(newState);
+  }
+
   // Handle stage completion
   async function handleStageComplete(result: StageResult) {
     const stage = pipelineState.currentStage;
@@ -515,6 +527,7 @@ export function PipelineOrchestrator({
             channelId={channelId}
             context={ctx}
             onComplete={handleStageComplete}
+            onStageProgress={handleStageProgress}
             onBack={handleBack}
           /></>
         );

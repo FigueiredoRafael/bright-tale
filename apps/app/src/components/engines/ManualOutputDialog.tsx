@@ -17,6 +17,7 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (parsed: unknown) => Promise<void>;
+  onAbandon?: () => Promise<void> | void;
   title?: string;
   description?: string;
   submitLabel?: string;
@@ -27,6 +28,7 @@ export function ManualOutputDialog({
   open,
   onOpenChange,
   onSubmit,
+  onAbandon,
   title = 'Paste manual output',
   description = 'Retrieve the prompt from Axiom, run it in your AI tool of choice, then paste the JSON output below.',
   submitLabel = 'Submit',
@@ -34,6 +36,18 @@ export function ManualOutputDialog({
 }: Props) {
   const [raw, setRaw] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [abandoning, setAbandoning] = useState(false);
+
+  async function handleAbandon() {
+    if (!onAbandon) return;
+    setAbandoning(true);
+    try {
+      await onAbandon();
+      setRaw('');
+    } finally {
+      setAbandoning(false);
+    }
+  }
 
   async function handleSubmit() {
     let parsed: unknown;
@@ -67,10 +81,14 @@ export function ManualOutputDialog({
           className="font-mono text-xs resize-none flex-1 min-h-[200px] overflow-auto"
         />
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting || loading}>
-            Cancel
+          <Button
+            variant="ghost"
+            onClick={onAbandon ? handleAbandon : () => onOpenChange(false)}
+            disabled={submitting || loading || abandoning}
+          >
+            {abandoning ? 'Cancelling…' : 'Cancel'}
           </Button>
-          <Button onClick={handleSubmit} disabled={!raw.trim() || submitting || loading}>
+          <Button onClick={handleSubmit} disabled={!raw.trim() || submitting || loading || abandoning}>
             {submitting || loading ? 'Submitting…' : submitLabel}
           </Button>
         </DialogFooter>

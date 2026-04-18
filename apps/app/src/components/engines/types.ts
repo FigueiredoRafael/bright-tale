@@ -106,6 +106,7 @@ export interface BaseEngineProps {
   context: PipelineContext;
   onComplete: (result: StageResult) => void;
   onBack?: (targetStage?: PipelineStage) => void;
+  onStageProgress?: (partial: Partial<StageResult>) => void;
 }
 
 export interface PipelineState {

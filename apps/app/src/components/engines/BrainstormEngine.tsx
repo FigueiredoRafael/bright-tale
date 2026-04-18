@@ -8,6 +8,10 @@ import {
   RefreshCw,
   Check,
   ArrowRight,
+  Target,
+  Users,
+  AlertTriangle,
+  Info,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,6 +29,7 @@ import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
 import { ManualOutputDialog } from './ManualOutputDialog';
+import { IdeaDetailsDialog } from './IdeaDetailsDialog';
 import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
 import { friendlyAiError } from '@/lib/ai/error-message';
 import type { BaseEngineProps, BrainstormResult } from './types';
@@ -73,6 +78,7 @@ export function BrainstormEngine({
   channelId,
   context,
   onComplete,
+  onStageProgress,
   initialSession,
   initialIdeas,
   preSelectedIdeaId,
@@ -103,6 +109,7 @@ export function BrainstormEngine({
 
   // Session-level recommendation (the AI's pick + rationale across all ideas)
   const [recommendation, setRecommendation] = useState<{ pick?: string; rationale?: string } | null>(null);
+  const [detailsIdeaId, setDetailsIdeaId] = useState<string | null>(null);
 
   const tracker = usePipelineTracker('brainstorm', context);
 
@@ -448,6 +455,9 @@ export function BrainstormEngine({
       });
 
       setIdeas(mapped);
+      if (sessionId && mapped.length > 0) {
+        onStageProgress?.({ brainstormSessionId: sessionId });
+      }
       tracker.trackCompleted({
         sessionId: sessionId || undefined,
         ideaCount: mapped.length,
@@ -507,6 +517,9 @@ export function BrainstormEngine({
     if (json.data?.recommendation && typeof json.data.recommendation === 'object') {
       setRecommendation(json.data.recommendation as { pick?: string; rationale?: string });
     }
+    if (newIdeas.length > 0) {
+      onStageProgress?.({ brainstormSessionId: manualSessionId });
+    }
     setManualSessionId(null);
     tracker.trackCompleted({
       sessionId: manualSessionId,
@@ -514,6 +527,21 @@ export function BrainstormEngine({
       ideas: newIdeas,
     });
     toast.success(`${newIdeas.length} ideas saved`);
+  }
+
+  async function handleManualAbandon() {
+    if (!manualSessionId) return;
+    try {
+      await fetch(`/api/brainstorm/sessions/${manualSessionId}/cancel`, { method: 'POST' });
+    } catch {
+      // best-effort
+    }
+    setManualSessionId(null);
+    setSessionId(null);
+    setIdeas([]);
+    setRecommendation(null);
+    onStageProgress?.({ brainstormSessionId: undefined });
+    toast.success('Manual session abandoned');
   }
 
   async function handleRegenerate() {
@@ -794,9 +822,34 @@ export function BrainstormEngine({
         open={!!manualSessionId}
         onOpenChange={(open) => { if (!open) setManualSessionId(null); }}
         onSubmit={handleManualOutputSubmit}
+        onAbandon={handleManualAbandon}
         title="Paste brainstorm output"
         description="Retrieve the prompt from Axiom, run it in an external AI, then paste the full BC_BRAINSTORM_OUTPUT JSON below."
         submitLabel="Save ideas"
+      />
+
+      <IdeaDetailsDialog
+        open={!!detailsIdeaId}
+        onOpenChange={(open) => { if (!open) setDetailsIdeaId(null); }}
+        idea={(() => {
+          if (!detailsIdeaId) return null;
+          const found = ideas.find((i) => (i.id ?? i.idea_id) === detailsIdeaId);
+          if (!found) return null;
+          let extra: Record<string, unknown> = {};
+          try {
+            if (found.discovery_data) extra = JSON.parse(found.discovery_data);
+          } catch {
+            // ignore
+          }
+          return {
+            idea_id: found.idea_id,
+            title: found.title,
+            core_tension: found.core_tension,
+            target_audience: found.target_audience,
+            verdict: found.verdict,
+            ...extra,
+          };
+        })()}
       />
 
 
@@ -825,16 +878,24 @@ export function BrainstormEngine({
 
       {/* Ideas Selection */}
       {!running && ideas.length > 0 && (
-        <Card>
-          <CardHeader>
+        <Card className="border-border/60 bg-gradient-to-b from-card to-card/40 backdrop-blur">
+          <CardHeader className="pb-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <CardTitle className="text-base">
-                  {isSessionDetail ? 'Ideas' : 'Ideias geradas'}
-                </CardTitle>
-                <Badge variant="secondary" className="text-[10px]">
-                  {ideas.length}
-                </Badge>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10 ring-1 ring-primary/20">
+                  <Lightbulb className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    {isSessionDetail ? 'Ideas' : 'Generated ideas'}
+                    <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                      {ideas.length}
+                    </span>
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground font-normal mt-0.5">
+                    Pick one to continue to Research
+                  </p>
+                </div>
               </div>
               {isSessionDetail && (
                 <Button
@@ -852,21 +913,26 @@ export function BrainstormEngine({
                 </Button>
               )}
             </div>
-            <p className="text-xs text-muted-foreground font-normal mt-2">
-              Select one to continue to Research
-            </p>
             {recommendation && (recommendation.pick || recommendation.rationale) && (
-              <div className="mt-3 p-3 rounded-md border border-primary/30 bg-primary/5">
-                <div className="flex items-start gap-2">
-                  <Sparkles className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
-                  <div className="text-xs">
+              <div className="relative mt-4 overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-4">
+                <div className="absolute -top-6 -right-6 h-24 w-24 rounded-full bg-primary/20 blur-2xl" />
+                <div className="relative flex items-start gap-3">
+                  <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary/20 ring-1 ring-primary/30 shrink-0">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-primary">
+                        AI Recommendation
+                      </span>
+                    </div>
                     {recommendation.pick && (
-                      <div className="font-medium text-primary">
-                        Recommended: {recommendation.pick}
+                      <div className="font-semibold text-sm text-foreground mt-1 leading-snug">
+                        {recommendation.pick}
                       </div>
                     )}
                     {recommendation.rationale && (
-                      <div className="text-muted-foreground mt-1">
+                      <div className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
                         {recommendation.rationale}
                       </div>
                     )}
@@ -875,7 +941,7 @@ export function BrainstormEngine({
               </div>
             )}
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-2.5">
             {ideas.map((idea) => {
               let extra: {
                 angle?: string;
@@ -894,87 +960,107 @@ export function BrainstormEngine({
               const ideaKey = idea.id ?? idea.idea_id;
               const isSelected = selectedIdeaId === ideaKey;
               const isPreSelected = preSelectedIdeaId === ideaKey;
+              const verdictStyles =
+                idea.verdict === 'viable'
+                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 ring-emerald-500/30'
+                  : idea.verdict === 'weak'
+                    ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 ring-rose-500/30'
+                    : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 ring-amber-500/30';
+              const verdictDot =
+                idea.verdict === 'viable'
+                  ? 'bg-emerald-500'
+                  : idea.verdict === 'weak'
+                    ? 'bg-rose-500'
+                    : 'bg-amber-500';
 
               return (
-                <button
+                <div
                   key={idea.idea_id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedIdeaId(ideaKey)}
-                  className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedIdeaId(ideaKey);
+                    }
+                  }}
+                  className={`group relative w-full text-left p-4 rounded-xl border transition-all duration-200 overflow-hidden cursor-pointer ${
                     isSelected
-                      ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
-                      : 'border-border hover:border-muted-foreground/30'
+                      ? 'border-primary/60 bg-primary/[0.07] shadow-lg shadow-primary/10'
+                      : 'border-border/60 bg-card/50 hover:border-primary/30 hover:bg-card hover:-translate-y-0.5 hover:shadow-md'
                   }`}
                 >
+                  {isSelected && (
+                    <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-primary to-primary/60" />
+                  )}
                   <div className="flex items-start gap-3">
                     <div
-                      className={`h-5 w-5 rounded-full border-2 shrink-0 mt-0.5 flex items-center justify-center ${
+                      className={`h-5 w-5 rounded-full border-2 shrink-0 mt-0.5 flex items-center justify-center transition-all ${
                         isSelected
-                          ? 'border-primary bg-primary'
-                          : 'border-muted-foreground/30'
+                          ? 'border-primary bg-primary scale-110'
+                          : 'border-muted-foreground/30 group-hover:border-primary/50'
                       }`}
                     >
                       {isSelected && (
-                        <svg
-                          className="h-3 w-3 text-primary-foreground"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={3}
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
+                        <Check className="h-3 w-3 text-primary-foreground" strokeWidth={3} />
                       )}
                     </div>
-                    <Badge
-                      variant={
-                        idea.verdict === 'viable'
-                          ? 'default'
-                          : idea.verdict === 'weak'
-                            ? 'destructive'
-                            : 'secondary'
-                      }
-                      className="text-[10px] shrink-0"
-                    >
-                      {idea.verdict}
-                    </Badge>
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm flex items-center gap-2">
-                        {idea.title}
-                        {isPreSelected && (
-                          <Badge
-                            variant="outline"
-                            className="text-[9px] border-green-500/50 text-green-600 dark:text-green-400 gap-0.5"
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="font-semibold text-sm leading-snug flex-1">
+                          {idea.title}
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <div
+                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wide ring-1 ring-inset ${verdictStyles}`}
                           >
-                            <Check className="h-2.5 w-2.5" /> Selected
-                          </Badge>
-                        )}
+                            <span className={`h-1.5 w-1.5 rounded-full ${verdictDot}`} />
+                            {idea.verdict}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDetailsIdeaId(ideaKey);
+                            }}
+                            className="inline-flex items-center justify-center h-6 w-6 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                            aria-label="View details"
+                          >
+                            <Info className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
+                      {isPreSelected && (
+                        <div className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                          <Check className="h-3 w-3" /> Previously selected
+                        </div>
+                      )}
                       {idea.core_tension && (
-                        <div className="text-xs text-muted-foreground mt-1">
-                          {idea.core_tension}
+                        <div className="flex items-start gap-1.5 mt-2 text-xs text-muted-foreground leading-relaxed">
+                          <Target className="h-3 w-3 mt-0.5 shrink-0 opacity-70" />
+                          <span>{idea.core_tension}</span>
                         </div>
                       )}
                       {idea.target_audience && (
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          For: {idea.target_audience}
+                        <div className="flex items-start gap-1.5 mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                          <Users className="h-3 w-3 mt-0.5 shrink-0 opacity-70" />
+                          <span>{idea.target_audience}</span>
                         </div>
                       )}
                       {extra.angle && (
-                        <div className="text-xs text-muted-foreground mt-1">
-                          Ângulo: {extra.angle}
+                        <div className="flex items-start gap-1.5 mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                          <Sparkles className="h-3 w-3 mt-0.5 shrink-0 opacity-70" />
+                          <span>{extra.angle}</span>
                         </div>
                       )}
                       {extra.repurposing && extra.repurposing.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
+                        <div className="flex flex-wrap gap-1 mt-2.5">
                           {extra.repurposing.map((r) => (
                             <Badge
                               key={r}
                               variant="outline"
-                              className="text-[10px]"
+                              className="text-[10px] font-normal bg-background/50"
                             >
                               {r}
                             </Badge>
@@ -982,21 +1068,21 @@ export function BrainstormEngine({
                         </div>
                       )}
                       {extra.risk_flags && extra.risk_flags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
+                        <div className="flex flex-wrap gap-1.5 mt-2.5">
                           {extra.risk_flags.map((r) => (
-                            <Badge
+                            <span
                               key={r}
-                              variant="destructive"
-                              className="text-[10px] font-normal"
+                              className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
                             >
-                              ⚠ {r}
-                            </Badge>
+                              <AlertTriangle className="h-3 w-3" />
+                              {r}
+                            </span>
                           ))}
                         </div>
                       )}
                     </div>
                   </div>
-                </button>
+                </div>
               );
             })}
           </CardContent>
