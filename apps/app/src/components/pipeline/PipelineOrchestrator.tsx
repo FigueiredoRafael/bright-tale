@@ -552,6 +552,7 @@ export function PipelineOrchestrator({
             context={ctx}
             onComplete={handleStageComplete}
             onBack={handleBack}
+            onStageProgress={handleStageProgress}
           /></>
         );
 

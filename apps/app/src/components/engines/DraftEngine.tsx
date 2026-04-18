@@ -17,8 +17,7 @@ import {
   MODELS_BY_PROVIDER,
   type ProviderId,
 } from '@/components/ai/ModelPicker';
-import { ManualModePanel } from '@/components/ai/ManualModePanel';
-import { useManualMode } from '@/hooks/use-manual-mode';
+import { ManualOutputDialog } from './ManualOutputDialog';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { GenerationProgressModal } from '@/components/generation/GenerationProgressModal';
 import { MarkdownPreview } from '@/components/preview/MarkdownPreview';
@@ -57,12 +56,15 @@ const TYPES: { id: DraftType; label: string; icon: typeof FileText; cost: number
   { id: 'podcast', label: 'Podcast', icon: Mic, cost: 150 },
 ];
 
+const DRAFT_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
+
 export function DraftEngine({
   mode: engineMode,
   channelId,
   context,
   onComplete,
   initialDraft,
+  onStageProgress,
 }: DraftEngineProps) {
   // Research context
   const [research, setResearch] = useState<ResearchOption | null>(null);
@@ -89,10 +91,11 @@ export function DraftEngine({
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Manual mode
-  const [draftMode, setDraftMode] = useState<DraftMode>('ai');
-  const [produceMode, setProduceMode] = useState<DraftMode>('ai');
-  const { enabled: manualEnabled } = useManualMode();
+  // Manual provider — open dialog when API responds with awaiting_manual
+  const [manualState, setManualState] = useState<{
+    draftId: string;
+    phase: 'core' | DraftType;
+  } | null>(null);
 
   // Upgrade handling
   const { handleMaybeCreditsError } = useUpgrade();
@@ -134,6 +137,19 @@ export function DraftEngine({
         setDraftId(context.draftId as string);
         if (d.title && typeof d.title === 'string' && !title) setTitle(d.title);
         if (d.type && typeof d.type === 'string') setType(d.type as DraftType);
+
+        // Check if draft is awaiting manual output
+        if (d.status === 'awaiting_manual') {
+          // Determine which phase we're in by checking what's populated
+          const hasCore = d.canonical_core_json && typeof d.canonical_core_json === 'object' && Object.keys(d.canonical_core_json as Record<string, unknown>).length > 0;
+          const hasDraft = d.draft_json && typeof d.draft_json === 'object' && Object.keys(d.draft_json as Record<string, unknown>).length > 0;
+          const phase_type = hasCore && !hasDraft ? 'core' : ((d.type as DraftType) ?? 'blog');
+          setManualState({
+            draftId: context.draftId as string,
+            phase: phase_type,
+          });
+          return;
+        }
 
         const core = d.canonical_core_json as Record<string, unknown> | null;
         const draftJson = d.draft_json as Record<string, unknown> | null;
@@ -235,7 +251,30 @@ export function DraftEngine({
     const newDraftId = (draft as { id: string }).id;
     setDraftId(newDraftId);
 
-    // Start canonical core generation (SSE)
+    // For manual provider, call canonical-core endpoint which will return awaiting_manual status
+    if (provider === 'manual') {
+      const res = await fetch(`/api/content-drafts/${newDraftId}/canonical-core`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, model }),
+      });
+      const json = await res.json();
+      if (json.error) {
+        if (handleMaybeCreditsError(json.error)) return;
+        const friendly = friendlyAiError(json.error.message ?? '');
+        toast.error(`start canonical core: ${friendly.title}`, { description: friendly.hint });
+        return;
+      }
+      if (json.data?.status === 'awaiting_manual') {
+        setManualState({ draftId: newDraftId, phase: 'core' });
+        setBusy(false);
+        return;
+      }
+      toast.error('Unexpected response from manual provider');
+      return;
+    }
+
+    // Start canonical core generation (SSE) for non-manual providers
     const enqueued = await runStep('start canonical core', () =>
       fetch(`/api/content-drafts/${newDraftId}/generate`, {
         method: 'POST',
@@ -245,6 +284,58 @@ export function DraftEngine({
     );
     if (!enqueued) return;
     setActiveDraftId(newDraftId);
+  }
+
+  // ── Manual provider: submit output ────────────────────────────
+  async function handleManualOutputSubmit(parsed: unknown) {
+    if (!manualState) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/content-drafts/${manualState.draftId}/manual-output`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phase: manualState.phase,
+          output: parsed,
+        }),
+      });
+      const json = await res.json();
+      if (json.error) {
+        toast.error('Submit failed', { description: json.error.message });
+        return;
+      }
+
+      // Success! Clear manual state and proceed
+      if (manualState.phase === 'core') {
+        setCanonicalCore((parsed && typeof parsed === 'object') ? parsed as Record<string, unknown> : null);
+        setPhase('core-ready');
+        toast.success('Canonical core submitted');
+      } else {
+        setProducedContent('(manual content submitted)');
+        setPhase('done');
+        toast.success(`${manualState.phase.charAt(0).toUpperCase() + manualState.phase.slice(1)} content submitted`);
+      }
+      setManualState(null);
+      onStageProgress?.({ draftId: manualState.draftId });
+    } catch (err) {
+      toast.error('Submit failed', { description: err instanceof Error ? err.message : 'Unknown error' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleManualAbandon() {
+    if (!manualState) return;
+    setBusy(true);
+    try {
+      await fetch(`/api/content-drafts/${manualState.draftId}/cancel`, { method: 'POST' });
+    } catch {
+      // best-effort
+    } finally {
+      setBusy(false);
+      setManualState(null);
+      onStageProgress?.({ draftId: undefined });
+    }
   }
 
   // ── Phase 1: Import canonical core manually ───────────────────
@@ -363,6 +454,39 @@ export function DraftEngine({
     });
 
     setPhase('produce');
+
+    // For manual provider, call produce endpoint which will return awaiting_manual status
+    if (provider === 'manual') {
+      setBusy(true);
+      try {
+        const res = await fetch(`/api/content-drafts/${draftId}/produce`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productionParams, provider, model }),
+        });
+        const json = await res.json();
+        if (json.error) {
+          if (handleMaybeCreditsError(json.error)) return;
+          const friendly = friendlyAiError(json.error.message ?? '');
+          toast.error(`produce content: ${friendly.title}`, { description: friendly.hint });
+          setPhase('core-ready');
+          return;
+        }
+        if (json.data?.status === 'awaiting_manual') {
+          setManualState({ draftId, phase: type });
+          return;
+        }
+        toast.error('Unexpected response from manual provider');
+        setPhase('core-ready');
+      } catch {
+        toast.error('produce content failed');
+        setPhase('core-ready');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     const produced = await runStep('produce content', () =>
       fetch(`/api/content-drafts/${draftId}/produce`, {
         method: 'POST',
@@ -724,31 +848,21 @@ export function DraftEngine({
               />
             </div>
 
-            {/* AI/Manual Tabs */}
-            <Tabs
-              value={draftMode}
-              onValueChange={(v) => setDraftMode(v as DraftMode)}
-            >
-              <TabsList>
-                <TabsTrigger value="ai" className="gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5" /> AI Generation
-                </TabsTrigger>
-                {manualEnabled && (
-                  <TabsTrigger value="manual" className="gap-1.5">
-                    <ClipboardPaste className="h-3.5 w-3.5" /> Manual (ChatGPT/Gemini)
-                  </TabsTrigger>
-                )}
-              </TabsList>
-
-              {/* AI mode */}
-              <TabsContent value="ai" className="space-y-4 mt-3">
+            {/* Provider selection */}
+            <div className="space-y-4">
+              <div>
                 <ModelPicker
+                  providers={DRAFT_PROVIDERS}
                   provider={provider}
                   model={model}
                   recommended={{ provider: null, model: null }}
                   onProviderChange={(p) => {
                     setProvider(p);
-                    setModel(MODELS_BY_PROVIDER[p][0].id);
+                    if (p === 'manual') {
+                      setModel('manual');
+                    } else {
+                      setModel(MODELS_BY_PROVIDER[p][0].id);
+                    }
                   }}
                   onModelChange={setModel}
                 />
@@ -764,42 +878,8 @@ export function DraftEngine({
                     Select research first — production without research is weak.
                   </p>
                 )}
-              </TabsContent>
-
-              {/* Manual mode */}
-              {manualEnabled && (
-                <TabsContent value="manual" className="mt-3">
-                  <ManualModePanel
-                    agentSlug="content-core"
-                    inputContext={(() => {
-                      const lines: string[] = [
-                        `Title: ${title || '(enter title above)'}`,
-                      ];
-                      if (context.ideaTitle) lines.push(`Idea: ${context.ideaTitle}`);
-                      if (context.ideaCoreTension) lines.push(`Core Tension: ${context.ideaCoreTension}`);
-                      if (research?.input_json?.topic) lines.push(`Research Topic: ${research.input_json.topic}`);
-                      if (research?.level) lines.push(`Research Depth: ${research.level}`);
-
-                      const researchCards = (research?.approved_cards_json ?? research?.cards_json ?? []) as Record<string, unknown>[];
-                      if (researchCards.length > 0) {
-                        lines.push('', '## Research Data (approved cards)');
-                        lines.push('```json');
-                        lines.push(JSON.stringify(researchCards, null, 2));
-                        lines.push('```');
-                      }
-
-                      return lines.filter(Boolean).join('\n');
-                    })()}
-                    pastePlaceholder={
-                      'Paste JSON matching BC_CANONICAL_CORE:\n{"thesis":"...","argument_chain":[...],"emotional_arc":{...}}'
-                    }
-                    onImport={handleManualCoreImport}
-                    importLabel="Import Canonical Core"
-                    loading={busy}
-                  />
-                </TabsContent>
-              )}
-            </Tabs>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -968,30 +1048,21 @@ export function DraftEngine({
               </div>
             )}
 
-            {/* AI/Manual Tabs */}
-            <Tabs
-              value={produceMode}
-              onValueChange={(v) => setProduceMode(v as DraftMode)}
-            >
-              <TabsList>
-                <TabsTrigger value="ai" className="gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5" /> AI Generation
-                </TabsTrigger>
-                {manualEnabled && (
-                  <TabsTrigger value="manual" className="gap-1.5">
-                    <ClipboardPaste className="h-3.5 w-3.5" /> Manual (ChatGPT/Gemini)
-                  </TabsTrigger>
-                )}
-              </TabsList>
-
-              <TabsContent value="ai" className="space-y-4 mt-3">
+            {/* Provider selection */}
+            <div className="space-y-4">
+              <div>
                 <ModelPicker
+                  providers={DRAFT_PROVIDERS}
                   provider={provider}
                   model={model}
                   recommended={{ provider: null, model: null }}
                   onProviderChange={(p) => {
                     setProvider(p);
-                    setModel(MODELS_BY_PROVIDER[p][0].id);
+                    if (p === 'manual') {
+                      setModel('manual');
+                    } else {
+                      setModel(MODELS_BY_PROVIDER[p][0].id);
+                    }
                   }}
                   onModelChange={setModel}
                 />
@@ -1002,36 +1073,8 @@ export function DraftEngine({
                     <><ArrowRight className="h-4 w-4 mr-2" /> Produce {type.charAt(0).toUpperCase() + type.slice(1)}</>
                   )}
                 </Button>
-              </TabsContent>
-
-              {manualEnabled && (
-                <TabsContent value="manual" className="mt-3">
-                  <ManualModePanel
-                    agentSlug={type}
-                    inputContext={(() => {
-                      const lines: string[] = [
-                        `Title: ${title}`,
-                        `Format: ${type}`,
-                      ];
-                      if (type === 'blog') lines.push(`Target word count: ${targetWords}`);
-                      if (type === 'video' || type === 'podcast') lines.push(`Target duration: ${targetMinutes} minutes`);
-                      if (type === 'shorts') lines.push(`Target duration: ${targetShortsSeconds} seconds`);
-                      if (canonicalCore) {
-                        lines.push('', '## Canonical Core');
-                        lines.push('```json');
-                        lines.push(JSON.stringify(canonicalCore, null, 2));
-                        lines.push('```');
-                      }
-                      return lines.join('\n');
-                    })()}
-                    pastePlaceholder={`Paste the ${type} output JSON from your AI chat...`}
-                    onImport={handleManualProduceImport}
-                    importLabel={`Import ${type.charAt(0).toUpperCase() + type.slice(1)}`}
-                    loading={busy}
-                  />
-                </TabsContent>
-              )}
-            </Tabs>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -1075,6 +1118,20 @@ export function DraftEngine({
           </CardContent>
         </Card>
       )}
+
+      {/* Manual output dialog for provider='manual' */}
+      <ManualOutputDialog
+        open={!!manualState}
+        onOpenChange={(open) => {
+          if (!open) setManualState(null);
+        }}
+        onSubmit={handleManualOutputSubmit}
+        onAbandon={handleManualAbandon}
+        title={manualState ? `Paste ${manualState.phase === 'core' ? 'canonical core' : manualState.phase} output` : 'Paste manual output'}
+        description="Copy the prompt from Axiom, run it in your AI tool of choice, then paste the JSON output below."
+        submitLabel="Submit"
+        loading={busy}
+      />
     </div>
   );
 }
