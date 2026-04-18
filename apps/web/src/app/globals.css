@@ -3,8 +3,9 @@
 /* Use class-based dark mode so toggle works (html.dark / html.light) */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Scan admin package for Tailwind class names */
+/* Scan admin and affiliate-portal packages for Tailwind class names */
 @source "../../../../node_modules/@tn-figueiredo/admin/dist";
+@source "../../../../node_modules/@tn-figueiredo/affiliate-portal/dist";
 
 /* ═══ Admin component tokens — mirrors TôNaGarantia tailwind.config.ts ═══ */
 @theme {
