@@ -17,6 +17,7 @@ import { inngest } from '../jobs/client.js';
 import { emitJobEvent } from '../jobs/emitter.js';
 import { buildBrainstormMessage } from '../lib/ai/prompts/brainstorm.js';
 import type { BrainstormInput } from '../lib/ai/prompts/brainstorm.js';
+import { logAiUsage } from '../lib/axiom.js';
 
 interface RawIdea {
   idea_id?: string;
@@ -207,8 +208,8 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       const orgId = await getOrgId(request.userId);
       const sb = createServiceClient();
 
-      // Local Ollama runs cost us nothing → no internal credit charge.
-      const cost = body.provider === 'ollama' ? 0 : STAGE_COSTS.brainstorm;
+      // Manual provider + Ollama: no internal credit charge.
+      const cost = body.provider === 'ollama' || body.provider === 'manual' ? 0 : STAGE_COSTS.brainstorm;
       if (cost > 0) await checkCredits(orgId, request.userId, cost);
 
       const inputJson: Record<string, unknown> = {
@@ -221,6 +222,80 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         performanceContext: body.performanceContext ?? null,
         contentGoal: body.contentGoal ?? null,
       };
+
+      // Manual provider short-circuits the LLM call: build the prompt
+      // synchronously, emit the full payload to Axiom, persist the session in
+      // awaiting_manual state, and return early. The user pastes the output
+      // produced externally via POST /sessions/:id/manual-output.
+      if (body.provider === 'manual') {
+        const systemPrompt = (await loadAgentPrompt('brainstorm')) ?? '';
+        const channelContext = body.channelId
+          ? await (async () => {
+              const { data } = await sb
+                .from('channels')
+                .select('name, niche, language, tone, presentation_style')
+                .eq('id', body.channelId as string)
+                .maybeSingle();
+              return data;
+            })()
+          : null;
+        const userMessage = buildBrainstormMessage({
+          topic: body.topic,
+          ideasRequested: body.ideasRequested,
+          fineTuning: body.fineTuning,
+          referenceUrl: body.referenceUrl,
+          channel: channelContext as BrainstormInput['channel'],
+        });
+
+        const { data: manualSession, error: manualInsertErr } = await (
+          sb.from('brainstorm_sessions') as unknown as {
+            insert: (row: Record<string, unknown>) => {
+              select: () => { single: () => Promise<{ data: { id: string } | null; error: unknown }> };
+            };
+          }
+        )
+          .insert({
+            org_id: orgId,
+            user_id: request.userId,
+            channel_id: body.channelId ?? null,
+            project_id: body.projectId ?? null,
+            input_mode: body.inputMode,
+            input_json: inputJson,
+            model_tier: body.modelTier,
+            status: 'awaiting_manual',
+          })
+          .select()
+          .single();
+        if (manualInsertErr || !manualSession) {
+          throw manualInsertErr ?? new ApiError(500, 'Failed to create session', 'DB_ERROR');
+        }
+
+        logAiUsage({
+          userId: request.userId,
+          orgId,
+          action: 'manual.awaiting',
+          provider: 'manual',
+          model: 'manual',
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          durationMs: 0,
+          status: 'awaiting_manual',
+          metadata: {
+            sessionId: manualSession.id,
+            stage: 'brainstorm',
+            channelId: body.channelId ?? null,
+            prompt: userMessage,
+            systemPrompt,
+            input: inputJson,
+          },
+        });
+
+        return reply.status(202).send({
+          data: { sessionId: manualSession.id, status: 'awaiting_manual' },
+          error: null,
+        });
+      }
 
       const { data: session, error: insertErr } = await (
         sb.from('brainstorm_sessions') as unknown as {
