@@ -75,7 +75,7 @@ const brainstormBodySchema = z.object({
     .optional(),
   referenceUrl: z.string().url().optional(),
   modelTier: z.string().default('standard'),
-  provider: z.enum(['gemini', 'openai', 'anthropic', 'ollama']).optional(),
+  provider: z.enum(['gemini', 'openai', 'anthropic', 'ollama', 'manual']).optional(),
   model: z.string().optional(),
   // Advanced settings
   temporalMix: z
