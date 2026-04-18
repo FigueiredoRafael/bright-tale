@@ -152,3 +152,74 @@ describe('POST /api/brainstorm/sessions — provider=manual', () => {
     expect(metadata.input).toBeDefined();
   });
 });
+
+describe('POST /api/brainstorm/sessions/:id/manual-output', () => {
+  it('persists ideas, flips status to completed, emits Axiom manual.completed', async () => {
+    nextSession = { id: 'session-1', status: 'awaiting_manual', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
+
+    const pastedOutput = {
+      recommendation: { pick: 'BC-IDEA-001', rationale: 'strong hook' },
+      ideas: [
+        {
+          idea_id: 'BC-IDEA-001',
+          title: 'Morning routines that compound',
+          core_tension: 'discipline vs spontaneity',
+          target_audience: 'early-career professionals',
+          verdict: 'viable',
+        },
+        {
+          title: 'The science of deep work',
+          verdict: 'experimental',
+        },
+      ],
+    };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/brainstorm/sessions/session-1/manual-output',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+      payload: { output: pastedOutput },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.data.ideas).toHaveLength(2);
+
+    expect(insertedIdeas).toHaveLength(2);
+    expect(insertedIdeas[0].brainstorm_session_id).toBe('session-1');
+    expect(insertedIdeas[0].title).toBe('Morning routines that compound');
+    expect(insertedIdeas[1].title).toBe('The science of deep work');
+
+    const completedEvent = axiomCalls.find((e) => e.action === 'manual.completed');
+    expect(completedEvent).toBeDefined();
+    expect(completedEvent!.status).toBe('success');
+  });
+
+  it('returns 409 when the session is already completed', async () => {
+    nextSession = { id: 'session-1', status: 'completed', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/brainstorm/sessions/session-1/manual-output',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+      payload: { output: { ideas: [{ title: 'x' }] } },
+    });
+
+    expect(res.statusCode).toBe(409);
+  });
+
+  it('returns 400 when no ideas found in the pasted output', async () => {
+    nextSession = { id: 'session-1', status: 'awaiting_manual', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/brainstorm/sessions/session-1/manual-output',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+      payload: { output: { random: 'blob' } },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json();
+    expect(body.error?.message).toMatch(/no ideas/i);
+  });
+});
