@@ -4,7 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles } from "lucide-react";
 
-export type ProviderId = "gemini" | "openai" | "anthropic" | "ollama";
+export type ProviderId = "gemini" | "openai" | "anthropic" | "ollama" | "manual";
 
 export interface ModelOption {
     id: string;
@@ -34,6 +34,9 @@ export const MODELS_BY_PROVIDER: Record<ProviderId, ModelOption[]> = {
         { id: "claude-sonnet-4-5-20250514", label: "Claude Sonnet 4.5", note: "balanceado" },
         { id: "claude-opus-4-5-20250514", label: "Claude Opus 4.5", note: "máx qualidade" },
     ],
+    manual: [
+        { id: "manual", label: "Manual paste", note: "emits input to Axiom · no LLM call" },
+    ],
 };
 
 const PROVIDER_LABELS: Record<ProviderId, string> = {
@@ -41,7 +44,10 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
     gemini: "Gemini",
     openai: "OpenAI",
     anthropic: "Anthropic",
+    manual: "Manual",
 };
+
+const DEFAULT_PROVIDERS: ProviderId[] = ["gemini", "openai", "anthropic", "ollama"];
 
 interface Props {
     provider: ProviderId;
@@ -49,17 +55,20 @@ interface Props {
     recommended?: { provider: string | null; model: string | null };
     onProviderChange: (p: ProviderId) => void;
     onModelChange: (m: string) => void;
+    /** Providers to show in the grid. Defaults to the 4 LLM providers (no manual). */
+    providers?: ProviderId[];
 }
 
-export function ModelPicker({ provider, model, recommended, onProviderChange, onModelChange }: Props) {
+export function ModelPicker({ provider, model, recommended, onProviderChange, onModelChange, providers }: Props) {
+    const visibleProviders = providers ?? DEFAULT_PROVIDERS;
     const models = MODELS_BY_PROVIDER[provider];
 
     return (
         <div className="space-y-3 pt-3 border-t">
             <div className="space-y-2">
                 <Label className="text-xs">Provider</Label>
-                <div className="grid grid-cols-4 gap-2">
-                    {(Object.keys(MODELS_BY_PROVIDER) as ProviderId[]).map((p) => {
+                <div className={`grid gap-2 ${visibleProviders.length >= 5 ? "grid-cols-3 sm:grid-cols-5" : "grid-cols-4"}`}>
+                    {visibleProviders.map((p) => {
                         const isRecommended = recommended?.provider === p;
                         return (
                             <button

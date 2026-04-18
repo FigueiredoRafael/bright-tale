@@ -7,7 +7,6 @@ import {
   Sparkles,
   RefreshCw,
   Check,
-  ClipboardPaste,
   ArrowRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -17,20 +16,20 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   ModelPicker,
   MODELS_BY_PROVIDER,
   type ProviderId,
 } from '@/components/ai/ModelPicker';
-import { ManualModePanel } from '@/components/ai/ManualModePanel';
-import { useManualMode } from '@/hooks/use-manual-mode';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
+import { ManualOutputDialog } from './ManualOutputDialog';
 import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
 import { friendlyAiError } from '@/lib/ai/error-message';
 import type { BaseEngineProps, BrainstormResult } from './types';
+
+const BRAINSTORM_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
 
 type Mode = 'blind' | 'fine_tuned' | 'reference_guided';
 
@@ -99,9 +98,8 @@ export function BrainstormEngine({
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(null);
 
-  // Manual mode
-  const [generationMode, setGenerationMode] = useState<'ai' | 'manual'>('ai');
-  const { enabled: manualEnabled } = useManualMode();
+  // Manual provider — open dialog when API responds with awaiting_manual
+  const [manualSessionId, setManualSessionId] = useState<string | null>(null);
 
   const tracker = usePipelineTracker('brainstorm', context);
 
@@ -219,6 +217,11 @@ export function BrainstormEngine({
         const sess = sessJson.data?.session ?? sessJson.data;
         if (sess) {
           setSessionId(sess.id as string);
+          // If the session is awaiting manual output, reopen the modal
+          if (sess.status === 'awaiting_manual') {
+            setManualSessionId(sess.id as string);
+            return;
+          }
           if (sess.input_json && typeof sess.input_json === 'object') {
             const input = sess.input_json as Record<string, unknown>;
             if (input.topic) setTopic(input.topic as string);
@@ -393,6 +396,13 @@ export function BrainstormEngine({
       }
 
       setSessionId(newSessionId);
+      // Manual provider: API short-circuited, no SSE stream — open the paste-output modal.
+      if (json?.data?.status === 'awaiting_manual') {
+        setManualSessionId(newSessionId);
+        setRunning(false);
+        localStorage.removeItem(storageKey);
+        return;
+      }
       setActiveGenerationId(newSessionId);
       // Clear persisted form state after successful submission
       localStorage.removeItem(storageKey);
@@ -459,117 +469,42 @@ export function BrainstormEngine({
     toast.error(friendly.title, { description: friendly.hint });
   }
 
-  async function handleManualImport(parsed: unknown) {
-    function findIdeas(
-      node: unknown,
-      depth = 0
-    ): Array<Record<string, unknown>> {
-      if (depth > 5) return [];
-      if (
-        Array.isArray(node) &&
-        node.length > 0 &&
-        node[0] &&
-        typeof node[0] === 'object' &&
-        'title' in (node[0] as object)
-      ) {
-        return node as Array<Record<string, unknown>>;
-      }
-      if (node && typeof node === 'object' && !Array.isArray(node)) {
-        for (const v of Object.values(node as Record<string, unknown>)) {
-          const found = findIdeas(v, depth + 1);
-          if (found.length > 0) return found;
-        }
-      }
-      return [];
-    }
-
-    const rawIdeas = findIdeas(parsed);
-
-    if (rawIdeas.length === 0) {
-      toast.error(
-        "No ideas found in pasted output. Expected an array with objects containing 'title'."
-      );
+  async function handleManualOutputSubmit(parsed: unknown) {
+    if (!manualSessionId) return;
+    const res = await fetch(`/api/brainstorm/sessions/${manualSessionId}/manual-output`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ output: parsed }),
+    });
+    const json = await res.json();
+    if (json.error) {
+      toast.error(json.error.message ?? 'Failed to submit output');
       return;
     }
-
-    const saved: Idea[] = [];
-    const errors: string[] = [];
-
-    for (const idea of rawIdeas) {
-      try {
-        const title = String(idea.title ?? '').trim();
-        if (title.length < 5) {
-          errors.push(`"${title || '(empty)'}" — title too short (min 5 chars)`);
-          continue;
-        }
-
-        const res = await fetch('/api/ideas/library', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title,
-            core_tension: String(idea.core_tension ?? ''),
-            target_audience: String(idea.target_audience ?? ''),
-            verdict: ['viable', 'experimental', 'weak'].includes(
-              String(idea.verdict ?? '')
-            )
-              ? idea.verdict
-              : 'experimental',
-            source_type: 'manual',
-            ...(channelId ? { channel_id: channelId } : {}),
-            tags: Array.isArray(idea.tags) ? idea.tags : [],
-          }),
-        });
-
-        const json = await res.json();
-        if (json.error) {
-          errors.push(`"${title}" — ${json.error.message}`);
-          continue;
-        }
-
-        if (json.data?.idea) {
-          const ideaData = json.data.idea as Record<string, unknown>;
-          let verdict: 'viable' | 'weak' | 'experimental' = 'experimental';
-          const v = ideaData.verdict as string;
-          if (v === 'viable' || v === 'weak' || v === 'experimental') {
-            verdict = v;
-          }
-          saved.push({
-            id: ideaData.id as string,
-            idea_id: ideaData.idea_id as string,
-            title: ideaData.title as string,
-            core_tension: undefined,
-            target_audience: (ideaData.target_audience as string) || '',
-            verdict,
-            discovery_data: JSON.stringify({
-              monetization: idea.monetization,
-              repurposing: idea.repurposing,
-            }),
-          });
-        }
-      } catch (err) {
-        errors.push(
-          `"${idea.title ?? '?'}" — ${err instanceof Error ? err.message : 'unknown error'}`
-        );
-      }
-    }
-
-    if (saved.length > 0) {
-      setIdeas(saved);
-      tracker.trackAction('imported', {
-        ideaCount: saved.length,
-        source: 'manual',
-      });
-      toast.success(`${saved.length} of ${rawIdeas.length} ideas saved`);
-    }
-    if (errors.length > 0) {
-      toast.error(`${errors.length} failed`, {
-        description: errors.slice(0, 3).join('\n'),
-      });
-    }
-    if (saved.length === 0 && errors.length === 0) {
-      toast.error('No ideas found in pasted output');
-    }
+    const rows = (json.data?.ideas ?? []) as Array<Record<string, unknown>>;
+    const newIdeas: Idea[] = rows.map((d) => {
+      let verdict: 'viable' | 'weak' | 'experimental' = 'experimental';
+      const v = d.verdict as string;
+      if (v === 'viable' || v === 'weak' || v === 'experimental') verdict = v;
+      return {
+        id: d.id as string,
+        idea_id: d.idea_id as string,
+        title: d.title as string,
+        core_tension: (d.core_tension as string) || undefined,
+        target_audience: (d.target_audience as string) || '',
+        verdict,
+        discovery_data: d.discovery_data as string | undefined,
+      };
+    });
+    setIdeas(newIdeas);
+    setSessionId(manualSessionId);
+    setManualSessionId(null);
+    tracker.trackCompleted({
+      sessionId: manualSessionId,
+      ideaCount: newIdeas.length,
+      ideas: newIdeas,
+    });
+    toast.success(`${newIdeas.length} ideas saved`);
   }
 
   async function handleRegenerate() {
@@ -817,79 +752,44 @@ export function BrainstormEngine({
               </div>
             )}
 
-            <Tabs
-              value={generationMode}
-              onValueChange={(v) => setGenerationMode(v as 'ai' | 'manual')}
-              className="mt-2"
-            >
-              <TabsList>
-                <TabsTrigger value="ai" className="gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5" /> AI Generation
-                </TabsTrigger>
-                {manualEnabled && (
-                  <TabsTrigger value="manual" className="gap-1.5">
-                    <ClipboardPaste className="h-3.5 w-3.5" /> Manual
-                    (ChatGPT/Gemini)
-                  </TabsTrigger>
+            <div className="space-y-4 mt-3">
+              <ModelPicker
+                provider={provider}
+                model={model}
+                recommended={recommended}
+                providers={BRAINSTORM_PROVIDERS}
+                onProviderChange={(p) => {
+                  setProvider(p);
+                  setModel(MODELS_BY_PROVIDER[p][0].id);
+                }}
+                onModelChange={setModel}
+              />
+              <Button onClick={handleRun} disabled={running}>
+                {running ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />{' '}
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 mr-2" /> Generate ideas
+                  </>
                 )}
-              </TabsList>
-
-              <TabsContent value="ai" className="space-y-4 mt-3">
-                <ModelPicker
-                  provider={provider}
-                  model={model}
-                  recommended={recommended}
-                  onProviderChange={(p) => {
-                    setProvider(p);
-                    setModel(MODELS_BY_PROVIDER[p][0].id);
-                  }}
-                  onModelChange={setModel}
-                />
-                <Button onClick={handleRun} disabled={running}>
-                  {running ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />{' '}
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-4 w-4 mr-2" /> Generate ideas
-                    </>
-                  )}
-                </Button>
-              </TabsContent>
-
-              {manualEnabled && (
-                <TabsContent value="manual" className="mt-3">
-                  <ManualModePanel
-                    agentSlug="brainstorm"
-                    inputContext={[
-                      `Topic: ${topic || '(enter topic above)'}`,
-                      mode === 'fine_tuned' && niche ? `Niche: ${niche}` : '',
-                      mode === 'fine_tuned' && tone ? `Tone: ${tone}` : '',
-                      mode === 'fine_tuned' && audience
-                        ? `Audience: ${audience}`
-                        : '',
-                      mode === 'fine_tuned' && goal ? `Goal: ${goal}` : '',
-                      mode === 'fine_tuned' && constraints
-                        ? `Constraints: ${constraints}`
-                        : '',
-                    ]
-                      .filter(Boolean)
-                      .join('\n')}
-                    pastePlaceholder={
-                      'Paste JSON:\n{"ideas":[{"title":"...","core_tension":"...","target_audience":"...","verdict":"viable"}]}'
-                    }
-                    onImport={handleManualImport}
-                    importLabel="Import Ideas"
-                    loading={running}
-                  />
-                </TabsContent>
-              )}
-            </Tabs>
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
+
+      <ManualOutputDialog
+        open={!!manualSessionId}
+        onOpenChange={(open) => { if (!open) setManualSessionId(null); }}
+        onSubmit={handleManualOutputSubmit}
+        title="Paste brainstorm output"
+        description="Retrieve the prompt from Axiom, run it in an external AI, then paste the full BC_BRAINSTORM_OUTPUT JSON below."
+        submitLabel="Save ideas"
+      />
+
 
       {/* Floating progress indicator — non-blocking, bottom-right */}
       <GenerationProgressFloat
