@@ -467,8 +467,11 @@ export function PipelineOrchestrator({
     const ctx = buildContext();
     const stage = pipelineState.currentStage;
 
-    // Show mode picker if not in auto mode and no mode selected
-    if (!engineMode && pipelineState.mode === 'step-by-step') {
+    // Show mode picker only when the stage has no results yet. Revisiting a
+    // completed stage drops straight into the engine so its hydration effect
+    // can restore the saved ideas/research/draft from the linked session id.
+    const hasResults = !!pipelineState.stageResults[stage];
+    if (!engineMode && pipelineState.mode === 'step-by-step' && !hasResults) {
       const picker = renderModePicker();
       if (picker) return picker;
     }
