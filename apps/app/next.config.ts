@@ -43,7 +43,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@brighttale/shared", "@tn-figueiredo/affiliate-portal"],
+  transpilePackages: ["@brighttale/shared"],
   serverExternalPackages: ["sharp"],
   images: {
     remotePatterns: [
@@ -54,11 +54,7 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return {
       beforeFiles: [
-        // Affiliate 2B — shim package-emitted URLs onto real app routes.
-        // beforeFiles runs BEFORE next-intl middleware; preserves ?ref automatically.
         { source: "/signup", destination: "/auth/signup" },
-        { source: "/parceiros/login", destination: "/auth/login" },
-        { source: "/parceiros/dashboard", destination: "/settings/affiliate" },
       ],
       afterFiles: [
         {

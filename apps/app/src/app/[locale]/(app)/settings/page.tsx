@@ -11,7 +11,6 @@ import {
     User,
     TrendingUp,
     CreditCard,
-    Gift,
 } from "lucide-react";
 
 interface SettingsCard {
@@ -57,14 +56,6 @@ export default function SettingsPage() {
             description: "Tokens gastos e custo estimado por mês, provider e formato. Ollama local é free; Gemini/Anthropic/OpenAI usam preços públicos.",
             href: "/settings/usage",
             icon: <TrendingUp className="h-6 w-6" />,
-        },
-        {
-            title: "Programa de afiliados",
-            description: "Compartilhe seu link de referral, acompanhe signups e conversões, e acumule comissões. Starter+.",
-            href: "/settings/affiliate",
-            icon: <Gift className="h-6 w-6" />,
-            badge: "Starter+",
-            badgeVariant: "secondary",
         },
     ];
 
