@@ -43,7 +43,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@brighttale/shared"],
+  transpilePackages: ["@brighttale/shared", "@tn-figueiredo/affiliate-portal"],
   serverExternalPackages: ["sharp"],
   images: {
     remotePatterns: [
