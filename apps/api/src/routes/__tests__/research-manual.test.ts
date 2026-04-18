@@ -145,22 +145,62 @@ describe('POST /api/research/ — provider=manual', () => {
 });
 
 describe('POST /api/research/:id/manual-output', () => {
-  it('persists cards, flips status to completed, emits Axiom manual.completed', async () => {
+  it('persists findings object, flips status to completed, emits Axiom manual.completed', async () => {
     nextSession = { id: 'session-1', status: 'awaiting_manual', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
 
     const pastedOutput = {
-      cards: [
+      sources: [
         {
+          source_id: 'S1',
           title: 'Espresso Extraction Guide',
           url: 'https://example.com/espresso',
           author: 'Coffee Expert',
           type: 'source',
         },
         {
+          source_id: 'S2',
           title: 'Pressure and Flow',
           url: 'https://example.com/pressure',
           author: 'Science Monthly',
           type: 'source',
+        },
+      ],
+      research_summary: 'Comprehensive research on espresso extraction.',
+    };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/research/session-1/manual-output',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+      payload: { output: pastedOutput },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.data.findings).toBeDefined();
+    expect(body.data.findings.sources).toHaveLength(2);
+    expect(body.data.findings.research_summary).toBe('Comprehensive research on espresso extraction.');
+
+    const completedEvent = axiomCalls.find((e) => e.action === 'manual.completed');
+    expect(completedEvent).toBeDefined();
+    expect(completedEvent!.status).toBe('success');
+    expect(completedEvent!.metadata).toHaveProperty('stage', 'research');
+  });
+
+  it('persists findings when output has cards array (legacy)', async () => {
+    nextSession = { id: 'session-1', status: 'awaiting_manual', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
+
+    const pastedOutput = {
+      cards: [
+        {
+          title: 'Source 1',
+          url: 'https://example.com/1',
+          type: 'source',
+        },
+        {
+          title: 'Stat 1',
+          claim: '95% of users',
+          type: 'statistic',
         },
       ],
     };
@@ -174,12 +214,8 @@ describe('POST /api/research/:id/manual-output', () => {
 
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.data.cards).toHaveLength(2);
-
-    const completedEvent = axiomCalls.find((e) => e.action === 'manual.completed');
-    expect(completedEvent).toBeDefined();
-    expect(completedEvent!.status).toBe('success');
-    expect(completedEvent!.metadata).toHaveProperty('stage', 'research');
+    expect(body.data.findings.sources).toHaveLength(1);
+    expect(body.data.findings.statistics).toHaveLength(1);
   });
 
   it('returns 409 when the session is not awaiting_manual', async () => {
@@ -195,7 +231,7 @@ describe('POST /api/research/:id/manual-output', () => {
     expect(res.statusCode).toBe(409);
   });
 
-  it('returns 400 when no cards found in the pasted output', async () => {
+  it('returns 400 when no research data found in the pasted output', async () => {
     nextSession = { id: 'session-1', status: 'awaiting_manual', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
 
     const res = await app.inject({
@@ -207,6 +243,6 @@ describe('POST /api/research/:id/manual-output', () => {
 
     expect(res.statusCode).toBe(400);
     const body = res.json();
-    expect(body.error?.message).toMatch(/no cards/i);
+    expect(body.error?.message).toMatch(/no research data/i);
   });
 });

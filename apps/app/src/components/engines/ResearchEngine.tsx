@@ -32,6 +32,7 @@ import {
   type ProviderId,
 } from '@/components/ai/ModelPicker';
 import { ManualOutputDialog } from '@/components/engines/ManualOutputDialog';
+import { ResearchFindingsReport } from '@/components/engines/ResearchFindingsReport';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
@@ -118,6 +119,7 @@ export function ResearchEngine({
   const [ideaValidation, setIdeaValidation] = useState<Record<string, unknown> | null>(null);
   const [knowledgeGaps, setKnowledgeGaps] = useState<string[]>([]);
   const [refinedAngle, setRefinedAngle] = useState<Record<string, unknown> | null>(null);
+  const [findings, setFindings] = useState<Record<string, unknown> | null>(null);
 
   // Manual provider — open dialog when API responds with awaiting_manual
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
@@ -169,12 +171,23 @@ export function ResearchEngine({
     }
   }, [initialSession, initialCards, initialApproved]);
 
+  // Handle findings hydration when provided in session
+  useEffect(() => {
+    if (initialSession && typeof initialSession === 'object') {
+      const sess = initialSession as Record<string, unknown>;
+      // Check if cards_json is an object (findings) not an array (legacy cards)
+      if (sess.cards_json && typeof sess.cards_json === 'object' && !Array.isArray(sess.cards_json)) {
+        setFindings(sess.cards_json as Record<string, unknown>);
+      }
+    }
+  }, [initialSession]);
+
   // Load existing session from context when navigating back in the pipeline
   useEffect(() => {
     if (initialSession || initialCards) return;
     const ctxSessionId = context.researchSessionId;
     if (!ctxSessionId) return;
-    if (sessionId === ctxSessionId && cards.length > 0) return;
+    if (sessionId === ctxSessionId && (cards.length > 0 || findings)) return;
 
     (async () => {
       try {
@@ -201,26 +214,32 @@ export function ResearchEngine({
             setRefinedAngle(sess.refined_angle_json as Record<string, unknown>);
           }
 
-          // Load cards from cards_json column
-          const cardsData = (Array.isArray(sess.cards_json) ? sess.cards_json : []) as Array<Record<string, unknown>>;
-          if (cardsData.length > 0) {
-            const mapped = cardsData.map((c: Record<string, unknown>) => ({
-              type: c.type as string | undefined,
-              title: c.title as string | undefined,
-              url: c.url as string | undefined,
-              author: c.author as string | undefined,
-              quote: c.quote as string | undefined,
-              claim: c.claim as string | undefined,
-              relevance: c.relevance as number | undefined,
-              ...c,
-            } as Card));
-            setCards(mapped);
-            // Restore approved set from approved_cards_json, or approve all
-            const approvedIdx = sess.approved_cards_json as number[] | null;
-            if (Array.isArray(approvedIdx)) {
-              setApproved(new Set(approvedIdx));
-            } else {
-              setApproved(new Set(mapped.map((_, i) => i)));
+          // Check if cards_json is an object (findings) or array (legacy cards)
+          if (sess.cards_json && typeof sess.cards_json === 'object' && !Array.isArray(sess.cards_json)) {
+            // New findings format
+            setFindings(sess.cards_json as Record<string, unknown>);
+          } else {
+            // Legacy cards array
+            const cardsData = (Array.isArray(sess.cards_json) ? sess.cards_json : []) as Array<Record<string, unknown>>;
+            if (cardsData.length > 0) {
+              const mapped = cardsData.map((c: Record<string, unknown>) => ({
+                type: c.type as string | undefined,
+                title: c.title as string | undefined,
+                url: c.url as string | undefined,
+                author: c.author as string | undefined,
+                quote: c.quote as string | undefined,
+                claim: c.claim as string | undefined,
+                relevance: c.relevance as number | undefined,
+                ...c,
+              } as Card));
+              setCards(mapped);
+              // Restore approved set from approved_cards_json, or approve all
+              const approvedIdx = sess.approved_cards_json as number[] | null;
+              if (Array.isArray(approvedIdx)) {
+                setApproved(new Set(approvedIdx));
+              } else {
+                setApproved(new Set(mapped.map((_, i) => i)));
+              }
             }
           }
         }
@@ -427,7 +446,7 @@ export function ResearchEngine({
       });
 
       let json: {
-        data?: { sessionId?: string; status?: string; cards?: Card[] };
+        data?: { sessionId?: string; status?: string; cards?: Card[]; findings?: Record<string, unknown> };
         error?: { message?: string; code?: string };
       } | null = null;
       try {
@@ -451,20 +470,26 @@ export function ResearchEngine({
         return;
       }
 
+      const generatedFindings = json?.data?.findings;
       const generatedCards = json?.data?.cards ?? [];
-      setCards(generatedCards);
+
       setSessionId(json?.data?.sessionId || null);
-      setApproved(new Set(generatedCards.map((_, i) => i)));
 
-      tracker.trackCompleted({ sessionId: json?.data?.sessionId || '', cardCount: generatedCards.length, approvedCount: generatedCards.length, level });
-
-      if (generatedCards.length === 0) {
-        toast.warning('No research cards recognized in output', {
+      // Prefer findings if available (new format), otherwise use cards (legacy)
+      if (generatedFindings && typeof generatedFindings === 'object') {
+        setFindings(generatedFindings);
+        tracker.trackCompleted({ sessionId: json?.data?.sessionId || '', cardCount: generatedCards.length, approvedCount: generatedCards.length, level });
+        toast.success('Research completed');
+      } else if (generatedCards.length > 0) {
+        setCards(generatedCards);
+        setApproved(new Set(generatedCards.map((_, i) => i)));
+        tracker.trackCompleted({ sessionId: json?.data?.sessionId || '', cardCount: generatedCards.length, approvedCount: generatedCards.length, level });
+        toast.success(`${generatedCards.length} research cards found`);
+      } else {
+        toast.warning('No research data recognized in output', {
           description:
             "AI responded but format didn't match. Try a different model or re-run.",
         });
-      } else {
-        toast.success(`${generatedCards.length} research cards found`);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -502,9 +527,18 @@ export function ResearchEngine({
           const reloadJson = await reloadRes.json();
           if (reloadJson.data) {
             const sess = reloadJson.data as Record<string, unknown>;
-            const newCards = (sess.approved_cards_json ?? sess.cards_json ?? []) as Card[];
-            setCards(newCards);
-            setApproved(new Set(newCards.map((_, i) => i)));
+
+            // Check if cards_json is an object (findings) or array (legacy cards)
+            if (sess.cards_json && typeof sess.cards_json === 'object' && !Array.isArray(sess.cards_json)) {
+              // New findings format
+              setFindings(sess.cards_json as Record<string, unknown>);
+            } else {
+              // Legacy cards array
+              const newCards = (sess.approved_cards_json ?? sess.cards_json ?? []) as Card[];
+              setCards(newCards);
+              setApproved(new Set(newCards.map((_, i) => i)));
+            }
+
             if (sess.refined_angle_json && typeof sess.refined_angle_json === 'object') {
               setRefinedAngle(sess.refined_angle_json as Record<string, unknown>);
             }
@@ -535,13 +569,24 @@ export function ResearchEngine({
       return;
     }
 
-    const newCards = (json.data?.cards ?? []) as Card[];
-    setCards(newCards);
+    const newFindings = json.data?.findings;
+    const newCards = json.data?.cards ?? [];
+
     setSessionId(manualSessionId);
-    setApproved(new Set(newCards.map((_, i) => i)));
+
+    // Prefer findings if available (new format), otherwise use cards (legacy)
+    if (newFindings && typeof newFindings === 'object') {
+      setFindings(newFindings);
+      tracker.trackCompleted({ sessionId: manualSessionId, cardCount: 1, approvedCount: 1, level });
+      toast.success('Research imported');
+    } else if (newCards.length > 0) {
+      setCards(newCards);
+      setApproved(new Set(newCards.map((_: Card, i: number) => i)));
+      tracker.trackCompleted({ sessionId: manualSessionId, cardCount: newCards.length, approvedCount: newCards.length, level });
+      toast.success(`${newCards.length} research cards imported`);
+    }
+
     setManualSessionId(null);
-    tracker.trackCompleted({ sessionId: manualSessionId, cardCount: newCards.length, approvedCount: newCards.length, level });
-    toast.success(`${newCards.length} research cards imported`);
     onStageProgress?.({ researchSessionId: manualSessionId });
   }
 
@@ -559,6 +604,20 @@ export function ResearchEngine({
   }
 
   async function handleApprove() {
+    // For new findings format, approve the whole research
+    if (findings) {
+      tracker.trackAction('findings.approved', { sessionId: sessionId || '' });
+
+      const result: ResearchResult = {
+        researchSessionId: sessionId || '',
+        approvedCardsCount: 1,
+        researchLevel: level,
+      };
+      onComplete(result);
+      return;
+    }
+
+    // For legacy cards format
     const approvedCards = cards.filter((_, i) => approved.has(i));
 
     tracker.trackAction('cards.approved', { sessionId: sessionId || '', approvedCount: approved.size, totalCount: cards.length, approvedIndexes: Array.from(approved) });
@@ -836,8 +895,22 @@ export function ResearchEngine({
         </Card>
       )}
 
-      {/* Research cards */}
-      {cards.length > 0 && (
+      {/* New findings report */}
+      {findings && (
+        <>
+          <ResearchFindingsReport findings={findings} />
+
+          <div className="flex justify-end pt-2">
+            <Button onClick={handleApprove} size="lg">
+              <Check className="h-4 w-4 mr-2" /> Continue{' '}
+              <ArrowRight className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+        </>
+      )}
+
+      {/* Research cards (legacy) */}
+      {!findings && cards.length > 0 && (
         <>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -1190,11 +1263,11 @@ export function ResearchEngine({
         </>
       )}
 
-      {/* Spacer if no cards yet in session detail */}
-      {isSessionDetail && cards.length === 0 && (
+      {/* Spacer if no findings or cards yet in session detail */}
+      {isSessionDetail && cards.length === 0 && !findings && (
         <Card className="border-dashed">
           <CardContent className="py-8 text-center text-muted-foreground">
-            No research cards yet. Run a new research or reload the page.
+            No research data yet. Run a new research or reload the page.
           </CardContent>
         </Card>
       )}
