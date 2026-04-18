@@ -578,6 +578,7 @@ export function PipelineOrchestrator({
             onComplete={handleStageComplete}
             onBack={handleBack}
             onDraftUpdated={(draft) => setDraftData(draft)}
+            onStageProgress={handleStageProgress}
           />
         );
 

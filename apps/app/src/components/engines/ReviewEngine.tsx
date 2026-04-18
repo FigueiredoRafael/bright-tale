@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ReviewFeedbackPanel } from '@/components/preview/ReviewFeedbackPanel';
-import { ManualModePanel } from '@/components/ai/ManualModePanel';
+import { ManualOutputDialog } from './ManualOutputDialog';
 import { useManualMode } from '@/hooks/use-manual-mode';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { GenerationProgressModal } from '@/components/generation/GenerationProgressModal';
@@ -34,9 +34,12 @@ interface ReviewEngineProps {
   onComplete: (result: StageResult) => void;
   onBack?: (targetStage?: PipelineStage) => void;
   onDraftUpdated: (draft: Record<string, unknown>) => void;
+  onStageProgress?: (partial: { score?: number; verdict?: string }) => void;
 }
 
 type ReviewMode = 'ai' | 'manual';
+
+const REVIEW_PROVIDERS: Array<'ai' | 'manual'> = ['ai', 'manual'];
 
 export function ReviewEngine({
   channelId,
@@ -46,6 +49,7 @@ export function ReviewEngine({
   onComplete,
   onBack,
   onDraftUpdated,
+  onStageProgress,
 }: ReviewEngineProps) {
   const [reviewMode, setReviewMode] = useState<ReviewMode>('ai');
   const [busy, setBusy] = useState(false);
@@ -54,6 +58,18 @@ export function ReviewEngine({
   const { handleMaybeCreditsError } = useUpgrade();
   const inFlightRef = useRef(false);
   const tracker = usePipelineTracker('review', context);
+
+  // Manual provider state
+  const [manualState, setManualState] = useState<{
+    draftId: string;
+  } | null>(null);
+
+  // Restore manual state if draft is awaiting_manual
+  useEffect(() => {
+    if (draft.status === 'awaiting_manual') {
+      setManualState({ draftId });
+    }
+  }, [draft.status, draftId]);
 
   // Load fresh data if needed
   async function refetchDraft() {
@@ -98,11 +114,14 @@ export function ReviewEngine({
           return;
         }
 
-        // Now run the review
+        // Now run the review (with provider override if manual is selected)
         setReviewing(true);
         const res = await fetch(`/api/content-drafts/${draftId}/review`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            reviewMode === 'manual' ? { provider: 'manual' } : {}
+          ),
         });
         const json = await res.json();
 
@@ -115,6 +134,14 @@ export function ReviewEngine({
           const f = friendlyAiError(json.error.message ?? '');
           toast.error(f.title, { description: f.hint });
           setReviewing(false);
+          return;
+        }
+
+        // If manual, set up manual state and return early
+        if (reviewMode === 'manual' && json.data?.status === 'awaiting_manual') {
+          setManualState({ draftId });
+          setReviewing(false);
+          toast.info('Review prompt copied to Axiom. Paste output when ready.');
           return;
         }
 
@@ -141,6 +168,52 @@ export function ReviewEngine({
         toast.error('Failed to submit for review');
       }
     });
+  }
+
+  async function handleManualOutputSubmit(parsed: unknown) {
+    if (!manualState) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/content-drafts/${manualState.draftId}/manual-review-output`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed),
+      });
+      const json = await res.json();
+      if (json.error) {
+        toast.error('Submit failed', { description: json.error.message });
+        return;
+      }
+
+      // Success! Clear manual state and proceed
+      const feedbackObj = json.data?.review_feedback_json as Record<string, unknown> | null;
+      const blogReview = (feedbackObj?.blog_review ?? feedbackObj?.video_review) as Record<string, unknown> | undefined;
+      const score = (typeof blogReview?.score === 'number' ? blogReview.score as number : json.data?.review_score ?? 0);
+      const verdict = json.data?.review_verdict ?? 'pending';
+
+      setManualState(null);
+      await refetchDraft();
+      toast.success('Review submitted');
+      onStageProgress?.({ score, verdict });
+    } catch (err) {
+      toast.error('Submit failed', { description: err instanceof Error ? err.message : 'Unknown error' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleManualAbandon() {
+    if (!manualState) return;
+    setBusy(true);
+    try {
+      await fetch(`/api/content-drafts/${manualState.draftId}/cancel`, { method: 'POST' });
+    } catch {
+      // best-effort
+    } finally {
+      setBusy(false);
+      setManualState(null);
+      onStageProgress?.({ score: undefined, verdict: undefined });
+    }
   }
 
   async function handleManualImport(parsed: unknown) {
@@ -323,80 +396,44 @@ export function ReviewEngine({
               </p>
             </div>
 
-            {/* AI/Manual Tabs */}
-            <Tabs
-              value={reviewMode}
-              onValueChange={(v) => setReviewMode(v as ReviewMode)}
-              className="mt-4"
-            >
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="ai" className="gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5" /> AI Review
-                </TabsTrigger>
+            {/* Provider selection */}
+            <div className="space-y-4">
+              <div className="flex gap-2 justify-center flex-wrap">
+                <Button
+                  onClick={() => {
+                    setReviewMode('ai');
+                    setTimeout(() => handleSubmitForReview(), 0);
+                  }}
+                  disabled={busy || !draft.draft_json}
+                  variant={reviewMode === 'ai' ? 'default' : 'outline'}
+                  size="lg"
+                  className="gap-2"
+                >
+                  <Sparkles className="h-4 w-4" /> AI Review
+                </Button>
                 {manualEnabled && (
-                  <TabsTrigger value="manual" className="gap-1.5">
-                    <ClipboardPaste className="h-3.5 w-3.5" /> Manual (ChatGPT)
-                  </TabsTrigger>
-                )}
-              </TabsList>
-
-              {/* AI mode */}
-              <TabsContent value="ai" className="mt-4">
-                <div className="flex justify-center">
                   <Button
-                    onClick={handleSubmitForReview}
+                    onClick={() => {
+                      setReviewMode('manual');
+                      setTimeout(() => handleSubmitForReview(), 0);
+                    }}
                     disabled={busy || !draft.draft_json}
+                    variant={reviewMode === 'manual' ? 'default' : 'outline'}
                     size="lg"
+                    className="gap-2"
                   >
-                    {busy ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Reviewing...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        Submit for AI Review
-                      </>
-                    )}
+                    <ClipboardPaste className="h-4 w-4" /> Manual
                   </Button>
-                </div>
-                {!draft.draft_json && (
-                  <p className="text-xs text-muted-foreground text-center mt-2">
-                    Generate the draft first
-                  </p>
                 )}
-              </TabsContent>
-
-              {/* Manual mode */}
-              {manualEnabled && (
-                <TabsContent value="manual" className="mt-4">
-                  <ManualModePanel
-                    agentSlug="review"
-                    inputContext={(() => {
-                      const lines: string[] = [
-                        `Title: ${draft.title || '(no title)'}`,
-                      ];
-                      if (context.ideaTitle) lines.push(`Idea: ${context.ideaTitle}`);
-                      if (context.ideaCoreTension) lines.push(`Core Tension: ${context.ideaCoreTension}`);
-                      if (draft.draft_json) {
-                        lines.push('', '## Draft Content (to review)');
-                        lines.push('```json');
-                        lines.push(JSON.stringify(draft.draft_json, null, 2));
-                        lines.push('```');
-                      }
-                      return lines.join('\n');
-                    })()}
-                    pastePlaceholder={
-                      'Paste review JSON with verdict, score, and feedback'
-                    }
-                    onImport={handleManualImport}
-                    importLabel="Import Review"
-                    loading={busy}
-                  />
-                </TabsContent>
+              </div>
+              {reviewing && (
+                <p className="text-xs text-muted-foreground text-center">
+                  {reviewMode === 'manual'
+                    ? 'Review prompt ready. Paste output when ready.'
+                    : 'Running AI review...'}
+                </p>
               )}
-            </Tabs>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -476,59 +513,36 @@ export function ReviewEngine({
                 </div>
 
                 {/* Re-review section */}
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground">Run a new review after revisions:</p>
-                  <Tabs
-                    value={reviewMode}
-                    onValueChange={(v) => setReviewMode(v as ReviewMode)}
-                  >
-                    <TabsList className="grid w-full grid-cols-2 h-8">
-                      <TabsTrigger value="ai" className="gap-1 text-xs">
-                        <Sparkles className="h-3 w-3" /> AI Review
-                      </TabsTrigger>
-                      {manualEnabled && (
-                        <TabsTrigger value="manual" className="gap-1 text-xs">
-                          <ClipboardPaste className="h-3 w-3" /> Manual
-                        </TabsTrigger>
-                      )}
-                    </TabsList>
-                    <TabsContent value="ai" className="mt-2">
+                <div className="space-y-3">
+                  <p className="text-xs font-medium text-muted-foreground">Run a new review:</p>
+                  <div className="flex gap-2 justify-center">
+                    <Button
+                      onClick={() => {
+                        setReviewMode('ai');
+                        setTimeout(() => handleSubmitForReview(), 0);
+                      }}
+                      disabled={busy}
+                      size="sm"
+                      variant={reviewMode === 'ai' ? 'default' : 'outline'}
+                      className="gap-1.5"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" /> AI Review
+                    </Button>
+                    {manualEnabled && (
                       <Button
-                        onClick={handleSubmitForReview}
+                        onClick={() => {
+                          setReviewMode('manual');
+                          setTimeout(() => handleSubmitForReview(), 0);
+                        }}
                         disabled={busy}
                         size="sm"
-                        className="w-full"
+                        variant={reviewMode === 'manual' ? 'default' : 'outline'}
+                        className="gap-1.5"
                       >
-                        {busy ? (
-                          <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Reviewing...</>
-                        ) : (
-                          <><Sparkles className="h-4 w-4 mr-1.5" /> Re-submit for AI Review</>
-                        )}
+                        <ClipboardPaste className="h-3.5 w-3.5" /> Manual
                       </Button>
-                    </TabsContent>
-                    {manualEnabled && (
-                      <TabsContent value="manual" className="mt-2">
-                        <ManualModePanel
-                          agentSlug="review"
-                          inputContext={(() => {
-                            const lines: string[] = [`Title: ${draft.title || '(no title)'}`];
-                            if (context.ideaTitle) lines.push(`Idea: ${context.ideaTitle}`);
-                            if (draft.draft_json) {
-                              lines.push('', '## Draft Content (to review)');
-                              lines.push('```json');
-                              lines.push(JSON.stringify(draft.draft_json, null, 2));
-                              lines.push('```');
-                            }
-                            return lines.join('\n');
-                          })()}
-                          pastePlaceholder="Paste review JSON with verdict, score, and feedback"
-                          onImport={handleManualImport}
-                          importLabel="Import New Review"
-                          loading={busy}
-                        />
-                      </TabsContent>
                     )}
-                  </Tabs>
+                  </div>
                 </div>
 
                 <div className="h-px bg-border" />
@@ -592,8 +606,24 @@ export function ReviewEngine({
         </>
       )}
 
+      {/* Manual review output dialog */}
+      <ManualOutputDialog
+        open={!!manualState}
+        onOpenChange={(open) => {
+          if (!open) {
+            setManualState(null);
+          }
+        }}
+        title="Paste Review Output"
+        description="Retrieve the prompt from Axiom, run it in your AI tool of choice, then paste the JSON output below."
+        submitLabel="Submit Review"
+        onSubmit={handleManualOutputSubmit}
+        onAbandon={handleManualAbandon}
+        loading={busy}
+      />
+
       {/* SSE generation modal */}
-      {reviewing && (
+      {reviewing && reviewMode === 'ai' && (
         <GenerationProgressModal
           open={reviewing}
           sessionId={draftId}

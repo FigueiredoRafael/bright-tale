@@ -1134,6 +1134,7 @@ export async function contentDraftsRoutes(
           throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
         const sb = createServiceClient();
         const { id } = request.params as { id: string };
+        const override = providerOverrideSchema.parse(request.body ?? {});
         const draft = (await loadDraft(id)) as Record<string, unknown>;
         const orgId = await getOrgId(request.userId);
 
@@ -1143,6 +1144,113 @@ export async function contentDraftsRoutes(
             "Draft must be in_review status. Use PATCH to set status first.",
             "INVALID_STATUS",
           );
+        }
+
+        // Manual provider short-circuits the LLM call: build the prompt
+        // synchronously, emit the full payload to Axiom, persist the draft in
+        // awaiting_manual state, and return early. The user pastes the output
+        // produced externally via POST /:id/manual-review-output.
+        if (override.provider === 'manual') {
+          let systemPrompt = (await loadAgentPrompt("review")) ?? undefined;
+
+          // Inject channel context into system prompt
+          const channelContextStr = await buildChannelContext(
+            draft.channel_id as string | null | undefined,
+          );
+          if (channelContextStr && systemPrompt) {
+            systemPrompt = `${systemPrompt}\n\n${channelContextStr}`;
+          }
+
+          // Load channel data for builder
+          const channelData = draft.channel_id
+            ? await (async () => {
+                const { data } = await (
+                  createServiceClient() as any
+                )
+                  .from("channels")
+                  .select("name, niche, language, tone, presentation_style")
+                  .eq("id", draft.channel_id as string)
+                  .maybeSingle();
+                return data;
+              })()
+            : null;
+
+          let ideaData: IdeaContext | null = null;
+          if (draft.idea_id) {
+            ideaData = await loadIdeaContext(draft.idea_id as string);
+          }
+
+          let researchData: unknown = null;
+          if (draft.research_session_id) {
+            const { data: rs } = await sb
+              .from("research_sessions")
+              .select("approved_cards_json, cards_json")
+              .eq("id", draft.research_session_id as string)
+              .maybeSingle();
+            researchData = rs?.approved_cards_json ?? rs?.cards_json ?? null;
+          }
+
+          const userMessage = buildReviewMessage({
+            type: draft.type as string,
+            title: draft.title as string,
+            draftJson: draft.draft_json,
+            canonicalCore: draft.canonical_core_json,
+            idea: ideaData,
+            research: researchData,
+            contentTypesRequested: [draft.type as string],
+            channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+          });
+
+          // Update draft to awaiting_manual status
+          const { data: manualDraft, error: manualInsertErr } = await (
+            sb.from("content_drafts") as unknown as {
+              update: (row: Record<string, unknown>) => {
+                eq: (col: string, val: string) => {
+                  select: () => {
+                    single: () => Promise<{ data: unknown; error: unknown }>;
+                  };
+                };
+              };
+            }
+          )
+            .update({ status: 'awaiting_manual' })
+            .eq("id", id)
+            .select()
+            .single();
+          if (manualInsertErr || !manualDraft) {
+            throw manualInsertErr ?? new ApiError(500, 'Failed to update draft', 'DB_ERROR');
+          }
+
+          // Combine system + user message so the operator can copy ONE prompt
+          // from Axiom and paste it into ChatGPT/Claude without reassembling.
+          const combinedPrompt = systemPrompt
+            ? `${systemPrompt}\n\n${userMessage}`
+            : userMessage;
+
+          logAiUsage({
+            userId: request.userId,
+            orgId,
+            action: 'manual.awaiting',
+            provider: 'manual',
+            model: 'manual',
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            durationMs: 0,
+            status: 'awaiting_manual',
+            metadata: {
+              draftId: id,
+              stage: 'review',
+              channelId: (draft.channel_id as string) ?? null,
+              prompt: combinedPrompt,
+              input: { type: draft.type, title: draft.title },
+            },
+          });
+
+          return reply.status(202).send({
+            data: { draftId: id, status: 'awaiting_manual' },
+            error: null,
+          });
         }
 
         await checkCredits(orgId, request.userId, REVIEW_COST);
@@ -1325,6 +1433,160 @@ export async function contentDraftsRoutes(
 
         return reply.send({
           data: { draft: updated, review: result },
+          error: null,
+        });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  /**
+   * POST /:id/manual-review-output — Submit the review feedback produced externally
+   * for a draft in `awaiting_manual` status. Persists the review feedback, updates
+   * verdict and score, and transitions status appropriately (approved/in_review/failed).
+   */
+  fastify.post(
+    "/:id/manual-review-output",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        if (!request.userId) throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        const { id } = request.params as { id: string };
+        const body = z.record(z.unknown())
+          .refine(
+            (data) => {
+              // At least one verdict field must be present
+              const hasOverallVerdict = typeof data.overall_verdict === 'string';
+              const hasBlogReview = data.blog_review && typeof data.blog_review === 'object';
+              const hasVideoReview = data.video_review && typeof data.video_review === 'object';
+              const hasShortsReview = data.shorts_review && typeof data.shorts_review === 'object';
+              const hasPodcastReview = data.podcast_review && typeof data.podcast_review === 'object';
+              return hasOverallVerdict || hasBlogReview || hasVideoReview || hasShortsReview || hasPodcastReview;
+            },
+            { message: 'Review output must contain verdict and/or format-specific review data' }
+          )
+          .parse(request.body);
+
+        const sb = createServiceClient();
+
+        const { data: draft, error: fetchErr } = await sb
+          .from("content_drafts")
+          .select("id, status, channel_id, project_id, org_id, user_id, type, title, iteration_count")
+          .eq("id", id)
+          .maybeSingle();
+        if (fetchErr) throw fetchErr;
+        if (!draft) throw new ApiError(404, "Draft not found", "NOT_FOUND");
+        const row = draft as Record<string, unknown>;
+        if (row.user_id !== request.userId) throw new ApiError(403, "Forbidden", "FORBIDDEN");
+        if (row.status !== "awaiting_manual") {
+          throw new ApiError(409, `Draft is not awaiting manual review (status=${row.status})`, "CONFLICT");
+        }
+
+        // Extract verdict and score from the review output, matching AI review logic
+        const draftType = row.type as string;
+        const formatReview = body[`${draftType}_review` as keyof typeof body] as
+          | Record<string, unknown>
+          | undefined;
+
+        let reviewScore: number | null = null;
+        let reviewVerdict = "revision_required";
+
+        if (formatReview && typeof formatReview.score === 'number') {
+          reviewScore = formatReview.score;
+        }
+
+        const overallVerdict = body.overall_verdict ? String(body.overall_verdict) : null;
+        if (formatReview && typeof formatReview.verdict === 'string') {
+          reviewVerdict = String(formatReview.verdict).toLowerCase().replace(/\s+/g, '_');
+        }
+        if (overallVerdict) {
+          reviewVerdict = overallVerdict.toLowerCase().replace(/\s+/g, '_');
+        }
+
+        // Determine status based on verdict
+        let newStatus: string;
+        let approvedAt: string | null = null;
+
+        if (reviewVerdict === "approved" || (reviewScore !== null && reviewScore >= 90)) {
+          newStatus = "approved";
+          reviewVerdict = "approved";
+          approvedAt = new Date().toISOString();
+        } else if (reviewVerdict === "rejected") {
+          newStatus = "failed";
+        } else {
+          newStatus = "in_review";
+          reviewVerdict = "revision_required";
+        }
+
+        const iterationCount = ((row.iteration_count as number) ?? 0) + 1;
+
+        // Store review data
+        const updateData: Record<string, unknown> = {
+          review_feedback_json: body,
+          review_score: reviewScore,
+          review_verdict: reviewVerdict,
+          iteration_count: iterationCount,
+          status: newStatus,
+        };
+        if (approvedAt) updateData.approved_at = approvedAt;
+
+        const { data: updated, error } = await (
+          sb.from("content_drafts") as unknown as {
+            update: (row: Record<string, unknown>) => {
+              eq: (
+                col: string,
+                val: string,
+              ) => {
+                select: () => {
+                  single: () => Promise<{ data: unknown; error: unknown }>;
+                };
+              };
+            };
+          }
+        )
+          .update(updateData)
+          .eq("id", id)
+          .select()
+          .single();
+        if (error) throw error;
+
+        // Log review iteration
+        await (
+          sb.from("review_iterations" as never) as unknown as {
+            insert: (
+              row: Record<string, unknown>,
+            ) => Promise<{ error: unknown }>;
+          }
+        ).insert({
+          draft_id: id,
+          iteration: iterationCount,
+          score: reviewScore,
+          verdict: reviewVerdict,
+          feedback_json: body,
+        });
+
+        logAiUsage({
+          userId: request.userId,
+          orgId: (row.org_id as string) ?? null,
+          action: "manual.completed",
+          provider: "manual",
+          model: "manual",
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          durationMs: 0,
+          status: "success",
+          metadata: {
+            draftId: id,
+            stage: 'review',
+            output: body,
+          },
+        });
+
+        // Return the updated draft
+        return reply.send({
+          data: updated ?? row,
           error: null,
         });
       } catch (error) {
