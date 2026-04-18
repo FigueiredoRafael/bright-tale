@@ -56,7 +56,7 @@ interface AiUsageEvent {
   totalTokens: number;
   cost?: number;
   durationMs: number;
-  status: 'success' | 'error';
+  status: 'success' | 'error' | 'awaiting_manual';
   error?: string | null;
   metadata?: Record<string, unknown>;
 }
