@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import type {
   AffiliateAdminSummary,
   AffiliateAdminDetail,
+  AffiliateAdminOverview,
   AffiliatePayout,
   AffiliateContentSubmission,
 } from '@tn-figueiredo/affiliate';
@@ -80,11 +81,24 @@ export async function fetchAffiliates(sp: { tab?: string; type?: string; page?: 
   if (sp.tab) qs.set('tab', sp.tab);
   if (sp.type) qs.set('type', sp.type);
   if (sp.page) qs.set('page', sp.page);
-  const data = await adminFetch<AffiliateListData>(`/admin/affiliate/?${qs}`);
-  if (!Array.isArray(data.items) || typeof data.total !== 'number') {
+  // The API returns AffiliateAdminOverview ({ affiliates, totalAffiliates, ... });
+  // map to the AffiliateListData shape expected by AffiliateListServer.
+  const raw = await adminFetch<AffiliateAdminOverview>(`/admin/affiliate/?${qs}`);
+  if (!Array.isArray(raw.affiliates) || typeof raw.totalAffiliates !== 'number') {
     throw new Error('[affiliate-admin] malformed list response');
   }
-  return data;
+  return {
+    items: raw.affiliates,
+    total: raw.totalAffiliates,
+    page: 1,
+    perPage: raw.totalAffiliates,
+    kpis: {
+      totalActive: raw.activeAffiliates,
+      totalPending: raw.pendingAffiliates,
+      totalInternal: raw.affiliates.filter(a => a.affiliateType === 'internal').length,
+      pendingContract: 0,
+    },
+  } satisfies AffiliateListData;
 }
 
 export async function fetchAffiliateDetail(id: string) {

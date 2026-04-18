@@ -10,5 +10,6 @@ export const portalConfig = createPortalConfig({
     // Redirect dashboard to the main app's affiliate settings page
     dashboard: '/settings/affiliate',
     login: '/auth/login',
+    apply: '/settings/affiliate/apply',
   },
 })
