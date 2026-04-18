@@ -101,6 +101,9 @@ export function BrainstormEngine({
   // Manual provider — open dialog when API responds with awaiting_manual
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
 
+  // Session-level recommendation (the AI's pick + rationale across all ideas)
+  const [recommendation, setRecommendation] = useState<{ pick?: string; rationale?: string } | null>(null);
+
   const tracker = usePipelineTracker('brainstorm', context);
 
   // Regenerate state
@@ -221,6 +224,9 @@ export function BrainstormEngine({
           if (sess.status === 'awaiting_manual') {
             setManualSessionId(sess.id as string);
             return;
+          }
+          if (sess.recommendation_json && typeof sess.recommendation_json === 'object') {
+            setRecommendation(sess.recommendation_json as { pick?: string; rationale?: string });
           }
           if (sess.input_json && typeof sess.input_json === 'object') {
             const input = sess.input_json as Record<string, unknown>;
@@ -498,6 +504,9 @@ export function BrainstormEngine({
     });
     setIdeas(newIdeas);
     setSessionId(manualSessionId);
+    if (json.data?.recommendation && typeof json.data.recommendation === 'object') {
+      setRecommendation(json.data.recommendation as { pick?: string; rationale?: string });
+    }
     setManualSessionId(null);
     tracker.trackCompleted({
       sessionId: manualSessionId,
@@ -846,6 +855,25 @@ export function BrainstormEngine({
             <p className="text-xs text-muted-foreground font-normal mt-2">
               Select one to continue to Research
             </p>
+            {recommendation && (recommendation.pick || recommendation.rationale) && (
+              <div className="mt-3 p-3 rounded-md border border-primary/30 bg-primary/5">
+                <div className="flex items-start gap-2">
+                  <Sparkles className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+                  <div className="text-xs">
+                    {recommendation.pick && (
+                      <div className="font-medium text-primary">
+                        Recommended: {recommendation.pick}
+                      </div>
+                    )}
+                    {recommendation.rationale && (
+                      <div className="text-muted-foreground mt-1">
+                        {recommendation.rationale}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </CardHeader>
           <CardContent className="space-y-2">
             {ideas.map((idea) => {
@@ -853,6 +881,7 @@ export function BrainstormEngine({
                 angle?: string;
                 monetization?: string;
                 repurposing?: string[];
+                risk_flags?: string[];
               } = {};
               try {
                 if (idea.discovery_data) {
@@ -948,6 +977,19 @@ export function BrainstormEngine({
                               className="text-[10px]"
                             >
                               {r}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      {extra.risk_flags && extra.risk_flags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {extra.risk_flags.map((r) => (
+                            <Badge
+                              key={r}
+                              variant="destructive"
+                              className="text-[10px] font-normal"
+                            >
+                              ⚠ {r}
                             </Badge>
                           ))}
                         </div>
