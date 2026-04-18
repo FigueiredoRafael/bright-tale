@@ -198,6 +198,112 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
   });
 
   /**
+   * POST /sessions/:id/manual-output — Submit the output produced externally
+   * for a session in `awaiting_manual` status. Persists the ideas, flips the
+   * session to `completed`, and emits a `manual.completed` Axiom event.
+   */
+  fastify.post('/sessions/:id/manual-output', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const { id } = request.params as { id: string };
+      const body = z.object({ output: z.unknown() }).parse(request.body);
+      const sb = createServiceClient();
+
+      const { data: session, error: fetchErr } = await sb
+        .from('brainstorm_sessions')
+        .select('id, status, channel_id, project_id, org_id, user_id')
+        .eq('id', id)
+        .maybeSingle();
+      if (fetchErr) throw fetchErr;
+      if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
+      const row = session as Record<string, unknown>;
+      if (row.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
+      if (row.status !== 'awaiting_manual') {
+        throw new ApiError(409, `Session is not awaiting manual output (status=${row.status})`, 'CONFLICT');
+      }
+
+      const rawIdeas = normalizeIdeas(body.output);
+      if (rawIdeas.length === 0) {
+        throw new ApiError(400, 'No ideas found in pasted output', 'INVALID_OUTPUT');
+      }
+
+      const { count } = await sb.from('idea_archives').select('*', { count: 'exact', head: true });
+      const startNum = (count ?? 0) + 1;
+
+      const ideaRows = rawIdeas.map((idea, i) => ({
+        idea_id: idea.idea_id ?? `BC-IDEA-${String(startNum + i).padStart(3, '0')}`,
+        title: idea.title ?? `Untitled ${i + 1}`,
+        core_tension: idea.core_tension ?? '',
+        target_audience: idea.target_audience ?? '',
+        verdict: idea.verdict === 'viable' || idea.verdict === 'weak' || idea.verdict === 'experimental'
+          ? idea.verdict
+          : 'experimental',
+        discovery_data: JSON.stringify({
+          angle: idea.angle,
+          search_intent: idea.search_intent,
+          primary_keyword: idea.primary_keyword,
+          scroll_stopper: idea.scroll_stopper,
+          curiosity_gap: idea.curiosity_gap,
+          monetization: idea.monetization,
+          repurpose_potential: idea.repurpose_potential,
+          repurposing: idea.repurposing,
+          risk_flags: idea.risk_flags,
+          verdict_rationale: idea.verdict_rationale,
+        }),
+        source_type: 'manual',
+        channel_id: row.channel_id ?? null,
+        project_id: row.project_id ?? null,
+        brainstorm_session_id: id,
+        user_id: row.user_id,
+        org_id: row.org_id,
+      }));
+
+      const { error: insErr } = await (sb.from('idea_archives') as unknown as {
+        upsert: (rows: Record<string, unknown>[], opts?: unknown) => Promise<{ error: unknown }>;
+      }).upsert(ideaRows, { onConflict: 'idea_id', ignoreDuplicates: true });
+      if (insErr) throw insErr;
+
+      let recommendation: { pick?: string; rationale?: string } | null = null;
+      if (body.output && typeof body.output === 'object' && 'recommendation' in (body.output as Record<string, unknown>)) {
+        recommendation = (body.output as Record<string, unknown>).recommendation as { pick?: string; rationale?: string } | null;
+      }
+
+      await (sb.from('brainstorm_sessions') as unknown as {
+        update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+      })
+        .update({
+          status: 'completed',
+          output_json: body.output,
+          ...(recommendation ? { recommendation_json: recommendation } : {}),
+        })
+        .eq('id', id);
+
+      logAiUsage({
+        userId: request.userId,
+        orgId: (row.org_id as string) ?? null,
+        action: 'manual.completed',
+        provider: 'manual',
+        model: 'manual',
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        durationMs: 0,
+        status: 'success',
+        metadata: {
+          sessionId: id,
+          stage: 'brainstorm',
+          output: body.output,
+          ideaCount: ideaRows.length,
+        },
+      });
+
+      return reply.send({ data: { ideas: ideaRows, recommendation }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
    * POST /sessions — Run a brainstorm and persist ideas.
    */
   fastify.post('/sessions', { preHandler: [authenticate] }, async (request, reply) => {
