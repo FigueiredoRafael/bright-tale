@@ -54,7 +54,7 @@ export function ManualOutputDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col gap-4">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
@@ -64,7 +64,7 @@ export function ManualOutputDialog({
           onChange={(e) => setRaw(e.target.value)}
           placeholder='{"ideas": [ ... ]}'
           rows={14}
-          className="font-mono text-xs"
+          className="font-mono text-xs resize-none flex-1 min-h-[200px] overflow-auto"
         />
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting || loading}>
