@@ -1,15 +1,21 @@
 -- updated_at triggers (CLAUDE.md convention; package adds columns but no triggers)
 -- Tables with updated_at columns: affiliates, affiliate_pix_keys,
 -- affiliate_content_submissions, affiliate_risk_scores
+-- DROP IF EXISTS guards make this idempotent (the package may install triggers
+-- at runtime, and partial migration replays can leave some triggers behind).
+DROP TRIGGER IF EXISTS handle_updated_at ON public.affiliates;
 CREATE TRIGGER handle_updated_at BEFORE UPDATE ON public.affiliates
   FOR EACH ROW EXECUTE FUNCTION moddatetime(updated_at);
 
+DROP TRIGGER IF EXISTS handle_updated_at ON public.affiliate_pix_keys;
 CREATE TRIGGER handle_updated_at BEFORE UPDATE ON public.affiliate_pix_keys
   FOR EACH ROW EXECUTE FUNCTION moddatetime(updated_at);
 
+DROP TRIGGER IF EXISTS handle_updated_at ON public.affiliate_content_submissions;
 CREATE TRIGGER handle_updated_at BEFORE UPDATE ON public.affiliate_content_submissions
   FOR EACH ROW EXECUTE FUNCTION moddatetime(updated_at);
 
+DROP TRIGGER IF EXISTS handle_updated_at ON public.affiliate_risk_scores;
 CREATE TRIGGER handle_updated_at BEFORE UPDATE ON public.affiliate_risk_scores
   FOR EACH ROW EXECUTE FUNCTION moddatetime(updated_at);
 
