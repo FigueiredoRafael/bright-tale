@@ -146,9 +146,12 @@ describe('POST /api/brainstorm/sessions — provider=manual', () => {
     expect(axiomEvent!.status).toBe('awaiting_manual');
     const metadata = axiomEvent!.metadata as Record<string, unknown>;
     expect(metadata.sessionId).toBe('session-1');
+    // Single combined prompt (system + user) so the operator can paste ONE
+    // block into an external AI tool.
     expect(typeof metadata.prompt).toBe('string');
-    expect((metadata.prompt as string).length).toBeGreaterThan(0);
-    expect(typeof metadata.systemPrompt).toBe('string');
+    expect(metadata.prompt).toContain('BrightCurios brainstorm agent');
+    expect(metadata.prompt).toContain('espresso extraction');
+    expect(metadata.systemPrompt).toBeUndefined();
     expect(metadata.input).toBeDefined();
   });
 });

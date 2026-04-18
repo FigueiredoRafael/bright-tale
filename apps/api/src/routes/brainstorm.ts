@@ -376,6 +376,12 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
           throw manualInsertErr ?? new ApiError(500, 'Failed to create session', 'DB_ERROR');
         }
 
+        // Combine system + user message so the operator can copy ONE prompt
+        // from Axiom and paste it into ChatGPT/Claude without reassembling.
+        const combinedPrompt = systemPrompt
+          ? `${systemPrompt}\n\n${userMessage}`
+          : userMessage;
+
         logAiUsage({
           userId: request.userId,
           orgId,
@@ -391,8 +397,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
             sessionId: manualSession.id,
             stage: 'brainstorm',
             channelId: body.channelId ?? null,
-            prompt: userMessage,
-            systemPrompt,
+            prompt: combinedPrompt,
             input: inputJson,
           },
         });
