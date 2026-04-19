@@ -35,3 +35,6 @@ storybook-static/
 
 # Worktrees
 .worktrees/
+
+# Locally generated/uploaded assets (served from apps/api/public/generated-images/)
+apps/api/public/generated-images/
