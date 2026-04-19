@@ -304,6 +304,7 @@ export async function assetsRoutes(fastify: FastifyInstance): Promise<void> {
 
       const provider = await getImageProvider();
 
+      const startedAt = Date.now();
       const results = await provider.generateImages({
         prompt: validated.prompt,
         numImages: validated.numImages,
@@ -312,8 +313,51 @@ export async function assetsRoutes(fastify: FastifyInstance): Promise<void> {
       });
 
       if (results.length === 0) {
+        logAiUsage({
+          userId: request.userId ?? null,
+          orgId: null,
+          action: 'image.generate',
+          provider: provider.name ?? 'gemini',
+          model: 'image',
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          durationMs: Date.now() - startedAt,
+          status: 'error',
+          error: 'No images were generated',
+          metadata: {
+            stage: 'asset_image',
+            projectId: validated.project_id ?? null,
+            contentId: validated.content_id ?? null,
+            role: validated.role ?? null,
+            aspectRatio: validated.aspectRatio,
+            prompt: validated.prompt,
+          },
+        });
         throw new ApiError(502, 'No images were generated', 'GENERATION_FAILED');
       }
+
+      logAiUsage({
+        userId: request.userId ?? null,
+        orgId: null,
+        action: 'image.generate',
+        provider: provider.name ?? 'gemini',
+        model: 'image',
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        durationMs: Date.now() - startedAt,
+        status: 'success',
+        metadata: {
+          stage: 'asset_image',
+          projectId: validated.project_id ?? null,
+          contentId: validated.content_id ?? null,
+          role: validated.role ?? null,
+          aspectRatio: validated.aspectRatio,
+          prompt: validated.prompt,
+          resultCount: results.length,
+        },
+      });
 
       // Save all generated images and create Asset records
       const { convertToWebP } = await import('../lib/image/webp.js');
