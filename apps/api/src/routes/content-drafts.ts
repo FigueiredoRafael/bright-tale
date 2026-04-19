@@ -28,6 +28,7 @@ import { inngest } from "../jobs/client.js";
 import { emitJobEvent } from "../jobs/emitter.js";
 import { buildCanonicalCoreMessage, buildProduceMessage, buildReproduceMessage } from "../lib/ai/prompts/production.js";
 import { buildReviewMessage } from "../lib/ai/prompts/review.js";
+import { buildAssetsMessage } from "../lib/ai/prompts/assets.js";
 import { loadIdeaContext, type IdeaContext } from "../lib/ai/loadIdeaContext.js";
 import { logAiUsage } from "../lib/axiom.js";
 
@@ -1739,6 +1740,63 @@ export async function contentDraftsRoutes(
         const draft = await loadDraft(id);
         const input = await buildAssetsInput(draft as Record<string, unknown>);
         return reply.send({ data: input, error: null });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  /**
+   * POST /:id/generate-asset-prompts — Run agent-5-assets to produce
+   * BC_ASSETS_OUTPUT (visual_direction + slot prompt briefs). AI path here;
+   * manual-provider path added in the next task.
+   */
+  fastify.post(
+    "/:id/generate-asset-prompts",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        if (!request.userId)
+          throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        const { id } = request.params as { id: string };
+        const override = providerOverrideSchema.parse(request.body ?? {});
+        const draft = await loadDraft(id);
+        const orgId = await getOrgId(request.userId);
+
+        const input = await buildAssetsInput(draft as Record<string, unknown>);
+
+        let systemPrompt = (await loadAgentPrompt("assets")) ?? undefined;
+        const channelContextStr = await buildChannelContext(
+          draft.channel_id as string | null | undefined,
+        );
+        if (channelContextStr && systemPrompt) {
+          systemPrompt = `${systemPrompt}\n\n${channelContextStr}`;
+        }
+
+        const userMessage = buildAssetsMessage(input);
+
+        const { result } = await generateWithFallback(
+          "assets",
+          ((draft as Record<string, unknown>).model_tier as string) ?? "standard",
+          {
+            agentType: "assets",
+            systemPrompt: systemPrompt ?? "",
+            userMessage,
+          },
+          {
+            provider: override.provider,
+            model: override.model,
+            logContext: {
+              userId: request.userId!,
+              orgId,
+              channelId: (draft.channel_id as string) ?? undefined,
+              sessionId: id,
+              sessionType: "assets",
+            },
+          },
+        );
+
+        return reply.send({ data: result, error: null });
       } catch (error) {
         return sendError(reply, error);
       }
