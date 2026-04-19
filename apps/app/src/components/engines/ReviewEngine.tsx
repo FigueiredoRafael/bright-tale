@@ -5,8 +5,6 @@ import { Loader2, Sparkles, Check, AlertCircle, ArrowRight, ClipboardPaste, Mess
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ReviewFeedbackPanel } from '@/components/preview/ReviewFeedbackPanel';
 import { ManualOutputDialog } from './ManualOutputDialog';
 import { useManualMode } from '@/hooks/use-manual-mode';
@@ -15,6 +13,7 @@ import { GenerationProgressModal } from '@/components/generation/GenerationProgr
 import { ContextBanner } from './ContextBanner';
 import { friendlyAiError } from '@/lib/ai/error-message';
 import { useUpgrade } from '@/components/billing/UpgradeProvider';
+import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker';
 import type { PipelineContext, PipelineStage, ReviewResult, StageResult } from './types';
 
 interface ReviewEngineProps {
@@ -37,9 +36,7 @@ interface ReviewEngineProps {
   onStageProgress?: (partial: { score?: number; verdict?: string }) => void;
 }
 
-type ReviewMode = 'ai' | 'manual';
-
-const REVIEW_PROVIDERS: Array<'ai' | 'manual'> = ['ai', 'manual'];
+const REVIEW_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
 
 export function ReviewEngine({
   channelId,
@@ -51,13 +48,17 @@ export function ReviewEngine({
   onDraftUpdated,
   onStageProgress,
 }: ReviewEngineProps) {
-  const [reviewMode, setReviewMode] = useState<ReviewMode>('ai');
+  const [provider, setProvider] = useState<ProviderId>('gemini');
+  const [model, setModel] = useState<string>(MODELS_BY_PROVIDER.gemini[0].id);
   const [busy, setBusy] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const { enabled: manualEnabled } = useManualMode();
   const { handleMaybeCreditsError } = useUpgrade();
   const inFlightRef = useRef(false);
   const tracker = usePipelineTracker('review', context);
+  void channelId;
+
+  const isManual = provider === 'manual';
 
   // Manual provider state
   const [manualState, setManualState] = useState<{
@@ -114,14 +115,14 @@ export function ReviewEngine({
           return;
         }
 
-        // Now run the review (with provider override if manual is selected)
+        // Now run the review with the selected provider/model
         setReviewing(true);
+        const body: Record<string, unknown> = { provider };
+        if (model && !isManual) body.model = model;
         const res = await fetch(`/api/content-drafts/${draftId}/review`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(
-            reviewMode === 'manual' ? { provider: 'manual' } : {}
-          ),
+          body: JSON.stringify(body),
         });
         const json = await res.json();
 
@@ -138,7 +139,7 @@ export function ReviewEngine({
         }
 
         // If manual, set up manual state and return early
-        if (reviewMode === 'manual' && json.data?.status === 'awaiting_manual') {
+        if (isManual && json.data?.status === 'awaiting_manual') {
           setManualState({ draftId });
           setReviewing(false);
           toast.info('Review prompt copied to Axiom. Paste output when ready.');
@@ -385,55 +386,56 @@ export function ReviewEngine({
       {/* No review yet — submit for review */}
       {!hasReview && (
         <Card>
-          <CardContent className="py-6 space-y-4">
-            <div className="text-center space-y-2">
-              <MessageSquare className="h-8 w-8 mx-auto text-muted-foreground" />
-              <p className="text-sm font-medium">
-                Submit draft for review
-              </p>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <MessageSquare className="h-4 w-4" /> Submit draft for review
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              The reviewer will evaluate content quality, SEO, and readability. Pick a provider below, then start the review.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <ModelPicker
+              providers={manualEnabled ? REVIEW_PROVIDERS : REVIEW_PROVIDERS.filter((p) => p !== 'manual')}
+              provider={provider}
+              model={model}
+              recommended={{ provider: null, model: null }}
+              onProviderChange={(p) => {
+                setProvider(p);
+                if (p === 'manual') setModel('manual');
+                else setModel(MODELS_BY_PROVIDER[p][0].id);
+              }}
+              onModelChange={setModel}
+            />
+
+            <div className="flex items-center justify-between gap-3 pt-1">
               <p className="text-xs text-muted-foreground">
-                The AI reviewer will evaluate content quality, SEO, and readability.
+                {isManual
+                  ? 'Manual: a prompt will be emitted — paste the output when ready.'
+                  : 'AI Review: runs the reviewer agent with the selected model.'}
               </p>
+              <Button
+                onClick={handleSubmitForReview}
+                disabled={busy || reviewing || !draft.draft_json}
+                size="lg"
+                className="gap-2 shrink-0"
+              >
+                {busy || reviewing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : isManual ? (
+                  <ClipboardPaste className="h-4 w-4" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                {isManual ? 'Get Manual Prompt' : 'Start AI Review'}
+              </Button>
             </div>
 
-            {/* Provider selection */}
-            <div className="space-y-4">
-              <div className="flex gap-2 justify-center flex-wrap">
-                <Button
-                  onClick={() => {
-                    setReviewMode('ai');
-                    setTimeout(() => handleSubmitForReview(), 0);
-                  }}
-                  disabled={busy || !draft.draft_json}
-                  variant={reviewMode === 'ai' ? 'default' : 'outline'}
-                  size="lg"
-                  className="gap-2"
-                >
-                  <Sparkles className="h-4 w-4" /> AI Review
-                </Button>
-                {manualEnabled && (
-                  <Button
-                    onClick={() => {
-                      setReviewMode('manual');
-                      setTimeout(() => handleSubmitForReview(), 0);
-                    }}
-                    disabled={busy || !draft.draft_json}
-                    variant={reviewMode === 'manual' ? 'default' : 'outline'}
-                    size="lg"
-                    className="gap-2"
-                  >
-                    <ClipboardPaste className="h-4 w-4" /> Manual
-                  </Button>
-                )}
-              </div>
-              {reviewing && (
-                <p className="text-xs text-muted-foreground text-center">
-                  {reviewMode === 'manual'
-                    ? 'Review prompt ready. Paste output when ready.'
-                    : 'Running AI review...'}
-                </p>
-              )}
-            </div>
+            {reviewing && (
+              <p className="text-xs text-muted-foreground text-center">
+                {isManual ? 'Review prompt ready. Paste output when ready.' : 'Running AI review...'}
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
@@ -515,33 +517,34 @@ export function ReviewEngine({
                 {/* Re-review section */}
                 <div className="space-y-3">
                   <p className="text-xs font-medium text-muted-foreground">Run a new review:</p>
-                  <div className="flex gap-2 justify-center">
+                  <ModelPicker
+                    providers={manualEnabled ? REVIEW_PROVIDERS : REVIEW_PROVIDERS.filter((p) => p !== 'manual')}
+                    provider={provider}
+                    model={model}
+                    recommended={{ provider: null, model: null }}
+                    onProviderChange={(p) => {
+                      setProvider(p);
+                      if (p === 'manual') setModel('manual');
+                      else setModel(MODELS_BY_PROVIDER[p][0].id);
+                    }}
+                    onModelChange={setModel}
+                  />
+                  <div className="flex justify-end">
                     <Button
-                      onClick={() => {
-                        setReviewMode('ai');
-                        setTimeout(() => handleSubmitForReview(), 0);
-                      }}
-                      disabled={busy}
+                      onClick={handleSubmitForReview}
+                      disabled={busy || reviewing}
                       size="sm"
-                      variant={reviewMode === 'ai' ? 'default' : 'outline'}
                       className="gap-1.5"
                     >
-                      <Sparkles className="h-3.5 w-3.5" /> AI Review
+                      {busy || reviewing ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : isManual ? (
+                        <ClipboardPaste className="h-3.5 w-3.5" />
+                      ) : (
+                        <Sparkles className="h-3.5 w-3.5" />
+                      )}
+                      {isManual ? 'Get Manual Prompt' : 'Start AI Review'}
                     </Button>
-                    {manualEnabled && (
-                      <Button
-                        onClick={() => {
-                          setReviewMode('manual');
-                          setTimeout(() => handleSubmitForReview(), 0);
-                        }}
-                        disabled={busy}
-                        size="sm"
-                        variant={reviewMode === 'manual' ? 'default' : 'outline'}
-                        className="gap-1.5"
-                      >
-                        <ClipboardPaste className="h-3.5 w-3.5" /> Manual
-                      </Button>
-                    )}
                   </div>
                 </div>
 
@@ -623,7 +626,7 @@ export function ReviewEngine({
       />
 
       {/* SSE generation modal */}
-      {reviewing && reviewMode === 'ai' && (
+      {reviewing && !isManual && (
         <GenerationProgressModal
           open={reviewing}
           sessionId={draftId}

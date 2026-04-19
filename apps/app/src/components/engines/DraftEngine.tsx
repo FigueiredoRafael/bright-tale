@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import {
   Loader2, BookOpen, FileText, Video, Zap, Mic, Check, ClipboardPaste,
   ArrowRight, Sparkles, ChevronDown, ChevronUp, Pencil,
+  Quote, TrendingUp, Target, MessageSquare, Megaphone, Link2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -79,6 +80,7 @@ export function DraftEngine({
   const [draftId, setDraftId] = useState<string | null>(null);
   const [canonicalCore, setCanonicalCore] = useState<Record<string, unknown> | null>(null);
   const [coreExpanded, setCoreExpanded] = useState(true);
+  const [coreApproved, setCoreApproved] = useState(false);
 
   // Produce state
   const [type, setType] = useState<DraftType>('blog');
@@ -163,6 +165,7 @@ export function DraftEngine({
             if (content && content !== '{}') {
               setProducedContent(content);
               setPhase('done');
+              setCoreApproved(true);
             } else {
               setPhase('core-ready');
             }
@@ -309,9 +312,18 @@ export function DraftEngine({
       if (manualState.phase === 'core') {
         setCanonicalCore((parsed && typeof parsed === 'object') ? parsed as Record<string, unknown> : null);
         setPhase('core-ready');
-        toast.success('Canonical core submitted');
+        setCoreApproved(false);
+        setCoreExpanded(true);
+        toast.success('Canonical core submitted — review before producing');
       } else {
-        setProducedContent('(manual content submitted)');
+        const fmt = manualState.phase as DraftType;
+        const parsedObj = (parsed && typeof parsed === 'object') ? parsed as Record<string, unknown> : {};
+        const apiDraft = json.data as Record<string, unknown> | undefined;
+        const content =
+          (apiDraft && extractProducedContent(apiDraft, fmt)) ||
+          extractProducedContent({ draft_json: parsedObj }, fmt) ||
+          '';
+        setProducedContent(content);
         setPhase('done');
         toast.success(`${manualState.phase.charAt(0).toUpperCase() + manualState.phase.slice(1)} content submitted`);
       }
@@ -384,7 +396,8 @@ export function DraftEngine({
     });
     setPhase('core-ready');
     setCoreExpanded(true);
-    toast.success('Canonical core imported');
+    setCoreApproved(false);
+    toast.success('Canonical core imported — review before producing');
   }
 
   // ── SSE completion: canonical core generated ──────────────────
@@ -406,7 +419,8 @@ export function DraftEngine({
           });
           setPhase('core-ready');
           setCoreExpanded(true);
-          toast.success('Canonical core generated — review and proceed to produce');
+          setCoreApproved(false);
+          toast.success('Canonical core generated — review before producing');
         } else {
           // If the API generates full content in one step, handle that too
           const content = extractProducedContent(json.data as Record<string, unknown>, type);
@@ -661,48 +675,243 @@ export function DraftEngine({
     const thesis = core.thesis as string | undefined;
     const argChain = (core.argument_chain ?? core.argumentChain) as Array<Record<string, unknown>> | undefined;
     const emotionalArc = (core.emotional_arc ?? core.emotionalArc) as Record<string, unknown> | undefined;
+    const keyStats = (core.key_stats ?? core.keyStats) as Array<Record<string, unknown>> | undefined;
+    const keyQuotes = (core.key_quotes ?? core.keyQuotes) as Array<Record<string, unknown>> | undefined;
+    const affiliate = (core.affiliate_moment ?? core.affiliateMoment) as Record<string, unknown> | undefined;
+    const ctaSubscribe = (core.cta_subscribe ?? core.ctaSubscribe) as string | undefined;
+    const ctaComment = (core.cta_comment_prompt ?? core.ctaCommentPrompt) as string | undefined;
+
+    const arcOpen = (emotionalArc?.opening_emotion ?? emotionalArc?.opening) as string | undefined;
+    const arcTurn = (emotionalArc?.turning_point ?? emotionalArc?.turningPoint) as string | undefined;
+    const arcClose = (emotionalArc?.closing_emotion ?? emotionalArc?.closing) as string | undefined;
+
+    const splitArc = (raw?: string) => {
+      if (!raw) return { label: undefined as string | undefined, detail: undefined as string | undefined };
+      const sep = raw.indexOf(' - ');
+      if (sep === -1) return { label: raw, detail: undefined };
+      return { label: raw.slice(0, sep).trim(), detail: raw.slice(sep + 3).trim() };
+    };
+
+    const arcStages = [
+      { key: 'opening', title: 'Opening', tone: 'rose', ...splitArc(arcOpen) },
+      { key: 'turn', title: 'Turning Point', tone: 'amber', ...splitArc(arcTurn) },
+      { key: 'closing', title: 'Closing', tone: 'emerald', ...splitArc(arcClose) },
+    ].filter((s) => s.label);
+
+    const toneClasses: Record<string, string> = {
+      rose: 'from-rose-500/10 via-background to-background ring-rose-500/20 text-rose-500 dark:text-rose-400',
+      amber: 'from-amber-500/10 via-background to-background ring-amber-500/20 text-amber-500 dark:text-amber-400',
+      emerald: 'from-emerald-500/10 via-background to-background ring-emerald-500/20 text-emerald-500 dark:text-emerald-400',
+    };
 
     return (
-      <div className="space-y-3">
+      <div className="space-y-6">
         {thesis && (
-          <div>
-            <Label className="text-xs text-muted-foreground">Thesis</Label>
-            <p className="text-sm font-medium mt-0.5">{thesis}</p>
+          <div className="relative overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-br from-primary/[0.07] via-card to-card p-5">
+            <div className="absolute -top-16 -right-16 h-40 w-40 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
+            <div className="relative">
+              <div className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary mb-2">
+                <Target className="h-3 w-3" /> Thesis
+              </div>
+              <p className="text-base leading-relaxed font-medium text-foreground">{thesis}</p>
+            </div>
           </div>
         )}
+
         {Array.isArray(argChain) && argChain.length > 0 && (
-          <div>
-            <Label className="text-xs text-muted-foreground">Argument Chain ({argChain.length} steps)</Label>
-            <ol className="mt-1 space-y-1.5">
-              {argChain.map((step, i) => (
-                <li key={i} className="text-sm flex gap-2">
-                  <span className="text-muted-foreground font-mono text-xs mt-0.5 shrink-0">{i + 1}.</span>
-                  <span>{String(step.claim ?? step.title ?? step.step ?? '')}</span>
-                </li>
-              ))}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Argument Chain
+              </Label>
+              <Badge variant="secondary" className="text-[10px]">{argChain.length} steps</Badge>
+            </div>
+            <ol className="space-y-2.5">
+              {argChain.map((step, i) => {
+                const claim = String(step.claim ?? step.title ?? step.step ?? '');
+                const evidence = step.evidence as string | undefined;
+                const sources = (step.source_ids ?? step.sourceIds) as string[] | undefined;
+                return (
+                  <li
+                    key={i}
+                    className="group relative rounded-lg border border-border/60 bg-card/50 p-3.5 hover:border-primary/40 hover:bg-card transition-colors"
+                  >
+                    <div className="flex gap-3">
+                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-semibold ring-1 ring-primary/20">
+                        {i + 1}
+                      </div>
+                      <div className="flex-1 space-y-1.5 min-w-0">
+                        <p className="text-sm font-medium leading-snug">{claim}</p>
+                        {evidence && (
+                          <p className="text-xs text-muted-foreground leading-relaxed">{evidence}</p>
+                        )}
+                        {Array.isArray(sources) && sources.length > 0 && (
+                          <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                            <Link2 className="h-3 w-3 text-muted-foreground" />
+                            {sources.map((sid) => (
+                              <Badge
+                                key={sid}
+                                variant="outline"
+                                className="text-[10px] font-mono bg-background/50"
+                              >
+                                {sid}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
             </ol>
           </div>
         )}
-        {emotionalArc && (
-          <div>
-            <Label className="text-xs text-muted-foreground">Emotional Arc</Label>
-            <div className="flex items-center gap-2 mt-1 text-xs">
-              {typeof emotionalArc.opening === 'string' && (
-                <Badge variant="outline">{emotionalArc.opening}</Badge>
-              )}
-              {typeof emotionalArc.turning_point === 'string' && (
-                <>
-                  <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                  <Badge variant="outline">{emotionalArc.turning_point}</Badge>
-                </>
-              )}
-              {typeof emotionalArc.closing === 'string' && (
-                <>
-                  <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                  <Badge variant="outline">{emotionalArc.closing}</Badge>
-                </>
-              )}
+
+        {arcStages.length > 0 && (
+          <div className="space-y-3">
+            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Emotional Arc
+            </Label>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-3 items-stretch">
+              {arcStages.map((stage, idx) => (
+                <div key={stage.key} className="flex items-stretch gap-2 md:gap-1">
+                  <div
+                    className={`flex-1 rounded-lg ring-1 ring-inset bg-gradient-to-br p-3 ${toneClasses[stage.tone]}`}
+                  >
+                    <div className="text-[10px] font-semibold uppercase tracking-wider opacity-80">
+                      {stage.title}
+                    </div>
+                    <div className="text-sm font-semibold mt-1 capitalize text-foreground">
+                      {stage.label}
+                    </div>
+                    {stage.detail && (
+                      <p className="text-xs text-muted-foreground mt-1 leading-snug">
+                        {stage.detail}
+                      </p>
+                    )}
+                  </div>
+                  {idx < arcStages.length - 1 && (
+                    <div className="hidden md:flex items-center">
+                      <ArrowRight className="h-4 w-4 text-muted-foreground/60" />
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
+          </div>
+        )}
+
+        {Array.isArray(keyStats) && keyStats.length > 0 && (
+          <div className="space-y-3">
+            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Key Stats
+            </Label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {keyStats.map((s, i) => {
+                const figure = s.figure as string | number | undefined;
+                const stat = s.stat as string | undefined;
+                const sourceId = (s.source_id ?? s.sourceId) as string | undefined;
+                return (
+                  <div
+                    key={i}
+                    className="rounded-lg border border-border/60 bg-card/50 p-3.5 flex items-start gap-3"
+                  >
+                    <TrendingUp className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xl font-bold tracking-tight">{figure ?? '—'}</div>
+                      {stat && <div className="text-xs text-muted-foreground mt-0.5">{stat}</div>}
+                      {sourceId && (
+                        <Badge variant="outline" className="text-[10px] font-mono mt-1.5 bg-background/50">
+                          {sourceId}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {Array.isArray(keyQuotes) && keyQuotes.length > 0 && (
+          <div className="space-y-3">
+            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Key Quotes
+            </Label>
+            <div className="space-y-2.5">
+              {keyQuotes.map((q, i) => {
+                const quote = q.quote as string | undefined;
+                const author = q.author as string | undefined;
+                const credentials = q.credentials as string | undefined;
+                return (
+                  <blockquote
+                    key={i}
+                    className="relative rounded-lg border-l-4 border-primary/50 bg-muted/30 pl-4 pr-3 py-3"
+                  >
+                    <Quote className="absolute top-2 right-2 h-4 w-4 text-muted-foreground/30" />
+                    {quote && <p className="text-sm italic leading-relaxed">&ldquo;{quote}&rdquo;</p>}
+                    {(author || credentials) && (
+                      <footer className="mt-2 text-xs text-muted-foreground">
+                        {author && <span className="font-medium text-foreground">— {author}</span>}
+                        {credentials && <span className="ml-1">· {credentials}</span>}
+                      </footer>
+                    )}
+                  </blockquote>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {affiliate && (
+          <div className="rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/[0.06] via-card to-card p-4 space-y-2">
+            <div className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+              <Megaphone className="h-3 w-3" /> Affiliate Moment
+            </div>
+            {typeof affiliate.trigger_context === 'string' && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Trigger</div>
+                <p className="text-sm text-foreground/90 mt-0.5">{affiliate.trigger_context}</p>
+              </div>
+            )}
+            {typeof affiliate.product_angle === 'string' && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Angle</div>
+                <p className="text-sm text-foreground/90 mt-0.5">{affiliate.product_angle}</p>
+              </div>
+            )}
+            {typeof affiliate.cta_primary === 'string' && (
+              <div className="pt-1">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">CTA</div>
+                <p className="text-sm font-medium text-amber-700 dark:text-amber-300 mt-0.5">
+                  {affiliate.cta_primary}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {(ctaSubscribe || ctaComment) && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+            {ctaSubscribe && (
+              <div className="rounded-lg border border-border/60 bg-card/50 p-3 flex items-start gap-2.5">
+                <Sparkles className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Subscribe CTA</div>
+                  <p className="text-sm mt-0.5">{ctaSubscribe}</p>
+                </div>
+              </div>
+            )}
+            {ctaComment && (
+              <div className="rounded-lg border border-border/60 bg-card/50 p-3 flex items-start gap-2.5">
+                <MessageSquare className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Comment Prompt</div>
+                  <p className="text-sm mt-0.5">{ctaComment}</p>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -901,12 +1110,21 @@ export function DraftEngine({
 
       {/* ═══ Canonical Core Preview (shown after Phase 1) ═══ */}
       {canonicalCore && phase !== 'core' && (
-        <Card className="border-green-500/30">
+        <Card className={coreApproved ? 'border-green-500/30' : 'border-primary/40'}>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
-                <Check className="h-4 w-4 text-green-500" />
+                {coreApproved ? (
+                  <Check className="h-4 w-4 text-green-500" />
+                ) : (
+                  <Sparkles className="h-4 w-4 text-primary" />
+                )}
                 Canonical Core
+                {!coreApproved && (
+                  <Badge variant="outline" className="text-[10px] font-medium uppercase tracking-wide border-primary/40 text-primary">
+                    Review
+                  </Badge>
+                )}
               </CardTitle>
               <div className="flex items-center gap-1.5">
                 <Button
@@ -917,6 +1135,7 @@ export function DraftEngine({
                     setCanonicalCore(null);
                     setDraftId(null);
                     setCoreExpanded(true);
+                    setCoreApproved(false);
                   }}
                   className="text-xs gap-1"
                 >
@@ -933,15 +1152,25 @@ export function DraftEngine({
             </div>
           </CardHeader>
           {coreExpanded && (
-            <CardContent>
+            <CardContent className="space-y-4">
               {renderCoreSummary(canonicalCore)}
+              {!coreApproved && (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/[0.04] p-3">
+                  <div className="text-xs text-muted-foreground">
+                    Review the core narrative. Approve to unlock content production, or regenerate to try again.
+                  </div>
+                  <Button size="sm" onClick={() => setCoreApproved(true)} className="shrink-0 gap-1.5">
+                    <Check className="h-4 w-4" /> Approve &amp; Continue
+                  </Button>
+                </div>
+              )}
             </CardContent>
           )}
         </Card>
       )}
 
       {/* ═══ PHASE 2: Produce Format-Specific Content ═══ */}
-      {(phase === 'core-ready' || phase === 'produce') && (
+      {(phase === 'core-ready' || phase === 'produce') && coreApproved && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Step 2: Produce Content</CardTitle>
