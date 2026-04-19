@@ -52,6 +52,12 @@ vi.mock('@/lib/ai/router', () => ({
     attempts: 1,
   })),
 }));
+vi.mock('@/lib/ai/channelContext', () => ({
+  buildChannelContext: vi.fn(async () => 'channel: test\n'),
+}));
+vi.mock('@/lib/axiom', () => ({
+  logAiUsage: vi.fn(),
+}));
 
 import { contentDraftsRoutes } from '@/routes/content-drafts';
 
@@ -151,5 +157,177 @@ describe('POST /content-drafts/:id/produce', () => {
     const body = res.json();
     expect(body.data.status).toBe('in_review');
     expect(body.data.draft_json.stage).toBe('produce');
+  });
+});
+
+describe('POST /content-drafts/:id/generate-asset-prompts', () => {
+  const DRAFT_ID = 'draft-1';
+  const ORG_ID = 'org-1';
+
+  it('returns BC_ASSETS_OUTPUT on AI path', async () => {
+    // loadDraft chain — .maybeSingle() resolves the draft row.
+    // buildAssetsInput chain — .maybeSingle() for channel lookup
+    // Both use maybeSingle, so we need to mock both
+    mockChain.maybeSingle
+      .mockResolvedValueOnce({
+        data: {
+          id: DRAFT_ID,
+          user_id: 'user-1',
+          org_id: ORG_ID,
+          channel_id: 'ch-1',
+          type: 'blog',
+          title: 'Sample',
+          draft_json: { blog: { outline: [{ h2: 'Intro', key_points: ['a', 'b'] }] } },
+          canonical_core_json: {},
+          idea_id: null,
+          model_tier: 'standard',
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: {
+          niche: 'tech',
+          niche_tags: ['ai'],
+          tone: 'informative',
+          language: 'English',
+          market: 'global',
+          region: 'US',
+        },
+        error: null,
+      });
+    // getOrgId chain — .single() resolves the org membership row.
+    mockChain.single.mockResolvedValueOnce({
+      data: { org_id: ORG_ID },
+      error: null,
+    });
+
+    const router = await import('@/lib/ai/router');
+    (router.generateWithFallback as any).mockResolvedValueOnce({
+      result: {
+        visual_direction: { style: 'minimal', color_palette: ['#000'], mood: 'calm', constraints: [] },
+        slots: [{ slot: 'featured', section_title: 'Sample', prompt_brief: 'x', style_rationale: 'y', aspect_ratio: '16:9' }],
+      },
+      providerName: 'gemini',
+      model: 'gemini-2.5-flash',
+      attempts: 1,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/content-drafts/${DRAFT_ID}/generate-asset-prompts`,
+      headers: AUTH_USER,
+      payload: { provider: 'gemini' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.data.slots).toHaveLength(1);
+    expect(body.data.visual_direction.style).toBe('minimal');
+    expect(body.error).toBeNull();
+  });
+
+  it('returns 202 awaiting_manual on manual path without calling the router', async () => {
+    // loadDraft chain — .maybeSingle() resolves the draft row.
+    // buildAssetsInput chain — .maybeSingle() for channel lookup
+    mockChain.maybeSingle
+      .mockResolvedValueOnce({
+        data: {
+          id: DRAFT_ID,
+          user_id: 'user-1',
+          org_id: ORG_ID,
+          channel_id: 'ch-1',
+          type: 'blog',
+          title: 'Sample',
+          draft_json: { blog: { outline: [{ h2: 'Intro', key_points: ['a', 'b'] }] } },
+          canonical_core_json: {},
+          idea_id: null,
+          model_tier: 'standard',
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: {
+          niche: 'tech',
+          niche_tags: ['ai'],
+          tone: 'informative',
+          language: 'English',
+          market: 'global',
+          region: 'US',
+        },
+        error: null,
+      });
+    // getOrgId chain — .single() resolves the org membership row.
+    mockChain.single.mockResolvedValueOnce({
+      data: { org_id: ORG_ID },
+      error: null,
+    });
+
+    const router = await import('@/lib/ai/router');
+    (router.generateWithFallback as any).mockClear();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/content-drafts/${DRAFT_ID}/generate-asset-prompts`,
+      headers: AUTH_USER,
+      payload: { provider: 'manual' },
+    });
+
+    expect(res.statusCode).toBe(202);
+    const body = JSON.parse(res.payload);
+    expect(body.data.status).toBe('awaiting_manual');
+    expect(typeof body.data.prompt).toBe('string');
+    expect(body.data.prompt).toContain('BC_ASSETS_INPUT');
+    expect((router.generateWithFallback as any).mock.calls.length).toBe(0);
+  });
+
+  it('surfaces LLM errors via the response envelope', async () => {
+    // loadDraft chain — .maybeSingle() resolves the draft row.
+    // buildAssetsInput chain — .maybeSingle() for channel lookup
+    mockChain.maybeSingle
+      .mockResolvedValueOnce({
+        data: {
+          id: DRAFT_ID,
+          user_id: 'user-1',
+          org_id: ORG_ID,
+          channel_id: 'ch-1',
+          type: 'blog',
+          title: 'Sample',
+          draft_json: { blog: { outline: [{ h2: 'Intro', key_points: ['a', 'b'] }] } },
+          canonical_core_json: {},
+          idea_id: null,
+          model_tier: 'standard',
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: {
+          niche: 'tech',
+          niche_tags: ['ai'],
+          tone: 'informative',
+          language: 'English',
+          market: 'global',
+          region: 'US',
+        },
+        error: null,
+      });
+    // getOrgId chain — .single() resolves the org membership row.
+    mockChain.single.mockResolvedValueOnce({
+      data: { org_id: ORG_ID },
+      error: null,
+    });
+
+    const router = await import('@/lib/ai/router');
+    (router.generateWithFallback as any).mockRejectedValueOnce(new Error('provider down'));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/content-drafts/${DRAFT_ID}/generate-asset-prompts`,
+      headers: AUTH_USER,
+      payload: { provider: 'gemini' },
+    });
+
+    expect(res.statusCode).toBe(500);
+    const body = JSON.parse(res.payload);
+    expect(body.error).toBeTruthy();
   });
 });
