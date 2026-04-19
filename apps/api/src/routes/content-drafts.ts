@@ -1775,6 +1775,37 @@ export async function contentDraftsRoutes(
 
         const userMessage = buildAssetsMessage(input);
 
+        if (override.provider === 'manual') {
+          const combinedPrompt = systemPrompt
+            ? `${systemPrompt}\n\n${userMessage}`
+            : userMessage;
+
+          logAiUsage({
+            userId: request.userId,
+            orgId,
+            action: 'manual.awaiting',
+            provider: 'manual',
+            model: 'manual',
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            durationMs: 0,
+            status: 'awaiting_manual',
+            metadata: {
+              draftId: id,
+              stage: 'assets',
+              channelId: (draft.channel_id as string) ?? null,
+              prompt: combinedPrompt,
+              input,
+            },
+          });
+
+          return reply.status(202).send({
+            data: { draftId: id, status: 'awaiting_manual', prompt: combinedPrompt },
+            error: null,
+          });
+        }
+
         const { result } = await generateWithFallback(
           "assets",
           (draft.model_tier as string) ?? "standard",
