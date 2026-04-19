@@ -18,6 +18,7 @@ import {
   suggestPromptsRequestSchema,
 } from '@brighttale/shared/schemas/imageGeneration';
 import { getImageProvider } from '../lib/ai/imageIndex.js';
+import { logAiUsage } from '../lib/axiom.js';
 import { saveImageLocally, deleteImageFile } from '../lib/files/imageStorage.js';
 import {
   generateBlogFeaturedImagePrompt,
@@ -264,6 +265,42 @@ export async function assetsRoutes(fastify: FastifyInstance): Promise<void> {
     try {
       const sb = createServiceClient();
       const validated = generateImageRequestSchema.parse(request.body);
+
+      // Manual provider short-circuits the image model: emit the prompt to
+      // Axiom so the operator can run it in an external tool, and return 202.
+      // The operator pastes the resulting image URL or uploads the file via
+      // the existing /assets/upload flow.
+      if (validated.provider === 'manual') {
+        logAiUsage({
+          userId: request.userId ?? null,
+          orgId: null,
+          action: 'manual.awaiting',
+          provider: 'manual',
+          model: 'manual',
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          durationMs: 0,
+          status: 'awaiting_manual',
+          metadata: {
+            stage: 'asset_image',
+            projectId: validated.project_id ?? null,
+            contentId: validated.content_id ?? null,
+            role: validated.role ?? null,
+            aspectRatio: validated.aspectRatio,
+            prompt: validated.prompt,
+          },
+        });
+
+        return reply.status(202).send({
+          data: {
+            status: 'awaiting_manual',
+            prompt: validated.prompt,
+            role: validated.role ?? null,
+          },
+          error: null,
+        });
+      }
 
       const provider = await getImageProvider();
 

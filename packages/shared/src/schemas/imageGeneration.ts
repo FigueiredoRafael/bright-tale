@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const generateImageRequestSchema = z.object({
-  prompt: z.string().min(10, "Prompt must be at least 10 characters").max(500),
+  prompt: z.string().min(10, "Prompt must be at least 10 characters").max(2000),
   project_id: z.string().optional(),
   content_type: z.enum(["blog", "video", "shorts", "podcast"]).optional(),
   content_id: z.string().optional(),
@@ -9,6 +9,7 @@ export const generateImageRequestSchema = z.object({
   numImages: z.number().int().min(1).max(4).default(1),
   aspectRatio: z.enum(["16:9", "1:1", "9:16", "4:3"]).default("16:9"),
   outputMimeType: z.enum(["image/jpeg", "image/png"]).default("image/jpeg"),
+  provider: z.enum(["gemini", "manual"]).default("gemini"),
 });
 
 export const imageGeneratorConfigSchema = z.object({

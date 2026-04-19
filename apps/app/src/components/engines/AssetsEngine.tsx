@@ -73,6 +73,11 @@ interface NoBriefSection {
 /* ── Constants ── */
 
 const ASSETS_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'manual'];
+type ImageProvider = 'gemini' | 'manual';
+const IMAGE_PROVIDERS: { id: ImageProvider; label: string; hint: string }[] = [
+  { id: 'gemini', label: 'Nano-banana (Gemini)', hint: 'Runs the image model directly.' },
+  { id: 'manual', label: 'Manual (Axiom)', hint: 'Emits the prompt to Axiom; upload the resulting image when ready.' },
+];
 
 /* ── Helpers ── */
 
@@ -186,6 +191,8 @@ export function AssetsEngine({
   const [generatingBriefs, setGeneratingBriefs] = useState(false);
   const [manualBriefsOpen, setManualBriefsOpen] = useState(false);
   const [noBriefSections, setNoBriefSections] = useState<NoBriefSection[]>([]);
+  const [imageProvider, setImageProvider] = useState<ImageProvider>('gemini');
+  const [generatingAll, setGeneratingAll] = useState(false);
   const inFlightRef = useRef(false);
   const tracker = usePipelineTracker('assets', context);
 
@@ -316,22 +323,16 @@ export function AssetsEngine({
 
 
   /* ── AI generate a single slot image ── */
-  async function handleGenerateSlot(card: SlotCard) {
-    if (generatingSlot) return;
+  async function generateSlotImage(card: SlotCard): Promise<void> {
     const prompt = buildFullPrompt(card, visualDirection);
     if (prompt.trim().length < 10) {
-      toast.error('Prompt too short');
+      toast.error(`Prompt too short for ${card.slot}`);
       return;
     }
-    setGeneratingSlot(card.slot);
-    try {
-      // Delete any existing asset for this role so the new one replaces it
-      const role = slotToRole(card.slot);
-      const existing = existingAssets.find((a) => a.role === role);
-      if (existing) {
-        await fetch(`/api/assets/${existing.id}`, { method: 'DELETE' }).catch(() => null);
-      }
+    const role = slotToRole(card.slot);
 
+    // Manual provider: emit prompt to Axiom, prompt the user to upload the result.
+    if (imageProvider === 'manual') {
       const res = await fetch('/api/assets/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -342,34 +343,89 @@ export function AssetsEngine({
           role,
           aspectRatio: card.aspectRatio,
           numImages: 1,
+          provider: 'manual',
         }),
       });
       const json = await res.json();
       if (json?.error) {
-        toast.error(json.error.message ?? 'Image generation failed');
+        toast.error(json.error.message ?? 'Manual emit failed');
         return;
       }
-      const asset = Array.isArray(json.data) ? json.data[0] : json.data;
-      if (!asset) {
-        toast.error('No image returned');
-        return;
-      }
-      const mapped: ContentAsset = {
-        id: asset.id as string,
-        url: (asset.source_url as string) ?? (asset.url as string) ?? '',
-        webpUrl: (asset.webp_url as string) ?? null,
-        role: (asset.role as string) ?? role,
-        altText: (asset.alt_text as string) ?? card.sectionTitle,
-        sourceType: (asset.source as string) ?? 'generated',
-      };
-      setSlotAssets((prev) => ({ ...prev, [card.slot]: mapped }));
-      setExistingAssets((prev) => [...prev.filter((a) => a.role !== role), mapped]);
-      tracker.trackAction('generated', { draftId, role, slot: card.slot });
-      toast.success(`Generated image for ${card.slot}`);
+      tracker.trackAction('manual.awaiting', { draftId, role, slot: card.slot });
+      toast.success(`Prompt for ${card.slot} emitted to Axiom. Upload the image when ready.`);
+      return;
+    }
+
+    // AI (Gemini): replace any existing asset for this role so the new one wins.
+    const existing = existingAssets.find((a) => a.role === role);
+    if (existing) {
+      await fetch(`/api/assets/${existing.id}`, { method: 'DELETE' }).catch(() => null);
+    }
+
+    const res = await fetch('/api/assets/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt,
+        content_id: draftId,
+        content_type: 'blog',
+        role,
+        aspectRatio: card.aspectRatio,
+        numImages: 1,
+        provider: 'gemini',
+      }),
+    });
+    const json = await res.json();
+    if (json?.error) {
+      toast.error(json.error.message ?? `Image generation failed for ${card.slot}`);
+      return;
+    }
+    const asset = Array.isArray(json.data) ? json.data[0] : json.data;
+    if (!asset || !asset.id) {
+      toast.error(`No image returned for ${card.slot}`);
+      return;
+    }
+    const mapped: ContentAsset = {
+      id: asset.id as string,
+      url: (asset.source_url as string) ?? (asset.url as string) ?? '',
+      webpUrl: (asset.webp_url as string) ?? null,
+      role: (asset.role as string) ?? role,
+      altText: (asset.alt_text as string) ?? card.sectionTitle,
+      sourceType: (asset.source as string) ?? 'generated',
+    };
+    setSlotAssets((prev) => ({ ...prev, [card.slot]: mapped }));
+    setExistingAssets((prev) => [...prev.filter((a) => a.role !== role), mapped]);
+    tracker.trackAction('generated', { draftId, role, slot: card.slot });
+  }
+
+  async function handleGenerateSlot(card: SlotCard) {
+    if (generatingSlot || generatingAll) return;
+    setGeneratingSlot(card.slot);
+    try {
+      await generateSlotImage(card);
+      if (imageProvider === 'gemini') toast.success(`Generated image for ${card.slot}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Image generation failed');
     } finally {
       setGeneratingSlot(null);
+    }
+  }
+
+  async function handleGenerateAllSlots() {
+    if (generatingSlot || generatingAll || slotCards.length === 0) return;
+    setGeneratingAll(true);
+    try {
+      for (const card of slotCards) {
+        setGeneratingSlot(card.slot);
+        await generateSlotImage(card);
+      }
+      if (imageProvider === 'gemini') toast.success('All images generated');
+      else toast.success('All prompts emitted to Axiom');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Bulk generation failed');
+    } finally {
+      setGeneratingSlot(null);
+      setGeneratingAll(false);
     }
   }
 
@@ -837,6 +893,53 @@ export function AssetsEngine({
       {/* ═══ PHASE 3: Upload Images ═══ */}
       {phase === 'images' && imagesMode === 'brief' && (
         <div className="space-y-4">
+          {/* Bulk action bar */}
+          <Card>
+            <CardContent className="py-3 space-y-3">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Image provider
+              </Label>
+              <div className="grid grid-cols-2 gap-2">
+                {IMAGE_PROVIDERS.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setImageProvider(p.id)}
+                    disabled={generatingAll || !!generatingSlot}
+                    className={`text-left rounded-lg border p-2.5 transition-colors ${
+                      imageProvider === p.id
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-muted-foreground/50'
+                    } ${(generatingAll || !!generatingSlot) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  >
+                    <div className="text-sm font-medium">{p.label}</div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">{p.hint}</div>
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <p className="text-xs text-muted-foreground">
+                  Apply to every slot below, or use the per-slot button for granular control.
+                </p>
+                <Button
+                  onClick={handleGenerateAllSlots}
+                  disabled={generatingAll || !!generatingSlot || slotCards.length === 0}
+                  size="sm"
+                  className="gap-1.5 shrink-0"
+                >
+                  {generatingAll ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : imageProvider === 'manual' ? (
+                    <ClipboardPaste className="h-3.5 w-3.5" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                  {imageProvider === 'manual' ? 'Emit all prompts' : 'Generate all images'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           {slotCards.map((card) => {
             const role = slotToRole(card.slot);
             const existing = existingAssets.find((a) => a.role === role) ?? slotAssets[card.slot] ?? null;
@@ -850,7 +953,8 @@ export function AssetsEngine({
                 existingAsset={existing}
                 pendingPreview={pending?.preview}
                 generating={isGeneratingThis}
-                generateDisabled={!!generatingSlot}
+                generateDisabled={!!generatingSlot || generatingAll}
+                generateProvider={imageProvider}
                 onGenerate={() => handleGenerateSlot(card)}
                 onFileStage={(file) => handleFileStage(card.slot, file)}
                 onUrlStage={(url) => handleUrlStage(card.slot, url)}
@@ -937,6 +1041,7 @@ interface BriefImageSlotCardProps {
   pendingPreview?: string;
   generating: boolean;
   generateDisabled: boolean;
+  generateProvider: ImageProvider;
   onGenerate: () => void;
   onFileStage: (file: File) => void;
   onUrlStage: (url: string) => void;
@@ -945,7 +1050,7 @@ interface BriefImageSlotCardProps {
 
 function BriefImageSlotCard({
   card, visualDirection, existingAsset, pendingPreview,
-  generating, generateDisabled,
+  generating, generateDisabled, generateProvider,
   onGenerate, onFileStage, onUrlStage, onDeletePending,
 }: BriefImageSlotCardProps) {
   const [urlInput, setUrlInput] = useState('');
@@ -1018,8 +1123,16 @@ function BriefImageSlotCard({
             onClick={onGenerate}
             disabled={generateDisabled}
           >
-            {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-            {existingAsset ? 'Regenerate with AI' : 'Generate with AI'}
+            {generating ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : generateProvider === 'manual' ? (
+              <ClipboardPaste className="h-3.5 w-3.5" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            {generateProvider === 'manual'
+              ? 'Emit prompt (manual)'
+              : existingAsset ? 'Regenerate with AI' : 'Generate with AI'}
           </Button>
 
           <input
