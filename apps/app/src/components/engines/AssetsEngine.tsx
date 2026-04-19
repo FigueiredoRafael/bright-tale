@@ -1109,6 +1109,7 @@ function BriefImageSlotCard({
           <div className="space-y-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
+              key={existingAsset?.id ?? pendingPreview ?? 'none'}
               src={preview}
               alt={card.sectionTitle}
               className="w-full max-h-56 rounded-lg border object-cover"
@@ -1267,6 +1268,7 @@ function NoBriefImageSlotCard({
           <div className="space-y-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
+              key={existingAsset?.id ?? pendingPreview ?? 'none'}
               src={preview}
               alt={section.sectionTitle}
               className="w-full max-h-56 rounded-lg border object-cover"
