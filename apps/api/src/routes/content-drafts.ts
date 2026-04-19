@@ -1748,8 +1748,9 @@ export async function contentDraftsRoutes(
 
   /**
    * POST /:id/generate-asset-prompts — Run agent-5-assets to produce
-   * BC_ASSETS_OUTPUT (visual_direction + slot prompt briefs). AI path here;
-   * manual-provider path added in the next task.
+   * BC_ASSETS_OUTPUT (visual_direction + slot prompt briefs).
+   * Manual provider short-circuits to 202 awaiting_manual without persisting
+   * DB state — the paste round-trip is handled client-side.
    */
   fastify.post(
     "/:id/generate-asset-prompts",
