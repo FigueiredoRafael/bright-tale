@@ -1760,10 +1760,10 @@ export async function contentDraftsRoutes(
           throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
         const { id } = request.params as { id: string };
         const override = providerOverrideSchema.parse(request.body ?? {});
-        const draft = await loadDraft(id);
+        const draft = (await loadDraft(id)) as Record<string, unknown>;
         const orgId = await getOrgId(request.userId);
 
-        const input = await buildAssetsInput(draft as Record<string, unknown>);
+        const input = await buildAssetsInput(draft);
 
         let systemPrompt = (await loadAgentPrompt("assets")) ?? undefined;
         const channelContextStr = await buildChannelContext(
@@ -1777,7 +1777,7 @@ export async function contentDraftsRoutes(
 
         const { result } = await generateWithFallback(
           "assets",
-          ((draft as Record<string, unknown>).model_tier as string) ?? "standard",
+          (draft.model_tier as string) ?? "standard",
           {
             agentType: "assets",
             systemPrompt: systemPrompt ?? "",
