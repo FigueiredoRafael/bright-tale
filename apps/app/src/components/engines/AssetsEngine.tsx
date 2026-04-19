@@ -13,7 +13,6 @@ import {
   ClipboardPaste, SkipForward,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { AssetGallery } from '@/components/preview/AssetGallery';
 import { ManualOutputDialog } from './ManualOutputDialog';
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
@@ -177,7 +176,6 @@ export function AssetsEngine({
   const [visualDirection, setVisualDirection] = useState<VisualDirection | null>(null);
   const [slotCards, setSlotCards] = useState<SlotCard[]>([]);
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
-  const [uploadedAssets, setUploadedAssets] = useState<UploadedAsset[]>([]);
   const [existingAssets, setExistingAssets] = useState<ContentAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [finishing, setFinishing] = useState(false);
@@ -264,16 +262,6 @@ export function AssetsEngine({
     }
     void fetchNoBriefSections();
   }, [draftId, imagesMode, noBriefSections.length]);
-
-  async function withGuard<T>(fn: () => Promise<T>): Promise<T | undefined> {
-    if (inFlightRef.current) return undefined;
-    inFlightRef.current = true;
-    try {
-      return await fn();
-    } finally {
-      inFlightRef.current = false;
-    }
-  }
 
   /* ── Manual mode: import BC_ASSETS_OUTPUT ── */
   const handleManualImport = useCallback(async (parsed: unknown) => {
@@ -489,10 +477,6 @@ export function AssetsEngine({
         });
       }
 
-      setUploadedAssets((prev) => {
-        const slots = new Set(saved.map((s) => s.slot));
-        return [...prev.filter((a) => !slots.has(a.slot)), ...saved];
-      });
       setPendingUploads([]);
 
       // Re-fetch all assets from DB so the parent sees up-to-date IDs
