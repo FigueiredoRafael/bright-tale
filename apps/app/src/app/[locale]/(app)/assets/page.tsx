@@ -50,8 +50,11 @@ export default function AssetsPage() {
       const json = await res.json();
 
       if (json.data) {
-        setAssets(json.data.items ?? json.data ?? []);
-        setTotal(json.data.total ?? 0);
+        const items = Array.isArray(json.data)
+          ? json.data
+          : (json.data.assets ?? json.data.items ?? []);
+        setAssets(Array.isArray(items) ? items : []);
+        setTotal(json.data.total ?? items.length ?? 0);
       }
     } catch {
       toast.error('Failed to load assets');
@@ -115,7 +118,8 @@ export default function AssetsPage() {
       ) : assets.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <Image className="h-12 w-12 text-muted-foreground mb-4" />
+            {/* eslint-disable-next-line jsx-a11y/alt-text */}
+            <Image aria-hidden className="h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium">No assets yet</h3>
             <p className="text-muted-foreground text-sm mt-1">
               Assets will appear here when you generate images or upload files
@@ -133,6 +137,7 @@ export default function AssetsPage() {
                 <Card key={asset.id} className="group overflow-hidden">
                   <div className="aspect-square bg-muted flex items-center justify-center relative">
                     {asset.asset_type === 'image' && asset.original_url ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
                       <img
                         src={asset.original_url}
                         alt={asset.alt_text ?? 'Asset'}

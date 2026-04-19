@@ -1064,7 +1064,10 @@ function BriefImageSlotCard({
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const preview = existingAsset?.url ?? pendingPreview;
+  // Staged upload wins over saved asset so the user sees what they just picked.
+  const preview = pendingPreview ?? existingAsset?.url;
+  const previewKey = pendingPreview ?? existingAsset?.id ?? 'none';
+  const isStaged = !!pendingPreview;
 
   return (
     <Card>
@@ -1109,12 +1112,12 @@ function BriefImageSlotCard({
           <div className="space-y-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              key={existingAsset?.id ?? pendingPreview ?? 'none'}
+              key={previewKey}
               src={preview}
               alt={card.sectionTitle}
               className="w-full max-h-56 rounded-lg border object-cover"
             />
-            {pendingPreview && !existingAsset && (
+            {isStaged && (
               <Button variant="outline" size="sm" className="gap-1.5" onClick={onDeletePending}>
                 <Trash2 className="h-3 w-3" /> Remove Staged
               </Button>
@@ -1219,7 +1222,10 @@ function NoBriefImageSlotCard({
   const [expanded, setExpanded] = useState(false);
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const preview = existingAsset?.url ?? pendingPreview;
+  // Staged upload wins over saved asset so the user sees what they just picked.
+  const preview = pendingPreview ?? existingAsset?.url;
+  const previewKey = pendingPreview ?? existingAsset?.id ?? 'none';
+  const isStaged = !!pendingPreview;
 
   return (
     <Card>
@@ -1268,12 +1274,12 @@ function NoBriefImageSlotCard({
           <div className="space-y-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              key={existingAsset?.id ?? pendingPreview ?? 'none'}
+              key={previewKey}
               src={preview}
               alt={section.sectionTitle}
               className="w-full max-h-56 rounded-lg border object-cover"
             />
-            {pendingPreview && !existingAsset && (
+            {isStaged && (
               <Button variant="outline" size="sm" className="gap-1.5" onClick={onDeletePending}>
                 <Trash2 className="h-3 w-3" /> Remove Staged
               </Button>
