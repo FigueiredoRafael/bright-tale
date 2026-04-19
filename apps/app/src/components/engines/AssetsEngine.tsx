@@ -842,9 +842,12 @@ export function AssetsEngine({
                   <Textarea
                     value={card.promptBrief}
                     onChange={(e) => {
-                      const updated = [...slotCards];
-                      updated[i] = { ...card, promptBrief: e.target.value };
-                      setSlotCards(updated);
+                      const value = e.target.value;
+                      setSlotCards((prev) => {
+                        const updated = [...prev];
+                        if (updated[i]) updated[i] = { ...updated[i], promptBrief: value };
+                        return updated;
+                      });
                     }}
                     rows={3}
                     className="text-sm"
@@ -858,9 +861,12 @@ export function AssetsEngine({
                   <select
                     value={card.aspectRatio}
                     onChange={(e) => {
-                      const updated = [...slotCards];
-                      updated[i] = { ...card, aspectRatio: e.target.value };
-                      setSlotCards(updated);
+                      const value = e.target.value;
+                      setSlotCards((prev) => {
+                        const updated = [...prev];
+                        if (updated[i]) updated[i] = { ...updated[i], aspectRatio: value };
+                        return updated;
+                      });
                     }}
                     className="text-xs border rounded px-2 py-1"
                   >
