@@ -106,6 +106,83 @@ async function loadDraft(id: string) {
   return data;
 }
 
+/**
+ * Build BC_ASSETS_INPUT from a draft row. Shared between the data-only
+ * /asset-prompts route and the LLM-powered /generate-asset-prompts route.
+ */
+async function buildAssetsInput(
+  draft: Record<string, unknown>,
+): Promise<{
+  title: string;
+  content_type: string;
+  sections: Array<{ slot: string; section_title: string; key_points: string[] }>;
+  channel_context: Record<string, unknown>;
+  idea_context: IdeaContext | null;
+}> {
+  const sb = createServiceClient();
+  const draftJson = (draft.draft_json ?? {}) as Record<string, unknown>;
+  const coreJson = (draft.canonical_core_json ?? {}) as Record<string, unknown>;
+  const contentType = (draft.type as string) ?? "blog";
+
+  let outline: Array<{ h2: string; key_points: string[] }> = [];
+  const blogData = draftJson.blog as Record<string, unknown> | undefined;
+  if (blogData?.outline && Array.isArray(blogData.outline)) {
+    outline = (blogData.outline as Array<Record<string, unknown>>).map((s) => ({
+      h2: (s.h2 as string) ?? (s.heading as string) ?? "",
+      key_points: Array.isArray(s.key_points) ? (s.key_points as string[]) : [],
+    }));
+  } else if (coreJson.argument_chain && Array.isArray(coreJson.argument_chain)) {
+    outline = (coreJson.argument_chain as Array<Record<string, unknown>>).map((s) => ({
+      h2: (s.claim as string) ?? (s.section as string) ?? "",
+      key_points: Array.isArray(s.evidence) ? (s.evidence as string[]) : [],
+    }));
+  }
+
+  const sections = [
+    {
+      slot: "featured",
+      section_title: (draft.title as string) ?? "Untitled",
+      key_points: [] as string[],
+    },
+    ...outline.map((s, i) => ({
+      slot: `section_${i + 1}`,
+      section_title: s.h2,
+      key_points: s.key_points,
+    })),
+  ];
+
+  let channelContext: Record<string, unknown> = {};
+  if (draft.channel_id) {
+    const { data: channel } = await sb
+      .from("channels")
+      .select("niche, niche_tags, tone, language, market, region")
+      .eq("id", draft.channel_id as string)
+      .maybeSingle();
+    if (channel) {
+      channelContext = {
+        niche: channel.niche ?? "",
+        niche_tags: channel.niche_tags ?? [],
+        tone: channel.tone ?? "",
+        language: channel.language ?? "English",
+        market: channel.market ?? "global",
+        region: channel.region ?? "",
+      };
+    }
+  }
+
+  const idea = draft.idea_id
+    ? await loadIdeaContext(draft.idea_id as string)
+    : null;
+
+  return {
+    title: (draft.title as string) ?? "Untitled",
+    content_type: contentType,
+    sections,
+    channel_context: channelContext,
+    idea_context: idea,
+  };
+}
+
 export async function contentDraftsRoutes(
   fastify: FastifyInstance,
 ): Promise<void> {
@@ -1660,85 +1737,8 @@ export async function contentDraftsRoutes(
           throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
         const { id } = request.params as { id: string };
         const draft = await loadDraft(id);
-        const sb = createServiceClient();
-
-        // Extract outline from draft_json
-        const draftJson = (draft.draft_json ?? {}) as Record<string, unknown>;
-        const coreJson = (draft.canonical_core_json ?? {}) as Record<string, unknown>;
-        const contentType = (draft.type as string) ?? "blog";
-
-        // Try to get outline from draft_json.blog.outline or canonical_core_json
-        let outline: Array<{ h2: string; key_points: string[] }> = [];
-        const blogData = draftJson.blog as Record<string, unknown> | undefined;
-        if (blogData?.outline && Array.isArray(blogData.outline)) {
-          outline = (blogData.outline as Array<Record<string, unknown>>).map((s) => ({
-            h2: (s.h2 as string) ?? (s.heading as string) ?? "",
-            key_points: Array.isArray(s.key_points)
-              ? (s.key_points as string[])
-              : [],
-          }));
-        } else if (coreJson.argument_chain && Array.isArray(coreJson.argument_chain)) {
-          // Fallback: derive sections from canonical core argument chain
-          outline = (coreJson.argument_chain as Array<Record<string, unknown>>).map((s) => ({
-            h2: (s.claim as string) ?? (s.section as string) ?? "",
-            key_points: Array.isArray(s.evidence)
-              ? (s.evidence as string[])
-              : [],
-          }));
-        }
-
-        // Build sections: featured + one per outline H2
-        const sections: Array<{
-          slot: string;
-          section_title: string;
-          key_points: string[];
-        }> = [
-          {
-            slot: "featured",
-            section_title: (draft.title as string) ?? "Untitled",
-            key_points: [],
-          },
-          ...outline.map((s, i) => ({
-            slot: `section_${i + 1}`,
-            section_title: s.h2,
-            key_points: s.key_points,
-          })),
-        ];
-
-        // Fetch channel context if available
-        let channelContext: Record<string, unknown> = {};
-        if (draft.channel_id) {
-          const { data: channel } = await sb
-            .from("channels")
-            .select("niche, niche_tags, tone, language, market, region")
-            .eq("id", draft.channel_id)
-            .maybeSingle();
-          if (channel) {
-            channelContext = {
-              niche: channel.niche ?? "",
-              niche_tags: channel.niche_tags ?? [],
-              tone: channel.tone ?? "",
-              language: channel.language ?? "English",
-              market: channel.market ?? "global",
-              region: channel.region ?? "",
-            };
-          }
-        }
-
-        const idea = draft.idea_id
-          ? await loadIdeaContext(draft.idea_id as string)
-          : null;
-
-        return reply.send({
-          data: {
-            title: (draft.title as string) ?? "Untitled",
-            content_type: contentType,
-            sections,
-            channel_context: channelContext,
-            idea_context: idea,
-          },
-          error: null,
-        });
+        const input = await buildAssetsInput(draft as Record<string, unknown>);
+        return reply.send({ data: input, error: null });
       } catch (error) {
         return sendError(reply, error);
       }
