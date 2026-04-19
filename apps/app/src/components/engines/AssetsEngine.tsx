@@ -11,10 +11,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Loader2, ArrowRight, Check, Upload, Image as ImageIcon,
   Sparkles, Palette, Trash2, Link2, ChevronDown, ChevronUp, Copy,
+  ClipboardPaste,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AssetGallery } from '@/components/preview/AssetGallery';
-import { ManualModePanel } from '@/components/ai/ManualModePanel';
+import { ManualOutputDialog } from './ManualOutputDialog';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
@@ -169,6 +170,9 @@ export function AssetsEngine({
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [manualDialogOpen, setManualDialogOpen] = useState(false);
+  const [generatingSlot, setGeneratingSlot] = useState<string | null>(null);
+  const [slotAssets, setSlotAssets] = useState<Record<string, ContentAsset>>({});
   const inFlightRef = useRef(false);
   const tracker = usePipelineTracker('assets', context);
 
@@ -319,6 +323,64 @@ export function AssetsEngine({
         setGenerating(false);
       }
     });
+  }
+
+  /* ── AI generate a single slot image ── */
+  async function handleGenerateSlot(card: SlotCard) {
+    if (generatingSlot) return;
+    const prompt = buildFullPrompt(card, visualDirection);
+    if (prompt.trim().length < 10) {
+      toast.error('Prompt too short');
+      return;
+    }
+    setGeneratingSlot(card.slot);
+    try {
+      // Delete any existing asset for this role so the new one replaces it
+      const role = slotToRole(card.slot);
+      const existing = existingAssets.find((a) => a.role === role);
+      if (existing) {
+        await fetch(`/api/assets/${existing.id}`, { method: 'DELETE' }).catch(() => null);
+      }
+
+      const res = await fetch('/api/assets/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          content_id: draftId,
+          content_type: 'blog',
+          role,
+          aspectRatio: card.aspectRatio,
+          numImages: 1,
+        }),
+      });
+      const json = await res.json();
+      if (json?.error) {
+        toast.error(json.error.message ?? 'Image generation failed');
+        return;
+      }
+      const asset = Array.isArray(json.data) ? json.data[0] : json.data;
+      if (!asset) {
+        toast.error('No image returned');
+        return;
+      }
+      const mapped: ContentAsset = {
+        id: asset.id as string,
+        url: (asset.source_url as string) ?? (asset.url as string) ?? '',
+        webpUrl: (asset.webp_url as string) ?? null,
+        role: (asset.role as string) ?? role,
+        altText: (asset.alt_text as string) ?? card.sectionTitle,
+        sourceType: (asset.source as string) ?? 'generated',
+      };
+      setSlotAssets((prev) => ({ ...prev, [card.slot]: mapped }));
+      setExistingAssets((prev) => [...prev.filter((a) => a.role !== role), mapped]);
+      tracker.trackAction('generated', { draftId, role, slot: card.slot });
+      toast.success(`Generated image for ${card.slot}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Image generation failed');
+    } finally {
+      setGeneratingSlot(null);
+    }
   }
 
   /* ── Pending upload handlers (no API call yet) ── */
@@ -583,29 +645,66 @@ export function AssetsEngine({
           <CardHeader>
             <CardTitle className="text-base">Step 1: Get Prompt Briefs</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              Generate structured image prompts for each section of your content. Use AI, manual mode with an external tool, or the existing auto-generate path.
+              Generate structured image prompts for each section. Copy the input context into your AI tool, then paste the response back.
             </p>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <Tabs defaultValue="manual" className="space-y-4">
               <TabsList>
-                <TabsTrigger value="manual">Manual (External AI)</TabsTrigger>
-                <TabsTrigger value="auto">Auto Generate All</TabsTrigger>
+                <TabsTrigger value="manual">
+                  <ClipboardPaste className="h-3.5 w-3.5 mr-1.5" /> Manual (External AI)
+                </TabsTrigger>
+                <TabsTrigger value="auto">
+                  <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Auto Generate All
+                </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="manual" className="space-y-4">
-                <ManualModePanel
-                  agentSlug="assets"
-                  inputContext={inputContext}
-                  pastePlaceholder="Paste the BC_ASSETS_OUTPUT JSON here..."
-                  onImport={handleManualImport}
-                  importLabel="Import Prompt Briefs"
-                />
+              <TabsContent value="manual" className="space-y-3">
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      Input Context (BC_ASSETS_INPUT)
+                    </Label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1.5 text-xs"
+                      disabled={!inputContext}
+                      onClick={() => {
+                        void navigator.clipboard.writeText(inputContext);
+                        toast.success('Input context copied');
+                      }}
+                    >
+                      <Copy className="h-3 w-3" /> Copy Context
+                    </Button>
+                  </div>
+                  <Textarea
+                    value={inputContext}
+                    readOnly
+                    rows={8}
+                    className="text-xs font-mono bg-background/60"
+                    placeholder="Building input context..."
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">
+                    Run the context in ChatGPT / Claude, then paste the BC_ASSETS_OUTPUT JSON.
+                  </p>
+                  <Button
+                    onClick={() => setManualDialogOpen(true)}
+                    size="sm"
+                    className="gap-1.5 shrink-0"
+                    disabled={!inputContext}
+                  >
+                    <ClipboardPaste className="h-4 w-4" /> Paste Output
+                  </Button>
+                </div>
               </TabsContent>
 
-              <TabsContent value="auto" className="space-y-4">
+              <TabsContent value="auto" className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Auto-generate images using the configured AI image provider. This skips the prompt refinement step and generates images directly.
+                  Auto-generate images using the configured AI image provider. Skips prompt refinement.
                 </p>
                 <Button
                   onClick={handleGenerateAll}
@@ -629,6 +728,19 @@ export function AssetsEngine({
           </CardContent>
         </Card>
       )}
+
+      {/* Manual paste dialog for Phase 1 */}
+      <ManualOutputDialog
+        open={manualDialogOpen}
+        onOpenChange={(open) => setManualDialogOpen(open)}
+        title="Paste Asset Prompt Briefs"
+        description="Run the input context in your external AI tool, then paste the BC_ASSETS_OUTPUT JSON here."
+        submitLabel="Import Prompt Briefs"
+        onSubmit={async (parsed) => {
+          await handleManualImport(parsed);
+          setManualDialogOpen(false);
+        }}
+      />
 
       {/* ═══ PHASE 2: Refine Prompts ═══ */}
       {phase === 'refined' && (
@@ -665,7 +777,13 @@ export function AssetsEngine({
           )}
 
           {/* Slot cards */}
-          {slotCards.map((card, i) => (
+          {slotCards.map((card, i) => {
+            const generatedAsset =
+              slotAssets[card.slot]
+              ?? existingAssets.find((a) => a.role === slotToRole(card.slot))
+              ?? null;
+            const isGeneratingThis = generatingSlot === card.slot;
+            return (
             <Card key={card.slot}>
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
@@ -673,25 +791,41 @@ export function AssetsEngine({
                     {card.slot}
                   </Badge>
                   <CardTitle className="text-sm">{card.sectionTitle}</CardTitle>
+                  {generatedAsset && <Check className="h-3.5 w-3.5 text-green-500" />}
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div>
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center justify-between mb-1 gap-2">
                     <Label className="text-xs">Prompt Brief</Label>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 px-2 text-xs gap-1"
-                      onClick={() => {
-                        const full = buildFullPrompt(card, visualDirection);
-                        void navigator.clipboard.writeText(full);
-                        toast.success(`Full image prompt copied for ${card.slot}`);
-                      }}
-                    >
-                      <Copy className="h-3 w-3" />
-                      Copy Full Prompt
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-xs gap-1"
+                        onClick={() => {
+                          const full = buildFullPrompt(card, visualDirection);
+                          void navigator.clipboard.writeText(full);
+                          toast.success(`Full image prompt copied for ${card.slot}`);
+                        }}
+                      >
+                        <Copy className="h-3 w-3" />
+                        Copy
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="h-7 px-2 text-xs gap-1"
+                        onClick={() => handleGenerateSlot(card)}
+                        disabled={!!generatingSlot}
+                      >
+                        {isGeneratingThis ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-3 w-3" />
+                        )}
+                        {isGeneratingThis ? 'Generating…' : generatedAsset ? 'Regenerate' : 'Generate with AI'}
+                      </Button>
+                    </div>
                   </div>
                   <Textarea
                     value={card.promptBrief}
@@ -724,9 +858,22 @@ export function AssetsEngine({
                     <option value="4:3">4:3</option>
                   </select>
                 </div>
+
+                {generatedAsset && (
+                  <div className="space-y-2 pt-1">
+                    <Label className="text-xs text-muted-foreground">Generated preview</Label>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={generatedAsset.url}
+                      alt={generatedAsset.altText ?? card.sectionTitle}
+                      className="w-full max-h-56 rounded-lg border object-cover"
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
 
           {/* Actions */}
           <div className="flex items-center gap-3">
