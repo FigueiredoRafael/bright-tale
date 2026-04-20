@@ -6,7 +6,7 @@
 
 **Depende de:** Fase 1 (auth, orgs, storage, créditos)
 
-**Progresso:** 46/47 concluídos · 1 N/A (F2-028 dep externa ausente) — Phase 2 core ✅ completa
+**Progresso:** 45/50 concluídos · 1 N/A (F2-028) · 4 🟡 Parciais (F2-019, F2-021, F2-022, F2-025) — Phase 2 core em finalização ✅
 
 **(Old progress tag)** 19/29 concluídos (F2-001 a F2-009 ✅ · F2-015–F2-018 ✅ · F2-020 ✅ · F2-026 ✅ · F2-027 ✅ · F2-019, F2-021, F2-022, F2-025 🟡 · F2-010 a F2-014 em andamento)
 
@@ -342,16 +342,17 @@ UI multi-select na `/create` ficará como follow-up de UX (o endpoint já permit
 ---
 
 ### F2-019 — Research: cards tipados + ranking + review humana
-🟡 **Parcial**
+🟡 **Parcial — ranking e edição inline pendentes**
 
 **Escopo entregue:**
 - Cards renderizam type, title/quote/claim, author, url, relevance
 - PATCH `/api/research-sessions/:id/review` salva approved_cards_json + status='reviewed'
 - UI permite aprovar/rejeitar (toggle por card) — todos aprovados por padrão
+- Renderização rica baseada no tipo de card (Claim, Evidence, Quote, etc.)
 
 **Pendente:**
-- [ ] Botão "Recomendar os melhores" (ordenação por relevance score automática)
-- [ ] Edição inline por card
+- [ ] Botão "Recomendar os melhores" (ordenação automática por relevance score)
+- [ ] Edição inline por card (ajuste fino antes de aprovar)
 - [ ] Backfill em legacy `research_archives`
 
 **Concluído em:** 2026-04-13 (parcial)
@@ -372,37 +373,37 @@ UI multi-select na `/create` ficará como follow-up de UX (o endpoint já permit
 ---
 
 ### F2-021 — Sub-fluxo Blog (geração + assets + review)
-🟡 **Parcial — geração core entregue**
+🟡 **Parcial — editor e export pendentes**
 
 **Escopo entregue:**
-- POST `/api/content-drafts/:id/produce` roda agent-3b-{type} (slug por tipo, com fallback production), persiste `draft_json`, marca status='in_review', debita custo do tipo (blog 200 / video 200 / shorts 100 / podcast 150)
-- UI `/channels/[id]/drafts/new` com seletor de formato + pipeline visual (draft → core → produção → done)
+- POST `/api/content-drafts/:id/produce` roda agentes de produção
+- Geração de ativos (F2-042): Hero e imagens inline via Gemini Imagen
+- Loop de revisão (F2-036/F2-044): Interface de revisão com feedback do Agente 4
+- Modo Manual (F2-050): Importação de conteúdo externo via provedor manual
+- UI `/channels/[id]/drafts/new` com pipeline visual
 
 **Pendente:**
-- [ ] Assets por parágrafo via Gemini Imagen (vincular em `content_assets`)
-- [ ] Editor inline do output
-- [ ] Review interno via agent-4 (feedback por bloco)
+- [ ] Editor inline do output (Wysiwyg)
 - [ ] Export HTML/Markdown
 
-**Concluído em:** 2026-04-13 (parcial)
+**Concluído em:** 2026-04-18 (parcial)
 
 ---
 
 ### F2-022 — Sub-fluxo Vídeo (geração + thumbnail + áudio + review)
-🟡 **Parcial — geração core entregue (mesmo endpoint que F2-021)**
+🟡 **Parcial — áudio e editor pendentes**
 
-**Escopo:**
-- `/api/content/video` chama agent-3b-video com seletor de estilo (talking head, documentário, tutorial) + duração alvo
-- Opcional: thumbnail via Gemini Imagen
-- Opcional: áudio por seção via ElevenLabs ou OpenAI TTS
-- Review interno do script via agent-4
-- Créditos: 200 + 30 (thumb) + 100/min (ElevenLabs) ou 50/min (OpenAI)
+**Escopo entregue:**
+- Script de vídeo dual (F2-045): Teleprompter + Roteiro do editor
+- Pacote YouTube (F2-046): Títulos A/B, briefing de thumb e descrição SEO
+- Loop de revisão: Feedback detalhado sobre pacing e retenção
+- Modo Manual (F2-050): Suporte a roteiros externos
 
-**Critérios de aceite:**
-- [ ] Script gerado e salvo
-- [ ] Thumbnail opcional funciona
-- [ ] Áudio opcional funciona (provider configurável)
-- [ ] Review inline funciona
+**Pendente:**
+- [ ] Áudio por seção via ElevenLabs ou OpenAI TTS
+- [ ] Editor inline do roteiro
+
+**Concluído em:** 2026-04-18 (parcial)
 
 ---
 
@@ -465,18 +466,17 @@ Tudo renderizado sem precisar do toggle "Ver dados técnicos", preservando o JSO
 🟡 **Parcial — versionamento e dry-run pendentes**
 
 **Escopo entregue:**
-- Nova rota `apps/web/admin/(protected)/agents/` — lista todos os agentes
-- Página de edição por slug com server action (`actions.ts`) que escreve direto via admin client
-- Editor com textarea para `instructions`, `input_schema`, `output_schema`
-- Item "Agentes" adicionado ao sidebar do admin shell
-- Mensagem confirma que cache de 5min será respeitado (F2-027)
+- Editor estruturado (1a166a1): Tabs para Header, Rules, Custom Sections e Preview
+- Live preview de esquema de saída e exemplo de instruções
+- Salvamento via `sections_json` persistido no banco
+- UI moderna e responsiva para edição de prompts complexos
 
 **Pendente (próximo passo):**
 - [ ] Versionamento (`agent_prompt_versions` ou snapshot em coluna)
 - [ ] Dry-run sem debitar créditos
 - [ ] Editor com syntax highlight (Monaco)
 
-**Concluído em:** 2026-04-13 (parcial)
+**Concluído em:** 2026-04-16 (parcial)
 
 ---
 
@@ -857,3 +857,54 @@ Resolvido volume descontrolado + ausência de seleção. Idempotency transaciona
 **Estimativa:** 1-2 dias
 
 **Concluído em:** —
+
+---
+
+### F2-046 — Pacote YouTube completo (Vídeo)
+✅ **Concluído**
+
+**Escopo:**
+- Agente de vídeo produz `BC_VIDEO_OUTPUT` completo (F2-045/046)
+- Geração de 3 opções de títulos atraentes (A/B testing)
+- Briefing de thumbnail: emoção (curiosidade/choque/intriga) + composição visual
+- Comentário fixado (engagement) + Descrição SEO com capítulos e links
+
+**Critérios de aceite:**
+- [x] Output contém `title_options`, `thumbnail_brief`, `pinned_comment`
+- [x] Descrição contém capítulos baseados na `argument_chain`
+
+**Concluído em:** 2026-04-14
+
+---
+
+### F2-047 — Target length configurável (Parâmetros de Produção)
+✅ **Concluído**
+
+**Escopo:**
+- Input de produção aceita `target_length` (palavras/minutos/segundos)
+- Agentes instruídos a respeitar o limite via seção CRITICAL no prompt
+- UI do Step 3 permite ajuste fino antes da geração
+
+**Critérios de aceite:**
+- [x] Migration `agent_prompts_target_length` aplicada
+- [x] Blog (palavras), Vídeo/Podcast (minutos), Shorts (segundos)
+
+**Concluído em:** 2026-04-13
+
+---
+
+### F2-050 — Manual Mode / Provider Rollout
+✅ **Concluído**
+
+**Escopo:**
+- Implementação do "Manual Provider" em Brainstorm, Research, Draft e Review
+- Diálogo de importação manual para colar resultados de IAs externas
+- Normalização de outputs colados para o schema interno (recursive-search heuristics)
+- Persistência de sessões manuais como se fossem geradas via API
+
+**Critérios de aceite:**
+- [x] Botão "Manual" em todos os stages do pipeline
+- [x] Parser lida com JSON cru ou Markdown vindo do ChatGPT/Claude
+- [x] Salva no banco com status `awaiting_manual` ou `completed`
+
+**Concluído em:** 2026-04-20
