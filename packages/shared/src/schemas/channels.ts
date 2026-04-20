@@ -15,6 +15,18 @@ export type VideoStyle = z.infer<typeof videoStyleSchema>;
 export const modelTierSchema = z.enum(['standard', 'premium', 'ultra', 'custom']);
 export type ModelTier = z.infer<typeof modelTierSchema>;
 
+/**
+ * Lenient URL field used for user-entered channel links (youtube, blog, logo).
+ * - Empty/whitespace → undefined
+ * - Missing scheme (e.g. "youtube.com/@x") → prepended with `https://`
+ */
+const lenientUrl = z.preprocess((val) => {
+  if (typeof val !== 'string') return val;
+  const trimmed = val.trim();
+  if (trimmed === '') return undefined;
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}, z.string().url().optional());
+
 export const createChannelSchema = z
   .object({
     name: z.string().min(1).max(200),
@@ -28,9 +40,9 @@ export const createChannelSchema = z
     // Legacy — accepted but deprecated
     channelType: channelTypeSchema.optional(),
     isEvergreen: z.boolean().default(true),
-    youtubeUrl: z.string().url().optional(),
-    blogUrl: z.string().url().optional(),
-    logoUrl: z.string().url().optional().nullable(),
+    youtubeUrl: lenientUrl,
+    blogUrl: lenientUrl,
+    logoUrl: lenientUrl.nullable(),
     voiceProvider: z.string().optional(),
     voiceId: z.string().optional(),
     voiceSpeed: z.number().min(0.5).max(2.0).optional(),
@@ -56,9 +68,9 @@ export const updateChannelSchema = z.object({
   videoStyle: videoStyleSchema.nullable().optional(),
   channelType: channelTypeSchema.optional(),
   isEvergreen: z.boolean().optional(),
-  youtubeUrl: z.string().url().optional(),
-  blogUrl: z.string().url().optional(),
-  logoUrl: z.string().url().optional().nullable(),
+  youtubeUrl: lenientUrl,
+  blogUrl: lenientUrl,
+  logoUrl: lenientUrl.nullable(),
   voiceProvider: z.string().optional(),
   voiceId: z.string().optional(),
   voiceSpeed: z.number().min(0.5).max(2.0).optional(),
