@@ -5,7 +5,7 @@
  * Supports content generation with schema validation
  */
 
-export type AgentType = "brainstorm" | "research" | "production" | "review";
+export type AgentType = "brainstorm" | "research" | "production" | "review" | "assets";
 
 export interface GenerateContentParams {
   agentType: AgentType;

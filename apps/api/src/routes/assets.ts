@@ -18,6 +18,7 @@ import {
   suggestPromptsRequestSchema,
 } from '@brighttale/shared/schemas/imageGeneration';
 import { getImageProvider } from '../lib/ai/imageIndex.js';
+import { logAiUsage } from '../lib/axiom.js';
 import { saveImageLocally, deleteImageFile } from '../lib/files/imageStorage.js';
 import {
   generateBlogFeaturedImagePrompt,
@@ -265,8 +266,45 @@ export async function assetsRoutes(fastify: FastifyInstance): Promise<void> {
       const sb = createServiceClient();
       const validated = generateImageRequestSchema.parse(request.body);
 
+      // Manual provider short-circuits the image model: emit the prompt to
+      // Axiom so the operator can run it in an external tool, and return 202.
+      // The operator pastes the resulting image URL or uploads the file via
+      // the existing /assets/upload flow.
+      if (validated.provider === 'manual') {
+        logAiUsage({
+          userId: request.userId ?? null,
+          orgId: null,
+          action: 'manual.awaiting',
+          provider: 'manual',
+          model: 'manual',
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          durationMs: 0,
+          status: 'awaiting_manual',
+          metadata: {
+            stage: 'asset_image',
+            projectId: validated.project_id ?? null,
+            contentId: validated.content_id ?? null,
+            role: validated.role ?? null,
+            aspectRatio: validated.aspectRatio,
+            prompt: validated.prompt,
+          },
+        });
+
+        return reply.status(202).send({
+          data: {
+            status: 'awaiting_manual',
+            prompt: validated.prompt,
+            role: validated.role ?? null,
+          },
+          error: null,
+        });
+      }
+
       const provider = await getImageProvider();
 
+      const startedAt = Date.now();
       const results = await provider.generateImages({
         prompt: validated.prompt,
         numImages: validated.numImages,
@@ -275,8 +313,51 @@ export async function assetsRoutes(fastify: FastifyInstance): Promise<void> {
       });
 
       if (results.length === 0) {
+        logAiUsage({
+          userId: request.userId ?? null,
+          orgId: null,
+          action: 'image.generate',
+          provider: provider.name ?? 'gemini',
+          model: 'image',
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          durationMs: Date.now() - startedAt,
+          status: 'error',
+          error: 'No images were generated',
+          metadata: {
+            stage: 'asset_image',
+            projectId: validated.project_id ?? null,
+            contentId: validated.content_id ?? null,
+            role: validated.role ?? null,
+            aspectRatio: validated.aspectRatio,
+            prompt: validated.prompt,
+          },
+        });
         throw new ApiError(502, 'No images were generated', 'GENERATION_FAILED');
       }
+
+      logAiUsage({
+        userId: request.userId ?? null,
+        orgId: null,
+        action: 'image.generate',
+        provider: provider.name ?? 'gemini',
+        model: 'image',
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        durationMs: Date.now() - startedAt,
+        status: 'success',
+        metadata: {
+          stage: 'asset_image',
+          projectId: validated.project_id ?? null,
+          contentId: validated.content_id ?? null,
+          role: validated.role ?? null,
+          aspectRatio: validated.aspectRatio,
+          prompt: validated.prompt,
+          resultCount: results.length,
+        },
+      });
 
       // Save all generated images and create Asset records
       const { convertToWebP } = await import('../lib/image/webp.js');

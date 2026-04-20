@@ -540,6 +540,7 @@ export function PipelineOrchestrator({
             context={ctx}
             onComplete={handleStageComplete}
             onBack={handleBack}
+            onStageProgress={handleStageProgress}
           /></>
         );
 
@@ -551,6 +552,7 @@ export function PipelineOrchestrator({
             context={ctx}
             onComplete={handleStageComplete}
             onBack={handleBack}
+            onStageProgress={handleStageProgress}
           /></>
         );
 
@@ -576,6 +578,7 @@ export function PipelineOrchestrator({
             onComplete={handleStageComplete}
             onBack={handleBack}
             onDraftUpdated={(draft) => setDraftData(draft)}
+            onStageProgress={handleStageProgress}
           />
         );
 

@@ -28,7 +28,9 @@ import { inngest } from "../jobs/client.js";
 import { emitJobEvent } from "../jobs/emitter.js";
 import { buildCanonicalCoreMessage, buildProduceMessage, buildReproduceMessage } from "../lib/ai/prompts/production.js";
 import { buildReviewMessage } from "../lib/ai/prompts/review.js";
+import { buildAssetsMessage } from "../lib/ai/prompts/assets.js";
 import { loadIdeaContext, type IdeaContext } from "../lib/ai/loadIdeaContext.js";
+import { logAiUsage } from "../lib/axiom.js";
 
 const FORMAT_COSTS: Record<string, number> = {
   blog: 200,
@@ -51,7 +53,7 @@ const createSchema = z.object({
 });
 
 const providerOverrideSchema = z.object({
-  provider: z.enum(["gemini", "openai", "anthropic", "ollama"]).optional(),
+  provider: z.enum(["gemini", "openai", "anthropic", "ollama", "manual"]).optional(),
   model: z.string().optional(),
   modelTier: z.string().optional(),
   productionParams: z.record(z.unknown()).optional(),
@@ -103,6 +105,83 @@ async function loadDraft(id: string) {
   if (error) throw error;
   if (!data) throw new ApiError(404, "Draft not found", "NOT_FOUND");
   return data;
+}
+
+/**
+ * Build BC_ASSETS_INPUT from a draft row. Shared between the data-only
+ * /asset-prompts route and the LLM-powered /generate-asset-prompts route.
+ */
+async function buildAssetsInput(
+  draft: Record<string, unknown>,
+): Promise<{
+  title: string;
+  content_type: string;
+  sections: Array<{ slot: string; section_title: string; key_points: string[] }>;
+  channel_context: Record<string, unknown>;
+  idea_context: IdeaContext | null;
+}> {
+  const sb = createServiceClient();
+  const draftJson = (draft.draft_json ?? {}) as Record<string, unknown>;
+  const coreJson = (draft.canonical_core_json ?? {}) as Record<string, unknown>;
+  const contentType = (draft.type as string) ?? "blog";
+
+  let outline: Array<{ h2: string; key_points: string[] }> = [];
+  const blogData = draftJson.blog as Record<string, unknown> | undefined;
+  if (blogData?.outline && Array.isArray(blogData.outline)) {
+    outline = (blogData.outline as Array<Record<string, unknown>>).map((s) => ({
+      h2: (s.h2 as string) ?? (s.heading as string) ?? "",
+      key_points: Array.isArray(s.key_points) ? (s.key_points as string[]) : [],
+    }));
+  } else if (coreJson.argument_chain && Array.isArray(coreJson.argument_chain)) {
+    outline = (coreJson.argument_chain as Array<Record<string, unknown>>).map((s) => ({
+      h2: (s.claim as string) ?? (s.section as string) ?? "",
+      key_points: Array.isArray(s.evidence) ? (s.evidence as string[]) : [],
+    }));
+  }
+
+  const sections = [
+    {
+      slot: "featured",
+      section_title: (draft.title as string) ?? "Untitled",
+      key_points: [] as string[],
+    },
+    ...outline.map((s, i) => ({
+      slot: `section_${i + 1}`,
+      section_title: s.h2,
+      key_points: s.key_points,
+    })),
+  ];
+
+  let channelContext: Record<string, unknown> = {};
+  if (draft.channel_id) {
+    const { data: channel } = await sb
+      .from("channels")
+      .select("niche, niche_tags, tone, language, market, region")
+      .eq("id", draft.channel_id as string)
+      .maybeSingle();
+    if (channel) {
+      channelContext = {
+        niche: channel.niche ?? "",
+        niche_tags: channel.niche_tags ?? [],
+        tone: channel.tone ?? "",
+        language: channel.language ?? "English",
+        market: channel.market ?? "global",
+        region: channel.region ?? "",
+      };
+    }
+  }
+
+  const idea = draft.idea_id
+    ? await loadIdeaContext(draft.idea_id as string)
+    : null;
+
+  return {
+    title: (draft.title as string) ?? "Untitled",
+    content_type: contentType,
+    sections,
+    channel_context: channelContext,
+    idea_context: idea,
+  };
 }
 
 export async function contentDraftsRoutes(
@@ -419,6 +498,114 @@ export async function contentDraftsRoutes(
         const draft = (await loadDraft(id)) as Record<string, unknown>;
         const orgId = await getOrgId(request.userId);
 
+        // Manual provider short-circuits the LLM call: build the prompt
+        // synchronously, emit the full payload to Axiom, persist the draft in
+        // awaiting_manual state, and return early. The user pastes the output
+        // produced externally via POST /:id/manual-output.
+        if (override.provider === 'manual') {
+          // Pull research approved cards if linked
+          let approvedCards: unknown = null;
+          if (draft.research_session_id) {
+            const { data: rs } = await sb
+              .from("research_sessions")
+              .select("approved_cards_json, cards_json, level, focus_tags")
+              .eq("id", draft.research_session_id as string)
+              .maybeSingle();
+            approvedCards = rs?.approved_cards_json ?? rs?.cards_json ?? null;
+          }
+
+          let systemPrompt =
+            (await loadAgentPrompt("content-core")) ??
+            (await loadAgentPrompt("production")) ??
+            undefined;
+
+          // Inject channel context into system prompt
+          const channelContextStr = await buildChannelContext(
+            draft.channel_id as string | null | undefined,
+          );
+          if (channelContextStr && systemPrompt) {
+            systemPrompt = `${systemPrompt}\n\n${channelContextStr}`;
+          }
+
+          // Load channel data for builder
+          const channelData = draft.channel_id
+            ? await (async () => {
+                const { data } = await (
+                  createServiceClient() as any
+                )
+                  .from("channels")
+                  .select("name, niche, language, tone, presentation_style")
+                  .eq("id", draft.channel_id as string)
+                  .maybeSingle();
+                return data;
+              })()
+            : null;
+
+          const idea = draft.idea_id
+            ? await loadIdeaContext(draft.idea_id as string)
+            : null;
+
+          const userMessage = buildCanonicalCoreMessage({
+            type: draft.type as string,
+            title: draft.title as string,
+            ideaId: draft.idea_id as string | undefined,
+            idea,
+            researchCards: approvedCards as unknown[] | undefined,
+            channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+          });
+
+          // Update draft to awaiting_manual status
+          const { data: manualDraft, error: manualInsertErr } = await (
+            sb.from("content_drafts") as unknown as {
+              update: (row: Record<string, unknown>) => {
+                eq: (col: string, val: string) => {
+                  select: () => {
+                    single: () => Promise<{ data: unknown; error: unknown }>;
+                  };
+                };
+              };
+            }
+          )
+            .update({ status: 'awaiting_manual' })
+            .eq("id", id)
+            .select()
+            .single();
+          if (manualInsertErr || !manualDraft) {
+            throw manualInsertErr ?? new ApiError(500, 'Failed to update draft', 'DB_ERROR');
+          }
+
+          // Combine system + user message so the operator can copy ONE prompt
+          // from Axiom and paste it into ChatGPT/Claude without reassembling.
+          const combinedPrompt = systemPrompt
+            ? `${systemPrompt}\n\n${userMessage}`
+            : userMessage;
+
+          logAiUsage({
+            userId: request.userId,
+            orgId,
+            action: 'manual.awaiting',
+            provider: 'manual',
+            model: 'manual',
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            durationMs: 0,
+            status: 'awaiting_manual',
+            metadata: {
+              draftId: id,
+              stage: 'draft.core',
+              channelId: (draft.channel_id as string) ?? null,
+              prompt: combinedPrompt,
+              input: { type: draft.type, title: draft.title },
+            },
+          });
+
+          return reply.status(202).send({
+            data: { draftId: id, status: 'awaiting_manual' },
+            error: null,
+          });
+        }
+
         await checkCredits(orgId, request.userId, CANONICAL_CORE_COST);
 
         // Pull research approved cards if linked
@@ -596,6 +783,136 @@ export async function contentDraftsRoutes(
 
         const type = (draft.type as string) ?? "blog";
         const cost = FORMAT_COSTS[type] ?? 200;
+
+        // Manual provider short-circuits the LLM call: build the prompt
+        // synchronously, emit the full payload to Axiom, persist the draft in
+        // awaiting_manual state, and return early. The user pastes the output
+        // produced externally via POST /:id/manual-output.
+        if (override.provider === 'manual') {
+          let systemPrompt =
+            (await loadAgentPrompt(type)) ??
+            (await loadAgentPrompt("production")) ??
+            undefined;
+
+          // Inject production settings into system prompt for blog
+          const settings = draft.production_settings_json as Record<
+            string,
+            unknown
+          > | null;
+          if (settings && systemPrompt) {
+            const settingsContext: string[] = [];
+            if (settings.wordCountTarget)
+              settingsContext.push(
+                `Target word count: ${settings.wordCountTarget}`,
+              );
+            if (settings.writingStyle)
+              settingsContext.push(`Writing style: ${settings.writingStyle}`);
+            if (settings.tone) settingsContext.push(`Tone: ${settings.tone}`);
+            if (Array.isArray(settings.keywords) && settings.keywords.length > 0)
+              settingsContext.push(
+                `Keywords to include: ${settings.keywords.join(", ")}`,
+              );
+            if (
+              Array.isArray(settings.categories) &&
+              settings.categories.length > 0
+            )
+              settingsContext.push(
+                `WordPress categories: ${settings.categories.join(", ")}`,
+              );
+            if (Array.isArray(settings.tags) && settings.tags.length > 0)
+              settingsContext.push(`WordPress tags: ${settings.tags.join(", ")}`);
+            if (settingsContext.length > 0) {
+              systemPrompt = `${systemPrompt}\n\n## Production Settings\n${settingsContext.join("\n")}`;
+            }
+          }
+
+          // Inject channel context into system prompt
+          const channelContextStr = await buildChannelContext(
+            draft.channel_id as string | null | undefined,
+          );
+          if (channelContextStr && systemPrompt) {
+            systemPrompt = `${systemPrompt}\n\n${channelContextStr}`;
+          }
+
+          // Load channel data for builder
+          const channelData = draft.channel_id
+            ? await (async () => {
+                const { data } = await (
+                  createServiceClient() as any
+                )
+                  .from("channels")
+                  .select("name, niche, language, tone, presentation_style")
+                  .eq("id", draft.channel_id as string)
+                  .maybeSingle();
+                return data;
+              })()
+            : null;
+
+          const idea = draft.idea_id
+            ? await loadIdeaContext(draft.idea_id as string)
+            : null;
+
+          const userMessage = buildProduceMessage({
+            type: type as string,
+            title: draft.title as string,
+            canonicalCore: draft.canonical_core_json,
+            idea,
+            productionParams: (draft.production_params as Record<string, unknown> | null) ?? undefined,
+            channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+          });
+
+          // Update draft to awaiting_manual status
+          const { data: manualDraft, error: manualInsertErr } = await (
+            sb.from("content_drafts") as unknown as {
+              update: (row: Record<string, unknown>) => {
+                eq: (col: string, val: string) => {
+                  select: () => {
+                    single: () => Promise<{ data: unknown; error: unknown }>;
+                  };
+                };
+              };
+            }
+          )
+            .update({ status: 'awaiting_manual' })
+            .eq("id", id)
+            .select()
+            .single();
+          if (manualInsertErr || !manualDraft) {
+            throw manualInsertErr ?? new ApiError(500, 'Failed to update draft', 'DB_ERROR');
+          }
+
+          // Combine system + user message so the operator can copy ONE prompt
+          // from Axiom and paste it into ChatGPT/Claude without reassembling.
+          const combinedPrompt = systemPrompt
+            ? `${systemPrompt}\n\n${userMessage}`
+            : userMessage;
+
+          logAiUsage({
+            userId: request.userId,
+            orgId,
+            action: 'manual.awaiting',
+            provider: 'manual',
+            model: 'manual',
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            durationMs: 0,
+            status: 'awaiting_manual',
+            metadata: {
+              draftId: id,
+              stage: `draft.${type}`,
+              channelId: (draft.channel_id as string) ?? null,
+              prompt: combinedPrompt,
+              input: { type, title: draft.title },
+            },
+          });
+
+          return reply.status(202).send({
+            data: { draftId: id, status: 'awaiting_manual' },
+            error: null,
+          });
+        }
+
         await checkCredits(orgId, request.userId, cost);
 
         // Blog production settings are optional — use defaults if not set
@@ -736,6 +1053,153 @@ export async function contentDraftsRoutes(
   );
 
   /**
+   * POST /:id/cancel — Cancel a draft in `awaiting_manual` status.
+   */
+  fastify.post(
+    "/:id/cancel",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        if (!request.userId) throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        const { id } = request.params as { id: string };
+        const sb = createServiceClient();
+
+        const { data: draft } = await sb
+          .from("content_drafts")
+          .select("id, status, user_id")
+          .eq("id", id)
+          .maybeSingle();
+
+        if (!draft) throw new ApiError(404, "Draft not found", "NOT_FOUND");
+        if ((draft as Record<string, unknown>).user_id !== request.userId) {
+          throw new ApiError(403, "Forbidden", "FORBIDDEN");
+        }
+        if (
+          (draft as Record<string, unknown>).status !== "running" &&
+          (draft as Record<string, unknown>).status !== "awaiting_manual"
+        ) {
+          return reply.send({
+            data: { status: (draft as Record<string, unknown>).status },
+            error: null,
+          });
+        }
+
+        await (
+          sb.from("content_drafts") as unknown as {
+            update: (row: Record<string, unknown>) => {
+              eq: (col: string, val: string) => Promise<unknown>;
+            };
+          }
+        )
+          .update({ status: "failed", error_message: "Cancelled by user" })
+          .eq("id", id);
+
+        return reply.send({ data: { status: "cancelled" }, error: null });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  /**
+   * POST /:id/manual-output — Submit the output produced externally
+   * for a draft in `awaiting_manual` status. Persists the canonical core or
+   * typed content, flips the draft to `draft`, and emits a `manual.completed`
+   * Axiom event.
+   */
+  fastify.post(
+    "/:id/manual-output",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        if (!request.userId) throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        const { id } = request.params as { id: string };
+        const body = z.object({
+          phase: z.enum(["core", "blog", "video", "shorts", "podcast"]),
+          output: z.unknown(),
+        }).parse(request.body);
+        const sb = createServiceClient();
+
+        const { data: draft, error: fetchErr } = await sb
+          .from("content_drafts")
+          .select("id, status, channel_id, project_id, org_id, user_id, type, title")
+          .eq("id", id)
+          .maybeSingle();
+        if (fetchErr) throw fetchErr;
+        if (!draft) throw new ApiError(404, "Draft not found", "NOT_FOUND");
+        const row = draft as Record<string, unknown>;
+        if (row.user_id !== request.userId) throw new ApiError(403, "Forbidden", "FORBIDDEN");
+        if (row.status !== "awaiting_manual") {
+          throw new ApiError(409, `Draft is not awaiting manual output (status=${row.status})`, "CONFLICT");
+        }
+
+        if (!body.output) {
+          throw new ApiError(400, "Output is required", "INVALID_OUTPUT");
+        }
+
+        // Determine which field to persist based on phase
+        const updateData: Record<string, unknown> = { status: "draft" };
+        if (body.phase === "core") {
+          updateData.canonical_core_json = body.output;
+        } else {
+          // For typed content (blog, video, shorts, podcast), persist to draft_json
+          updateData.draft_json = body.output;
+        }
+
+        // Update draft with the output and flip status to draft
+        const { error: updErr } = await (
+          sb.from("content_drafts") as unknown as {
+            update: (row: Record<string, unknown>) => {
+              eq: (col: string, val: string) => Promise<{ error: unknown }>;
+            };
+          }
+        )
+          .update(updateData)
+          .eq("id", id);
+        if (updErr) {
+          throw new ApiError(
+            500,
+            `Failed to mark draft as draft: ${String((updErr as { message?: string })?.message ?? updErr)}`,
+            "DB_ERROR",
+          );
+        }
+
+        logAiUsage({
+          userId: request.userId,
+          orgId: (row.org_id as string) ?? null,
+          action: "manual.completed",
+          provider: "manual",
+          model: "manual",
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          durationMs: 0,
+          status: "success",
+          metadata: {
+            draftId: id,
+            stage: `draft.${body.phase}`,
+            output: body.output,
+          },
+        });
+
+        // Return the updated draft
+        const { data: updated } = await sb
+          .from("content_drafts")
+          .select("*")
+          .eq("id", id)
+          .maybeSingle();
+
+        return reply.send({
+          data: updated ?? row,
+          error: null,
+        });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  /**
    * POST /:id/review — Run agent-4 review. Manual trigger only.
    * Requires status = 'in_review'. User sets this via PATCH first.
    */
@@ -748,6 +1212,7 @@ export async function contentDraftsRoutes(
           throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
         const sb = createServiceClient();
         const { id } = request.params as { id: string };
+        const override = providerOverrideSchema.parse(request.body ?? {});
         const draft = (await loadDraft(id)) as Record<string, unknown>;
         const orgId = await getOrgId(request.userId);
 
@@ -757,6 +1222,113 @@ export async function contentDraftsRoutes(
             "Draft must be in_review status. Use PATCH to set status first.",
             "INVALID_STATUS",
           );
+        }
+
+        // Manual provider short-circuits the LLM call: build the prompt
+        // synchronously, emit the full payload to Axiom, persist the draft in
+        // awaiting_manual state, and return early. The user pastes the output
+        // produced externally via POST /:id/manual-review-output.
+        if (override.provider === 'manual') {
+          let systemPrompt = (await loadAgentPrompt("review")) ?? undefined;
+
+          // Inject channel context into system prompt
+          const channelContextStr = await buildChannelContext(
+            draft.channel_id as string | null | undefined,
+          );
+          if (channelContextStr && systemPrompt) {
+            systemPrompt = `${systemPrompt}\n\n${channelContextStr}`;
+          }
+
+          // Load channel data for builder
+          const channelData = draft.channel_id
+            ? await (async () => {
+                const { data } = await (
+                  createServiceClient() as any
+                )
+                  .from("channels")
+                  .select("name, niche, language, tone, presentation_style")
+                  .eq("id", draft.channel_id as string)
+                  .maybeSingle();
+                return data;
+              })()
+            : null;
+
+          let ideaData: IdeaContext | null = null;
+          if (draft.idea_id) {
+            ideaData = await loadIdeaContext(draft.idea_id as string);
+          }
+
+          let researchData: unknown = null;
+          if (draft.research_session_id) {
+            const { data: rs } = await sb
+              .from("research_sessions")
+              .select("approved_cards_json, cards_json")
+              .eq("id", draft.research_session_id as string)
+              .maybeSingle();
+            researchData = rs?.approved_cards_json ?? rs?.cards_json ?? null;
+          }
+
+          const userMessage = buildReviewMessage({
+            type: draft.type as string,
+            title: draft.title as string,
+            draftJson: draft.draft_json,
+            canonicalCore: draft.canonical_core_json,
+            idea: ideaData,
+            research: researchData,
+            contentTypesRequested: [draft.type as string],
+            channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+          });
+
+          // Update draft to awaiting_manual status
+          const { data: manualDraft, error: manualInsertErr } = await (
+            sb.from("content_drafts") as unknown as {
+              update: (row: Record<string, unknown>) => {
+                eq: (col: string, val: string) => {
+                  select: () => {
+                    single: () => Promise<{ data: unknown; error: unknown }>;
+                  };
+                };
+              };
+            }
+          )
+            .update({ status: 'awaiting_manual' })
+            .eq("id", id)
+            .select()
+            .single();
+          if (manualInsertErr || !manualDraft) {
+            throw manualInsertErr ?? new ApiError(500, 'Failed to update draft', 'DB_ERROR');
+          }
+
+          // Combine system + user message so the operator can copy ONE prompt
+          // from Axiom and paste it into ChatGPT/Claude without reassembling.
+          const combinedPrompt = systemPrompt
+            ? `${systemPrompt}\n\n${userMessage}`
+            : userMessage;
+
+          logAiUsage({
+            userId: request.userId,
+            orgId,
+            action: 'manual.awaiting',
+            provider: 'manual',
+            model: 'manual',
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            durationMs: 0,
+            status: 'awaiting_manual',
+            metadata: {
+              draftId: id,
+              stage: 'review',
+              channelId: (draft.channel_id as string) ?? null,
+              prompt: combinedPrompt,
+              input: { type: draft.type, title: draft.title },
+            },
+          });
+
+          return reply.status(202).send({
+            data: { draftId: id, status: 'awaiting_manual' },
+            error: null,
+          });
         }
 
         await checkCredits(orgId, request.userId, REVIEW_COST);
@@ -948,6 +1520,160 @@ export async function contentDraftsRoutes(
   );
 
   /**
+   * POST /:id/manual-review-output — Submit the review feedback produced externally
+   * for a draft in `awaiting_manual` status. Persists the review feedback, updates
+   * verdict and score, and transitions status appropriately (approved/in_review/failed).
+   */
+  fastify.post(
+    "/:id/manual-review-output",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        if (!request.userId) throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        const { id } = request.params as { id: string };
+        const body = z.record(z.unknown())
+          .refine(
+            (data) => {
+              // At least one verdict field must be present
+              const hasOverallVerdict = typeof data.overall_verdict === 'string';
+              const hasBlogReview = data.blog_review && typeof data.blog_review === 'object';
+              const hasVideoReview = data.video_review && typeof data.video_review === 'object';
+              const hasShortsReview = data.shorts_review && typeof data.shorts_review === 'object';
+              const hasPodcastReview = data.podcast_review && typeof data.podcast_review === 'object';
+              return hasOverallVerdict || hasBlogReview || hasVideoReview || hasShortsReview || hasPodcastReview;
+            },
+            { message: 'Review output must contain verdict and/or format-specific review data' }
+          )
+          .parse(request.body);
+
+        const sb = createServiceClient();
+
+        const { data: draft, error: fetchErr } = await sb
+          .from("content_drafts")
+          .select("id, status, channel_id, project_id, org_id, user_id, type, title, iteration_count")
+          .eq("id", id)
+          .maybeSingle();
+        if (fetchErr) throw fetchErr;
+        if (!draft) throw new ApiError(404, "Draft not found", "NOT_FOUND");
+        const row = draft as Record<string, unknown>;
+        if (row.user_id !== request.userId) throw new ApiError(403, "Forbidden", "FORBIDDEN");
+        if (row.status !== "awaiting_manual") {
+          throw new ApiError(409, `Draft is not awaiting manual review (status=${row.status})`, "CONFLICT");
+        }
+
+        // Extract verdict and score from the review output, matching AI review logic
+        const draftType = row.type as string;
+        const formatReview = body[`${draftType}_review` as keyof typeof body] as
+          | Record<string, unknown>
+          | undefined;
+
+        let reviewScore: number | null = null;
+        let reviewVerdict = "revision_required";
+
+        if (formatReview && typeof formatReview.score === 'number') {
+          reviewScore = formatReview.score;
+        }
+
+        const overallVerdict = body.overall_verdict ? String(body.overall_verdict) : null;
+        if (formatReview && typeof formatReview.verdict === 'string') {
+          reviewVerdict = String(formatReview.verdict).toLowerCase().replace(/\s+/g, '_');
+        }
+        if (overallVerdict) {
+          reviewVerdict = overallVerdict.toLowerCase().replace(/\s+/g, '_');
+        }
+
+        // Determine status based on verdict
+        let newStatus: string;
+        let approvedAt: string | null = null;
+
+        if (reviewVerdict === "approved" || (reviewScore !== null && reviewScore >= 90)) {
+          newStatus = "approved";
+          reviewVerdict = "approved";
+          approvedAt = new Date().toISOString();
+        } else if (reviewVerdict === "rejected") {
+          newStatus = "failed";
+        } else {
+          newStatus = "in_review";
+          reviewVerdict = "revision_required";
+        }
+
+        const iterationCount = ((row.iteration_count as number) ?? 0) + 1;
+
+        // Store review data
+        const updateData: Record<string, unknown> = {
+          review_feedback_json: body,
+          review_score: reviewScore,
+          review_verdict: reviewVerdict,
+          iteration_count: iterationCount,
+          status: newStatus,
+        };
+        if (approvedAt) updateData.approved_at = approvedAt;
+
+        const { data: updated, error } = await (
+          sb.from("content_drafts") as unknown as {
+            update: (row: Record<string, unknown>) => {
+              eq: (
+                col: string,
+                val: string,
+              ) => {
+                select: () => {
+                  single: () => Promise<{ data: unknown; error: unknown }>;
+                };
+              };
+            };
+          }
+        )
+          .update(updateData)
+          .eq("id", id)
+          .select()
+          .single();
+        if (error) throw error;
+
+        // Log review iteration
+        await (
+          sb.from("review_iterations" as never) as unknown as {
+            insert: (
+              row: Record<string, unknown>,
+            ) => Promise<{ error: unknown }>;
+          }
+        ).insert({
+          draft_id: id,
+          iteration: iterationCount,
+          score: reviewScore,
+          verdict: reviewVerdict,
+          feedback_json: body,
+        });
+
+        logAiUsage({
+          userId: request.userId,
+          orgId: (row.org_id as string) ?? null,
+          action: "manual.completed",
+          provider: "manual",
+          model: "manual",
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          durationMs: 0,
+          status: "success",
+          metadata: {
+            draftId: id,
+            stage: 'review',
+            output: body,
+          },
+        });
+
+        // Return the updated draft
+        return reply.send({
+          data: updated ?? row,
+          error: null,
+        });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  /**
    * POST /:id/revise — Accept user edits after review returns revision_required.
    */
   fastify.post(
@@ -1012,85 +1738,97 @@ export async function contentDraftsRoutes(
           throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
         const { id } = request.params as { id: string };
         const draft = await loadDraft(id);
-        const sb = createServiceClient();
+        const input = await buildAssetsInput(draft as Record<string, unknown>);
+        return reply.send({ data: input, error: null });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
 
-        // Extract outline from draft_json
-        const draftJson = (draft.draft_json ?? {}) as Record<string, unknown>;
-        const coreJson = (draft.canonical_core_json ?? {}) as Record<string, unknown>;
-        const contentType = (draft.type as string) ?? "blog";
+  /**
+   * POST /:id/generate-asset-prompts — Run agent-5-assets to produce
+   * BC_ASSETS_OUTPUT (visual_direction + slot prompt briefs).
+   * Manual provider short-circuits to 202 awaiting_manual without persisting
+   * DB state — the paste round-trip is handled client-side.
+   */
+  fastify.post(
+    "/:id/generate-asset-prompts",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        if (!request.userId)
+          throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        const { id } = request.params as { id: string };
+        const override = providerOverrideSchema.parse(request.body ?? {});
+        const draft = (await loadDraft(id)) as Record<string, unknown>;
+        const orgId = await getOrgId(request.userId);
 
-        // Try to get outline from draft_json.blog.outline or canonical_core_json
-        let outline: Array<{ h2: string; key_points: string[] }> = [];
-        const blogData = draftJson.blog as Record<string, unknown> | undefined;
-        if (blogData?.outline && Array.isArray(blogData.outline)) {
-          outline = (blogData.outline as Array<Record<string, unknown>>).map((s) => ({
-            h2: (s.h2 as string) ?? (s.heading as string) ?? "",
-            key_points: Array.isArray(s.key_points)
-              ? (s.key_points as string[])
-              : [],
-          }));
-        } else if (coreJson.argument_chain && Array.isArray(coreJson.argument_chain)) {
-          // Fallback: derive sections from canonical core argument chain
-          outline = (coreJson.argument_chain as Array<Record<string, unknown>>).map((s) => ({
-            h2: (s.claim as string) ?? (s.section as string) ?? "",
-            key_points: Array.isArray(s.evidence)
-              ? (s.evidence as string[])
-              : [],
-          }));
+        const input = await buildAssetsInput(draft);
+
+        let systemPrompt = (await loadAgentPrompt("assets")) ?? undefined;
+        const channelContextStr = await buildChannelContext(
+          draft.channel_id as string | null | undefined,
+        );
+        if (channelContextStr && systemPrompt) {
+          systemPrompt = `${systemPrompt}\n\n${channelContextStr}`;
         }
 
-        // Build sections: featured + one per outline H2
-        const sections: Array<{
-          slot: string;
-          section_title: string;
-          key_points: string[];
-        }> = [
+        const userMessage = buildAssetsMessage(input);
+
+        if (override.provider === 'manual') {
+          const combinedPrompt = systemPrompt
+            ? `${systemPrompt}\n\n${userMessage}`
+            : userMessage;
+
+          logAiUsage({
+            userId: request.userId,
+            orgId,
+            action: 'manual.awaiting',
+            provider: 'manual',
+            model: 'manual',
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            durationMs: 0,
+            status: 'awaiting_manual',
+            metadata: {
+              draftId: id,
+              stage: 'assets',
+              channelId: (draft.channel_id as string) ?? null,
+              prompt: combinedPrompt,
+              input,
+            },
+          });
+
+          return reply.status(202).send({
+            data: { draftId: id, status: 'awaiting_manual', prompt: combinedPrompt },
+            error: null,
+          });
+        }
+
+        const { result } = await generateWithFallback(
+          "assets",
+          (draft.model_tier as string) ?? "standard",
           {
-            slot: "featured",
-            section_title: (draft.title as string) ?? "Untitled",
-            key_points: [],
+            agentType: "assets",
+            systemPrompt: systemPrompt ?? "",
+            userMessage,
           },
-          ...outline.map((s, i) => ({
-            slot: `section_${i + 1}`,
-            section_title: s.h2,
-            key_points: s.key_points,
-          })),
-        ];
-
-        // Fetch channel context if available
-        let channelContext: Record<string, unknown> = {};
-        if (draft.channel_id) {
-          const { data: channel } = await sb
-            .from("channels")
-            .select("niche, niche_tags, tone, language, market, region")
-            .eq("id", draft.channel_id)
-            .maybeSingle();
-          if (channel) {
-            channelContext = {
-              niche: channel.niche ?? "",
-              niche_tags: channel.niche_tags ?? [],
-              tone: channel.tone ?? "",
-              language: channel.language ?? "English",
-              market: channel.market ?? "global",
-              region: channel.region ?? "",
-            };
-          }
-        }
-
-        const idea = draft.idea_id
-          ? await loadIdeaContext(draft.idea_id as string)
-          : null;
-
-        return reply.send({
-          data: {
-            title: (draft.title as string) ?? "Untitled",
-            content_type: contentType,
-            sections,
-            channel_context: channelContext,
-            idea_context: idea,
+          {
+            provider: override.provider,
+            model: override.model,
+            logContext: {
+              userId: request.userId!,
+              orgId,
+              channelId: (draft.channel_id as string) ?? undefined,
+              sessionId: id,
+              sessionType: "assets",
+            },
           },
-          error: null,
-        });
+        );
+
+        return reply.send({ data: result, error: null });
       } catch (error) {
         return sendError(reply, error);
       }

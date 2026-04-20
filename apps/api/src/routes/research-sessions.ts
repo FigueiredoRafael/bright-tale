@@ -17,6 +17,7 @@ import { emitJobEvent } from '../jobs/emitter.js';
 import { fetchTrends } from '../lib/signals/trends.js';
 import { buildResearchMessage } from '../lib/ai/prompts/research.js';
 import type { ResearchInput } from '../lib/ai/prompts/research.js';
+import { logAiUsage } from '../lib/axiom.js';
 
 /** Check idea exists in idea_archives before using as FK. Brainstorm drafts may not be promoted yet. */
 /**
@@ -32,34 +33,109 @@ async function resolveIdeaId(ideaId: string | null | undefined): Promise<string 
   return (data as { id: string } | null)?.id ?? null;
 }
 
-function normalizeCards(raw: unknown): Array<Record<string, unknown>> {
-  function looksLikeCard(item: unknown): boolean {
-    if (!item || typeof item !== 'object') return false;
-    const o = item as Record<string, unknown>;
-    return (
-      typeof o.title === 'string' ||
-      typeof o.quote === 'string' ||
-      typeof o.claim === 'string' ||
-      typeof o.url === 'string' ||
-      typeof o.source === 'string' ||
-      typeof o.author === 'string'
-    );
+/**
+ * Normalize AI output into a findings object.
+ * Accepts these shapes:
+ * 1. Already structured: { sources, statistics, expert_quotes, counterarguments, idea_validation, research_summary, refined_angle, knowledge_gaps }
+ * 2. Wrapped: { output: { sources, ... } }
+ * 3. Legacy array: [{ type: 'source', ... }] → wrap by type
+ */
+function normalizeFindings(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== 'object') return {};
+
+  const obj = raw as Record<string, unknown>;
+
+  // If it's already wrapped in 'output', unwrap once
+  if (obj.output && typeof obj.output === 'object' && !Array.isArray(obj.output)) {
+    return normalizeFindings(obj.output);
   }
-  function find(node: unknown, depth = 0): Array<Record<string, unknown>> | null {
+
+  // Check if it already looks like the target shape (has at least one expected key)
+  const expectedKeys = ['sources', 'statistics', 'expert_quotes', 'counterarguments', 'idea_validation', 'research_summary', 'refined_angle', 'knowledge_gaps'];
+  const hasExpectedKey = expectedKeys.some(k => k in obj);
+
+  if (hasExpectedKey) {
+    // It's already in the target shape — return as-is (with light validation)
+    return obj;
+  }
+
+  // Legacy fallback: if we find an array of cards, group by type
+  if (Array.isArray(obj.cards)) {
+    const cards = obj.cards as Array<Record<string, unknown>>;
+    const grouped: Record<string, Array<Record<string, unknown>>> = {
+      sources: [],
+      statistics: [],
+      expert_quotes: [],
+      counterarguments: [],
+      misc: [],
+    };
+
+    for (const card of cards) {
+      const type = (card.type as string) ?? 'misc';
+      if (type in grouped && !['sources', 'statistics', 'expert_quotes', 'counterarguments'].includes(type)) {
+        grouped.misc.push(card);
+      } else if (type === 'source') {
+        grouped.sources.push(card);
+      } else if (type === 'statistic' || type === 'stat') {
+        grouped.statistics.push(card);
+      } else if (type === 'expert_quote' || type === 'quote') {
+        grouped.expert_quotes.push(card);
+      } else if (type === 'counterargument') {
+        grouped.counterarguments.push(card);
+      } else {
+        grouped.misc.push(card);
+      }
+    }
+
+    // Clean up empty arrays
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(grouped)) {
+      if (v.length > 0) result[k] = v;
+    }
+
+    // Preserve other top-level fields from the original object
+    for (const [k, v] of Object.entries(obj)) {
+      if (k !== 'cards' && !['sources', 'statistics', 'expert_quotes', 'counterarguments'].includes(k)) {
+        result[k] = v;
+      }
+    }
+
+    return result;
+  }
+
+  // Fallback: if we find a flat array of card-like objects at the top level
+  if (Array.isArray(obj) && obj.length > 0) {
+    return normalizeFindings({ cards: obj });
+  }
+
+  // Last-resort: search for nested arrays that look like cards
+  function findCardArray(node: unknown, depth = 0): Array<Record<string, unknown>> | null {
     if (depth > 6) return null;
     if (Array.isArray(node)) {
-      if (node.length > 0 && node.some(looksLikeCard)) return node as Array<Record<string, unknown>>;
+      const hasCards = node.length > 0 && node.every(item =>
+        item && typeof item === 'object' && (
+          'title' in item || 'quote' in item || 'claim' in item ||
+          'url' in item || 'source' in item || 'author' in item
+        )
+      );
+      if (hasCards) return node as Array<Record<string, unknown>>;
       return null;
     }
     if (node && typeof node === 'object') {
       for (const v of Object.values(node as Record<string, unknown>)) {
-        const found = find(v, depth + 1);
+        const found = findCardArray(v, depth + 1);
         if (found) return found;
       }
     }
     return null;
   }
-  return find(raw) ?? [];
+
+  const foundCards = findCardArray(raw);
+  if (foundCards && foundCards.length > 0) {
+    return normalizeFindings({ cards: foundCards });
+  }
+
+  return {};
 }
 
 const LEVEL_COSTS: Record<'surface' | 'medium' | 'deep', number> = {
@@ -76,7 +152,7 @@ const createSchema = z.object({
   level: z.enum(['surface', 'medium', 'deep']),
   focusTags: z.array(z.string()).default([]),
   modelTier: z.string().default('standard'),
-  provider: z.enum(['gemini', 'openai', 'anthropic', 'ollama']).optional(),
+  provider: z.enum(['gemini', 'openai', 'anthropic', 'ollama', 'manual']).optional(),
   model: z.string().optional(),
 });
 
@@ -109,6 +185,48 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
    * POST / — start a research session for an idea.
    */
   /**
+   * POST /:id/cancel — Cancel a running or awaiting_manual research session.
+   */
+  fastify.post('/:id/cancel', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const { id } = request.params as { id: string };
+      const sb = createServiceClient();
+
+      const { data: session } = await sb
+        .from('research_sessions')
+        .select('id, status, user_id')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
+      if (session.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
+      if (session.status !== 'running' && session.status !== 'awaiting_manual') {
+        return reply.send({ data: { status: session.status }, error: null });
+      }
+
+      await (sb.from('research_sessions') as unknown as {
+        update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+      })
+        .update({ status: 'failed', error_message: 'Cancelled by user' })
+        .eq('id', id);
+
+      await emitJobEvent(id, 'research', 'failed', 'Cancelled by user');
+
+      // Cancel the Inngest function run if possible
+      try {
+        await inngest.send({ name: 'inngest/function.cancelled', data: { function_id: 'research-generate', run_id: id } });
+      } catch {
+        // Best-effort — Inngest may not support this or the run may already be done
+      }
+
+      return reply.send({ data: { status: 'cancelled' }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
    * GET / — list research sessions (optionally filtered by channel + status).
    */
   fastify.get('/', { preHandler: [authenticate] }, async (request, reply) => {
@@ -136,8 +254,8 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       const body = createSchema.parse(request.body);
       const orgId = await getOrgId(request.userId);
       const sb = createServiceClient();
-      // Local Ollama runs cost us nothing → no internal credit charge.
-      const cost = body.provider === 'ollama' ? 0 : LEVEL_COSTS[body.level];
+      // Local Ollama and Manual provider cost us nothing → no internal credit charge.
+      const cost = body.provider === 'ollama' || body.provider === 'manual' ? 0 : LEVEL_COSTS[body.level];
       if (cost > 0) await checkCredits(orgId, request.userId, cost);
 
       const inputJson = {
@@ -147,6 +265,106 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
         focusTags: body.focusTags,
         instruction: buildLevelInstruction(body.level, body.focusTags),
       };
+
+      // Manual provider short-circuits the LLM call: build the prompt
+      // synchronously, emit the full payload to Axiom, persist the session in
+      // awaiting_manual state, and return early. The user pastes the output
+      // produced externally via POST /:id/manual-output.
+      if (body.provider === 'manual') {
+        const systemPrompt = (await loadAgentPrompt('research')) ?? '';
+        const channelContext = body.channelId
+          ? await (async () => {
+              const { data } = await sb
+                .from('channels')
+                .select('name, niche, language, tone, presentation_style')
+                .eq('id', body.channelId as string)
+                .maybeSingle();
+              return data;
+            })()
+          : null;
+
+        let ideaTitle: string | undefined;
+        let coreTension: string | undefined;
+        let targetAudience: string | undefined;
+        if (body.ideaId) {
+          const { data: idea } = await sb
+            .from('idea_archives')
+            .select('*')
+            .eq('id', body.ideaId)
+            .maybeSingle();
+          if (idea) {
+            ideaTitle = (idea as Record<string, unknown>).title as string | undefined;
+            coreTension = (idea as Record<string, unknown>).core_tension as string | undefined;
+            targetAudience = (idea as Record<string, unknown>).target_audience as string | undefined;
+          }
+        }
+
+        const userMessage = buildResearchMessage({
+          ideaId: body.ideaId ?? undefined,
+          ideaTitle: ideaTitle ?? body.topic ?? undefined,
+          coreTension,
+          targetAudience,
+          level: body.level,
+          instruction: inputJson.instruction as string,
+          channel: channelContext as ResearchInput['channel'],
+        });
+
+        const { data: manualSession, error: manualInsertErr } = await (
+          sb.from('research_sessions') as unknown as {
+            insert: (row: Record<string, unknown>) => {
+              select: () => { single: () => Promise<{ data: { id: string } | null; error: unknown }> };
+            };
+          }
+        )
+          .insert({
+            org_id: orgId,
+            user_id: request.userId,
+            channel_id: body.channelId ?? null,
+            project_id: body.projectId ?? null,
+            idea_id: await resolveIdeaId(body.ideaId),
+            level: body.level,
+            focus_tags: body.focusTags,
+            input_json: inputJson,
+            model_tier: body.modelTier,
+            status: 'awaiting_manual',
+          })
+          .select()
+          .single();
+        if (manualInsertErr || !manualSession) {
+          throw manualInsertErr ?? new ApiError(500, 'Failed to create session', 'DB_ERROR');
+        }
+
+        // Combine system + user message so the operator can copy ONE prompt
+        // from Axiom and paste it into ChatGPT/Claude without reassembling.
+        const combinedPrompt = systemPrompt
+          ? `${systemPrompt}\n\n${userMessage}`
+          : userMessage;
+
+        logAiUsage({
+          userId: request.userId,
+          orgId,
+          action: 'manual.awaiting',
+          provider: 'manual',
+          model: 'manual',
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          durationMs: 0,
+          status: 'awaiting_manual',
+          metadata: {
+            sessionId: manualSession.id,
+            stage: 'research',
+            channelId: body.channelId ?? null,
+            prompt: combinedPrompt,
+            input: inputJson,
+          },
+        });
+
+        return reply.status(202).send({
+          data: { sessionId: manualSession.id, status: 'awaiting_manual' },
+          error: null,
+        });
+      }
 
       const { data: session, error: insertErr } = await (
         sb.from('research_sessions') as unknown as {
@@ -244,13 +462,12 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           },
         );
 
-        const cards = normalizeCards(result);
+        const findings = normalizeFindings(result);
 
-        // Extract refined_angle from agent output if present
-        const resultObj = (result && typeof result === 'object') ? result as Record<string, unknown> : {};
-        const refinedAngle = resultObj.refined_angle ?? resultObj.refinedAngle ?? null;
+        // Extract refined_angle from findings if present
+        const refinedAngle = findings.refined_angle ?? null;
 
-        const updateData: Record<string, unknown> = { status: 'completed', cards_json: cards };
+        const updateData: Record<string, unknown> = { status: 'completed', cards_json: findings };
         if (refinedAngle) updateData.refined_angle_json = refinedAngle;
 
         await (sb.from('research_sessions') as unknown as {
@@ -268,7 +485,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           data: {
             sessionId: sessionData.id,
             level: body.level,
-            cards,
+            findings,
             refinedAngle: refinedAngle ?? null,
           },
           error: null,
@@ -443,6 +660,86 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       if (error) throw error;
       if (!data) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
       return reply.send({ data, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * POST /:id/manual-output — Submit the output produced externally
+   * for a session in `awaiting_manual` status. Persists the cards, flips the
+   * session to `completed`, and emits a `manual.completed` Axiom event.
+   */
+  fastify.post('/:id/manual-output', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      const { id } = request.params as { id: string };
+      const body = z.object({ output: z.unknown() }).parse(request.body);
+      const sb = createServiceClient();
+
+      const { data: session, error: fetchErr } = await sb
+        .from('research_sessions')
+        .select('id, status, channel_id, project_id, org_id, user_id')
+        .eq('id', id)
+        .maybeSingle();
+      if (fetchErr) throw fetchErr;
+      if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
+      const row = session as Record<string, unknown>;
+      if (row.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
+      if (row.status !== 'awaiting_manual') {
+        throw new ApiError(409, `Session is not awaiting manual output (status=${row.status})`, 'CONFLICT');
+      }
+
+      const findings = normalizeFindings(body.output);
+
+      // Validate that findings has at least some structure
+      const hasContent = Object.keys(findings).length > 0 &&
+        (Array.isArray(findings.sources) && findings.sources.length > 0 ||
+         Array.isArray(findings.statistics) && findings.statistics.length > 0 ||
+         Array.isArray(findings.expert_quotes) && findings.expert_quotes.length > 0 ||
+         Array.isArray(findings.counterarguments) && findings.counterarguments.length > 0 ||
+         Array.isArray(findings.misc) && findings.misc.length > 0);
+
+      if (!hasContent) {
+        throw new ApiError(400, 'No research data found in pasted output', 'INVALID_OUTPUT');
+      }
+
+      // Extract refined_angle if present
+      const refinedAngle = findings.refined_angle ?? null;
+
+      // Update session with findings and flip to completed
+      const updateData: Record<string, unknown> = { status: 'completed', cards_json: findings };
+      if (refinedAngle) updateData.refined_angle_json = refinedAngle;
+
+      const { error: updErr } = await (sb.from('research_sessions') as unknown as {
+        update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<{ error: unknown }> };
+      })
+        .update(updateData)
+        .eq('id', id);
+      if (updErr) {
+        throw new ApiError(500, `Failed to mark session completed: ${String((updErr as { message?: string })?.message ?? updErr)}`, 'DB_ERROR');
+      }
+
+      logAiUsage({
+        userId: request.userId,
+        orgId: (row.org_id as string) ?? null,
+        action: 'manual.completed',
+        provider: 'manual',
+        model: 'manual',
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        durationMs: 0,
+        status: 'success',
+        metadata: {
+          sessionId: id,
+          stage: 'research',
+          output: body.output,
+          findingsKeys: Object.keys(findings),
+        },
+      });
+
+      return reply.send({ data: { findings }, error: null });
     } catch (error) {
       return sendError(reply, error);
     }
@@ -700,11 +997,10 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           },
         );
 
-        const cards = normalizeCards(result);
-        const resultObj = (result && typeof result === 'object') ? result as Record<string, unknown> : {};
-        const refinedAngle = resultObj.refined_angle ?? resultObj.refinedAngle ?? null;
+        const findings = normalizeFindings(result);
+        const refinedAngle = findings.refined_angle ?? null;
 
-        const updateData: Record<string, unknown> = { status: 'completed', cards_json: cards };
+        const updateData: Record<string, unknown> = { status: 'completed', cards_json: findings };
         if (refinedAngle) updateData.refined_angle_json = refinedAngle;
 
         await (sb.from('research_sessions') as unknown as {
@@ -713,7 +1009,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
         await debitCredits(orgId, request.userId, `research-${level}`, 'text', cost, { regeneratedFrom: id });
 
-        return reply.send({ data: { sessionId: sessionData2.id, level, cards, refinedAngle }, error: null });
+        return reply.send({ data: { sessionId: sessionData2.id, level, findings, refinedAngle }, error: null });
       } catch (err) {
         await (sb.from('research_sessions') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };

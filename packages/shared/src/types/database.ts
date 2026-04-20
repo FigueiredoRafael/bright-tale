@@ -7,30 +7,10 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -160,7 +140,7 @@ export type Database = {
             foreignKeyName: "affiliate_commissions_referral_id_fkey"
             columns: ["referral_id"]
             isOneToOne: false
-            referencedRelation: "affiliate_referrals"
+            referencedRelation: "affiliate_referrals_legacy"
             referencedColumns: ["id"]
           },
         ]
@@ -335,7 +315,7 @@ export type Database = {
             foreignKeyName: "affiliate_fraud_flags_referral_id_fkey"
             columns: ["referral_id"]
             isOneToOne: false
-            referencedRelation: "affiliate_referrals"
+            referencedRelation: "affiliate_referrals_legacy"
             referencedColumns: ["id"]
           },
         ]
@@ -449,46 +429,67 @@ export type Database = {
           },
         ]
       }
-      affiliate_programs: {
+      affiliate_referrals: {
         Row: {
-          code: string
-          commission_pct: number
+          affiliate_code: string
+          affiliate_id: string
+          attribution_status: string
+          click_id: string | null
+          converted_at: string | null
           created_at: string
           id: string
-          payout_details: Json | null
-          payout_method: string | null
-          total_paid_cents: number
-          total_referrals: number
-          total_revenue_cents: number
+          platform: string | null
+          signup_date: string
+          signup_ip_hash: string | null
           user_id: string
+          window_end: string
         }
         Insert: {
-          code: string
-          commission_pct?: number
+          affiliate_code: string
+          affiliate_id: string
+          attribution_status?: string
+          click_id?: string | null
+          converted_at?: string | null
           created_at?: string
           id?: string
-          payout_details?: Json | null
-          payout_method?: string | null
-          total_paid_cents?: number
-          total_referrals?: number
-          total_revenue_cents?: number
+          platform?: string | null
+          signup_date?: string
+          signup_ip_hash?: string | null
           user_id: string
+          window_end?: string
         }
         Update: {
-          code?: string
-          commission_pct?: number
+          affiliate_code?: string
+          affiliate_id?: string
+          attribution_status?: string
+          click_id?: string | null
+          converted_at?: string | null
           created_at?: string
           id?: string
-          payout_details?: Json | null
-          payout_method?: string | null
-          total_paid_cents?: number
-          total_referrals?: number
-          total_revenue_cents?: number
+          platform?: string | null
+          signup_date?: string
+          signup_ip_hash?: string | null
           user_id?: string
+          window_end?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_referrals_affiliate_id_fkey1"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "affiliates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_referrals_click_id_fkey1"
+            columns: ["click_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_clicks"
+            referencedColumns: ["id"]
+          },
+        ]
       }
-      affiliate_referrals: {
+      affiliate_referrals_legacy: {
         Row: {
           affiliate_code: string
           affiliate_id: string
@@ -544,57 +545,6 @@ export type Database = {
             columns: ["click_id"]
             isOneToOne: false
             referencedRelation: "affiliate_clicks"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      affiliate_referrals_legacy: {
-        Row: {
-          affiliate_program_id: string
-          commission_cents: number | null
-          conversion_at: string | null
-          created_at: string
-          first_touch_at: string
-          id: string
-          referred_org_id: string
-          status: string
-          subscription_amount_cents: number | null
-        }
-        Insert: {
-          affiliate_program_id: string
-          commission_cents?: number | null
-          conversion_at?: string | null
-          created_at?: string
-          first_touch_at?: string
-          id?: string
-          referred_org_id: string
-          status?: string
-          subscription_amount_cents?: number | null
-        }
-        Update: {
-          affiliate_program_id?: string
-          commission_cents?: number | null
-          conversion_at?: string | null
-          created_at?: string
-          first_touch_at?: string
-          id?: string
-          referred_org_id?: string
-          status?: string
-          subscription_amount_cents?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "affiliate_referrals_affiliate_program_id_fkey"
-            columns: ["affiliate_program_id"]
-            isOneToOne: false
-            referencedRelation: "affiliate_programs"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "affiliate_referrals_referred_org_id_fkey"
-            columns: ["referred_org_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -3255,11 +3205,7 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },
 } as const
-

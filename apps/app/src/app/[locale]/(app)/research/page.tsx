@@ -52,9 +52,7 @@ export default function ResearchPage() {
     }
 
     function gotoSession(s: ResearchSession) {
-        // For now we don't have a dedicated session view page — open the
-        // drafts/new flow with this research preselected so the user can act on it.
-        if (s.channel_id) router.push(`/channels/${s.channel_id}/drafts/new?researchSessionId=${s.id}`);
+        if (s.channel_id) router.push(`/channels/${s.channel_id}/research/${s.id}`);
     }
 
     return (

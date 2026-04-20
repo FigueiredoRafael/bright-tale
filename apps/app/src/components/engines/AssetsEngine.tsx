@@ -7,14 +7,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Loader2, ArrowRight, Check, Upload, Image as ImageIcon,
   Sparkles, Palette, Trash2, Link2, ChevronDown, ChevronUp, Copy,
+  ClipboardPaste, SkipForward,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { AssetGallery } from '@/components/preview/AssetGallery';
-import { ManualModePanel } from '@/components/ai/ManualModePanel';
+import { ManualOutputDialog } from './ManualOutputDialog';
+import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
@@ -22,7 +22,8 @@ import type { BaseEngineProps, AssetsResult } from './types';
 
 /* ── Types ── */
 
-type AssetPhase = 'prompts' | 'refined' | 'upload' | 'done';
+type AssetPhase = 'briefs' | 'refine' | 'images';
+type ImagesMode = 'brief' | 'no-briefs';
 
 interface SlotCard {
   slot: string;
@@ -61,6 +62,22 @@ interface AssetsEngineProps extends BaseEngineProps {
   draftId?: string;
   draftStatus?: string;
 }
+
+interface NoBriefSection {
+  slot: string;
+  sectionTitle: string;
+  keyPoints: string[];
+  body: string;
+}
+
+/* ── Constants ── */
+
+const ASSETS_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'manual'];
+type ImageProvider = 'gemini' | 'manual';
+const IMAGE_PROVIDERS: { id: ImageProvider; label: string; hint: string }[] = [
+  { id: 'gemini', label: 'Nano-banana (Gemini)', hint: 'Runs the image model directly.' },
+  { id: 'manual', label: 'Manual (Axiom)', hint: 'Emits the prompt to Axiom; upload the resulting image when ready.' },
+];
 
 /* ── Helpers ── */
 
@@ -159,30 +176,25 @@ export function AssetsEngine({
   onComplete,
   onBack,
 }: AssetsEngineProps) {
-  const [phase, setPhase] = useState<AssetPhase>('prompts');
-  const [maxPhaseReached, setMaxPhaseReached] = useState<AssetPhase>('prompts');
+  const [phase, setPhase] = useState<AssetPhase>('briefs');
+  const [imagesMode, setImagesMode] = useState<ImagesMode>('brief');
   const [visualDirection, setVisualDirection] = useState<VisualDirection | null>(null);
   const [slotCards, setSlotCards] = useState<SlotCard[]>([]);
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
-  const [uploadedAssets, setUploadedAssets] = useState<UploadedAsset[]>([]);
   const [existingAssets, setExistingAssets] = useState<ContentAsset[]>([]);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [generatingSlot, setGeneratingSlot] = useState<string | null>(null);
+  const [slotAssets, setSlotAssets] = useState<Record<string, ContentAsset>>({});
+  const [provider, setProvider] = useState<ProviderId>('gemini');
+  const [model, setModel] = useState<string>(MODELS_BY_PROVIDER.gemini[0].id);
+  const [generatingBriefs, setGeneratingBriefs] = useState(false);
+  const [manualBriefsOpen, setManualBriefsOpen] = useState(false);
+  const [noBriefSections, setNoBriefSections] = useState<NoBriefSection[]>([]);
+  const [imageProvider, setImageProvider] = useState<ImageProvider>('gemini');
+  const [generatingAll, setGeneratingAll] = useState(false);
   const inFlightRef = useRef(false);
   const tracker = usePipelineTracker('assets', context);
-
-  // maxPhaseReached starts at 'done' if existing assets were found on mount
-  // (handled in fetchAssets below)
-
-  // Track furthest phase reached so stepper steps can be clicked
-  function goToPhase(p: AssetPhase) {
-    setPhase(p);
-    const order: AssetPhase[] = ['prompts', 'refined', 'upload', 'done'];
-    if (order.indexOf(p) > order.indexOf(maxPhaseReached)) {
-      setMaxPhaseReached(p);
-    }
-  }
 
   // Fetch existing assets on mount → skip to done if present
   useEffect(() => {
@@ -201,8 +213,8 @@ export function AssetsEngine({
             sourceType: (a.source as string) ?? 'ai_generated',
           }));
           setExistingAssets(mapped);
-          setPhase('done');
-          setMaxPhaseReached('done');
+          setPhase('images');
+          setImagesMode('no-briefs');
         }
       } catch {
         // No existing assets, start fresh
@@ -214,15 +226,49 @@ export function AssetsEngine({
     else setLoading(false);
   }, [draftId]);
 
-  async function withGuard<T>(fn: () => Promise<T>): Promise<T | undefined> {
-    if (inFlightRef.current) return undefined;
-    inFlightRef.current = true;
-    try {
-      return await fn();
-    } finally {
-      inFlightRef.current = false;
+  useEffect(() => {
+    async function fetchNoBriefSections() {
+      if (!draftId) return;
+      if (imagesMode !== 'no-briefs') return;
+      if (noBriefSections.length > 0) return;
+      try {
+        const [promptsRes, draftRes] = await Promise.all([
+          fetch(`/api/content-drafts/${draftId}/asset-prompts`, { method: 'POST' }),
+          fetch(`/api/content-drafts/${draftId}`),
+        ]);
+        const promptsJson = await promptsRes.json();
+        const draftJson = await draftRes.json();
+
+        const sections = (promptsJson.data?.sections ?? []) as Array<{
+          slot: string; section_title: string; key_points: string[];
+        }>;
+
+        const draftData = (draftJson.data?.draft_json ?? {}) as Record<string, unknown>;
+        const blog = draftData.blog as Record<string, unknown> | undefined;
+        const fullDraft = (blog?.full_draft as string | undefined)
+          ?? (draftData.full_draft as string | undefined)
+          ?? '';
+
+        const { splitDraftBySections } = await import('@/lib/assets/section-splitter');
+        const split = splitDraftBySections(fullDraft);
+
+        const mapped: NoBriefSection[] = sections.map((s, i) => ({
+          slot: s.slot,
+          sectionTitle: s.section_title,
+          keyPoints: s.key_points,
+          body:
+            s.slot === 'featured'
+              ? split.intro
+              : (split.sections[i - 1]?.body ?? ''),
+        }));
+
+        setNoBriefSections(mapped);
+      } catch {
+        // non-fatal
+      }
     }
-  }
+    void fetchNoBriefSections();
+  }, [draftId, imagesMode, noBriefSections.length]);
 
   /* ── Manual mode: import BC_ASSETS_OUTPUT ── */
   const handleManualImport = useCallback(async (parsed: unknown) => {
@@ -234,91 +280,153 @@ export function AssetsEngine({
     }
     setVisualDirection(result.visual);
     setSlotCards(result.slots);
-    goToPhase('refined');
+    setImagesMode('brief');
+    setPhase('refine');
     toast.success(`Imported ${result.slots.length} prompt briefs`);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ── Build inputContext for ManualModePanel ── */
-  const [inputContext, setInputContext] = useState('');
-  useEffect(() => {
-    async function buildContext() {
-      if (!draftId) return;
-      try {
-        const res = await fetch(`/api/content-drafts/${draftId}/asset-prompts`, {
-          method: 'POST',
-        });
-        const { data } = await res.json();
-        if (data) {
-          const ctx = JSON.stringify({ BC_ASSETS_INPUT: data }, null, 2);
-          setInputContext(ctx);
-        }
-      } catch {
-        // Fallback: use basic context
-        setInputContext(JSON.stringify({
-          BC_ASSETS_INPUT: {
-            title: context.ideaTitle ?? 'Untitled',
-            content_type: 'blog',
-            outline: [],
-            channel_context: {},
-          },
-        }, null, 2));
+  /* ── Generate briefs via AI or manual ── */
+  async function handleGenerateBriefs() {
+    if (!draftId || generatingBriefs) return;
+    setGeneratingBriefs(true);
+    try {
+      const body: Record<string, unknown> = { provider };
+      if (model && provider !== 'manual') body.model = model;
+      const res = await fetch(`/api/content-drafts/${draftId}/generate-asset-prompts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (json.error) {
+        toast.error(json.error.message ?? 'Failed to generate briefs');
+        return;
       }
+      if (json.data?.status === 'awaiting_manual') {
+        setManualBriefsOpen(true);
+        return;
+      }
+      await handleManualImport(json.data);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to generate briefs');
+    } finally {
+      setGeneratingBriefs(false);
     }
-    void buildContext();
-  }, [draftId, context.ideaTitle]);
+  }
 
-  /* ── AI Generate All (existing path) ── */
-  async function handleGenerateAll() {
-    await withGuard(async () => {
-      try {
-        tracker.trackStarted({ draftId, mode: 'generate' });
-        setGenerating(true);
-        const res = await fetch(`/api/content-drafts/${draftId}/generate-assets`, {
-          method: 'POST',
-        });
-        const json = await res.json();
-        if (json?.error) {
-          tracker.trackFailed(json.error.message ?? 'Failed to generate assets');
-          toast.error(json.error.message ?? 'Failed to generate assets');
-          return;
-        }
-        // Refetch assets
-        const assetsRes = await fetch(`/api/assets?content_id=${draftId}`);
-        const assetsJson = await assetsRes.json();
-        const items = Array.isArray(assetsJson.data)
-          ? assetsJson.data
-          : (assetsJson.data?.assets ?? assetsJson.data?.items ?? []);
-        const mapped = items.length > 0
-          ? (items as Array<Record<string, unknown>>).map((a) => ({
-              id: a.id as string,
-              url: (a.source_url as string) ?? (a.url as string) ?? '',
-              webpUrl: (a.webp_url as string) ?? null,
-              role: (a.role as string) ?? null,
-              altText: (a.alt_text as string) ?? null,
-              sourceType: (a.source as string) ?? 'ai_generated',
-            }))
-          : [];
-        if (mapped.length > 0) {
-          setExistingAssets(mapped);
-        }
-        goToPhase('done');
-        toast.success('Assets generated');
-        const assetIds = mapped.map((a) => a.id);
-        const featuredUrl = mapped.find((a) => a.role === 'featured_image')?.url;
-        tracker.trackCompleted({
-          draftId,
-          assetCount: mapped.length,
-          assetIds,
-          featuredImageUrl: featuredUrl,
-        });
-      } catch (e) {
-        tracker.trackFailed(e instanceof Error ? e.message : 'Failed to generate assets');
-        toast.error('Failed to generate assets');
-      } finally {
-        setGenerating(false);
+  function handleSkipBriefs() {
+    setImagesMode('no-briefs');
+    setSlotCards([]);
+    setVisualDirection(null);
+    setPhase('images');
+  }
+
+
+  /* ── AI generate a single slot image ── */
+  async function generateSlotImage(card: SlotCard): Promise<void> {
+    const prompt = buildFullPrompt(card, visualDirection);
+    if (prompt.trim().length < 10) {
+      toast.error(`Prompt too short for ${card.slot}`);
+      return;
+    }
+    const role = slotToRole(card.slot);
+
+    // Manual provider: emit prompt to Axiom, prompt the user to upload the result.
+    if (imageProvider === 'manual') {
+      const res = await fetch('/api/assets/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          content_id: draftId,
+          content_type: 'blog',
+          role,
+          aspectRatio: card.aspectRatio,
+          numImages: 1,
+          provider: 'manual',
+        }),
+      });
+      const json = await res.json();
+      if (json?.error) {
+        toast.error(json.error.message ?? 'Manual emit failed');
+        return;
       }
+      tracker.trackAction('manual.awaiting', { draftId, role, slot: card.slot });
+      toast.success(`Prompt for ${card.slot} emitted to Axiom. Upload the image when ready.`);
+      return;
+    }
+
+    // AI (Gemini): replace any existing asset for this role so the new one wins.
+    const existing = existingAssets.find((a) => a.role === role);
+    if (existing) {
+      await fetch(`/api/assets/${existing.id}`, { method: 'DELETE' }).catch(() => null);
+    }
+
+    const res = await fetch('/api/assets/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt,
+        content_id: draftId,
+        content_type: 'blog',
+        role,
+        aspectRatio: card.aspectRatio,
+        numImages: 1,
+        provider: 'gemini',
+      }),
     });
+    const json = await res.json();
+    if (json?.error) {
+      toast.error(json.error.message ?? `Image generation failed for ${card.slot}`);
+      return;
+    }
+    const asset = Array.isArray(json.data) ? json.data[0] : json.data;
+    if (!asset || !asset.id) {
+      toast.error(`No image returned for ${card.slot}`);
+      return;
+    }
+    const mapped: ContentAsset = {
+      id: asset.id as string,
+      url: (asset.source_url as string) ?? (asset.url as string) ?? '',
+      webpUrl: (asset.webp_url as string) ?? null,
+      role: (asset.role as string) ?? role,
+      altText: (asset.alt_text as string) ?? card.sectionTitle,
+      sourceType: (asset.source as string) ?? 'generated',
+    };
+    setSlotAssets((prev) => ({ ...prev, [card.slot]: mapped }));
+    setExistingAssets((prev) => [...prev.filter((a) => a.role !== role), mapped]);
+    tracker.trackAction('generated', { draftId, role, slot: card.slot });
+  }
+
+  async function handleGenerateSlot(card: SlotCard) {
+    if (generatingSlot || generatingAll) return;
+    setGeneratingSlot(card.slot);
+    try {
+      await generateSlotImage(card);
+      if (imageProvider === 'gemini') toast.success(`Generated image for ${card.slot}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Image generation failed');
+    } finally {
+      setGeneratingSlot(null);
+    }
+  }
+
+  async function handleGenerateAllSlots() {
+    if (generatingSlot || generatingAll || slotCards.length === 0) return;
+    setGeneratingAll(true);
+    try {
+      for (const card of slotCards) {
+        setGeneratingSlot(card.slot);
+        await generateSlotImage(card);
+      }
+      if (imageProvider === 'gemini') toast.success('All images generated');
+      else toast.success('All prompts emitted to Axiom');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Bulk generation failed');
+    } finally {
+      setGeneratingSlot(null);
+      setGeneratingAll(false);
+    }
   }
 
   /* ── Pending upload handlers (no API call yet) ── */
@@ -353,15 +461,25 @@ export function AssetsEngine({
     setFinishing(true);
     try {
       tracker.trackStarted({ draftId, mode: 'upload' });
+
+      // No pending uploads: advance using existing assets only.
+      if (pendingUploads.length === 0) {
+        const assetIds = existingAssets.map((a) => a.id);
+        const featuredUrl = existingAssets.find((a) => a.role === 'featured_image')?.url;
+        tracker.trackCompleted({ draftId, assetCount: existingAssets.length, assetIds, featuredImageUrl: featuredUrl });
+        onComplete({ assetIds, featuredImageUrl: featuredUrl } as AssetsResult);
+        return;
+      }
+
       const saved: UploadedAsset[] = [];
       for (const pending of pendingUploads) {
         const card = slotCards.find((c) => c.slot === pending.slot);
-        // Delete any existing asset for this role so we don't leave stale records
         const role = slotToRole(pending.slot);
         const existing = existingAssets.find((a) => a.role === role);
         if (existing) {
           await fetch(`/api/assets/${existing.id}`, { method: 'DELETE' }).catch(() => null);
         }
+
         let body: Record<string, unknown>;
         let uploadSource: 'file' | 'url';
         if (pending.file) {
@@ -371,7 +489,7 @@ export function AssetsEngine({
             base64,
             mimeType: pending.file.type,
             draftId,
-            role: slotToRole(pending.slot),
+            role,
             altText: card?.sectionTitle ?? '',
             prompt: card?.promptBrief ?? '',
             styleRationale: card?.styleRationale ?? '',
@@ -381,7 +499,7 @@ export function AssetsEngine({
           body = {
             url: pending.sourceUrl,
             draftId,
-            role: slotToRole(pending.slot),
+            role,
             altText: card?.sectionTitle ?? '',
             prompt: card?.promptBrief ?? '',
             styleRationale: card?.styleRationale ?? '',
@@ -397,14 +515,13 @@ export function AssetsEngine({
           toast.error(`Failed to save ${pending.slot}: ${json.error.message ?? 'Unknown error'}`);
           continue;
         }
-        // Revoke blob URL after successful save
         if (pending.preview?.startsWith('blob:')) URL.revokeObjectURL(pending.preview);
-        const uploadedAsset = {
+        const uploadedAsset: UploadedAsset = {
           id: json.data.id,
           slot: pending.slot,
           url: json.data.url ?? json.data.source_url,
           webpUrl: json.data.webp_url ?? null,
-          role: slotToRole(pending.slot),
+          role,
           altText: card?.sectionTitle ?? '',
         };
         saved.push(uploadedAsset);
@@ -415,32 +532,32 @@ export function AssetsEngine({
           source: uploadSource,
         });
       }
-      setUploadedAssets((prev) => {
-        const slots = new Set(saved.map((s) => s.slot));
-        return [...prev.filter((a) => !slots.has(a.slot)), ...saved];
-      });
+
       setPendingUploads([]);
-      // Re-fetch all assets from DB so the gallery shows fresh URLs
+
+      // Re-fetch all assets from DB so the parent sees up-to-date IDs
+      let allAssets = [...existingAssets, ...saved.map<ContentAsset>((a) => ({
+        id: a.id, url: a.url, webpUrl: a.webpUrl, role: a.role, altText: a.altText, sourceType: 'manual_upload',
+      }))];
       if (draftId) {
         const res = await fetch(`/api/assets?content_id=${draftId}`);
         const { data } = await res.json();
         const items = Array.isArray(data) ? data : (data?.assets ?? data?.items ?? []);
         if (items.length > 0) {
-          setExistingAssets(
-            (items as Array<Record<string, unknown>>).map((a) => ({
-              id: a.id as string,
-              url: (a.source_url as string) ?? (a.url as string) ?? '',
-              webpUrl: (a.webp_url as string) ?? null,
-              role: (a.role as string) ?? null,
-              altText: (a.alt_text as string) ?? null,
-              sourceType: (a.source as string) ?? 'manual_upload',
-            })),
-          );
+          const mapped: ContentAsset[] = (items as Array<Record<string, unknown>>).map((a) => ({
+            id: a.id as string,
+            url: (a.source_url as string) ?? (a.url as string) ?? '',
+            webpUrl: (a.webp_url as string) ?? null,
+            role: (a.role as string) ?? null,
+            altText: (a.alt_text as string) ?? null,
+            sourceType: (a.source as string) ?? 'manual_upload',
+          }));
+          setExistingAssets(mapped);
+          allAssets = mapped;
         }
       }
-      goToPhase('done');
+
       toast.success('Images saved');
-      const allAssets = [...existingAssets, ...saved];
       const assetIds = allAssets.map((a) => a.id);
       const featuredUrl = allAssets.find((a) => a.role === 'featured_image')?.url;
       tracker.trackCompleted({
@@ -449,6 +566,7 @@ export function AssetsEngine({
         assetIds,
         featuredImageUrl: featuredUrl,
       });
+      onComplete({ assetIds, featuredImageUrl: featuredUrl } as AssetsResult);
     } catch (e) {
       tracker.trackFailed(e instanceof Error ? e.message : 'Failed to save images');
       toast.error('Failed to save images');
@@ -518,17 +636,6 @@ export function AssetsEngine({
   const totalSlots = slotCards.length;
   const pendingCount = pendingUploads.length;
 
-  const phaseOrder: AssetPhase[] = ['prompts', 'refined', 'upload', 'done'];
-  function phaseIndex(p: AssetPhase): number { return phaseOrder.indexOf(p); }
-  const maxReachedIndex = phaseIndex(maxPhaseReached);
-
-  const phases: { key: AssetPhase; label: string }[] = [
-    { key: 'prompts', label: 'Prompt Briefs' },
-    { key: 'refined', label: 'Refine Prompts' },
-    { key: 'upload', label: 'Upload Images' },
-    { key: 'done', label: 'Done' },
-  ];
-
   return (
     <div className="space-y-6">
       <ContextBanner stage="assets" context={context} onBack={onBack} />
@@ -542,96 +649,130 @@ export function AssetsEngine({
         </p>
       </div>
 
-      {/* Phase stepper — clickable for reached phases */}
+      {/* Phase stepper */}
       <div className="flex items-center gap-3">
-        {phases.map((p, i) => {
-          const reached = i <= maxReachedIndex;
-          const active = phase === p.key;
-          const past = phaseIndex(phase) > i;
+        {([
+          { key: 'briefs' as const, label: 'Briefs' },
+          { key: 'refine' as const, label: 'Refine', disabled: imagesMode === 'no-briefs' || slotCards.length === 0 },
+          { key: 'images' as const, label: 'Images' },
+        ]).map((step, i, arr) => {
+          const active = phase === step.key;
+          const reached =
+            step.key === 'briefs' ||
+            (step.key === 'refine' && slotCards.length > 0) ||
+            step.key === 'images';
+          const canClick = reached && !step.disabled;
           return (
-            <div key={p.key} className="flex items-center gap-3">
+            <div key={step.key} className="flex items-center gap-3">
               <button
                 type="button"
-                disabled={!reached}
-                onClick={() => reached && goToPhase(p.key)}
+                disabled={!canClick}
+                onClick={() => canClick && setPhase(step.key)}
                 className={`flex items-center gap-1.5 text-sm transition-colors ${
                   active ? 'text-primary font-medium'
-                    : reached ? 'text-muted-foreground hover:text-foreground cursor-pointer'
+                    : canClick ? 'text-muted-foreground hover:text-foreground cursor-pointer'
                     : 'text-muted-foreground/40 cursor-not-allowed'
                 }`}
               >
-                {past ? (
-                  <Check className="h-4 w-4 text-green-500" />
-                ) : active ? (
+                {active ? (
                   <div className="h-4 w-4 rounded-full border-2 border-primary flex items-center justify-center">
                     <div className="h-1.5 w-1.5 rounded-full bg-primary" />
                   </div>
                 ) : (
-                  <div className={`h-4 w-4 rounded-full border-2 ${reached ? 'border-muted-foreground' : 'border-muted-foreground/30'}`} />
+                  <div className={`h-4 w-4 rounded-full border-2 ${canClick ? 'border-muted-foreground' : 'border-muted-foreground/30'}`} />
                 )}
-                {p.label}
+                {step.label}
               </button>
-              {i < phases.length - 1 && <div className="h-px w-8 bg-border" />}
+              {i < arr.length - 1 && <div className="h-px w-8 bg-border" />}
             </div>
           );
         })}
       </div>
 
-      {/* ═══ PHASE 1: Prompt Briefs ═══ */}
-      {phase === 'prompts' && (
+      {/* ═══ PHASE 1: Briefs ═══ */}
+      {phase === 'briefs' && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Step 1: Get Prompt Briefs</CardTitle>
+            <CardTitle className="text-base">Step 1: Briefs</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              Generate structured image prompts for each section of your content. Use AI, manual mode with an external tool, or the existing auto-generate path.
+              Generate refined image prompts for each section, or skip briefs and pick images from the section content directly.
             </p>
           </CardHeader>
-          <CardContent>
-            <Tabs defaultValue="manual" className="space-y-4">
-              <TabsList>
-                <TabsTrigger value="manual">Manual (External AI)</TabsTrigger>
-                <TabsTrigger value="auto">Auto Generate All</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="manual" className="space-y-4">
-                <ManualModePanel
-                  agentSlug="assets"
-                  inputContext={inputContext}
-                  pastePlaceholder="Paste the BC_ASSETS_OUTPUT JSON here..."
-                  onImport={handleManualImport}
-                  importLabel="Import Prompt Briefs"
-                />
-              </TabsContent>
-
-              <TabsContent value="auto" className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Auto-generate images using the configured AI image provider. This skips the prompt refinement step and generates images directly.
+          <CardContent className="space-y-5">
+            <div className="space-y-3">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Generate briefs
+              </Label>
+              <ModelPicker
+                providers={ASSETS_PROVIDERS}
+                provider={provider}
+                model={model}
+                recommended={{ provider: null, model: null }}
+                onProviderChange={(p) => {
+                  setProvider(p);
+                  if (p === 'manual') setModel('manual');
+                  else setModel(MODELS_BY_PROVIDER[p][0].id);
+                }}
+                onModelChange={setModel}
+              />
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">
+                  {provider === 'manual'
+                    ? 'Manual: a prompt will be emitted to Axiom. Paste the output JSON when ready.'
+                    : 'AI: runs the assets agent with the selected model.'}
                 </p>
                 <Button
-                  onClick={handleGenerateAll}
-                  disabled={generating}
-                  className="gap-2"
+                  onClick={handleGenerateBriefs}
+                  disabled={generatingBriefs || !draftId}
+                  className="gap-2 shrink-0"
                 >
-                  {generating ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Generating...
-                    </>
+                  {generatingBriefs ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : provider === 'manual' ? (
+                    <ClipboardPaste className="h-4 w-4" />
                   ) : (
-                    <>
-                      <Sparkles className="h-4 w-4" />
-                      Generate All Images
-                    </>
+                    <Sparkles className="h-4 w-4" />
                   )}
+                  {provider === 'manual' ? 'Get Manual Prompt' : 'Generate Briefs'}
                 </Button>
-              </TabsContent>
-            </Tabs>
+              </div>
+            </div>
+
+            <div className="h-px bg-border" />
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Skip briefs
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Pick images yourself using each section&apos;s title + content as context.
+                </p>
+              </div>
+              <Button variant="outline" className="gap-2 shrink-0" onClick={handleSkipBriefs}>
+                <SkipForward className="h-4 w-4" />
+                Skip Briefs
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
 
+      {/* Manual paste dialog for briefs */}
+      <ManualOutputDialog
+        open={manualBriefsOpen}
+        onOpenChange={(open) => setManualBriefsOpen(open)}
+        title="Paste Asset Prompt Briefs"
+        description="Retrieve the prompt from Axiom, run it in your AI tool, then paste the BC_ASSETS_OUTPUT JSON here."
+        submitLabel="Import Briefs"
+        onSubmit={async (parsed) => {
+          await handleManualImport(parsed);
+          setManualBriefsOpen(false);
+        }}
+      />
+
       {/* ═══ PHASE 2: Refine Prompts ═══ */}
-      {phase === 'refined' && (
+      {phase === 'refine' && (
         <div className="space-y-4">
           {/* Visual direction banner */}
           {visualDirection && (
@@ -641,18 +782,24 @@ export function AssetsEngine({
                   <Palette className="h-5 w-5 text-purple-500 mt-0.5" />
                   <div className="flex-1 space-y-2">
                     <div className="text-sm font-medium">Visual Direction</div>
-                    <div className="text-xs text-muted-foreground">{visualDirection.style}</div>
-                    <div className="text-xs text-muted-foreground">Mood: {visualDirection.mood}</div>
-                    <div className="flex items-center gap-1.5 mt-1">
-                      {visualDirection.colorPalette.map((color) => (
-                        <div
-                          key={color}
-                          className="h-5 w-5 rounded border"
-                          style={{ backgroundColor: color }}
-                          title={color}
-                        />
-                      ))}
-                    </div>
+                    {visualDirection.style && (
+                      <div className="text-xs text-muted-foreground">{visualDirection.style}</div>
+                    )}
+                    {visualDirection.mood && (
+                      <div className="text-xs text-muted-foreground">Mood: {visualDirection.mood}</div>
+                    )}
+                    {visualDirection.colorPalette.length > 0 && (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        {visualDirection.colorPalette.map((color) => (
+                          <div
+                            key={color}
+                            className="h-5 w-5 rounded border"
+                            style={{ backgroundColor: color }}
+                            title={color}
+                          />
+                        ))}
+                      </div>
+                    )}
                     {visualDirection.constraints.length > 0 && (
                       <div className="text-xs text-muted-foreground mt-1">
                         Constraints: {visualDirection.constraints.join(' | ')}
@@ -664,7 +811,7 @@ export function AssetsEngine({
             </Card>
           )}
 
-          {/* Slot cards */}
+          {/* Per-slot prompt editors */}
           {slotCards.map((card, i) => (
             <Card key={card.slot}>
               <CardHeader className="pb-2">
@@ -682,39 +829,44 @@ export function AssetsEngine({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-6 px-2 text-xs gap-1"
+                      className="h-7 px-2 text-xs gap-1"
                       onClick={() => {
                         const full = buildFullPrompt(card, visualDirection);
                         void navigator.clipboard.writeText(full);
                         toast.success(`Full image prompt copied for ${card.slot}`);
                       }}
                     >
-                      <Copy className="h-3 w-3" />
-                      Copy Full Prompt
+                      <Copy className="h-3 w-3" /> Copy Full Prompt
                     </Button>
                   </div>
                   <Textarea
                     value={card.promptBrief}
                     onChange={(e) => {
-                      const updated = [...slotCards];
-                      updated[i] = { ...card, promptBrief: e.target.value };
-                      setSlotCards(updated);
+                      const value = e.target.value;
+                      setSlotCards((prev) => {
+                        const updated = [...prev];
+                        if (updated[i]) updated[i] = { ...updated[i], promptBrief: value };
+                        return updated;
+                      });
                     }}
                     rows={3}
                     className="text-sm"
                   />
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  {card.styleRationale}
-                </div>
+                {card.styleRationale && (
+                  <div className="text-xs text-muted-foreground">{card.styleRationale}</div>
+                )}
                 <div className="flex items-center gap-2">
                   <Label className="text-xs">Aspect Ratio</Label>
                   <select
                     value={card.aspectRatio}
                     onChange={(e) => {
-                      const updated = [...slotCards];
-                      updated[i] = { ...card, aspectRatio: e.target.value };
-                      setSlotCards(updated);
+                      const value = e.target.value;
+                      setSlotCards((prev) => {
+                        const updated = [...prev];
+                        if (updated[i]) updated[i] = { ...updated[i], aspectRatio: value };
+                        return updated;
+                      });
                     }}
                     className="text-xs border rounded px-2 py-1"
                   >
@@ -731,55 +883,88 @@ export function AssetsEngine({
           {/* Actions */}
           <div className="flex items-center gap-3">
             <Button
-              onClick={() => goToPhase('upload')}
+              onClick={() => { setImagesMode('brief'); setPhase('images'); }}
               className="gap-2"
             >
-              Start Uploading
+              Continue to Images
               <ArrowRight className="h-4 w-4" />
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => goToPhase('prompts')}
-            >
-              Paste New Prompts
+            <Button variant="outline" onClick={() => setPhase('briefs')}>
+              Regenerate Briefs
             </Button>
           </div>
         </div>
       )}
 
       {/* ═══ PHASE 3: Upload Images ═══ */}
-      {phase === 'upload' && (
+      {phase === 'images' && imagesMode === 'brief' && (
         <div className="space-y-4">
-          {/* Progress */}
+          {/* Bulk action bar */}
           <Card>
-            <CardContent className="py-3">
-              <div className="flex items-center justify-between text-sm">
-                <span>{pendingCount} of {totalSlots} images staged</span>
-                <span className="text-muted-foreground">
-                  {featuredPending ? 'Featured image ready' : 'Featured image required'}
-                </span>
+            <CardContent className="py-3 space-y-3">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Image provider
+              </Label>
+              <div className="grid grid-cols-2 gap-2">
+                {IMAGE_PROVIDERS.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setImageProvider(p.id)}
+                    disabled={generatingAll || !!generatingSlot}
+                    className={`text-left rounded-lg border p-2.5 transition-colors ${
+                      imageProvider === p.id
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-muted-foreground/50'
+                    } ${(generatingAll || !!generatingSlot) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  >
+                    <div className="text-sm font-medium">{p.label}</div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">{p.hint}</div>
+                  </button>
+                ))}
               </div>
-              <div className="mt-2 h-2 rounded-full bg-muted overflow-hidden">
-                <div
-                  className="h-full bg-primary rounded-full transition-all"
-                  style={{ width: `${totalSlots > 0 ? (pendingCount / totalSlots) * 100 : 0}%` }}
-                />
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <p className="text-xs text-muted-foreground">
+                  Apply to every slot below, or use the per-slot button for granular control.
+                </p>
+                <Button
+                  onClick={handleGenerateAllSlots}
+                  disabled={generatingAll || !!generatingSlot || slotCards.length === 0}
+                  size="sm"
+                  className="gap-1.5 shrink-0"
+                >
+                  {generatingAll ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : imageProvider === 'manual' ? (
+                    <ClipboardPaste className="h-3.5 w-3.5" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                  {imageProvider === 'manual' ? 'Emit all prompts' : 'Generate all images'}
+                </Button>
               </div>
             </CardContent>
           </Card>
 
-          {/* Slot upload cards */}
           {slotCards.map((card) => {
+            const role = slotToRole(card.slot);
+            const existing = existingAssets.find((a) => a.role === role) ?? slotAssets[card.slot] ?? null;
             const pending = pendingUploads.find((p) => p.slot === card.slot);
+            const isGeneratingThis = generatingSlot === card.slot;
             return (
-              <SlotUploadCard
+              <BriefImageSlotCard
                 key={card.slot}
                 card={card}
                 visualDirection={visualDirection}
+                existingAsset={existing}
                 pendingPreview={pending?.preview}
-                onFileUpload={(file) => handleFileStage(card.slot, file)}
-                onUrlUpload={(url) => handleUrlStage(card.slot, url)}
-                onDelete={() => handleDeletePending(card.slot)}
+                generating={isGeneratingThis}
+                generateDisabled={!!generatingSlot || generatingAll}
+                generateProvider={imageProvider}
+                onGenerate={() => handleGenerateSlot(card)}
+                onFileStage={(file) => handleFileStage(card.slot, file)}
+                onUrlStage={(url) => handleUrlStage(card.slot, url)}
+                onDeletePending={() => handleDeletePending(card.slot)}
               />
             );
           })}
@@ -788,18 +973,18 @@ export function AssetsEngine({
           <div className="flex items-center gap-3">
             <Button
               onClick={handleFinish}
-              disabled={!featuredPending || finishing}
+              disabled={finishing}
               className="gap-2"
             >
               {finishing ? (
-                <><Loader2 className="h-4 w-4 animate-spin" />Saving...</>
+                <><Loader2 className="h-4 w-4 animate-spin" />Saving…</>
               ) : (
-                <><Check className="h-4 w-4" />Finish & Save</>
+                <><Check className="h-4 w-4" />Finish &amp; Save</>
               )}
             </Button>
             <Button
               variant="outline"
-              onClick={() => goToPhase('refined')}
+              onClick={() => setPhase('refine')}
               disabled={finishing}
             >
               Back to Refine
@@ -808,109 +993,81 @@ export function AssetsEngine({
         </div>
       )}
 
-      {/* ═══ PHASE 4: Done ═══ */}
-      {phase === 'done' && (
+      {/* ═══ PHASE 3: Upload Images (no-briefs mode) ═══ */}
+      {phase === 'images' && imagesMode === 'no-briefs' && (
         <div className="space-y-4">
-          {existingAssets.length > 0 ? (
-            <AssetGallery
-              assets={existingAssets}
-              draftStatus={draftStatus ?? ''}
-              onDelete={(assetId) => {
-                setExistingAssets((prev) => prev.filter((a) => a.id !== assetId));
-              }}
-            />
-          ) : uploadedAssets.length > 0 ? (
+          {noBriefSections.length === 0 ? (
             <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Uploaded Images</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4">
-                  {uploadedAssets.map((asset) => (
-                    <div key={asset.id} className="space-y-2">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={asset.url}
-                        alt={asset.altText}
-                        className="w-full rounded-lg border object-cover aspect-video"
-                      />
-                      <Badge variant="outline" className="text-[10px]">{asset.slot}</Badge>
-                    </div>
-                  ))}
-                </div>
+              <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                Loading sections…
               </CardContent>
             </Card>
-          ) : null}
+          ) : noBriefSections.map((section) => {
+            const role = slotToRole(section.slot);
+            const existing = existingAssets.find((a) => a.role === role) ?? null;
+            const pending = pendingUploads.find((p) => p.slot === section.slot);
+            return (
+              <NoBriefImageSlotCard
+                key={section.slot}
+                section={section}
+                existingAsset={existing}
+                pendingPreview={pending?.preview}
+                onFileStage={(file) => handleFileStage(section.slot, file)}
+                onUrlStage={(url) => handleUrlStage(section.slot, url)}
+                onDeletePending={() => handleDeletePending(section.slot)}
+              />
+            );
+          })}
 
           <div className="flex items-center gap-3">
-            <Button
-              onClick={() => {
-                const allIds = [
-                  ...existingAssets.map((a) => a.id),
-                  ...uploadedAssets.map((a) => a.id),
-                ];
-                const featuredUrl =
-                  existingAssets.find((a) => a.role === 'featured_image')?.url
-                  ?? uploadedAssets.find((a) => a.slot === 'featured')?.url;
-                onComplete({
-                  assetIds: allIds,
-                  featuredImageUrl: featuredUrl,
-                } as AssetsResult);
-              }}
-              className="gap-2"
-            >
-              Continue to Publish
-              <ArrowRight className="h-4 w-4" />
+            <Button onClick={handleFinish} disabled={finishing} className="gap-2">
+              {finishing ? (
+                <><Loader2 className="h-4 w-4 animate-spin" />Saving…</>
+              ) : (
+                <><Check className="h-4 w-4" />Finish &amp; Save</>
+              )}
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => setPhase('upload')}
-            >
-              Add More Images
+            <Button variant="outline" onClick={() => setPhase('briefs')} disabled={finishing}>
+              Back to Briefs
             </Button>
           </div>
         </div>
       )}
+
     </div>
   );
 }
 
-/* ── Slot Upload Card sub-component ── */
+/* ── Brief Image Slot Card sub-component ── */
 
-interface SlotUploadCardProps {
+interface BriefImageSlotCardProps {
   card: SlotCard;
   visualDirection: VisualDirection | null;
+  existingAsset: ContentAsset | null;
   pendingPreview?: string;
-  onFileUpload: (file: File) => void;
-  onUrlUpload: (url: string) => void;
-  onDelete: () => void;
+  generating: boolean;
+  generateDisabled: boolean;
+  generateProvider: ImageProvider;
+  onGenerate: () => void;
+  onFileStage: (file: File) => void;
+  onUrlStage: (url: string) => void;
+  onDeletePending: () => void;
 }
 
-function SlotUploadCard({ card, visualDirection, pendingPreview, onFileUpload, onUrlUpload, onDelete }: SlotUploadCardProps) {
+function BriefImageSlotCard({
+  card, visualDirection, existingAsset, pendingPreview,
+  generating, generateDisabled, generateProvider,
+  onGenerate, onFileStage, onUrlStage, onDeletePending,
+}: BriefImageSlotCardProps) {
   const [urlInput, setUrlInput] = useState('');
   const [expanded, setExpanded] = useState(false);
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  function handleDragOver(e: React.DragEvent) {
-    e.preventDefault();
-    setDragging(true);
-  }
-
-  function handleDragLeave() {
-    setDragging(false);
-  }
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) {
-      onFileUpload(file);
-    } else {
-      toast.error('Drop an image file');
-    }
-  }
+  // Staged upload wins over saved asset so the user sees what they just picked.
+  const preview = pendingPreview ?? existingAsset?.url;
+  const previewKey = pendingPreview ?? existingAsset?.id ?? 'none';
+  const isStaged = !!pendingPreview;
 
   return (
     <Card>
@@ -921,19 +1078,14 @@ function SlotUploadCard({ card, visualDirection, pendingPreview, onFileUpload, o
               {card.slot}
             </Badge>
             <span className="text-sm font-medium">{card.sectionTitle}</span>
-            {pendingPreview && <Check className="h-4 w-4 text-green-500" />}
+            {preview && <Check className="h-3.5 w-3.5 text-green-500" />}
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setExpanded(!expanded)}
-          >
+          <Button variant="ghost" size="sm" onClick={() => setExpanded(!expanded)}>
             {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {/* Prompt preview (collapsible) */}
         {expanded && (
           <div className="text-xs text-muted-foreground p-2 rounded bg-muted/50 space-y-2">
             <div className="flex items-center justify-between">
@@ -941,104 +1093,250 @@ function SlotUploadCard({ card, visualDirection, pendingPreview, onFileUpload, o
               <Button
                 variant="outline"
                 size="sm"
-                className="h-5 px-1.5 text-[10px] gap-1"
+                className="h-6 px-1.5 text-[10px] gap-1"
                 onClick={() => {
                   const full = buildFullPrompt(card, visualDirection);
                   void navigator.clipboard.writeText(full);
                   toast.success(`Copied full prompt for ${card.slot}`);
                 }}
               >
-                <Copy className="h-3 w-3" />
-                Copy Full Prompt
+                <Copy className="h-3 w-3" /> Copy
               </Button>
             </div>
             <div>{card.promptBrief}</div>
           </div>
         )}
 
-        {pendingPreview ? (
-          /* Image preview (staged, not yet saved) */
+        {/* Preview */}
+        {preview && (
           <div className="space-y-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={pendingPreview}
+              key={previewKey}
+              src={preview}
               alt={card.sectionTitle}
-              className="w-full max-h-48 rounded-lg border object-cover"
+              className="w-full max-h-56 rounded-lg border object-cover"
+            />
+            {isStaged && (
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={onDeletePending}>
+                <Trash2 className="h-3 w-3" /> Remove Staged
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            size="sm"
+            className="gap-1.5"
+            onClick={onGenerate}
+            disabled={generateDisabled}
+          >
+            {generating ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : generateProvider === 'manual' ? (
+              <ClipboardPaste className="h-3.5 w-3.5" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            {generateProvider === 'manual'
+              ? 'Emit prompt (manual)'
+              : existingAsset ? 'Regenerate with AI' : 'Generate with AI'}
+          </Button>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onFileStage(file);
+            }}
+          />
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => fileInputRef.current?.click()}>
+            <Upload className="h-3.5 w-3.5" /> Upload File
+          </Button>
+
+          <div className="flex items-center gap-1.5">
+            <Input
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="…or paste image URL"
+              className="text-xs h-8 w-56"
             />
             <Button
               variant="outline"
               size="sm"
-              className="gap-1.5"
-              onClick={onDelete}
+              className="gap-1.5 shrink-0"
+              disabled={!urlInput.trim()}
+              onClick={() => { onUrlStage(urlInput); setUrlInput(''); }}
             >
-              <Trash2 className="h-3 w-3" />
-              Remove
+              <Link2 className="h-3.5 w-3.5" /> Add URL
             </Button>
           </div>
-        ) : (
-          /* Upload controls with drag-and-drop zone */
+        </div>
+
+        {/* Drag-drop zone when no preview yet */}
+        {!preview && (
           <div
-            className={`space-y-3 rounded-lg border-2 border-dashed p-3 transition-colors ${
-              dragging
-                ? 'border-primary bg-primary/5'
-                : 'border-muted-foreground/20'
+            className={`rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
+              dragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/20'
             }`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              const file = e.dataTransfer.files[0];
+              if (file?.type.startsWith('image/')) onFileStage(file);
+              else toast.error('Drop an image file');
+            }}
           >
-            {dragging ? (
-              <div className="flex flex-col items-center justify-center py-4 gap-2 pointer-events-none">
-                <Upload className="h-6 w-6 text-primary" />
-                <span className="text-sm text-primary font-medium">Drop image here</span>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) onFileUpload(file);
-                    }}
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <Upload className="h-3 w-3" />
-                    Upload File
-                  </Button>
-                  <span className="text-xs text-muted-foreground">or drag & drop</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={urlInput}
-                    onChange={(e) => setUrlInput(e.target.value)}
-                    placeholder="Paste image URL..."
-                    className="text-xs h-8"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 shrink-0"
-                    disabled={!urlInput.trim()}
-                    onClick={() => {
-                      onUrlUpload(urlInput);
-                      setUrlInput('');
-                    }}
-                  >
-                    <Link2 className="h-3 w-3" />
-                    Upload
-                  </Button>
-                </div>
-              </>
+            <Upload className="h-5 w-5 mx-auto text-muted-foreground/60" />
+            <div className="text-xs text-muted-foreground mt-1">Drag & drop image here</div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ── No-Brief Image Slot Card sub-component ── */
+
+interface NoBriefImageSlotCardProps {
+  section: { slot: string; sectionTitle: string; keyPoints: string[]; body: string };
+  existingAsset: ContentAsset | null;
+  pendingPreview?: string;
+  onFileStage: (file: File) => void;
+  onUrlStage: (url: string) => void;
+  onDeletePending: () => void;
+}
+
+function NoBriefImageSlotCard({
+  section, existingAsset, pendingPreview,
+  onFileStage, onUrlStage, onDeletePending,
+}: NoBriefImageSlotCardProps) {
+  const [urlInput, setUrlInput] = useState('');
+  const [expanded, setExpanded] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Staged upload wins over saved asset so the user sees what they just picked.
+  const preview = pendingPreview ?? existingAsset?.url;
+  const previewKey = pendingPreview ?? existingAsset?.id ?? 'none';
+  const isStaged = !!pendingPreview;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Badge variant={section.slot === 'featured' ? 'default' : 'outline'} className="text-[10px]">
+              {section.slot}
+            </Badge>
+            <span className="text-sm font-medium">{section.sectionTitle}</span>
+            {preview && <Check className="h-3.5 w-3.5 text-green-500" />}
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => setExpanded(!expanded)} disabled={!section.body}>
+            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {section.keyPoints.length > 0 && (
+          <ul className="text-xs text-muted-foreground list-disc list-inside space-y-0.5">
+            {section.keyPoints.map((kp, i) => <li key={i}>{kp}</li>)}
+          </ul>
+        )}
+
+        {expanded && section.body && (
+          <div className="text-xs p-2 rounded bg-muted/50 space-y-2 max-h-64 overflow-y-auto">
+            <div className="flex items-center justify-between sticky top-0 bg-muted/50 py-0.5">
+              <span className="font-medium">Section content:</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 px-1.5 text-[10px] gap-1"
+                onClick={() => {
+                  void navigator.clipboard.writeText(section.body);
+                  toast.success('Section content copied');
+                }}
+              >
+                <Copy className="h-3 w-3" /> Copy
+              </Button>
+            </div>
+            <div className="whitespace-pre-wrap">{section.body}</div>
+          </div>
+        )}
+
+        {preview && (
+          <div className="space-y-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              key={previewKey}
+              src={preview}
+              alt={section.sectionTitle}
+              className="w-full max-h-56 rounded-lg border object-cover"
+            />
+            {isStaged && (
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={onDeletePending}>
+                <Trash2 className="h-3 w-3" /> Remove Staged
+              </Button>
             )}
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onFileStage(file);
+            }}
+          />
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => fileInputRef.current?.click()}>
+            <Upload className="h-3.5 w-3.5" /> Upload File
+          </Button>
+          <div className="flex items-center gap-1.5">
+            <Input
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="…or paste image URL"
+              className="text-xs h-8 w-56"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 shrink-0"
+              disabled={!urlInput.trim()}
+              onClick={() => { onUrlStage(urlInput); setUrlInput(''); }}
+            >
+              <Link2 className="h-3.5 w-3.5" /> Add URL
+            </Button>
+          </div>
+        </div>
+
+        {!preview && (
+          <div
+            className={`rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
+              dragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/20'
+            }`}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              const file = e.dataTransfer.files[0];
+              if (file?.type.startsWith('image/')) onFileStage(file);
+              else toast.error('Drop an image file');
+            }}
+          >
+            <Upload className="h-5 w-5 mx-auto text-muted-foreground/60" />
+            <div className="text-xs text-muted-foreground mt-1">Drag & drop image here</div>
           </div>
         )}
       </CardContent>

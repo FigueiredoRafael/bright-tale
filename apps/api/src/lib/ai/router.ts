@@ -30,30 +30,35 @@ const ROUTE_TABLE: Record<string, Record<AgentType, ModelConfig>> = {
     research: { provider: 'ollama', model: 'gemma4:e4b' },
     production: { provider: 'ollama', model: 'gemma4:e4b' },
     review: { provider: 'ollama', model: 'gemma4:e4b' },
+    assets: { provider: 'ollama', model: 'gemma4:e4b' },
   },
   free: {
     brainstorm: { provider: 'gemini', model: 'gemini-2.5-flash' },
     research: { provider: 'gemini', model: 'gemini-2.5-flash' },
     production: { provider: 'gemini', model: 'gemini-2.5-flash' },
     review: { provider: 'gemini', model: 'gemini-2.5-flash' },
+    assets: { provider: 'gemini', model: 'gemini-2.5-flash' },
   },
   standard: {
     brainstorm: { provider: 'gemini', model: 'gemini-2.5-flash' },
     research: { provider: 'gemini', model: 'gemini-2.5-flash' },
     production: { provider: 'anthropic', model: 'claude-sonnet-4-5-20250514' },
     review: { provider: 'gemini', model: 'gemini-2.5-flash' },
+    assets: { provider: 'gemini', model: 'gemini-2.5-flash' },
   },
   premium: {
     brainstorm: { provider: 'openai', model: 'gpt-4o' },
     research: { provider: 'anthropic', model: 'claude-sonnet-4-5-20250514' },
     production: { provider: 'anthropic', model: 'claude-sonnet-4-5-20250514' },
     review: { provider: 'anthropic', model: 'claude-sonnet-4-5-20250514' },
+    assets: { provider: 'anthropic', model: 'claude-sonnet-4-5-20250514' },
   },
   ultra: {
     brainstorm: { provider: 'anthropic', model: 'claude-sonnet-4-5-20250514' },
     research: { provider: 'anthropic', model: 'claude-sonnet-4-5-20250514' },
     production: { provider: 'anthropic', model: 'claude-opus-4-5-20250514' },
     review: { provider: 'anthropic', model: 'claude-opus-4-5-20250514' },
+    assets: { provider: 'anthropic', model: 'claude-sonnet-4-5-20250514' },
   },
 };
 
@@ -80,6 +85,7 @@ export const STAGE_COSTS: Record<AgentType, number> = {
   research: 30,
   production: 50,
   review: 20,
+  assets: 30,
 };
 
 function createProvider(providerName: string, model: string): AIProvider | null {
