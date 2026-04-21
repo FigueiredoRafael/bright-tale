@@ -8,7 +8,6 @@ import {
   validateDiscoveryOutput,
   validateProductionInput,
   validateProductionOutput,
-  validateReviewInput,
   validateReviewOutput,
 } from "../index";
 
@@ -384,33 +383,3 @@ describe("Zod Schemas", () => {
     expect(productionOutputResult.success).toBe(true);
   });
 });
-// Test Review Input
-console.log("\n5️⃣ Review Input:");
-const reviewInputResult = validateReviewInput(sampleReviewInput);
-if (reviewInputResult.success) {
-  console.log("   ✅ Valid");
-} else {
-  console.log("   ❌ Invalid:", reviewInputResult.error.issues);
-}
-
-// Test Review Output - Blog Stage
-console.log("\n6️⃣ Review Output (Blog Stage):");
-const reviewOutputBlogResult = validateReviewOutput(sampleReviewOutputBlog);
-if (reviewOutputBlogResult.success) {
-  console.log("   ✅ Valid");
-} else {
-  console.log("   ❌ Invalid:", reviewOutputBlogResult.error.issues);
-}
-
-// Test Review Output - Publication Stage
-console.log("\n7️⃣ Review Output (Publication Stage):");
-const reviewOutputPublicationResult = validateReviewOutput(
-  sampleReviewOutputPublication,
-);
-if (reviewOutputPublicationResult.success) {
-  console.log("   ✅ Valid");
-} else {
-  console.log("   ❌ Invalid:", reviewOutputPublicationResult.error.issues);
-}
-
-console.log("\n✨ Schema testing complete!");
