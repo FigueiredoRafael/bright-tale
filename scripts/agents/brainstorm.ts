@@ -38,10 +38,10 @@ export const brainstorm: AgentDefinition = {
             ]),
             str('scroll_stopper', '1-line social feed hook'),
             str('curiosity_gap', 'The question the reader cannot ignore'),
-            obj('monetization', 'Monetization angles and opportunities', [
-              str('affiliate_angle', 'Affiliate product opportunities'),
-              str('product_fit', 'Product or tool fit'),
-              str('sponsor_appeal', 'Sponsor appeal and brand fit'),
+            obj('monetization_hypothesis', 'Directional monetization hypotheses — AI speculation only, not verified brand fit data.', [
+              str('affiliate_angle', 'Short phrase describing what affiliate category this idea could support (e.g., "outdoor gear", "SaaS productivity tools"). Generic categories only, never specific brand names unless the user provided them.'),
+              arr('product_categories', 'Array of generic product categories this idea might fit. Max 5. Never name specific companies.', 'string', false),
+              str('sponsor_category', 'Generic sponsor category (e.g., "B2B analytics platforms", "hiking apparel"). Never name specific companies unless user provided them.', false),
             ]),
             obj('repurpose_potential', 'Content repurposing angles across formats', [
               str('blog_angle', 'Blog format angle'),
@@ -72,6 +72,7 @@ export const brainstorm: AgentDefinition = {
         'If audience, market, or monetization details are not provided, infer them from the topic and context.',
         'ALL output text must be in the language specified in the user message. If no language specified, default to English.',
         'Adapt cultural references, idioms, and examples for the specified region/audience.',
+        'Never name specific companies or brands in monetization_hypothesis unless the user explicitly provided them in their message.',
       ],
       validation: [],
     },
@@ -86,7 +87,7 @@ export const brainstorm: AgentDefinition = {
 - **primary_keyword.term**: Actual keyword phrase people search. Not a topic label.
 - **primary_keyword.difficulty**: low/medium/high. Be realistic about competition.
 Do not estimate search volume — that data requires external tools.
-- **monetization**: Concrete product/brand names when possible. Not "some product" but "Notion, Obsidian".
+- **monetization_hypothesis**: Use generic categories only (e.g., "outdoor gear", "SaaS tools", "B2B analytics platforms"). Never suggest specific company names unless the user explicitly provided them.
 - **repurpose_potential**: Each angle must be genuinely different, not the same content reformatted.
 - **verdict**: Be brutally honest. "viable" = would bet money on it. "weak" = kill it now. "experimental" = interesting but unproven.
 - **verdict_rationale**: Explain WHY, referencing specific strengths/weaknesses.`,
