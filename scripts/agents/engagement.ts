@@ -54,6 +54,7 @@ export const engagement: AgentDefinition = {
         '`community_post`: Lead with the most surprising or contrarian angle from `key_stats` or the thesis. Write in a direct, slightly casual tone (not academic). 2-4 short paragraphs OR a short bulleted list - choose whatever fits the content better. Close with `closing_emotion` as the emotional landing, then `cta_subscribe` as the action.',
         '`hook_tweet`: The most scroll-stopping version of the thesis. Bold claim, surprising stat, or provocative question. 1-2 sentences, no hashtags needed, no thread numbering.',
         '`thread_outline`: 4-6 tweets expanding the argument. Each tweet = one sharp point, supported by a stat from `key_stats` where possible. Keep each tweet under 280 characters. Last tweet = CTA (subscribe, video link placeholder, or engagement question).',
+        'If key_stats is empty or not provided, use qualitative claims from the thesis or argument_chain evidence instead. Do not fabricate statistics.',
         'No fabricated stats in any asset. Only use figures from `key_stats`. If no relevant stat exists for a tweet, use the thesis claim directly.',
       ],
       validation: [

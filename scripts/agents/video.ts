@@ -131,7 +131,7 @@ export const video: AgentDefinition = {
             str('background_music', 'Background music'),
           ]),
         ]),
-        str('total_duration_estimate', 'e.g., "8-10 minutes"'),
+        str('estimated_duration', 'Estimate based on script word count at ~150 words/minute, e.g. "8-10 minutes"'),
         str('teleprompter_script', 'Clean narration script for presenter (multiline)', false),
         obj('editor_script', 'Detailed script for video editor with A-roll, B-roll, effects', {}, false),
         obj('video_title', 'Video title options', [
@@ -168,7 +168,7 @@ export const video: AgentDefinition = {
         'affiliate_segment: Include only when `affiliate_context` is provided. Must feel earned - place after the chapter whose claim revealed the problem the product solves.',
         'outro.cta: Must include `cta_subscribe` text.',
         'outro.end_screen_prompt: Must be the exact `cta_comment_prompt` question.',
-        'total_duration_estimate: Estimate based on chapter count and content depth (typical: 1 chapter = 2-3 min).',
+        'estimated_duration: Calculate from script word count at ~150 words/minute. State as an estimate.',
         'teleprompter_script: Clean narration for the presenter to read in order. Natural speech, short paragraphs, clear transitions. No brackets, no B-roll marks, no TEXT overlays. Section headers like [HOOK - 0:00] are allowed for navigation. Minimum 1500 characters.',
         'editor_script: Detailed production guide for the video editor. For each section: A-roll framing, B-roll suggestions with timestamps, text overlays with timing, SFX cues, BGM mood/intensity, visual effects (zoom, jump cut, etc) with rationale, transitions, pacing notes, and color grading. Treat as a briefing for an editor who was not at the shoot.',
         'video_title.primary: Max 60 characters with hook + curiosity gap. Alternatives for A/B testing.',

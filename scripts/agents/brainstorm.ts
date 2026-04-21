@@ -32,10 +32,9 @@ export const brainstorm: AgentDefinition = {
             str('core_tension', 'The conflict between two opposing forces'),
             str('target_audience', 'Demographic/psychographic target'),
             str('search_intent', 'What people type into Google'),
-            obj('primary_keyword', 'Primary keyword phrase and metrics', [
+            obj('primary_keyword', 'Primary keyword phrase and difficulty', [
               str('term', 'Actual keyword phrase people search'),
               str('difficulty', 'low/medium/high'),
-              str('monthly_volume_estimate', 'Estimated monthly search volume'),
             ]),
             str('scroll_stopper', '1-line social feed hook'),
             str('curiosity_gap', 'The question the reader cannot ignore'),
@@ -86,6 +85,7 @@ export const brainstorm: AgentDefinition = {
 - **search_intent**: What real people type into Google. Be specific.
 - **primary_keyword.term**: Actual keyword phrase people search. Not a topic label.
 - **primary_keyword.difficulty**: low/medium/high. Be realistic about competition.
+Do not estimate search volume — that data requires external tools.
 - **monetization**: Concrete product/brand names when possible. Not "some product" but "Notion, Obsidian".
 - **repurpose_potential**: Each angle must be genuinely different, not the same content reformatted.
 - **verdict**: Be brutally honest. "viable" = would bet money on it. "weak" = kill it now. "experimental" = interesting but unproven.

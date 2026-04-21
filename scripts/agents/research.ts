@@ -55,7 +55,7 @@ export const research: AgentDefinition = {
         obj('idea_validation', 'Validation of the core idea and its claims', [
           bool('core_claim_verified', 'Whether the core claim has been verified'),
           str('evidence_strength', 'weak, moderate, or strong'),
-          num('confidence_score', 'Confidence score on a 1-10 scale'),
+          num('confidence_score', '1-10 scale: 1-3 weak/unverifiable, 4-6 moderate/partial evidence, 7-9 strong/multiple sources, 10 conclusive/peer-reviewed'),
           str('validation_notes', 'Explanation of how verification was done'),
         ]),
         arrOf('sources', 'Sources found during research', [
@@ -127,6 +127,8 @@ export const research: AgentDefinition = {
         'Always provide a refined_angle.recommendation with clear rationale.',
         'If research suggests the idea should be abandoned, say so clearly in the recommendation.',
         'Always populate seo.primary_keyword - use the input primary_keyword.term as the baseline, refine it if research reveals a better-performing variant. Populate secondary_keywords (3-5) and search_intent based on your research findings.',
+        'If you cannot verify a URL exists, set sources[].url to empty string. Never fabricate URLs.',
+        'Only include statistics and quotes you found in sources. If paraphrasing, mark with "[paraphrased]". Never fabricate quotes attributed to real people.',
       ],
     },
     customSections: [

@@ -78,11 +78,11 @@ export const blog: AgentDefinition = {
           str('product_link_placeholder', 'Placeholder for affiliate link'),
           str('rationale', 'Why this placement feels natural'),
         ], false),
-        arrOf('internal_links_suggested', 'Related topics for interlinking (2-4 recommended)', [
+        arrOf('internal_links_suggested', 'Topic suggestions for the content team (2-4). Do not include URLs — these are topic ideas, not links.', [
           str('topic', 'Related topic title'),
           str('anchor_text', 'Natural anchor text for linking'),
         ], false),
-        num('word_count', 'Total word count of full_draft (within ±50 words)'),
+        str('content_warning', 'Set if research material is insufficient for the target word count', false),
       ],
     },
     rules: {
@@ -99,7 +99,6 @@ export const blog: AgentDefinition = {
         'key_stats: Each stat belongs in the section whose claim it proves. Format as: **[figure]** — [brief context].',
         'key_quotes: Format as blockquote: > "quote" — Author Name, Credentials',
         'affiliate_integration.placement: ONLY intro, middle, or conclusion. Match the affiliate_context.trigger_context if provided.',
-        'word_count: Must match the actual word count of full_draft (within ±50 words).',
         'internal_links_suggested: Suggest 2-4 related topics that could be interlinked. Use natural anchor text.',
       ],
       validation: [
@@ -219,8 +218,7 @@ These are suggestions for your content team to implement with actual URLs.`,
 3. Verify slug is URL-safe (lowercase, hyphens, no spaces or special chars)
 4. Verify meta_description is exactly 150-160 characters
 5. Verify affiliate_integration.placement is one of: intro | middle | conclusion
-6. Verify word_count matches actual full_draft word count (±50 words)
-7. If affiliate_context provided, verify placement and rationale are clear`,
+6. If affiliate_context provided, verify placement and rationale are clear`,
       },
     ],
   },

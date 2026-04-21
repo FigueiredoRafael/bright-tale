@@ -78,7 +78,7 @@ export const contentCore: AgentDefinition = {
       fields: [
         str('idea_id', 'Echo back the idea_id from input'),
         str('thesis', 'Central claim — max 2 sentences. Must be falsifiable.'),
-        arrOf('argument_chain', 'Ordered logical chain — each step builds on the previous. Min 2 steps.', [
+        arrOf('argument_chain', 'Ordered logical chain — each step builds on the previous. Min 2, max 6 steps. Consolidate related claims if research supports more than 6.', [
           num('step', 'Step number in sequence'),
           str('claim', 'The logical assertion at this step'),
           str('evidence', 'Specific data, study, or expert finding proving this claim'),
@@ -127,6 +127,7 @@ export const contentCore: AgentDefinition = {
         'If recommendation is "abandon", output only: { idea_id: "...", thesis: "ABANDONED — research does not support this idea." }.',
         'Verify that every source_id in key_stats matches a source from the research input.',
         'Verify that every source_id in argument_chain steps matches a source from the research input.',
+        'Verify argument_chain has 2-6 steps. If research supports more than 6 claims, consolidate related steps.',
       ],
     },
     customSections: [

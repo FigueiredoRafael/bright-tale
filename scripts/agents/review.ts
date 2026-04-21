@@ -145,23 +145,18 @@ export const review: AgentDefinition = {
         obj('publication_plan', 'Publication strategy (only if overall_verdict is approved)', [
           bool('ready_to_publish', 'True only if all requested content is approved'),
           obj('blog', 'Blog publication plan', [
-            str('recommended_publish_date', 'YYYY-MM-DD format', false),
-            str('publish_time', 'HH:MM timezone format', false),
             obj('final_seo', 'Final optimized SEO settings', [
               str('title', 'Final optimized title', false),
               str('meta_description', 'Final meta description', false),
               str('slug', 'URL slug', false),
             ], false),
-            arrOf('internal_links', 'Internal links', [
-              str('anchor_text', 'Link text'),
-              str('target_url', 'Target URL'),
+            arrOf('internal_links', 'Internal link topic suggestions (content team will add actual URLs)', [
+              str('anchor_text', 'Suggested link text'),
             ], false),
             arr('categories', 'Blog categories', 'string', false),
             arr('tags', 'Blog tags', 'string', false),
           ], false),
           obj('youtube', 'YouTube publication plan', [
-            str('recommended_publish_date', 'YYYY-MM-DD format', false),
-            str('publish_time', 'HH:MM format', false),
             str('final_title', 'Selected title from title_options', false),
             str('description', 'Full YouTube description with timestamps and links', false),
             arr('tags', 'Video tags', 'string', false),
@@ -174,17 +169,12 @@ export const review: AgentDefinition = {
           ], false),
           arrOf('shorts', 'Shorts publication schedule', [
             num('short_number', 'Short sequence number'),
-            str('publish_date', 'YYYY-MM-DD format'),
-            str('publish_time', 'HH:MM format'),
             str('platform', 'youtube | instagram | tiktok | all'),
           ], false),
           obj('podcast', 'Podcast publication plan', [
-            str('recommended_publish_date', 'YYYY-MM-DD format', false),
             str('episode_number', 'Episode number', false),
           ], false),
           obj('cross_promotion', 'Cross-promotion strategy', [
-            str('twitter_thread_date', 'Publication date for Twitter thread', false),
-            str('community_post_date', 'Publication date for community post', false),
             str('newsletter_mention', 'Newsletter mention details', false),
           ], false),
         ], false),
@@ -448,24 +438,22 @@ Example:
 ready_to_publish: true ONLY if ALL requested content types are approved with no critical issues.
 
 Blog publication:
-- recommended_publish_date: Consider SEO trends, content calendar, audience activity
-- publish_time: Optimal for target audience (usually 8-10 AM in primary timezone)
 - final_seo: WordPress slug should be URL-friendly (lowercase, hyphens, under 75 chars)
-- internal_links: Link to previous related articles, resource pages
+- internal_links: Topic suggestions for the content team to interlink. Do not include actual URLs — these are topic ideas.
 - categories: Align with site structure
 - tags: 5-10 relevant tags (not for SEO, but for internal organization)
 
 YouTube publication:
-- recommended_publish_date: Consider upload schedule, trending topics, audience timezone
-- publish_time: Often Friday-Sunday for leisure viewing, Tuesday-Thursday for professional content
 - final_title: Select best-performing title from title_options
 - description: Include timestamps, links, sponsor mentions, CTA
 - tags: 10-15 relevant tags
 - cards_and_endscreens: Link to related videos, playlists, channel
 
-Shorts schedule: Stagger across days (e.g., day 1, day 3, day 5) to maximize visibility in feed
+Shorts schedule: Note platform and short sequence number. Content team will determine publication timing.
 
-Cross-promotion: How do blog + video + shorts + podcast complement each other?`,
+Cross-promotion: How do blog + video + shorts + podcast complement each other? Newsletter mention details only.
+
+Publication timing should be determined by the content team based on their calendar and analytics.`,
       },
       {
         title: 'Field Guidance: A/B Testing',
