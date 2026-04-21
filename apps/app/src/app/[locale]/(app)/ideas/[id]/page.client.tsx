@@ -8,6 +8,7 @@ import { ArrowLeft, AlertTriangle } from 'lucide-react';
 import { useIdeaPatch } from '@/components/ideas/detail/useIdeaPatch';
 import { IdeaHeaderColumn } from '@/components/ideas/detail/IdeaHeaderColumn';
 import { IdeaNarrativeColumn } from '@/components/ideas/detail/IdeaNarrativeColumn';
+import { parseIdea } from '@/components/ideas/detail/parseIdea';
 
 // Placeholder row shape — will be tightened via @brighttale/shared types later.
 export interface IdeaRow {
@@ -54,7 +55,7 @@ export function IdeaPageClient({ ideaId }: Props) {
           setStatus('error');
           return;
         }
-        setIdea(json.data.idea);
+        setIdea(parseIdea(json.data.idea));
         setStatus('ready');
       } catch (e) {
         if (cancelled) return;

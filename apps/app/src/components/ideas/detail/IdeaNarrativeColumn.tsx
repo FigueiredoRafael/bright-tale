@@ -7,6 +7,7 @@ import { MonetizationHypothesisCard } from './MonetizationHypothesisCard';
 import { RepurposePotentialCard } from './RepurposePotentialCard';
 import { RiskFlagsCard } from './RiskFlagsCard';
 import { ResearchSummaryBanner } from './ResearchSummaryBanner';
+import { parseIdea } from './parseIdea';
 
 interface Props {
   idea: IdeaRow;
@@ -55,7 +56,7 @@ export function IdeaNarrativeColumn({ idea, onPatchDiscovery, onIdeaUpdated }: P
             });
             const json = await res.json();
             if (!res.ok || json.error) throw new Error(json.error?.message ?? 'Failed');
-            onIdeaUpdated(json.data.idea);
+            onIdeaUpdated(parseIdea(json.data.idea));
           }}
         />
       </SectionCard>

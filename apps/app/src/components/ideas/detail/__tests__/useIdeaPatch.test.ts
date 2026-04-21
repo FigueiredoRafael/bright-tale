@@ -43,7 +43,8 @@ describe('useIdeaPatch', () => {
 
     const callArgs = (global.fetch as any).mock.calls[0];
     const sentBody = JSON.parse(callArgs[1].body);
-    expect(sentBody.discovery_data).toEqual({ a: 1, b: 2 });
+    // API expects discovery_data as a JSON string (zod: z.string()).
+    expect(sentBody.discovery_data).toBe(JSON.stringify({ a: 1, b: 2 }));
   });
 
   it('throws on API error', async () => {

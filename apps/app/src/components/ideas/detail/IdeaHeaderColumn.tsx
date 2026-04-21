@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { InlineEditableText } from './InlineEditableText';
 import { InlineEditableSelect } from './InlineEditableSelect';
+import { parseIdea } from './parseIdea';
 
 interface Props {
   idea: IdeaRow;
@@ -39,7 +40,7 @@ export function IdeaHeaderColumn({ idea, onIdeaUpdated, onPatchDiscovery }: Prop
     });
     const json = await res.json();
     if (!res.ok || json.error) throw new Error(json.error?.message ?? 'Failed');
-    onIdeaUpdated(json.data.idea);
+    onIdeaUpdated(parseIdea(json.data.idea));
   }
 
   async function handleStartProject() {

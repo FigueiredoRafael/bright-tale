@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import type { IdeaRow } from '@/app/[locale]/(app)/ideas/[id]/page.client';
+import { parseIdea } from './parseIdea';
 
 export function useIdeaPatch(ideaId: string, current: IdeaRow | null) {
   const patch = useCallback(
@@ -13,7 +14,7 @@ export function useIdeaPatch(ideaId: string, current: IdeaRow | null) {
       if (!res.ok || json.error) {
         throw new Error(json.error?.message ?? `Request failed: ${res.status}`);
       }
-      return json.data.idea as IdeaRow;
+      return parseIdea(json.data.idea);
     },
     [ideaId],
   );
@@ -21,7 +22,7 @@ export function useIdeaPatch(ideaId: string, current: IdeaRow | null) {
   const patchDiscovery = useCallback(
     async (partial: Record<string, unknown>): Promise<IdeaRow> => {
       const merged = { ...(current?.discovery_data ?? {}), ...partial };
-      return patch({ discovery_data: merged });
+      return patch({ discovery_data: JSON.stringify(merged) });
     },
     [current, patch],
   );
