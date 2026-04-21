@@ -1,26 +1,48 @@
 # v0.2 — Launch (beta)
 
-_Target: 2026-05-08. Dogfooding interno + 1 convite._
+_Target: sem deadline fixo. Dogfooding interno + 1 convite._
 
 Status: **Beta** — em desenvolvimento.
 
 ## Objetivo
 
-Estabilizar o produto para uso diário real (Bright Curios blog + YouTube). Foco em qualidade de uso interno, não infraestrutura de escala.
+Estabilizar o produto para uso diário real (Bright Curios blog + YouTube) e habilitar subscriptions pagas end-to-end.
 
-## Cards
+## Cards — Pipeline & Content
 
-> Cards serão adicionados aqui conforme forem criados a partir dos specs em `docs/superpowers/specs/2026-04-20-*.md`.
+> Specs originais: `docs/superpowers/specs/2026-04-20-*.md`
 
 | Card | Nome | Prioridade | Dias | Status |
 |---|---|---|---:|---|
-| — | Validar `primaryKeyword` nos agentes | MUST | 1 | 🔲 |
-| — | Credits hold/reserve + FOR UPDATE | MUST | 3 | 🔲 |
-| — | WP-per-channel + channel_members | MUST | 5 | 🔲 |
-| — | Alt text on-publish (SEO) | MUST | 2 | 🔲 |
-| — | WordPress publish e2e test | MUST | 2 | 🔲 |
-| — | Affiliates V1 (catálogo + CSV + dropdown) | MUST | 4 | 🔲 |
-| | **Total estimado** | | **17** | |
+| V2-001 | Validar `primaryKeyword` nos agentes | MUST | 1 | 🔲 |
+| V2-002 | WP-per-channel + channel_members | MUST | 5 | 🔲 |
+| V2-003 | Alt text on-publish (SEO) | MUST | 2 | 🔲 |
+| V2-004 | WordPress publish e2e test | MUST | 2 | 🔲 |
+| V2-005 | Affiliates V1 (catálogo + CSV + dropdown) | MUST | 4 | 🔲 |
+| | **Subtotal pipeline** | | **14** | |
+
+## Cards — Subscription-Ready
+
+> Spec: `docs/superpowers/specs/2026-04-21-subscription-ready-design.md`
+
+| Card | Nome | Prioridade | Dias | Status |
+|---|---|---|---:|---|
+| V2-006 | Credits hold/reserve + FOR UPDATE (race fix) | MUST | 3 | 🔲 |
+| V2-007 | Stripe Products/Prices setup + env wiring | MUST | 1 | 🔲 |
+| V2-008 | Checkout → webhook → credit grant e2e validation | MUST | 2 | 🔲 |
+| V2-009 | Billing settings page (plan + credits + Portal) | MUST | 2 | 🔲 |
+| | **Subtotal subscription** | | **8** | |
+
+| | **Total estimado v0.2** | | **22** | |
+
+## Dependências entre cards
+
+```
+V2-001 (primaryKeyword) → V2-003 (alt text)
+V2-006 (credits race) → V2-008 (e2e checkout validation)
+V2-007 (Stripe setup) → V2-008 (e2e checkout validation)
+V2-008 (e2e validation) → V2-009 (billing settings page)
+```
 
 ## Cortado (pós-launch)
 
@@ -31,9 +53,12 @@ Estabilizar o produto para uso diário real (Bright Curios blog + YouTube). Foco
 - GitHub Actions / CI
 - Playwright E2E completo
 - PostHog events
-- Stripe Products no Dashboard
 - Video editor + FFmpeg worker
 - YouTube upload OAuth
+- Mercado Pago / PIX / boleto
+- Trials (Free tier é o trial)
+- Enterprise tier
+- Rich in-app billing (Stripe Portal cobre)
 
 ## Legenda
 

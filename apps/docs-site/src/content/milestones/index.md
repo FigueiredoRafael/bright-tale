@@ -6,7 +6,7 @@ Tracking de progresso do desenvolvimento, organizado por versão.
 
 | Versão | Status | Cards | Target |
 |---|---|---:|---|
-| [**v0.2** — Launch](/milestones/0.2) | 🟡 Beta | 6 | 2026-05-08 |
+| [**v0.2** — Launch](/milestones/0.2) | 🟡 Beta | 9 | — |
 | [**v0.1** — Fundação](/milestones/0.1) | ✅ Stable | 90/110 | 2026-04-14 |
 
 ---
@@ -24,15 +24,13 @@ Cards que dependem de infra externa ou decisões de escopo pendentes. Sem versã
 | F4-011 | Phase 4 | Express mode: one-click end-to-end | F4-006/007 |
 | F5-001 | Phase 5 | YouTube upload: OAuth 2.0 + resumable upload | GCP OAuth client |
 | F5-002 | Phase 5 | UI: Step 5 Publishing (blog + video + shorts) | F5-001 |
-| F3-001 | Phase 3 | Stripe checkout: criar Products + Prices | Stripe Dashboard setup |
 | F3-009 | Phase 3 | Mercado Pago scaffold | MP API keys |
-| F3-010 | Phase 3 | Stripe webhook endpoint no deploy | Deploy prod |
 
 ### Para desbloquear
 
 1. **`brew install ffmpeg`** → F4-006/007/009/010/011
 2. **GCP Console → OAuth Client** → F5-001/002
-3. **Stripe Dashboard → Products/Prices** → F3-001/009/010
+3. **Stripe Dashboard → Products/Prices** → F3-009 (Mercado Pago). _F3-001 e F3-010 movidos para v0.2 (subscription-ready)._
 
 ---
 
