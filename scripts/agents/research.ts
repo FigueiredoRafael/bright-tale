@@ -40,7 +40,7 @@ export const research: AgentDefinition = {
             str('term', 'The actual keyword phrase'),
             str('difficulty', 'Keyword difficulty: low, medium, or high'),
           ]),
-          obj('monetization', 'Monetization details from brainstorm', [
+          obj('monetization_hypothesis', 'Directional monetization hypotheses from brainstorm (AI speculation only)', [
             str('affiliate_angle', 'Natural product tie-in or affiliate opportunity'),
           ]),
         ]),

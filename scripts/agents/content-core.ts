@@ -33,7 +33,7 @@ export const contentCore: AgentDefinition = {
           str('target_audience', 'Who this idea is intended for'),
           str('scroll_stopper', 'The hook or scroll-stopping element'),
           str('curiosity_gap', 'What makes the audience need to know more'),
-          obj('monetization', 'Monetization details from brainstorm', [
+          obj('monetization_hypothesis', 'Directional monetization hypotheses from brainstorm (AI speculation only)', [
             str('affiliate_angle', 'Natural product tie-in or affiliate opportunity'),
           ]),
         ]),
