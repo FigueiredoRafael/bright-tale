@@ -44,23 +44,39 @@ export const review: AgentDefinition = {
         obj('production', 'Production assets to review', [
           obj('blog', 'Blog content', [
             str('title', 'Blog post title', false),
+            str('slug', 'URL slug — verify lowercase, hyphens only, no special chars', false),
             str('meta_description', 'SEO meta description', false),
+            str('primary_keyword', 'Primary SEO keyword — verify presence in title and meta_description', false),
             str('full_draft', 'Complete blog content', false),
-            num('word_count', 'Word count', false),
           ], false),
           obj('video', 'Video content', [
-            arr('title_options', 'Optional video title variants', 'string', false),
+            arr('title_options', 'Video title variants', 'string', false),
             obj('script', 'Video script structure', [], false),
-            str('total_duration_estimate', 'Estimated video duration', false),
+            str('estimated_duration', 'Estimated video duration', false),
+            obj('thumbnail', 'Thumbnail design for review', [
+              str('text_overlay', 'Text on thumbnail', false),
+              str('emotion', 'Emotion: curiosity | shock | intrigue', false),
+              str('visual_style', 'Visual style description', false),
+            ], false),
+            num('chapter_count', 'Number of chapters in the script', false),
           ], false),
-          arr('shorts', 'Short-form video content', 'string', false),
+          arrOf('shorts', 'Short-form video content', [
+            str('hook', 'The scroll-stopping opening', false),
+            str('script', 'Complete short script', false),
+            str('visual_style', 'talking head | b-roll | text overlay', false),
+            str('duration_target', 'Target duration', false),
+          ], false),
           obj('podcast', 'Podcast episode content', [
             str('episode_title', 'Episode title', false),
             arr('talking_points', 'Episode talking points', 'string', false),
+            str('intro_hook', 'Opening hook for quality assessment', false),
+            str('outro', 'Closing remarks — verify CTA inclusion', false),
           ], false),
           obj('engagement', 'Engagement assets', [
             str('pinned_comment', 'YouTube pinned comment', false),
             str('community_post', 'Community post content', false),
+            str('hook_tweet', 'Opening tweet of Twitter thread', false),
+            arr('thread_outline', 'Supporting tweets in the thread', 'string', false),
           ], false),
         ]),
       ],
@@ -296,7 +312,11 @@ Example:
       meta_description_optimized: false
       keyword_usage: "good"
       readability_score: "easy"
-    notes: "Strong foundation. Fix citation gap in Section 2 and tighten SEO meta. Otherwise ready."`,
+    notes: "Strong foundation. Fix citation gap in Section 2 and tighten SEO meta. Otherwise ready."
+
+SEO checks:
+- slug: Verify URL-safe (lowercase, hyphens, no spaces or special chars)
+- primary_keyword: Verify it appears naturally in title, meta_description, and full_draft`,
       },
       {
         title: 'Field Guidance: Video Review',
@@ -370,7 +390,11 @@ Example:
         verdict: "approved"
         hook_strength: "strong"
         notes: "Contrarian claim opens strong. Good pacing. Clear CTA at end."
-    notes: "Short 2 needs tighter opening hook. Otherwise ready to publish."`,
+    notes: "Short 2 needs tighter opening hook. Otherwise ready to publish."
+
+For each short, also assess:
+- hook: Does it stop the scroll in 1-2 seconds?
+- visual_style: Is it consistent across shorts? Does it match the content type?`,
       },
       {
         title: 'Field Guidance: Podcast Review',
@@ -429,7 +453,18 @@ Example:
     pinned_comment_verdict: "approved"
     pinned_comment_notes: "Strong opening question. Directly invites personal experience sharing. Under 500 chars. Ready."
     community_post_verdict: "revision_required"
-    community_post_notes: "First 2 paragraphs are strong (great stat placement), but closing is weak. Needs stronger closing_emotion + clearer CTA. Rewrite final paragraph."`,
+    community_post_notes: "First 2 paragraphs are strong (great stat placement), but closing is weak. Needs stronger closing_emotion + clearer CTA. Rewrite final paragraph."
+
+hook_tweet (Twitter/X):
+- Is it the most provocative restatement of the thesis?
+- 1-2 sentences, no hashtags, no thread numbering
+- Would it stop the scroll?
+
+thread_outline:
+- 4-6 tweets expanding the argument
+- Each under 280 characters
+- Last tweet is CTA
+- Stats used match key_stats from research`,
       },
       {
         title: 'Field Guidance: Publication Plan',
