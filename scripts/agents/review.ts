@@ -193,6 +193,12 @@ export const review: AgentDefinition = {
         ], false),
         obj('shorts_review', 'Shorts content review', [
           str('verdict', 'Verdict: approved | revision_required | rejected | not_requested'),
+          str('quality_tier', 'Quality tier: excellent | good | needs_revision | reject | not_requested. Derived from rubric_checks (see rules.validation).'),
+          obj('rubric_checks', 'Rubric breakdown that determines quality_tier', [
+            arr('critical_issues', 'Must-fix issues (blockers for publication)', 'string'),
+            arr('minor_issues', 'Nice-to-fix issues', 'string'),
+            arr('strengths', 'What the content does well', 'string'),
+          ], false),
           arrOf('individual_reviews', 'Review of each short', [
             num('short_number', 'Short sequence number'),
             str('verdict', 'Verdict for this short'),
@@ -217,6 +223,12 @@ export const review: AgentDefinition = {
           str('notes', 'Additional notes', false),
         ], false),
         obj('engagement_review', 'Engagement assets review', [
+          str('quality_tier', 'Quality tier: excellent | good | needs_revision | reject | not_requested. Derived from rubric_checks (see rules.validation).'),
+          obj('rubric_checks', 'Rubric breakdown that determines quality_tier', [
+            arr('critical_issues', 'Must-fix issues (blockers for publication)', 'string'),
+            arr('minor_issues', 'Nice-to-fix issues', 'string'),
+            arr('strengths', 'What the content does well', 'string'),
+          ], false),
           str('pinned_comment_verdict', 'Verdict: approved | revision_required'),
           str('pinned_comment_notes', 'Notes on pinned comment', false),
           str('community_post_verdict', 'Verdict: approved | revision_required'),
