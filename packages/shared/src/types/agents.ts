@@ -43,10 +43,10 @@ export interface BrainstormIdea {
   };
   scroll_stopper: string;
   curiosity_gap: string;
-  monetization: {
+  monetization_hypothesis: {
     affiliate_angle: string;
-    product_fit: string;
-    sponsor_appeal: string;
+    product_categories?: string[];
+    sponsor_category?: string;
   };
   repurpose_potential: {
     blog_angle: string;
@@ -108,7 +108,7 @@ export interface SelectedIdeaForResearch {
     term: string;
     difficulty: string;
   };
-  monetization: {
+  monetization_hypothesis: {
     affiliate_angle: string;
   };
 }
@@ -195,7 +195,7 @@ export interface ProductionInput {
     scroll_stopper: string;
     curiosity_gap: string;
     primary_keyword: string;
-    monetization: {
+    monetization_hypothesis: {
       affiliate_angle: string;
     };
   };
@@ -604,11 +604,9 @@ export function normalizeLegacyIdea(legacy: LegacyIdea): BrainstormIdea {
     },
     scroll_stopper: legacy.mrbeast_hook || legacy.curiosity_hook || "",
     curiosity_gap: legacy.curiosity_hook || "",
-    monetization: {
+    monetization_hypothesis: {
       affiliate_angle:
         legacy.monetization?.affiliate_angle || legacy.affiliate_fit || "",
-      product_fit: "",
-      sponsor_appeal: "",
     },
     repurpose_potential: {
       blog_angle: "",
@@ -652,8 +650,8 @@ export function mapBrainstormToResearchInput(
       term: idea.primary_keyword.term,
       difficulty: idea.primary_keyword.difficulty,
     },
-    monetization: {
-      affiliate_angle: idea.monetization.affiliate_angle,
+    monetization_hypothesis: {
+      affiliate_angle: idea.monetization_hypothesis.affiliate_angle,
     },
   };
 }

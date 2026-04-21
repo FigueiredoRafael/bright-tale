@@ -410,10 +410,8 @@ export default function BrainstormForm({
             },
             scroll_stopper: "",
             curiosity_gap: libraryIdea.core_tension || "",
-            monetization: {
+            monetization_hypothesis: {
                 affiliate_angle: "",
-                product_fit: "",
-                sponsor_appeal: "",
             },
             repurpose_potential: {
                 blog_angle: "",

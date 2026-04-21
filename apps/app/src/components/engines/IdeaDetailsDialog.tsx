@@ -39,10 +39,10 @@ interface IdeaDetails {
   };
   scroll_stopper?: string;
   curiosity_gap?: string;
-  monetization?: {
+  monetization_hypothesis?: {
     affiliate_angle?: string;
-    product_fit?: string;
-    sponsor_appeal?: string;
+    product_categories?: string[];
+    sponsor_category?: string;
   };
   repurpose_potential?: {
     blog_angle?: string;
@@ -194,27 +194,30 @@ export function IdeaDetailsDialog({ idea, open, onOpenChange }: Props) {
             </div>
           )}
 
-          {/* Monetization */}
-          {idea.monetization &&
-            (idea.monetization.affiliate_angle ||
-              idea.monetization.product_fit ||
-              idea.monetization.sponsor_appeal) && (
-              <div className="rounded-lg border bg-card/50 p-4">
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                  <DollarSign className="h-3.5 w-3.5" /> Monetization
+          {/* Monetization Hypothesis */}
+          {idea.monetization_hypothesis &&
+            (idea.monetization_hypothesis.affiliate_angle ||
+              idea.monetization_hypothesis.product_categories?.length ||
+              idea.monetization_hypothesis.sponsor_category) && (
+              <div className="rounded-lg border bg-amber-50/50 p-4">
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700 mb-1">
+                  <DollarSign className="h-3.5 w-3.5" /> Monetization Hypothesis
                 </div>
+                <p className="text-xs text-amber-600 italic mb-3">AI speculation — verify before outreach.</p>
                 <div className="space-y-2.5">
-                  {idea.monetization.affiliate_angle && (
+                  {idea.monetization_hypothesis.affiliate_angle && (
                     <MiniField label="Affiliate Angle">
-                      {idea.monetization.affiliate_angle}
+                      {idea.monetization_hypothesis.affiliate_angle}
                     </MiniField>
                   )}
-                  {idea.monetization.product_fit && (
-                    <MiniField label="Product Fit">{idea.monetization.product_fit}</MiniField>
+                  {idea.monetization_hypothesis.product_categories && idea.monetization_hypothesis.product_categories.length > 0 && (
+                    <MiniField label="Product Categories">
+                      {idea.monetization_hypothesis.product_categories.join(', ')}
+                    </MiniField>
                   )}
-                  {idea.monetization.sponsor_appeal && (
-                    <MiniField label="Sponsor Appeal">
-                      {idea.monetization.sponsor_appeal}
+                  {idea.monetization_hypothesis.sponsor_category && (
+                    <MiniField label="Sponsor Category">
+                      {idea.monetization_hypothesis.sponsor_category}
                     </MiniField>
                   )}
                 </div>

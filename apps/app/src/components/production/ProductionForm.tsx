@@ -141,7 +141,7 @@ export default function ProductionForm({
                                 scroll_stopper: researchInput.scroll_stopper,
                                 curiosity_gap: researchInput.curiosity_gap,
                                 primary_keyword: researchInput.primary_keyword?.term || "",
-                                monetization: { affiliate_angle: researchInput.monetization?.affiliate_angle || "" },
+                                monetization_hypothesis: { affiliate_angle: researchInput.monetization_hypothesis?.affiliate_angle || "" },
                             };
                         } else {
                             input.selected_idea = idea as ProductionInput["selected_idea"];
@@ -250,7 +250,7 @@ export default function ProductionForm({
                             scroll_stopper: idea.scroll_stopper,
                             curiosity_gap: idea.curiosity_gap,
                             primary_keyword: idea.primary_keyword?.term || "",
-                            monetization: { affiliate_angle: idea.monetization?.affiliate_angle || "" },
+                            monetization_hypothesis: { affiliate_angle: idea.monetization_hypothesis?.affiliate_angle || "" },
                         };
                     }
                     if (research) {
@@ -641,9 +641,10 @@ export default function ProductionForm({
                         <p className="text-sm text-success italic mt-2">"{productionInput.selected_idea.scroll_stopper}"</p>
                         <div className="flex gap-2 mt-3">
                             <Badge variant="outline" className="text-xs">{productionInput.selected_idea.target_audience}</Badge>
-                            {productionInput.selected_idea.monetization?.affiliate_angle && (
-                                <Badge variant="outline" className="text-xs bg-green-50">
-                                    {productionInput.selected_idea.monetization.affiliate_angle}
+                            {productionInput.selected_idea.monetization_hypothesis?.affiliate_angle && (
+                                <Badge variant="outline" className="text-xs bg-amber-50">
+                                    <span className="text-muted-foreground text-xs italic mr-1">[AI speculation]</span>
+                                    {productionInput.selected_idea.monetization_hypothesis.affiliate_angle}
                                 </Badge>
                             )}
                         </div>
