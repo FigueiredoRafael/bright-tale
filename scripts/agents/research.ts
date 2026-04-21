@@ -89,6 +89,11 @@ export const research: AgentDefinition = {
           str('rebuttal', 'How to address this counterargument'),
           str('source_id', 'Source if applicable', false),
         ]),
+        obj('seo', 'SEO data extracted during research', [
+          str('primary_keyword', 'Primary keyword - use the input primary_keyword.term as baseline, refine if research reveals a better variant'),
+          arr('secondary_keywords', 'Related keywords found during research (3-5)', 'string', false),
+          str('search_intent', 'Detected search intent: informational, commercial, navigational, or mixed', false),
+        ]),
         arr('knowledge_gaps', 'Topics or claims that could not be verified or need more research', 'string'),
         str('research_summary', 'Concise 2-3 paragraph summary of key findings, main evidence, and content angle recommendations'),
         obj('refined_angle', 'Recommended angle after research', [
@@ -121,6 +126,7 @@ export const research: AgentDefinition = {
         'Include at least 3 sources for standard depth, 5+ for deep.',
         'Always provide a refined_angle.recommendation with clear rationale.',
         'If research suggests the idea should be abandoned, say so clearly in the recommendation.',
+        'Always populate seo.primary_keyword - use the input primary_keyword.term as the baseline, refine it if research reveals a better-performing variant. Populate secondary_keywords (3-5) and search_intent based on your research findings.',
       ],
     },
     customSections: [
@@ -134,7 +140,8 @@ export const research: AgentDefinition = {
 - **statistics** — key data points with figures and context
 - **expert_quotes** — quotes and author credentials
 - **counterarguments** — opposing viewpoints with rebuttals
-- **refined_angle** — any suggested pivots or refinements`,
+- **refined_angle** — any suggested pivots or refinements
+- **seo** — primary keyword, secondary keywords, and search intent`,
       },
     ],
   },

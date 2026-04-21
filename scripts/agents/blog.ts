@@ -238,7 +238,8 @@ parágrafos pra encher.`,
 8. No markdown code fences anywhere in output
 9. Multi-line string values use embedded newline characters (never YAML pipe syntax)
 10. No em-dashes, use regular dashes (-)
-11. No curly quotes, use straight quotes only`,
+11. No curly quotes, use straight quotes only
+12. Escape all double quotes inside string values with a backslash (\\"). The full_draft field is especially prone to unescaped quotes in blockquotes and dialogue - verify every quote mark inside the string is escaped.`,
       },
     ],
   },
