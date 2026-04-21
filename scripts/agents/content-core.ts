@@ -111,9 +111,7 @@ export const contentCore: AgentDefinition = {
     rules: {
       formatting: [
         ...STANDARD_JSON_RULES,
-        'Output JSON only, no markdown fences.',
         'Do not add, remove, or rename keys in the output schema.',
-        'For multi-line string values, embed literal newline characters inside the JSON string. Do NOT use YAML pipe (|) syntax.',
       ],
       content: [
         'Thesis: Max 2 sentences. Must be falsifiable (a claim that can be supported or refuted).',
@@ -222,11 +220,7 @@ Format agents (blog, video, podcast, etc.) will:
         title: 'Before Finishing',
         content: `1. Verify every source_id in key_stats and argument_chain steps exists in research.key_sources
 2. If refined_angle.recommendation = "pivot", thesis and argument chain must reflect it
-3. If recommendation = "abandon", return ONLY the abandoned state (no argument chain)
-4. Multi-line string values use embedded newline characters inside the JSON string (never YAML pipe)
-5. No markdown code fences (\`\`\`) anywhere in the output
-6. No em-dashes, use regular dashes (-)
-7. No curly quotes, use straight quotes only`,
+3. If recommendation = "abandon", return ONLY the abandoned state (no argument chain)`,
       },
     ],
   },

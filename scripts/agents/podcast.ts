@@ -71,12 +71,7 @@ export const podcast: AgentDefinition = {
     rules: {
       formatting: [
         ...STANDARD_JSON_RULES,
-        'Output JSON only, no markdown fences.',
         'Do not add, remove, or rename keys in the output schema.',
-        'For multi-line string values, embed literal newline characters inside the JSON string. Do NOT use YAML pipe (|) syntax.',
-        'No markdown code fences anywhere in the output.',
-        'No em-dashes (-), use regular dashes (-)',
-        'No curly quotes, use straight quotes only',
       ],
       content: [
         '`episode_title`: Conversational and curiosity-driven. Podcast titles work differently from YouTube - they can be longer and more specific (e.g., "Why Your Brain Keeps Choosing Short-Term Comfort Over Long-Term Goals").',
@@ -193,10 +188,7 @@ Never pad with filler or repetition.`,
 4. Verify outro lands on closing_emotion
 5. Verify outro includes cta_subscribe (verbatim or paraphrased)
 6. Verify outro ends with a listener question (from cta_comment_prompt)
-7. Verify no fabricated stats — only use figures from key_stats
-8. Verify multi-line string values use embedded newline characters (never YAML pipe syntax)
-9. No em-dashes, use regular dashes (-)
-10. No curly quotes, use straight quotes only`,
+7. Verify no fabricated stats — only use figures from key_stats`,
       },
     ],
   },

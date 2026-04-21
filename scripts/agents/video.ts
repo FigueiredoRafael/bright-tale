@@ -153,12 +153,7 @@ export const video: AgentDefinition = {
     rules: {
       formatting: [
         ...STANDARD_JSON_RULES,
-        'Output JSON only, no markdown fences.',
         'Do not add, remove, or rename keys in the output schema.',
-        'For multi-line string values, embed literal newline characters inside the JSON string. Do NOT use YAML pipe (|) syntax.',
-        'No markdown code fences anywhere in the output.',
-        'No em-dashes (—), use regular dashes (-)',
-        'No curly quotes, use straight quotes only',
       ],
       content: [
         'title_options: Exactly 3. Use formats like curiosity gaps, benefit promises, or numbered reveals. Include the core topic keyword in at least 2 of the 3.',
@@ -494,10 +489,7 @@ estender artificialmente. Não repita pontos.`,
 7. Verify \`editor_script\` is detailed with A-roll, B-roll, timing
 8. Verify \`pinned_comment\` is specific and question-based (not generic)
 9. Verify \`video_description\` is at least 800 characters
-10. Verify \`video_title.primary\` is max 60 characters
-11. No em-dashes (—), use regular dashes (-)
-12. No curly quotes, use straight quotes only
-13. All multi-line strings use literal newlines`,
+10. Verify \`video_title.primary\` is max 60 characters`,
       },
     ],
   },

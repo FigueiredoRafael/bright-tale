@@ -65,12 +65,7 @@ export const shorts: AgentDefinition = {
     rules: {
       formatting: [
         ...STANDARD_JSON_RULES,
-        'Output JSON only, no markdown fences.',
         'Do not add, remove, or rename keys in the output schema.',
-        'For multi-line string values, embed literal newline characters inside the JSON string. Do NOT use YAML pipe (|) syntax.',
-        'No markdown code fences anywhere in the output.',
-        'No em-dashes (—), use regular dashes (-)',
-        'No curly quotes, use straight quotes only',
       ],
       content: [
         'short_number: Must be sequential integers 1, 2, 3. No skipping.',
@@ -270,10 +265,7 @@ Never pad with filler or repetition.`,
 8. Verify no "watch the full video" appears in hook or script body (only in cta)
 9. Verify at least one short includes cta_comment_prompt as a question
 10. Verify at least one short includes cta_subscribe reference
-11. Verify no fabricated stats — only use key_stats from input
-12. Verify multi-line string values use embedded newline characters (never YAML pipe syntax)
-13. No em-dashes, use regular dashes (-)
-14. No curly quotes, use straight quotes only`,
+11. Verify no fabricated stats — only use key_stats from input`,
       },
     ],
   },

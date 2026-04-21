@@ -47,12 +47,7 @@ export const engagement: AgentDefinition = {
     rules: {
       formatting: [
         ...STANDARD_JSON_RULES,
-        'Output JSON only, no markdown fences.',
         'Do not add, remove, or rename keys in the output schema.',
-        'For multi-line string values, embed literal newline characters inside the JSON string. Do NOT use YAML pipe (|) syntax.',
-        'No markdown code fences anywhere in the output.',
-        'No em-dashes (-), use regular dashes (-)',
-        'No curly quotes, use straight quotes only',
       ],
       content: [
         '`pinned_comment`: Must be derived from `comment_prompt_seed`. Expand it into a fuller question that invites personal reflection. Max 500 characters (count carefully). Must end with `?`. Do NOT include a subscribe CTA here - keep it purely conversational.',
@@ -174,10 +169,7 @@ Example thread_outline for 5 tweets:
 4. Verify the last item in thread_outline is a CTA
 5. Verify community_post closes with closing_emotion followed by cta_subscribe
 6. Verify no fabricated stats — only use figures from key_stats
-7. Verify multi-line string values use embedded newline characters (never YAML pipe syntax)
-8. No em-dashes, use regular dashes (-)
-9. No curly quotes, use straight quotes only
-10. Verify hook_tweet is 1-2 sentences and has no thread numbering`,
+7. Verify hook_tweet is 1-2 sentences and has no thread numbering`,
       },
     ],
   },

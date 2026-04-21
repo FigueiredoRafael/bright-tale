@@ -88,12 +88,7 @@ export const blog: AgentDefinition = {
     rules: {
       formatting: [
         ...STANDARD_JSON_RULES,
-        'Output JSON only, no markdown fences.',
         'Do not add, remove, or rename keys in the output schema.',
-        'For multi-line string values, embed literal newline characters inside the JSON string. Do NOT use YAML pipe (|) syntax.',
-        'No markdown code fences anywhere in the output.',
-        'No em-dashes (—), use regular dashes (-)',
-        'No curly quotes, use straight quotes only',
       ],
       content: [
         'title: Must be curiosity-gap or benefit-driven. Include the primary keyword naturally.',
@@ -234,12 +229,7 @@ parágrafos pra encher.`,
 4. Verify meta_description is exactly 150-160 characters
 5. Verify affiliate_integration.placement is one of: intro | middle | conclusion
 6. Verify word_count matches actual full_draft word count (±50 words)
-7. If affiliate_context provided, verify placement and rationale are clear
-8. No markdown code fences anywhere in output
-9. Multi-line string values use embedded newline characters (never YAML pipe syntax)
-10. No em-dashes, use regular dashes (-)
-11. No curly quotes, use straight quotes only
-12. Escape all double quotes inside string values with a backslash (\\"). The full_draft field is especially prone to unescaped quotes in blockquotes and dialogue - verify every quote mark inside the string is escaped.`,
+7. If affiliate_context provided, verify placement and rationale are clear`,
       },
     ],
   },
