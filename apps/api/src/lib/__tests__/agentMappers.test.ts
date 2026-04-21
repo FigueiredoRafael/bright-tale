@@ -41,6 +41,11 @@ const baseResearch: ResearchOutput = {
     { counter_id: "C-004", point: "Counter 4 (should be truncated)", strength: "weak", rebuttal: "Rebuttal 4" },
   ],
   knowledge_gaps: ["Gap 1: X could not be verified", "Gap 2: Y data unavailable"],
+  seo: {
+    primary_keyword: "best coffee grinders",
+    secondary_keywords: ["burr grinder", "manual grinder"],
+    search_intent: "commercial",
+  },
   research_summary: "Summary of research findings.",
   refined_angle: {
     should_pivot: false,
@@ -107,5 +112,13 @@ describe("mapResearchToProductionInput", () => {
     const noGapsResearch: ResearchOutput = { ...baseResearch, knowledge_gaps: [] };
     const result = mapResearchToProductionInput(noGapsResearch);
     expect(result.knowledge_gaps).toEqual([]);
+  });
+
+  it("propagates seo.primary_keyword from research", () => {
+    const result = mapResearchToProductionInput(baseResearch);
+    expect(result.seo).toBeDefined();
+    expect(result.seo?.primary_keyword).toBe("best coffee grinders");
+    expect(result.seo?.secondary_keywords).toEqual(["burr grinder", "manual grinder"]);
+    expect(result.seo?.search_intent).toBe("commercial");
   });
 });

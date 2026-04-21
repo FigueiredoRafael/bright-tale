@@ -140,6 +140,7 @@ export default function ProductionForm({
                                 target_audience: researchInput.target_audience,
                                 scroll_stopper: researchInput.scroll_stopper,
                                 curiosity_gap: researchInput.curiosity_gap,
+                                primary_keyword: researchInput.primary_keyword?.term || "",
                                 monetization: { affiliate_angle: researchInput.monetization?.affiliate_angle || "" },
                             };
                         } else {
@@ -248,6 +249,7 @@ export default function ProductionForm({
                             target_audience: idea.target_audience,
                             scroll_stopper: idea.scroll_stopper,
                             curiosity_gap: idea.curiosity_gap,
+                            primary_keyword: idea.primary_keyword?.term || "",
                             monetization: { affiliate_angle: idea.monetization?.affiliate_angle || "" },
                         };
                     }

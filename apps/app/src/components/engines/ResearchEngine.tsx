@@ -885,6 +885,13 @@ export function ResearchEngine({
         <>
           <ResearchFindingsReport findings={findings} />
 
+          {!((findings as Record<string, unknown>).seo as Record<string, unknown> | undefined)?.primary_keyword && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-sm">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>Primary keyword missing from research output. Production may generate suboptimal SEO.</span>
+            </div>
+          )}
+
           <div className="flex justify-end pt-2">
             <Button onClick={handleApprove} size="lg">
               <Check className="h-4 w-4 mr-2" /> Continue{' '}

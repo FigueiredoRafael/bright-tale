@@ -162,6 +162,11 @@ export interface ResearchOutput {
     confidence_score: number;
     validation_notes: string;
   };
+  seo: {
+    primary_keyword: string;
+    secondary_keywords?: string[];
+    search_intent?: "informational" | "commercial" | "navigational" | "mixed";
+  };
   sources: ResearchSource[];
   statistics: ResearchStatistic[];
   expert_quotes: ResearchQuote[];
@@ -189,6 +194,7 @@ export interface ProductionInput {
     target_audience: string;
     scroll_stopper: string;
     curiosity_gap: string;
+    primary_keyword: string;
     monetization: {
       affiliate_angle: string;
     };
@@ -663,7 +669,7 @@ const MAX_COUNTERARGUMENTS = 3;
 
 export function mapResearchToProductionInput(
   research: ResearchOutput,
-): ProductionInput["research"] {
+): ProductionInput["research"] & { seo?: ResearchOutput["seo"] } {
   return {
     summary: research.research_summary,
     validation: {
@@ -695,5 +701,6 @@ export function mapResearchToProductionInput(
       angle_notes: research.refined_angle.angle_notes,
       recommendation: research.refined_angle.recommendation,
     },
+    seo: research.seo,
   };
 }

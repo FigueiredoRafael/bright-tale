@@ -105,6 +105,11 @@ If the selected idea is unclear or missing required fields, request clarificatio
         "source_id": ""
       }
     ],
+    "seo": {
+      "primary_keyword": "",
+      "secondary_keywords": [],
+      "search_intent": ""
+    },
     "knowledge_gaps": [],
     "research_summary": "",
     "refined_angle": {
@@ -133,6 +138,7 @@ The following fields are passed to BC_PRODUCTION_INPUT:
     "target_audience": "",
     "scroll_stopper": "",
     "curiosity_gap": "",
+    "primary_keyword": "",
     "monetization": {
       "affiliate_angle": ""
     }
@@ -142,6 +148,11 @@ The following fields are passed to BC_PRODUCTION_INPUT:
     "validation": {
       "verified": true,
       "evidence_strength": ""
+    },
+    "seo": {
+      "primary_keyword": "",
+      "secondary_keywords": [],
+      "search_intent": ""
     },
     "key_sources": [
       {
@@ -186,6 +197,7 @@ The following fields are passed to BC_PRODUCTION_INPUT:
 - Include at least 3 sources for "standard" depth, 5+ for "deep".
 - Always provide a `refined_angle.recommendation` with clear rationale.
 - If research suggests the idea should be abandoned, say so clearly.
+- Always populate `seo.primary_keyword` — use the input `primary_keyword.term` as the baseline, refine it if research reveals a better-performing variant. Populate `secondary_keywords` (3-5) and `search_intent` based on your research findings.
 
 ## Channel Context (Runtime-Injected)
 

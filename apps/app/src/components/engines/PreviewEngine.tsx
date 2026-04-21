@@ -126,18 +126,54 @@ function extractFullDraft(draftJson: Record<string, unknown> | null): string {
 function extractPublicationPlan(
   feedbackJson: Record<string, unknown> | null,
 ): { categories: string[]; tags: string[]; seo: Record<string, string>; publishDate?: string } {
-  if (!feedbackJson || typeof feedbackJson !== 'object') {
-    return { categories: [], tags: [], seo: {} };
+  const empty = { categories: [] as string[], tags: [] as string[], seo: {} as Record<string, string> };
+  if (!feedbackJson || typeof feedbackJson !== 'object') return empty;
+
+  // Unwrap BC_REVIEW_OUTPUT wrapper if present
+  const root = (feedbackJson.BC_REVIEW_OUTPUT as Record<string, unknown>) ?? feedbackJson;
+
+  // publication_plan lives at root level or inside blog_review (AI varies)
+  const blogReview = (root.blog_review ?? root.blog) as Record<string, unknown> | undefined;
+  const pubPlan = (root.publication_plan ?? blogReview?.publication_plan) as Record<string, unknown> | undefined;
+
+  // blog object may be inside publication_plan, or fields may be directly on publication_plan
+  const blog = (pubPlan?.blog ?? pubPlan) as Record<string, unknown> | undefined;
+
+  const categories = (
+    (blog?.categories as string[]) ??
+    (pubPlan?.categories as string[]) ??
+    []
+  );
+  const tags = (
+    (blog?.tags as string[]) ??
+    (pubPlan?.tags as string[]) ??
+    []
+  );
+
+  // SEO can be under final_seo, seo, or directly on blog/pubPlan
+  const seo = (
+    (blog?.final_seo as Record<string, string>) ??
+    (blog?.seo as Record<string, string>) ??
+    (pubPlan?.final_seo as Record<string, string>) ??
+    {}
+  );
+
+  // If seo object is empty but individual fields exist at blog level, collect them
+  if (!seo.title && !seo.slug && !seo.meta_description) {
+    const src = blog ?? pubPlan;
+    if (src) {
+      if (src.title && typeof src.title === 'string') seo.title = src.title;
+      if (src.slug && typeof src.slug === 'string') seo.slug = src.slug;
+      const metaDesc = (src.meta_description ?? src.metaDescription) as string | undefined;
+      if (metaDesc) seo.meta_description = metaDesc;
+    }
   }
 
-  const blogReview = (feedbackJson.blog_review ?? feedbackJson.blog) as Record<string, unknown> | undefined;
-  const pubPlan = (blogReview?.publication_plan ?? feedbackJson.publication_plan) as Record<string, unknown> | undefined;
-  const blog = (pubPlan?.blog) as Record<string, unknown> | undefined;
-
-  const categories = (blog?.categories as string[]) ?? [];
-  const tags = (blog?.tags as string[]) ?? [];
-  const seo = (blog?.final_seo as Record<string, string>) ?? {};
-  const publishDate = (blog?.recommended_publish_date as string) ?? undefined;
+  const publishDate = (
+    (blog?.recommended_publish_date as string) ??
+    (pubPlan?.recommended_publish_date as string) ??
+    undefined
+  );
 
   return { categories, tags, seo, publishDate };
 }
@@ -267,13 +303,48 @@ export function PreviewEngine({
         const slots = buildImageSlots(headings);
         setImageSlots(slots);
 
-        // Extract publication plan from review feedback
+        // Use server-side resolved SEO defaults when available, otherwise fall back to client extraction
+        const resolvedSeo = (draftData as unknown as Record<string, unknown>).resolved_seo as {
+          title: string; slug: string; meta_description: string;
+          primary_keyword: string; secondary_keywords: string[];
+          categories: string[]; tags: string[];
+        } | undefined;
+
+        if (resolvedSeo) {
+          setCategories(resolvedSeo.categories);
+          setTags(resolvedSeo.tags);
+          setSeoTitle(resolvedSeo.title);
+          setSeoSlug(resolvedSeo.slug);
+          setSeoMetaDesc(resolvedSeo.meta_description);
+        } else {
+          const pubPlan = extractPublicationPlan(draftData.review_feedback_json);
+          const dj = draftData.draft_json as Record<string, unknown> | null;
+          const djBlog = (dj?.blog ?? dj) as Record<string, unknown> | undefined;
+
+          setCategories(pubPlan.categories.length > 0 ? pubPlan.categories : []);
+          setTags(pubPlan.tags.length > 0 ? pubPlan.tags : []);
+          setSeoTitle(
+            pubPlan.seo.title
+            || draftData.title
+            || (djBlog?.title as string)
+            || ''
+          );
+          setSeoSlug(
+            pubPlan.seo.slug
+            || (djBlog?.slug as string)
+            || (dj?.slug as string)
+            || ''
+          );
+          setSeoMetaDesc(
+            pubPlan.seo.meta_description
+            || pubPlan.seo.metaDescription
+            || (djBlog?.meta_description as string)
+            || (dj?.meta_description as string)
+            || ''
+          );
+        }
+
         const pubPlan = extractPublicationPlan(draftData.review_feedback_json);
-        setCategories(pubPlan.categories);
-        setTags(pubPlan.tags);
-        setSeoTitle(pubPlan.seo.title ?? draftData.title ?? '');
-        setSeoSlug(pubPlan.seo.slug ?? '');
-        setSeoMetaDesc(pubPlan.seo.meta_description ?? pubPlan.seo.metaDescription ?? '');
         setPublishDate(pubPlan.publishDate ?? '');
 
         // Fetch assets
