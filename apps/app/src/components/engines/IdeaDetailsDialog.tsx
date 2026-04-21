@@ -44,6 +44,12 @@ interface IdeaDetails {
     product_categories?: string[];
     sponsor_category?: string;
   };
+  /** Legacy field — pre-rename shape, kept for backward-compat on existing ideas */
+  monetization?: {
+    affiliate_angle?: string;
+    product_fit?: string;
+    sponsor_appeal?: string;
+  };
   repurpose_potential?: {
     blog_angle?: string;
     video_angle?: string;
@@ -194,35 +200,37 @@ export function IdeaDetailsDialog({ idea, open, onOpenChange }: Props) {
             </div>
           )}
 
-          {/* Monetization Hypothesis */}
-          {idea.monetization_hypothesis &&
-            (idea.monetization_hypothesis.affiliate_angle ||
-              idea.monetization_hypothesis.product_categories?.length ||
-              idea.monetization_hypothesis.sponsor_category) && (
+          {/* Monetization Hypothesis — dual-read for legacy `monetization` shape */}
+          {(() => {
+            const hyp = idea.monetization_hypothesis;
+            const legacy = idea.monetization;
+            const affiliateAngle = hyp?.affiliate_angle ?? legacy?.affiliate_angle;
+            const productCategories = hyp?.product_categories ?? (legacy?.product_fit ? [legacy.product_fit] : undefined);
+            const sponsorCategory = hyp?.sponsor_category ?? legacy?.sponsor_appeal;
+            const hasAny = affiliateAngle || (productCategories && productCategories.length > 0) || sponsorCategory;
+            if (!hasAny) return null;
+            return (
               <div className="rounded-lg border bg-amber-50/50 p-4">
                 <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700 mb-1">
                   <DollarSign className="h-3.5 w-3.5" /> Monetization Hypothesis
                 </div>
                 <p className="text-xs text-amber-600 italic mb-3">AI speculation — verify before outreach.</p>
                 <div className="space-y-2.5">
-                  {idea.monetization_hypothesis.affiliate_angle && (
-                    <MiniField label="Affiliate Angle">
-                      {idea.monetization_hypothesis.affiliate_angle}
-                    </MiniField>
+                  {affiliateAngle && (
+                    <MiniField label="Affiliate Angle">{affiliateAngle}</MiniField>
                   )}
-                  {idea.monetization_hypothesis.product_categories && idea.monetization_hypothesis.product_categories.length > 0 && (
+                  {productCategories && productCategories.length > 0 && (
                     <MiniField label="Product Categories">
-                      {idea.monetization_hypothesis.product_categories.join(', ')}
+                      {productCategories.join(', ')}
                     </MiniField>
                   )}
-                  {idea.monetization_hypothesis.sponsor_category && (
-                    <MiniField label="Sponsor Category">
-                      {idea.monetization_hypothesis.sponsor_category}
-                    </MiniField>
+                  {sponsorCategory && (
+                    <MiniField label="Sponsor Category">{sponsorCategory}</MiniField>
                   )}
                 </div>
               </div>
-            )}
+            );
+          })()}
 
           {/* Repurpose */}
           {idea.repurpose_potential &&
