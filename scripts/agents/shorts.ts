@@ -60,6 +60,7 @@ export const shorts: AgentDefinition = {
           str('sound_effects', 'Suggested sound effects'),
           str('background_music', 'Suggested background music'),
         ]),
+        str('content_warning', 'Set if material is insufficient for target duration', false),
       ],
     },
     rules: {
@@ -77,6 +78,7 @@ export const shorts: AgentDefinition = {
         'visual_style: ONLY talking head, b-roll, or text overlay — no underscores, no capitalization, no variations.',
         'cta: At least one short should include `cta_comment_prompt` as a question. At least one should reference `cta_subscribe`. "Watch the full video" is acceptable in `cta` but NOT in `hook` or `script` body.',
         'No fabricated stats — only use figures from `key_stats`.',
+        'If production_params.target_duration_minutes is provided (in tenths), scale each short to that duration. 0.25 (15s) = 35-40 words, 0.5 (30s) = 70-80 words, 1.0 (60s) = 140-150 words. If material is insufficient, set content_warning instead of padding.',
       ],
       validation: [
         'Verify exactly 3 items in the output shorts array.',
@@ -233,25 +235,6 @@ Example CTAs:
 - "Subscribe for more research-backed sleep tips."
 - "Drop a comment — what's your best sleep window?"
 - "Watch the full video on our channel for the complete breakdown."`,
-      },
-      {
-        title: 'Target Duration (F2-047)',
-        content: `Shorts are between 15 and 60 seconds. If \`production_params.target_duration_minutes\`
-is provided (in tenths), use it to guide script length:
-
-- 0.25 (15s) → 1 hook + 1 punchline, 35-40 words
-- 0.5 (30s) → hook + 2 beats + CTA, 70-80 words
-- 1.0 (60s) → full mini-narrative structure, 140-150 words
-
-Do not artificially inflate or deflate. Structure the content to naturally fit the target duration:
-
-- 15 seconds: One shocking stat or claim, quick CTA
-- 30 seconds: Hook + quick evidence or example + CTA
-- 60 seconds: Full narrative with setup, evidence, reframe, CTA
-
-If the material is insufficient to hit the target naturally, return a \`content_warning\`
-field explaining why (e.g., "insufficient research detail for 60-second narrative").
-Never pad with filler or repetition.`,
       },
       {
         title: 'Before Finishing',

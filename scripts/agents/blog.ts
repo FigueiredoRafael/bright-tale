@@ -167,7 +167,14 @@ AFFILIATE SECTION (if affiliate_context provided):
 CONCLUSION (75-150 words):
 - Reflect the closing_emotion
 - Summarize the transformation or insight
-- End with cta_comment_prompt as a reader question`,
+- End with cta_comment_prompt as a reader question
+
+TARGET LENGTH:
+If input contains production_params.target_word_count, full_draft must hit that count (+-15%):
+- 300 words: 1 core idea + practical takeaway
+- 500-700 words: 2-3 sub-points with examples
+- 1000+ words: long-form with sub-headings, case studies, FAQ
+If research material is insufficient for the target, set content_warning instead of padding.`,
       },
       {
         title: 'Field Guidance: Affiliate Integration',
@@ -204,22 +211,6 @@ Examples:
   anchor_text: "determine whether you're a morning person or night owl"
 
 These are suggestions for your content team to implement with actual URLs.`,
-      },
-      {
-        title: 'Target Length (F2-047)',
-        content: `O input pode conter \`production_params.target_word_count\` (número).
-Se presente, o \`full_draft\` DEVE ter aproximadamente esse
-número de palavras (±15%). Não inflate com encheção; estruture o
-conteúdo pra atingir o tamanho com substância:
-
-- 300 palavras → post curto, 1 ideia central + take prático
-- 500–700 palavras → post médio, 2-3 sub-pontos com exemplos
-- 1000+ palavras → post longo-form, sub-headings, exemplos múltiplos,
-  estudos de caso, FAQ no final
-
-Se o material da pesquisa é insuficiente pro target, retorne campo
-\`content_warning\` em vez de inflar com placeholder. Nunca repita
-parágrafos pra encher.`,
       },
       {
         title: 'Before Finishing',

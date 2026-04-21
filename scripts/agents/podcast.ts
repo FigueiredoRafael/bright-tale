@@ -66,6 +66,7 @@ export const podcast: AgentDefinition = {
         arr('guest_questions', 'Optional - include if content has expert angle', 'string', false),
         str('outro', 'Closing remarks. Lands on closing_emotion. Includes cta_subscribe. Ends with cta_comment_prompt as a listener question.'),
         str('duration_estimate', 'e.g., "20-25 minutes"'),
+        str('content_warning', 'Set if material is insufficient for target duration', false),
       ],
     },
     rules: {
@@ -83,6 +84,7 @@ export const podcast: AgentDefinition = {
         '`guest_questions`: Include if content references expert research or could benefit from expert perspective. 3-5 questions. Frame as interview prompts.',
         '`outro`: Must land on `closing_emotion`. Must include `cta_subscribe` verbatim or paraphrased. Must end with `cta_comment_prompt` as a direct listener question.',
         '`duration_estimate`: Base on talking_point count (roughly 5-7 min per point) plus intro/outro.',
+        'If production_params.target_duration_minutes is provided, scale episode structure to that duration. Each talking_point is roughly 5-7 minutes. If material is insufficient, set content_warning instead of padding.',
       ],
       validation: [
         'Verify `talking_points` count matches `talking_point_seeds` count.',
@@ -158,27 +160,6 @@ Example (JSON):
 {
   "outro": "So here's what we covered: sleep timing isn't just a hack - it's a fundamental lever for how you feel every single day. If you're exhausted despite sleeping enough, it might be time to experiment with your window.\\n\\nIf this resonated with you, subscribe for more research-backed productivity insights.\\nAnd drop a comment: what's your experience? Are you a morning person or night owl?\\nLet me know in the comments below."
 }`,
-      },
-      {
-        title: 'Target Duration (F2-047)',
-        content: `If \`production_params.target_duration_minutes\` is provided in input (in tenths),
-use it to guide episode structure:
-
-- 10 min → short conversation, 2 talking points + intro/outro
-- 20 min → standard format, 4 talking points + depth
-- 30 min → deep dive or interview format, 5-6 talking points
-- 45+ min → multi-segment with variety, expert guests, or narrative arc
-
-Structure segments and duration of each to sum to the target:
-
-- Each talking_point ≈ 5-7 min (roughly 1000-1200 words spoken)
-- intro_hook ≈ 1-2 min
-- personal_angle ≈ 2-3 min
-- outro ≈ 1-2 min
-
-If material is insufficient to hit the target naturally, return a \`content_warning\`
-field explaining why (e.g., "insufficient research depth for 45-minute format").
-Never pad with filler or repetition.`,
       },
       {
         title: 'Before Finishing',
