@@ -74,16 +74,43 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
 
       if (error) throw error;
 
-      // If seed_idea_id is provided, seed the pipeline state with the selected idea
+      // If seed_idea_id is provided, pre-complete the brainstorm stage with the
+      // selected idea so the orchestrator jumps straight to research.
       if (data.seed_idea_id && project) {
-        await sb
-          .from('projects')
-          .update({
-            pipeline_state_json: {
-              brainstorm: { selected_idea_id: data.seed_idea_id, source: 'library' },
-            },
-          })
-          .eq('id', project.id);
+        const { data: idea } = await sb
+          .from('idea_archives')
+          .select('id, title, verdict, core_tension, brainstorm_session_id')
+          .eq('id', data.seed_idea_id)
+          .maybeSingle();
+
+        if (idea) {
+          const completedAt = new Date().toISOString();
+          await sb
+            .from('projects')
+            .update({
+              current_stage: 'research',
+              pipeline_state_json: {
+                mode: 'step-by-step',
+                currentStage: 'research',
+                stageResults: {
+                  brainstorm: {
+                    ideaId: idea.id,
+                    ideaTitle: idea.title,
+                    ideaVerdict: idea.verdict,
+                    ideaCoreTension: idea.core_tension ?? '',
+                    brainstormSessionId: idea.brainstorm_session_id ?? undefined,
+                    completedAt,
+                  },
+                },
+                autoConfig: {
+                  maxReviewIterations: 5,
+                  targetReviewScore: 90,
+                  pauseBeforePublish: true,
+                },
+              },
+            })
+            .eq('id', project.id);
+        }
       }
 
       return reply.status(201).send({ data: project, error: null });
