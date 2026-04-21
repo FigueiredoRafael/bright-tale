@@ -42,7 +42,7 @@ export function IdeaPageClient({ ideaId }: Props) {
     async function load() {
       setStatus('loading');
       try {
-        const res = await fetch(`/api/library/${ideaId}`);
+        const res = await fetch(`/api/ideas/library/${ideaId}`);
         const json = await res.json();
         if (cancelled) return;
         if (res.status === 404) {

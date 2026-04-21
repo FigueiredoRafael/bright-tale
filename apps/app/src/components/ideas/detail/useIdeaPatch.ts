@@ -4,7 +4,7 @@ import type { IdeaRow } from '@/app/[locale]/(app)/ideas/[id]/page.client';
 export function useIdeaPatch(ideaId: string, current: IdeaRow | null) {
   const patch = useCallback(
     async (body: Record<string, unknown>): Promise<IdeaRow> => {
-      const res = await fetch(`/api/library/${ideaId}`, {
+      const res = await fetch(`/api/ideas/library/${ideaId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

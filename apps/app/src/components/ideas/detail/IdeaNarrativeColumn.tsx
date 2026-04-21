@@ -48,7 +48,7 @@ export function IdeaNarrativeColumn({ idea, onPatchDiscovery, onIdeaUpdated }: P
           ariaLabel="Core tension"
           onSave={async (next) => {
             // Top-level field, not under discovery_data
-            const res = await fetch(`/api/library/${idea.id}`, {
+            const res = await fetch(`/api/ideas/library/${idea.id}`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ core_tension: next }),

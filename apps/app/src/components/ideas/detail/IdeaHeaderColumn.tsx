@@ -32,7 +32,7 @@ export function IdeaHeaderColumn({ idea, onIdeaUpdated, onPatchDiscovery }: Prop
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
   async function patchTopLevel(body: Record<string, unknown>) {
-    const res = await fetch(`/api/library/${idea.id}`, {
+    const res = await fetch(`/api/ideas/library/${idea.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -89,7 +89,7 @@ export function IdeaHeaderColumn({ idea, onIdeaUpdated, onPatchDiscovery }: Prop
   async function handleDuplicate() {
     setBusyAction('duplicate');
     try {
-      const res = await fetch('/api/library', {
+      const res = await fetch('/api/ideas/library', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -115,7 +115,7 @@ export function IdeaHeaderColumn({ idea, onIdeaUpdated, onPatchDiscovery }: Prop
   async function handleDelete() {
     setBusyAction('delete');
     try {
-      const res = await fetch(`/api/library/${idea.id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/ideas/library/${idea.id}`, { method: 'DELETE' });
       const json = await res.json();
       if (!res.ok || json.error) throw new Error(json.error?.message ?? 'Failed to delete');
       router.push('/en/ideas');

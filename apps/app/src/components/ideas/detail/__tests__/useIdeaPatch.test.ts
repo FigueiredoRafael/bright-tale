@@ -21,7 +21,7 @@ describe('useIdeaPatch', () => {
       updated = await result.current.patch({ title: 'updated' });
     });
 
-    expect(global.fetch).toHaveBeenCalledWith('/api/library/1', expect.objectContaining({
+    expect(global.fetch).toHaveBeenCalledWith('/api/ideas/library/1', expect.objectContaining({
       method: 'PATCH',
       body: JSON.stringify({ title: 'updated' }),
     }));
