@@ -5,6 +5,9 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, AlertTriangle } from 'lucide-react';
+import { useIdeaPatch } from '@/components/ideas/detail/useIdeaPatch';
+import { IdeaHeaderColumn } from '@/components/ideas/detail/IdeaHeaderColumn';
+import { IdeaNarrativeColumn } from '@/components/ideas/detail/IdeaNarrativeColumn';
 
 // Placeholder row shape — will be tightened via @brighttale/shared types later.
 export interface IdeaRow {
@@ -31,6 +34,8 @@ export function IdeaPageClient({ ideaId }: Props) {
   const [idea, setIdea] = useState<IdeaRow | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'notfound' | 'error'>('loading');
   const [errorMsg, setErrorMsg] = useState('');
+
+  const { patchDiscovery } = useIdeaPatch(ideaId, idea);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,8 +105,18 @@ export function IdeaPageClient({ ideaId }: Props) {
         <span className="mx-2">/</span>
         <span>{idea.idea_id}</span>
       </div>
-      {/* Columns land in Tasks 6 and 7 */}
-      <pre className="text-xs">{JSON.stringify(idea, null, 2)}</pre>
+      <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-8">
+        <IdeaHeaderColumn
+          idea={idea}
+          onIdeaUpdated={setIdea}
+          onPatchDiscovery={patchDiscovery}
+        />
+        <IdeaNarrativeColumn
+          idea={idea}
+          onPatchDiscovery={patchDiscovery}
+          onIdeaUpdated={setIdea}
+        />
+      </div>
     </div>
   );
 }
