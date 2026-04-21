@@ -121,7 +121,9 @@ export function IdeaHeaderColumn({ idea, onIdeaUpdated, onPatchDiscovery }: Prop
           core_tension: idea.core_tension,
           target_audience: idea.target_audience,
           verdict: idea.verdict,
-          discovery_data: idea.discovery_data,
+          // API expects discovery_data as a stringified JSON (zod: z.string()).
+          // Our in-memory idea.discovery_data is already parsed to an object.
+          discovery_data: idea.discovery_data ? JSON.stringify(idea.discovery_data) : '',
           tags: idea.tags,
           channel_id: idea.channel_id,
         }),

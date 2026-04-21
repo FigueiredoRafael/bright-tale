@@ -92,7 +92,7 @@ export function IdeaDetailsDialog({ idea, open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
+      <DialogContent className="max-w-3xl lg:max-w-5xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
         <DialogHeader className="px-6 pt-6 pb-4 border-b bg-gradient-to-b from-muted/30 to-transparent">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
