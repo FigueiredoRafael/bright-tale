@@ -15,7 +15,7 @@ export const podcastOutputSchema = z.object({
   episode_description: z.string().min(1),
   intro_hook: z.string().min(1),
   talking_points: z.array(talkingPointSchema).min(1),
-  personal_angle: z.string(),
+  host_talking_prompts: z.array(z.string()),
   guest_questions: z.array(z.string()).default([]),
   outro: z.string().min(1),
   duration_estimate: z.string().optional(),

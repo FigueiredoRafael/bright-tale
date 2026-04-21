@@ -90,7 +90,7 @@ const mockPodcast = {
   episode_description: 'A great podcast about testing',
   intro_hook: 'Welcome to this episode',
   talking_points_json: JSON.stringify(mockTalkingPoints),
-  personal_angle: 'My personal take on this',
+  personal_angle: JSON.stringify(['Share your experience here', 'Describe a moment when']),
   guest_questions: ['Question one?', 'Question two?'],
   outro: 'Thanks for listening',
   duration_estimate: '45:00',
@@ -195,7 +195,7 @@ describe('POST /podcasts', () => {
     episode_description: 'A podcast about something interesting',
     intro_hook: 'Welcome to the show',
     talking_points: mockTalkingPoints,
-    personal_angle: 'My personal perspective',
+    host_talking_prompts: ['Share a time when', 'Describe how you felt'],
     outro: 'Thanks for listening everyone',
   };
 

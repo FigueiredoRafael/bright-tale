@@ -202,8 +202,10 @@ BC_PRODUCTION_OUTPUT:
       - point: "The Andrew Henderson 'Legal Pause' concept"
         notes: |
           Discuss what happens to your legal rights when you cross borders.
-    personal_angle: |
-      I remember being in a cafe in Medellin and realizing that every person there had a $2,000 laptop out. It was a gold mine for anyone watching.
+    host_talking_prompts:
+      - "Share a time when you realized the visibility of your tech was putting you at risk."
+      - "Describe a moment when you felt truly vulnerable while traveling with valuable devices."
+      - "When have you noticed how people in different countries react to expensive gadgets?"
     guest_questions:
       - "What is the biggest security mistake you see nomads make?"
       - "Can you truly be secure on public Wi-Fi without a hardware key?"

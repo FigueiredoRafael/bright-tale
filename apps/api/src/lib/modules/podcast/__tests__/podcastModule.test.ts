@@ -38,7 +38,11 @@ const validPodcastOutput: PodcastModuleOutput = {
     { point: "The investment alternative thesis", notes: "S&P 500 vs home appreciation over 10 years." },
     { point: "The break-even timeline myth", notes: "Most people sell before they break even on transaction costs." },
   ],
-  personal_angle: "I rented for 8 years while everyone told me I was wasting money. Then I ran the numbers.",
+  host_talking_prompts: [
+    "Share a time when you rented for years while friends were buying homes.",
+    "When did you first run the actual numbers on renting vs buying?",
+    "Describe a moment when you realized buying wasn't the automatic 'good choice' everyone assumes.",
+  ],
   guest_questions: [
     "What would you tell someone who says 'renting is throwing money away'?",
     "At what timeline does buying finally beat renting?",
@@ -146,9 +150,9 @@ describe("generatePodcastMarkdownExport", () => {
     expect(md).toContain("The investment alternative thesis");
   });
 
-  it("includes the personal angle", () => {
+  it("includes the host talking prompts", () => {
     const md = generatePodcastMarkdownExport(validPodcastOutput);
-    expect(md).toContain("8 years");
+    expect(md).toContain("Share a time when");
   });
 
   it("includes guest questions when present", () => {

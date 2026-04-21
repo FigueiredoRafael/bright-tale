@@ -148,13 +148,17 @@ export default function PodcastDetailPage() {
         </Card>
       )}
 
-      {data.personal_angle && (
+      {data.host_talking_prompts?.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground uppercase tracking-wide">Personal Angle</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground uppercase tracking-wide">Prompts for the host to personalize</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm leading-relaxed whitespace-pre-line">{data.personal_angle}</p>
+            <ol className="list-decimal pl-5 space-y-2">
+              {data.host_talking_prompts.map((prompt, i) => (
+                <li key={i} className="text-sm leading-relaxed">{prompt}</li>
+              ))}
+            </ol>
           </CardContent>
         </Card>
       )}

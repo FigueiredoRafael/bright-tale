@@ -350,7 +350,7 @@ export interface PodcastOutput {
     point: string;
     notes: string;
   }>;
-  personal_angle: string;
+  host_talking_prompts: string[];
   guest_questions: string[];
   outro: string;
   duration_estimate: string;

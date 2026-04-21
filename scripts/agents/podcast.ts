@@ -14,7 +14,7 @@ export const podcast: AgentDefinition = {
       principles: [
         '`talking_point_seeds` → one `talking_point` per seed; add conversational `notes` for each (don\'t just restate the evidence).',
         '`key_quotes` → embed in the `notes` of the most relevant talking point, attributed fully.',
-        '`personal_angle` must be first-person and experiential — a genuine personal take, not a summary of research.',
+        '`host_talking_prompts` are invitation phrases for the host to personalize with real experience. Never fabricate first-person statements. The host supplies the story.',
         '`intro_hook` should reference `emotional_arc.opening_emotion` — start where the audience already is.',
         '`outro` must close on `emotional_arc.closing_emotion` and include `cta_subscribe`.',
         'Tone is conversational, not scripted — allow incomplete sentences, verbal asides, and natural rhythm in notes.',
@@ -62,7 +62,7 @@ export const podcast: AgentDefinition = {
           str('point', 'The main claim for this talking point'),
           str('notes', 'Conversational guidance for exploring this point. Include: how to introduce it naturally, the evidence and how to frame it without sounding scripted, any relevant quote (attributed to author + credentials), a verbal transition to the next point'),
         ]),
-        str('personal_angle', 'First-person framing for the host to personalize. The host will adapt with their real experience.'),
+        arr('host_talking_prompts', 'Array of 2-4 invitation-style prompts for the host to personalize with real experience. Phrase each as an invitation ("Share a time when...", "Describe how you reacted to..."), NEVER as fabricated first-person statements. The host supplies the actual story.', 'string'),
         arr('guest_questions', 'Optional - include if content has expert angle', 'string', false),
         str('outro', 'Closing remarks. Lands on closing_emotion. Includes cta_subscribe. Ends with cta_comment_prompt as a listener question.'),
         str('duration_estimate', 'Rough estimate based on talking point count (~5-7 min each). Not a production target.'),
@@ -80,7 +80,7 @@ export const podcast: AgentDefinition = {
         '`intro_hook`: References `opening_emotion`. Sets up the problem. Does NOT give away the answer. Creates a reason to keep listening. 60-90 seconds of spoken content.',
         '`talking_points`: One per `talking_point_seed`, in order. Each `notes` block is conversational guidance - write it like you\'re coaching the host, not scripting them. Fragments and asides are fine.',
         '`notes`: Must include where to embed any relevant `key_quotes` (with full attribution: "author + credentials"). Use figures from `key_stats` where they support the point.',
-        '`personal_angle`: First-person only. Experiential, not academic. This is the host saying "here\'s how this lands for me personally." It can contradict the thesis slightly - that\'s authentic.',
+        '`host_talking_prompts`: 2-4 invitation phrases. Phrase as "Share a time when...", "Describe how...", "When have you...". Never as first-person statements. The host supplies the authentic experience.',
         '`guest_questions`: Include if content references expert research or could benefit from expert perspective. 3-5 questions. Frame as interview prompts.',
         '`outro`: Must land on `closing_emotion`. Must include `cta_subscribe` verbatim or paraphrased. Must end with `cta_comment_prompt` as a direct listener question.',
         '`duration_estimate`: Base on talking_point count (roughly 5-7 min per point) plus intro/outro.',
@@ -88,7 +88,7 @@ export const podcast: AgentDefinition = {
       ],
       validation: [
         'Verify `talking_points` count matches `talking_point_seeds` count.',
-        'Verify `personal_angle` is first-person.',
+        'Verify `host_talking_prompts` contains 2-4 items. Each item must be an invitation phrase — must not start with "I " or contain "my" in a first-person claim.',
         'Verify `outro` includes `cta_subscribe` and ends with a listener question.',
       ],
     },
@@ -116,19 +116,22 @@ Example (JSON — use embedded \\n for line breaks):
 }`,
       },
       {
-        title: 'Field Guidance: Personal Angle',
-        content: `personal_angle is the host\'s lived experience — not a summary of research.
+        title: 'Field Guidance: Host Talking Prompts',
+        content: `host_talking_prompts are invitation phrases for the host to fill with their own real experience.
 
-This is where the host says:
-- "Here\'s how this lands for me personally"
-- "When I tested this for 30 days, here\'s what happened..."
-- "I was skeptical at first, but..."
-
-It can slightly contradict the thesis — that\'s authentic.
+Return 2-4 prompts. Each must:
+- Frame a moment the host can fill from their own experience
+- Use invitation language: "Share a time when...", "Describe how you reacted to...", "When have you noticed..."
+- Never fabricate first-person claims ("I once had...", "My experience shows...")
+- Reference the thesis or argument_chain steps so they tie into the episode
 
 Example (JSON):
 {
-  "personal_angle": "I used to be obsessed with the 8-hour rule. Sleep tracking apps, perfect darkness, white noise.\\nI was still exhausted. Then I tracked my actual peak sleep window for a month, and everything changed.\\nI shifted just 1.5 hours earlier, and suddenly I was waking up at 6 AM with energy.\\nThat's when I realized the problem wasn't how much I was sleeping - it was when."
+  "host_talking_prompts": [
+    "Share a time when you realized your sleep schedule was the real problem.",
+    "Describe a moment when you tried to force yourself to sleep at the 'right' time — how did your body respond?",
+    "When have you noticed a shift in your energy just by changing when you sleep?"
+  ]
 }`,
       },
       {
@@ -138,12 +141,12 @@ Example (JSON):
 Typical structure:
 - intro_hook: 1-2 minutes
 - talking_point: 4-6 minutes per point (roughly 1000-1200 words spoken)
-- personal_angle: 2-3 minutes
+- host_talking_prompts: 2-3 minutes (host fills with real experience)
 - outro: 1-2 minutes
 
 Examples:
-- 3 talking_points + intro/personal/outro ≈ 20-25 minutes
-- 5 talking_points + intro/personal/outro ≈ 35-45 minutes
+- 3 talking_points + intro/prompts/outro ≈ 20-25 minutes
+- 5 talking_points + intro/prompts/outro ≈ 35-45 minutes
 
 Base estimate on talking_point count, not arbitrary time.`,
       },
@@ -165,7 +168,7 @@ Example (JSON):
         title: 'Before Finishing',
         content: `1. Verify talking_points count matches talking_point_seeds count
 2. Verify each talking_point includes the point + notes structure
-3. Verify personal_angle is first-person and experiential
+3. Verify host_talking_prompts contains 2-4 invitation phrases (no first-person fabrication)
 4. Verify outro lands on closing_emotion
 5. Verify outro includes cta_subscribe (verbatim or paraphrased)
 6. Verify outro ends with a listener question (from cta_comment_prompt)

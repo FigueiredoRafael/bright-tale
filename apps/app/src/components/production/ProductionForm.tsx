@@ -462,7 +462,7 @@ export default function ProductionForm({
                 episode_description: parsedContent.podcast.episode_description,
                 intro_hook: parsedContent.podcast.intro_hook,
                 talking_points: parsedContent.podcast.talking_points,
-                personal_angle: parsedContent.podcast.personal_angle,
+                host_talking_prompts: parsedContent.podcast.host_talking_prompts,
                 guest_questions: parsedContent.podcast.guest_questions,
                 outro: parsedContent.podcast.outro,
                 duration_estimate: parsedContent.podcast.duration_estimate,
@@ -1209,7 +1209,7 @@ export default function ProductionForm({
                                                             </ul>
                                                         </div>
                                                     )}
-                                                    {parsedContent.podcast.personal_angle && <div><Label className="text-xs text-muted-foreground">Personal Angle</Label><p className="text-sm bg-muted p-2 rounded">{parsedContent.podcast.personal_angle}</p></div>}
+                                                    {parsedContent.podcast.host_talking_prompts && parsedContent.podcast.host_talking_prompts.length > 0 && <div><Label className="text-xs text-muted-foreground">Prompts for the host to personalize</Label><ul className="list-disc pl-5 text-sm">{parsedContent.podcast.host_talking_prompts.map((p, i) => <li key={i}>{p}</li>)}</ul></div>}
                                                     <div><Label className="text-xs text-muted-foreground">Outro</Label><p className="text-sm bg-blue-50 p-2 rounded">{parsedContent.podcast.outro}</p></div>
                                                     <div className="flex items-center justify-between pt-2 border-t">
                                                         {savedPodcastId && <div className="flex items-center gap-2 text-sm text-green-700"><Library className="h-4 w-4 text-success" />Podcast saved!</div>}

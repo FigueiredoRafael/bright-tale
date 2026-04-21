@@ -24,8 +24,12 @@ export function generatePodcastMarkdownExport(podcast: PodcastOutput): string {
     });
   }
 
-  if (podcast.personal_angle) {
-    md += `## Personal Angle\n\n${podcast.personal_angle}\n\n`;
+  if (podcast.host_talking_prompts?.length > 0) {
+    md += `## Host Talking Prompts\n\n`;
+    podcast.host_talking_prompts.forEach((p, i) => {
+      md += `${i + 1}. ${p}\n`;
+    });
+    md += `\n`;
   }
 
   if (podcast.guest_questions?.length > 0) {
