@@ -11,7 +11,7 @@
     "dev:app": "NODE_OPTIONS='--max-old-space-size=512' npm run dev --workspace=@brighttale/app",
     "dev:api": "NODE_OPTIONS='--max-old-space-size=256' npm run dev --workspace=@brighttale/api",
     "dev:web": "NODE_OPTIONS='--max-old-space-size=512' npm run dev --workspace=@brighttale/web",
-    "dev:docs": "NODE_OPTIONS='--max-old-space-size=256' npm run dev --workspace=@brighttale/docs-site",
+    "dev:docs": "NODE_OPTIONS='--max-old-space-size=1024' npm run dev --workspace=@brighttale/docs-site",
     "dev:inngest": "npx inngest-cli@latest dev --no-discovery -u http://localhost:3001/inngest",
     "dev:ollama": "ollama serve 2>/dev/null || echo '[ollama] skipped — install with: brew install ollama (mac) or curl -fsSL https://ollama.com/install.sh | sh (linux)'",
     "build": "npm run build --workspaces --if-present",

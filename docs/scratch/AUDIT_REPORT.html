@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bright Tale | Auditoria Técnica Profunda v2.1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0b0f1a;
+            --card-bg: #161b2b;
+            --accent-blue: #38bdf8;
+            --accent-purple: #818cf8;
+            --accent-red: #fb7185;
+            --accent-green: #34d399;
+            --accent-yellow: #fbbf24;
+            --text-main: #f8fafc;
+            --text-dim: #64748b;
+            --border: #2d3748;
+            --code-bg: #1e293b;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 40px 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: left;
+            margin-bottom: 60px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        .header-left h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            margin: 0;
+            letter-spacing: -1.5px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-left p {
+            color: var(--text-dim);
+            margin: 8px 0 0 0;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+        }
+
+        .status-badge {
+            background: rgba(251, 113, 133, 0.1);
+            color: var(--accent-red);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            border: 1px solid rgba(251, 113, 133, 0.3);
+            text-transform: uppercase;
+        }
+
+        .section-title {
+            font-size: 1.75rem;
+            font-weight: 800;
+            margin: 60px 0 30px 0;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .section-title::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        .finding-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .finding-card::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+        }
+
+        .finding-card.critical::before { background: var(--accent-red); }
+        .finding-card.high::before { background: var(--accent-yellow); }
+        .finding-card.medium::before { background: var(--accent-blue); }
+
+        .finding-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
+        }
+
+        .finding-title h3 {
+            margin: 0;
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+
+        .finding-title span {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-top: 4px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .severity {
+            font-size: 0.75rem;
+            font-weight: 800;
+            padding: 4px 10px;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .critical .severity { background: rgba(251, 113, 133, 0.2); color: var(--accent-red); }
+        .high .severity { background: rgba(251, 191, 36, 0.2); color: var(--accent-yellow); }
+        .medium .severity { background: rgba(56, 189, 248, 0.2); color: var(--accent-blue); }
+
+        .finding-description {
+            margin-bottom: 25px;
+            color: var(--text-main);
+        }
+
+        .example-box {
+            background: var(--code-bg);
+            border-radius: 8px;
+            padding: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            margin-top: 15px;
+            position: relative;
+        }
+
+        .example-box header {
+            margin-bottom: 15px;
+            border: none;
+            padding: 0;
+            font-weight: 600;
+            font-size: 0.75rem;
+            color: var(--accent-blue);
+            text-transform: uppercase;
+        }
+
+        code {
+            color: #e2e8f0;
+            display: block;
+            white-space: pre-wrap;
+        }
+
+        .highlight-err { color: var(--accent-red); }
+        .highlight-fix { color: var(--accent-green); }
+
+        .impact-list {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 25px;
+        }
+
+        .impact-item {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+
+        .impact-item strong {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--text-main);
+        }
+
+        .action-plan {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid var(--accent-blue);
+            padding: 40px;
+            border-radius: 16px;
+            margin-top: 80px;
+        }
+
+        .action-plan h2 {
+            margin-top: 0;
+            color: var(--accent-blue);
+            font-size: 1.8rem;
+        }
+
+        footer {
+            margin-top: 100px;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+            font-family: 'JetBrains Mono', monospace;
+            padding-bottom: 40px;
+        }
+
+        .badge-new {
+            background: var(--accent-green);
+            color: #000;
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-left">
+                <h1>Deep Technical Audit</h1>
+                <p>PROJETO: BRIGHT TALE | AUDITOR: LUTERO | v2.1</p>
+            </div>
+            <div class="status-badge">Action Required</div>
+        </header>
+
+        <!-- SEÇÃO 1: SEGURANÇA -->
+        <h2 class="section-title">🛡️ Segurança e Banco de Dados</h2>
+        
+        <div class="finding-card critical">
+            <div class="finding-header">
+                <div class="finding-title">
+                    <h3>Abuso de Service Role em Políticas de RLS</h3>
+                    <span>LOCAL: supabase/migrations/*_affiliate_*.sql</span>
+                </div>
+                <div class="severity">Crítico</div>
+            </div>
+            <div class="finding-description">
+                <p>A maioria das tabelas de afiliados e logs de motor está utilizando a política <code>service_role_all</code>. Isso remove a segunda camada de defesa do banco de dados, confiando 100% que a API nunca será comprometida.</p>
+            </div>
+            <div class="example-box">
+                <header>Exemplo de Vulnerabilidade (SQL)</header>
+                <code><span class="highlight-err">-- Falha: Sem isolamento de usuário</span>
+CREATE POLICY "service_role_all" ON public.affiliates
+FOR ALL TO service_role USING (true);
+
+<span class="highlight-fix">-- Sugestão: Defesa em Profundidade</span>
+CREATE POLICY "users_read_own_data" ON public.affiliates
+FOR SELECT TO authenticated USING (auth.uid() = user_id);</code>
+            </div>
+        </div>
+
+        <!-- SEÇÃO 2: CRÉDITOS -->
+        <h2 class="section-title">💳 Consumo de Créditos e Billing <span class="badge-new">NEW</span></h2>
+
+        <div class="finding-card critical">
+            <div class="finding-header">
+                <div class="finding-title">
+                    <h3>Ausência de Atomicidade e Hold de Créditos</h3>
+                    <span>LOCAL: apps/api/src/lib/credits.ts</span>
+                </div>
+                <div class="severity">Crítico</div>
+            </div>
+            <div class="finding-description">
+                <p>A dedução de créditos ocorre de forma assíncrona <strong>após</strong> a execução da tarefa. Não há transações SQL para garantir que o saldo não fique negativo sob carga simultânea (Race Condition).</p>
+            </div>
+            <div class="example-box">
+                <header>Risco de Race Condition (Node.js)</header>
+                <code><span class="highlight-err">// Passo 1: Verifica saldo (sem lock)</span>
+const balance = await getBalance(orgId); 
+<span class="highlight-err">// Passo 2: Executa tarefa cara (ex: chama IA por 30s)</span>
+await callExpensiveAI();
+<span class="highlight-err">// Passo 3: Debita (Saldo pode ter mudado!)</span>
+await debitCredits(orgId, cost);</code>
+            </div>
+            <div class="impact-list">
+                <div class="impact-item">
+                    <strong>Risco de Perda</strong>
+                    Se o processo cair no Passo 2, os créditos nunca são debitados, gerando prejuízo operacional.
+                </div>
+                <div class="impact-item">
+                    <strong>Gasto Duplo</strong>
+                    Usuários podem disparar múltiplas requisições paralelas e "burlar" o limite de saldo disponível.
+                </div>
+            </div>
+        </div>
+
+        <!-- SEÇÃO 3: ARQUITETURA -->
+        <h2 class="section-title">🔄 Inconsistências de Motor</h2>
+
+        <div class="finding-card medium">
+            <div class="finding-header">
+                <div class="finding-title">
+                    <h3>Fragmentação do IdeaContext</h3>
+                    <span>LOCAL: apps/api/src/lib/ai/loadIdeaContext.ts vs assets.ts</span>
+                </div>
+                <div class="severity">Média</div>
+            </div>
+            <div class="finding-description">
+                <p>O motor de <code>Assets</code> não consome o <code>IdeaContext</code> estruturado. Enquanto o motor de <code>Draft</code> usa <code>loadIdeaContext</code> para extrair tom e audiência, o motor de assets faz queries ad-hoc ou recebe dados parciais, resultando em imagens menos alinhadas ao contexto original.</p>
+            </div>
+        </div>
+
+        <div class="finding-card high">
+            <div class="finding-header">
+                <div class="finding-title">
+                    <h3>Dualidade Legacy/JSONB em Drafts</h3>
+                    <span>LOCAL: apps/api/src/routes/content-drafts.ts</span>
+                </div>
+                <div class="severity">Alta</div>
+            </div>
+            <div class="finding-description">
+                <p>A migração para o campo <code>draft_json</code> está em "estado fantasma". Algumas rotas ainda tentam extrair campos como <code>blog_content</code> diretamente, enquanto o novo padrão armazena tudo no JSONB.</p>
+            </div>
+        </div>
+
+        <!-- PLANO DE AÇÃO -->
+        <div class="action-plan">
+            <h2>Estratégia de Remediação</h2>
+            <div class="impact-list">
+                <div class="impact-item">
+                    <strong>Fase 1: Hardening & Billing (24h)</strong>
+                    Implementar transações SQL no <code>debitCredits</code> e políticas de RLS granulares.
+                </div>
+                <div class="impact-item">
+                    <strong>Fase 2: Unificação (48h)</strong>
+                    Integrar 'loadIdeaContext' no AssetsEngine e padronizar o acesso ao 'draft_json'.
+                </div>
+                <div class="impact-item">
+                    <strong>Fase 3: Observabilidade</strong>
+                    Expandir logs do Axiom para todos os fluxos de faturamento e revisão.
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            GERADO POR GEMINI-CLI | 2026-04-20 | AUDIT REPORT v2.1 FINAL
+        </footer>
+    </div>
+</body>
+</html>
