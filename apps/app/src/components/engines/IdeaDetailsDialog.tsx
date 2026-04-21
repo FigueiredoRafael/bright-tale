@@ -210,11 +210,11 @@ export function IdeaDetailsDialog({ idea, open, onOpenChange }: Props) {
             const hasAny = affiliateAngle || (productCategories && productCategories.length > 0) || sponsorCategory;
             if (!hasAny) return null;
             return (
-              <div className="rounded-lg border bg-amber-50/50 p-4">
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700 mb-1">
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-400 mb-1">
                   <DollarSign className="h-3.5 w-3.5" /> Monetization Hypothesis
                 </div>
-                <p className="text-xs text-amber-600 italic mb-3">AI speculation — verify before outreach.</p>
+                <p className="text-xs text-amber-300/70 italic mb-3">AI speculation — verify before outreach.</p>
                 <div className="space-y-2.5">
                   {affiliateAngle && (
                     <MiniField label="Affiliate Angle">{affiliateAngle}</MiniField>
