@@ -25,21 +25,24 @@ describe('Review agent inputSchema', () => {
 
   it('declares required Blog fields', () => {
     for (const f of ['blog.title', 'blog.slug', 'blog.meta_description', 'blog.primary_keyword',
-                     'blog.full_draft']) {
+                     'blog.secondary_keywords', 'blog.outline', 'blog.full_draft',
+                     'blog.affiliate_integration', 'blog.internal_links_suggested']) {
       expect(allFields).toContain(f);
     }
   });
 
   it('declares required Video fields', () => {
-    for (const f of ['video.title_options', 'video.script', 'video.estimated_duration',
-                     'video.thumbnail', 'video.chapter_count']) {
+    for (const f of ['video.title_options', 'video.script', 'video.teleprompter_script',
+                     'video.video_description', 'video.estimated_duration', 'video.thumbnail',
+                     'video.chapter_count']) {
       expect(allFields).toContain(f);
     }
   });
 
   it('declares required Podcast fields', () => {
-    for (const f of ['podcast.episode_title', 'podcast.talking_points', 'podcast.intro_hook',
-                     'podcast.outro']) {
+    for (const f of ['podcast.episode_title', 'podcast.episode_description', 'podcast.intro_hook',
+                     'podcast.talking_points', 'podcast.host_talking_prompts',
+                     'podcast.guest_questions', 'podcast.outro']) {
       expect(allFields).toContain(f);
     }
   });
