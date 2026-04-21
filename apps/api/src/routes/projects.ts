@@ -85,31 +85,39 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
 
         if (idea) {
           const completedAt = new Date().toISOString();
-          await sb
-            .from('projects')
-            .update({
-              current_stage: 'research',
-              pipeline_state_json: {
-                mode: 'step-by-step',
-                currentStage: 'research',
-                stageResults: {
-                  brainstorm: {
-                    ideaId: idea.id,
-                    ideaTitle: idea.title,
-                    ideaVerdict: idea.verdict,
-                    ideaCoreTension: idea.core_tension ?? '',
-                    brainstormSessionId: idea.brainstorm_session_id ?? undefined,
-                    completedAt,
+          await Promise.all([
+            sb
+              .from('projects')
+              .update({
+                current_stage: 'research',
+                pipeline_state_json: {
+                  mode: 'step-by-step',
+                  currentStage: 'research',
+                  stageResults: {
+                    brainstorm: {
+                      ideaId: idea.id,
+                      ideaTitle: idea.title,
+                      ideaVerdict: idea.verdict,
+                      ideaCoreTension: idea.core_tension ?? '',
+                      brainstormSessionId: idea.brainstorm_session_id ?? undefined,
+                      completedAt,
+                    },
+                  },
+                  autoConfig: {
+                    maxReviewIterations: 5,
+                    targetReviewScore: 90,
+                    pauseBeforePublish: true,
                   },
                 },
-                autoConfig: {
-                  maxReviewIterations: 5,
-                  targetReviewScore: 90,
-                  pauseBeforePublish: true,
-                },
-              },
-            })
-            .eq('id', project.id);
+              })
+              .eq('id', project.id),
+            // Back-ref so the idea detail page can show "Go to Project" and
+            // avoid creating duplicate projects from the same idea.
+            sb
+              .from('idea_archives')
+              .update({ project_id: project.id })
+              .eq('id', data.seed_idea_id),
+          ]);
         }
       }
 

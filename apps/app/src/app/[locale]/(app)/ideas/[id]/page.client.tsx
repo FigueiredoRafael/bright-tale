@@ -22,6 +22,7 @@ export interface IdeaRow {
   source_type: string | null;
   discovery_data: Record<string, unknown> | null;
   channel_id: string | null;
+  project_id: string | null;
   research_session_id: string | null;
   created_at: string;
   updated_at: string;

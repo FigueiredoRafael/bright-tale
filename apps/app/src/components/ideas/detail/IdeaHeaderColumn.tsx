@@ -159,9 +159,18 @@ export function IdeaHeaderColumn({ idea, onIdeaUpdated, onPatchDiscovery }: Prop
       </div>
 
       <div className="space-y-2">
-        <Button className="w-full justify-start" onClick={handleStartProject} disabled={busyAction !== null}>
-          <Rocket className="mr-2 h-4 w-4" /> {busyAction === 'start' ? 'Starting...' : 'Start Project'}
-        </Button>
+        {idea.project_id ? (
+          <Button
+            className="w-full justify-start"
+            onClick={() => router.push(`/en/projects/${idea.project_id}`)}
+          >
+            <Rocket className="mr-2 h-4 w-4" /> Go to Project
+          </Button>
+        ) : (
+          <Button className="w-full justify-start" onClick={handleStartProject} disabled={busyAction !== null}>
+            <Rocket className="mr-2 h-4 w-4" /> {busyAction === 'start' ? 'Starting...' : 'Start Project'}
+          </Button>
+        )}
         <Button
           variant="outline"
           className="w-full justify-start"
