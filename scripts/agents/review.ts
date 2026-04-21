@@ -134,11 +134,16 @@ export const review: AgentDefinition = {
       name: 'BC_REVIEW_OUTPUT',
       fields: [
         str('idea_id', 'The idea identifier'),
-        str('overall_verdict', 'Overall verdict: approved | revision_required | rejected'),
+        str('overall_verdict', 'Aggregate verdict across all requested types: approved | revision_required | rejected. Set approved only if every requested type has quality_tier in (excellent, good).'),
         str('overall_notes', 'Overall notes and summary'),
         obj('blog_review', 'Blog content review', [
           str('verdict', 'Verdict: approved | revision_required | rejected | not_requested'),
-          num('score', '1-100 score (0 if not_requested)'),
+          str('quality_tier', 'Quality tier: excellent | good | needs_revision | reject | not_requested. Derived from rubric_checks (see rules.validation).'),
+          obj('rubric_checks', 'Rubric breakdown that determines quality_tier', [
+            arr('critical_issues', 'Must-fix issues (blockers for publication)', 'string'),
+            arr('minor_issues', 'Nice-to-fix issues', 'string'),
+            arr('strengths', 'What the content does well', 'string'),
+          ], false),
           arr('strengths', 'Key strengths of the content', 'string', false),
           obj('issues', 'Issues found', [
             arrOf('critical', 'Critical issues that must be fixed', [
@@ -162,7 +167,12 @@ export const review: AgentDefinition = {
         ], false),
         obj('video_review', 'Video content review', [
           str('verdict', 'Verdict: approved | revision_required | rejected | not_requested'),
-          num('score', '1-100 score (0 if not_requested)'),
+          str('quality_tier', 'Quality tier: excellent | good | needs_revision | reject | not_requested. Derived from rubric_checks (see rules.validation).'),
+          obj('rubric_checks', 'Rubric breakdown that determines quality_tier', [
+            arr('critical_issues', 'Must-fix issues (blockers for publication)', 'string'),
+            arr('minor_issues', 'Nice-to-fix issues', 'string'),
+            arr('strengths', 'What the content does well', 'string'),
+          ], false),
           arr('strengths', 'Key strengths of the video', 'string', false),
           obj('issues', 'Issues found', [
             arrOf('critical', 'Critical issues', [
@@ -193,7 +203,12 @@ export const review: AgentDefinition = {
         ], false),
         obj('podcast_review', 'Podcast content review', [
           str('verdict', 'Verdict: approved | revision_required | rejected | not_requested'),
-          num('score', '1-100 score (0 if not_requested)'),
+          str('quality_tier', 'Quality tier: excellent | good | needs_revision | reject | not_requested. Derived from rubric_checks (see rules.validation).'),
+          obj('rubric_checks', 'Rubric breakdown that determines quality_tier', [
+            arr('critical_issues', 'Must-fix issues (blockers for publication)', 'string'),
+            arr('minor_issues', 'Nice-to-fix issues', 'string'),
+            arr('strengths', 'What the content does well', 'string'),
+          ], false),
           arr('strengths', 'Key strengths', 'string', false),
           arrOf('issues', 'Issues found', [
             str('issue', 'Description of the issue'),
@@ -273,6 +288,9 @@ export const review: AgentDefinition = {
         'A/B test suggestions are optional but encouraged for titles/thumbnails.',
         'Never approve content that doesn\'t match the original core_tension.',
         'If research was weak, note credibility concerns in the review.',
+        'If the production object or a required sub-object is missing entirely, set overall_verdict to "rejected" and add critical_issue: "Missing production payload for {type}".',
+        'If content_types_requested contains a type not present in production, flag as critical_issue on the overall notes: "Requested type \\"{type}\\" was not produced".',
+        'Never invent a sub-field that is null or undefined in the input. If you cannot assess a field, note it in minor_issues instead of fabricating an assessment.',
       ],
       validation: [
         'Verify `overall_verdict` is one of: approved | revision_required | rejected',
@@ -280,10 +298,13 @@ export const review: AgentDefinition = {
         'Verify each verdict field has corresponding notes',
         'Verify critical issues have specific locations and suggested fixes',
         'Verify `ready_to_publish: true` only when all requested content is approved',
-        'Verify scores are 0-100 (0 if not_requested)',
         'Verify publication plan is only included if overall_verdict is approved',
         'Verify all content types not in `content_types_requested` have `verdict: "not_requested"`',
         'If any declared input field under production.{type} is null, undefined, or empty, set that content type\'s quality_tier to "needs_revision" and add critical_issue: "Missing required field: {type}.{field}". Do not silently skip.',
+        'quality_tier is derived deterministically from rubric_checks: 0 critical + ≤2 minor → excellent. 0 critical + 3-5 minor → good. 1-2 critical OR ≥6 minor → needs_revision. 3+ critical → reject.',
+        'If a content type is not in content_types_requested, set its quality_tier to "not_requested" and rubric_checks to empty arrays.',
+        'overall_verdict must be "approved" only when every type in content_types_requested has quality_tier in (excellent, good). "revision_required" when any requested type is needs_revision. "rejected" when any requested type is reject.',
+        'ready_to_publish is true only when overall_verdict is "approved".',
       ],
     },
     customSections: [
