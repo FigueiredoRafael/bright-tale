@@ -60,7 +60,7 @@ export function IdeaHeaderColumn({ idea, onIdeaUpdated, onPatchDiscovery }: Prop
       });
       const json = await res.json();
       if (!res.ok || json.error) throw new Error(json.error?.message ?? 'Failed to start project');
-      router.push(`/en/projects/${json.data.project.id}`);
+      router.push(`/en/projects/${json.data.id}`);
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed');
     } finally {
@@ -79,7 +79,7 @@ export function IdeaHeaderColumn({ idea, onIdeaUpdated, onPatchDiscovery }: Prop
       });
       const json = await res.json();
       if (!res.ok || json.error) throw new Error(json.error?.message ?? 'Failed to create research session');
-      router.push(`/en/channels/${idea.channel_id}/research/new?session=${json.data.session.id}`);
+      router.push(`/en/channels/${idea.channel_id}/research/new?session=${json.data.sessionId}`);
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed');
     } finally {
