@@ -1,12 +1,13 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { Rocket, BookOpen, Copy, Trash2, Users, Search, Lightbulb } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Rocket, BookOpen, Copy, Trash2, Users, Search, Lightbulb, Tv } from 'lucide-react';
 import type { IdeaRow } from '@/app/[locale]/(app)/ideas/[id]/page.client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,9 +29,43 @@ interface Props {
   onPatchDiscovery: (partial: Record<string, unknown>) => Promise<IdeaRow>;
 }
 
+interface ChannelOption {
+  id: string;
+  name: string;
+}
+
 export function IdeaHeaderColumn({ idea, onIdeaUpdated, onPatchDiscovery }: Props) {
   const router = useRouter();
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [channels, setChannels] = useState<ChannelOption[]>([]);
+  const [savingChannel, setSavingChannel] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/channels');
+        const json = await res.json();
+        if (cancelled) return;
+        const items = (json?.data?.items ?? []) as Array<{ id: string; name: string }>;
+        setChannels(items.map((c) => ({ id: c.id, name: c.name })));
+      } catch {
+        // Silent — channel picker just stays empty
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  async function handleChannelChange(next: string) {
+    const channelId = next === '__none__' ? null : next;
+    if (channelId === idea.channel_id) return;
+    setSavingChannel(true);
+    try {
+      await patchTopLevel({ channel_id: channelId });
+    } finally {
+      setSavingChannel(false);
+    }
+  }
 
   async function patchTopLevel(body: Record<string, unknown>) {
     const res = await fetch(`/api/ideas/library/${idea.id}`, {
@@ -183,6 +218,23 @@ export function IdeaHeaderColumn({ idea, onIdeaUpdated, onPatchDiscovery }: Prop
       </div>
 
       <div className="space-y-3 text-sm">
+        <Field icon={<Tv className="h-3.5 w-3.5" />} label="Channel">
+          <Select
+            value={idea.channel_id ?? '__none__'}
+            onValueChange={handleChannelChange}
+            disabled={savingChannel || channels.length === 0}
+          >
+            <SelectTrigger className="h-8" aria-label="Channel">
+              <SelectValue placeholder={channels.length === 0 ? 'No channels' : 'Unassigned'} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Unassigned</SelectItem>
+              {channels.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
         <Field icon={<Users className="h-3.5 w-3.5" />} label="Target Audience">
           <InlineEditableText
             value={idea.target_audience ?? ''}
