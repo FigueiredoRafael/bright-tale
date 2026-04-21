@@ -39,9 +39,12 @@ export async function createKey(
     .single();
 
   if (error) {
-    // If token already exists (conflict), return existing
     if (error.code === '23505') {
-      return getKeyByToken(token);
+      const existing = await getKeyByToken(token);
+      if (existing && !existing.consumed) {
+        return { ...existing, _alreadyInFlight: true } as typeof existing & { _alreadyInFlight: boolean };
+      }
+      return existing;
     }
     throw error;
   }

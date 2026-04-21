@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -41,11 +41,11 @@ export function PublishProgress({ publishBody, onComplete, onError }: PublishPro
   const [progressInfo, setProgressInfo] = useState<{ current: number; total: number } | null>(null);
   const [activeMsg, setActiveMsg] = useState<string | null>(null);
   const [result, setResult] = useState<{ wordpressPostId: number; publishedUrl: string } | null>(null);
-  const [started, setStarted] = useState(false);
+  const startedRef = useRef(false);
 
   useEffect(() => {
-    if (started) return;
-    setStarted(true);
+    if (startedRef.current) return;
+    startedRef.current = true;
 
     async function stream() {
       try {

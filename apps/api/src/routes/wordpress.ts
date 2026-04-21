@@ -850,7 +850,10 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         if (existing && existing.consumed && existing.response) {
           return reply.send({ data: existing.response, error: null });
         }
-        await createKey(body.idempotencyToken, { purpose: 'wordpress:publish-draft' });
+        const key = await createKey(body.idempotencyToken, { purpose: 'wordpress:publish-draft' });
+        if (key && '_alreadyInFlight' in key) {
+          throw new ApiError(409, 'This publish request is already being processed');
+        }
       }
 
       // Set SSE headers
@@ -891,8 +894,16 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
           throw new ApiError(400, 'Draft must be approved before publishing');
         }
 
-        // Set status to 'publishing' to prevent concurrent publishes
-        await sb.from('content_drafts').update({ status: 'publishing' } as never).eq('id', body.draftId);
+        // Atomic status update — only succeeds if status hasn't changed since we checked
+        const { data: lockResult } = await sb
+          .from('content_drafts')
+          .update({ status: 'publishing' } as never)
+          .eq('id', body.draftId)
+          .in('status', ['approved', 'scheduled'])
+          .select('id');
+        if (!lockResult?.length) {
+          throw new ApiError(409, 'Draft is already being published');
+        }
 
         sendEvent('preparing', 'Loading WordPress configuration...');
         const wpConfig = await resolveWpConfig(sb, body.configId);
@@ -1354,7 +1365,10 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         if (existing && existing.consumed && existing.response) {
           return reply.send({ data: existing.response, error: null });
         }
-        await createKey(body.idempotencyToken, { purpose: 'wordpress:publish-draft' });
+        const key = await createKey(body.idempotencyToken, { purpose: 'wordpress:publish-draft' });
+        if (key && '_alreadyInFlight' in key) {
+          throw new ApiError(409, 'This publish request is already being processed');
+        }
       }
 
       // Load draft (cast to Record — new columns not yet in generated types)
@@ -1374,8 +1388,16 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         throw new ApiError(400, 'Draft must be approved before publishing');
       }
 
-      // Set status to 'publishing' to prevent concurrent publishes
-      await sb.from('content_drafts').update({ status: 'publishing' } as never).eq('id', body.draftId);
+      // Atomic status update — only succeeds if status hasn't changed since we checked
+      const { data: lockResult } = await sb
+        .from('content_drafts')
+        .update({ status: 'publishing' } as never)
+        .eq('id', body.draftId)
+        .in('status', ['approved', 'scheduled'])
+        .select('id');
+      if (!lockResult?.length) {
+        throw new ApiError(409, 'Draft is already being published');
+      }
 
       // Get WordPress credentials
       let site_url: string;
