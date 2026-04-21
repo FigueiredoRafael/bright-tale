@@ -47,18 +47,60 @@ export const review: AgentDefinition = {
             str('slug', 'URL slug — verify lowercase, hyphens only, no special chars', false),
             str('meta_description', 'SEO meta description', false),
             str('primary_keyword', 'Primary SEO keyword — verify presence in title and meta_description', false),
+            arr('secondary_keywords', 'Supporting keywords — verify at least one appears in body', 'string', false),
+            arrOf('outline', 'Outline sections — verify each has key_points and realistic word_count_target', [
+              str('h2', 'Section heading', false),
+              arr('key_points', 'Bullet points for this section', 'string', false),
+              num('word_count_target', 'Target word count for this section', false),
+            ], false),
             str('full_draft', 'Complete blog content', false),
+            obj('affiliate_integration', 'Affiliate placement — verify placement enum and non-empty copy', [
+              str('placement', 'intro | middle | conclusion', false),
+              str('copy', 'Affiliate copy', false),
+              str('product_link_placeholder', 'Placeholder for affiliate URL', false),
+              str('rationale', 'Why this placement', false),
+            ], false),
+            arrOf('internal_links_suggested', 'Internal link ideas — verify topics, not URLs', [
+              str('topic', 'Suggested link topic', false),
+              str('anchor_text', 'Anchor text', false),
+            ], false),
           ], false),
           obj('video', 'Video content', [
-            arr('title_options', 'Video title variants', 'string', false),
-            obj('script', 'Video script structure', [], false),
+            arr('title_options', 'Video title variants — verify count is exactly 3', 'string', false),
+            obj('script', 'Video script structure', [
+              obj('hook', 'Opening hook', [
+                str('duration', 'Hook duration'),
+                str('content', 'Hook content text'),
+                str('visual_notes', 'Visual direction'),
+              ], false),
+              obj('problem', 'Problem statement section', [
+                str('duration', 'Duration'),
+                str('content', 'Content'),
+                str('visual_notes', 'Visual direction'),
+              ], false),
+              arrOf('chapters', 'Chapter breakdown — verify each has content and duration', [
+                num('chapter_number', '1-indexed'),
+                str('title', 'Chapter title'),
+                str('duration', 'Chapter duration'),
+                str('content', 'Chapter content'),
+                arr('b_roll_suggestions', 'B-roll ideas', 'string', false),
+                str('key_stat_or_quote', 'Key stat or quote', false),
+              ], false),
+              obj('outro', 'Outro section with CTA — verify CTA presence', [
+                str('cta', 'Call to action text', false),
+                str('end_screen_prompt', 'End screen prompt', false),
+              ], false),
+            ], false),
+            str('teleprompter_script', 'Full teleprompter-ready script — verify length plausible for chapter_count', false),
+            str('video_description', 'YouTube video description — verify has timestamps if chapter_count > 1', false),
             str('estimated_duration', 'Estimated video duration', false),
-            obj('thumbnail', 'Thumbnail design for review', [
+            obj('thumbnail', 'Thumbnail design', [
               str('text_overlay', 'Text on thumbnail', false),
-              str('emotion', 'Emotion: curiosity | shock | intrigue', false),
+              str('emotion', 'curiosity | shock | intrigue', false),
               str('visual_style', 'Visual style description', false),
             ], false),
             num('chapter_count', 'Number of chapters in the script', false),
+            str('pinned_comment', 'YouTube pinned comment if produced here', false),
           ], false),
           arrOf('shorts', 'Short-form video content', [
             str('hook', 'The scroll-stopping opening', false),
@@ -68,9 +110,16 @@ export const review: AgentDefinition = {
           ], false),
           obj('podcast', 'Podcast episode content', [
             str('episode_title', 'Episode title', false),
-            arr('talking_points', 'Episode talking points', 'string', false),
-            str('intro_hook', 'Opening hook for quality assessment', false),
-            str('outro', 'Closing remarks — verify CTA inclusion', false),
+            str('episode_description', 'Episode description — verify hook matches intro_hook', false),
+            str('intro_hook', 'Opening hook — verify 1st or 2nd person framing', false),
+            arrOf('talking_points', 'Episode talking points with notes', [
+              str('point', 'Talking point'),
+              str('notes', 'Supporting notes'),
+            ], false),
+            arr('host_talking_prompts', 'Invitation prompts for host — verify none are fabricated first-person claims', 'string', false),
+            arr('guest_questions', 'Guest interview questions', 'string', false),
+            str('outro', 'Closing remarks — verify contains a subscribe/follow CTA verb', false),
+            str('duration_estimate', 'Rough duration estimate', false),
           ], false),
           obj('engagement', 'Engagement assets', [
             str('pinned_comment', 'YouTube pinned comment', false),
@@ -234,6 +283,7 @@ export const review: AgentDefinition = {
         'Verify scores are 0-100 (0 if not_requested)',
         'Verify publication plan is only included if overall_verdict is approved',
         'Verify all content types not in `content_types_requested` have `verdict: "not_requested"`',
+        'If any declared input field under production.{type} is null, undefined, or empty, set that content type\'s quality_tier to "needs_revision" and add critical_issue: "Missing required field: {type}.{field}". Do not silently skip.',
       ],
     },
     customSections: [
