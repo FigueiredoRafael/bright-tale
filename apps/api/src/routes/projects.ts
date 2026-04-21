@@ -74,6 +74,18 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
 
       if (error) throw error;
 
+      // If seed_idea_id is provided, seed the pipeline state with the selected idea
+      if (data.seed_idea_id && project) {
+        await sb
+          .from('projects')
+          .update({
+            pipeline_state_json: {
+              brainstorm: { selected_idea_id: data.seed_idea_id, source: 'library' },
+            },
+          })
+          .eq('id', project.id);
+      }
+
       return reply.status(201).send({ data: project, error: null });
     } catch (error) {
       return sendError(reply, error);
