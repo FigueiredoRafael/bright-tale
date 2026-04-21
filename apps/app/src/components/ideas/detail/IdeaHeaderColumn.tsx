@@ -103,23 +103,11 @@ export function IdeaHeaderColumn({ idea, onIdeaUpdated, onPatchDiscovery }: Prop
     }
   }
 
-  async function handleSendToResearch() {
+  function handleSendToResearch() {
     if (!idea.channel_id) return;
-    setBusyAction('research');
-    try {
-      const res = await fetch('/api/research/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ideaId: idea.id, channelId: idea.channel_id, mode: 'standalone' }),
-      });
-      const json = await res.json();
-      if (!res.ok || json.error) throw new Error(json.error?.message ?? 'Failed to create research session');
-      router.push(`/en/channels/${idea.channel_id}/research/new?session=${json.data.sessionId}`);
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Failed');
-    } finally {
-      setBusyAction(null);
-    }
+    // Route to the existing research configuration page with this idea
+    // pre-selected. The user picks level/provider there and starts the session.
+    router.push(`/en/channels/${idea.channel_id}/research/new?ideaId=${idea.id}`);
   }
 
   async function handleDuplicate() {
