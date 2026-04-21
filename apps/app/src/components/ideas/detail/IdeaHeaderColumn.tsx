@@ -118,14 +118,15 @@ export function IdeaHeaderColumn({ idea, onIdeaUpdated, onPatchDiscovery }: Prop
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: `${idea.title} (copy)`,
-          core_tension: idea.core_tension,
-          target_audience: idea.target_audience,
+          core_tension: idea.core_tension ?? '',
+          target_audience: idea.target_audience ?? '',
           verdict: idea.verdict,
           // API expects discovery_data as a stringified JSON (zod: z.string()).
           // Our in-memory idea.discovery_data is already parsed to an object.
           discovery_data: idea.discovery_data ? JSON.stringify(idea.discovery_data) : '',
-          tags: idea.tags,
-          channel_id: idea.channel_id,
+          tags: idea.tags ?? [],
+          // channel_id is optional (not nullable) in the create schema.
+          ...(idea.channel_id ? { channel_id: idea.channel_id } : {}),
         }),
       });
       const json = await res.json();
