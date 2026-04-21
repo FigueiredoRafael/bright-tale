@@ -1,9 +1,11 @@
-import { Footer, Layout, Navbar } from 'nextra-theme-docs'
-import { Head } from 'nextra/components'
-import { getPageMap } from 'nextra/page-map'
-import 'nextra-theme-docs/style.css'
+import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
+import { Navbar } from '@/src/components/navbar'
+import './globals.css'
 
-export const metadata = {
+const inter = Inter({ subsets: ['latin'] })
+
+export const metadata: Metadata = {
   title: {
     default: 'BrightTale Docs',
     template: '%s — BrightTale Docs',
@@ -11,31 +13,12 @@ export const metadata = {
   description: 'BrightTale — AI-Powered Content Creation Platform',
 }
 
-const navbar = (
-  <Navbar
-    logo={<strong>BrightTale Docs</strong>}
-    projectLink="https://github.com/bright-labs/bright-tale"
-  />
-)
-
-const footer = <Footer>© {new Date().getFullYear()} BrightTale — AI-Powered Content Creation</Footer>
-
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" dir="ltr" suppressHydrationWarning>
-      <Head />
-      <body>
-        <Layout
-          navbar={navbar}
-          footer={footer}
-          sidebar={{ defaultMenuCollapseLevel: 1, toggleButton: true }}
-          toc={{ backToTop: true }}
-          editLink="Editar esta página no GitHub →"
-          docsRepositoryBase="https://github.com/bright-labs/bright-tale/tree/main/apps/docs-site"
-          pageMap={await getPageMap()}
-        >
-          {children}
-        </Layout>
+    <html lang="pt-BR" suppressHydrationWarning>
+      <body className={inter.className}>
+        <Navbar />
+        {children}
       </body>
     </html>
   )

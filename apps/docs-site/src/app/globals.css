@@ -1,0 +1,157 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 224 71% 4%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --border: 220 13% 91%;
+    --accent: 220 14% 96%;
+    --accent-foreground: 224 71% 4%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 210 40% 98%;
+  }
+
+  .dark {
+    --background: 222 47% 7%;
+    --foreground: 213 31% 91%;
+    --muted: 223 47% 11%;
+    --muted-foreground: 218 11% 65%;
+    --border: 216 34% 17%;
+    --accent: 216 34% 17%;
+    --accent-foreground: 213 31% 91%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 7%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Prose overrides */
+.prose {
+  --tw-prose-body: hsl(var(--foreground));
+  --tw-prose-headings: hsl(var(--foreground));
+  --tw-prose-counters: hsl(var(--muted-foreground));
+  --tw-prose-bullets: hsl(var(--muted-foreground));
+  --tw-prose-hr: hsl(var(--border));
+  --tw-prose-quotes: hsl(var(--foreground));
+  --tw-prose-quote-borders: hsl(var(--border));
+  --tw-prose-th-borders: hsl(var(--border));
+  --tw-prose-td-borders: hsl(var(--border));
+}
+
+.prose h1 {
+  @apply text-2xl font-bold tracking-tight lg:text-3xl;
+}
+
+.prose h2 {
+  @apply mt-10 border-b border-border pb-2 text-xl font-semibold tracking-tight first:mt-0;
+}
+
+.prose h3 {
+  @apply mt-8 text-lg font-semibold tracking-tight;
+}
+
+.prose table {
+  @apply w-full text-sm;
+}
+
+.prose th {
+  @apply bg-muted/50 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground;
+}
+
+.prose td {
+  @apply px-3 py-2;
+}
+
+.prose tr {
+  @apply border-b border-border;
+}
+
+.prose code:not(pre code) {
+  @apply rounded-md bg-muted px-1.5 py-0.5 text-[13px] font-medium;
+}
+
+.prose blockquote {
+  @apply border-l-2 border-primary/40 bg-primary/5 py-1 pl-4 not-italic;
+}
+
+.prose img {
+  @apply rounded-lg border border-border;
+}
+
+/* Code blocks */
+.prose pre {
+  @apply overflow-x-auto rounded-lg border border-border bg-[#0d1117] px-4 py-4 text-[13px] leading-relaxed;
+}
+
+[data-rehype-pretty-code-figure] pre {
+  @apply px-0;
+}
+
+[data-rehype-pretty-code-figure] code {
+  @apply text-[13px] leading-relaxed;
+}
+
+[data-rehype-pretty-code-figure] [data-line] {
+  @apply px-4;
+}
+
+[data-highlighted-line] {
+  @apply bg-white/5;
+}
+
+code[data-line-numbers] {
+  counter-reset: line;
+}
+
+code[data-line-numbers] > [data-line]::before {
+  counter-increment: line;
+  content: counter(line);
+  @apply mr-6 inline-block w-4 text-right text-muted-foreground/40;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-border;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/30;
+}
+
+/* Search modal animation */
+@keyframes searchIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.search-modal-enter {
+  animation: searchIn 0.2s ease-out;
+}

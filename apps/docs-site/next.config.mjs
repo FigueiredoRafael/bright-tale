@@ -1,19 +1,7 @@
-import nextra from 'nextra'
-
-const withNextra = nextra({
-  contentDirBasePath: '/',
-  defaultShowCopyCode: true,
-  search: {
-    codeblocks: true,
-  },
-})
-
-export default withNextra({
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   reactStrictMode: true,
-  webpack: (config, { dev }) => {
-    if (dev) {
-      config.cache = false
-    }
-    return config
-  },
-})
+  pageExtensions: ['ts', 'tsx', 'md', 'mdx'],
+}
+
+export default nextConfig
