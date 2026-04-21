@@ -15,6 +15,7 @@ import { friendlyAiError } from '@/lib/ai/error-message';
 import { useUpgrade } from '@/components/billing/UpgradeProvider';
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker';
 import type { PipelineContext, PipelineStage, ReviewResult, StageResult } from './types';
+import { deriveTier, isApprovedTier } from '@brighttale/shared';
 
 interface ReviewEngineProps {
   channelId: string;
@@ -251,11 +252,19 @@ export function ReviewEngine({
           score = feedbackJson.score as number;
         }
 
-        // Normalize verdict — score ≥ 90 always means approved
-        if (score >= 90) verdict = 'approved';
+        // Normalize verdict via quality_tier (dual-reads legacy score)
+        const tier = deriveTier(formatReview ?? feedbackJson);
+        if (isApprovedTier(tier)) verdict = 'approved';
+        else if (tier === 'reject') verdict = 'rejected';
         else if (verdict.includes('approved')) verdict = 'approved';
         else if (verdict.includes('rejected')) verdict = 'rejected';
         else verdict = 'revision_required';
+
+        // Preserve numeric score in DB for legacy consumers; synthesize from tier if missing
+        const legacyScoreFromTier: Record<string, number> = {
+          excellent: 95, good: 82, needs_revision: 60, reject: 20, not_requested: 0,
+        };
+        if (score === 0) score = legacyScoreFromTier[tier] ?? 0;
 
         const patchBody: Record<string, unknown> = {
           reviewFeedbackJson: feedbackJson,
