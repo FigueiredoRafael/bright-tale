@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -62,6 +62,7 @@ export function PipelineOrchestrator({
   const [engineMode, setEngineMode] = useState<'generate' | 'import' | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [draftData, setDraftData] = useState<Record<string, unknown> | null>(null);
+  const publishDraftFetched = useRef(false);
   const [researchData, setResearchData] = useState<Record<string, unknown> | null>(null);
   const { track } = useAnalytics();
 
@@ -400,7 +401,7 @@ export function PipelineOrchestrator({
     const ctx = buildContext();
     const stage = pipelineState.currentStage;
 
-    const needsFresh = stage === 'publish'; // publish gate depends on live draft.status
+    const needsFresh = stage === 'publish' && !publishDraftFetched.current;
     if ((stage === 'review' || stage === 'publish' || stage === 'assets' || stage === 'preview') && ctx.draftId && (needsFresh || !draftData)) {
       (async () => {
         try {
@@ -410,6 +411,7 @@ export function PipelineOrchestrator({
             toast.error(error.message || 'Failed to load draft');
             return;
           }
+          if (stage === 'publish') publishDraftFetched.current = true;
           setDraftData(data);
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Unknown error';
@@ -417,8 +419,9 @@ export function PipelineOrchestrator({
         }
       })();
     }
+    if (stage !== 'publish') publishDraftFetched.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pipelineState.currentStage, pipelineState.stageResults?.draft, draftData]);
+  }, [pipelineState.currentStage, pipelineState.stageResults?.draft]);
 
   // Map PipelineStage to PipelineStep
   function getPipelineStep(): PipelineStep {

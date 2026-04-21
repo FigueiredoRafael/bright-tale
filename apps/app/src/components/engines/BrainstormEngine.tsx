@@ -214,7 +214,21 @@ export function BrainstormEngine({
   useEffect(() => {
     if (initialSession || initialIdeas) return;
     const ctxSessionId = context.brainstormSessionId;
-    if (!ctxSessionId) return;
+    if (!ctxSessionId) {
+      // Imported ideas have no session — hydrate from context fields
+      if (context.ideaId && context.ideaTitle && ideas.length === 0) {
+        setIdeas([{
+          id: context.ideaId,
+          idea_id: context.ideaId,
+          title: context.ideaTitle,
+          core_tension: context.ideaCoreTension || undefined,
+          target_audience: '',
+          verdict: (context.ideaVerdict as 'viable' | 'weak' | 'experimental') || 'experimental',
+        }]);
+        setSelectedIdeaId(context.ideaId);
+      }
+      return;
+    }
 
     // Already loaded this session
     if (sessionId === ctxSessionId && ideas.length > 0) return;

@@ -1144,6 +1144,8 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         } else if (body.mode === 'schedule') {
           updateFields.status = 'scheduled';
           updateFields.scheduled_at = body.scheduledDate;
+        } else {
+          updateFields.status = 'approved';
         }
 
         await sb
@@ -1177,6 +1179,13 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       }
     } catch (error) {
       request.log.error({ err: error }, 'WordPress publish-draft/stream error');
+      const rawBody = (request.body as Record<string, unknown>) ?? {};
+      if (rawBody.draftId) {
+        try {
+          const fallbackSb = createServiceClient();
+          await fallbackSb.from('content_drafts').update({ status: 'approved' } as never).eq('id', rawBody.draftId as string);
+        } catch { /* best-effort */ }
+      }
       try {
         const msg = error instanceof Error ? error.message : 'Unknown error';
         reply.raw.write(`data: ${JSON.stringify({ step: 'error', message: msg, error: true })}\n\n`);
@@ -1582,6 +1591,8 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       } else if (body.mode === 'schedule') {
         updateFields.status = 'scheduled';
         updateFields.scheduled_at = body.scheduledDate;
+      } else {
+        updateFields.status = 'approved';
       }
 
       await sb
