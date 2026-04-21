@@ -16,7 +16,7 @@ import { ApiError } from '../lib/api/errors.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { markdownToHtml } from '../lib/utils.js';
 import { convertToWebP } from '../lib/image/webp.js';
-import { getKeyByToken, createKey, consumeKey } from '../lib/idempotency.js';
+import { getKeyByToken, createKey, consumeKey, deleteKey } from '../lib/idempotency.js';
 import {
   publishToWordPressSchema,
   fetchTagsQuerySchema,
@@ -844,13 +844,17 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       const sb = createServiceClient();
       const body = publishDraftSchema.parse(request.body);
 
+
       // Idempotency: replay cached result if token already consumed
       if (body.idempotencyToken) {
         const existing = await getKeyByToken(body.idempotencyToken);
+
         if (existing && existing.consumed && existing.response) {
           return reply.send({ data: existing.response, error: null });
         }
+
         const key = await createKey(body.idempotencyToken, { purpose: 'wordpress:publish-draft' });
+
         if (key && '_alreadyInFlight' in key) {
           throw new ApiError(409, 'This publish request is already being processed');
         }
@@ -884,9 +888,13 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         // Step 1: Preparing — load draft and config
         sendEvent('preparing', 'Loading draft data...');
         const draftRaw = await loadDraftForPublish(sb, body.draftId);
-        if (!draftRaw) throw new ApiError(404, 'Draft not found');
+        if (!draftRaw) {
+          throw new ApiError(404, 'Draft not found');
+        }
         const draft = draftRaw as Record<string, unknown>;
         const draftStatus = draft.status as string;
+
+
         if (draftStatus === 'publishing') {
           throw new ApiError(409, 'Draft is already being published');
         }
@@ -901,6 +909,8 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
           .eq('id', body.draftId)
           .in('status', ['approved', 'scheduled'])
           .select('id');
+
+
         if (!lockResult?.length) {
           throw new ApiError(409, 'Draft is already being published');
         }
@@ -923,7 +933,6 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
 
         sendEvent('uploading_featured', 'Uploading featured image...');
         let featuredAssetId: string | undefined;
-        request.log.info({ imageMap: body.imageMap, draftId: body.draftId }, 'publish-draft/stream: imageMap received');
         if (body.imageMap?.['featured_image']) {
           featuredAssetId = body.imageMap['featured_image'] as string;
           const { data: assets, error: assetsErr } = await sb
@@ -931,14 +940,12 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
             .select('*')
             .eq('content_id', body.draftId);
 
-          request.log.info({ assetCount: assets?.length ?? 0, assetsErr, featuredAssetId }, 'publish-draft/stream: assets fetched');
 
           for (const rawAsset of assets ?? []) {
             const asset = rawAsset as Record<string, unknown>;
             if (asset.id !== featuredAssetId) continue;
 
             const imageUrl = (asset.webp_url as string) || (asset.source_url as string);
-            request.log.info({ imageUrl, assetId: asset.id, role: asset.role }, 'publish-draft/stream: uploading featured');
             if (!imageUrl) continue;
 
             const wpMediaId = await uploadImageToWordPress(
@@ -1109,6 +1116,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         const featured = uploadedMedia['featured_image'];
         if (featured) postData.featured_media = featured.wpId;
 
+
         // Create or update WordPress post
         const existingPostId = (draft.wordpress_post_id as number | null) ?? null;
         let wpResponse: Response;
@@ -1126,12 +1134,14 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
           });
         }
 
+
         if (!wpResponse.ok) {
           const errorText = await wpResponse.text();
           throw new ApiError(wpResponse.status, `WordPress publish failed: ${errorText}`);
         }
 
         const wpPost = (await wpResponse.json()) as Record<string, unknown>;
+
 
         // Update draft in DB
         const updateFields: Record<string, unknown> = {
@@ -1148,10 +1158,12 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
           updateFields.status = 'approved';
         }
 
+
         await sb
           .from('content_drafts')
           .update(updateFields as never)
           .eq('id', body.draftId);
+
 
         // Consume idempotency token on success
         const doneResult = {
@@ -1167,8 +1179,25 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         // Send completion event
         sendDone(doneResult);
       } catch (innerError) {
+        request.log.error({
+          draftId: body.draftId,
+          idempotencyToken: body.idempotencyToken,
+          error: innerError instanceof Error ? innerError.message : String(innerError),
+          errorType: innerError instanceof ApiError ? 'ApiError' : typeof innerError,
+        }, 'WordPress publish-draft/stream error');
+
         // Revert status from 'publishing' back to 'approved' on failure
-        try { await sb.from('content_drafts').update({ status: 'approved' } as never).eq('id', body.draftId); } catch { /* best-effort */ }
+        try {
+          await sb.from('content_drafts').update({ status: 'approved' } as never).eq('id', body.draftId);
+        } catch (revertErr) {
+        }
+
+        if (body.idempotencyToken) {
+          try {
+            await deleteKey(body.idempotencyToken);
+          } catch (deleteErr) {
+          }
+        }
 
         if (innerError instanceof ApiError) {
           sendSseError('error', innerError.message);
@@ -1178,20 +1207,35 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         }
       }
     } catch (error) {
-      request.log.error({ err: error }, 'WordPress publish-draft/stream error');
+      const draftId = (request.body as Record<string, unknown>)?.draftId as string | undefined;
+      const idempotencyToken = (request.body as Record<string, unknown>)?.idempotencyToken as string | undefined;
+
+      request.log.error({
+        draftId,
+        idempotencyToken,
+        err: error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      }, 'WordPress publish-draft/stream error');
+
       const rawBody = (request.body as Record<string, unknown>) ?? {};
       if (rawBody.draftId) {
         try {
           const fallbackSb = createServiceClient();
           await fallbackSb.from('content_drafts').update({ status: 'approved' } as never).eq('id', rawBody.draftId as string);
-        } catch { /* best-effort */ }
+        } catch (fallbackErr) {
+        }
+      }
+      if (rawBody.idempotencyToken) {
+        try {
+          await deleteKey(rawBody.idempotencyToken as string);
+        } catch (fallbackErr) {
+        }
       }
       try {
         const msg = error instanceof Error ? error.message : 'Unknown error';
         reply.raw.write(`data: ${JSON.stringify({ step: 'error', message: msg, error: true })}\n\n`);
         reply.raw.end();
       } catch (writeErr) {
-        request.log.error({ err: writeErr }, 'Failed to send error event');
       }
     }
   });
@@ -1368,13 +1412,17 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       const sb = createServiceClient();
       const body = publishDraftSchema.parse(request.body);
 
+
       // Idempotency: replay cached result if token already consumed
       if (body.idempotencyToken) {
         const existing = await getKeyByToken(body.idempotencyToken);
+
         if (existing && existing.consumed && existing.response) {
           return reply.send({ data: existing.response, error: null });
         }
+
         const key = await createKey(body.idempotencyToken, { purpose: 'wordpress:publish-draft' });
+
         if (key && '_alreadyInFlight' in key) {
           throw new ApiError(409, 'This publish request is already being processed');
         }
@@ -1387,9 +1435,13 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         .eq('id', body.draftId)
         .maybeSingle();
       if (draftErr) throw draftErr;
-      if (!draftRaw) throw new ApiError(404, 'Draft not found');
+      if (!draftRaw) {
+        throw new ApiError(404, 'Draft not found');
+      }
       const draft = draftRaw as Record<string, unknown>;
       const draftStatus = draft.status as string;
+
+
       if (draftStatus === 'publishing') {
         throw new ApiError(409, 'Draft is already being published');
       }
@@ -1404,6 +1456,8 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         .eq('id', body.draftId)
         .in('status', ['approved', 'scheduled'])
         .select('id');
+
+
       if (!lockResult?.length) {
         throw new ApiError(409, 'Draft is already being published');
       }
@@ -1558,6 +1612,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
 
       // Create or update WordPress post
       const existingPostId = (draft.wordpress_post_id as number | null) ?? null;
+
       let wpResponse: Response;
       if (existingPostId) {
         wpResponse = await fetch(`${site_url}/wp-json/wp/v2/posts/${existingPostId}`, {
@@ -1573,12 +1628,14 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         });
       }
 
+
       if (!wpResponse.ok) {
         const errorText = await wpResponse.text();
         throw new ApiError(wpResponse.status, `WordPress publish failed: ${errorText}`);
       }
 
       const wpPost = (await wpResponse.json()) as Record<string, unknown>;
+
 
       // Update draft with WordPress data
       const updateFields: Record<string, unknown> = {
@@ -1595,10 +1652,12 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         updateFields.status = 'approved';
       }
 
+
       await sb
         .from('content_drafts')
         .update(updateFields as never)
         .eq('id', body.draftId);
+
 
       const result = {
         published: true,
@@ -1612,16 +1671,35 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         await consumeKey(body.idempotencyToken, result);
       }
 
+
       return reply.status(201).send({ data: result, error: null });
     } catch (error) {
       // Revert status from 'publishing' back to 'approved' on failure
       const sb = createServiceClient();
       const body = (request.body as Record<string, unknown>) ?? {};
+      const draftId = body.draftId as string | undefined;
+      const idempotencyToken = body.idempotencyToken as string | undefined;
+
+      request.log.error({
+        draftId,
+        idempotencyToken,
+        error: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof ApiError ? 'ApiError' : typeof error,
+      }, 'WordPress publish-draft error');
+
       if (body.draftId) {
-        try { await sb.from('content_drafts').update({ status: 'approved' } as never).eq('id', body.draftId as string); } catch { /* best-effort */ }
+        try {
+          await sb.from('content_drafts').update({ status: 'approved' } as never).eq('id', body.draftId as string);
+        } catch (revertErr) {
+        }
+      }
+      if (body.idempotencyToken) {
+        try {
+          await deleteKey(body.idempotencyToken as string);
+        } catch (deleteErr) {
+        }
       }
 
-      request.log.error({ err: error }, 'WordPress publish-draft error');
       return sendError(reply, error);
     }
   });
