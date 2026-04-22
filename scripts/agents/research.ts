@@ -93,7 +93,10 @@ export const research: AgentDefinition = {
         ]),
         obj('seo', 'SEO data extracted during research', [
           str('primary_keyword', 'Primary keyword - use the input primary_keyword.term as baseline, refine if research reveals a better variant'),
-          arr('secondary_keywords', 'Related keywords found during research (3-5)', 'string', false),
+          arrOf('secondary_keywords', 'Related keywords with source attribution (3-5)', [
+            str('keyword', 'The keyword phrase'),
+            str('source_id', 'Must match an entry in sources[]'),
+          ], false),
           str('search_intent', 'Detected search intent: informational, commercial, navigational, or mixed', false),
         ]),
         arr('knowledge_gaps', 'Topics or claims that could not be verified or need more research', 'string'),

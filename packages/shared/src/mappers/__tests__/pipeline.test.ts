@@ -5,6 +5,7 @@ import {
   mapContentDraftFromDb,
   mapContentAssetFromDb,
 } from '../db';
+import { legacyKeywordFallback } from '../pipeline';
 
 describe('mapBrainstormSessionFromDb', () => {
   it('converts snake_case DB row to camelCase', () => {
@@ -131,5 +132,46 @@ describe('mapContentAssetFromDb', () => {
     expect(out.altText).toBe('A cool image');
     expect(out.webpUrl).toBe('https://cdn/x.webp');
     expect(out.sourceType).toBe('ai_generated');
+  });
+});
+
+describe('legacyKeywordFallback', () => {
+  it('returns string array from legacy string[] shape', () => {
+    expect(legacyKeywordFallback(['a', 'b', 'c'])).toEqual(['a', 'b', 'c']);
+  });
+
+  it('returns keyword field from new shape', () => {
+    expect(
+      legacyKeywordFallback([
+        { keyword: 'a', source_id: 'SRC-001' },
+        { keyword: 'b', source_id: 'SRC-002' },
+      ]),
+    ).toEqual(['a', 'b']);
+  });
+
+  it('handles mixed shapes', () => {
+    expect(
+      legacyKeywordFallback([
+        'legacy',
+        { keyword: 'new', source_id: 'SRC-001' },
+      ]),
+    ).toEqual(['legacy', 'new']);
+  });
+
+  it('returns empty array for non-array input', () => {
+    expect(legacyKeywordFallback(null)).toEqual([]);
+    expect(legacyKeywordFallback(undefined)).toEqual([]);
+    expect(legacyKeywordFallback('not-an-array')).toEqual([]);
+  });
+
+  it('filters out malformed entries', () => {
+    expect(
+      legacyKeywordFallback([
+        'ok',
+        { wrong: 'shape' },
+        null,
+        { keyword: 'good', source_id: 'SRC-001' },
+      ]),
+    ).toEqual(['ok', 'good']);
   });
 });
