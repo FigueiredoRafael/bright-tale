@@ -60,6 +60,15 @@ export async function consumeKey(token: string, response: any) {
   if (error) throw error;
 }
 
+export async function deleteKey(token: string) {
+  const sb = createServiceClient();
+  const { error } = await sb
+    .from('idempotency_keys')
+    .delete()
+    .eq('token', token);
+  if (error) throw error;
+}
+
 export async function cleanupExpired() {
   const sb = createServiceClient();
   const now = new Date().toISOString();

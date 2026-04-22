@@ -140,7 +140,8 @@ export default function ProductionForm({
                                 target_audience: researchInput.target_audience,
                                 scroll_stopper: researchInput.scroll_stopper,
                                 curiosity_gap: researchInput.curiosity_gap,
-                                monetization: { affiliate_angle: researchInput.monetization?.affiliate_angle || "" },
+                                primary_keyword: researchInput.primary_keyword?.term || "",
+                                monetization_hypothesis: { affiliate_angle: researchInput.monetization_hypothesis?.affiliate_angle || "" },
                             };
                         } else {
                             input.selected_idea = idea as ProductionInput["selected_idea"];
@@ -248,7 +249,8 @@ export default function ProductionForm({
                             target_audience: idea.target_audience,
                             scroll_stopper: idea.scroll_stopper,
                             curiosity_gap: idea.curiosity_gap,
-                            monetization: { affiliate_angle: idea.monetization?.affiliate_angle || "" },
+                            primary_keyword: idea.primary_keyword?.term || "",
+                            monetization_hypothesis: { affiliate_angle: idea.monetization_hypothesis?.affiliate_angle || "" },
                         };
                     }
                     if (research) {
@@ -460,7 +462,7 @@ export default function ProductionForm({
                 episode_description: parsedContent.podcast.episode_description,
                 intro_hook: parsedContent.podcast.intro_hook,
                 talking_points: parsedContent.podcast.talking_points,
-                personal_angle: parsedContent.podcast.personal_angle,
+                host_talking_prompts: parsedContent.podcast.host_talking_prompts,
                 guest_questions: parsedContent.podcast.guest_questions,
                 outro: parsedContent.podcast.outro,
                 duration_estimate: parsedContent.podcast.duration_estimate,
@@ -639,9 +641,10 @@ export default function ProductionForm({
                         <p className="text-sm text-success italic mt-2">"{productionInput.selected_idea.scroll_stopper}"</p>
                         <div className="flex gap-2 mt-3">
                             <Badge variant="outline" className="text-xs">{productionInput.selected_idea.target_audience}</Badge>
-                            {productionInput.selected_idea.monetization?.affiliate_angle && (
-                                <Badge variant="outline" className="text-xs bg-green-50">
-                                    {productionInput.selected_idea.monetization.affiliate_angle}
+                            {productionInput.selected_idea.monetization_hypothesis?.affiliate_angle && (
+                                <Badge variant="outline" className="text-xs bg-amber-50">
+                                    <span className="text-muted-foreground text-xs italic mr-1">[AI speculation]</span>
+                                    {productionInput.selected_idea.monetization_hypothesis.affiliate_angle}
                                 </Badge>
                             )}
                         </div>
@@ -1206,7 +1209,7 @@ export default function ProductionForm({
                                                             </ul>
                                                         </div>
                                                     )}
-                                                    {parsedContent.podcast.personal_angle && <div><Label className="text-xs text-muted-foreground">Personal Angle</Label><p className="text-sm bg-muted p-2 rounded">{parsedContent.podcast.personal_angle}</p></div>}
+                                                    {parsedContent.podcast.host_talking_prompts && parsedContent.podcast.host_talking_prompts.length > 0 && <div><Label className="text-xs text-muted-foreground">Prompts for the host to personalize</Label><ul className="list-disc pl-5 text-sm">{parsedContent.podcast.host_talking_prompts.map((p, i) => <li key={i}>{p}</li>)}</ul></div>}
                                                     <div><Label className="text-xs text-muted-foreground">Outro</Label><p className="text-sm bg-blue-50 p-2 rounded">{parsedContent.podcast.outro}</p></div>
                                                     <div className="flex items-center justify-between pt-2 border-t">
                                                         {savedPodcastId && <div className="flex items-center gap-2 text-sm text-green-700"><Library className="h-4 w-4 text-success" />Podcast saved!</div>}

@@ -18,7 +18,7 @@ describe('buildSchemaExample', () => {
   it('builds nested object fields', () => {
     const fields: SchemaField[] = [
       {
-        name: 'monetization',
+        name: 'monetization_hypothesis',
         type: 'object',
         required: true,
         description: 'Money stuff',
@@ -29,7 +29,7 @@ describe('buildSchemaExample', () => {
     ];
     const result = buildSchemaExample(fields);
     const parsed = JSON.parse(result);
-    expect(parsed.monetization.affiliate_angle).toBe('');
+    expect(parsed.monetization_hypothesis.affiliate_angle).toBe('');
   });
 
   it('builds array of objects', () => {

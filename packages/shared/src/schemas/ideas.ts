@@ -60,6 +60,7 @@ export const updateIdeaSchema = z.object({
   tags: z.array(z.string()).optional(),
   is_public: z.boolean().optional(),
   markdown_content: z.string().optional(),
+  channel_id: z.string().uuid().nullable().optional(),
 });
 
 export type UpdateIdeaInput = z.infer<typeof updateIdeaSchema>;

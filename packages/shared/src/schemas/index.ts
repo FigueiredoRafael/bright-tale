@@ -25,18 +25,13 @@ export {
 
 // Review Agent schemas
 export {
-  reviewInputSchema,
+  qualityTierSchema,
+  rubricChecksSchema,
   reviewOutputSchema,
-  reviewOutputBlogVideoSchema,
-  reviewOutputPublicationSchema,
-  validateReviewInput,
   validateReviewOutput,
-  validateReviewOutputBlogVideo,
-  validateReviewOutputPublication,
-  type ReviewInput as ReviewSchemaInput,
+  type QualityTier,
+  type RubricChecks,
   type ReviewOutput as ReviewSchemaOutput,
-  type ReviewOutputBlogVideo,
-  type ReviewOutputPublication,
 } from "./review";
 
 // Research API schemas

@@ -18,6 +18,7 @@ export const STANDARD_JSON_RULES = [
   'No em-dashes (—), use regular dashes (-)',
   'No curly quotes, use straight quotes only',
   'Use literal newlines in string values for multi-line content',
+  'Escape all double quotes inside JSON string values with a backslash (\\"). Unescaped quotes inside strings will break JSON.parse().',
 ];
 
 export function str(name: string, description: string, required = true): SchemaField {

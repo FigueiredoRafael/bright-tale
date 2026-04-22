@@ -78,22 +78,17 @@ export const blog: AgentDefinition = {
           str('product_link_placeholder', 'Placeholder for affiliate link'),
           str('rationale', 'Why this placement feels natural'),
         ], false),
-        arrOf('internal_links_suggested', 'Related topics for interlinking (2-4 recommended)', [
+        arrOf('internal_links_suggested', 'Topic suggestions for the content team (2-4). Do not include URLs — these are topic ideas, not links.', [
           str('topic', 'Related topic title'),
           str('anchor_text', 'Natural anchor text for linking'),
         ], false),
-        num('word_count', 'Total word count of full_draft (within ±50 words)'),
+        str('content_warning', 'Set if research material is insufficient for the target word count', false),
       ],
     },
     rules: {
       formatting: [
         ...STANDARD_JSON_RULES,
-        'Output JSON only, no markdown fences.',
         'Do not add, remove, or rename keys in the output schema.',
-        'For multi-line string values, embed literal newline characters inside the JSON string. Do NOT use YAML pipe (|) syntax.',
-        'No markdown code fences anywhere in the output.',
-        'No em-dashes (—), use regular dashes (-)',
-        'No curly quotes, use straight quotes only',
       ],
       content: [
         'title: Must be curiosity-gap or benefit-driven. Include the primary keyword naturally.',
@@ -104,7 +99,6 @@ export const blog: AgentDefinition = {
         'key_stats: Each stat belongs in the section whose claim it proves. Format as: **[figure]** — [brief context].',
         'key_quotes: Format as blockquote: > "quote" — Author Name, Credentials',
         'affiliate_integration.placement: ONLY intro, middle, or conclusion. Match the affiliate_context.trigger_context if provided.',
-        'word_count: Must match the actual word count of full_draft (within ±50 words).',
         'internal_links_suggested: Suggest 2-4 related topics that could be interlinked. Use natural anchor text.',
       ],
       validation: [
@@ -172,7 +166,14 @@ AFFILIATE SECTION (if affiliate_context provided):
 CONCLUSION (75-150 words):
 - Reflect the closing_emotion
 - Summarize the transformation or insight
-- End with cta_comment_prompt as a reader question`,
+- End with cta_comment_prompt as a reader question
+
+TARGET LENGTH:
+If input contains production_params.target_word_count, full_draft must hit that count (+-15%):
+- 300 words: 1 core idea + practical takeaway
+- 500-700 words: 2-3 sub-points with examples
+- 1000+ words: long-form with sub-headings, case studies, FAQ
+If research material is insufficient for the target, set content_warning instead of padding.`,
       },
       {
         title: 'Field Guidance: Affiliate Integration',
@@ -211,34 +212,13 @@ Examples:
 These are suggestions for your content team to implement with actual URLs.`,
       },
       {
-        title: 'Target Length (F2-047)',
-        content: `O input pode conter \`production_params.target_word_count\` (número).
-Se presente, o \`full_draft\` DEVE ter aproximadamente esse
-número de palavras (±15%). Não inflate com encheção; estruture o
-conteúdo pra atingir o tamanho com substância:
-
-- 300 palavras → post curto, 1 ideia central + take prático
-- 500–700 palavras → post médio, 2-3 sub-pontos com exemplos
-- 1000+ palavras → post longo-form, sub-headings, exemplos múltiplos,
-  estudos de caso, FAQ no final
-
-Se o material da pesquisa é insuficiente pro target, retorne campo
-\`content_warning\` em vez de inflar com placeholder. Nunca repita
-parágrafos pra encher.`,
-      },
-      {
         title: 'Before Finishing',
         content: `1. Verify every key_stat from input appears in full_draft
 2. Verify every key_quote from input appears as a blockquote with attribution
 3. Verify slug is URL-safe (lowercase, hyphens, no spaces or special chars)
 4. Verify meta_description is exactly 150-160 characters
 5. Verify affiliate_integration.placement is one of: intro | middle | conclusion
-6. Verify word_count matches actual full_draft word count (±50 words)
-7. If affiliate_context provided, verify placement and rationale are clear
-8. No markdown code fences anywhere in output
-9. Multi-line string values use embedded newline characters (never YAML pipe syntax)
-10. No em-dashes, use regular dashes (-)
-11. No curly quotes, use straight quotes only`,
+6. If affiliate_context provided, verify placement and rationale are clear`,
       },
     ],
   },

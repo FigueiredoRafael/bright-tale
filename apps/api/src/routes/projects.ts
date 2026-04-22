@@ -74,6 +74,53 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
 
       if (error) throw error;
 
+      // If seed_idea_id is provided, pre-complete the brainstorm stage with the
+      // selected idea so the orchestrator jumps straight to research.
+      if (data.seed_idea_id && project) {
+        const { data: idea } = await sb
+          .from('idea_archives')
+          .select('id, title, verdict, core_tension, brainstorm_session_id')
+          .eq('id', data.seed_idea_id)
+          .maybeSingle();
+
+        if (idea) {
+          const completedAt = new Date().toISOString();
+          await Promise.all([
+            sb
+              .from('projects')
+              .update({
+                current_stage: 'research',
+                pipeline_state_json: {
+                  mode: 'step-by-step',
+                  currentStage: 'research',
+                  stageResults: {
+                    brainstorm: {
+                      ideaId: idea.id,
+                      ideaTitle: idea.title,
+                      ideaVerdict: idea.verdict,
+                      ideaCoreTension: idea.core_tension ?? '',
+                      brainstormSessionId: idea.brainstorm_session_id ?? undefined,
+                      completedAt,
+                    },
+                  },
+                  autoConfig: {
+                    maxReviewIterations: 5,
+                    targetReviewScore: 90,
+                    pauseBeforePublish: true,
+                  },
+                },
+              })
+              .eq('id', project.id),
+            // Back-ref so the idea detail page can show "Go to Project" and
+            // avoid creating duplicate projects from the same idea.
+            sb
+              .from('idea_archives')
+              .update({ project_id: project.id })
+              .eq('id', data.seed_idea_id),
+          ]);
+        }
+      }
+
       return reply.status(201).send({ data: project, error: null });
     } catch (error) {
       return sendError(reply, error);

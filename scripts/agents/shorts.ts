@@ -60,17 +60,13 @@ export const shorts: AgentDefinition = {
           str('sound_effects', 'Suggested sound effects'),
           str('background_music', 'Suggested background music'),
         ]),
+        str('content_warning', 'Set if material is insufficient for target duration', false),
       ],
     },
     rules: {
       formatting: [
         ...STANDARD_JSON_RULES,
-        'Output JSON only, no markdown fences.',
         'Do not add, remove, or rename keys in the output schema.',
-        'For multi-line string values, embed literal newline characters inside the JSON string. Do NOT use YAML pipe (|) syntax.',
-        'No markdown code fences anywhere in the output.',
-        'No em-dashes (—), use regular dashes (-)',
-        'No curly quotes, use straight quotes only',
       ],
       content: [
         'short_number: Must be sequential integers 1, 2, 3. No skipping.',
@@ -82,6 +78,7 @@ export const shorts: AgentDefinition = {
         'visual_style: ONLY talking head, b-roll, or text overlay — no underscores, no capitalization, no variations.',
         'cta: At least one short should include `cta_comment_prompt` as a question. At least one should reference `cta_subscribe`. "Watch the full video" is acceptable in `cta` but NOT in `hook` or `script` body.',
         'No fabricated stats — only use figures from `key_stats`.',
+        'If production_params.target_duration_minutes is provided (in tenths), scale each short to that duration. 0.25 (15s) = 35-40 words, 0.5 (30s) = 70-80 words, 1.0 (60s) = 140-150 words. If material is insufficient, set content_warning instead of padding.',
       ],
       validation: [
         'Verify exactly 3 items in the output shorts array.',
@@ -240,25 +237,6 @@ Example CTAs:
 - "Watch the full video on our channel for the complete breakdown."`,
       },
       {
-        title: 'Target Duration (F2-047)',
-        content: `Shorts are between 15 and 60 seconds. If \`production_params.target_duration_minutes\`
-is provided (in tenths), use it to guide script length:
-
-- 0.25 (15s) → 1 hook + 1 punchline, 35-40 words
-- 0.5 (30s) → hook + 2 beats + CTA, 70-80 words
-- 1.0 (60s) → full mini-narrative structure, 140-150 words
-
-Do not artificially inflate or deflate. Structure the content to naturally fit the target duration:
-
-- 15 seconds: One shocking stat or claim, quick CTA
-- 30 seconds: Hook + quick evidence or example + CTA
-- 60 seconds: Full narrative with setup, evidence, reframe, CTA
-
-If the material is insufficient to hit the target naturally, return a \`content_warning\`
-field explaining why (e.g., "insufficient research detail for 60-second narrative").
-Never pad with filler or repetition.`,
-      },
-      {
         title: 'Before Finishing',
         content: `1. Verify exactly 3 items in the shorts array
 2. Verify short_number is 1, 2, 3 in order
@@ -270,10 +248,7 @@ Never pad with filler or repetition.`,
 8. Verify no "watch the full video" appears in hook or script body (only in cta)
 9. Verify at least one short includes cta_comment_prompt as a question
 10. Verify at least one short includes cta_subscribe reference
-11. Verify no fabricated stats — only use key_stats from input
-12. Verify multi-line string values use embedded newline characters (never YAML pipe syntax)
-13. No em-dashes, use regular dashes (-)
-14. No curly quotes, use straight quotes only`,
+11. Verify no fabricated stats — only use key_stats from input`,
       },
     ],
   },

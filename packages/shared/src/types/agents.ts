@@ -43,10 +43,10 @@ export interface BrainstormIdea {
   };
   scroll_stopper: string;
   curiosity_gap: string;
-  monetization: {
+  monetization_hypothesis: {
     affiliate_angle: string;
-    product_fit: string;
-    sponsor_appeal: string;
+    product_categories?: string[];
+    sponsor_category?: string;
   };
   repurpose_potential: {
     blog_angle: string;
@@ -108,7 +108,7 @@ export interface SelectedIdeaForResearch {
     term: string;
     difficulty: string;
   };
-  monetization: {
+  monetization_hypothesis: {
     affiliate_angle: string;
   };
 }
@@ -162,6 +162,11 @@ export interface ResearchOutput {
     confidence_score: number;
     validation_notes: string;
   };
+  seo: {
+    primary_keyword: string;
+    secondary_keywords?: string[];
+    search_intent?: "informational" | "commercial" | "navigational" | "mixed";
+  };
   sources: ResearchSource[];
   statistics: ResearchStatistic[];
   expert_quotes: ResearchQuote[];
@@ -189,7 +194,8 @@ export interface ProductionInput {
     target_audience: string;
     scroll_stopper: string;
     curiosity_gap: string;
-    monetization: {
+    primary_keyword: string;
+    monetization_hypothesis: {
       affiliate_angle: string;
     };
   };
@@ -344,7 +350,7 @@ export interface PodcastOutput {
     point: string;
     notes: string;
   }>;
-  personal_angle: string;
+  host_talking_prompts: string[];
   guest_questions: string[];
   outro: string;
   duration_estimate: string;
@@ -598,11 +604,9 @@ export function normalizeLegacyIdea(legacy: LegacyIdea): BrainstormIdea {
     },
     scroll_stopper: legacy.mrbeast_hook || legacy.curiosity_hook || "",
     curiosity_gap: legacy.curiosity_hook || "",
-    monetization: {
+    monetization_hypothesis: {
       affiliate_angle:
         legacy.monetization?.affiliate_angle || legacy.affiliate_fit || "",
-      product_fit: "",
-      sponsor_appeal: "",
     },
     repurpose_potential: {
       blog_angle: "",
@@ -646,8 +650,8 @@ export function mapBrainstormToResearchInput(
       term: idea.primary_keyword.term,
       difficulty: idea.primary_keyword.difficulty,
     },
-    monetization: {
-      affiliate_angle: idea.monetization.affiliate_angle,
+    monetization_hypothesis: {
+      affiliate_angle: idea.monetization_hypothesis.affiliate_angle,
     },
   };
 }
@@ -663,7 +667,7 @@ const MAX_COUNTERARGUMENTS = 3;
 
 export function mapResearchToProductionInput(
   research: ResearchOutput,
-): ProductionInput["research"] {
+): ProductionInput["research"] & { seo?: ResearchOutput["seo"] } {
   return {
     summary: research.research_summary,
     validation: {
@@ -695,5 +699,6 @@ export function mapResearchToProductionInput(
       angle_notes: research.refined_angle.angle_notes,
       recommendation: research.refined_angle.recommendation,
     },
+    seo: research.seo,
   };
 }

@@ -98,6 +98,11 @@ export const researchOutputSchema = z.object({
     confidence_score: z.number().min(0).max(100),
     validation_notes: z.string(),
   }),
+  seo: z.object({
+    primary_keyword: z.string().min(1),
+    secondary_keywords: z.array(z.string()).optional(),
+    search_intent: z.enum(["informational", "commercial", "navigational", "mixed"]).optional(),
+  }),
   sources: z.array(researchSourceSchema),
   statistics: z.array(researchStatisticSchema),
   expert_quotes: z.array(researchQuoteSchema),

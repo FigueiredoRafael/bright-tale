@@ -39,6 +39,12 @@ interface IdeaDetails {
   };
   scroll_stopper?: string;
   curiosity_gap?: string;
+  monetization_hypothesis?: {
+    affiliate_angle?: string;
+    product_categories?: string[];
+    sponsor_category?: string;
+  };
+  /** Legacy field — pre-rename shape, kept for backward-compat on existing ideas */
   monetization?: {
     affiliate_angle?: string;
     product_fit?: string;
@@ -86,7 +92,7 @@ export function IdeaDetailsDialog({ idea, open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
+      <DialogContent className="max-w-3xl lg:max-w-5xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
         <DialogHeader className="px-6 pt-6 pb-4 border-b bg-gradient-to-b from-muted/30 to-transparent">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
@@ -194,32 +200,37 @@ export function IdeaDetailsDialog({ idea, open, onOpenChange }: Props) {
             </div>
           )}
 
-          {/* Monetization */}
-          {idea.monetization &&
-            (idea.monetization.affiliate_angle ||
-              idea.monetization.product_fit ||
-              idea.monetization.sponsor_appeal) && (
-              <div className="rounded-lg border bg-card/50 p-4">
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                  <DollarSign className="h-3.5 w-3.5" /> Monetization
+          {/* Monetization Hypothesis — dual-read for legacy `monetization` shape */}
+          {(() => {
+            const hyp = idea.monetization_hypothesis;
+            const legacy = idea.monetization;
+            const affiliateAngle = hyp?.affiliate_angle ?? legacy?.affiliate_angle;
+            const productCategories = hyp?.product_categories ?? (legacy?.product_fit ? [legacy.product_fit] : undefined);
+            const sponsorCategory = hyp?.sponsor_category ?? legacy?.sponsor_appeal;
+            const hasAny = affiliateAngle || (productCategories && productCategories.length > 0) || sponsorCategory;
+            if (!hasAny) return null;
+            return (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-400 mb-1">
+                  <DollarSign className="h-3.5 w-3.5" /> Monetization Hypothesis
                 </div>
+                <p className="text-xs text-amber-300/70 italic mb-3">AI speculation — verify before outreach.</p>
                 <div className="space-y-2.5">
-                  {idea.monetization.affiliate_angle && (
-                    <MiniField label="Affiliate Angle">
-                      {idea.monetization.affiliate_angle}
+                  {affiliateAngle && (
+                    <MiniField label="Affiliate Angle">{affiliateAngle}</MiniField>
+                  )}
+                  {productCategories && productCategories.length > 0 && (
+                    <MiniField label="Product Categories">
+                      {productCategories.join(', ')}
                     </MiniField>
                   )}
-                  {idea.monetization.product_fit && (
-                    <MiniField label="Product Fit">{idea.monetization.product_fit}</MiniField>
-                  )}
-                  {idea.monetization.sponsor_appeal && (
-                    <MiniField label="Sponsor Appeal">
-                      {idea.monetization.sponsor_appeal}
-                    </MiniField>
+                  {sponsorCategory && (
+                    <MiniField label="Sponsor Category">{sponsorCategory}</MiniField>
                   )}
                 </div>
               </div>
-            )}
+            );
+          })()}
 
           {/* Repurpose */}
           {idea.repurpose_potential &&

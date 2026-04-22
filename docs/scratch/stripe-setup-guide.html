@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BrightTale — Stripe Setup Protocol</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0A1017;
+      --surface: #0F1620;
+      --elevated: #141E2A;
+      --card: #141E2A;
+      --border: #1E2E40;
+      --text: #F0F4F8;
+      --text-secondary: #94A3B8;
+      --text-muted: #64748B;
+      --primary: #2DD4A8;
+      --primary-dim: rgba(45, 212, 168, 0.12);
+      --primary-glow: rgba(45, 212, 168, 0.25);
+      --accent: #FF6B35;
+      --accent-dim: rgba(255, 107, 53, 0.12);
+      --destructive: #EF4444;
+      --success: #22C55E;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* Ambient glow */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -200px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 600px;
+      background: radial-gradient(ellipse, var(--primary-glow) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.4;
+    }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 3rem 1.5rem 6rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      margin-bottom: 3.5rem;
+    }
+
+    .header .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--primary);
+      margin-bottom: 1rem;
+    }
+
+    .header .logo svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .header h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, var(--text) 0%, var(--primary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 0.75rem;
+    }
+
+    .header p {
+      color: var(--text-secondary);
+      font-size: 1.05rem;
+      max-width: 520px;
+      margin: 0 auto;
+    }
+
+    /* Progress bar */
+    .progress-track {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      margin-bottom: 3rem;
+      padding: 0 1rem;
+    }
+
+    .progress-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+      position: relative;
+    }
+
+    .progress-step::after {
+      content: '';
+      position: absolute;
+      top: 16px;
+      left: calc(50% + 18px);
+      right: calc(-50% + 18px);
+      height: 2px;
+      background: var(--border);
+    }
+
+    .progress-step:last-child::after { display: none; }
+
+    .step-dot {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      z-index: 1;
+      transition: all 0.2s;
+    }
+
+    .step-label {
+      font-size: 0.7rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+      text-align: center;
+    }
+
+    .progress-step.done .step-dot {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: var(--bg);
+    }
+
+    .progress-step.done .step-label { color: var(--primary); }
+    .progress-step.done::after { background: var(--primary); }
+
+    /* Section */
+    .section {
+      margin-bottom: 2.5rem;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .section-number {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: var(--primary-dim);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .section-header h2 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .section-header .badge {
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.2rem 0.6rem;
+      border-radius: 100px;
+      background: var(--accent-dim);
+      color: var(--accent);
+      margin-left: auto;
+    }
+
+    /* Card */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      transition: border-color 0.2s;
+    }
+
+    .card:hover { border-color: rgba(45, 212, 168, 0.2); }
+
+    .card p {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+    }
+
+    .card p:last-child { margin-bottom: 0; }
+
+    /* Table */
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      margin-bottom: 1rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    th {
+      text-align: left;
+      padding: 0.75rem 1rem;
+      background: var(--surface);
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(45, 212, 168, 0.03); }
+
+    td .plan-name {
+      font-weight: 600;
+      color: var(--primary);
+    }
+
+    td .price {
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    td .credits {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--accent);
+    }
+
+    /* Code block */
+    .code-block {
+      position: relative;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 1rem;
+    }
+
+    .code-block-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 0.75rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .code-block-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .copy-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 0.3rem 0.65rem;
+      border-radius: 6px;
+      font-size: 0.7rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .copy-btn:hover {
+      background: var(--primary-dim);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .copy-btn.copied {
+      background: rgba(34, 197, 94, 0.12);
+      border-color: var(--success);
+      color: var(--success);
+    }
+
+    .copy-btn svg { width: 13px; height: 13px; }
+
+    pre {
+      padding: 1rem;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      line-height: 1.7;
+      color: var(--text-secondary);
+    }
+
+    pre .comment { color: var(--text-muted); }
+    pre .key { color: var(--primary); }
+    pre .value { color: var(--accent); }
+    pre .placeholder { color: var(--text-muted); font-style: italic; }
+
+    /* Checklist */
+    .checklist {
+      list-style: none;
+      padding: 0;
+    }
+
+    .checklist li {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.65rem 0;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      border-bottom: 1px solid rgba(30, 46, 64, 0.5);
+    }
+
+    .checklist li:last-child { border-bottom: none; }
+
+    .checklist li::before {
+      content: '';
+      width: 20px;
+      height: 20px;
+      border-radius: 6px;
+      border: 2px solid var(--border);
+      flex-shrink: 0;
+      margin-top: 1px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .checklist li.checked::before {
+      background: var(--primary);
+      border-color: var(--primary);
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230A1017' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6L9 17l-5-5'/%3E%3C/svg%3E");
+      background-size: 12px;
+      background-position: center;
+      background-repeat: no-repeat;
+    }
+
+    .checklist li.checked {
+      color: var(--text-muted);
+      text-decoration: line-through;
+      text-decoration-color: var(--text-muted);
+    }
+
+    .checklist li strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .checklist li.checked strong {
+      color: var(--text-muted);
+    }
+
+    /* Inline code */
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 0.15rem 0.4rem;
+      border-radius: 5px;
+      color: var(--primary);
+    }
+
+    /* Callout */
+    .callout {
+      display: flex;
+      gap: 0.75rem;
+      padding: 1rem 1.25rem;
+      border-radius: 10px;
+      border: 1px solid;
+      margin-bottom: 1rem;
+      font-size: 0.85rem;
+    }
+
+    .callout-warn {
+      background: rgba(255, 107, 53, 0.06);
+      border-color: rgba(255, 107, 53, 0.2);
+      color: var(--text-secondary);
+    }
+
+    .callout-info {
+      background: var(--primary-dim);
+      border-color: rgba(45, 212, 168, 0.2);
+      color: var(--text-secondary);
+    }
+
+    .callout-icon {
+      font-size: 1.1rem;
+      flex-shrink: 0;
+      line-height: 1.4;
+    }
+
+    .callout strong { color: var(--text); }
+
+    /* Verify command */
+    .verify-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-top: 1rem;
+    }
+
+    .verify-block h3 {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      margin-top: 3rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.8rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .container { padding: 2rem 1rem 4rem; }
+      .header h1 { font-size: 1.75rem; }
+      .step-label { font-size: 0.6rem; }
+      .card { padding: 1.25rem; }
+      pre { font-size: 0.72rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+      </svg>
+      BrightTale
+    </div>
+    <h1>Stripe Setup Protocol</h1>
+    <p>Configure Products, Prices, Webhooks, and environment variables. 11 env vars total.</p>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-track">
+    <div class="progress-step" data-step="1"><div class="step-dot">1</div><div class="step-label">Products</div></div>
+    <div class="progress-step" data-step="2"><div class="step-dot">2</div><div class="step-label">Webhook</div></div>
+    <div class="progress-step" data-step="3"><div class="step-dot">3</div><div class="step-label">Portal</div></div>
+    <div class="progress-step" data-step="4"><div class="step-dot">4</div><div class="step-label">Env Vars</div></div>
+    <div class="progress-step" data-step="5"><div class="step-dot">5</div><div class="step-label">Verify</div></div>
+  </div>
+
+  <!-- Step 1: Products + Prices -->
+  <div class="section" data-section="1">
+    <div class="section-header">
+      <div class="section-number">1</div>
+      <h2>Create Products &amp; Prices</h2>
+      <span class="badge">Stripe Dashboard</span>
+    </div>
+
+    <div class="card">
+      <p>Go to <strong>Stripe Dashboard &rarr; Products &rarr; + Add product</strong>. Create each product with the prices below. Copy every <code>price_...</code> ID.</p>
+
+      <div class="callout callout-info">
+        <span class="callout-icon">&#9432;</span>
+        <span><strong>Free tier has no Stripe product</strong> &mdash; it's the default state (1,000 credits, $0). Only create the 3 paid plans + 3 addon packs.</span>
+      </div>
+
+      <h3 style="font-size:0.9rem; font-weight:700; margin: 1.25rem 0 0.75rem; color: var(--text);">Subscription Plans (recurring)</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Product</th><th>Monthly</th><th>Annual</th><th>Credits / mo</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="plan-name">BrightTale Starter</span></td>
+              <td><span class="price">$9/mo</span></td>
+              <td><span class="price">$84/yr</span> ($7/mo)</td>
+              <td><span class="credits">5,000</span></td>
+            </tr>
+            <tr>
+              <td><span class="plan-name">BrightTale Creator</span></td>
+              <td><span class="price">$29/mo</span></td>
+              <td><span class="price">$276/yr</span> ($23/mo)</td>
+              <td><span class="credits">15,000</span></td>
+            </tr>
+            <tr>
+              <td><span class="plan-name">BrightTale Pro</span></td>
+              <td><span class="price">$99/mo</span></td>
+              <td><span class="price">$948/yr</span> ($79/mo)</td>
+              <td><span class="credits">50,000</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:0.8rem;">Each product gets <strong>2 prices</strong> (Monthly recurring + Yearly recurring). That's <strong>6 price IDs</strong>.</p>
+
+      <h3 style="font-size:0.9rem; font-weight:700; margin: 1.25rem 0 0.75rem; color: var(--text);">Add-on Credit Packs (one-time)</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Product</th><th>Price</th><th>Credits</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="plan-name">1K Credit Pack</span></td>
+              <td><span class="price">$5</span> one-time</td>
+              <td><span class="credits">1,000</span></td>
+            </tr>
+            <tr>
+              <td><span class="plan-name">5K Credit Pack</span></td>
+              <td><span class="price">$20</span> one-time</td>
+              <td><span class="credits">5,000</span></td>
+            </tr>
+            <tr>
+              <td><span class="plan-name">15K Credit Pack</span></td>
+              <td><span class="price">$50</span> one-time</td>
+              <td><span class="credits">15,000</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:0.8rem;">Each pack gets <strong>1 price</strong> (one-time, mode <code>payment</code>). That's <strong>3 price IDs</strong>.</p>
+    </div>
+
+    <ul class="checklist">
+      <li onclick="this.classList.toggle('checked')"><strong>Starter</strong> product created &mdash; monthly + annual prices copied</li>
+      <li onclick="this.classList.toggle('checked')"><strong>Creator</strong> product created &mdash; monthly + annual prices copied</li>
+      <li onclick="this.classList.toggle('checked')"><strong>Pro</strong> product created &mdash; monthly + annual prices copied</li>
+      <li onclick="this.classList.toggle('checked')"><strong>1K Pack</strong> product + price created</li>
+      <li onclick="this.classList.toggle('checked')"><strong>5K Pack</strong> product + price created</li>
+      <li onclick="this.classList.toggle('checked')"><strong>15K Pack</strong> product + price created</li>
+    </ul>
+  </div>
+
+  <!-- Step 2: Webhook -->
+  <div class="section" data-section="2">
+    <div class="section-header">
+      <div class="section-number">2</div>
+      <h2>Set Up Webhook</h2>
+      <span class="badge">Stripe Dashboard</span>
+    </div>
+
+    <div class="card">
+      <p>Go to <strong>Developers &rarr; Webhooks &rarr; + Add endpoint</strong></p>
+
+      <div class="code-block">
+        <div class="code-block-header">
+          <span class="code-block-label">Endpoint URL</span>
+          <button class="copy-btn" onclick="copyCode(this, 'webhook-url')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            Copy
+          </button>
+        </div>
+        <pre id="webhook-url">https://api.brighttale.io/api/billing/webhook</pre>
+      </div>
+
+      <p style="margin-top:1rem;"><strong>Events to subscribe:</strong></p>
+      <div class="code-block">
+        <div class="code-block-header">
+          <span class="code-block-label">Webhook Events</span>
+          <button class="copy-btn" onclick="copyCode(this, 'webhook-events')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            Copy
+          </button>
+        </div>
+        <pre id="webhook-events">checkout.session.completed
+customer.subscription.created
+customer.subscription.updated
+customer.subscription.deleted
+invoice.payment_succeeded
+invoice.paid</pre>
+      </div>
+
+      <div class="callout callout-warn">
+        <span class="callout-icon">&#9888;</span>
+        <span>After creating the endpoint, copy the <strong>Signing Secret</strong> (<code>whsec_...</code>). You'll need it for the env vars.</span>
+      </div>
+    </div>
+
+    <ul class="checklist">
+      <li onclick="this.classList.toggle('checked')">Webhook endpoint created with all 6 events</li>
+      <li onclick="this.classList.toggle('checked')">Signing secret (<code>whsec_...</code>) copied</li>
+    </ul>
+  </div>
+
+  <!-- Step 3: Customer Portal -->
+  <div class="section" data-section="3">
+    <div class="section-header">
+      <div class="section-number">3</div>
+      <h2>Customer Portal</h2>
+      <span class="badge">Stripe Dashboard</span>
+    </div>
+
+    <div class="card">
+      <p>Go to <strong>Settings &rarr; Billing &rarr; Customer portal</strong>. Enable:</p>
+      <ul class="checklist">
+        <li onclick="this.classList.toggle('checked')">Cancel subscription</li>
+        <li onclick="this.classList.toggle('checked')">Update payment method</li>
+        <li onclick="this.classList.toggle('checked')">Switch plans (optional &mdash; lets users upgrade/downgrade from portal)</li>
+        <li onclick="this.classList.toggle('checked')">Save configuration</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Step 4: Environment Variables -->
+  <div class="section" data-section="4">
+    <div class="section-header">
+      <div class="section-number">4</div>
+      <h2>Environment Variables</h2>
+      <span class="badge">11 Variables</span>
+    </div>
+
+    <div class="card">
+      <p>Add to <code>apps/api/.env.local</code> (local dev) and Vercel project settings (production).</p>
+
+      <div class="code-block">
+        <div class="code-block-header">
+          <span class="code-block-label">apps/api/.env.local</span>
+          <button class="copy-btn" onclick="copyCode(this, 'env-vars')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            Copy
+          </button>
+        </div>
+        <pre id="env-vars"><span class="comment"># ── Stripe Core ──────────────────────────────</span>
+<span class="key">STRIPE_SECRET_KEY</span>=<span class="placeholder">sk_live_...</span>
+<span class="key">STRIPE_WEBHOOK_SECRET</span>=<span class="placeholder">whsec_...</span>
+
+<span class="comment"># ── Subscription Prices (6) ──────────────────</span>
+<span class="key">STRIPE_PRICE_STARTER_MONTHLY</span>=<span class="placeholder">price_...</span>
+<span class="key">STRIPE_PRICE_STARTER_ANNUAL</span>=<span class="placeholder">price_...</span>
+<span class="key">STRIPE_PRICE_CREATOR_MONTHLY</span>=<span class="placeholder">price_...</span>
+<span class="key">STRIPE_PRICE_CREATOR_ANNUAL</span>=<span class="placeholder">price_...</span>
+<span class="key">STRIPE_PRICE_PRO_MONTHLY</span>=<span class="placeholder">price_...</span>
+<span class="key">STRIPE_PRICE_PRO_ANNUAL</span>=<span class="placeholder">price_...</span>
+
+<span class="comment"># ── Add-on Packs (3) ─────────────────────────</span>
+<span class="key">STRIPE_PRICE_ADDON_1K</span>=<span class="placeholder">price_...</span>
+<span class="key">STRIPE_PRICE_ADDON_5K</span>=<span class="placeholder">price_...</span>
+<span class="key">STRIPE_PRICE_ADDON_15K</span>=<span class="placeholder">price_...</span></pre>
+      </div>
+
+      <div class="callout callout-warn">
+        <span class="callout-icon">&#9888;</span>
+        <span>Use <code>sk_test_...</code> keys for dev, <code>sk_live_...</code> for production. <strong>Never commit secret keys to git.</strong></span>
+      </div>
+    </div>
+
+    <ul class="checklist">
+      <li onclick="this.classList.toggle('checked')"><code>STRIPE_SECRET_KEY</code> set</li>
+      <li onclick="this.classList.toggle('checked')"><code>STRIPE_WEBHOOK_SECRET</code> set</li>
+      <li onclick="this.classList.toggle('checked')">All 6 subscription price IDs set</li>
+      <li onclick="this.classList.toggle('checked')">All 3 addon pack price IDs set</li>
+      <li onclick="this.classList.toggle('checked')">Same variables set in <strong>Vercel</strong> (production)</li>
+    </ul>
+  </div>
+
+  <!-- Step 5: Verify -->
+  <div class="section" data-section="5">
+    <div class="section-header">
+      <div class="section-number">5</div>
+      <h2>Verify Setup</h2>
+    </div>
+
+    <div class="card">
+      <p>Restart the API, then run this curl to confirm all price IDs resolved:</p>
+
+      <div class="code-block">
+        <div class="code-block-header">
+          <span class="code-block-label">Verify Plans</span>
+          <button class="copy-btn" onclick="copyCode(this, 'verify-plans')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            Copy
+          </button>
+        </div>
+        <pre id="verify-plans">curl -s -H "X-Internal-Key: $INTERNAL_API_KEY" \
+  http://localhost:3001/api/billing/plans | jq .</pre>
+      </div>
+      <p>Expected: each plan's <code>stripePriceId</code> fields should show actual <code>price_...</code> values, not <code>null</code>.</p>
+
+      <div class="code-block" style="margin-top: 1rem;">
+        <div class="code-block-header">
+          <span class="code-block-label">Test Webhook (Stripe CLI)</span>
+          <button class="copy-btn" onclick="copyCode(this, 'verify-webhook')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            Copy
+          </button>
+        </div>
+        <pre id="verify-webhook">stripe listen --forward-to localhost:3001/api/billing/webhook
+stripe trigger checkout.session.completed</pre>
+      </div>
+      <p>The listen command forwards Stripe events to your local API. Trigger a test event and confirm it processes without errors in the API logs.</p>
+    </div>
+
+    <ul class="checklist">
+      <li onclick="this.classList.toggle('checked')"><code>/billing/plans</code> returns non-null price IDs</li>
+      <li onclick="this.classList.toggle('checked')">Stripe CLI webhook forwarding works</li>
+      <li onclick="this.classList.toggle('checked')">Test checkout flow completes end-to-end</li>
+    </ul>
+  </div>
+
+  <!-- Quick Reference -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-number" style="background: var(--accent-dim); color: var(--accent);">&#8505;</div>
+      <h2>Quick Reference</h2>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Env Variable</th><th>Source</th><th>Format</th></tr></thead>
+          <tbody>
+            <tr><td><code>STRIPE_SECRET_KEY</code></td><td>Developers &rarr; API keys</td><td><code>sk_live_...</code></td></tr>
+            <tr><td><code>STRIPE_WEBHOOK_SECRET</code></td><td>Developers &rarr; Webhooks &rarr; Signing secret</td><td><code>whsec_...</code></td></tr>
+            <tr><td><code>STRIPE_PRICE_*_MONTHLY</code></td><td>Products &rarr; [Plan] &rarr; Monthly price</td><td><code>price_...</code></td></tr>
+            <tr><td><code>STRIPE_PRICE_*_ANNUAL</code></td><td>Products &rarr; [Plan] &rarr; Annual price</td><td><code>price_...</code></td></tr>
+            <tr><td><code>STRIPE_PRICE_ADDON_*</code></td><td>Products &rarr; [Pack] &rarr; One-time price</td><td><code>price_...</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    BrightTale Stripe Setup Protocol &mdash; V2-006 Subscription Ready
+  </div>
+</div>
+
+<script>
+function copyCode(btn, id) {
+  const el = document.getElementById(id);
+  const text = el.textContent.trim();
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.innerHTML;
+    btn.classList.add('copied');
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Copied!`;
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = orig;
+    }, 2000);
+  });
+}
+
+// Interactive progress: mark steps done when all checklists in section are checked
+function updateProgress() {
+  document.querySelectorAll('.progress-step').forEach(step => {
+    const num = step.dataset.step;
+    const section = document.querySelector(`.section[data-section="${num}"]`);
+    if (!section) return;
+    const items = section.querySelectorAll('.checklist li');
+    if (items.length === 0) return;
+    const allChecked = [...items].every(li => li.classList.contains('checked'));
+    step.classList.toggle('done', allChecked);
+  });
+}
+
+// Observe checklist clicks
+document.addEventListener('click', e => {
+  if (e.target.closest('.checklist li')) {
+    setTimeout(updateProgress, 50);
+  }
+});
+</script>
+
+</body>
+</html>

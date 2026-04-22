@@ -301,6 +301,7 @@ export async function ideasRoutes(fastify: FastifyInstance): Promise<void> {
       if (data.tags) updateData.tags = data.tags;
       if (data.is_public !== undefined) updateData.is_public = data.is_public;
       if (data.markdown_content !== undefined) updateData.markdown_content = data.markdown_content;
+      if (data.channel_id !== undefined) updateData.channel_id = data.channel_id;
 
       const { data: idea, error } = await sb
         .from('idea_archives')

@@ -23,13 +23,13 @@ import type { PodcastOutput } from '@brighttale/shared/types/agents';
 // Calculate spoken word count from podcast fields
 function calculatePodcastWordCount(data: {
   intro_hook: string;
-  personal_angle?: string | null;
+  host_talking_prompts?: string[] | null;
   outro: string;
   talking_points: TalkingPoint[];
 }): number {
   return [
     data.intro_hook,
-    data.personal_angle,
+    data.host_talking_prompts?.join(' ') ?? '',
     data.outro,
     ...data.talking_points.map((tp) => `${tp.point} ${tp.notes}`),
   ]
@@ -118,12 +118,12 @@ export async function podcastsRoutes(fastify: FastifyInstance): Promise<void> {
       const sb = createServiceClient();
       const data = createPodcastSchema.parse(request.body);
 
-      // Calculate word count from talking_points, intro_hook, personal_angle, outro
+      // Calculate word count from talking_points, intro_hook, host_talking_prompts, outro
       const wordCount =
         data.word_count ??
         calculatePodcastWordCount({
           intro_hook: data.intro_hook,
-          personal_angle: data.personal_angle,
+          host_talking_prompts: data.host_talking_prompts,
           outro: data.outro,
           talking_points: data.talking_points,
         });
@@ -135,7 +135,7 @@ export async function podcastsRoutes(fastify: FastifyInstance): Promise<void> {
           episode_description: data.episode_description,
           intro_hook: data.intro_hook,
           talking_points_json: JSON.stringify(data.talking_points),
-          personal_angle: data.personal_angle,
+          personal_angle: JSON.stringify(data.host_talking_prompts),
           guest_questions: data.guest_questions,
           outro: data.outro,
           duration_estimate: data.duration_estimate,
@@ -178,13 +178,24 @@ export async function podcastsRoutes(fastify: FastifyInstance): Promise<void> {
         throw new ApiError(404, 'Podcast not found', 'NOT_FOUND');
       }
 
-      // Transform to PodcastOutput format
+      // Transform to PodcastOutput format (map DB personal_angle → host_talking_prompts)
+      let hostTalkingPrompts: string[] = [];
+      if (draft.personal_angle) {
+        try {
+          const parsed = JSON.parse(draft.personal_angle);
+          hostTalkingPrompts = Array.isArray(parsed) ? parsed : [];
+        } catch {
+          // If not JSON array, treat as legacy string (empty array for now)
+          hostTalkingPrompts = [];
+        }
+      }
+
       const podcastOutput: PodcastOutput = {
         episode_title: draft.episode_title,
         episode_description: draft.episode_description,
         intro_hook: draft.intro_hook,
         talking_points: JSON.parse(draft.talking_points_json),
-        personal_angle: draft.personal_angle,
+        host_talking_prompts: hostTalkingPrompts,
         guest_questions: draft.guest_questions,
         outro: draft.outro,
         duration_estimate: draft.duration_estimate ?? '',
@@ -278,13 +289,24 @@ export async function podcastsRoutes(fastify: FastifyInstance): Promise<void> {
         throw new ApiError(404, 'Podcast not found', 'NOT_FOUND');
       }
 
-      // Transform to PodcastOutput format
+      // Transform to PodcastOutput format (map DB personal_angle → host_talking_prompts)
+      let hostTalkingPrompts: string[] = [];
+      if (draft.personal_angle) {
+        try {
+          const parsed = JSON.parse(draft.personal_angle);
+          hostTalkingPrompts = Array.isArray(parsed) ? parsed : [];
+        } catch {
+          // If not JSON array, treat as legacy string (empty array for now)
+          hostTalkingPrompts = [];
+        }
+      }
+
       const podcastOutput: PodcastOutput = {
         episode_title: draft.episode_title,
         episode_description: draft.episode_description,
         intro_hook: draft.intro_hook,
         talking_points: JSON.parse(draft.talking_points_json),
-        personal_angle: draft.personal_angle,
+        host_talking_prompts: hostTalkingPrompts,
         guest_questions: draft.guest_questions,
         outro: draft.outro,
         duration_estimate: draft.duration_estimate ?? '',
@@ -363,7 +385,7 @@ export async function podcastsRoutes(fastify: FastifyInstance): Promise<void> {
       if (data.intro_hook !== undefined) updateData.intro_hook = data.intro_hook;
       if (data.talking_points !== undefined)
         updateData.talking_points_json = JSON.stringify(data.talking_points);
-      if (data.personal_angle !== undefined) updateData.personal_angle = data.personal_angle;
+      if (data.host_talking_prompts !== undefined) updateData.personal_angle = JSON.stringify(data.host_talking_prompts);
       if (data.guest_questions !== undefined) updateData.guest_questions = data.guest_questions;
       if (data.outro !== undefined) updateData.outro = data.outro;
       if (data.duration_estimate !== undefined) updateData.duration_estimate = data.duration_estimate;

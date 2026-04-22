@@ -30,6 +30,7 @@ interface RawIdea {
   scroll_stopper?: string;
   curiosity_gap?: string;
   monetization?: string | { affiliate_angle?: string; product_fit?: string; sponsor_appeal?: string };
+  monetization_hypothesis?: { affiliate_angle?: string; product_categories?: string[]; sponsor_category?: string };
   repurpose_potential?: { blog_angle?: string; video_angle?: string; shorts_hooks?: string[]; podcast_angle?: string };
   repurposing?: string[];
   risk_flags?: string[];
@@ -248,6 +249,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
           scroll_stopper: idea.scroll_stopper,
           curiosity_gap: idea.curiosity_gap,
           monetization: idea.monetization,
+          monetization_hypothesis: idea.monetization_hypothesis,
           repurpose_potential: idea.repurpose_potential,
           repurposing: idea.repurposing,
           risk_flags: idea.risk_flags,
@@ -666,6 +668,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
             scroll_stopper: idea.scroll_stopper,
             curiosity_gap: idea.curiosity_gap,
             monetization: idea.monetization,
+            monetization_hypothesis: idea.monetization_hypothesis,
             repurpose_potential: idea.repurpose_potential,
             repurposing: idea.repurposing,
             risk_flags: idea.risk_flags,

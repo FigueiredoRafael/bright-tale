@@ -107,6 +107,59 @@ async function loadDraft(id: string) {
   return data;
 }
 
+function resolveSeoDefaults(draft: Record<string, unknown>): {
+  title: string;
+  slug: string;
+  meta_description: string;
+  primary_keyword: string;
+  secondary_keywords: string[];
+  categories: string[];
+  tags: string[];
+} {
+  const dj = (draft.draft_json ?? {}) as Record<string, unknown>;
+  const blog = (dj.blog ?? dj) as Record<string, unknown>;
+  const feedback = (draft.review_feedback_json ?? {}) as Record<string, unknown>;
+  const root = (feedback.BC_REVIEW_OUTPUT ?? feedback) as Record<string, unknown>;
+  const blogReview = (root.blog_review ?? root.blog) as Record<string, unknown> | undefined;
+  const pubPlan = (root.publication_plan ?? blogReview?.publication_plan) as Record<string, unknown> | undefined;
+  const pubBlog = (pubPlan?.blog ?? pubPlan) as Record<string, unknown> | undefined;
+  const seo = (pubBlog?.final_seo ?? pubBlog?.seo ?? pubPlan?.final_seo ?? {}) as Record<string, string>;
+
+  const title = seo.title
+    || (draft.title as string)
+    || (blog.title as string)
+    || "";
+  const slug = seo.slug
+    || (blog.slug as string)
+    || (dj.slug as string)
+    || "";
+  const metaDesc = seo.meta_description
+    || seo.metaDescription
+    || (blog.meta_description as string)
+    || (dj.meta_description as string)
+    || "";
+  const primaryKeyword = (blog.primary_keyword as string)
+    || (dj.primary_keyword as string)
+    || "";
+  const secondaryKeywords = (
+    (blog.secondary_keywords as string[])
+    ?? (dj.secondary_keywords as string[])
+    ?? []
+  );
+  const categories = (
+    (pubBlog?.categories as string[])
+    ?? (pubPlan?.categories as string[])
+    ?? (primaryKeyword ? [primaryKeyword] : [])
+  );
+  const tags = (
+    (pubBlog?.tags as string[])
+    ?? (pubPlan?.tags as string[])
+    ?? secondaryKeywords
+  );
+
+  return { title, slug, meta_description: metaDesc, primary_keyword: primaryKeyword, secondary_keywords: secondaryKeywords, categories, tags };
+}
+
 /**
  * Build BC_ASSETS_INPUT from a draft row. Shared between the data-only
  * /asset-prompts route and the LLM-powered /generate-asset-prompts route.
@@ -277,7 +330,8 @@ export async function contentDraftsRoutes(
       try {
         const { id } = request.params as { id: string };
         const draft = await loadDraft(id);
-        return reply.send({ data: draft, error: null });
+        const resolved_seo = resolveSeoDefaults(draft as unknown as Record<string, unknown>);
+        return reply.send({ data: { ...draft, resolved_seo }, error: null });
       } catch (error) {
         return sendError(reply, error);
       }

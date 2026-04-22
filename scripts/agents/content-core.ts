@@ -33,7 +33,7 @@ export const contentCore: AgentDefinition = {
           str('target_audience', 'Who this idea is intended for'),
           str('scroll_stopper', 'The hook or scroll-stopping element'),
           str('curiosity_gap', 'What makes the audience need to know more'),
-          obj('monetization', 'Monetization details from brainstorm', [
+          obj('monetization_hypothesis', 'Directional monetization hypotheses from brainstorm (AI speculation only)', [
             str('affiliate_angle', 'Natural product tie-in or affiliate opportunity'),
           ]),
         ]),
@@ -78,7 +78,7 @@ export const contentCore: AgentDefinition = {
       fields: [
         str('idea_id', 'Echo back the idea_id from input'),
         str('thesis', 'Central claim — max 2 sentences. Must be falsifiable.'),
-        arrOf('argument_chain', 'Ordered logical chain — each step builds on the previous. Min 2 steps.', [
+        arrOf('argument_chain', 'Ordered logical chain — each step builds on the previous. Min 2, max 6 steps. Consolidate related claims if research supports more than 6.', [
           num('step', 'Step number in sequence'),
           str('claim', 'The logical assertion at this step'),
           str('evidence', 'Specific data, study, or expert finding proving this claim'),
@@ -111,9 +111,7 @@ export const contentCore: AgentDefinition = {
     rules: {
       formatting: [
         ...STANDARD_JSON_RULES,
-        'Output JSON only, no markdown fences.',
         'Do not add, remove, or rename keys in the output schema.',
-        'For multi-line string values, embed literal newline characters inside the JSON string. Do NOT use YAML pipe (|) syntax.',
       ],
       content: [
         'Thesis: Max 2 sentences. Must be falsifiable (a claim that can be supported or refuted).',
@@ -129,6 +127,7 @@ export const contentCore: AgentDefinition = {
         'If recommendation is "abandon", output only: { idea_id: "...", thesis: "ABANDONED — research does not support this idea." }.',
         'Verify that every source_id in key_stats matches a source from the research input.',
         'Verify that every source_id in argument_chain steps matches a source from the research input.',
+        'Verify argument_chain has 2-6 steps. If research supports more than 6 claims, consolidate related steps.',
       ],
     },
     customSections: [
@@ -222,11 +221,7 @@ Format agents (blog, video, podcast, etc.) will:
         title: 'Before Finishing',
         content: `1. Verify every source_id in key_stats and argument_chain steps exists in research.key_sources
 2. If refined_angle.recommendation = "pivot", thesis and argument chain must reflect it
-3. If recommendation = "abandon", return ONLY the abandoned state (no argument chain)
-4. Multi-line string values use embedded newline characters inside the JSON string (never YAML pipe)
-5. No markdown code fences (\`\`\`) anywhere in the output
-6. No em-dashes, use regular dashes (-)
-7. No curly quotes, use straight quotes only`,
+3. If recommendation = "abandon", return ONLY the abandoned state (no argument chain)`,
       },
     ],
   },

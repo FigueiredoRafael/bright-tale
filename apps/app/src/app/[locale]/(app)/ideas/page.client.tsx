@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +58,8 @@ interface LibraryIdea {
 
 export default function IdeasPage() {
     const { toast } = useToast();
+    const params = useParams<{ locale: string }>();
+    const locale = params.locale || 'en';
     const [ideas, setIdeas] = useState<LibraryIdea[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
@@ -539,7 +543,7 @@ export default function IdeasPage() {
                                                 variant="ghost"
                                                 size="sm"
                                                 className="h-7 w-7 p-0"
-                                                onClick={() => openEditModal(idea)}
+                                                onClick={(e) => { e.stopPropagation(); openEditModal(idea); }}
                                             >
                                                 <Pencil className="h-3.5 w-3.5" />
                                             </Button>
@@ -547,20 +551,24 @@ export default function IdeasPage() {
                                                 variant="ghost"
                                                 size="sm"
                                                 className="h-7 w-7 p-0 text-destructive hover:text-destructive/80"
-                                                onClick={() => setDeletingId(idea.id)}
+                                                onClick={(e) => { e.stopPropagation(); setDeletingId(idea.id); }}
                                             >
                                                 <Trash className="h-3.5 w-3.5" />
                                             </Button>
                                         </div>
                                     </div>
-                                    <CardTitle className="text-sm font-medium leading-tight">
-                                        {idea.title}
-                                    </CardTitle>
+                                    <Link href={`/${locale}/ideas/${idea.id}`} className="block hover:underline">
+                                        <CardTitle className="text-sm font-medium leading-tight">
+                                            {idea.title}
+                                        </CardTitle>
+                                    </Link>
                                 </CardHeader>
                                 <CardContent>
-                                    <p className="text-xs text-muted-foreground line-clamp-2 mb-3">
-                                        {idea.core_tension}
-                                    </p>
+                                    <Link href={`/${locale}/ideas/${idea.id}`} className="block">
+                                        <p className="text-xs text-muted-foreground line-clamp-2 mb-3 hover:underline">
+                                            {idea.core_tension}
+                                        </p>
+                                    </Link>
                                     <div className="flex items-center gap-2 flex-wrap">
                                         <Badge
                                             variant="outline"
@@ -614,13 +622,14 @@ export default function IdeasPage() {
                             <span className="w-20 text-right">Actions</span>
                         </div>
                         {ideas.map((idea, idx) => (
-                            <div
+                            <Link
                                 key={idea.id}
+                                href={`/${locale}/ideas/${idea.id}`}
                                 className={`flex items-center gap-3 px-4 py-3 hover:bg-muted/20 transition-colors cursor-pointer select-none ${selectedIds.has(idea.id) ? "bg-primary/5" : ""}`}
                                 onClick={(e) => {
                                     if (e.shiftKey || e.ctrlKey || e.metaKey) {
                                         e.preventDefault();
-                                        handleSelect(idea.id, idx, e);
+                                        handleSelect(idea.id, idx, e as unknown as React.MouseEvent);
                                     }
                                 }}
                             >
@@ -650,12 +659,12 @@ export default function IdeasPage() {
                                 <span className="w-20 text-center" title={idea.source_type}>
                                     {getSourceIcon(idea.source_type)}
                                 </span>
-                                <div className="w-20 flex justify-end gap-1">
+                                <div className="w-20 flex justify-end gap-1" onClick={(e) => e.preventDefault()}>
                                     <Button
                                         variant="ghost"
                                         size="sm"
                                         className="h-7 w-7 p-0"
-                                        onClick={() => openEditModal(idea)}
+                                        onClick={(e) => { e.stopPropagation(); openEditModal(idea); }}
                                     >
                                         <Pencil className="h-3.5 w-3.5" />
                                     </Button>
@@ -663,12 +672,12 @@ export default function IdeasPage() {
                                         variant="ghost"
                                         size="sm"
                                         className="h-7 w-7 p-0 text-destructive hover:text-destructive/80"
-                                        onClick={() => setDeletingId(idea.id)}
+                                        onClick={(e) => { e.stopPropagation(); setDeletingId(idea.id); }}
                                     >
                                         <Trash className="h-3.5 w-3.5" />
                                     </Button>
                                 </div>
-                            </div>
+                            </Link>
                         ))}
                     </div>
                     )}

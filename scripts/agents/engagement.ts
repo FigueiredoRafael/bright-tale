@@ -47,18 +47,14 @@ export const engagement: AgentDefinition = {
     rules: {
       formatting: [
         ...STANDARD_JSON_RULES,
-        'Output JSON only, no markdown fences.',
         'Do not add, remove, or rename keys in the output schema.',
-        'For multi-line string values, embed literal newline characters inside the JSON string. Do NOT use YAML pipe (|) syntax.',
-        'No markdown code fences anywhere in the output.',
-        'No em-dashes (-), use regular dashes (-)',
-        'No curly quotes, use straight quotes only',
       ],
       content: [
         '`pinned_comment`: Must be derived from `comment_prompt_seed`. Expand it into a fuller question that invites personal reflection. Max 500 characters (count carefully). Must end with `?`. Do NOT include a subscribe CTA here - keep it purely conversational.',
         '`community_post`: Lead with the most surprising or contrarian angle from `key_stats` or the thesis. Write in a direct, slightly casual tone (not academic). 2-4 short paragraphs OR a short bulleted list - choose whatever fits the content better. Close with `closing_emotion` as the emotional landing, then `cta_subscribe` as the action.',
         '`hook_tweet`: The most scroll-stopping version of the thesis. Bold claim, surprising stat, or provocative question. 1-2 sentences, no hashtags needed, no thread numbering.',
         '`thread_outline`: 4-6 tweets expanding the argument. Each tweet = one sharp point, supported by a stat from `key_stats` where possible. Keep each tweet under 280 characters. Last tweet = CTA (subscribe, video link placeholder, or engagement question).',
+        'If key_stats is empty or not provided, use qualitative claims from the thesis or argument_chain evidence instead. Do not fabricate statistics.',
         'No fabricated stats in any asset. Only use figures from `key_stats`. If no relevant stat exists for a tweet, use the thesis claim directly.',
       ],
       validation: [
@@ -174,10 +170,7 @@ Example thread_outline for 5 tweets:
 4. Verify the last item in thread_outline is a CTA
 5. Verify community_post closes with closing_emotion followed by cta_subscribe
 6. Verify no fabricated stats — only use figures from key_stats
-7. Verify multi-line string values use embedded newline characters (never YAML pipe syntax)
-8. No em-dashes, use regular dashes (-)
-9. No curly quotes, use straight quotes only
-10. Verify hook_tweet is 1-2 sentences and has no thread numbering`,
+7. Verify hook_tweet is 1-2 sentences and has no thread numbering`,
       },
     ],
   },
