@@ -79,6 +79,7 @@ export const shorts: AgentDefinition = {
         'cta: At least one short should include `cta_comment_prompt` as a question. At least one should reference `cta_subscribe`. "Watch the full video" is acceptable in `cta` but NOT in `hook` or `script` body.',
         'No fabricated stats — only use figures from `key_stats`.',
         'If production_params.target_duration_minutes is provided (in tenths), scale each short to that duration. 0.25 (15s) = 35-40 words, 0.5 (30s) = 70-80 words, 1.0 (60s) = 140-150 words. If material is insufficient, set content_warning instead of padding.',
+        'If input key_stats is empty, every short MUST use qualitative framing derived from thesis. Never paraphrase an invented number as fact. If a short\'s hook requires a stat and none is in input, populate content_warning and use a qualitative hook.',
       ],
       validation: [
         'Verify exactly 3 items in the output shorts array.',
