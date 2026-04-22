@@ -1,5 +1,5 @@
 import type { AgentDefinition } from './_types';
-import { str, num, bool, obj, arr, arrOf, STANDARD_JSON_RULES } from './_helpers';
+import { str, num, bool, obj, arr, arrOf, STANDARD_JSON_RULES, contentWarningField } from './_helpers';
 
 export const blog: AgentDefinition = {
   slug: 'blog',
@@ -82,7 +82,7 @@ export const blog: AgentDefinition = {
           str('topic', 'Related topic title'),
           str('anchor_text', 'Natural anchor text for linking'),
         ], false),
-        str('content_warning', 'Set if research material is insufficient for the target word count', false),
+        contentWarningField('research material'),
       ],
     },
     rules: {
