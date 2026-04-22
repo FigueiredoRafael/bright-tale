@@ -45,9 +45,10 @@ export function arrOf(name: string, description: string, fields: SchemaField[], 
   return { name, type: 'array', required, description, items: { type: 'object', fields } };
 }
 
-export const contentWarningField = (purpose = 'material') =>
-  str(
+export function contentWarningField(purpose = 'material'): SchemaField {
+  return str(
     'content_warning',
     `Set if input ${purpose} is insufficient. Format: "Missing X — padding avoided." Leave empty when content is complete.`,
     false,
   );
+}
