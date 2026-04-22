@@ -1,5 +1,5 @@
 import type { AgentDefinition } from './_types';
-import { str, num, bool, obj, arr, arrOf, STANDARD_JSON_RULES } from './_helpers';
+import { str, num, bool, obj, arr, arrOf, STANDARD_JSON_RULES, contentWarningField } from './_helpers';
 
 export const shorts: AgentDefinition = {
   slug: 'shorts',
@@ -60,7 +60,7 @@ export const shorts: AgentDefinition = {
           str('sound_effects', 'Suggested sound effects'),
           str('background_music', 'Suggested background music'),
         ]),
-        str('content_warning', 'Set if material is insufficient for target duration', false),
+        contentWarningField('material for target duration'),
       ],
     },
     rules: {
