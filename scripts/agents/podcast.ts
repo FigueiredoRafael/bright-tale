@@ -1,5 +1,5 @@
 import type { AgentDefinition } from './_types';
-import { str, num, bool, obj, arr, arrOf, STANDARD_JSON_RULES } from './_helpers';
+import { str, num, bool, obj, arr, arrOf, STANDARD_JSON_RULES, contentWarningField } from './_helpers';
 
 export const podcast: AgentDefinition = {
   slug: 'podcast',
@@ -66,7 +66,7 @@ export const podcast: AgentDefinition = {
         arr('guest_questions', 'Optional - include if content has expert angle', 'string', false),
         str('outro', 'Closing remarks. Lands on closing_emotion. Includes cta_subscribe. Ends with cta_comment_prompt as a listener question.'),
         str('duration_estimate', 'Rough estimate based on talking point count (~5-7 min each). Not a production target.'),
-        str('content_warning', 'Set if material is insufficient for target duration', false),
+        contentWarningField('material for target duration'),
       ],
     },
     rules: {
