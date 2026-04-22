@@ -103,18 +103,21 @@ export const podcast: AgentDefinition = {
         'Verify host voice authenticity: Each `host_talking_prompt` should feel like a natural place for the host to pause, reflect, and share. None should sound like research restatement.',
         'Verify episode completeness: All three schema fields (idea_id, thesis, emotional_arc) should be reflected in the output. No dangling references or unused input data.',
       ],
-      notes: [
-        'Talking points structure: Each point pairs a claim (point) with conversational guidance (notes). The notes coach the host through: (1) introducing the topic naturally ("So the first thing..."), (2) citing evidence without sounding academic, (3) embedding quotes with full attribution (author, credentials), (4) transitioning to the next point ("Which brings us to..."). Example flow: claim → evidence + quote → transition.',
-        'Host talking prompts are the bridge between episode content and the host\'s authentic voice. They frame moments the host can fill from real experience, rooted in the thesis or argument. Never write "I once had..." or "My experience shows..." — instead write "Share a time when...", "Describe how you reacted to...", "When have you noticed...". The host supplies the authentic story.',
-        'Notes section guidance: Write like you\'re coaching the host in the moment. Fragments and asides are fine. Conversational, not scripted. Include verbal cues (e.g., "pause here to let it sink in") and guidance on how to frame stats and quotes naturally in speech. This is a production guide, not a script.',
-        'Duration planning: Use talking point count as the primary lever. Intro/outro are roughly 1-2 min each. Host talking prompts add 2-3 min. Each talking point is typically 5-7 min. Scale the number and depth of points to hit the target duration. If insufficient material, set content_warning rather than padding with filler.',
-        'Evidence framing: Do not just cite stats raw. Explain what the stat means conversationally in context. Use quotes as validation of the point, not decoration. Key_stats should be embedded naturally where they support the claim, not listed sequentially.',
-        'Intro hook craft: The opening 60-90 seconds should pull the listener in by starting where they already are emotionally. Reference the opening_emotion but do not yet reveal the solution or turning_point.',
-        'Guest questions (optional): Powerful when content references expert research or would benefit from a second perspective. Frame questions to draw out depth and deepen listener understanding. Not just fact-checking.',
-        'Emotional arc craft: The intro_hook establishes opening_emotion (where the listener is). The talking_points show progression via the turning_point (insight moment). The outro lands on closing_emotion (where the listener ends). The arc is the shape of the episode.',
-        'Transcript readability: Conversational notes should read naturally when spoken aloud. Avoid long, nested clauses. Prefer short sentences and fragments. Mark pauses and tone shifts (e.g., "pause here" or "with emphasis") sparingly.',
-        'Attribution precision: Every stat must reference key_stats source_id. Every quote must include author + credentials. Never invent sources or credentials. Accuracy is non-negotiable.',
-      ],
     },
+    customSections: [
+      {
+        title: 'Production Notes',
+        content: `- Talking points structure: Each point pairs a claim (point) with conversational guidance (notes). The notes coach the host through: (1) introducing the topic naturally ("So the first thing..."), (2) citing evidence without sounding academic, (3) embedding quotes with full attribution (author, credentials), (4) transitioning to the next point ("Which brings us to..."). Example flow: claim → evidence + quote → transition.
+- Host talking prompts bridge episode content and the host's authentic voice. Frame moments the host fills from real experience, rooted in thesis/argument. Never write "I once had..." or "My experience shows..." — instead "Share a time when...", "Describe how you reacted to...", "When have you noticed...". The host supplies the authentic story.
+- Notes writing: coach the host in the moment. Fragments and asides are fine. Conversational, not scripted. Include verbal cues (e.g., "pause here to let it sink in") and guidance on how to frame stats and quotes naturally in speech. This is a production guide, not a script.
+- Duration planning: talking point count is the primary lever. Intro/outro ~1-2 min each. Host talking prompts add 2-3 min. Each talking point typically 5-7 min. If insufficient material, set content_warning rather than padding with filler.
+- Evidence framing: don't cite stats raw. Explain what the stat means conversationally in context. Use quotes as validation of the point, not decoration. Embed key_stats naturally where they support the claim, not listed sequentially.
+- Intro hook craft: opening 60-90 seconds pulls the listener in by starting where they already are emotionally. Reference opening_emotion but do not yet reveal the solution or turning_point.
+- Guest questions (optional): powerful when content references expert research or benefits from a second perspective. Frame to draw out depth — not fact-checking.
+- Emotional arc: intro_hook establishes opening_emotion (where the listener is). Talking_points show progression via the turning_point (insight moment). Outro lands on closing_emotion (where the listener ends).
+- Transcript readability: conversational notes read naturally aloud. Avoid long nested clauses. Prefer short sentences and fragments. Mark pauses and tone shifts ("pause here", "with emphasis") sparingly.
+- Attribution precision: every stat references key_stats source_id. Every quote includes author + credentials. Never invent sources or credentials.`,
+      },
+    ],
   },
 };
