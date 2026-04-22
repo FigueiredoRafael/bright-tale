@@ -130,100 +130,33 @@ export const contentCore: AgentDefinition = {
         'Verify that every source_id in key_stats matches a source from the research input.',
         'Verify that every source_id in argument_chain steps matches a source from the research input.',
         'Verify argument_chain has 2-6 steps. If research supports more than 6 claims, consolidate related steps.',
+        'Verify every source_id in key_stats and argument_chain steps exists in research.key_sources.',
       ],
     },
     customSections: [
       {
         title: 'Field Guidance: Thesis',
-        content: `The thesis is the central claim that the entire narrative proves. It must be:
-- Specific and falsifiable (can be proven right or wrong with evidence)
-- 1-2 sentences maximum
-- The foundation for the argument chain
-- NOT aspirational or generic
-
+        content: `Central claim, specific and falsifiable, max 2 sentences.
 Bad: "Content is important for growth."
-Good: "Evergreen content with strong structural foundations outperforms trending content by 3:1 in 12-month ROI."`,
+Good: "Evergreen content outperforms trending content by 3:1 in 12-month ROI."`,
       },
       {
         title: 'Field Guidance: Argument Chain',
-        content: `Each step is a logical assertion with proof:
-- Steps must be in logical order (step 1 → step 2 → step 3)
-- Each step has a claim + evidence + source references
-- Claim: 1-sentence assertion
-- Evidence: Specific data point(s) from research that prove it
-- Source_ids: Array of IDs from research.key_sources that back this step
-
-Example (JSON):
+        content: `Each step: claim + evidence + source_ids in logical order. Example:
 {
   "step": 1,
-  "claim": "Sleep deprivation reduces focus and decision quality by measurable amounts.",
-  "evidence": "Research from Harvard Medical School found that 24 hours of sleep loss impairs cognitive performance equivalent to a 0.10 BAC (blood alcohol content).",
-  "source_ids": ["SRC-001", "SRC-003"]
+  "claim": "Sleep deprivation reduces decision quality.",
+  "evidence": "Harvard found 24-hour sleep loss impairs cognition equivalent to 0.10 BAC.",
+  "source_ids": ["SRC-001"]
 }`,
       },
       {
         title: 'Field Guidance: Emotional Arc',
-        content: `The emotional arc is the audience's journey:
-- opening_emotion: Where they start (confused, frustrated, curious, skeptical, etc.)
-- turning_point: The moment when perception shifts (revelation, surprise, clarity, validation)
-- closing_emotion: Where they end (confident, motivated, empowered, relieved, inspired)
-
-The same arc applies across ALL formats (blog, video, shorts, podcast). Format agents
-will shape the content to hit these emotional beats in their medium.
-
-Example (JSON):
-{
-  "opening_emotion": "Frustration - I feel like I'm working hard but not seeing results",
-  "turning_point": "Clarity - Ah! The problem isn't effort, it's timing and recovery",
-  "closing_emotion": "Confidence - I know exactly what to change to see progress"
-}`,
+        content: `Audience journey: opening_emotion → turning_point → closing_emotion. Same arc across all formats (blog, video, shorts, podcast).`,
       },
       {
         title: 'Field Guidance: Affiliate Moment',
-        content: `Affiliate_moment identifies the NATURAL place for a product recommendation:
-- NOT forced or promotional
-- Solves a problem revealed in the argument chain
-- Trigger_context must reference a specific step number in argument_chain
-- Product_angle: How the product directly solves the problem in that step
-- Cta_primary: The actual call-to-action text (e.g., "Get started with Notion")
-
-Example (JSON, if affiliate_moment applies):
-{
-  "affiliate_moment": {
-    "trigger_context": "Step 2 reveals that unorganized research wastes hours. A research tool solves this directly by providing templates and auto-linking.",
-    "product_angle": "Notion templates eliminate the setup cost and let researchers start organizing findings immediately instead of building from scratch.",
-    "cta_primary": "Start organizing your research with Notion - free tier available"
-  }
-}
-
-If monetization should be skipped for this content, set affiliate_moment to null or omit it entirely.`,
-      },
-      {
-        title: 'Field Guidance: Key Stats and Key Quotes',
-        content: `These are the SHARED ASSETS used across all formats:
-
-KEY_STATS:
-- Only include statistics verified in research.key_statistics
-- Each stat must have a matching source_id
-- Format: stat (description), figure (the number), source_id
-- All format agents will embed these stats in their output
-
-KEY_QUOTES:
-- Only include quotes from research.expert_quotes
-- Always include author name + credentials (for credibility)
-- Optional field — omit if no quotes in research
-
-Format agents (blog, video, podcast, etc.) will:
-- Blog: pull quotes as pull-quotes with attribution
-- Video: use quotes as voiceover with on-screen text overlays
-- Shorts: break quotes into hook or punchline moments
-- Podcast: read quotes with author intro`,
-      },
-      {
-        title: 'Before Finishing',
-        content: `1. Verify every source_id in key_stats and argument_chain steps exists in research.key_sources
-2. If refined_angle.recommendation = "pivot", thesis and argument chain must reflect it
-3. If recommendation = "abandon", return ONLY the abandoned state (no argument chain)`,
+        content: `Product recommendation fits naturally at a specific argument_chain step. Trigger_context references step number; product_angle describes how it solves the problem. Omit if no monetization.`,
       },
     ],
   },
