@@ -85,6 +85,14 @@ export const shorts: AgentDefinition = {
         'Verify exactly 3 items in the output shorts array.',
         'Verify `short_number` is 1, 2, 3 in order.',
         'Verify each `visual_style` is exactly "talking head", "b-roll", or "text overlay".',
+        'Verify Short #1 hook is derived from turning_point.',
+        'Verify Shorts #2 and #3 hooks are derived from strongest argument_chain steps.',
+        'Verify each hook is max 2 sentences and has no preamble.',
+        'Verify each script is self-contained and fits within duration.',
+        'Verify "watch the full video" does not appear in hook or script body (only allowed in cta).',
+        'Verify at least one short includes cta_comment_prompt as a question.',
+        'Verify at least one short includes cta_subscribe reference.',
+        'Verify no fabricated stats — only use key_stats from input.',
       ],
     },
     customSections: [
@@ -236,20 +244,6 @@ Example CTAs:
 - "Subscribe for more research-backed sleep tips."
 - "Drop a comment — what's your best sleep window?"
 - "Watch the full video on our channel for the complete breakdown."`,
-      },
-      {
-        title: 'Before Finishing',
-        content: `1. Verify exactly 3 items in the shorts array
-2. Verify short_number is 1, 2, 3 in order
-3. Verify each visual_style is exactly "talking head", "b-roll", or "text overlay"
-4. Verify Short #1 hook is derived from turning_point
-5. Verify Shorts #2 and #3 hooks are derived from strongest argument_chain steps
-6. Verify each hook is max 2 sentences and no preamble
-7. Verify each script is self-contained and fits within duration
-8. Verify no "watch the full video" appears in hook or script body (only in cta)
-9. Verify at least one short includes cta_comment_prompt as a question
-10. Verify at least one short includes cta_subscribe reference
-11. Verify no fabricated stats — only use key_stats from input`,
       },
     ],
   },

@@ -106,6 +106,11 @@ export const blog: AgentDefinition = {
         'Verify meta_description length is 150-160 chars.',
         'Verify affiliate_integration.placement is one of: intro | middle | conclusion',
         'If affiliate_context is provided, placement must match the specified position.',
+        'Verify every key_stat from input appears in full_draft.',
+        'Verify every key_quote from input appears as a blockquote with attribution.',
+        'Verify slug is URL-safe (lowercase, hyphens, no spaces or special chars).',
+        'Verify meta_description is exactly 150-160 characters.',
+        'If affiliate_context provided, verify placement and rationale are clear.',
       ],
     },
     customSections: [
@@ -210,15 +215,6 @@ Examples:
   anchor_text: "determine whether you're a morning person or night owl"
 
 These are suggestions for your content team to implement with actual URLs.`,
-      },
-      {
-        title: 'Before Finishing',
-        content: `1. Verify every key_stat from input appears in full_draft
-2. Verify every key_quote from input appears as a blockquote with attribution
-3. Verify slug is URL-safe (lowercase, hyphens, no spaces or special chars)
-4. Verify meta_description is exactly 150-160 characters
-5. Verify affiliate_integration.placement is one of: intro | middle | conclusion
-6. If affiliate_context provided, verify placement and rationale are clear`,
       },
     ],
   },
