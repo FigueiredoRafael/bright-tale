@@ -1,5 +1,5 @@
 import type { AgentDefinition } from './_types';
-import { str, num, bool, obj, arr, arrOf, STANDARD_JSON_RULES } from './_helpers';
+import { str, num, bool, obj, arr, arrOf, STANDARD_JSON_RULES, contentWarningField } from './_helpers';
 
 export const video: AgentDefinition = {
   slug: 'video',
@@ -147,7 +147,7 @@ export const video: AgentDefinition = {
         ], false),
         str('pinned_comment', 'YouTube pinned comment for engagement', false),
         str('video_description', 'Full YouTube description with timestamps and links', false),
-        str('content_warning', 'Warning if material is insufficient for target length', false),
+        contentWarningField('material for target length'),
       ],
     },
     rules: {
