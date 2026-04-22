@@ -3,7 +3,7 @@ import { review } from '../../../../../scripts/agents/review';
 import { brainstorm } from '../../../../../scripts/agents/brainstorm';
 import { research } from '../../../../../scripts/agents/research';
 import { blog } from '../../../../../scripts/agents/blog';
-// import { video } from '../../../../../scripts/agents/video';
+import { video } from '../../../../../scripts/agents/video';
 import { shorts } from '../../../../../scripts/agents/shorts';
 import { podcast } from '../../../../../scripts/agents/podcast';
 import { engagement } from '../../../../../scripts/agents/engagement';
@@ -76,7 +76,7 @@ describe('content_warning field presence', () => {
     { name: 'brainstorm', agent: brainstorm },
     { name: 'research', agent: research },
     { name: 'blog', agent: blog },
-    // { name: 'video', agent: video },  // BLOCKED: video.ts has parse error
+    { name: 'video', agent: video },
     { name: 'shorts', agent: shorts },
     { name: 'podcast', agent: podcast },
     { name: 'engagement', agent: engagement },

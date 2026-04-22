@@ -165,7 +165,7 @@ export const video: AgentDefinition = {
         'pinned_comment: Specific engagement question related to the theme. Not generic "like and subscribe". Must invite replies.',
         'video_description: Minimum 800 characters. Must include: hook paragraph, timestamped topic list, resource links (placeholder if none), CTAs, hashtags.',
         'audio_direction: Top-level, not per-chapter. Editor selects actual tracks matching the overall mood. Examples: Hook = "pulsing, high-energy intro"; Problem = "concerned, reflective tone"; Teaser = "anticipation, building drums"; Chapters = "informative, steady mood"; Outro = "uplifting, closing theme".',
-        'problem_section: 30-60 seconds establishing what problem the audience faces, why they haven't solved it, and why it matters. Make it relatable and concrete.',
+        'problem_section: 30-60 seconds establishing what problem the audience faces, why they have not solved it, and why it matters. Make it relatable and concrete.',
         'thumbnail_design: High-contrast visual concept with max 5 words of bold text. Emotion (curiosity/shock/intrigue) drives composition.',
         'duration_estimates: Hook 30sec, Problem 30sec, Teaser 30sec, Chapter 2-3min each, Affiliate (if needed) 1-1:30min, Outro 30-60sec. Typical total 8-10 minutes.',
         'If production_params.target_duration_minutes is provided, scale teleprompter_script to that duration (~150 words/minute). If material is insufficient, set content_warning instead of padding.',
