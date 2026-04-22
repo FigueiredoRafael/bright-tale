@@ -1,5 +1,5 @@
 import type { AgentDefinition } from './_types';
-import { str, num, bool, obj, arr, arrOf, STANDARD_JSON_RULES } from './_helpers';
+import { str, num, bool, obj, arr, arrOf, contentWarningField, STANDARD_JSON_RULES } from './_helpers';
 
 export const contentCore: AgentDefinition = {
   slug: 'content-core',
@@ -106,6 +106,7 @@ export const contentCore: AgentDefinition = {
         ], false),
         str('cta_subscribe', 'Subscribe call-to-action used in all formats'),
         str('cta_comment_prompt', 'Comment prompt that drives engagement on all platforms'),
+        contentWarningField('research material for canonical-core generation'),
       ],
     },
     rules: {
@@ -121,6 +122,7 @@ export const contentCore: AgentDefinition = {
         'Key_quotes: Only quotes from research.expert_quotes. Do not fabricate quotes.',
         'Knowledge_gaps in input: If research has knowledge gaps, do NOT make claims in argument_chain that depend on those gaps.',
         'Affiliate_moment: Point to a specific step number in argument_chain in trigger_context.',
+        'If research.sources or research.statistics cannot support the thesis (insufficient evidence), populate content_warning with "Thesis under-supported by research — recommend abandon or deeper research" instead of fabricating evidence.',
       ],
       validation: [
         'If refined_angle.recommendation is "pivot", update the thesis and argument chain to reflect the recommended angle.',
