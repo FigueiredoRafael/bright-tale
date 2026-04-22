@@ -73,107 +73,48 @@ export const podcast: AgentDefinition = {
       formatting: [
         ...STANDARD_JSON_RULES,
         'Do not add, remove, or rename keys in the output schema.',
+        'All fields must produce valid JSON. Use \\n for line breaks in multi-line strings.',
       ],
       content: [
         '`episode_title`: Conversational and curiosity-driven. Podcast titles work differently from YouTube - they can be longer and more specific (e.g., "Why Your Brain Keeps Choosing Short-Term Comfort Over Long-Term Goals").',
-        '`episode_description`: 2-3 sentences. What problem does this episode solve? What will the listener walk away with?',
-        '`intro_hook`: References `opening_emotion`. Sets up the problem. Does NOT give away the answer. Creates a reason to keep listening. 60-90 seconds of spoken content.',
-        '`talking_points`: One per `talking_point_seed`, in order. Each `notes` block is conversational guidance - write it like you\'re coaching the host, not scripting them. Fragments and asides are fine.',
-        '`notes`: Must include where to embed any relevant `key_quotes` (with full attribution: "author + credentials"). Use figures from `key_stats` where they support the point.',
-        '`host_talking_prompts`: 2-4 invitation phrases. Phrase as "Share a time when...", "Describe how...", "When have you...". Never as first-person statements. The host supplies the authentic experience.',
-        '`guest_questions`: Include if content references expert research or could benefit from expert perspective. 3-5 questions. Frame as interview prompts.',
-        '`outro`: Must land on `closing_emotion`. Must include `cta_subscribe` verbatim or paraphrased. Must end with `cta_comment_prompt` as a direct listener question.',
-        '`duration_estimate`: Base on talking_point count (roughly 5-7 min per point) plus intro/outro.',
-        'If production_params.target_duration_minutes is provided, scale episode structure to that duration. Each talking_point is roughly 5-7 minutes. If material is insufficient, set content_warning instead of padding.',
+        '`episode_description`: 2-3 sentences. What problem does this episode solve? What will the listener walk away with? Think of it as a show notes teaser.',
+        '`intro_hook`: References `opening_emotion`. Sets up the problem. Does NOT give away the answer or reveal the turning_point. Creates a reason to keep listening. 60-90 seconds of spoken content.',
+        '`talking_points`: One per `talking_point_seed`, in order. Conversational scripts for the host, not word-for-word dialogs. Each `notes` block must include: (1) how to introduce the point naturally (e.g., "So the first thing to understand..."), (2) the evidence framed conversationally without sounding academic, (3) any relevant key_quote with full attribution (author, credentials), (4) a verbal transition to the next point (e.g., "Which brings us to...").',
+        '`notes`: Write like coaching the host, not scripting them. Fragments and asides are fine. Include guidance on where to embed `key_quotes` and how to weave in `key_stats` naturally without sounding like a data dump.',
+        '`host_talking_prompts`: 2-4 invitation phrases for the host to personalize from real experience. Phrase as "Share a time when...", "Describe how you reacted to...", "When have you noticed...". Never fabricate first-person claims ("I once had...", "My experience shows..."). Reference the thesis or argument so prompts tie the episode together.',
+        '`guest_questions`: Include if content references expert research or could benefit from expert perspective. Phrase as interview prompts (questions, not statements). Typically 3-5 questions. Frame them to deepen the listener understanding of the topic.',
+        '`outro`: Must recap the key insight and land on `closing_emotion`. Include `cta_subscribe` verbatim or paraphrased. End with `cta_comment_prompt` as a direct listener question (e.g., "Are you a morning person or night owl? Let me know in the comments.").',
+        '`duration_estimate`: Base on talking_point count (roughly 5-7 min per point). Typical structure: intro (1-2 min) + talking_points + host_talking_prompts (2-3 min) + outro (1-2 min). Examples: 3 points ≈ 20-25 min, 5 points ≈ 35-45 min.',
+        'If production_params.target_duration_minutes is provided, scale episode structure to that duration. Each talking_point is roughly 5-7 minutes of spoken content. If material is insufficient for the target duration, set content_warning instead of padding with filler.',
+        'Coherence check: `intro_hook` should reference `opening_emotion`. `talking_points` should progress the argument. `outro` should land on `closing_emotion`. The arc from intro → points → outro should feel intentional, not fragmented.',
+        'Host voice: Host talking prompts root the episode in the host\'s authentic experience, not the research. They are separate from the talking points. They should feel like natural moments to pause and reflect, not interview questions.',
+        'Talking point independence: Each talking point should stand on its own but fit into the sequence. A listener should understand the claim + evidence even if they miss the prior point (for podcast preview clips).',
       ],
       validation: [
-        'Verify `talking_points` count matches `talking_point_seeds` count.',
-        'Verify `host_talking_prompts` contains 2-4 items. Each item must be an invitation phrase — must not start with "I " or contain "my" in a first-person claim.',
-        'Verify `outro` includes `cta_subscribe` and ends with a listener question.',
+        'Verify `talking_points` count matches `talking_point_seeds` count. Each must have both `point` (claim/heading) and `notes` (conversational guidance). No point should be empty or just repeat the claim.',
+        'Verify `host_talking_prompts` contains 2-4 items. Each item must be an invitation phrase — must not start with "I " or contain "my" in a first-person claim. Examples: "Share a time when...", "Describe how you reacted to...", "When have you noticed...".',
+        'Verify `intro_hook` references `opening_emotion` and does NOT reveal the turning_point or spoil the episode conclusion.',
+        'Verify `outro` lands on `closing_emotion`, includes `cta_subscribe` (verbatim or paraphrased), and ends with a listener question from `cta_comment_prompt`. No outro should feel abrupt.',
+        'Verify no fabricated stats — only use figures from `key_stats`. All stats must be cited in full attribution format (stat description, figure, source context where relevant).',
+        'Verify all `key_quotes` embedded in `notes` have full attribution: author and credentials. Never cite a quote without source.',
+        'Verify `guest_questions` (if present) are phrased as interview prompts, not statements. Typically 3-5 questions. Questions should probe deeper, not just repeat the points.',
+        'Verify `duration_estimate` is grounded in talking point count, not arbitrary. Include rough breakdown: intro + points + prompts + outro.',
+        'Verify emotional arc consistency: `intro_hook` addresses `opening_emotion`, `outro` lands on `closing_emotion`. The talking points should bridge these, showing transformation.',
+        'Verify host voice authenticity: Each `host_talking_prompt` should feel like a natural place for the host to pause, reflect, and share. None should sound like research restatement.',
+        'Verify episode completeness: All three schema fields (idea_id, thesis, emotional_arc) should be reflected in the output. No dangling references or unused input data.',
+      ],
+      notes: [
+        'Talking points structure: Each point pairs a claim (point) with conversational guidance (notes). The notes coach the host through: (1) introducing the topic naturally ("So the first thing..."), (2) citing evidence without sounding academic, (3) embedding quotes with full attribution (author, credentials), (4) transitioning to the next point ("Which brings us to..."). Example flow: claim → evidence + quote → transition.',
+        'Host talking prompts are the bridge between episode content and the host\'s authentic voice. They frame moments the host can fill from real experience, rooted in the thesis or argument. Never write "I once had..." or "My experience shows..." — instead write "Share a time when...", "Describe how you reacted to...", "When have you noticed...". The host supplies the authentic story.',
+        'Notes section guidance: Write like you\'re coaching the host in the moment. Fragments and asides are fine. Conversational, not scripted. Include verbal cues (e.g., "pause here to let it sink in") and guidance on how to frame stats and quotes naturally in speech. This is a production guide, not a script.',
+        'Duration planning: Use talking point count as the primary lever. Intro/outro are roughly 1-2 min each. Host talking prompts add 2-3 min. Each talking point is typically 5-7 min. Scale the number and depth of points to hit the target duration. If insufficient material, set content_warning rather than padding with filler.',
+        'Evidence framing: Do not just cite stats raw. Explain what the stat means conversationally in context. Use quotes as validation of the point, not decoration. Key_stats should be embedded naturally where they support the claim, not listed sequentially.',
+        'Intro hook craft: The opening 60-90 seconds should pull the listener in by starting where they already are emotionally. Reference the opening_emotion but do not yet reveal the solution or turning_point.',
+        'Guest questions (optional): Powerful when content references expert research or would benefit from a second perspective. Frame questions to draw out depth and deepen listener understanding. Not just fact-checking.',
+        'Emotional arc craft: The intro_hook establishes opening_emotion (where the listener is). The talking_points show progression via the turning_point (insight moment). The outro lands on closing_emotion (where the listener ends). The arc is the shape of the episode.',
+        'Transcript readability: Conversational notes should read naturally when spoken aloud. Avoid long, nested clauses. Prefer short sentences and fragments. Mark pauses and tone shifts (e.g., "pause here" or "with emphasis") sparingly.',
+        'Attribution precision: Every stat must reference key_stats source_id. Every quote must include author + credentials. Never invent sources or credentials. Accuracy is non-negotiable.',
       ],
     },
-    customSections: [
-      {
-        title: 'Field Guidance: Talking Points',
-        content: `talking_points are conversational scripts for the host, not word-for-word dialogs.
-
-Structure each talking_point:
-- point: The claim or topic heading
-- notes: Conversational guidance that includes:
-  1. How to introduce it naturally (e.g., "So the first thing to understand...")
-  2. The evidence: cite the stat or finding without sounding academic
-  3. Any relevant key_quote (with full attribution: "author, credentials")
-  4. A verbal transition to the next point (e.g., "Which brings us to...")
-
-Example (JSON — use embedded \\n for line breaks):
-{
-  "talking_points": [
-    {
-      "point": "Sleep timing matters more than sleep duration",
-      "notes": "So the first thing to understand is that most people obsess over getting 8 hours.\\nBut what the research shows - and Dr. Matthew Walker, sleep researcher, put it perfectly: 'sleep is the foundation of health' - it's not just WHEN you sleep.\\nYour body has a natural peak window, usually 2-4 hours in your personal cycle.\\nOutside that window, 8 hours feels like 5. Which brings us to how you actually find yours."
-    }
-  ]
-}`,
-      },
-      {
-        title: 'Field Guidance: Host Talking Prompts',
-        content: `host_talking_prompts are invitation phrases for the host to fill with their own real experience.
-
-Return 2-4 prompts. Each must:
-- Frame a moment the host can fill from their own experience
-- Use invitation language: "Share a time when...", "Describe how you reacted to...", "When have you noticed..."
-- Never fabricate first-person claims ("I once had...", "My experience shows...")
-- Reference the thesis or argument_chain steps so they tie into the episode
-
-Example (JSON):
-{
-  "host_talking_prompts": [
-    "Share a time when you realized your sleep schedule was the real problem.",
-    "Describe a moment when you tried to force yourself to sleep at the 'right' time — how did your body respond?",
-    "When have you noticed a shift in your energy just by changing when you sleep?"
-  ]
-}`,
-      },
-      {
-        title: 'Field Guidance: Duration Estimate',
-        content: `duration_estimate is a rough guideline for production planning.
-
-Typical structure:
-- intro_hook: 1-2 minutes
-- talking_point: 4-6 minutes per point (roughly 1000-1200 words spoken)
-- host_talking_prompts: 2-3 minutes (host fills with real experience)
-- outro: 1-2 minutes
-
-Examples:
-- 3 talking_points + intro/prompts/outro ≈ 20-25 minutes
-- 5 talking_points + intro/prompts/outro ≈ 35-45 minutes
-
-Base estimate on talking_point count, not arbitrary time.`,
-      },
-      {
-        title: 'Field Guidance: Outro',
-        content: `outro closes the episode and drives listener action.
-
-Must include:
-1. Brief recap of the key insight (landing on closing_emotion)
-2. cta_subscribe text (verbatim or paraphrased)
-3. End with cta_comment_prompt as a direct listener question
-
-Example (JSON):
-{
-  "outro": "So here's what we covered: sleep timing isn't just a hack - it's a fundamental lever for how you feel every single day. If you're exhausted despite sleeping enough, it might be time to experiment with your window.\\n\\nIf this resonated with you, subscribe for more research-backed productivity insights.\\nAnd drop a comment: what's your experience? Are you a morning person or night owl?\\nLet me know in the comments below."
-}`,
-      },
-      {
-        title: 'Before Finishing',
-        content: `1. Verify talking_points count matches talking_point_seeds count
-2. Verify each talking_point includes the point + notes structure
-3. Verify host_talking_prompts contains 2-4 invitation phrases (no first-person fabrication)
-4. Verify outro lands on closing_emotion
-5. Verify outro includes cta_subscribe (verbatim or paraphrased)
-6. Verify outro ends with a listener question (from cta_comment_prompt)
-7. Verify no fabricated stats — only use figures from key_stats`,
-      },
-    ],
   },
 };
