@@ -1,5 +1,5 @@
 import type { AgentDefinition } from './_types';
-import { str, arr, arrOf, obj, STANDARD_JSON_RULES } from './_helpers';
+import { str, arr, arrOf, obj, contentWarningField, STANDARD_JSON_RULES } from './_helpers';
 
 export const brainstorm: AgentDefinition = {
   slug: 'brainstorm',
@@ -58,6 +58,7 @@ export const brainstorm: AgentDefinition = {
           str('pick', 'Title of the recommended idea (must match exactly)'),
           str('rationale', 'Why this is the strongest pick'),
         ]),
+        contentWarningField('topic input'),
       ],
     },
     rules: {
@@ -73,6 +74,7 @@ export const brainstorm: AgentDefinition = {
         'ALL output text must be in the language specified in the user message. If no language specified, default to English.',
         'Adapt cultural references, idioms, and examples for the specified region/audience.',
         'Never name specific companies or brands in monetization_hypothesis unless the user explicitly provided them in their message.',
+        'If the topic is unviable (cannot generate viable ideas after reasonable effort), set content_warning with "Topic unviable — ideas array may contain only weak/experimental verdicts" instead of inventing viable-looking fabrications.',
       ],
       validation: [],
     },

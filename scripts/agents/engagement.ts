@@ -1,5 +1,5 @@
 import type { AgentDefinition } from './_types';
-import { str, num, arr, arrOf, STANDARD_JSON_RULES } from './_helpers';
+import { str, num, arr, arrOf, contentWarningField, STANDARD_JSON_RULES } from './_helpers';
 
 export const engagement: AgentDefinition = {
   slug: 'engagement',
@@ -42,6 +42,7 @@ export const engagement: AgentDefinition = {
         str('community_post', 'The community post. 2-4 short paragraphs or bullet points. Leads with a contrarian claim or surprising stat. Closes on closing_emotion and cta_subscribe.'),
         str('hook_tweet', 'The most provocative restatement of thesis. 1-2 sentences max. Designed to stop the scroll. No thread numbering on this tweet.'),
         arr('thread_outline', 'Supporting tweets expanding the argument. 4-6 tweets total. Each tweet = one sharp point, supported by a stat from key_stats where possible. Keep each tweet under 280 characters. Last tweet = CTA.', 'string'),
+        contentWarningField('key_stats or quantitative material'),
       ],
     },
     rules: {
@@ -56,6 +57,7 @@ export const engagement: AgentDefinition = {
         '`thread_outline`: 4-6 tweets expanding the argument. Each tweet = one sharp point, supported by a stat from `key_stats` where possible. Keep each tweet under 280 characters. Last tweet = CTA (subscribe, video link placeholder, or engagement question).',
         'If key_stats is empty or not provided, use qualitative claims from the thesis or argument_chain evidence instead. Do not fabricate statistics.',
         'No fabricated stats in any asset. Only use figures from `key_stats`. If no relevant stat exists for a tweet, use the thesis claim directly.',
+        'If key_stats is empty and the thread requires quantitative claims (e.g., hook_tweet needs a stat to land), populate content_warning with "Missing key_stats — qualitative claims only" and use qualitative framing.',
       ],
       validation: [
         'Verify `pinned_comment` is 500 characters or fewer.',
