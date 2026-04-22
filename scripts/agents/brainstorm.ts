@@ -75,6 +75,7 @@ export const brainstorm: AgentDefinition = {
         'Adapt cultural references, idioms, and examples for the specified region/audience.',
         'Never name specific companies or brands in monetization_hypothesis unless the user explicitly provided them in their message.',
         'If the topic is unviable (cannot generate viable ideas after reasonable effort), set content_warning with "Topic unviable — ideas array may contain only weak/experimental verdicts" instead of inventing viable-looking fabrications.',
+        'monetization_hypothesis.product_categories[] values MUST match pattern /^[a-z ]+(brands|tools|platforms|services|products|apparel|gear|software|equipment)$/. Never specific company names. Reject: "Nike", "Shopify", "Adobe", "Canva". Accept: "outdoor gear brands", "SaaS productivity tools", "B2B analytics platforms".',
       ],
       validation: [],
     },
