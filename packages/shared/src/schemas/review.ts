@@ -37,6 +37,7 @@ export const reviewOutputSchema = z.object({
   podcast_review: z.object(contentReviewShape).optional(),
   engagement_review: z.object(contentReviewShape).optional(),
   ready_to_publish: z.boolean(),
+  content_warning: z.string().optional(),
 });
 
 export type ReviewOutput = z.infer<typeof reviewOutputSchema>;

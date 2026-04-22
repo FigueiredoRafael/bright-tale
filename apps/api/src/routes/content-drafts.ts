@@ -31,6 +31,7 @@ import { buildReviewMessage } from "../lib/ai/prompts/review.js";
 import { buildAssetsMessage } from "../lib/ai/prompts/assets.js";
 import { loadIdeaContext, type IdeaContext } from "../lib/ai/loadIdeaContext.js";
 import { logAiUsage } from "../lib/axiom.js";
+import { deriveTier } from "@brighttale/shared/utils/reviewTierCompat";
 
 const FORMAT_COSTS: Record<string, number> = {
   blog: 200,
@@ -1484,7 +1485,10 @@ export async function contentDraftsRoutes(
         const formatReview = result[`${draftType}_review`] as
           | Record<string, unknown>
           | undefined;
-        const reviewScore = (formatReview?.score as number) ?? null;
+        const tier = deriveTier(formatReview);
+        const legacyScoreMap: Record<string, number> = { excellent: 95, good: 82, needs_revision: 60, reject: 20, not_requested: 0 };
+        const rawScore = (formatReview?.score as number | undefined) ?? null;
+        const reviewScore: number | null = rawScore !== null ? rawScore : (legacyScoreMap[tier] ?? null);
         const iterationCount = ((draft.iteration_count as number) ?? 0) + 1;
 
         // Determine status based on agent verdict
@@ -1621,12 +1625,11 @@ export async function contentDraftsRoutes(
           | Record<string, unknown>
           | undefined;
 
-        let reviewScore: number | null = null;
+        const tier2 = deriveTier(formatReview);
+        const legacyScoreMap2: Record<string, number> = { excellent: 95, good: 82, needs_revision: 60, reject: 20, not_requested: 0 };
+        const rawScore2 = (formatReview && typeof formatReview.score === 'number') ? formatReview.score : null;
+        let reviewScore: number | null = rawScore2 !== null ? rawScore2 : (legacyScoreMap2[tier2] ?? null);
         let reviewVerdict = "revision_required";
-
-        if (formatReview && typeof formatReview.score === 'number') {
-          reviewScore = formatReview.score;
-        }
 
         const overallVerdict = body.overall_verdict ? String(body.overall_verdict) : null;
         if (formatReview && typeof formatReview.verdict === 'string') {

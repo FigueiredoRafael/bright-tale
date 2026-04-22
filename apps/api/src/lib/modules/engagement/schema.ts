@@ -15,6 +15,7 @@ export const engagementOutputSchema = z.object({
   pinned_comment: z.string().min(1),
   community_post: z.string().min(1),
   twitter_thread: twitterThreadSchema,
+  content_warning: z.string().optional(),
 });
 
 export type EngagementModuleOutput = z.infer<typeof engagementOutputSchema>;

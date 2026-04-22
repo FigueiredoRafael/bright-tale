@@ -19,6 +19,7 @@ export const podcastOutputSchema = z.object({
   guest_questions: z.array(z.string()).default([]),
   outro: z.string().min(1),
   duration_estimate: z.string().optional(),
+  content_warning: z.string().optional(),
 });
 
 export type PodcastModuleOutput = z.infer<typeof podcastOutputSchema>;

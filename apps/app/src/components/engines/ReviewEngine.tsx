@@ -11,6 +11,7 @@ import { useManualMode } from '@/hooks/use-manual-mode';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { GenerationProgressModal } from '@/components/generation/GenerationProgressModal';
 import { ContextBanner } from './ContextBanner';
+import { ContentWarningBanner } from './ContentWarningBanner';
 import { friendlyAiError } from '@/lib/ai/error-message';
 import { useUpgrade } from '@/components/billing/UpgradeProvider';
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker';
@@ -408,6 +409,7 @@ export function ReviewEngine({
   return (
     <div className="space-y-6">
       <ContextBanner stage="review" context={context} onBack={onBack} />
+      <ContentWarningBanner warning={typeof (draft.review_feedback_json as Record<string, unknown> | null)?.content_warning === 'string' ? (draft.review_feedback_json as Record<string, unknown>).content_warning as string : undefined} />
 
       {/* No review yet — submit for review */}
       {!hasReview && (
@@ -509,10 +511,14 @@ export function ReviewEngine({
                           }),
                         });
                       }
+                      const fb = draft.review_feedback_json as Record<string, unknown> | null ?? {};
+                      const fmtReview = (fb.blog_review ?? fb.video_review ?? fb.podcast_review ?? fb.shorts_review) as Record<string, unknown> | undefined;
+                      const localTier = deriveTier(fmtReview ?? fb);
                       const result: ReviewResult = {
                         score,
+                        qualityTier: localTier,
                         verdict,
-                        feedbackJson: draft.review_feedback_json ?? {},
+                        feedbackJson: fb,
                         iterationCount: draft.iteration_count,
                       };
                       onComplete(result);

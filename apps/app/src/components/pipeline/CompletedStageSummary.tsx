@@ -54,7 +54,7 @@ export function CompletedStageSummary({ stage, stageResults, currentStage, onNav
       case 'review': {
         const r = stageResults.review;
         if (!r) return '';
-        const tier = deriveTier({ quality_tier: (r as { qualityTier?: string }).qualityTier, score: r.score });
+        const tier = deriveTier({ quality_tier: r.qualityTier, score: r.score });
         const tierLabel: Record<string, string> = {
           excellent: 'Excellent',
           good: 'Good',

@@ -23,6 +23,7 @@ import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { GenerationProgressModal } from '@/components/generation/GenerationProgressModal';
 import { MarkdownPreview } from '@/components/preview/MarkdownPreview';
 import { ContextBanner } from './ContextBanner';
+import { ContentWarningBanner } from './ContentWarningBanner';
 import { ImportPicker } from './ImportPicker';
 import { friendlyAiError } from '@/lib/ai/error-message';
 import { useUpgrade } from '@/components/billing/UpgradeProvider';
@@ -88,6 +89,7 @@ export function DraftEngine({
   const [targetMinutes, setTargetMinutes] = useState<number>(8);
   const [targetShortsSeconds, setTargetShortsSeconds] = useState<number>(30);
   const [producedContent, setProducedContent] = useState<string>('');
+  const [contentWarning, setContentWarning] = useState<string | null>(null);
 
   // Generation state
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
@@ -516,6 +518,9 @@ export function DraftEngine({
 
     // The produce endpoint returns the full draft row; extract content from draft_json
     const content = extractProducedContent(produced as Record<string, unknown>, type);
+    const draftJsonRaw = (produced as Record<string, unknown>).draft_json as Record<string, unknown> | undefined;
+    const warning = typeof draftJsonRaw?.content_warning === 'string' ? draftJsonRaw.content_warning : null;
+    setContentWarning(warning);
     if (content) {
       setProducedContent(content);
       const wordCount = content.split(/\s+/).length;
@@ -1307,6 +1312,8 @@ export function DraftEngine({
           </CardContent>
         </Card>
       )}
+
+      <ContentWarningBanner warning={contentWarning} />
 
       {/* ═══ Final Content Preview ═══ */}
       {phase === 'done' && producedContent && (

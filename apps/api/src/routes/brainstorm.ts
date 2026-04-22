@@ -268,9 +268,15 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       }).upsert(ideaRows, { onConflict: 'idea_id', ignoreDuplicates: true });
       if (insErr) throw insErr;
 
-      let recommendation: { pick?: string; rationale?: string } | null = null;
-      if (body.output && typeof body.output === 'object' && 'recommendation' in (body.output as Record<string, unknown>)) {
-        recommendation = (body.output as Record<string, unknown>).recommendation as { pick?: string; rationale?: string } | null;
+      let recommendation: { pick?: string; rationale?: string; content_warning?: string } | null = null;
+      if (body.output && typeof body.output === 'object') {
+        const out = body.output as Record<string, unknown>;
+        if ('recommendation' in out) {
+          recommendation = out.recommendation as { pick?: string; rationale?: string } | null;
+          if (recommendation && typeof out.content_warning === 'string') {
+            recommendation = { ...recommendation, content_warning: out.content_warning };
+          }
+        }
       }
 
       // The brainstorm_sessions table has no output_json column today; the

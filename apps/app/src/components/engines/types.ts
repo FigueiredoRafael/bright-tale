@@ -66,6 +66,7 @@ export interface DraftResult {
 
 export interface ReviewResult {
   score: number;
+  qualityTier?: string;
   verdict: string;
   feedbackJson: Record<string, unknown>;
   iterationCount: number;

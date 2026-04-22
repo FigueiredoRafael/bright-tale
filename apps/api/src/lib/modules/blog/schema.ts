@@ -48,6 +48,7 @@ export const blogOutputSchema = z.object({
   internal_links_suggested: z.array(internalLinkSchema).default([]),
   word_count: z.number().int().min(0),
   image_prompts: blogImagePromptsSchema.optional(),
+  content_warning: z.string().optional(),
 });
 
 export type BlogModuleOutput = z.infer<typeof blogOutputSchema>;

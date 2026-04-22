@@ -79,6 +79,7 @@ export const videoOutputSchema = z.object({
   script: videoScriptSchema,
   total_duration_estimate: z.string().optional().default("TBD"),
   image_prompts: videoImagePromptsSchema.optional(),
+  content_warning: z.string().optional(),
 });
 
 export type VideoModuleOutput = z.infer<typeof videoOutputSchema>;
