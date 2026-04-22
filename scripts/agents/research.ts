@@ -125,6 +125,7 @@ export const research: AgentDefinition = {
         'Identify potential objections and counterarguments for balanced content.',
         'Suggest angle refinements based on your research findings.',
         'If the selected idea is unclear or missing required fields, request clarification before proceeding.',
+        'Prefer well-known domains (.edu, .gov, major publications, Wikipedia) when choosing sources. Flag obscure domains in validation_notes.',
       ],
       validation: [
         'Be honest about evidence strength — do not overstate confidence.',
@@ -138,6 +139,8 @@ export const research: AgentDefinition = {
         'If fewer than depth-implied minimum sources are verifiable (3 for standard, 5 for deep), populate content_warning with "Only N verifiable sources found for <depth> depth — results may be incomplete" instead of padding with weak sources.',
         'research_focus_applied MUST reflect input research_focus exactly. If input research_focus is omitted, set to "general topic exploration".',
         'depth_applied MUST equal input depth. If input depth is omitted, set to "standard".',
+        'Every entry in statistics[] MUST have source_id matching an entry in sources[]. No standalone figures.',
+        'Every entry in expert_quotes[] MUST have source_id matching sources[]. Never fabricate attributed quotes — if no verified quote, leave expert_quotes empty and note in content_warning.',
       ],
     },
     customSections: [
