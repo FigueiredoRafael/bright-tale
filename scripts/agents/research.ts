@@ -1,5 +1,5 @@
 import type { AgentDefinition } from './_types';
-import { str, num, bool, obj, arr, arrOf, STANDARD_JSON_RULES } from './_helpers';
+import { str, num, bool, obj, arr, arrOf, contentWarningField, STANDARD_JSON_RULES } from './_helpers';
 
 export const research: AgentDefinition = {
   slug: 'research',
@@ -103,6 +103,7 @@ export const research: AgentDefinition = {
           str('angle_notes', 'Explanation of any refinements suggested'),
           str('recommendation', 'proceed, pivot, or abandon'),
         ]),
+        contentWarningField('research material (sources, statistics, or expert quotes)'),
       ],
     },
     rules: {
@@ -129,6 +130,7 @@ export const research: AgentDefinition = {
         'Always populate seo.primary_keyword - use the input primary_keyword.term as the baseline, refine it if research reveals a better-performing variant. Populate secondary_keywords (3-5) and search_intent based on your research findings.',
         'If you cannot verify a URL exists, set sources[].url to empty string. Never fabricate URLs.',
         'Only include statistics and quotes you found in sources. If paraphrasing, mark with "[paraphrased]". Never fabricate quotes attributed to real people.',
+        'If fewer than depth-implied minimum sources are verifiable (3 for standard, 5 for deep), populate content_warning with "Only N verifiable sources found for <depth> depth — results may be incomplete" instead of padding with weak sources.',
       ],
     },
     customSections: [
