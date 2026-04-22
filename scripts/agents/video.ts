@@ -86,22 +86,16 @@ export const video: AgentDefinition = {
             str('duration', 'e.g., "0:00-0:30"'),
             str('content', 'The hook script. Opens on opening_emotion. Grabs attention in first 3 seconds.'),
             str('visual_notes', 'Visual cues for this section'),
-            str('sound_effects', 'Suggested sound effects'),
-            str('background_music', 'Suggested background music'),
           ]),
           obj('problem', 'Problem statement section', [
             str('duration', 'Duration estimate'),
             str('content', 'Establish the problem the audience faces.'),
             str('visual_notes', 'Visual cues'),
-            str('sound_effects', 'Sound effects'),
-            str('background_music', 'Background music'),
           ]),
           obj('teaser', 'Teaser/preview section', [
             str('duration', 'Duration estimate'),
             str('content', 'Preview the turning_point insight. Do NOT fully reveal — create anticipation.'),
             str('visual_notes', 'Visual cues'),
-            str('sound_effects', 'Sound effects'),
-            str('background_music', 'Background music'),
           ]),
           arrOf('chapters', 'One chapter per argument_chain step', [
             num('chapter_number', 'Chapter sequence number'),
@@ -110,25 +104,20 @@ export const video: AgentDefinition = {
             str('content', 'Chapter script. Includes the claim, evidence, and key stat for this step.'),
             arr('b_roll_suggestions', 'B-roll suggestions (required if b_roll_required = true, min 2 items)', 'string', false),
             str('key_stat_or_quote', 'Exact figure or quote to show on screen'),
-            str('sound_effects', 'Suggested sound effects'),
-            str('background_music', 'Suggested background music'),
           ]),
+          str('audio_direction', 'Overall mood/genre guidance for audio. Editor selects actual tracks. e.g., "Upbeat electronic for action scenes; ambient pad for reflective moments."'),
           obj('affiliate_segment', 'Affiliate recommendation (include only if affiliate_context provided)', [
             str('timestamp', 'Timing in video'),
             str('script', 'Natural affiliate recommendation that follows the trigger_context.'),
             str('transition_in', 'Transition into affiliate segment'),
             str('transition_out', 'Transition out of affiliate segment'),
             str('visual_notes', 'Visual cues'),
-            str('sound_effects', 'Sound effects'),
-            str('background_music', 'Background music'),
           ], false),
           obj('outro', 'Outro section', [
             str('duration', 'Duration estimate'),
             str('recap', 'Brief recap of closing_emotion and what the viewer learned.'),
             str('cta', 'cta_subscribe text'),
             str('end_screen_prompt', 'cta_comment_prompt text'),
-            str('sound_effects', 'Sound effects'),
-            str('background_music', 'Background music'),
           ]),
         ]),
         str('estimated_duration', 'Estimate based on script word count at ~150 words/minute, e.g. "8-10 minutes"'),
@@ -175,6 +164,10 @@ export const video: AgentDefinition = {
         'thumbnail_ideas: 3-5 visually distinct concepts. Each with visual description, text overlay, emotion, color palette, and composition notes.',
         'pinned_comment: Specific engagement question related to the theme. Not generic "like and subscribe". Must invite replies.',
         'video_description: Minimum 800 characters. Must include: hook paragraph, timestamped topic list, resource links (placeholder if none), CTAs, hashtags.',
+        'audio_direction: Top-level, not per-chapter. Editor selects actual tracks matching the overall mood. Examples: Hook = "pulsing, high-energy intro"; Problem = "concerned, reflective tone"; Teaser = "anticipation, building drums"; Chapters = "informative, steady mood"; Outro = "uplifting, closing theme".',
+        'problem_section: 30-60 seconds establishing what problem the audience faces, why they haven't solved it, and why it matters. Make it relatable and concrete.',
+        'thumbnail_design: High-contrast visual concept with max 5 words of bold text. Emotion (curiosity/shock/intrigue) drives composition.',
+        'duration_estimates: Hook 30sec, Problem 30sec, Teaser 30sec, Chapter 2-3min each, Affiliate (if needed) 1-1:30min, Outro 30-60sec. Typical total 8-10 minutes.',
         'If production_params.target_duration_minutes is provided, scale teleprompter_script to that duration (~150 words/minute). If material is insufficient, set content_warning instead of padding.',
         'content_warning: Return this field if material is insufficient for target duration (instead of padding).',
         'cut_frequency benchmarks: "slow" = 1 cut per 8-10 seconds, "moderate" = 2-3 cuts per 10 seconds, "fast" = 5+ cuts per 10 seconds, "variable" = scene-driven, "action_based" = beat-matched to audio.',
@@ -183,12 +176,15 @@ export const video: AgentDefinition = {
       ],
       validation: [
         'Verify `title_options` has exactly 3 items.',
-        'Verify `thumbnail.emotion` is one of: curiosity | shock | intrigue',
+        'Verify `thumbnail.emotion` is one of: curiosity | shock | intrigue.',
         'Verify chapter count equals argument_chain step count.',
-        'Verify `sound_effects` and `background_music` are present in every section.',
+        'Verify `audio_direction` is present and provides overall mood guidance.',
         'Verify `teleprompter_script` has no brackets or production cues.',
+        'Verify `teleprompter_script` is at least 1500 characters.',
+        'Verify `editor_script` is detailed with A-roll, B-roll, and timing.',
         'Verify `pinned_comment` is specific and question-based (not generic).',
         'Verify `video_description` is at least 800 characters.',
+        'Verify `video_title.primary` is max 60 characters.',
       ],
     },
     customSections: [
@@ -199,21 +195,9 @@ export const video: AgentDefinition = {
 - Deliver a bold claim or provocative question
 - Create curiosity or tension that makes viewers stay
 
-Examples:
-- "73% of people who try X fail in the first week. But you don't have to."
-- "What if everything you know about sleep is wrong?"
-- "Here's the one thing nobody tells you about productivity."
+Example: "73% of people who try X fail in the first week. But you don't have to."
 
 Avoid: "In this video, I'll show you..." — too slow.`,
-      },
-      {
-        title: 'Field Guidance: Problem Section',
-        content: `After the hook, establish why this matters to the viewer:
-- What problem are they facing?
-- Why haven't they solved it yet?
-- Why should they care?
-
-Keep it to 30-60 seconds. Make it relatable and concrete.`,
       },
       {
         title: 'Field Guidance: Teaser',
@@ -232,26 +216,8 @@ Example: "And the reason most people fail comes down to one overlooked factor. S
 - Content: Full script for this chapter (1-2 minutes typical)
 - Key stat/quote: The strongest evidence point to display on screen
 - B-roll suggestions: Descriptive references (if b_roll_required = true)
-- Sound effects and music: Mood for this section
 
-Chapter pacing:
-- Simple chapter (one stat) → 1-1:30 min
-- Complex chapter (multiple evidence points) → 2-3 min
-
-Include the claim, evidence, and key stat naturally in the narration.`,
-      },
-      {
-        title: 'Field Guidance: Thumbnail Design',
-        content: `Thumbnail must stop the scroll. Consider:
-- Visual concept: What's the dominant visual element?
-- Text overlay: Max 5 words, bold and readable at small size
-- Emotion: curiosity, shock, or intrigue
-- Color contrast: High contrast on a YouTube-blue background
-
-Examples:
-  curiosity: "?" with surprising image
-  shock: Surprised face + shocking number
-  intrigue: Contrarian image + mysterious text`,
+Chapter pacing: Simple chapter (one stat) → 1-1:30 min. Complex chapter (multiple evidence points) → 2-3 min.`,
       },
       {
         title: 'Field Guidance: Title Options',
@@ -261,47 +227,7 @@ Option 1 (Curiosity gap): "Why [surprising fact] Changes How We Think About [top
 Option 2 (Benefit/numbered): "[Number] [Thing] Marketers Don't Know About [topic]"
 Option 3 (Contrarian): "[Conventional wisdom] Is Wrong — Here's Why"
 
-All 3 should include the primary keyword naturally. Test different angles.`,
-      },
-      {
-        title: 'Field Guidance: Duration Estimates',
-        content: `Typical video breakdown:
-- Hook: 0:00-0:30 (30 sec)
-- Problem: 0:30-1:00 (30 sec)
-- Teaser: 1:00-1:30 (30 sec)
-- 1 chapter: 2:00-3:30
-- 2 chapters: 4:00-6:00
-- 3 chapters: 6:00-8:30
-- Affiliate segment (if needed): 1:00-1:30
-- Outro: 0:30-1:00
-
-Total: Scale with chapter count. Typical: 8-10 minutes.`,
-      },
-      {
-        title: 'Field Guidance: Sound and Music',
-        content: `Every section needs:
-- sound_effects: Specific audio cues (whoosh on transitions, pop on stats, etc.)
-- background_music: Mood and intensity (pulsant, calm, energetic, building, etc.)
-
-Examples:
-  Hook: "pulsing, high energy intro theme"
-  Problem: "concerned, reflective tone music"
-  Teaser: "anticipation, building drums"
-  Chapter: "informative, steady mood"
-  Outro: "uplifting, closing theme"`,
-      },
-      {
-        title: 'Before Finishing',
-        content: `1. Verify \`title_options\` has exactly 3 items
-2. Verify \`thumbnail.emotion\` is one of: curiosity | shock | intrigue
-3. Verify chapter count equals argument_chain step count
-4. Verify \`sound_effects\` and \`background_music\` are present in every section
-5. Verify \`teleprompter_script\` has no brackets or production cues
-6. Verify \`teleprompter_script\` is at least 1500 characters
-7. Verify \`editor_script\` is detailed with A-roll, B-roll, timing
-8. Verify \`pinned_comment\` is specific and question-based (not generic)
-9. Verify \`video_description\` is at least 800 characters
-10. Verify \`video_title.primary\` is max 60 characters`,
+All 3 must include the primary keyword naturally.`,
       },
     ],
   },
