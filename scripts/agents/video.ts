@@ -177,6 +177,9 @@ export const video: AgentDefinition = {
         'video_description: Minimum 800 characters. Must include: hook paragraph, timestamped topic list, resource links (placeholder if none), CTAs, hashtags.',
         'If production_params.target_duration_minutes is provided, scale teleprompter_script to that duration (~150 words/minute). If material is insufficient, set content_warning instead of padding.',
         'content_warning: Return this field if material is insufficient for target duration (instead of padding).',
+        'cut_frequency benchmarks: "slow" = 1 cut per 8-10 seconds, "moderate" = 2-3 cuts per 10 seconds, "fast" = 5+ cuts per 10 seconds, "variable" = scene-driven, "action_based" = beat-matched to audio.',
+        'text_overlays benchmarks: "heavy" = every stat plus every major claim opening, "moderate" = key claims only, "light" = opener and closer only, "none" = no on-screen text.',
+        'b_roll_density benchmarks: "low" = under 20% of screen time uses b-roll, "moderate" = 20-50%, "heavy" = over 50%.',
       ],
       validation: [
         'Verify `title_options` has exactly 3 items.',
