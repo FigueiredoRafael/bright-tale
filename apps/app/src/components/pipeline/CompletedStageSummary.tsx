@@ -9,6 +9,7 @@ import {
   ChevronDown, ChevronUp, RotateCcw,
 } from 'lucide-react';
 import type { PipelineStage, PipelineState } from '@/components/engines/types';
+import { deriveTier } from '@brighttale/shared';
 
 const STAGE_META: Record<PipelineStage, { icon: typeof Lightbulb; label: string; color: string }> = {
   brainstorm: { icon: Lightbulb, label: 'Idea', color: 'text-yellow-500' },
@@ -52,7 +53,19 @@ export function CompletedStageSummary({ stage, stageResults, currentStage, onNav
       }
       case 'review': {
         const r = stageResults.review;
-        return r ? `Score: ${r.score}/100 · ${r.verdict} · ${r.iterationCount} iteration(s)` : '';
+        if (!r) return '';
+        const tier = deriveTier({ quality_tier: (r as { qualityTier?: string }).qualityTier, score: r.score });
+        const tierLabel: Record<string, string> = {
+          excellent: 'Excellent',
+          good: 'Good',
+          needs_revision: 'Needs Revision',
+          reject: 'Rejected',
+          not_requested: 'Not Reviewed',
+        };
+        const display = tier === 'not_requested' && typeof r.score === 'number'
+          ? `${r.score}/100`
+          : (tierLabel[tier] ?? 'Unknown');
+        return `${display} · ${r.verdict} · ${r.iterationCount} iteration(s)`;
       }
       case 'assets': {
         const r = stageResults.assets;
