@@ -747,6 +747,44 @@ Or combined in `package.json`:
 
 ---
 
+## Development Methodology — TDD
+
+All implementation follows **red → green → refactor**. No production code is written before a failing test exists for it.
+
+### Cycle per unit
+
+1. **Red** — write the test for the specific behavior. Run it. It must fail (not error — a compile error means the interface isn't defined yet; define the shell first).
+2. **Green** — write the minimum code to make the test pass. No extra logic.
+3. **Refactor** — clean up duplication, naming, structure. Tests stay green throughout.
+
+### Order of implementation
+
+Test files are written **before** their corresponding source files. For each item in the Files Changed table, the test file comes first:
+
+| Production file | Test file written first |
+|----------------|------------------------|
+| `apps/api/src/routes/personas.ts` | `apps/api/src/routes/__tests__/personas.test.ts` |
+| `apps/api/src/jobs/production-generate.ts` (persona path) | `apps/api/src/jobs/__tests__/production-generate-persona.test.ts` |
+| `apps/api/src/routes/wordpress.ts` (author field) | `apps/api/src/routes/__tests__/wordpress-author.test.ts` |
+| `scorePersonaForContent()` utility | `apps/app/src/components/engines/__tests__/personaScoring.test.ts` |
+| ResearchEngine signal extraction | `apps/app/src/components/engines/__tests__/researchSignals.test.ts` |
+
+### What gets tested at each layer
+
+- **Pure functions** (scoring, mappers, schema validation) — full coverage, every branch
+- **API routes** — request/response contract; mock Supabase client (Category A/B)
+- **Job logic** — persona fetch + injection path; null/legacy path — mock DB (Category A/B)
+- **DB-dependent paths** — `describe.skip` + `// TODO-test` until integration test environment available
+
+### What does NOT need TDD
+
+- `scripts/agents/personas.ts` — data file, no logic
+- `scripts/seed-personas.ts` — SQL generation script, verified by running it and inspecting output
+- UI badge display in AssetsEngine — visual, verified manually
+- Migration SQL — verified by `db:push:dev` + `db:types`
+
+---
+
 ## Testing
 
 Tests follow the project pattern: Vitest + jsdom, files in `__tests__/` directories. Category A/B (no DB) run freely; Category C (DB-dependent) use `describe.skip`.
