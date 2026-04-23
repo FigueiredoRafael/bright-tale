@@ -58,6 +58,7 @@ export function PublishEngine({
     if (context.previewCategories) body.categories = context.previewCategories;
     if (context.previewTags) body.tags = context.previewTags;
     if (context.previewSeoOverrides) body.seoOverrides = context.previewSeoOverrides;
+    if (context.personaWpAuthorId != null) body.authorId = context.personaWpAuthorId;
 
     setPublishBody(body);
     setPublishing(true);
