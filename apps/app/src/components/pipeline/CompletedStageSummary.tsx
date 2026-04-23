@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,13 +29,28 @@ interface CompletedStageSummaryProps {
 }
 
 export function CompletedStageSummary({ stage, stageResults, currentStage, onNavigate }: CompletedStageSummaryProps) {
-  const [expanded, setExpanded] = useState(false);
   const meta = STAGE_META[stage];
   const Icon = meta.icon;
   const result = stageResults[stage];
-  if (!result) return null;
-
   const isCurrent = currentStage === stage;
+
+  // Default expanded when this stage is the active one — keeps the user's
+  // current focus visible without forcing them to click. Once the user
+  // explicitly collapses it, we respect that choice for the rest of the
+  // session. Re-expand automatically the next time this stage becomes active.
+  const [userToggled, setUserToggled] = useState<boolean | null>(null);
+  const wasCurrentRef = useRef(isCurrent);
+  useEffect(() => {
+    if (isCurrent && !wasCurrentRef.current) {
+      // Stage just became active — clear any prior user override so the auto-expand fires.
+      setUserToggled(null);
+    }
+    wasCurrentRef.current = isCurrent;
+  }, [isCurrent]);
+
+  const expanded = userToggled ?? isCurrent;
+
+  if (!result) return null;
 
   function getSummary(): string {
     switch (stage) {
@@ -99,7 +114,7 @@ export function CompletedStageSummary({ stage, stageResults, currentStage, onNav
               <RotateCcw className="h-3 w-3 mr-1" /> Go to
             </Button>
           )}
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setExpanded(!expanded)}>
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setUserToggled(!expanded)}>
             {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </Button>
         </div>

@@ -185,6 +185,7 @@ export function DraftEngine({
         if (core && typeof core === 'object' && Object.keys(core).length > 0) {
           setCanonicalCore(core);
 
+          let restoredAndDone = false;
           if (draftJson && typeof draftJson === 'object' && Object.keys(draftJson).length > 0) {
             // Has both core and produced content — go to done
             const content = extractProducedContent(d, (d.type as DraftType) ?? 'blog');
@@ -192,6 +193,7 @@ export function DraftEngine({
               setProducedContent(content);
               setPhase('done');
               setCoreApproved(true);
+              restoredAndDone = true;
             } else {
               setPhase('core-ready');
             }
@@ -199,7 +201,10 @@ export function DraftEngine({
             // Has core but no produced content — go to produce step
             setPhase('core-ready');
           }
-          setCoreExpanded(false);
+          // Keep the canonical core expanded by default so the user immediately sees
+          // what was generated. Only collapse when the draft is fully done (already
+          // produced content downstream) — at that point the core is ancient context.
+          setCoreExpanded(!restoredAndDone);
         }
       } catch {
         // silent — will show fresh form
