@@ -126,6 +126,6 @@ export async function adminPersonaArchetypesRoutes(app: FastifyInstance) {
     if (denied) return
     const { error } = await sb.from('persona_archetypes').delete().eq('id', id)
     if (error) throw new ApiError(500, error.message, 'ARCHETYPE_DELETE_ERROR')
-    return reply.status(204).send()
+    return reply.send({ data: { deleted: true }, error: null })
   })
 }

@@ -97,6 +97,6 @@ export async function channelPersonasRoutes(app: FastifyInstance) {
       .eq('channel_id', channelId)
       .eq('persona_id', personaId)
     if (error) throw new ApiError(500, error.message, 'CHANNEL_PERSONA_REMOVE_ERROR')
-    return reply.status(204).send()
+    return reply.send({ data: { deleted: true }, error: null })
   })
 }

@@ -32,9 +32,11 @@ async function assertAdmin(request: any, reply: any, sb: ReturnType<typeof creat
 export async function adminPersonaGuardrailsRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authenticate)
 
-  // GET / — list all guardrails (all categories, all active states)
+  // GET / — list all guardrails (admin only)
   app.get('/', async (req, reply) => {
     const sb = createServiceClient()
+    const denied = await assertAdmin(req, reply, sb)
+    if (denied) return
     const { data, error } = await sb
       .from('persona_guardrails')
       .select('*')
@@ -104,6 +106,6 @@ export async function adminPersonaGuardrailsRoutes(app: FastifyInstance) {
     if (denied) return
     const { error } = await sb.from('persona_guardrails').delete().eq('id', id)
     if (error) throw new ApiError(500, error.message, 'GUARDRAIL_DELETE_ERROR')
-    return reply.status(204).send()
+    return reply.send({ data: { deleted: true }, error: null })
   })
 }
