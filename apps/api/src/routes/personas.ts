@@ -87,9 +87,9 @@ Return ONLY valid JSON, no explanation.`
 
     const { generateWithFallback } = await import('../lib/ai/router.js')
     const call = await generateWithFallback(
-      'production',
+      'brainstorm',
       'standard',
-      { agentType: 'production', systemPrompt, userMessage: body.description },
+      { agentType: 'brainstorm', systemPrompt, userMessage: body.description },
       {
         logContext: {
           userId: req.userId ?? '',
@@ -101,16 +101,22 @@ Return ONLY valid JSON, no explanation.`
       },
     )
 
-    let fields: Record<string, unknown> = {}
+    const raw = call.result
+    const text = (typeof raw === 'string' ? raw : (raw as { content?: string })?.content ?? '').trim()
+    if (!text) {
+      throw new ApiError(500, 'AI extraction returned empty response', 'EXTRACT_EMPTY_RESPONSE')
+    }
+    let fields: unknown
     try {
-      const raw = call.result
-      const text = typeof raw === 'string' ? raw : (raw as { content?: string })?.content ?? ''
       fields = JSON.parse(text)
     } catch {
       throw new ApiError(500, 'Failed to parse AI extraction response', 'EXTRACT_PARSE_ERROR')
     }
+    if (typeof fields !== 'object' || fields === null || Array.isArray(fields)) {
+      throw new ApiError(500, 'AI extraction returned unexpected shape', 'EXTRACT_INVALID_SHAPE')
+    }
 
-    return reply.send({ data: fields, error: null })
+    return reply.send({ data: fields as Record<string, unknown>, error: null })
   })
 
   app.get('/', async (_req, reply) => {
