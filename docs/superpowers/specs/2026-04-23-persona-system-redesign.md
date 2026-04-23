@@ -189,7 +189,7 @@ Two modes:
 
 **AI Generate** — mirrors the Assets Engine pattern:
 
-1. **Provider picker** — same provider list as Assets Engine (DALL-E, Stable Diffusion, Midjourney, etc.)
+1. **Provider picker** — reads from `image_generator_configs` table (same table used by Assets Engine — has `provider`, `model`, `is_active` columns). Not `ai_provider_configs` which is for text/LLM only.
 2. **Optional suggestion fields** (all optional — system fills gaps from persona + channel context):
 
 | Field | Input Type | Notes |
@@ -213,7 +213,7 @@ Avatar Agent instruction (agent_prompts)
 
 4. **Result:** User sees generated image, can regenerate with different suggestions or accept. On accept, stored as `personas.avatar_url`. Intermediate generations are ephemeral — not stored until user accepts.
 
-**Channel context for avatar generation:** When generating, the system uses the channel the user is currently working in to inject niche context. If the persona is not yet assigned to any channel, niche context is derived from persona's own `primary_domain` field.
+**Channel context for avatar generation:** The `channels` table does not have a dedicated niche field — it has a `tone` field (e.g. `'informative'`) and a `wordpress_config_id` FK. Niche context for avatar generation is sourced from persona's own `primary_domain` + `domain_lens` fields (always available). The channel's `tone` value is passed as an optional style modifier if the user is generating from within a channel context.
 
 Last generation params stored in `personas.avatar_params_json` to allow one-click regeneration later.
 
@@ -221,7 +221,7 @@ Last generation params stored in `personas.avatar_params_json` to allow one-clic
 
 ### Avatar Agent
 
-A dedicated entry in `agent_prompts` table: `persona-avatar-generator`.
+A dedicated entry in `agent_prompts` table: slug `persona-avatar-generator`, stage `persona` (new stage value — avatar generation occurs outside the content pipeline stages of brainstorm/research/production/review).
 
 Responsible for translating persona identity + channel niche + user suggestions into a high-quality, provider-optimized image generation prompt. Follows the same hidden instruction pattern as other agents — users never see the prompt template, only the suggestion fields and the result.
 
@@ -252,51 +252,74 @@ In channel settings. Persona picker shows all user's personas. Multiple personas
 ## Runtime Composition
 
 ```typescript
-async function buildPersonaContext(personaId: string): Promise<PersonaContext> {
-  // Layer 3 — user persona data
-  const persona = await fetchPersona(personaId)
+// New wrapper — does NOT replace existing buildPersonaContext/buildPersonaVoice
+async function buildLayeredPersonaContext(
+  persona: Persona,
+  sb: SupabaseClient
+): Promise<{ context: PersonaContext; voice: PersonaVoice; constraints: string[] }> {
+  // Layer 1 — global guardrails (new DB fetch)
+  const guardrails = await fetchActiveGuardrails(sb)
 
-  // Layer 2 — archetype behavioral overlay (null if no archetype)
-  const overlay = persona.archetype_slug
-    ? await fetchArchetypeOverlay(persona.archetype_slug)
+  // Layer 2 — archetype behavioral overlay (new DB fetch, null if no archetype)
+  const overlay = persona.archetypeSlug
+    ? await fetchArchetypeOverlay(persona.archetypeSlug, sb)
     : null
 
-  // Layer 1 — global guardrails
-  const guardrails = await fetchActiveGuardrails()
+  // Layer 3 — existing pure functions, signatures unchanged
+  const context = buildPersonaContext(persona)
+  const voice = buildPersonaVoice(persona)
 
-  return compose(guardrails, overlay, persona)
+  // Constraints from layers 1+2 — injected as a separate system block, not inside PersonaContext
+  const constraints = compileConstraints(guardrails, overlay)
+
+  return { context, voice, constraints }
 }
 ```
 
-`compose()` assembles layers into a `PersonaContext` object consumed by both agents.
+**Non-breaking approach:** `buildPersonaContext(persona: Persona)` and `buildPersonaVoice(persona: Persona)` keep their existing signatures and return types unchanged. `PersonaContext` and `PersonaVoice` interfaces in `packages/shared/src/types/agents.ts` are **not modified** — agents consuming them today continue working without changes.
+
+**`constraints`** is a new `string[]` compiled from guardrails + archetype overlay. Injected as a separate system-level prompt block in `production-generate.ts` alongside the existing context/voice injection points.
+
+**Call site change** (`apps/api/src/jobs/production-generate.ts`):
+- Replace two separate calls (`buildPersonaContext(persona)` + `buildPersonaVoice(persona)`) with one call to `buildLayeredPersonaContext(persona, sb)`
+- Destructure `{ context, voice, constraints }` and inject all three into the agent messages
 
 **Merge strategy:**
-- Guardrails (Layer 1) become non-negotiable prompt constraints — prepended as system-level rules, cannot be softened by user persona data
-- Archetype overlay (Layer 2) adds persona-type-specific behavioral instructions — appended after guardrails, before user data
-- User persona data (Layer 3) fills voice, soul, domain, and EEAT slots — the "personality" the AI expresses within the constraints set by Layers 1 and 2
-
-**`PersonaContext` shape (consumed by agents):**
-```typescript
-interface PersonaContext {
-  identity: { name: string; domain: string; domainLens: string }
-  voice: { writingStyle: string; signaturePhrases: string[]; characteristicOpinions: string[] }
-  soul: { values: string[]; philosophy: string; strongOpinions: string[]; petPeeves: string[]; humorStyle: string }
-  eeat: { analyticalLens: string; trustSignals: string[]; expertiseClaims: string[] }
-  constraints: string[]   // compiled from guardrails + archetype overlay — never user-visible
-}
-```
-
-Agents (Canonical Core, Blog Post) receive only the final `PersonaContext` — no awareness of layering.
+- Guardrails (Layer 1) → non-negotiable system constraints, highest priority
+- Archetype overlay (Layer 2) → persona-type behavioral additions, applied after guardrails
+- User persona data (Layer 3) → existing `context` + `voice` objects, expresses personality within constraints
 
 ---
 
 ### Persona Assignment in Draft Pipeline
 
-`content_drafts.persona_id` already exists. Assignment logic:
+`content_drafts.persona_id` column exists in DB (migration 20260423000100).
 
+**Prerequisite fix:** `DbContentDraft` interface in `packages/shared/src/mappers/db.ts` is missing `persona_id: string | null`. The migration was applied but the TypeScript type was never updated. This must be fixed before implementation — otherwise `loadPersonaForDraft()` reads the field from DB but the type system doesn't know it exists, causing silent failures.
+
+Fix required:
+- Add `persona_id: string | null` to `DbContentDraft`
+- Add `personaId: string | null` to `DomainContentDraft`  
+- Update `mapContentDraftFromDb()` mapper accordingly
+
+Assignment logic:
 1. **Auto-assign:** When a draft is created, it inherits the channel's primary persona (`channel_personas.is_primary = true`)
 2. **Override:** User can switch persona per draft from the draft settings panel — updates `content_drafts.persona_id`
-3. **Fallback:** If no persona is assigned to the channel, draft proceeds without persona injection (agents use base behavior). A warning is shown in the pipeline UI prompting persona setup.
+3. **Fallback:** If no persona is assigned to the channel, draft proceeds without persona injection (agents use base behavior — same as today). Warning shown in pipeline UI.
+
+---
+
+### JSONB Fields — Default Values for New Personas
+
+`writing_voice_json`, `soul_json`, `eeat_signals_json` are `NOT NULL` in DB. Every persona creation must populate all three. For blank-slate creation where the user hasn't filled every field, the API writes empty-but-valid structures:
+
+```json
+writing_voice_json: { "writingStyle": "", "signaturePhrases": [], "characteristicOpinions": [] }
+soul_json: { "values": [], "lifePhilosophy": "", "strongOpinions": [], "petPeeves": [], "humorStyle": "", "recurringJokes": [], "whatExcites": [], "innerTensions": [], "languageGuardrails": [] }
+eeat_signals_json: { "analyticalLens": "", "trustSignals": [], "expertiseClaims": [] }
+```
+
+These default empty structures must be defined in `packages/shared/src/schemas/personas.ts` as the base for `createPersonaSchema`.
 
 ---
 
@@ -341,7 +364,7 @@ Admin routes guarded by admin role check on top of existing `X-Internal-Key` mid
 ## Security Notes
 
 - `behavioral_overlay_json` and `persona_guardrails.rule_text` are server-side only — excluded from all user-facing serializers
-- Admin routes require an additional admin role check beyond `X-Internal-Key`. Exact mechanism (env-based flag, admin user list, or role column) is a separate implementation decision — not specified in this spec
+- **Admin role check must be built from scratch.** Current `apps/api/src/middleware/authenticate.ts` validates only `X-Internal-Key` — no role or user hierarchy exists. Admin routes require a new middleware layer. Recommended approach: env-based `ADMIN_SECRET` header check (simple, consistent with existing key pattern). This is a new implementation task, not an extension of existing auth.
 - When creating a new WP user for a persona via `POST /wp/v2/users`, the returned `wp_user_id` is stored as `personas.wp_author_id`. The generated WP password does NOT need to be stored — publishing is always done via the integration account credentials, not the persona's own credentials
 
 ---
