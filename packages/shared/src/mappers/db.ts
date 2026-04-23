@@ -4,6 +4,7 @@
  * Mappers are the ONLY place where this translation happens.
  */
 
+import type { Json } from "../types/database.js"
 import type { Persona } from "../types/agents.js";
 
 // ─── Project ──────────────────────────────────────────────────────────────────
@@ -497,9 +498,9 @@ export interface DbPersona {
   primary_domain: string;
   domain_lens: string;
   approved_categories: string[];
-  writing_voice_json: Record<string, unknown>;
-  eeat_signals_json: Record<string, unknown>;
-  soul_json: Record<string, unknown>;
+  writing_voice_json: Json;
+  eeat_signals_json: Json;
+  soul_json: Json;
   wp_author_id: number | null;
   is_active: boolean;
   created_at: string;
@@ -517,9 +518,9 @@ export function mapPersonaFromDb(row: DbPersona): Persona {
     primaryDomain: row.primary_domain,
     domainLens: row.domain_lens,
     approvedCategories: row.approved_categories,
-    writingVoiceJson: row.writing_voice_json as unknown as Persona['writingVoiceJson'],
-    eeatSignalsJson: row.eeat_signals_json as unknown as Persona['eeatSignalsJson'],
-    soulJson: row.soul_json as unknown as Persona['soulJson'],
+    writingVoiceJson: (row.writing_voice_json ?? {}) as unknown as Persona['writingVoiceJson'],
+    eeatSignalsJson: (row.eeat_signals_json ?? {}) as unknown as Persona['eeatSignalsJson'],
+    soulJson: (row.soul_json ?? {}) as unknown as Persona['soulJson'],
     wpAuthorId: row.wp_author_id,
     isActive: row.is_active,
     createdAt: row.created_at,
@@ -537,9 +538,9 @@ export function mapPersonaToDb(input: Partial<Persona>): Partial<DbPersona> {
   if (input.primaryDomain !== undefined) out.primary_domain = input.primaryDomain;
   if (input.domainLens !== undefined) out.domain_lens = input.domainLens;
   if (input.approvedCategories !== undefined) out.approved_categories = input.approvedCategories;
-  if (input.writingVoiceJson !== undefined) out.writing_voice_json = input.writingVoiceJson as unknown as Record<string, unknown>;
-  if (input.eeatSignalsJson !== undefined) out.eeat_signals_json = input.eeatSignalsJson as unknown as Record<string, unknown>;
-  if (input.soulJson !== undefined) out.soul_json = input.soulJson as unknown as Record<string, unknown>;
+  if (input.writingVoiceJson !== undefined) out.writing_voice_json = input.writingVoiceJson as unknown as Json;
+  if (input.eeatSignalsJson !== undefined) out.eeat_signals_json = input.eeatSignalsJson as unknown as Json;
+  if (input.soulJson !== undefined) out.soul_json = input.soulJson as unknown as Json;
   if (input.wpAuthorId !== undefined) out.wp_author_id = input.wpAuthorId;
   if (input.isActive !== undefined) out.is_active = input.isActive;
   return out;
