@@ -90,6 +90,12 @@ ALTER TABLE content_drafts
 
 Nullable — existing drafts have no persona; new drafts require one. `ON DELETE SET NULL` so deleting a persona doesn't destroy draft records.
 
+**Migration ordering:** `persona_id` FK depends on the `personas` table existing. Migration timestamps must be strictly ordered:
+- `20260423000000_add_personas.sql` — creates `personas` table
+- `20260423000100_add_persona_id_to_content_drafts.sql` — adds FK column
+
+Both timestamps are after `20260422170000` (last existing migration).
+
 ---
 
 ### `writing_voice_json` shape
@@ -480,30 +486,47 @@ personaWpAuthorId?: number | null
 researchPrimaryKeyword?: string         // seo.primary_keyword (refined by research)
 researchSecondaryKeywords?: string[]    // seo.secondary_keywords[].keyword
 researchSearchIntent?: string           // seo.search_intent
-researchAffiliateAngle?: string         // idea.monetization_hypothesis.affiliate_angle
-researchProductCategories?: string[]    // idea.monetization_hypothesis.product_categories
+// monetization_hypothesis fields (affiliate_angle, product_categories) are brainstorm
+// fields on the idea record — DraftEngine reads them directly via ideaId at scoring
+// time, not passed through PipelineContext
 ```
 
 ### `apps/app/src/components/engines/ResearchEngine.tsx`
 
-When research is approved and stage result saved, also write the scoring signals into `PipelineContext`:
-- `researchPrimaryKeyword` ← `seo.primary_keyword`
-- `researchSecondaryKeywords` ← `seo.secondary_keywords[].keyword`
-- `researchSearchIntent` ← `seo.search_intent`
-- `researchAffiliateAngle` ← `idea.monetization_hypothesis.affiliate_angle` (from idea record)
-- `researchProductCategories` ← `idea.monetization_hypothesis.product_categories` (from idea record)
+When research is approved and stage result saved, extract 3 SEO signals from the research findings and write them into `PipelineContext`:
+- `researchPrimaryKeyword` ← `findings.seo.primary_keyword`
+- `researchSecondaryKeywords` ← `findings.seo.secondary_keywords[].keyword`
+- `researchSearchIntent` ← `findings.seo.search_intent`
 
-These are stored in `pipeline_state_json` as part of the Research stage result.
+These 3 fields are available in the `findings` object at approval time. Also update the `ResearchResult` return type to include them so they flow into pipeline state:
+```typescript
+interface ResearchResult {
+  researchSessionId: string
+  approvedCardsCount: number
+  researchLevel: string
+  // new — SEO signals for persona scoring
+  primaryKeyword?: string
+  secondaryKeywords?: string[]
+  searchIntent?: string
+}
+```
+
+Stored in `pipeline_state_json` as part of the Research stage result.
+
+**Note:** `monetization_hypothesis.affiliate_angle` and `product_categories` are idea record fields (brainstorm output), not research output. DraftEngine reads them directly from the idea record — ResearchEngine does not need to surface them.
 
 ### `apps/app/src/components/engines/DraftEngine.tsx`
 
-1. On mount, fetch `GET /api/personas` (active only)
+1. On mount, fetch in parallel:
+   - `GET /api/personas` — active personas list
+   - `GET /api/ideas/:ideaId` — full idea record (to extract `monetization_hypothesis.affiliate_angle` and `product_categories` for scoring); uses `context.ideaId`
 2. Score each persona against all available content signals before rendering:
 
    ```typescript
    function scorePersonaForContent(
      persona: Persona,
-     context: PipelineContext
+     context: PipelineContext,
+     idea: { affiliateAngle?: string; productCategories?: string[] }
    ): number {
      const signals = [
        context.ideaTitle ?? '',
@@ -511,8 +534,8 @@ These are stored in `pipeline_state_json` as part of the Research stage result.
        context.researchPrimaryKeyword ?? '',
        ...(context.researchSecondaryKeywords ?? []),
        context.researchSearchIntent ?? '',
-       context.researchAffiliateAngle ?? '',
-       ...(context.researchProductCategories ?? []),
+       idea.affiliateAngle ?? '',
+       ...(idea.productCategories ?? []),
      ].join(' ').toLowerCase()
 
      const personaTerms = [
@@ -532,7 +555,7 @@ These are stored in `pipeline_state_json` as part of the Research stage result.
    - Top scorer shows "Best match" badge — pre-selected by default
    - If all scores are 0 (no signals), show all personas flat with no badge
    - Required — generate button disabled until selection confirmed
-4. On generate: include `personaId` in the draft creation request
+4. On generate: include `personaId` in the **draft creation** POST to `/api/content-drafts` — stored as `persona_id` in the draft record. The job trigger (`POST /:id/generate`) does not need a personaId parameter; the job reads it from the draft record.
 5. After generation: persona name shown in draft header as byline ("by Cole Merritt")
 6. Store `personaId`, `personaName`, `personaSlug`, `personaWpAuthorId` in stage result → `PipelineContext`
 
@@ -623,9 +646,13 @@ obj('persona', 'Author persona for this post', [
 
 ### `apps/api/src/jobs/production-generate.ts`
 
-- Fetch active persona by `persona_id` from `personas` table before generating
-- Inject `persona_context` (subset) into Content Core input
-- Inject full `persona` object into Blog Agent input
+The job already loads the full `content_drafts` record by `draftId` at startup. No change to the job event interface is needed — `persona_id` is read from the draft record:
+
+- Read `draft.persona_id` from the loaded draft record
+- If set: fetch full persona row from `personas` table
+- Inject `persona_context` subset (`name`, `domain_lens`, `analytical_lens`, `strong_opinions`, `approved_categories`) into Content Core input
+- Inject full `persona` object (`name`, `bio_short`, `writing_voice_json`, `soul_json`) into Blog Agent input
+- If `persona_id` is null (legacy draft): skip injection — agents run without persona, no regression
 
 ### `apps/app/src/components/engines/DraftEngine.tsx`
 
@@ -705,6 +732,8 @@ Follows `seed-agents.ts` exactly:
 
 **Upsert key:** `slug`. `wp_author_id` excluded from the upsert SET clause — set manually after WP user creation and must not be overwritten by reseeds.
 
+**Critical isolation:** `scripts/agents/personas.ts` exports `PERSONAS` — a separate array. It must **not** be added to `ALL_AGENTS` in `scripts/agents/index.ts`. `ALL_AGENTS` feeds `seed-agents.ts` which inserts into `agent_prompts`. Personas go into the `personas` table via `seed-personas.ts`. Mixing the two arrays would corrupt both seeders.
+
 **Run via:**
 ```bash
 npm run db:seed:agents   # regenerates seed.sql + agent migration
@@ -722,8 +751,8 @@ Or combined in `package.json`:
 
 | File | Change |
 |------|--------|
-| `supabase/migrations/YYYYMMDD_add_personas.sql` | New — creates `personas` table |
-| `supabase/migrations/YYYYMMDD_add_persona_id_to_content_drafts.sql` | New — adds `persona_id` FK to `content_drafts` |
+| `supabase/migrations/20260423000000_add_personas.sql` | New — creates `personas` table (must run before FK migration) |
+| `supabase/migrations/20260423000100_add_persona_id_to_content_drafts.sql` | New — adds `persona_id` FK to `content_drafts` (depends on personas table) |
 | `supabase/seed.sql` | Add 3 persona seed records (generated by seed-personas.ts) |
 | `packages/shared/src/schemas/personas.ts` | New — Zod schemas for persona list/get/create/update |
 | `packages/shared/src/types/agents.ts` | Add `PersonaContext`, `PersonaVoice` types |
@@ -735,8 +764,8 @@ Or combined in `package.json`:
 | `scripts/agents/blog.ts` | Add `persona` input field + 12 global guardrails + persona injection rule |
 | `scripts/agents/personas.ts` | New — TypeScript persona definitions (source of truth, mirrors agents/*.ts pattern) |
 | `scripts/seed-personas.ts` | New — reads personas.ts, dollar-quotes fields, appends upsert SQL to seed.sql + writes migration |
-| `apps/app/src/components/engines/types.ts` | Add persona fields + 5 research signal fields to `PipelineContext` |
-| `apps/app/src/components/engines/ResearchEngine.tsx` | Write scoring signals into PipelineContext on research approval |
+| `apps/app/src/components/engines/types.ts` | Add persona fields + 3 research signal fields to `PipelineContext`; update `ResearchResult` with `primaryKeyword`, `secondaryKeywords`, `searchIntent` |
+| `apps/app/src/components/engines/ResearchEngine.tsx` | Extract 3 SEO signals from `findings.seo` on approval; add to `ResearchResult` return |
 | `apps/app/src/components/engines/DraftEngine.tsx` | Multi-signal persona scorer + selector UI; store persona in context |
 | `apps/app/src/components/engines/AssetsEngine.tsx` | Add read-only persona badge from context |
 | `apps/app/src/components/engines/PublishEngine.tsx` | Pass `authorId: personaWpAuthorId` in publish payload |
