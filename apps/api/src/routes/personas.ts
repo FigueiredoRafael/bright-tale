@@ -14,7 +14,7 @@ import {
 export async function personasRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authenticate)
 
-  app.get('/api/personas', async (_req, reply) => {
+  app.get('/', async (_req, reply) => {
     const sb = createServiceClient()
     const { data, error } = await sb
       .from('personas')
@@ -25,7 +25,7 @@ export async function personasRoutes(app: FastifyInstance) {
     return reply.send({ data: (data ?? []).map(row => mapPersonaFromDb(row as DbPersona)), error: null })
   })
 
-  app.get('/api/personas/:id', async (req, reply) => {
+  app.get('/:id', async (req, reply) => {
     const { id } = req.params as { id: string }
     const sb = createServiceClient()
     const { data, error } = await sb.from('personas').select('*').eq('id', id).maybeSingle()
@@ -34,7 +34,7 @@ export async function personasRoutes(app: FastifyInstance) {
     return reply.send({ data: mapPersonaFromDb(data as DbPersona), error: null })
   })
 
-  app.post('/api/personas', async (req, reply) => {
+  app.post('/', async (req, reply) => {
     const body = createPersonaSchema.parse(req.body)
     const sb = createServiceClient()
     const { data, error } = await sb
@@ -58,7 +58,7 @@ export async function personasRoutes(app: FastifyInstance) {
     return reply.status(201).send({ data: mapPersonaFromDb(data as DbPersona), error: null })
   })
 
-  app.put('/api/personas/:id', async (req, reply) => {
+  app.put('/:id', async (req, reply) => {
     const { id } = req.params as { id: string }
     const body = updatePersonaSchema.parse(req.body)
     const sb = createServiceClient()
@@ -74,7 +74,7 @@ export async function personasRoutes(app: FastifyInstance) {
     return reply.send({ data: mapPersonaFromDb(data as DbPersona), error: null })
   })
 
-  app.patch('/api/personas/:id', async (req, reply) => {
+  app.patch('/:id', async (req, reply) => {
     const { id } = req.params as { id: string }
     const body = togglePersonaSchema.parse(req.body)
     const sb = createServiceClient()

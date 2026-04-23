@@ -195,7 +195,7 @@ server.register(publishingDestinationsRoutes, {
   prefix: "/publishing-destinations",
 });
 server.register(notificationsRoutes, { prefix: "/channels" });
-server.register(personasRoutes);
+server.register(personasRoutes, { prefix: "/personas" });
 
 // Affiliate platform — @tn-figueiredo/affiliate@0.4.0 (Phase 2A.3 wires /ref + /internal)
 const affiliateContainer = buildAffiliateContainer();

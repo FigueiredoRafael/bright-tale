@@ -54,7 +54,7 @@ describe('personas routes', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     app = Fastify()
-    await app.register(personasRoutes)
+    await app.register(personasRoutes, { prefix: '/personas' })
     await app.ready()
   })
 
@@ -62,7 +62,7 @@ describe('personas routes', () => {
     it('returns only active personas', async () => {
       mockOrder.mockResolvedValueOnce({ data: [ACTIVE_PERSONA], error: null })
 
-      const res = await app.inject({ method: 'GET', url: '/api/personas' })
+      const res = await app.inject({ method: 'GET', url: '/personas' })
 
       expect(res.statusCode).toBe(200)
       const body = JSON.parse(res.body)
@@ -75,7 +75,7 @@ describe('personas routes', () => {
     it('returns empty array when no active personas', async () => {
       mockOrder.mockResolvedValueOnce({ data: [], error: null })
 
-      const res = await app.inject({ method: 'GET', url: '/api/personas' })
+      const res = await app.inject({ method: 'GET', url: '/personas' })
 
       expect(res.statusCode).toBe(200)
       expect(JSON.parse(res.body).data).toEqual([])
@@ -86,7 +86,7 @@ describe('personas routes', () => {
     it('returns 404 when persona not found', async () => {
       mockMaybeSingle.mockResolvedValueOnce({ data: null, error: null })
 
-      const res = await app.inject({ method: 'GET', url: '/api/personas/uuid-999' })
+      const res = await app.inject({ method: 'GET', url: '/personas/uuid-999' })
 
       expect(res.statusCode).toBe(404)
     })
@@ -94,7 +94,7 @@ describe('personas routes', () => {
     it('returns persona when found', async () => {
       mockMaybeSingle.mockResolvedValueOnce({ data: ACTIVE_PERSONA, error: null })
 
-      const res = await app.inject({ method: 'GET', url: '/api/personas/uuid-1' })
+      const res = await app.inject({ method: 'GET', url: '/personas/uuid-1' })
 
       expect(res.statusCode).toBe(200)
       expect(JSON.parse(res.body).data.slug).toBe('cole-merritt')
@@ -107,7 +107,7 @@ describe('personas routes', () => {
 
       const res = await app.inject({
         method: 'PATCH',
-        url: '/api/personas/uuid-1',
+        url: '/personas/uuid-1',
         payload: { isActive: false },
       })
 
