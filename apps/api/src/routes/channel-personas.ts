@@ -42,11 +42,12 @@ export async function channelPersonasRoutes(app: FastifyInstance) {
     const sb = createServiceClient()
 
     if (body.isPrimary) {
-      await sb
+      const { error: clearErr } = await sb
         .from('channel_personas')
         .update({ is_primary: false })
         .eq('channel_id', channelId)
         .eq('is_primary', true)
+      if (clearErr) throw new ApiError(500, clearErr.message, 'CHANNEL_PERSONA_CLEAR_PRIMARY_ERROR')
     }
 
     const { data, error } = await sb
@@ -54,7 +55,7 @@ export async function channelPersonasRoutes(app: FastifyInstance) {
       .insert({ channel_id: channelId, persona_id: body.personaId, is_primary: body.isPrimary })
       .select()
       .single()
-    if (error?.code === '23505') throw new ApiError(409, 'Persona already assigned to this channel', 'CONFLICT')
+    if (error?.code === '23505') throw new ApiError(409, 'Persona already assigned to this channel', 'CHANNEL_PERSONA_DUPLICATE')
     if (error) throw new ApiError(500, error.message, 'CHANNEL_PERSONA_ASSIGN_ERROR')
     return reply.status(201).send({ data: mapChannelPersonaFromDb(data as DbChannelPersona), error: null })
   })
@@ -66,11 +67,12 @@ export async function channelPersonasRoutes(app: FastifyInstance) {
     const sb = createServiceClient()
 
     if (body.isPrimary) {
-      await sb
+      const { error: clearErr } = await sb
         .from('channel_personas')
         .update({ is_primary: false })
         .eq('channel_id', channelId)
         .eq('is_primary', true)
+      if (clearErr) throw new ApiError(500, clearErr.message, 'CHANNEL_PERSONA_CLEAR_PRIMARY_ERROR')
     }
 
     const { data, error } = await sb
@@ -81,7 +83,7 @@ export async function channelPersonasRoutes(app: FastifyInstance) {
       .select()
       .single()
     if (error) throw new ApiError(500, error.message, 'CHANNEL_PERSONA_UPDATE_ERROR')
-    if (!data) throw new ApiError(404, 'Channel-persona link not found', 'NOT_FOUND')
+    if (!data) throw new ApiError(404, 'Channel-persona link not found', 'CHANNEL_PERSONA_NOT_FOUND')
     return reply.send({ data: mapChannelPersonaFromDb(data as DbChannelPersona), error: null })
   })
 
