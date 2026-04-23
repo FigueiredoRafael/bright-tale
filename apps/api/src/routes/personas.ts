@@ -204,6 +204,86 @@ Return ONLY valid JSON, no explanation.`
     return reply.send({ data: { avatarUrl, avatarParamsJson }, error: null })
   })
 
+  // POST /:id/integrations/wordpress — link or create WP author
+  app.post('/:id/integrations/wordpress', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const body = z
+      .object({
+        action: z.enum(['link', 'create']),
+        wpUsername: z.string().optional(),
+        channelId: z.string().uuid(),
+      })
+      .parse(req.body)
+
+    const sb = createServiceClient()
+
+    const { data: personaRow } = await sb.from('personas').select('*').eq('id', id).maybeSingle()
+    if (!personaRow) throw new ApiError(404, 'Persona not found', 'PERSONA_NOT_FOUND')
+    const persona = mapPersonaFromDb(personaRow as DbPersona)
+
+    const { data: channel } = await sb
+      .from('channels')
+      .select('wordpress_config_id')
+      .eq('id', body.channelId)
+      .maybeSingle()
+    if (!channel?.wordpress_config_id) throw new ApiError(400, 'Channel has no WordPress config', 'NO_WP_CONFIG')
+
+    const { decrypt } = await import('../lib/crypto.js')
+    const { data: wpConfig } = await sb
+      .from('wordpress_configs')
+      .select('site_url, username, password')
+      .eq('id', channel.wordpress_config_id)
+      .maybeSingle()
+    if (!wpConfig) throw new ApiError(404, 'WordPress config not found', 'WP_CONFIG_NOT_FOUND')
+
+    const auth = Buffer.from(`${wpConfig.username}:${decrypt(wpConfig.password)}`).toString('base64')
+    const wpBase = wpConfig.site_url.replace(/\/$/, '')
+
+    let wpUserId: number
+
+    if (body.action === 'link') {
+      if (!body.wpUsername) throw new ApiError(400, 'wpUsername required for link action', 'VALIDATION_ERROR')
+      const res = await fetch(`${wpBase}/wp-json/wp/v2/users?search=${encodeURIComponent(body.wpUsername)}`, {
+        headers: { Authorization: `Basic ${auth}` },
+      })
+      if (!res.ok) throw new ApiError(502, 'Failed to search WordPress users', 'WP_FETCH_ERROR')
+      const users = (await res.json()) as Array<{ id: number; slug: string; name: string }>
+      if (!users.length) throw new ApiError(404, `No WordPress user found for "${body.wpUsername}"`, 'WP_USER_NOT_FOUND')
+      wpUserId = users[0].id
+    } else {
+      const wpUsername = persona.slug
+      const wpEmail = `${persona.slug}@persona.brighttale.io`
+      const wpPassword = crypto.randomUUID()
+      const res = await fetch(`${wpBase}/wp-json/wp/v2/users`, {
+        method: 'POST',
+        headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: wpUsername,
+          email: wpEmail,
+          password: wpPassword,
+          name: persona.name,
+          roles: ['author'],
+        }),
+      })
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}))
+        throw new ApiError(502, (errBody as { message?: string })?.message ?? 'Failed to create WordPress user', 'WP_CREATE_ERROR')
+      }
+      const created = (await res.json()) as { id: number }
+      wpUserId = created.id
+    }
+
+    const { data: updated, error: upErr } = await sb
+      .from('personas')
+      .update({ wp_author_id: wpUserId })
+      .eq('id', id)
+      .select()
+      .single()
+    if (upErr) throw new ApiError(500, upErr.message, 'PERSONA_UPDATE_ERROR')
+
+    return reply.send({ data: { wpAuthorId: wpUserId, persona: mapPersonaFromDb(updated as DbPersona) }, error: null })
+  })
+
   app.get('/', async (_req, reply) => {
     const sb = createServiceClient()
     const { data, error } = await sb
