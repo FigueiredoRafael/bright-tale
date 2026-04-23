@@ -1436,6 +1436,7 @@ export type Database = {
           idea_id: string | null
           iteration_count: number
           org_id: string
+          persona_id: string | null
           production_params: Json | null
           production_settings_json: Json | null
           project_id: string | null
@@ -1463,6 +1464,7 @@ export type Database = {
           idea_id?: string | null
           iteration_count?: number
           org_id: string
+          persona_id?: string | null
           production_params?: Json | null
           production_settings_json?: Json | null
           project_id?: string | null
@@ -1490,6 +1492,7 @@ export type Database = {
           idea_id?: string | null
           iteration_count?: number
           org_id?: string
+          persona_id?: string | null
           production_params?: Json | null
           production_settings_json?: Json | null
           project_id?: string | null
@@ -1527,6 +1530,13 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_drafts_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
             referencedColumns: ["id"]
           },
           {
