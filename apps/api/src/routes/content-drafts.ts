@@ -314,7 +314,7 @@ export async function contentDraftsRoutes(
 
       if (error) {
         if ((error as { code?: string }).code === '23503') {
-          throw new ApiError(400, 'INVALID_PERSONA_ID', 'Persona not found');
+          throw new ApiError(400, 'Persona not found', 'INVALID_PERSONA_ID');
         }
         throw error;
       }

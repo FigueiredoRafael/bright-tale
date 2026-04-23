@@ -19,7 +19,7 @@ export async function personasRoutes(app: FastifyInstance) {
       .select('*')
       .eq('is_active', true)
       .order('name')
-    if (error) throw new ApiError(500, 'PERSONAS_FETCH_ERROR', error.message)
+    if (error) throw new ApiError(500, error.message, 'PERSONAS_FETCH_ERROR')
     return reply.send({ data: (data ?? []).map(row => mapPersonaFromDb(row as any)), error: null })
   })
 
@@ -27,8 +27,8 @@ export async function personasRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string }
     const sb = createServiceClient()
     const { data, error } = await sb.from('personas').select('*').eq('id', id).maybeSingle()
-    if (error) throw new ApiError(500, 'PERSONAS_FETCH_ERROR', error.message)
-    if (!data) throw new ApiError(404, 'PERSONA_NOT_FOUND', 'Persona not found')
+    if (error) throw new ApiError(500, error.message, 'PERSONAS_FETCH_ERROR')
+    if (!data) throw new ApiError(404, 'Persona not found', 'PERSONA_NOT_FOUND')
     return reply.send({ data: mapPersonaFromDb(data as any), error: null })
   })
 
@@ -52,7 +52,7 @@ export async function personasRoutes(app: FastifyInstance) {
       })
       .select()
       .single()
-    if (error) throw new ApiError(500, 'PERSONA_CREATE_ERROR', error.message)
+    if (error) throw new ApiError(500, error.message, 'PERSONA_CREATE_ERROR')
     return reply.status(201).send({ data: mapPersonaFromDb(data as any), error: null })
   })
 
@@ -67,8 +67,8 @@ export async function personasRoutes(app: FastifyInstance) {
       .eq('id', id)
       .select()
       .single()
-    if (error) throw new ApiError(500, 'PERSONA_UPDATE_ERROR', error.message)
-    if (!data) throw new ApiError(404, 'PERSONA_NOT_FOUND', 'Persona not found')
+    if (error) throw new ApiError(500, error.message, 'PERSONA_UPDATE_ERROR')
+    if (!data) throw new ApiError(404, 'Persona not found', 'PERSONA_NOT_FOUND')
     return reply.send({ data: mapPersonaFromDb(data as any), error: null })
   })
 
@@ -82,8 +82,8 @@ export async function personasRoutes(app: FastifyInstance) {
       .eq('id', id)
       .select()
       .single()
-    if (error) throw new ApiError(500, 'PERSONA_UPDATE_ERROR', error.message)
-    if (!data) throw new ApiError(404, 'PERSONA_NOT_FOUND', 'Persona not found')
+    if (error) throw new ApiError(500, error.message, 'PERSONA_UPDATE_ERROR')
+    if (!data) throw new ApiError(404, 'Persona not found', 'PERSONA_NOT_FOUND')
     return reply.send({ data: mapPersonaFromDb(data as any), error: null })
   })
 }
