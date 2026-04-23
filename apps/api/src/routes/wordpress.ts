@@ -25,6 +25,35 @@ import {
 import { publishDraftSchema } from '@brighttale/shared/schemas/pipeline';
 import { ingest, flushAxiom } from '../lib/axiom.js';
 
+export interface WpPostDataInput {
+  title: string;
+  slug?: string;
+  content: string;
+  excerpt: string;
+  status: string;
+  date?: string;
+  categories?: number[];
+  tags?: number[];
+  featuredMedia?: number;
+  authorId?: number | null;
+}
+
+export function buildWpPostData(input: WpPostDataInput): Record<string, unknown> {
+  const postData: Record<string, unknown> = {
+    title: input.title,
+    content: input.content,
+    excerpt: input.excerpt,
+    status: input.status,
+  };
+  if (input.slug) postData.slug = input.slug;
+  if (input.date) postData.date = input.date;
+  if (input.categories?.length) postData.categories = input.categories;
+  if (input.tags?.length) postData.tags = input.tags;
+  if (input.featuredMedia) postData.featured_media = input.featuredMedia;
+  if (input.authorId != null) postData.author = input.authorId;
+  return postData;
+}
+
 const createConfigSchema = z.object({
   site_url: z.string().url('Invalid WordPress site URL'),
   username: z.string().min(1, 'Username is required'),
@@ -772,25 +801,16 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       const tagIds = await resolveTags(body.tags || [], site_url, headers);
 
       // Prepare WordPress post data
-      const postData: Record<string, unknown> = {
+      const postData = buildWpPostData({
         title: blogContent.title,
         slug: blogContent.slug,
         content: htmlContent,
         excerpt: blogContent.meta_description,
         status: body.status,
-      };
-
-      if (categoryIds.length > 0) {
-        postData.categories = categoryIds;
-      }
-
-      if (tagIds.length > 0) {
-        postData.tags = tagIds;
-      }
-
-      if (featuredMediaId) {
-        postData.featured_media = featuredMediaId;
-      }
+        categories: categoryIds.length > 0 ? categoryIds : undefined,
+        tags: tagIds.length > 0 ? tagIds : undefined,
+        featuredMedia: featuredMediaId || undefined,
+      });
 
       // Publish to WordPress
       const response = await fetch(`${site_url}/wp-json/wp/v2/posts`, {
@@ -1100,21 +1120,18 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
 
         // Step 6: Publishing
         sendEvent('publishing', 'Creating post on WordPress...');
-        const postData: Record<string, unknown> = {
-          title: body.seoOverrides?.title ?? draft.title ?? draftJson?.title ?? 'Untitled',
+        const postData = buildWpPostData({
+          title: body.seoOverrides?.title ?? (draft.title as string) ?? (draftJson?.title as string) ?? 'Untitled',
           slug: body.seoOverrides?.slug ?? (draftJson?.slug as string) ?? undefined,
           content: blogBody,
           excerpt: body.seoOverrides?.metaDescription ?? (draftJson?.meta_description as string) ?? '',
           status: body.mode === 'schedule' ? 'future' : body.mode,
-        };
-        if (body.mode === 'schedule' && body.scheduledDate) {
-          postData.date = body.scheduledDate;
-        }
-        if (categoryIds.length > 0) postData.categories = categoryIds;
-        if (tagIds.length > 0) postData.tags = tagIds;
-
-        const featured = uploadedMedia['featured_image'];
-        if (featured) postData.featured_media = featured.wpId;
+          date: body.mode === 'schedule' && body.scheduledDate ? body.scheduledDate : undefined,
+          categories: categoryIds.length > 0 ? categoryIds : undefined,
+          tags: tagIds.length > 0 ? tagIds : undefined,
+          featuredMedia: uploadedMedia['featured_image']?.wpId,
+          authorId: body.authorId,
+        });
 
 
         // Create or update WordPress post
@@ -1594,21 +1611,18 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       const tagIds = await resolveTags(tagNames, site_url, headers);
 
       // Build post data — apply seoOverrides if present
-      const postData: Record<string, unknown> = {
-        title: body.seoOverrides?.title ?? draft.title ?? draftJson?.title ?? 'Untitled',
+      const postData = buildWpPostData({
+        title: body.seoOverrides?.title ?? (draft.title as string) ?? (draftJson?.title as string) ?? 'Untitled',
         slug: body.seoOverrides?.slug ?? (draftJson?.slug as string) ?? undefined,
         content: blogBody,
         excerpt: body.seoOverrides?.metaDescription ?? (draftJson?.meta_description as string) ?? '',
         status: body.mode === 'schedule' ? 'future' : body.mode,
-      };
-      if (body.mode === 'schedule' && body.scheduledDate) {
-        postData.date = body.scheduledDate;
-      }
-      if (categoryIds.length > 0) postData.categories = categoryIds;
-      if (tagIds.length > 0) postData.tags = tagIds;
-
-      const featured = uploadedMedia['featured_image'];
-      if (featured) postData.featured_media = featured.wpId;
+        date: body.mode === 'schedule' && body.scheduledDate ? body.scheduledDate : undefined,
+        categories: categoryIds.length > 0 ? categoryIds : undefined,
+        tags: tagIds.length > 0 ? tagIds : undefined,
+        featuredMedia: uploadedMedia['featured_image']?.wpId,
+        authorId: body.authorId,
+      });
 
       // Create or update WordPress post
       const existingPostId = (draft.wordpress_post_id as number | null) ?? null;
