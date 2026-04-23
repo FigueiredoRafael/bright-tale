@@ -4,7 +4,6 @@ import { createServiceClient } from '../lib/supabase/index.js'
 import { ApiError } from '../lib/api/errors.js'
 import {
   mapPersonaArchetypeAdmin,
-  mapPersonaArchetypePublic,
   mapPersonaArchetypeToDb,
   type DbPersonaArchetype,
 } from '@brighttale/shared/mappers/db'
