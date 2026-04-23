@@ -18,6 +18,7 @@ import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/a
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
+import { getPersonaTheme } from './utils/personaTheme';
 import type { BaseEngineProps, AssetsResult } from './types';
 
 /* ── Types ── */
@@ -649,14 +650,35 @@ export function AssetsEngine({
         <p className="text-sm text-muted-foreground mt-1">
           Generate prompt briefs, refine them, then upload images for each section.
         </p>
-        {context.personaName && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2 mt-3">
-            <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-medium">
-              {context.personaName[0]}
+        {context.personaName && (() => {
+          const theme = getPersonaTheme(context.personaSlug);
+          return (
+            <div
+              className="mt-3 mb-2 inline-flex items-center gap-2.5 rounded-full border px-3 py-1.5 backdrop-blur-sm"
+              style={{
+                background: `rgba(${theme.glow}, 0.1)`,
+                borderColor: `rgba(${theme.glow}, 0.35)`,
+              }}
+              aria-label={`Authored by ${context.personaName}`}
+            >
+              <div
+                className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                style={{
+                  background: theme.gradient,
+                  boxShadow: `0 4px 12px -2px rgba(${theme.glow}, 0.5)`,
+                }}
+              >
+                {context.personaName[0]}
+              </div>
+              <span
+                className="text-xs font-semibold tracking-wide"
+                style={{ color: theme.accent }}
+              >
+                {context.personaName}
+              </span>
             </div>
-            <span>{context.personaName}</span>
-          </div>
-        )}
+          );
+        })()}
       </div>
 
       {/* Phase stepper */}

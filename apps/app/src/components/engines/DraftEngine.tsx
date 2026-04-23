@@ -28,6 +28,8 @@ import { ImportPicker } from './ImportPicker';
 import { friendlyAiError } from '@/lib/ai/error-message';
 import { useUpgrade } from '@/components/billing/UpgradeProvider';
 import { rankPersonas, type RankedPersona } from './utils/personaScoring';
+import { getPersonaTheme } from './utils/personaTheme';
+import { PersonaCarousel } from './PersonaCarousel';
 import type { Persona } from '@brighttale/shared/types/agents';
 import type { BaseEngineProps, DraftResult } from './types';
 
@@ -216,6 +218,16 @@ export function DraftEngine({
       setSelectedPersonaId(recommended.persona.id);
     }
   }, [personas, context.ideaTitle, context.researchPrimaryKeyword]);
+
+  // Derived: selected persona + its theme — drives color cascade through downstream cards
+  const selectedPersona = personas.find((p) => p.id === selectedPersonaId);
+  const selectedTheme = selectedPersona ? getPersonaTheme(selectedPersona.slug) : null;
+  const personaCardStyle = selectedTheme
+    ? {
+        borderColor: `rgba(${selectedTheme.glow}, 0.35)`,
+        boxShadow: `0 0 0 1px rgba(${selectedTheme.glow}, 0.08), 0 8px 28px -12px rgba(${selectedTheme.glow}, 0.18)`,
+      }
+    : undefined;
 
   // Fetch recommended model
   useEffect(() => {
@@ -1083,50 +1095,26 @@ export function DraftEngine({
         </Card>
       )}
 
-      {/* Persona selector */}
+      {/* Persona selector — 3D casting-card carousel */}
       {rankedPersonas.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Author Persona</CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">
-              Choose the persona who will author this content.
+        <div className="space-y-2">
+          <div className="px-1">
+            <h3 className="text-base font-semibold tracking-tight">Author Persona</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Whose voice tells this story? Click a card or use ← → to browse.
             </p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {rankedPersonas.map(({ persona, isRecommended }) => (
-              <button
-                key={persona.id}
-                type="button"
-                onClick={() => setSelectedPersonaId(persona.id)}
-                className={`flex items-center gap-3 p-3 rounded-lg border text-left transition-colors w-full ${
-                  selectedPersonaId === persona.id
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/50'
-                }`}
-              >
-                <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm font-medium shrink-0">
-                  {persona.name[0]}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">{persona.name}</span>
-                    {isRecommended && (
-                      <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded whitespace-nowrap">
-                        Best match
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground truncate">{persona.primaryDomain}</p>
-                </div>
-              </button>
-            ))}
-          </CardContent>
-        </Card>
+          </div>
+          <PersonaCarousel
+            rankedPersonas={rankedPersonas}
+            selectedPersonaId={selectedPersonaId}
+            onSelect={setSelectedPersonaId}
+          />
+        </div>
       )}
 
       {/* ═══ PHASE 1: Canonical Core ═══ */}
       {phase === 'core' && (
-        <Card>
+        <Card style={personaCardStyle}>
           <CardHeader>
             <CardTitle className="text-base">Step 1: Canonical Core</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
@@ -1264,7 +1252,7 @@ export function DraftEngine({
 
       {/* ═══ PHASE 2: Produce Format-Specific Content ═══ */}
       {(phase === 'core-ready' || phase === 'produce') && coreApproved && (
-        <Card>
+        <Card style={personaCardStyle}>
           <CardHeader>
             <CardTitle className="text-base">Step 2: Produce Content</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
@@ -1432,7 +1420,6 @@ export function DraftEngine({
                   wordCount,
                   format: type,
                 });
-                const selectedPersona = personas.find(p => p.id === selectedPersonaId);
                 const result: DraftResult = {
                   draftId: draftId || '',
                   draftTitle: title,

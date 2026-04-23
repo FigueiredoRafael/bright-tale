@@ -1,5 +1,5 @@
 import { getLocale } from 'next-intl/server';
-import { Plus_Jakarta_Sans, Inter, JetBrains_Mono } from 'next/font/google';
+import { Plus_Jakarta_Sans, Inter, JetBrains_Mono, Instrument_Serif } from 'next/font/google';
 import { WebVitals } from '@/lib/axiom/client';
 import './globals.css';
 
@@ -24,6 +24,14 @@ const jetbrainsMono = JetBrains_Mono({
   weight: ['400', '500'],
 });
 
+const instrumentSerif = Instrument_Serif({
+  subsets: ['latin'],
+  variable: '--font-instrument-serif',
+  display: 'swap',
+  weight: '400',
+  style: ['normal', 'italic'],
+});
+
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -32,7 +40,7 @@ export default async function RootLayout({
   return (
     <html
       lang={locale}
-      className={`${plusJakarta.variable} ${inter.variable} ${jetbrainsMono.variable}`}
+      className={`${plusJakarta.variable} ${inter.variable} ${jetbrainsMono.variable} ${instrumentSerif.variable}`}
       suppressHydrationWarning
     >
       <WebVitals />
