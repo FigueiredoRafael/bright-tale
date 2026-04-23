@@ -181,3 +181,32 @@ export {
   type UpdatePersonaInput,
   type TogglePersonaInput,
 } from "./personas";
+
+// Persona Guardrails schemas
+export {
+  guardrailCategorySchema,
+  createGuardrailSchema,
+  updateGuardrailSchema,
+  toggleGuardrailSchema,
+  type CreateGuardrailInput,
+  type UpdateGuardrailInput,
+  type ToggleGuardrailInput,
+} from "./persona-guardrails";
+
+// Persona Archetypes schemas
+export {
+  createArchetypeSchema,
+  updateArchetypeSchema,
+  toggleArchetypeSchema,
+  type CreateArchetypeInput,
+  type UpdateArchetypeInput,
+  type ToggleArchetypeInput,
+} from "./persona-archetypes";
+
+// Channel Personas schemas
+export {
+  assignChannelPersonaSchema,
+  setPrimaryChannelPersonaSchema,
+  type AssignChannelPersonaInput,
+  type SetPrimaryChannelPersonaInput,
+} from "./channel-personas";
