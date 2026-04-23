@@ -479,12 +479,24 @@ personaWpAuthorId?: number | null
 ### `apps/app/src/components/engines/DraftEngine.tsx`
 
 1. On mount, fetch `GET /api/personas` (active only)
-2. Render persona selector above "Generate Draft" button:
+2. Score each persona against the current idea before rendering:
+   ```typescript
+   function scorePersona(persona: Persona, ideaCategories: string[]): number {
+     return persona.approvedCategories.filter(c =>
+       ideaCategories.some(ic => ic.toLowerCase().includes(c.toLowerCase()) || c.toLowerCase().includes(ic.toLowerCase()))
+     ).length
+   }
+   ```
+   Sort personas by score descending. The top scorer is the recommended persona.
+3. Render persona selector above "Generate Draft" button:
    - Each option: avatar initial (colored circle) + name + domain tag (e.g. "FIRE Math")
-   - Required — generate button disabled until selection made
-3. On generate: include `personaId` in the draft creation request
-4. After generation: persona name shown in draft header as byline ("by Cole Merritt")
-5. Store `personaId`, `personaName`, `personaSlug`, `personaWpAuthorId` in stage result → `PipelineContext`
+   - Top scorer shows "Best match" badge — pre-selected by default
+   - Required — generate button disabled until selection confirmed
+4. On generate: include `personaId` in the draft creation request
+5. After generation: persona name shown in draft header as byline ("by Cole Merritt")
+6. Store `personaId`, `personaName`, `personaSlug`, `personaWpAuthorId` in stage result → `PipelineContext`
+
+**Scoring source:** `ideaCategories` comes from the brainstorm idea record (tags or topic fields already in `PipelineContext`). If no categories are available, all personas shown with equal weight — no badge shown.
 
 ### `apps/app/src/components/engines/AssetsEngine.tsx`
 
