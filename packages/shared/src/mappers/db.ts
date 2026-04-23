@@ -554,3 +554,161 @@ export function mapPersonaToDb(input: Partial<Persona>): Partial<DbPersona> {
   if (input.isActive !== undefined) out.is_active = input.isActive;
   return out;
 }
+
+// ─── PersonaGuardrail ─────────────────────────────────────────────────────────
+
+export type GuardrailCategory =
+  | 'content_boundaries'
+  | 'tone_constraints'
+  | 'factual_rules'
+  | 'behavioral_rules'
+
+export interface DbPersonaGuardrail {
+  id: string;
+  category: GuardrailCategory;
+  label: string;
+  rule_text: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DomainPersonaGuardrail {
+  id: string;
+  category: GuardrailCategory;
+  label: string;
+  ruleText: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function mapPersonaGuardrailFromDb(row: DbPersonaGuardrail): DomainPersonaGuardrail {
+  return {
+    id: row.id,
+    category: row.category,
+    label: row.label,
+    ruleText: row.rule_text,
+    isActive: row.is_active,
+    sortOrder: row.sort_order,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function mapPersonaGuardrailToDb(input: Partial<DomainPersonaGuardrail>): Partial<DbPersonaGuardrail> {
+  const out: Partial<DbPersonaGuardrail> = {};
+  if (input.category !== undefined) out.category = input.category;
+  if (input.label !== undefined) out.label = input.label;
+  if (input.ruleText !== undefined) out.rule_text = input.ruleText;
+  if (input.isActive !== undefined) out.is_active = input.isActive;
+  if (input.sortOrder !== undefined) out.sort_order = input.sortOrder;
+  return out;
+}
+
+// ─── PersonaArchetype ─────────────────────────────────────────────────────────
+
+export interface ArchetypeOverlay {
+  constraints: string[];
+  behavioralAdditions: string[];
+}
+
+export interface DbPersonaArchetype {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  icon: string;
+  default_fields_json: Json;
+  behavioral_overlay_json: Json;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Public variant — behavioral_overlay_json excluded
+export interface DomainPersonaArchetypePublic {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  icon: string;
+  defaultFieldsJson: Record<string, unknown>;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Admin variant — includes overlay
+export interface DomainPersonaArchetypeAdmin extends DomainPersonaArchetypePublic {
+  behavioralOverlayJson: ArchetypeOverlay;
+}
+
+export function mapPersonaArchetypePublic(row: DbPersonaArchetype): DomainPersonaArchetypePublic {
+  return {
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    description: row.description,
+    icon: row.icon,
+    defaultFieldsJson: (row.default_fields_json ?? {}) as unknown as Record<string, unknown>,
+    sortOrder: row.sort_order,
+    isActive: row.is_active,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function mapPersonaArchetypeAdmin(row: DbPersonaArchetype): DomainPersonaArchetypeAdmin {
+  const overlay = row.behavioral_overlay_json as { constraints?: string[]; behavioralAdditions?: string[] } | null;
+  return {
+    ...mapPersonaArchetypePublic(row),
+    behavioralOverlayJson: {
+      constraints: overlay?.constraints ?? [],
+      behavioralAdditions: overlay?.behavioralAdditions ?? [],
+    },
+  };
+}
+
+export function mapPersonaArchetypeToDb(
+  input: Partial<DomainPersonaArchetypeAdmin>
+): Partial<DbPersonaArchetype> {
+  const out: Partial<DbPersonaArchetype> = {};
+  if (input.name !== undefined) out.name = input.name;
+  if (input.description !== undefined) out.description = input.description;
+  if (input.icon !== undefined) out.icon = input.icon;
+  if (input.defaultFieldsJson !== undefined) out.default_fields_json = input.defaultFieldsJson as unknown as Json;
+  if (input.behavioralOverlayJson !== undefined) out.behavioral_overlay_json = input.behavioralOverlayJson as unknown as Json;
+  if (input.sortOrder !== undefined) out.sort_order = input.sortOrder;
+  if (input.isActive !== undefined) out.is_active = input.isActive;
+  return out;
+}
+
+// ─── ChannelPersona ───────────────────────────────────────────────────────────
+
+export interface DbChannelPersona {
+  channel_id: string;
+  persona_id: string;
+  is_primary: boolean;
+  created_at: string;
+}
+
+export interface DomainChannelPersona {
+  channelId: string;
+  personaId: string;
+  isPrimary: boolean;
+  createdAt: string;
+}
+
+export function mapChannelPersonaFromDb(row: DbChannelPersona): DomainChannelPersona {
+  return {
+    channelId: row.channel_id,
+    personaId: row.persona_id,
+    isPrimary: row.is_primary,
+    createdAt: row.created_at,
+  };
+}
