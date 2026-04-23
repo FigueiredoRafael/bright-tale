@@ -108,4 +108,21 @@ describe('buildLayeredPersonaContext', () => {
     const archetypeCalls = (fromSpy.mock.calls as string[][]).filter(([t]) => t === 'persona_archetypes')
     expect(archetypeCalls).toHaveLength(0)
   })
+
+  it('includes archetype overlay constraints and additions when archetypeSlug is set', async () => {
+    const overlayData = {
+      behavioral_overlay_json: {
+        constraints: ['avoid speculation'],
+        behavioralAdditions: ['cite peer-reviewed sources'],
+      },
+    }
+    const sb = makeMockSb(['no profanity'], overlayData)
+    const personaWithArchetype = { ...basePersona, archetypeSlug: 'tech-expert' }
+    const result = await buildLayeredPersonaContext(personaWithArchetype, sb as any)
+    expect(result.constraints).toEqual([
+      'no profanity',
+      'avoid speculation',
+      'cite peer-reviewed sources',
+    ])
+  })
 })
