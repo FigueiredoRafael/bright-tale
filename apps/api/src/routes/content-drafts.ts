@@ -27,6 +27,7 @@ import {
 import { inngest } from "../jobs/client.js";
 import { emitJobEvent } from "../jobs/emitter.js";
 import { buildCanonicalCoreMessage, buildProduceMessage, buildReproduceMessage } from "../lib/ai/prompts/production.js";
+import { buildPersonaContext, buildPersonaVoice, loadPersonaForDraft } from "../lib/personas.js";
 import { buildReviewMessage } from "../lib/ai/prompts/review.js";
 import { buildAssetsMessage } from "../lib/ai/prompts/assets.js";
 import { loadIdeaContext, type IdeaContext } from "../lib/ai/loadIdeaContext.js";
@@ -627,6 +628,7 @@ export async function contentDraftsRoutes(
           const idea = draft.idea_id
             ? await loadIdeaContext(draft.idea_id as string)
             : null;
+          const persona = await loadPersonaForDraft(draft, sb);
 
           const userMessage = buildCanonicalCoreMessage({
             type: draft.type as string,
@@ -634,6 +636,7 @@ export async function contentDraftsRoutes(
             ideaId: draft.idea_id as string | undefined,
             idea,
             researchCards: approvedCards as unknown[] | undefined,
+            personaContext: persona ? buildPersonaContext(persona) : null,
             channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
           });
 
@@ -732,6 +735,7 @@ export async function contentDraftsRoutes(
         const idea = draft.idea_id
           ? await loadIdeaContext(draft.idea_id as string)
           : null;
+        const persona = await loadPersonaForDraft(draft, sb);
 
         const userMessage = buildCanonicalCoreMessage({
           type: draft.type as string,
@@ -739,6 +743,7 @@ export async function contentDraftsRoutes(
           ideaId: draft.idea_id as string | undefined,
           idea,
           researchCards: approvedCards as unknown[] | undefined,
+          personaContext: persona ? buildPersonaContext(persona) : null,
           channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
         });
 
@@ -934,6 +939,7 @@ export async function contentDraftsRoutes(
           const idea = draft.idea_id
             ? await loadIdeaContext(draft.idea_id as string)
             : null;
+          const persona = await loadPersonaForDraft(draft, sb);
 
           const userMessage = buildProduceMessage({
             type: type as string,
@@ -941,6 +947,7 @@ export async function contentDraftsRoutes(
             canonicalCore: draft.canonical_core_json,
             idea,
             productionParams: (draft.production_params as Record<string, unknown> | null) ?? undefined,
+            persona: persona ? buildPersonaVoice(persona) : null,
             channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
           });
 
@@ -1063,6 +1070,7 @@ export async function contentDraftsRoutes(
         const idea = draft.idea_id
           ? await loadIdeaContext(draft.idea_id as string)
           : null;
+        const persona = await loadPersonaForDraft(draft, sb);
 
         const userMessage = buildProduceMessage({
           type: type as string,
@@ -1070,6 +1078,7 @@ export async function contentDraftsRoutes(
           canonicalCore: draft.canonical_core_json,
           idea,
           productionParams: (draft.production_params as Record<string, unknown> | null) ?? undefined,
+          persona: persona ? buildPersonaVoice(persona) : null,
           channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
         });
 

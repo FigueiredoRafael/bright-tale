@@ -12,8 +12,11 @@ import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
 import { buildCanonicalCoreMessage, buildProduceMessage } from '../lib/ai/prompts/production.js';
 import { buildReviewMessage } from '../lib/ai/prompts/review.js';
-import type { Persona, PersonaContext, PersonaVoice } from '@brighttale/shared/types/agents'
-import { mapPersonaFromDb, type DbPersona } from '@brighttale/shared/mappers/db'
+import { buildPersonaContext, buildPersonaVoice, loadPersonaForDraft } from '../lib/personas.js'
+
+// Re-exported for backward-compat with existing tests
+// (apps/api/src/jobs/__tests__/production-generate-persona.test.ts imports from here)
+export { buildPersonaContext, buildPersonaVoice, loadPersonaForDraft }
 
 const FORMAT_COSTS: Record<string, number> = {
   blog: 200,
@@ -31,33 +34,6 @@ const CANONICAL_CORE_COST = 80;
 function applyProviderDiscount(cost: number, provider?: string): number {
   if (provider === 'ollama') return 0;
   return cost;
-}
-
-export function buildPersonaContext(persona: Persona): PersonaContext {
-  return {
-    name: persona.name,
-    domainLens: persona.domainLens,
-    analyticalLens: persona.eeatSignalsJson.analyticalLens,
-    strongOpinions: persona.soulJson.strongOpinions,
-    approvedCategories: persona.approvedCategories,
-  }
-}
-
-export function buildPersonaVoice(persona: Persona): PersonaVoice {
-  return {
-    name: persona.name,
-    bioShort: persona.bioShort,
-    writingVoice: {
-      writingStyle: persona.writingVoiceJson.writingStyle,
-      signaturePhrases: persona.writingVoiceJson.signaturePhrases,
-      characteristicOpinions: persona.writingVoiceJson.characteristicOpinions,
-    },
-    soul: {
-      humorStyle: persona.soulJson.humorStyle,
-      recurringJokes: persona.soulJson.recurringJokes,
-      languageGuardrails: persona.soulJson.languageGuardrails,
-    },
-  }
 }
 
 interface ProductionGenerateEvent {
@@ -99,12 +75,9 @@ export const productionGenerate = inngest.createFunction(
 
       if (!draft) throw new Error('Draft não encontrado');
 
-      const persona = await step.run('load-persona', async () => {
-        const personaId = (draft as Record<string, unknown>).persona_id as string | null
-        if (!personaId) return null
-        const { data } = await sb.from('personas').select('*').eq('id', personaId).maybeSingle()
-        return data ? mapPersonaFromDb(data as DbPersona) : null
-      }) as Persona | null;
+      const persona = (await step.run('load-persona', async () => {
+        return loadPersonaForDraft(draft as Record<string, unknown>, sb);
+      })) as Awaited<ReturnType<typeof loadPersonaForDraft>>;
 
       const approvedCards = (await step.run('load-research', async () => {
         if (!draft.research_session_id) return null;
