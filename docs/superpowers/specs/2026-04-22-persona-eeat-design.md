@@ -682,39 +682,39 @@ For each persona:
 
 ## Seeder
 
-### `scripts/seed-personas.ts`
+### Pattern — mirrors `scripts/seed-agents.ts`
 
-New script, mirrors `scripts/generate-seed.ts` pattern. Reads persona definitions from a source file (or hardcoded in-script for launch trio) and outputs SQL INSERT statements.
+The existing agent seeder (`scripts/seed-agents.ts`) is the canonical pattern:
+1. TypeScript definitions live in `scripts/agents/*.ts`
+2. Seeder reads them via `ALL_AGENTS`, calls `assembleInstructions()`, and uses dollar-quoting (`$bt$...$bt$`) for SQL strings
+3. Writes upsert SQL to **both** `supabase/seed.sql` (for `db reset`) **and** a migration file (for `db push`)
 
-**Output format:**
-```sql
-INSERT INTO public.personas (
-  id, slug, name, bio_short, bio_long,
-  primary_domain, domain_lens, approved_categories,
-  writing_voice_json, eeat_signals_json, soul_json,
-  is_active, created_at, updated_at
-) VALUES (
-  gen_random_uuid(),
-  'cole-merritt',
-  'Cole Merritt',
-  $bio_short$...$bio_short$,
-  ...
-)
-ON CONFLICT (slug) DO UPDATE SET
-  writing_voice_json = EXCLUDED.writing_voice_json,
-  soul_json = EXCLUDED.soul_json,
-  eeat_signals_json = EXCLUDED.eeat_signals_json,
-  updated_at = now();
-```
+### `scripts/agents/personas.ts` (new)
+
+Persona definitions live here, consistent with the `scripts/agents/` pattern. Exports a `PERSONAS` array with the same shape as the SQL columns.
+
+### `scripts/seed-personas.ts` (new)
+
+Follows `seed-agents.ts` exactly:
+- Reads `PERSONAS` from `scripts/agents/personas.ts`
+- Dollar-quotes all text fields (using the same `dollarQuote()` helper or inline equivalent)
+- Serializes jsonb columns with `JSON.stringify` + `::jsonb` cast
+- Writes upsert SQL to **both**:
+  - `supabase/seed.sql` — **appends** after agent SQL (does not overwrite; agents seeder runs first)
+  - `supabase/migrations/YYYYMMDD_add_persona_seeds.sql` — for `db push`
+
+**Upsert key:** `slug`. `wp_author_id` excluded from the upsert SET clause — set manually after WP user creation and must not be overwritten by reseeds.
 
 **Run via:**
 ```bash
-npm run db:seed
+npm run db:seed:agents   # regenerates seed.sql + agent migration
+npm run db:seed:personas # appends to seed.sql + writes persona migration
 ```
 
-`package.json` `db:seed` script calls `generate-seed.ts` and `seed-personas.ts` in sequence, both write to `supabase/seed.sql`. The combined output is used by `supabase db reset`.
-
-**Upsert on `slug`** — rerunning the seeder updates persona definitions without duplicating rows. `wp_author_id` is excluded from the upsert (set manually after WP user creation, must not be overwritten by reseeds).
+Or combined in `package.json`:
+```json
+"db:seed": "tsx scripts/seed-agents.ts && tsx scripts/seed-personas.ts"
+```
 
 ---
 
@@ -733,7 +733,8 @@ npm run db:seed
 | `apps/api/src/jobs/production-generate.ts` | Accept `personaId` in job input; fetch persona; inject into agents |
 | `scripts/agents/content-core.ts` | Add `persona_context` input field + framing rule |
 | `scripts/agents/blog.ts` | Add `persona` input field + 12 global guardrails + persona injection rule |
-| `scripts/seed-personas.ts` | New — generates persona INSERT SQL → appended to seed.sql |
+| `scripts/agents/personas.ts` | New — TypeScript persona definitions (source of truth, mirrors agents/*.ts pattern) |
+| `scripts/seed-personas.ts` | New — reads personas.ts, dollar-quotes fields, appends upsert SQL to seed.sql + writes migration |
 | `apps/app/src/components/engines/types.ts` | Add persona fields + 5 research signal fields to `PipelineContext` |
 | `apps/app/src/components/engines/ResearchEngine.tsx` | Write scoring signals into PipelineContext on research approval |
 | `apps/app/src/components/engines/DraftEngine.tsx` | Multi-signal persona scorer + selector UI; store persona in context |
