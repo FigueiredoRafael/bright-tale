@@ -13,7 +13,7 @@ import { logUsage } from '../lib/ai/usage-log.js';
 import { buildCanonicalCoreMessage, buildProduceMessage } from '../lib/ai/prompts/production.js';
 import { buildReviewMessage } from '../lib/ai/prompts/review.js';
 import type { Persona, PersonaContext, PersonaVoice } from '@brighttale/shared/types/agents'
-import { mapPersonaFromDb } from '@brighttale/shared/mappers/db'
+import { mapPersonaFromDb, type DbPersona } from '@brighttale/shared/mappers/db'
 
 const FORMAT_COSTS: Record<string, number> = {
   blog: 200,
@@ -103,7 +103,7 @@ export const productionGenerate = inngest.createFunction(
         const personaId = (draft as Record<string, unknown>).persona_id as string | null
         if (!personaId) return null
         const { data } = await sb.from('personas').select('*').eq('id', personaId).maybeSingle()
-        return data ? mapPersonaFromDb(data as any) : null
+        return data ? mapPersonaFromDb(data as DbPersona) : null
       }) as Persona | null;
 
       const approvedCards = (await step.run('load-research', async () => {

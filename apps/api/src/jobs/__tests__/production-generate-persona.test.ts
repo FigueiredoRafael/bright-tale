@@ -1,32 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
 
 import { buildPersonaContext, buildPersonaVoice } from '../production-generate.js'
-import type { Persona } from '@brighttale/shared/types/agents'
-
-// Inline mapper (avoids shared package import issues in tests)
-function mapDbPersonaToPersona(row: any): Persona {
-  return {
-    id: row.id,
-    slug: row.slug,
-    name: row.name,
-    avatarUrl: row.avatar_url,
-    bioShort: row.bio_short,
-    bioLong: row.bio_long,
-    primaryDomain: row.primary_domain,
-    domainLens: row.domain_lens,
-    approvedCategories: row.approved_categories,
-    writingVoiceJson: row.writing_voice_json,
-    eeatSignalsJson: row.eeat_signals_json,
-    soulJson: row.soul_json,
-    wpAuthorId: row.wp_author_id,
-    isActive: row.is_active,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }
-}
+import { mapPersonaFromDb, type DbPersona } from '@brighttale/shared/mappers/db'
 
 // Test data - persona in DB format (snake_case)
-const DB_PERSONA = {
+const DB_PERSONA: DbPersona = {
   id: 'uuid-1',
   slug: 'cole-merritt',
   name: 'Cole Merritt',
@@ -65,7 +43,7 @@ const DB_PERSONA = {
 
 describe('buildPersonaContext', () => {
   it('maps persona to ContentCore input subset', () => {
-    const persona = mapDbPersonaToPersona(DB_PERSONA)
+    const persona = mapPersonaFromDb(DB_PERSONA)
     const ctx = buildPersonaContext(persona)
 
     expect(ctx.name).toBe('Cole Merritt')
@@ -78,7 +56,7 @@ describe('buildPersonaContext', () => {
 
 describe('buildPersonaVoice', () => {
   it('maps persona to BlogAgent input subset', () => {
-    const persona = mapDbPersonaToPersona(DB_PERSONA)
+    const persona = mapPersonaFromDb(DB_PERSONA)
     const voice = buildPersonaVoice(persona)
 
     expect(voice.name).toBe('Cole Merritt')
@@ -89,7 +67,7 @@ describe('buildPersonaVoice', () => {
   })
 
   it('soul.recurringJokes is included', () => {
-    const persona = mapDbPersonaToPersona(DB_PERSONA)
+    const persona = mapPersonaFromDb(DB_PERSONA)
     const voice = buildPersonaVoice(persona)
     expect(voice.soul.recurringJokes).toContain('My boss is a Stripe notification.')
   })
