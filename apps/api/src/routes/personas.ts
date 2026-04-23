@@ -11,6 +11,11 @@ import {
   updatePersonaSchema,
   togglePersonaSchema,
 } from '@brighttale/shared/schemas/personas'
+import { buildAvatarPrompt, type AvatarSuggestions } from '../lib/ai/avatarPrompt.js'
+import { getImageProvider } from '../lib/ai/imageIndex.js'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
 
 export async function personasRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authenticate)
@@ -117,6 +122,79 @@ Return ONLY valid JSON, no explanation.`
     }
 
     return reply.send({ data: fields as Record<string, unknown>, error: null })
+  })
+
+  // POST /:id/avatar/generate — generate avatar using image provider
+  app.post('/:id/avatar/generate', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const body = z
+      .object({
+        suggestions: z
+          .object({
+            background: z.string().optional(),
+            artStyle: z.string().optional(),
+            faceMood: z.string().optional(),
+            faceAppearance: z.string().optional(),
+            noFaceElement: z.string().optional(),
+          })
+          .default({}),
+        channelId: z.string().uuid().optional(),
+      })
+      .parse(req.body)
+
+    const sb = createServiceClient()
+
+    const { data: personaRow, error: pErr } = await sb
+      .from('personas')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle()
+    if (pErr || !personaRow) throw new ApiError(404, 'Persona not found', 'PERSONA_NOT_FOUND')
+    const persona = mapPersonaFromDb(personaRow as DbPersona)
+
+    let channelNiche: string | undefined
+    let channelTone: string | undefined
+    if (body.channelId) {
+      const { data: ch } = await sb
+        .from('channels')
+        .select('niche, tone')
+        .eq('id', body.channelId)
+        .maybeSingle()
+      channelNiche = ch?.niche ?? undefined
+      channelTone = ch?.tone ?? undefined
+    }
+
+    const { data: agentRow } = await sb
+      .from('agent_prompts')
+      .select('instructions')
+      .eq('slug', 'persona-avatar-generator')
+      .maybeSingle()
+
+    const prompt = buildAvatarPrompt({
+      personaName: persona.name,
+      primaryDomain: persona.primaryDomain,
+      domainLens: persona.domainLens,
+      channelNiche,
+      channelTone,
+      suggestions: body.suggestions as AvatarSuggestions,
+      agentInstruction: agentRow?.instructions ?? undefined,
+    })
+
+    const provider = await getImageProvider()
+    const [generated] = await provider.generateImages({ prompt, numImages: 1, aspectRatio: '1:1' })
+    if (!generated) throw new ApiError(500, 'Image provider returned no result', 'IMAGE_PROVIDER_EMPTY')
+
+    const __modDirname = path.dirname(fileURLToPath(import.meta.url))
+    const avatarsDir = path.resolve(__modDirname, '../../public/generated-images/avatars')
+    fs.mkdirSync(avatarsDir, { recursive: true })
+    const filename = `${id}-${Date.now()}.${generated.mimeType === 'image/png' ? 'png' : 'jpg'}`
+    const filepath = path.join(avatarsDir, filename)
+    fs.writeFileSync(filepath, Buffer.from(generated.base64, 'base64'))
+
+    const avatarUrl = `/generated-images/avatars/${filename}`
+    const avatarParamsJson = { prompt, suggestions: body.suggestions, channelId: body.channelId }
+
+    return reply.send({ data: { avatarUrl, avatarParamsJson }, error: null })
   })
 
   app.get('/', async (_req, reply) => {
