@@ -11,7 +11,7 @@ import { ChevronDown, Loader2 } from "lucide-react"
 import { AvatarSection } from "./AvatarSection"
 import { WpIntegrationSection } from "./WpIntegrationSection"
 
-interface PersonaFormValues {
+export interface PersonaFormValues {
     slug: string
     name: string
     bioShort: string
