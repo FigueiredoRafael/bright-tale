@@ -1,4 +1,6 @@
 import type { FastifyInstance } from 'fastify'
+import type { DbPersona } from '@brighttale/shared/mappers/db'
+import type { Json } from '@brighttale/shared/types/database'
 import { authenticate } from '../middleware/authenticate.js'
 import { createServiceClient } from '../lib/supabase/index.js'
 import { ApiError } from '../lib/api/errors.js'
@@ -20,7 +22,7 @@ export async function personasRoutes(app: FastifyInstance) {
       .eq('is_active', true)
       .order('name')
     if (error) throw new ApiError(500, error.message, 'PERSONAS_FETCH_ERROR')
-    return reply.send({ data: (data ?? []).map(row => mapPersonaFromDb(row as any)), error: null })
+    return reply.send({ data: (data ?? []).map(row => mapPersonaFromDb(row as DbPersona)), error: null })
   })
 
   app.get('/api/personas/:id', async (req, reply) => {
@@ -29,7 +31,7 @@ export async function personasRoutes(app: FastifyInstance) {
     const { data, error } = await sb.from('personas').select('*').eq('id', id).maybeSingle()
     if (error) throw new ApiError(500, error.message, 'PERSONAS_FETCH_ERROR')
     if (!data) throw new ApiError(404, 'Persona not found', 'PERSONA_NOT_FOUND')
-    return reply.send({ data: mapPersonaFromDb(data as any), error: null })
+    return reply.send({ data: mapPersonaFromDb(data as DbPersona), error: null })
   })
 
   app.post('/api/personas', async (req, reply) => {
@@ -46,14 +48,14 @@ export async function personasRoutes(app: FastifyInstance) {
         primary_domain: body.primaryDomain,
         domain_lens: body.domainLens,
         approved_categories: body.approvedCategories,
-        writing_voice_json: body.writingVoiceJson as unknown as any,
-        eeat_signals_json: body.eeatSignalsJson as unknown as any,
-        soul_json: body.soulJson as unknown as any,
+        writing_voice_json: body.writingVoiceJson as unknown as Json,
+        eeat_signals_json: body.eeatSignalsJson as unknown as Json,
+        soul_json: body.soulJson as unknown as Json,
       })
       .select()
       .single()
     if (error) throw new ApiError(500, error.message, 'PERSONA_CREATE_ERROR')
-    return reply.status(201).send({ data: mapPersonaFromDb(data as any), error: null })
+    return reply.status(201).send({ data: mapPersonaFromDb(data as DbPersona), error: null })
   })
 
   app.put('/api/personas/:id', async (req, reply) => {
@@ -63,13 +65,13 @@ export async function personasRoutes(app: FastifyInstance) {
     const dbInput = mapPersonaToDb(body)
     const { data, error } = await sb
       .from('personas')
-      .update(dbInput as any)
+      .update(dbInput)
       .eq('id', id)
       .select()
       .single()
     if (error) throw new ApiError(500, error.message, 'PERSONA_UPDATE_ERROR')
     if (!data) throw new ApiError(404, 'Persona not found', 'PERSONA_NOT_FOUND')
-    return reply.send({ data: mapPersonaFromDb(data as any), error: null })
+    return reply.send({ data: mapPersonaFromDb(data as DbPersona), error: null })
   })
 
   app.patch('/api/personas/:id', async (req, reply) => {
@@ -78,12 +80,12 @@ export async function personasRoutes(app: FastifyInstance) {
     const sb = createServiceClient()
     const { data, error } = await sb
       .from('personas')
-      .update({ is_active: body.isActive } as any)
+      .update({ is_active: body.isActive })
       .eq('id', id)
       .select()
       .single()
     if (error) throw new ApiError(500, error.message, 'PERSONA_UPDATE_ERROR')
     if (!data) throw new ApiError(404, 'Persona not found', 'PERSONA_NOT_FOUND')
-    return reply.send({ data: mapPersonaFromDb(data as any), error: null })
+    return reply.send({ data: mapPersonaFromDb(data as DbPersona), error: null })
   })
 }
