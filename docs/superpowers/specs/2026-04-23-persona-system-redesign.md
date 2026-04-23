@@ -94,12 +94,12 @@ PK = `(channel_id, persona_id)`
 
 ### Modified Tables
 
-#### `personas` — add column
+#### `personas` — new columns
 
-- `archetype_slug TEXT NULL` — records which archetype was used at creation. Used at runtime to fetch `behavioral_overlay_json`.
+- `archetype_slug TEXT NULL` — logical reference to `persona_archetypes.slug`. Used at runtime to fetch `behavioral_overlay_json`. Not a hard FK — slug is UNIQUE on archetypes, deletion handled gracefully (overlay simply omitted if slug no longer exists).
 - `avatar_params_json JSONB NULL` — stores last avatar generation params (provider, suggestions, resolved prompt) for one-click regeneration.
 
-All existing JSONB columns (`writing_voice_json`, `soul_json`, `eeat_signals_json`) and `avatar_url` preserved as-is.
+Existing columns preserved as-is: `writing_voice_json`, `soul_json`, `eeat_signals_json`, `avatar_url`, `wp_author_id`.
 
 ---
 
@@ -165,17 +165,17 @@ Wizard steps: name/role → domain/niche → tone → values → opinions → cr
 
 ### Persona Form (shared destination)
 
-Five collapsible sections. No JSON exposed anywhere.
+Seven collapsible sections. No JSON exposed anywhere.
 
 | Section | Fields |
 |---|---|
-| **Identity** | Name, avatar upload, short bio, long bio |
+| **Identity** | Name, short bio, long bio |
 | **Domain & Niche** | Primary domain, domain lens, approved topic categories (tag input) |
 | **Voice** | Writing style (tone picker), signature phrases (tag input), characteristic opinions (tag input) |
 | **Soul** | Core values, life philosophy, strong opinions, pet peeves, humor style, what excites them, inner tensions |
 | **EEAT** | Analytical lens, trust signals (tag input), expertise claims (tag input) |
-| **Avatar** | Upload or AI-generate (see below) |
-| **Integrations** | WordPress author link (see below) |
+| **Avatar** | Upload or AI-generate (see Avatar Section below) |
+| **Integrations** | WordPress author link (see WordPress Integration below) |
 
 On save: POST/PUT `/api/personas`. `archetype_slug` recorded if archetype was used.
 
@@ -183,7 +183,7 @@ On save: POST/PUT `/api/personas`. `archetype_slug` recorded if archetype was us
 
 ### Avatar Section
 
-Last section of the persona form, before Integrations. Two modes:
+Two modes:
 
 **Upload** — direct file upload, stored as `personas.avatar_url`. Same as current flow.
 
@@ -211,9 +211,11 @@ Avatar Agent instruction (agent_prompts)
   Refined image generation prompt → provider API → avatar image
 ```
 
-4. **Result:** User sees generated image, can regenerate with different suggestions or accept. On accept, stored as `personas.avatar_url`.
+4. **Result:** User sees generated image, can regenerate with different suggestions or accept. On accept, stored as `personas.avatar_url`. Intermediate generations are ephemeral — not stored until user accepts.
 
-Last generation params stored in `personas.avatar_params_json` (new column) to allow one-click regeneration later.
+**Channel context for avatar generation:** When generating, the system uses the channel the user is currently working in to inject niche context. If the persona is not yet assigned to any channel, niche context is derived from persona's own `primary_domain` field.
+
+Last generation params stored in `personas.avatar_params_json` to allow one-click regeneration later.
 
 ---
 
@@ -224,13 +226,6 @@ A dedicated entry in `agent_prompts` table: `persona-avatar-generator`.
 Responsible for translating persona identity + channel niche + user suggestions into a high-quality, provider-optimized image generation prompt. Follows the same hidden instruction pattern as other agents — users never see the prompt template, only the suggestion fields and the result.
 
 Key constraint baked into the agent instruction: avatar style must feel coherent with the channel niche (a finance persona avatar looks different from a fitness persona avatar even with the same art style selected).
-
----
-
-### DB changes for avatar
-
-- `personas.avatar_url` — already exists
-- `personas.avatar_params_json` — new JSONB column, stores last generation params (provider, suggestions, resolved prompt) for regeneration
 
 ---
 
@@ -273,9 +268,35 @@ async function buildPersonaContext(personaId: string): Promise<PersonaContext> {
 }
 ```
 
-`compose()` assembles layers into a `PersonaContext` object consumed by both agents. Layer ordering: guardrails applied first (highest authority), archetype overlay second, user persona data last.
+`compose()` assembles layers into a `PersonaContext` object consumed by both agents.
+
+**Merge strategy:**
+- Guardrails (Layer 1) become non-negotiable prompt constraints — prepended as system-level rules, cannot be softened by user persona data
+- Archetype overlay (Layer 2) adds persona-type-specific behavioral instructions — appended after guardrails, before user data
+- User persona data (Layer 3) fills voice, soul, domain, and EEAT slots — the "personality" the AI expresses within the constraints set by Layers 1 and 2
+
+**`PersonaContext` shape (consumed by agents):**
+```typescript
+interface PersonaContext {
+  identity: { name: string; domain: string; domainLens: string }
+  voice: { writingStyle: string; signaturePhrases: string[]; characteristicOpinions: string[] }
+  soul: { values: string[]; philosophy: string; strongOpinions: string[]; petPeeves: string[]; humorStyle: string }
+  eeat: { analyticalLens: string; trustSignals: string[]; expertiseClaims: string[] }
+  constraints: string[]   // compiled from guardrails + archetype overlay — never user-visible
+}
+```
 
 Agents (Canonical Core, Blog Post) receive only the final `PersonaContext` — no awareness of layering.
+
+---
+
+### Persona Assignment in Draft Pipeline
+
+`content_drafts.persona_id` already exists. Assignment logic:
+
+1. **Auto-assign:** When a draft is created, it inherits the channel's primary persona (`channel_personas.is_primary = true`)
+2. **Override:** User can switch persona per draft from the draft settings panel — updates `content_drafts.persona_id`
+3. **Fallback:** If no persona is assigned to the channel, draft proceeds without persona injection (agents use base behavior). A warning is shown in the pipeline UI prompting persona setup.
 
 ---
 
@@ -293,6 +314,7 @@ Agents (Canonical Core, Blog Post) receive only the final `PersonaContext` — n
 | DELETE | `/api/channels/:id/personas/:personaId` | Remove persona from channel |
 | PATCH | `/api/channels/:id/personas/:personaId` | Set is_primary |
 | POST | `/api/personas/:id/integrations/wordpress` | Link or create WP author |
+| POST | `/api/personas/:id/avatar/generate` | Generate avatar — takes provider + suggestions, returns image URL |
 
 ### User-Facing (modified)
 
@@ -312,7 +334,7 @@ Agents (Canonical Core, Blog Post) receive only the final `PersonaContext` — n
 
 Admin routes guarded by admin role check on top of existing `X-Internal-Key` middleware.
 
-`/api/personas/archetypes/:slug` returns only: `name`, `description`, `icon`, `default_fields_json`. `behavioral_overlay_json` is never sent to the client under any route.
+`/api/personas/archetypes/:slug` returns only: `name`, `description`, `icon`, `default_fields_json`. `behavioral_overlay_json` is server-side only.
 
 ---
 
@@ -321,6 +343,19 @@ Admin routes guarded by admin role check on top of existing `X-Internal-Key` mid
 - `behavioral_overlay_json` and `persona_guardrails.rule_text` are server-side only — excluded from all user-facing serializers
 - Admin routes require an additional admin role check beyond `X-Internal-Key`. Exact mechanism (env-based flag, admin user list, or role column) is a separate implementation decision — not specified in this spec
 - When creating a new WP user for a persona via `POST /wp/v2/users`, the returned `wp_user_id` is stored as `personas.wp_author_id`. The generated WP password does NOT need to be stored — publishing is always done via the integration account credentials, not the persona's own credentials
+
+---
+
+## Migration — Existing Personas
+
+The 3 hardcoded personas (Cole Merritt, Alex Strand, Casey Park) are niche-specific and seeded via `scripts/agents/personas.ts`. On migration:
+
+- They remain in the DB as-is — no deletion
+- They are marked with a reserved `archetype_slug` (e.g. `legacy-finance`) so the composition pipeline handles them correctly
+- They serve as reference examples in the admin archetype manager
+- New users starting fresh do not see them unless explicitly assigned to a channel
+
+The `personas.ts` seed script is superseded by admin-managed archetypes for all future persona creation.
 
 ---
 
