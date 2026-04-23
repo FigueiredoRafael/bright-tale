@@ -778,6 +778,8 @@ export interface Persona {
   eeatSignalsJson: PersonaEeatSignals
   soulJson: PersonaSoul
   wpAuthorId: number | null
+  archetypeSlug: string | null
+  avatarParamsJson: Record<string, unknown> | null
   isActive: boolean
   createdAt: string
   updatedAt: string

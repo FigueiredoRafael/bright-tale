@@ -36,6 +36,8 @@ const DB_PERSONA: DbPersona = {
     languageGuardrails: ["Never uses 'journey'"],
   },
   wp_author_id: 42,
+  archetype_slug: null,
+  avatar_params_json: null,
   is_active: true,
   created_at: '2026-04-23T00:00:00Z',
   updated_at: '2026-04-23T00:00:00Z',
