@@ -6,26 +6,23 @@ import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Loader2, Plus } from "lucide-react"
 import { PersonaCard } from "@/components/personas/PersonaCard"
-
-interface Persona {
-    id: string
-    name: string
-    avatarUrl: string | null
-    bioShort: string
-    primaryDomain: string
-    isActive: boolean
-}
+import type { Persona } from "@brighttale/shared/types/agents"
 
 export default function PersonasPage() {
     const [personas, setPersonas] = useState<Persona[]>([])
     const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
     const params = useParams()
     const locale = params.locale as string
 
     useEffect(() => {
         fetch("/api/personas")
             .then(r => r.json())
-            .then(({ data }) => setPersonas(data ?? []))
+            .then(({ data, error }) => {
+                if (error) setError(error.message ?? "Failed to load personas")
+                else setPersonas(data ?? [])
+            })
+            .catch(() => setError("Failed to load personas"))
             .finally(() => setLoading(false))
     }, [])
 
@@ -47,6 +44,8 @@ export default function PersonasPage() {
                 <div className="flex justify-center py-12">
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
+            ) : error ? (
+                <div className="text-center py-12 text-sm text-destructive">{error}</div>
             ) : personas.length === 0 ? (
                 <div className="text-center py-12 text-sm text-muted-foreground">
                     No personas yet. Create one to give your content a distinct voice.

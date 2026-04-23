@@ -42,7 +42,7 @@ export function PersonaCard({ id, name, avatarUrl, bioShort, primaryDomain, isAc
                     </div>
                 </div>
                 <Button size="sm" variant="ghost" asChild>
-                    <Link href={`/${locale}/personas/${id}/edit`}>
+                    <Link href={`/${locale}/personas/${id}/edit`} aria-label={`Edit ${name}`}>
                         <Pencil className="h-4 w-4" />
                     </Link>
                 </Button>
