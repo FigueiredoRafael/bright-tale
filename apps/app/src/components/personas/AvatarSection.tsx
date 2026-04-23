@@ -17,6 +17,7 @@ export function AvatarSection({ personaId, currentUrl, onAccept }: AvatarSection
     const [mode, setMode] = useState<"upload" | "ai">("upload")
     const [previewUrl, setPreviewUrl] = useState(currentUrl)
     const [generating, setGenerating] = useState(false)
+    const [error, setError] = useState<string | null>(null)
     const [background, setBackground] = useState("")
     const [artStyle, setArtStyle] = useState("")
     const [faceMood, setFaceMood] = useState("")
@@ -25,17 +26,26 @@ export function AvatarSection({ personaId, currentUrl, onAccept }: AvatarSection
     async function handleGenerate() {
         if (!personaId) return
         setGenerating(true)
+        setError(null)
         try {
             const res = await fetch(`/api/personas/${personaId}/avatar/generate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ suggestions: { background, artStyle, faceMood, noFaceElement } }),
             })
-            const { data } = await res.json()
+            const { data, error: apiError } = await res.json()
+            if (apiError) {
+                setError(apiError.message ?? "Failed to generate avatar")
+                return
+            }
             if (data?.avatarUrl) {
                 setPreviewUrl(data.avatarUrl)
                 onAccept(data.avatarUrl, data.avatarParamsJson)
+            } else {
+                setError("No avatar returned")
             }
+        } catch {
+            setError("Failed to generate avatar")
         } finally {
             setGenerating(false)
         }
@@ -86,6 +96,7 @@ export function AvatarSection({ personaId, currentUrl, onAccept }: AvatarSection
                         {generating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
                         Generate Avatar
                     </Button>
+                    {error && <p className="text-xs text-destructive text-center">{error}</p>}
                     {!personaId && <p className="text-xs text-muted-foreground text-center">Save persona first to generate avatar.</p>}
                 </div>
             )}

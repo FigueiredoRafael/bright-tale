@@ -101,6 +101,8 @@ export function PersonaForm({ initial, personaId, archetypeSlug }: PersonaFormPr
         setValues(prev => ({ ...prev, [key]: val }))
     }
 
+    const canSubmit = values.name.trim().length > 0 && values.slug.trim().length > 0 && values.bioShort.trim().length > 0 && values.primaryDomain.trim().length > 0
+
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
         setSaving(true)
@@ -249,7 +251,7 @@ export function PersonaForm({ initial, personaId, archetypeSlug }: PersonaFormPr
 
             <div className="pt-4 flex flex-col items-end gap-2">
                 {error && <p className="text-xs text-destructive">{error}</p>}
-                <Button type="submit" disabled={saving}>
+                <Button type="submit" disabled={saving || !canSubmit}>
                     {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                     {personaId ? "Save Changes" : "Create Persona"}
                 </Button>

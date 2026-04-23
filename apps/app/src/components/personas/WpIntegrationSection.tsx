@@ -16,19 +16,28 @@ export function WpIntegrationSection({ personaId, currentWpAuthorId, channelId }
     const [mode, setMode] = useState<"link" | "create">("link")
     const [wpUsername, setWpUsername] = useState("")
     const [loading, setLoading] = useState(false)
+    const [error, setError] = useState<string | null>(null)
     const [result, setResult] = useState<number | null>(currentWpAuthorId)
 
     async function handleSubmit() {
         if (!channelId) return
         setLoading(true)
+        setError(null)
         try {
             const res = await fetch(`/api/personas/${personaId}/integrations/wordpress`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ action: mode, wpUsername: mode === "link" ? wpUsername : undefined, channelId }),
             })
-            const { data } = await res.json()
+            const { data, error: apiError } = await res.json()
+            if (apiError) {
+                setError(apiError.message ?? "Failed to link WordPress author")
+                return
+            }
             if (data?.wpAuthorId) setResult(data.wpAuthorId)
+            else setError("Unexpected response from server")
+        } catch {
+            setError("Failed to link WordPress author")
         } finally {
             setLoading(false)
         }
@@ -69,10 +78,11 @@ export function WpIntegrationSection({ personaId, currentWpAuthorId, channelId }
                 <p className="text-xs text-muted-foreground">A new WordPress author will be created using this persona's name and slug.</p>
             )}
 
-            <Button size="sm" onClick={handleSubmit} disabled={loading || (mode === "link" && !wpUsername)}>
+            <Button size="sm" onClick={handleSubmit} disabled={loading || !channelId || (mode === "link" && !wpUsername)}>
                 {loading && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
                 {mode === "link" ? "Link Author" : "Create WP Author"}
             </Button>
+            {error && <p className="text-xs text-destructive">{error}</p>}
         </div>
     )
 }
