@@ -12,6 +12,8 @@ import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
 import { buildCanonicalCoreMessage, buildProduceMessage } from '../lib/ai/prompts/production.js';
 import { buildReviewMessage } from '../lib/ai/prompts/review.js';
+import type { Persona, PersonaContext, PersonaVoice } from '@brighttale/shared/types/agents'
+import { mapPersonaFromDb } from '@brighttale/shared/mappers/db'
 
 const FORMAT_COSTS: Record<string, number> = {
   blog: 200,
@@ -29,6 +31,33 @@ const CANONICAL_CORE_COST = 80;
 function applyProviderDiscount(cost: number, provider?: string): number {
   if (provider === 'ollama') return 0;
   return cost;
+}
+
+export function buildPersonaContext(persona: Persona): PersonaContext {
+  return {
+    name: persona.name,
+    domainLens: persona.domainLens,
+    analyticalLens: persona.eeatSignalsJson.analyticalLens,
+    strongOpinions: persona.soulJson.strongOpinions,
+    approvedCategories: persona.approvedCategories,
+  }
+}
+
+export function buildPersonaVoice(persona: Persona): PersonaVoice {
+  return {
+    name: persona.name,
+    bioShort: persona.bioShort,
+    writingVoice: {
+      writingStyle: persona.writingVoiceJson.writingStyle,
+      signaturePhrases: persona.writingVoiceJson.signaturePhrases,
+      characteristicOpinions: persona.writingVoiceJson.characteristicOpinions,
+    },
+    soul: {
+      humorStyle: persona.soulJson.humorStyle,
+      recurringJokes: persona.soulJson.recurringJokes,
+      languageGuardrails: persona.soulJson.languageGuardrails,
+    },
+  }
 }
 
 interface ProductionGenerateEvent {
@@ -69,6 +98,13 @@ export const productionGenerate = inngest.createFunction(
       })) as Record<string, unknown> | null;
 
       if (!draft) throw new Error('Draft não encontrado');
+
+      const persona = await step.run('load-persona', async () => {
+        const personaId = (draft as Record<string, unknown>).persona_id as string | null
+        if (!personaId) return null
+        const { data } = await sb.from('personas').select('*').eq('id', personaId).maybeSingle()
+        return data ? mapPersonaFromDb(data as any) : null
+      }) as Persona | null;
 
       const approvedCards = (await step.run('load-research', async () => {
         if (!draft.research_session_id) return null;
@@ -112,6 +148,7 @@ export const productionGenerate = inngest.createFunction(
           idea: ideaContext,
           researchCards: approvedCards as unknown[] | undefined,
           productionParams,
+          personaContext: persona ? buildPersonaContext(persona) : null,
           channel: channelContext as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
         });
         const call = await generateWithFallback(
@@ -186,6 +223,7 @@ export const productionGenerate = inngest.createFunction(
           idea: ideaContext,
           productionParams,
           sources: researchSources,
+          persona: persona ? buildPersonaVoice(persona) : null,
           channel: channelContext as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
         });
         const call = await generateWithFallback(
