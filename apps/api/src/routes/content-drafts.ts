@@ -47,6 +47,7 @@ const createSchema = z.object({
   ideaId: z.string().optional(),
   researchSessionId: z.string().uuid().optional(),
   projectId: z.string().optional(),
+  personaId: z.string().uuid().optional(),
   type: z.enum(["blog", "video", "shorts", "podcast", "engagement"]),
   title: z.string().optional(),
   modelTier: z.string().default("standard"),
@@ -302,6 +303,7 @@ export async function contentDraftsRoutes(
           idea_id: resolvedIdeaId,
           research_session_id: body.researchSessionId ?? null,
           project_id: body.projectId ?? null,
+          persona_id: body.personaId ?? null,
           type: body.type,
           title: body.title ?? null,
           status: "draft",
@@ -310,7 +312,12 @@ export async function contentDraftsRoutes(
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        if ((error as { code?: string }).code === '23503') {
+          throw new ApiError(400, 'INVALID_PERSONA_ID', 'Persona not found');
+        }
+        throw error;
+      }
       return reply.send({ data, error: null });
     } catch (error) {
       return sendError(reply, error);
