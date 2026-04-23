@@ -54,6 +54,7 @@ import { voiceRoutes } from "./routes/voice.js";
 import { publishingDestinationsRoutes } from "./routes/publishing-destinations.js";
 import { notificationsRoutes } from "./routes/notifications.js";
 import { personasRoutes } from "./routes/personas.js";
+import { channelPersonasRoutes } from "./routes/channel-personas.js";
 import { adminPersonaGuardrailsRoutes } from "./routes/admin-persona-guardrails.js";
 import { adminPersonaArchetypesRoutes } from "./routes/admin-persona-archetypes.js";
 import rateLimit from "@fastify/rate-limit";
@@ -198,6 +199,7 @@ server.register(publishingDestinationsRoutes, {
 });
 server.register(notificationsRoutes, { prefix: "/channels" });
 server.register(personasRoutes, { prefix: "/personas" });
+server.register(channelPersonasRoutes, { prefix: "/channels" });
 server.register(adminPersonaGuardrailsRoutes, { prefix: "/agents/personas/guardrails" });
 server.register(adminPersonaArchetypesRoutes, { prefix: "/agents/personas/archetypes" });
 
