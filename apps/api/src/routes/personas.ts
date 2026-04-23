@@ -245,6 +245,7 @@ Return ONLY valid JSON, no explanation.`
       if (!body.wpUsername) throw new ApiError(400, 'wpUsername required for link action', 'VALIDATION_ERROR')
       const res = await fetch(`${wpBase}/wp-json/wp/v2/users?search=${encodeURIComponent(body.wpUsername)}`, {
         headers: { Authorization: `Basic ${auth}` },
+        signal: AbortSignal.timeout(10000),
       })
       if (!res.ok) throw new ApiError(502, 'Failed to search WordPress users', 'WP_FETCH_ERROR')
       const users = (await res.json()) as Array<{ id: number; slug: string; name: string }>
@@ -264,6 +265,7 @@ Return ONLY valid JSON, no explanation.`
           name: persona.name,
           roles: ['author'],
         }),
+        signal: AbortSignal.timeout(10000),
       })
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}))
