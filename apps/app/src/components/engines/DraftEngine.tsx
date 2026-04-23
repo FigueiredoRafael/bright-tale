@@ -85,7 +85,7 @@ export function DraftEngine({
 
   // Produce state
   const [type, setType] = useState<DraftType>('blog');
-  const [targetWords, setTargetWords] = useState<number>(700);
+  const [targetWords, setTargetWords] = useState<number>(900);
   const [targetMinutes, setTargetMinutes] = useState<number>(8);
   const [targetShortsSeconds, setTargetShortsSeconds] = useState<number>(30);
   const [producedContent, setProducedContent] = useState<string>('');
@@ -670,11 +670,15 @@ export function DraftEngine({
     return JSON.stringify(draftJson, null, 2);
   }
 
-  const cardCount = Array.isArray(research?.cards_json)
-    ? research.cards_json.length
-    : Array.isArray(research?.approved_cards_json)
-      ? research.approved_cards_json.length
-      : 0;
+  const cardCount = (() => {
+    const data = research?.approved_cards_json ?? research?.cards_json;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return Array.isArray(data) ? data.length : 0;
+    const d = data as Record<string, unknown>;
+    const count = (Array.isArray(d.sources) ? d.sources.length : 0)
+      + (Array.isArray(d.statistics) ? d.statistics.length : 0)
+      + (Array.isArray(d.expert_quotes) ? d.expert_quotes.length : 0);
+    return count > 0 ? count : 0;
+  })();
 
   function renderCoreSummary(core: Record<string, unknown>) {
     const thesis = core.thesis as string | undefined;
@@ -1216,19 +1220,19 @@ export function DraftEngine({
             {type === 'blog' && (
               <div className="space-y-2">
                 <Label>Post size</Label>
-                <div className="grid grid-cols-4 gap-2">
-                  {[300, 500, 700, 1000].map((n) => (
+                <div className="grid grid-cols-3 gap-2">
+                  {([{ value: 900, label: '800–1000' }, { value: 1200, label: '1000–1400' }, { value: 1600, label: '1400+' }] as const).map(({ value, label }) => (
                     <button
-                      key={n}
-                      onClick={() => setTargetWords(n)}
+                      key={value}
+                      onClick={() => setTargetWords(value)}
                       disabled={phase === 'produce'}
                       className={`p-2 rounded-md border text-sm ${
-                        targetWords === n
+                        targetWords === value
                           ? 'border-primary bg-primary/5 text-primary font-medium'
                           : 'border-border hover:border-muted-foreground/30'
                       } disabled:opacity-50`}
                     >
-                      {n}
+                      {label}
                       <span className="text-xs text-muted-foreground"> words</span>
                     </button>
                   ))}
@@ -1300,6 +1304,9 @@ export function DraftEngine({
                   }}
                   onModelChange={setModel}
                 />
+                {canonicalCore && typeof canonicalCore.content_warning === 'string' && canonicalCore.content_warning && (
+                  <ContentWarningBanner warning={canonicalCore.content_warning} />
+                )}
                 <Button onClick={handleProduce} disabled={busy || phase === 'produce'}>
                   {phase === 'produce' ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Producing...</>

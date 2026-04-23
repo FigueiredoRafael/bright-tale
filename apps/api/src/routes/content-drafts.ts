@@ -173,6 +173,7 @@ async function buildAssetsInput(
   sections: Array<{ slot: string; section_title: string; key_points: string[] }>;
   channel_context: Record<string, unknown>;
   idea_context: IdeaContext | null;
+  draft_excerpt?: string;
 }> {
   const sb = createServiceClient();
   const draftJson = (draft.draft_json ?? {}) as Record<string, unknown>;
@@ -229,12 +230,32 @@ async function buildAssetsInput(
     ? await loadIdeaContext(draft.idea_id as string)
     : null;
 
+  // Extract draft_excerpt: intro paragraph + H2 headings from full_draft
+  let draft_excerpt: string | undefined;
+  const fullDraft = (draftJson?.full_draft as string | undefined)
+    ?? ((draftJson?.blog as Record<string, unknown> | undefined)?.full_draft as string | undefined)
+    ?? '';
+  if (fullDraft) {
+    const lines = fullDraft.split('\n');
+    const excerptParts: string[] = [];
+    // Grab first non-empty paragraph (intro)
+    const firstPara = lines.find(l => l.trim() && !l.startsWith('#'));
+    if (firstPara) excerptParts.push(firstPara.trim());
+    // Grab all H2 headings
+    const headings = lines.filter(l => l.startsWith('## ')).map(l => l.trim());
+    excerptParts.push(...headings);
+    if (excerptParts.length > 0) {
+      draft_excerpt = excerptParts.join('\n');
+    }
+  }
+
   return {
     title: (draft.title as string) ?? "Untitled",
     content_type: contentType,
     sections,
     channel_context: channelContext,
     idea_context: idea,
+    ...(draft_excerpt ? { draft_excerpt } : {}),
   };
 }
 

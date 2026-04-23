@@ -16,6 +16,7 @@ export interface ProduceInput {
   canonicalCore: unknown;
   idea?: IdeaContext | null;
   productionParams?: unknown;
+  sources?: unknown[];
   channel?: { name?: string; niche?: string; language?: string; tone?: string };
 }
 
@@ -61,7 +62,7 @@ export function buildCanonicalCoreMessage(input: CanonicalCoreInput): string {
     lines.push(jsonBlock(input.idea));
   }
 
-  if (input.researchCards && Array.isArray(input.researchCards) && input.researchCards.length > 0) {
+  if (input.researchCards) {
     lines.push('');
     lines.push('Approved research cards:');
     lines.push(jsonBlock(input.researchCards));
@@ -98,6 +99,12 @@ export function buildProduceMessage(input: ProduceInput): string {
     lines.push('');
     lines.push('Production parameters:');
     lines.push(jsonBlock(input.productionParams));
+  }
+
+  if (input.sources && Array.isArray(input.sources) && input.sources.length > 0) {
+    lines.push('');
+    lines.push('Research sources (include referenced ones in ## Sources section of full_draft):');
+    lines.push(jsonBlock(input.sources));
   }
 
   lines.push(channelBlock(input.channel));

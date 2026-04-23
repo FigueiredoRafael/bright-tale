@@ -172,12 +172,20 @@ export const productionGenerate = inngest.createFunction(
       });
 
       const draftJson = await step.run('generate-produce', async () => {
+        const approvedCardsObj = approvedCards && typeof approvedCards === 'object' && !Array.isArray(approvedCards)
+          ? approvedCards as Record<string, unknown>
+          : null;
+        const researchSources = type === 'blog' && approvedCardsObj?.sources
+          ? approvedCardsObj.sources as unknown[]
+          : undefined;
+
         const userMessage = buildProduceMessage({
           type: type as string,
           title: draft.title as string,
           canonicalCore,
           idea: ideaContext,
           productionParams,
+          sources: researchSources,
           channel: channelContext as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
         });
         const call = await generateWithFallback(

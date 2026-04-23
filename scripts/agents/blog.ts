@@ -56,6 +56,12 @@ export const blog: AgentDefinition = {
         ], false),
         str('cta_subscribe', 'Subscribe call-to-action'),
         str('cta_comment_prompt', 'Becomes the last line of the conclusion'),
+        arrOf('sources', 'Full source objects from the research phase — referenced by source_id in argument_chain and key_stats', [
+          str('source_id', 'Matches source_ids used in argument_chain steps'),
+          str('title', 'Source title or publication name'),
+          str('url', 'Full URL to the source'),
+          str('key_insight', 'The key finding used from this source'),
+        ], false),
       ],
     },
     outputSchema: {
@@ -71,7 +77,7 @@ export const blog: AgentDefinition = {
           arr('key_points', 'Bullet points the section will cover', 'string'),
           num('word_count_target', 'Target word count for this section'),
         ]),
-        str('full_draft', 'Complete blog post in markdown. Structure: Intro → H2 sections → Conclusion. Intro references opening_emotion, conclusion references closing_emotion and ends with cta_comment_prompt as question'),
+        str('full_draft', 'Complete blog post in markdown. Structure: Intro → H2 sections → Conclusion → Sources. Intro references opening_emotion, conclusion references closing_emotion and ends with cta_comment_prompt as question. Append a ## Sources section listing every source whose source_id is referenced in any argument_chain step, formatted as: - [title](url)'),
         obj('affiliate_integration', 'Affiliate placement and copy (optional)', [
           str('placement', 'MUST be: intro | middle | conclusion'),
           str('copy', 'The exact affiliate paragraph'),
@@ -95,7 +101,7 @@ export const blog: AgentDefinition = {
         'slug: Lowercase, hyphens only. Derive from title. No special characters.',
         'meta_description: Exactly 150-160 characters. Must include primary_keyword. Must entice the click.',
         'outline: One H2 entry per argument_chain step. key_points = bullet points the section will cover. word_count_target = 300-600 per section depending on complexity.',
-        'full_draft: Write the complete blog post in markdown. Intro must reference opening_emotion. Conclusion must reference closing_emotion and end with cta_comment_prompt as a reader question.',
+        'full_draft: Write the complete blog post in markdown. Intro must reference opening_emotion. Conclusion must reference closing_emotion and end with cta_comment_prompt as a reader question. After conclusion, append a ## Sources section. For each unique source_id referenced in argument_chain[].source_ids or key_stats[].source_id, find the matching entry in input sources[] and output one line: - [title](url). IMPORTANT: if the url field value is already in markdown link format like "[https://example.com](https://example.com)", extract only the raw URL from inside the final parentheses — the output must be a plain URL, not nested markdown. Example correct output: - [Do Things that Don\'t Scale](https://www.paulgraham.com/ds.html). Example wrong output: - S1: Paul Graham - Do Things that Don\'t Scale.',
         'key_stats: Each stat belongs in the section whose claim it proves. Format as: **[figure]** — [brief context].',
         'key_quotes: Format as blockquote: > "quote" — Author Name, Credentials',
         'affiliate_integration.placement: ONLY intro, middle, or conclusion. Match the affiliate_context.trigger_context if provided.',
@@ -107,6 +113,7 @@ export const blog: AgentDefinition = {
         'Verify affiliate_integration.placement is one of: intro | middle | conclusion',
         'If affiliate_context is provided, placement must match the specified position.',
         'Verify every key_stat from input appears in full_draft.',
+        'Verify full_draft ends with a ## Sources section where each line is: - [title](raw_url). No nested markdown links. No source ID prefixes like "S1:".',
         'Verify every key_quote from input appears as a blockquote with attribution.',
         'Verify slug is URL-safe (lowercase, hyphens, no spaces or special chars).',
         'Verify meta_description is exactly 150-160 characters.',
@@ -175,9 +182,9 @@ CONCLUSION (75-150 words):
 
 TARGET LENGTH:
 If input contains production_params.target_word_count, full_draft must hit that count (+-15%):
-- 300 words: 1 core idea + practical takeaway
-- 500-700 words: 2-3 sub-points with examples
-- 1000+ words: long-form with sub-headings, case studies, FAQ
+- 800-1000 words: 2-3 core points + practical takeaway + sources
+- 1000-1400 words: 3-4 sub-points with examples, stats, and quotes + sources
+- 1400+ words: long-form with sub-headings, case studies, FAQ, deep evidence + sources
 If research material is insufficient for the target, set content_warning instead of padding.`,
       },
       {

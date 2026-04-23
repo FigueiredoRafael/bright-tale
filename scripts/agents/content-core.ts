@@ -44,6 +44,7 @@ export const contentCore: AgentDefinition = {
             str('evidence_strength', 'weak, moderate, or strong'),
           ]),
           arrOf('key_sources', 'Key sources from research', [
+            str('source_id', 'Unique identifier for this source (e.g., SRC-001) — referenced by key_statistics, expert_quotes, and argument_chain'),
             str('title', 'Source title'),
             str('url', 'URL if available', false),
             str('key_insight', 'Main takeaway'),
