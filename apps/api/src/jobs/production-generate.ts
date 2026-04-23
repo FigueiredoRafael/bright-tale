@@ -12,11 +12,22 @@ import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
 import { buildCanonicalCoreMessage, buildProduceMessage } from '../lib/ai/prompts/production.js';
 import { buildReviewMessage } from '../lib/ai/prompts/review.js';
-import { buildPersonaContext, buildPersonaVoice, loadPersonaForDraft } from '../lib/personas.js'
+import {
+  buildPersonaContext,
+  buildPersonaVoice,
+  buildLayeredPersonaContext,
+  loadPersonaForDraft,
+} from '../lib/personas.js'
 
 // Re-exported for backward-compat with existing tests
 // (apps/api/src/jobs/__tests__/production-generate-persona.test.ts imports from here)
 export { buildPersonaContext, buildPersonaVoice, loadPersonaForDraft }
+
+function formatConstraintsBlock(constraints: string[]): string {
+  if (constraints.length === 0) return ''
+  const lines = constraints.map(c => `- ${c}`).join('\n')
+  return `## Content Constraints\nThe following rules are non-negotiable and override all other instructions:\n${lines}\n\n`
+}
 
 const FORMAT_COSTS: Record<string, number> = {
   blog: 200,
@@ -79,6 +90,11 @@ export const productionGenerate = inngest.createFunction(
         return loadPersonaForDraft(draft as Record<string, unknown>, sb);
       })) as Awaited<ReturnType<typeof loadPersonaForDraft>>;
 
+      const layeredPersona = (await step.run('load-persona-constraints', async () => {
+        if (!persona) return null
+        return buildLayeredPersonaContext(persona, sb)
+      })) as Awaited<ReturnType<typeof buildLayeredPersonaContext>> | null
+
       const approvedCards = (await step.run('load-research', async () => {
         if (!draft.research_session_id) return null;
         const { data } = await sb
@@ -121,7 +137,7 @@ export const productionGenerate = inngest.createFunction(
           idea: ideaContext,
           researchCards: approvedCards as unknown[] | undefined,
           productionParams,
-          personaContext: persona ? buildPersonaContext(persona) : null,
+          personaContext: layeredPersona?.context ?? null,
           channel: channelContext as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
         });
         const call = await generateWithFallback(
@@ -129,7 +145,9 @@ export const productionGenerate = inngest.createFunction(
           modelTier,
           {
             agentType: 'production',
-            systemPrompt: coreSystemPrompt ?? '',
+            systemPrompt: layeredPersona?.constraints.length
+              ? `${formatConstraintsBlock(layeredPersona.constraints)}${coreSystemPrompt ?? ''}`
+              : coreSystemPrompt ?? '',
             userMessage,
           },
           {
@@ -196,7 +214,7 @@ export const productionGenerate = inngest.createFunction(
           idea: ideaContext,
           productionParams,
           sources: researchSources,
-          persona: persona ? buildPersonaVoice(persona) : null,
+          persona: layeredPersona?.voice ?? null,
           channel: channelContext as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
         });
         const call = await generateWithFallback(
@@ -204,7 +222,9 @@ export const productionGenerate = inngest.createFunction(
           modelTier,
           {
             agentType: 'production',
-            systemPrompt: produceSystemPrompt ?? '',
+            systemPrompt: layeredPersona?.constraints.length
+              ? `${formatConstraintsBlock(layeredPersona.constraints)}${produceSystemPrompt ?? ''}`
+              : produceSystemPrompt ?? '',
             userMessage,
           },
           {
