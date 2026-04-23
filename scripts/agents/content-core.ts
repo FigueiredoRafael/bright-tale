@@ -72,6 +72,13 @@ export const contentCore: AgentDefinition = {
             str('recommendation', 'proceed, pivot, or abandon'),
           ]),
         ]),
+        obj('persona_context', 'Persona whose lens frames this content', [
+          str('name', 'Persona name'),
+          str('domain_lens', 'Core analytical lens'),
+          str('analytical_lens', 'How they frame every thesis'),
+          arr('strong_opinions', 'Worldview-level positions that can inform the thesis angle', 'string'),
+          arr('approved_categories', 'Scope guard — reject angles outside these', 'string'),
+        ], false),
       ],
     },
     outputSchema: {
@@ -124,6 +131,7 @@ export const contentCore: AgentDefinition = {
         'Knowledge_gaps in input: If research has knowledge gaps, do NOT make claims in argument_chain that depend on those gaps.',
         'Affiliate_moment: Point to a specific step number in argument_chain in trigger_context.',
         'If research.sources or research.statistics cannot support the thesis (insufficient evidence), populate content_warning with "Thesis under-supported by research — recommend abandon or deeper research" instead of fabricating evidence.',
+        'If persona_context is provided: frame the thesis and argument chain through this persona\'s analytical_lens. The thesis must reflect how they would interpret this evidence. Where the research supports it, let their strong_opinions inform the editorial position. Reject angles that fall outside approved_categories.',
       ],
       validation: [
         'If refined_angle.recommendation is "pivot", update the thesis and argument chain to reflect the recommended angle.',
