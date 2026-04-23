@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Lock } from "lucide-react";
+import { Layers, Loader2, Lock, Shield } from "lucide-react";
 
 interface AgentPrompt {
     id: string;
@@ -16,6 +18,8 @@ interface AgentPrompt {
 
 // F2-026: read-only view. Editing lives in web/admin.
 export default function AgentsSettingsPage() {
+    const params = useParams<{ locale: string }>();
+    const locale = params?.locale ?? "en";
     const [agents, setAgents] = useState<AgentPrompt[]>([]);
     const [selected, setSelected] = useState<AgentPrompt | null>(null);
     const [loading, setLoading] = useState(true);
@@ -51,6 +55,23 @@ export default function AgentsSettingsPage() {
                     Veja as instruções dos agentes que geram o seu conteúdo. A edição é feita pelo time de produto
                     no console de administração para garantir consistência entre usuários.
                 </p>
+            </div>
+
+            <div className="flex gap-3 pb-4 border-b">
+                <Link
+                    href={`/${locale}/settings/agents/personas/guardrails`}
+                    className="flex items-center gap-2 px-3 py-2 text-sm rounded-md border hover:bg-muted transition-colors"
+                >
+                    <Shield className="h-4 w-4" />
+                    Guardrails
+                </Link>
+                <Link
+                    href={`/${locale}/settings/agents/personas/archetypes`}
+                    className="flex items-center gap-2 px-3 py-2 text-sm rounded-md border hover:bg-muted transition-colors"
+                >
+                    <Layers className="h-4 w-4" />
+                    Archetypes
+                </Link>
             </div>
 
             <div className="grid grid-cols-[260px_1fr] gap-6">
