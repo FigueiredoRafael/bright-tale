@@ -747,6 +747,68 @@ Or combined in `package.json`:
 
 ---
 
+## Testing
+
+Tests follow the project pattern: Vitest + jsdom, files in `__tests__/` directories. Category A/B (no DB) run freely; Category C (DB-dependent) use `describe.skip`.
+
+### `apps/api/src/routes/__tests__/personas.test.ts` (Category A/B)
+
+| Scenario | Expected |
+|----------|----------|
+| `GET /api/personas` — all active | Returns only `is_active = true` records |
+| `GET /api/personas` — all inactive | Returns empty array, not error |
+| `POST /api/personas` with valid body | Creates record, returns it |
+| `POST /api/content-drafts` with non-existent `personaId` | Returns 400, not 500 (FK violation caught before insert) |
+| `POST /api/content-drafts` with `personaId = null` | Draft created, `persona_id` null — legacy path works |
+| `PATCH /api/personas/:id` toggle inactive | `is_active` flips; subsequent `GET /api/personas` excludes it |
+
+### `apps/api/src/jobs/__tests__/production-generate-persona.test.ts` (Category A/B)
+
+| Scenario | Expected |
+|----------|----------|
+| Draft has `persona_id`, persona exists | Persona fetched; `persona_context` injected into ContentCore; `persona` injected into BlogAgent |
+| Draft has `persona_id = null` (legacy) | Agents called without persona fields — no crash, no regression |
+| Draft has `persona_id`, persona deleted (FK → null) | Same as null case — treated as legacy |
+| Draft has `persona_id`, persona `is_active = false` | Still used — persona was committed at draft creation; active flag not re-checked at generation time |
+
+### `apps/api/src/routes/__tests__/wordpress-author.test.ts` (Category A/B)
+
+| Scenario | Expected |
+|----------|----------|
+| Publish with `authorId` set (integer) | WP POST payload includes `author: authorId` |
+| Publish with `authorId = null` | WP POST payload omits `author` field entirely — no regression for legacy drafts |
+| Publish with `authorId` invalid WP user ID | WP API returns error → surfaced as publish failure, not silent |
+
+### `apps/app/src/components/engines/__tests__/personaScoring.test.ts` (Category A/B)
+
+| Scenario | Expected |
+|----------|----------|
+| All signals empty | All scores 0; no badge shown; personas displayed flat |
+| Only `ideaTitle` available (pre-research) | Partial scoring; best match badge shown if any term overlaps |
+| Full signals present | Correct persona domain wins |
+| Two personas tied on score | First persona in sorted list wins (deterministic) |
+| `ideaTitle` = "FIRE number for SaaS founders" | Alex Strand scores highest (FIRE + SaaS overlap) |
+| `ideaTitle` = "micro-SaaS portfolio indie hacker" | Casey Park scores highest |
+| `ideaTitle` = "B2B validation before building" | Cole Merritt scores highest |
+
+### `apps/app/src/components/engines/__tests__/researchSignals.test.ts` (Category A/B)
+
+| Scenario | Expected |
+|----------|----------|
+| `findings.seo` fully populated | All 3 signals extracted and added to `ResearchResult` |
+| `findings.seo` missing/undefined (legacy research) | Signals are `undefined`; no crash; DraftEngine falls back to title/tension signals |
+| `findings.seo.secondary_keywords` empty array | `researchSecondaryKeywords = []`; scoring handles it without crash |
+
+### Pipeline resume (manual / E2E)
+
+| Scenario | Expected |
+|----------|----------|
+| Persona selected, draft generated, user reloads page | `personaId` restored from `pipeline_state_json`; persona badge visible in Assets/Publish |
+| Legacy draft (no `persona_id`) loaded in pipeline | No badge shown in Assets/Publish; publish sends no `authorId`; no errors |
+| Draft generated with persona A; user opens project again | Cannot change persona retroactively — selector not shown after draft exists |
+
+---
+
 ## Files Changed
 
 | File | Change |
@@ -759,7 +821,7 @@ Or combined in `package.json`:
 | `packages/shared/src/mappers/db.ts` | Add `personaFromDb` / `personaToDb` mappers |
 | `apps/api/src/routes/personas.ts` | New — CRUD routes (list/get/create/update/toggle) |
 | `apps/api/src/routes/wordpress.ts` | Add `author` field to WP POST payload (from `authorId`) |
-| `apps/api/src/jobs/production-generate.ts` | Accept `personaId` in job input; fetch persona; inject into agents |
+| `apps/api/src/jobs/production-generate.ts` | Read `persona_id` from loaded draft record; fetch persona; inject into agents (no event interface change) |
 | `scripts/agents/content-core.ts` | Add `persona_context` input field + framing rule |
 | `scripts/agents/blog.ts` | Add `persona` input field + 12 global guardrails + persona injection rule |
 | `scripts/agents/personas.ts` | New — TypeScript persona definitions (source of truth, mirrors agents/*.ts pattern) |
