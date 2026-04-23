@@ -470,33 +470,73 @@ PublishEngine — reads personaWpAuthorId from context, sends as `author` in WP 
 
 Add to `PipelineContext`:
 ```typescript
+// Persona
 personaId?: string
 personaName?: string
 personaSlug?: string
 personaWpAuthorId?: number | null
+
+// Research signals — set by ResearchEngine on completion, used for persona scoring in DraftEngine
+researchPrimaryKeyword?: string         // seo.primary_keyword (refined by research)
+researchSecondaryKeywords?: string[]    // seo.secondary_keywords[].keyword
+researchSearchIntent?: string           // seo.search_intent
+researchAffiliateAngle?: string         // idea.monetization_hypothesis.affiliate_angle
+researchProductCategories?: string[]    // idea.monetization_hypothesis.product_categories
 ```
+
+### `apps/app/src/components/engines/ResearchEngine.tsx`
+
+When research is approved and stage result saved, also write the scoring signals into `PipelineContext`:
+- `researchPrimaryKeyword` ← `seo.primary_keyword`
+- `researchSecondaryKeywords` ← `seo.secondary_keywords[].keyword`
+- `researchSearchIntent` ← `seo.search_intent`
+- `researchAffiliateAngle` ← `idea.monetization_hypothesis.affiliate_angle` (from idea record)
+- `researchProductCategories` ← `idea.monetization_hypothesis.product_categories` (from idea record)
+
+These are stored in `pipeline_state_json` as part of the Research stage result.
 
 ### `apps/app/src/components/engines/DraftEngine.tsx`
 
 1. On mount, fetch `GET /api/personas` (active only)
-2. Score each persona against the current idea before rendering:
+2. Score each persona against all available content signals before rendering:
+
    ```typescript
-   function scorePersona(persona: Persona, ideaCategories: string[]): number {
-     return persona.approvedCategories.filter(c =>
-       ideaCategories.some(ic => ic.toLowerCase().includes(c.toLowerCase()) || c.toLowerCase().includes(ic.toLowerCase()))
-     ).length
+   function scorePersonaForContent(
+     persona: Persona,
+     context: PipelineContext
+   ): number {
+     const signals = [
+       context.ideaTitle ?? '',
+       context.ideaCoreTension ?? '',
+       context.researchPrimaryKeyword ?? '',
+       ...(context.researchSecondaryKeywords ?? []),
+       context.researchSearchIntent ?? '',
+       context.researchAffiliateAngle ?? '',
+       ...(context.researchProductCategories ?? []),
+     ].join(' ').toLowerCase()
+
+     const personaTerms = [
+       ...persona.approvedCategories,
+       persona.primaryDomain,
+       persona.domainLens,
+     ].join(' ').toLowerCase().split(/\W+/).filter(t => t.length > 3)
+
+     return personaTerms.filter(term => signals.includes(term)).length
    }
    ```
+
    Sort personas by score descending. The top scorer is the recommended persona.
+
 3. Render persona selector above "Generate Draft" button:
    - Each option: avatar initial (colored circle) + name + domain tag (e.g. "FIRE Math")
    - Top scorer shows "Best match" badge — pre-selected by default
+   - If all scores are 0 (no signals), show all personas flat with no badge
    - Required — generate button disabled until selection confirmed
 4. On generate: include `personaId` in the draft creation request
 5. After generation: persona name shown in draft header as byline ("by Cole Merritt")
 6. Store `personaId`, `personaName`, `personaSlug`, `personaWpAuthorId` in stage result → `PipelineContext`
 
-**Scoring source:** `ideaCategories` comes from the brainstorm idea record (tags or topic fields already in `PipelineContext`). If no categories are available, all personas shown with equal weight — no badge shown.
+**Signal priority:** `researchPrimaryKeyword` and `researchSecondaryKeywords` carry the most weight naturally since research refines the keyword from the raw brainstorm. `ideaTitle` and `ideaCoreTension` are always available as fallback. `search_intent` breaks ties — "financial" intent lifts Alex, "commercial/product" lifts Casey, "founder/validation" lifts Cole.
 
 ### `apps/app/src/components/engines/AssetsEngine.tsx`
 
@@ -694,8 +734,9 @@ npm run db:seed
 | `scripts/agents/content-core.ts` | Add `persona_context` input field + framing rule |
 | `scripts/agents/blog.ts` | Add `persona` input field + 12 global guardrails + persona injection rule |
 | `scripts/seed-personas.ts` | New — generates persona INSERT SQL → appended to seed.sql |
-| `apps/app/src/components/engines/types.ts` | Add `personaId`, `personaName`, `personaSlug`, `personaWpAuthorId` to `PipelineContext` |
-| `apps/app/src/components/engines/DraftEngine.tsx` | Add persona selector UI; store persona in pipeline context |
+| `apps/app/src/components/engines/types.ts` | Add persona fields + 5 research signal fields to `PipelineContext` |
+| `apps/app/src/components/engines/ResearchEngine.tsx` | Write scoring signals into PipelineContext on research approval |
+| `apps/app/src/components/engines/DraftEngine.tsx` | Multi-signal persona scorer + selector UI; store persona in context |
 | `apps/app/src/components/engines/AssetsEngine.tsx` | Add read-only persona badge from context |
 | `apps/app/src/components/engines/PublishEngine.tsx` | Pass `authorId: personaWpAuthorId` in publish payload |
 
