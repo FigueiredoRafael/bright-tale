@@ -7,6 +7,13 @@ export interface CanonicalCoreInput {
   idea?: IdeaContext | null;
   researchCards?: unknown[];
   productionParams?: unknown;
+  personaContext?: {
+    name: string;
+    domainLens: string;
+    analyticalLens: string;
+    strongOpinions: string[];
+    approvedCategories: string[];
+  } | null;
   channel?: { name?: string; niche?: string; language?: string; tone?: string };
 }
 
@@ -17,6 +24,20 @@ export interface ProduceInput {
   idea?: IdeaContext | null;
   productionParams?: unknown;
   sources?: unknown[];
+  persona?: {
+    name: string;
+    bioShort: string;
+    writingVoice: {
+      writingStyle: string;
+      signaturePhrases: string[];
+      characteristicOpinions: string[];
+    };
+    soul: {
+      humorStyle: string;
+      recurringJokes: string[];
+      languageGuardrails: string[];
+    };
+  } | null;
   channel?: { name?: string; niche?: string; language?: string; tone?: string };
 }
 
@@ -75,6 +96,19 @@ export function buildCanonicalCoreMessage(input: CanonicalCoreInput): string {
   }
 
   lines.push(channelBlock(input.channel));
+
+  if (input.personaContext) {
+    lines.push('');
+    lines.push('<persona_context>');
+    lines.push(`Name: ${input.personaContext.name}`);
+    lines.push(`Domain lens: ${input.personaContext.domainLens}`);
+    lines.push(`Analytical lens: ${input.personaContext.analyticalLens}`);
+    lines.push('Strong opinions:');
+    input.personaContext.strongOpinions.forEach((o) => lines.push(`- ${o}`));
+    lines.push(`Approved categories: ${input.personaContext.approvedCategories.join(', ')}`);
+    lines.push('</persona_context>');
+  }
+
   lines.push('');
   lines.push('Respond with a JSON object matching the output contract. No markdown, no commentary.');
   return lines.join('\n');
@@ -108,6 +142,21 @@ export function buildProduceMessage(input: ProduceInput): string {
   }
 
   lines.push(channelBlock(input.channel));
+
+  if (input.persona) {
+    lines.push('');
+    lines.push('<persona>');
+    lines.push(`Name: ${input.persona.name}`);
+    lines.push(`Bio: ${input.persona.bioShort}`);
+    lines.push(`Writing style: ${input.persona.writingVoice.writingStyle}`);
+    lines.push(`Signature phrases: ${input.persona.writingVoice.signaturePhrases.join(' | ')}`);
+    lines.push(`Characteristic opinions: ${input.persona.writingVoice.characteristicOpinions.join(' | ')}`);
+    lines.push(`Humor style: ${input.persona.soul.humorStyle}`);
+    lines.push('Language guardrails:');
+    input.persona.soul.languageGuardrails.forEach((g) => lines.push(`- ${g}`));
+    lines.push('</persona>');
+  }
+
   lines.push('');
   lines.push('Respond with a JSON object matching the output contract. No markdown, no commentary.');
   return lines.join('\n');
