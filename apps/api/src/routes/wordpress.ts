@@ -24,6 +24,7 @@ import {
 } from '@brighttale/shared/schemas/wordpress';
 import { publishDraftSchema } from '@brighttale/shared/schemas/pipeline';
 import { ingest, flushAxiom } from '../lib/axiom.js';
+import { loadPersonaForDraft } from '../lib/personas.js';
 
 export interface WpPostDataInput {
   title: string;
@@ -913,6 +914,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         }
         const draft = draftRaw as Record<string, unknown>;
         const draftStatus = draft.status as string;
+        const persona = await loadPersonaForDraft(draft, sb);
 
 
         if (draftStatus === 'publishing') {
@@ -1130,7 +1132,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
           categories: categoryIds.length > 0 ? categoryIds : undefined,
           tags: tagIds.length > 0 ? tagIds : undefined,
           featuredMedia: uploadedMedia['featured_image']?.wpId,
-          authorId: body.authorId,
+          authorId: body.authorId ?? persona?.wpAuthorId ?? null,
         });
 
 
@@ -1457,6 +1459,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       }
       const draft = draftRaw as Record<string, unknown>;
       const draftStatus = draft.status as string;
+      const persona = await loadPersonaForDraft(draft, sb);
 
 
       if (draftStatus === 'publishing') {
@@ -1621,7 +1624,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         categories: categoryIds.length > 0 ? categoryIds : undefined,
         tags: tagIds.length > 0 ? tagIds : undefined,
         featuredMedia: uploadedMedia['featured_image']?.wpId,
-        authorId: body.authorId,
+        authorId: body.authorId ?? persona?.wpAuthorId ?? null,
       });
 
       // Create or update WordPress post
