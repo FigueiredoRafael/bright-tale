@@ -2017,6 +2017,63 @@ export type Database = {
         }
         Relationships: []
       }
+      personas: {
+        Row: {
+          approved_categories: string[]
+          avatar_url: string | null
+          bio_long: string
+          bio_short: string
+          created_at: string
+          domain_lens: string
+          eeat_signals_json: Json
+          id: string
+          is_active: boolean
+          name: string
+          primary_domain: string
+          slug: string
+          soul_json: Json
+          updated_at: string
+          wp_author_id: number | null
+          writing_voice_json: Json
+        }
+        Insert: {
+          approved_categories: string[]
+          avatar_url?: string | null
+          bio_long: string
+          bio_short: string
+          created_at?: string
+          domain_lens: string
+          eeat_signals_json: Json
+          id?: string
+          is_active?: boolean
+          name: string
+          primary_domain: string
+          slug: string
+          soul_json: Json
+          updated_at?: string
+          wp_author_id?: number | null
+          writing_voice_json: Json
+        }
+        Update: {
+          approved_categories?: string[]
+          avatar_url?: string | null
+          bio_long?: string
+          bio_short?: string
+          created_at?: string
+          domain_lens?: string
+          eeat_signals_json?: Json
+          id?: string
+          is_active?: boolean
+          name?: string
+          primary_domain?: string
+          slug?: string
+          soul_json?: Json
+          updated_at?: string
+          wp_author_id?: number | null
+          writing_voice_json?: Json
+        }
+        Relationships: []
+      }
       podcast_drafts: {
         Row: {
           created_at: string
