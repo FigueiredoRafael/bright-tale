@@ -97,8 +97,9 @@ PK = `(channel_id, persona_id)`
 #### `personas` — add column
 
 - `archetype_slug TEXT NULL` — records which archetype was used at creation. Used at runtime to fetch `behavioral_overlay_json`.
+- `avatar_params_json JSONB NULL` — stores last avatar generation params (provider, suggestions, resolved prompt) for one-click regeneration.
 
-All existing JSONB columns (`writing_voice_json`, `soul_json`, `eeat_signals_json`) preserved as-is.
+All existing JSONB columns (`writing_voice_json`, `soul_json`, `eeat_signals_json`) and `avatar_url` preserved as-is.
 
 ---
 
@@ -173,9 +174,63 @@ Five collapsible sections. No JSON exposed anywhere.
 | **Voice** | Writing style (tone picker), signature phrases (tag input), characteristic opinions (tag input) |
 | **Soul** | Core values, life philosophy, strong opinions, pet peeves, humor style, what excites them, inner tensions |
 | **EEAT** | Analytical lens, trust signals (tag input), expertise claims (tag input) |
+| **Avatar** | Upload or AI-generate (see below) |
 | **Integrations** | WordPress author link (see below) |
 
 On save: POST/PUT `/api/personas`. `archetype_slug` recorded if archetype was used.
+
+---
+
+### Avatar Section
+
+Last section of the persona form, before Integrations. Two modes:
+
+**Upload** — direct file upload, stored as `personas.avatar_url`. Same as current flow.
+
+**AI Generate** — mirrors the Assets Engine pattern:
+
+1. **Provider picker** — same provider list as Assets Engine (DALL-E, Stable Diffusion, Midjourney, etc.)
+2. **Optional suggestion fields** (all optional — system fills gaps from persona + channel context):
+
+| Field | Input Type | Notes |
+|---|---|---|
+| Background | Text input or preset chips | e.g. "dark studio", "outdoor nature", "abstract gradient" |
+| Art style | Selector | Photorealistic, Illustrated, Abstract, Pixel art, 3D render, etc. |
+| Face: mood | Selector (if face) | Serious, Confident, Friendly, Mysterious, etc. |
+| Face: appearance | Free text (if face) | Physical description notes |
+| No face | Free text (if non-personification) | e.g. "a hawk", "chess piece", "geometric shapes representing data" |
+
+3. **Prompt assembly** (server-side, hidden from user):
+
+```
+Avatar Agent instruction (agent_prompts)
+  + persona fields (name, domain, voice tone, soul values)
+  + channel niche (pulled from channel context at generation time)
+  + user suggestions (background, art style, face/no-face)
+        ↓
+  Refined image generation prompt → provider API → avatar image
+```
+
+4. **Result:** User sees generated image, can regenerate with different suggestions or accept. On accept, stored as `personas.avatar_url`.
+
+Last generation params stored in `personas.avatar_params_json` (new column) to allow one-click regeneration later.
+
+---
+
+### Avatar Agent
+
+A dedicated entry in `agent_prompts` table: `persona-avatar-generator`.
+
+Responsible for translating persona identity + channel niche + user suggestions into a high-quality, provider-optimized image generation prompt. Follows the same hidden instruction pattern as other agents — users never see the prompt template, only the suggestion fields and the result.
+
+Key constraint baked into the agent instruction: avatar style must feel coherent with the channel niche (a finance persona avatar looks different from a fitness persona avatar even with the same art style selected).
+
+---
+
+### DB changes for avatar
+
+- `personas.avatar_url` — already exists
+- `personas.avatar_params_json` — new JSONB column, stores last generation params (provider, suggestions, resolved prompt) for regeneration
 
 ---
 
