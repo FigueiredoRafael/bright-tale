@@ -318,6 +318,7 @@ export type DbContentDraft = {
   idea_id: string | null;
   research_session_id: string | null;
   project_id: string | null;
+  persona_id: string | null;
   type: string;
   title: string | null;
   canonical_core_json: unknown | null;
@@ -345,6 +346,7 @@ export type DomainContentDraft = {
   ideaId: string | null;
   researchSessionId: string | null;
   projectId: string | null;
+  personaId: string | null;
   type: string;
   title: string | null;
   canonicalCoreJson: unknown | null;
@@ -373,6 +375,7 @@ export function mapContentDraftFromDb(row: DbContentDraft): DomainContentDraft {
     ideaId: row.idea_id,
     researchSessionId: row.research_session_id,
     projectId: row.project_id,
+    personaId: row.persona_id,
     type: row.type,
     title: row.title,
     canonicalCoreJson: row.canonical_core_json,
