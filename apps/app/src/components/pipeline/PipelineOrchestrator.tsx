@@ -83,6 +83,9 @@ export function PipelineOrchestrator({
       ctx.researchSessionId = sr.research.researchSessionId;
       ctx.approvedCardsCount = sr.research.approvedCardsCount;
       ctx.researchLevel = sr.research.researchLevel;
+      ctx.researchPrimaryKeyword = sr.research.primaryKeyword;
+      ctx.researchSecondaryKeywords = sr.research.secondaryKeywords;
+      ctx.researchSearchIntent = sr.research.searchIntent;
     }
 
     if (sr.draft) {
