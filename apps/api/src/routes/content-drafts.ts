@@ -28,6 +28,7 @@ import { inngest } from "../jobs/client.js";
 import { emitJobEvent } from "../jobs/emitter.js";
 import { buildCanonicalCoreMessage, buildProduceMessage, buildReproduceMessage } from "../lib/ai/prompts/production.js";
 import { buildPersonaContext, buildPersonaVoice, loadPersonaForDraft } from "../lib/personas.js";
+import { validateProducedDraft } from "../lib/ai/validators/index.js";
 import { buildReviewMessage } from "../lib/ai/prompts/review.js";
 import { buildAssetsMessage } from "../lib/ai/prompts/assets.js";
 import { loadIdeaContext, type IdeaContext } from "../lib/ai/loadIdeaContext.js";
@@ -1137,7 +1138,17 @@ export async function contentDraftsRoutes(
           },
         );
 
-        return reply.send({ data: updated, error: null });
+        // Run universal + persona validators on the produced draft. Findings are
+        // returned alongside the draft for the Review engine + UI to consume.
+        // Critical findings DO NOT block here yet — Phase 4 v1 surfaces only.
+        const updatedRow = updated as Record<string, unknown> | null;
+        const validation = validateProducedDraft(
+          updatedRow?.draft_json as Parameters<typeof validateProducedDraft>[0],
+          updatedRow?.canonical_core_json as Parameters<typeof validateProducedDraft>[1],
+          persona,
+        );
+
+        return reply.send({ data: updated, validation, error: null });
       } catch (error) {
         return sendError(reply, error);
       }
@@ -1281,8 +1292,22 @@ export async function contentDraftsRoutes(
           .eq("id", id)
           .maybeSingle();
 
+        // Validate produced content (blog/video/shorts/podcast — not core).
+        // Persona may be null on legacy drafts; validators degrade gracefully.
+        let validation: ReturnType<typeof validateProducedDraft> | undefined;
+        if (body.phase !== "core") {
+          const updatedRow = (updated ?? row) as Record<string, unknown>;
+          const persona = await loadPersonaForDraft(updatedRow, sb);
+          validation = validateProducedDraft(
+            updatedRow.draft_json as Parameters<typeof validateProducedDraft>[0],
+            updatedRow.canonical_core_json as Parameters<typeof validateProducedDraft>[1],
+            persona,
+          );
+        }
+
         return reply.send({
           data: updated ?? row,
+          ...(validation ? { validation } : {}),
           error: null,
         });
       } catch (error) {

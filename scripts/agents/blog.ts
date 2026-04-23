@@ -111,10 +111,12 @@ export const blog: AgentDefinition = {
         'Do not add, remove, or rename keys in the output schema.',
       ],
       content: [
+        'PRE-OUTPUT CHECKLIST (run mentally before emitting full_draft): (1) Every outline[i].h2 string is rendered with exactly "## " (two hashes + single space) — never "### " or any other level. (2) The post ends with a non-empty "## Sources" section. The section contains one line per UNIQUE source_id referenced in argument_chain[].source_ids or key_stats[].source_id, and each line follows EXACTLY this format: - [Title](https://url). (3) Every bolded stat with a percentage, dollar amount, or "Nx" multiplier has a source name (one of input.sources[].title authors or organizations like McKinsey, BCG, Bessemer, a16z, Sequoia, NFX) within the same paragraph or the immediately adjacent one. If any of these three checks fail, fix the draft BEFORE returning JSON. The Review engine WILL catch and reject these violations.',
         'title: Must be curiosity-gap or benefit-driven. Include the primary keyword naturally.',
         'slug: Lowercase, hyphens only. Derive from title. No special characters.',
         'meta_description: Exactly 150-160 characters. Must include primary_keyword. Must entice the click.',
         'outline: One H2 entry per argument_chain step. key_points = bullet points the section will cover. word_count_target = 300-600 per section depending on complexity.',
+        'full_draft H2 rendering: every outline[i].h2 string MUST appear in full_draft preceded by exactly "## " (two hashes + space). Never "### " (three hashes — that is H3, breaks document hierarchy and SEO). The Sources section header is also "## Sources", never "### Sources".',
         'full_draft: Write the complete blog post in markdown. Intro must reference opening_emotion. Conclusion must reference closing_emotion and end with cta_comment_prompt as a reader question. After conclusion, append a ## Sources section. For each unique source_id referenced in argument_chain[].source_ids or key_stats[].source_id, find the matching entry in input sources[] and output one line: - [title](url). IMPORTANT: if the url field value is already in markdown link format like "[https://example.com](https://example.com)", extract only the raw URL from inside the final parentheses — the output must be a plain URL, not nested markdown. Example correct output: - [Do Things that Don\'t Scale](https://www.paulgraham.com/ds.html). Example wrong output: - S1: Paul Graham - Do Things that Don\'t Scale.',
         'key_stats: Each stat belongs in the section whose claim it proves. Format as: **[figure]** — [brief context].',
         'key_quotes: Format as blockquote: > "quote" — Author Name, Credentials',
@@ -140,7 +142,9 @@ export const blog: AgentDefinition = {
         'Verify affiliate_integration.placement is one of: intro | middle | conclusion',
         'If affiliate_context is provided, placement must match the specified position.',
         'Verify every key_stat from input appears in full_draft.',
-        'Verify full_draft ends with a ## Sources section where each line is: - [title](raw_url). No nested markdown links. No source ID prefixes like "S1:".',
+        'Verify full_draft ends with a non-empty "## Sources" section. Count: number of "- [...](...)" lines in Sources MUST be >= the number of unique source_ids referenced across argument_chain[].source_ids and key_stats[].source_id. An empty Sources section is a hard failure — the Review engine will reject the draft.',
+        'Verify every outline[i].h2 string appears in full_draft preceded by exactly "## " (two hashes + space). Reject any rendering as "### " (three hashes = H3, wrong level).',
+        'Verify every bolded stat (e.g., **80%**, **$1M**, **5x**) has a source name (McKinsey, BCG, Bessemer, a16z, Sequoia, NFX, or the actual author name from input.sources[i].title) within the same paragraph or the next. Bare unattributed stats are a hard failure for the analyst persona (Alex Strand) and a quality concern for any persona.',
         'Verify every key_quote from input appears as a blockquote with attribution.',
         'Verify slug is URL-safe (lowercase, hyphens, no spaces or special chars).',
         'Verify meta_description is exactly 150-160 characters.',
@@ -206,6 +210,28 @@ CONCLUSION (75-150 words):
 - Reflect the closing_emotion
 - Summarize the transformation or insight
 - End with cta_comment_prompt as a reader question
+
+SOURCES SECTION (mandatory — comes after conclusion):
+- Header: ## Sources (exactly two hashes + space + the word "Sources" — never "### Sources" or "Sources:" or any other variant)
+- One bullet per UNIQUE source_id referenced anywhere in argument_chain[].source_ids or key_stats[].source_id
+- Format each line as: - [Source Title](https://raw-url-here)
+- Title comes from input.sources[i].title for the matching source_id
+- URL comes from input.sources[i].url — strip any wrapping markdown if the input url is already in the form "[https://...](https://...)" (extract just the raw URL)
+- An empty Sources section is a hard publish blocker. Do not return JSON with an empty Sources block.
+
+EXAMPLE Sources block (correct):
+\`\`\`
+## Sources
+- [The state of AI: How organizations are rewiring to capture value](https://www.mckinsey.com/capabilities/quantumblack/our-insights/the-state-of-ai-how-organizations-are-rewiring-to-capture-value)
+- [The AI pricing and monetization playbook](https://www.bvp.com/atlas/the-ai-pricing-and-monetization-playbook)
+- [Pricing the AI Workforce: From Pilots to Real Revenue](https://www.nfx.com/post/ai-pricing-innovation)
+\`\`\`
+
+EXAMPLES of WRONG Sources output (do NOT do these):
+- \`### Sources\` (H3 instead of H2 — wrong heading level)
+- \`- S1: McKinsey AI Report\` (forbidden Sx: prefix; missing markdown link)
+- \`- [[McKinsey](https://x)](https://y)\` (nested markdown link)
+- An empty \`## Sources\` header with nothing under it
 
 TARGET LENGTH:
 If input contains production_params.target_word_count, full_draft must hit that count (+-15%):
