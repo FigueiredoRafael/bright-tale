@@ -506,7 +506,7 @@ export interface DbPersona {
   soul_json: Json;
   wp_author_id: number | null;
   archetype_slug: string | null;
-  avatar_params_json: Record<string, unknown> | null;
+  avatar_params_json: Json | null | undefined;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -528,7 +528,7 @@ export function mapPersonaFromDb(row: DbPersona): Persona {
     soulJson: (row.soul_json ?? {}) as unknown as Persona['soulJson'],
     wpAuthorId: row.wp_author_id,
     archetypeSlug: row.archetype_slug,
-    avatarParamsJson: row.avatar_params_json,
+    avatarParamsJson: (row.avatar_params_json ?? null) as unknown as Persona['avatarParamsJson'],
     isActive: row.is_active,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -550,7 +550,7 @@ export function mapPersonaToDb(input: Partial<Persona>): Partial<DbPersona> {
   if (input.soulJson !== undefined) out.soul_json = input.soulJson as unknown as Json;
   if (input.wpAuthorId !== undefined) out.wp_author_id = input.wpAuthorId;
   if (input.archetypeSlug !== undefined) out.archetype_slug = input.archetypeSlug;
-  if (input.avatarParamsJson !== undefined) out.avatar_params_json = input.avatarParamsJson;
+  if (input.avatarParamsJson !== undefined) out.avatar_params_json = input.avatarParamsJson as unknown as Json;
   if (input.isActive !== undefined) out.is_active = input.isActive;
   return out;
 }

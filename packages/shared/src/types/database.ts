@@ -1160,6 +1160,42 @@ export type Database = {
           },
         ]
       }
+      channel_personas: {
+        Row: {
+          channel_id: string
+          created_at: string
+          is_primary: boolean
+          persona_id: string
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string
+          is_primary?: boolean
+          persona_id: string
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string
+          is_primary?: boolean
+          persona_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_personas_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_personas_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       channel_references: {
         Row: {
           analyzed_at: string | null
@@ -2027,9 +2063,86 @@ export type Database = {
         }
         Relationships: []
       }
+      persona_archetypes: {
+        Row: {
+          behavioral_overlay_json: Json
+          created_at: string
+          default_fields_json: Json
+          description: string
+          icon: string
+          id: string
+          is_active: boolean
+          name: string
+          slug: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          behavioral_overlay_json?: Json
+          created_at?: string
+          default_fields_json?: Json
+          description?: string
+          icon?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          slug: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          behavioral_overlay_json?: Json
+          created_at?: string
+          default_fields_json?: Json
+          description?: string
+          icon?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          slug?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      persona_guardrails: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          is_active: boolean
+          label: string
+          rule_text: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label: string
+          rule_text: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          rule_text?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       personas: {
         Row: {
           approved_categories: string[]
+          archetype_slug: string | null
+          avatar_params_json: Json | null
           avatar_url: string | null
           bio_long: string
           bio_short: string
@@ -2048,6 +2161,8 @@ export type Database = {
         }
         Insert: {
           approved_categories: string[]
+          archetype_slug?: string | null
+          avatar_params_json?: Json | null
           avatar_url?: string | null
           bio_long: string
           bio_short: string
@@ -2066,6 +2181,8 @@ export type Database = {
         }
         Update: {
           approved_categories?: string[]
+          archetype_slug?: string | null
+          avatar_params_json?: Json | null
           avatar_url?: string | null
           bio_long?: string
           bio_short?: string

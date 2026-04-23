@@ -65,7 +65,7 @@ export async function personasRoutes(app: FastifyInstance) {
     const dbInput = mapPersonaToDb(body)
     const { data, error } = await sb
       .from('personas')
-      .update(dbInput as any)
+      .update(dbInput)
       .eq('id', id)
       .select()
       .single()
