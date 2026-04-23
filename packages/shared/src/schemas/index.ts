@@ -171,3 +171,13 @@ export {
   type UpdateChannel,
   type ListChannelsQuery,
 } from "./channels";
+
+// Personas schemas
+export {
+  createPersonaSchema,
+  updatePersonaSchema,
+  togglePersonaSchema,
+  type CreatePersonaInput,
+  type UpdatePersonaInput,
+  type TogglePersonaInput,
+} from "./personas";
