@@ -95,3 +95,24 @@ export function compileConstraints(
     ...(overlay?.behavioralAdditions ?? []),
   ];
 }
+
+/**
+ * Layered composition wrapper.
+ * Fetches guardrails (Layer 1) and archetype overlay (Layer 2) from DB,
+ * then builds persona context and voice (Layer 3) using existing pure functions.
+ */
+export async function buildLayeredPersonaContext(
+  persona: Persona,
+  sb: SupabaseClient,
+): Promise<{ context: PersonaContext; voice: PersonaVoice; constraints: string[] }> {
+  const [guardrailRules, overlay] = await Promise.all([
+    fetchActiveGuardrails(sb),
+    persona.archetypeSlug ? fetchArchetypeOverlay(persona.archetypeSlug, sb) : Promise.resolve(null),
+  ])
+
+  const context = buildPersonaContext(persona)
+  const voice = buildPersonaVoice(persona)
+  const constraints = compileConstraints(guardrailRules, overlay)
+
+  return { context, voice, constraints }
+}
