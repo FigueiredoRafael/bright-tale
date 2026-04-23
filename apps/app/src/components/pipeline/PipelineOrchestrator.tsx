@@ -91,6 +91,10 @@ export function PipelineOrchestrator({
     if (sr.draft) {
       ctx.draftId = sr.draft.draftId;
       ctx.draftTitle = sr.draft.draftTitle;
+      ctx.personaId = sr.draft.personaId;
+      ctx.personaName = sr.draft.personaName;
+      ctx.personaSlug = sr.draft.personaSlug;
+      ctx.personaWpAuthorId = sr.draft.personaWpAuthorId;
     }
 
     if (sr.review) {

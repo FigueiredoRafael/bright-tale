@@ -74,6 +74,10 @@ export interface DraftResult {
   draftId: string;
   draftTitle: string;
   draftContent: string;
+  personaId?: string;
+  personaName?: string;
+  personaSlug?: string;
+  personaWpAuthorId?: number | null;
 }
 
 export interface ReviewResult {

@@ -27,6 +27,8 @@ import { ContentWarningBanner } from './ContentWarningBanner';
 import { ImportPicker } from './ImportPicker';
 import { friendlyAiError } from '@/lib/ai/error-message';
 import { useUpgrade } from '@/components/billing/UpgradeProvider';
+import { rankPersonas, type RankedPersona } from './utils/personaScoring';
+import type { Persona } from '@brighttale/shared/types/agents';
 import type { BaseEngineProps, DraftResult } from './types';
 
 type DraftType = 'blog' | 'video' | 'shorts' | 'podcast';
@@ -101,6 +103,11 @@ export function DraftEngine({
     phase: 'core' | DraftType;
   } | null>(null);
 
+  // Personas
+  const [personas, setPersonas] = useState<Persona[]>([]);
+  const [rankedPersonas, setRankedPersonas] = useState<RankedPersona[]>([]);
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
+
   // Upgrade handling
   const { handleMaybeCreditsError } = useUpgrade();
 
@@ -126,6 +133,21 @@ export function DraftEngine({
       }
     })();
   }, [context.researchSessionId, title]);
+
+  // Fetch personas on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/personas');
+        const json = await res.json();
+        if (json?.data) {
+          setPersonas(json.data as Persona[]);
+        }
+      } catch {
+        // silent
+      }
+    })();
+  }, []);
 
   // Restore state from existing draft (when revisiting from review)
   useEffect(() => {
@@ -183,6 +205,18 @@ export function DraftEngine({
     })();
   }, [context.draftId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Rank personas when data is ready
+  useEffect(() => {
+    if (personas.length === 0) return;
+    const ranked = rankPersonas(personas, context, undefined);
+    setRankedPersonas(ranked);
+    // Pre-select the recommended persona
+    const recommended = ranked.find((r) => r.isRecommended);
+    if (recommended && !selectedPersonaId) {
+      setSelectedPersonaId(recommended.persona.id);
+    }
+  }, [personas, context.ideaTitle, context.researchPrimaryKeyword]);
+
   // Fetch recommended model
   useEffect(() => {
     (async () => {
@@ -229,6 +263,7 @@ export function DraftEngine({
     if (busy) return;
     if (!research) { toast.error('Select research first'); return; }
     if (!title.trim()) { toast.error('Enter a title'); return; }
+    if (!selectedPersonaId) { toast.error('Select a persona'); return; }
 
     tracker.trackStarted({
       draftId: draftId || '',
@@ -248,6 +283,7 @@ export function DraftEngine({
           researchSessionId: research.id,
           type,
           title,
+          personaId: selectedPersonaId,
           productionParams: {},
         }),
       })
@@ -361,6 +397,7 @@ export function DraftEngine({
 
     if (!research) { toast.error('Select research before importing'); return; }
     if (!title.trim()) { toast.error('Enter a title'); return; }
+    if (!selectedPersonaId) { toast.error('Select a persona'); return; }
 
     // Create draft scaffold
     const draft = await runStep('create draft', () =>
@@ -373,6 +410,7 @@ export function DraftEngine({
           researchSessionId: research.id,
           type,
           title,
+          personaId: selectedPersonaId,
           productionParams: {},
         }),
       })
@@ -1045,6 +1083,47 @@ export function DraftEngine({
         </Card>
       )}
 
+      {/* Persona selector */}
+      {rankedPersonas.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Author Persona</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Choose the persona who will author this content.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {rankedPersonas.map(({ persona, isRecommended }) => (
+              <button
+                key={persona.id}
+                type="button"
+                onClick={() => setSelectedPersonaId(persona.id)}
+                className={`flex items-center gap-3 p-3 rounded-lg border text-left transition-colors w-full ${
+                  selectedPersonaId === persona.id
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border hover:border-primary/50'
+                }`}
+              >
+                <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm font-medium shrink-0">
+                  {persona.name[0]}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm">{persona.name}</span>
+                    {isRecommended && (
+                      <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded whitespace-nowrap">
+                        Best match
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">{persona.primaryDomain}</p>
+                </div>
+              </button>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {/* ═══ PHASE 1: Canonical Core ═══ */}
       {phase === 'core' && (
         <Card>
@@ -1084,7 +1163,7 @@ export function DraftEngine({
                   }}
                   onModelChange={setModel}
                 />
-                <Button onClick={handleGenerateCore} disabled={busy || !research || !title.trim()}>
+                <Button onClick={handleGenerateCore} disabled={busy || !research || !title.trim() || !selectedPersonaId}>
                   {busy ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating Core...</>
                   ) : (
@@ -1094,6 +1173,11 @@ export function DraftEngine({
                 {!research && (
                   <p className="text-xs text-muted-foreground">
                     Select research first — production without research is weak.
+                  </p>
+                )}
+                {!selectedPersonaId && (
+                  <p className="text-xs text-muted-foreground">
+                    Select a persona before generating.
                   </p>
                 )}
               </div>
@@ -1348,10 +1432,15 @@ export function DraftEngine({
                   wordCount,
                   format: type,
                 });
+                const selectedPersona = personas.find(p => p.id === selectedPersonaId);
                 const result: DraftResult = {
                   draftId: draftId || '',
                   draftTitle: title,
                   draftContent: producedContent,
+                  personaId: selectedPersonaId || undefined,
+                  personaName: selectedPersona?.name,
+                  personaSlug: selectedPersona?.slug,
+                  personaWpAuthorId: selectedPersona?.wpAuthorId ?? null,
                 };
                 onComplete(result);
               }}>
