@@ -737,3 +737,73 @@ export function mapResearchToProductionInput(
     seo: normalizedSeo,
   };
 }
+
+// ── Persona types ──────────────────────────────────────────────────────────
+
+export interface PersonaWritingVoice {
+  writingStyle: string
+  signaturePhrases: string[]
+  characteristicOpinions: string[]
+}
+
+export interface PersonaEeatSignals {
+  analyticalLens: string
+  trustSignals: string[]
+  expertiseClaims: string[]
+}
+
+export interface PersonaSoul {
+  values: string[]
+  lifePhilosophy: string
+  strongOpinions: string[]
+  petPeeves: string[]
+  humorStyle: string
+  recurringJokes: string[]
+  whatExcites: string[]
+  innerTensions: string[]
+  languageGuardrails: string[]
+}
+
+export interface Persona {
+  id: string
+  slug: string
+  name: string
+  avatarUrl: string | null
+  bioShort: string
+  bioLong: string
+  primaryDomain: string
+  domainLens: string
+  approvedCategories: string[]
+  writingVoiceJson: PersonaWritingVoice
+  eeatSignalsJson: PersonaEeatSignals
+  soulJson: PersonaSoul
+  wpAuthorId: number | null
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+// Subset injected into Content Core input
+export interface PersonaContext {
+  name: string
+  domainLens: string
+  analyticalLens: string
+  strongOpinions: string[]
+  approvedCategories: string[]
+}
+
+// Subset injected into Blog Agent input
+export interface PersonaVoice {
+  name: string
+  bioShort: string
+  writingVoice: {
+    writingStyle: string
+    signaturePhrases: string[]
+    characteristicOpinions: string[]
+  }
+  soul: {
+    humorStyle: string
+    recurringJokes: string[]
+    languageGuardrails: string[]
+  }
+}
