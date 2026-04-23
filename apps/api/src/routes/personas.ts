@@ -187,7 +187,14 @@ Return ONLY valid JSON, no explanation.`
     const __modDirname = path.dirname(fileURLToPath(import.meta.url))
     const avatarsDir = path.resolve(__modDirname, '../../public/generated-images/avatars')
     fs.mkdirSync(avatarsDir, { recursive: true })
-    const filename = `${id}-${Date.now()}.${generated.mimeType === 'image/png' ? 'png' : 'jpg'}`
+    const extByMime: Record<string, string> = {
+      'image/png': 'png',
+      'image/jpeg': 'jpg',
+      'image/webp': 'webp',
+      'image/gif': 'gif',
+    }
+    const ext = extByMime[generated.mimeType] ?? 'jpg'
+    const filename = `${id}-${Date.now()}.${ext}`
     const filepath = path.join(avatarsDir, filename)
     fs.writeFileSync(filepath, Buffer.from(generated.base64, 'base64'))
 
