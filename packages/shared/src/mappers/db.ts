@@ -4,6 +4,8 @@
  * Mappers are the ONLY place where this translation happens.
  */
 
+import type { Persona } from "../types/agents.js";
+
 // ─── Project ──────────────────────────────────────────────────────────────────
 
 export type DbProject = {
@@ -481,4 +483,64 @@ export function mapReviewIterationFromDb(row: DbReviewIteration): DomainReviewIt
     feedbackJson: row.feedback_json,
     createdAt: row.created_at,
   };
+}
+
+// ─── Persona ──────────────────────────────────────────────────────────────────
+
+export interface DbPersona {
+  id: string;
+  slug: string;
+  name: string;
+  avatar_url: string | null;
+  bio_short: string;
+  bio_long: string;
+  primary_domain: string;
+  domain_lens: string;
+  approved_categories: string[];
+  writing_voice_json: Record<string, unknown>;
+  eeat_signals_json: Record<string, unknown>;
+  soul_json: Record<string, unknown>;
+  wp_author_id: number | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export function mapPersonaFromDb(row: DbPersona): Persona {
+  return {
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    avatarUrl: row.avatar_url,
+    bioShort: row.bio_short,
+    bioLong: row.bio_long,
+    primaryDomain: row.primary_domain,
+    domainLens: row.domain_lens,
+    approvedCategories: row.approved_categories,
+    writingVoiceJson: row.writing_voice_json as unknown as Persona['writingVoiceJson'],
+    eeatSignalsJson: row.eeat_signals_json as unknown as Persona['eeatSignalsJson'],
+    soulJson: row.soul_json as unknown as Persona['soulJson'],
+    wpAuthorId: row.wp_author_id,
+    isActive: row.is_active,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function mapPersonaToDb(input: Partial<Persona>): Partial<DbPersona> {
+  const out: Partial<DbPersona> = {};
+  if (input.slug !== undefined) out.slug = input.slug;
+  if (input.name !== undefined) out.name = input.name;
+  if (input.avatarUrl !== undefined) out.avatar_url = input.avatarUrl;
+  if (input.bioShort !== undefined) out.bio_short = input.bioShort;
+  if (input.bioLong !== undefined) out.bio_long = input.bioLong;
+  if (input.primaryDomain !== undefined) out.primary_domain = input.primaryDomain;
+  if (input.domainLens !== undefined) out.domain_lens = input.domainLens;
+  if (input.approvedCategories !== undefined) out.approved_categories = input.approvedCategories;
+  if (input.writingVoiceJson !== undefined) out.writing_voice_json = input.writingVoiceJson as unknown as Record<string, unknown>;
+  if (input.eeatSignalsJson !== undefined) out.eeat_signals_json = input.eeatSignalsJson as unknown as Record<string, unknown>;
+  if (input.soulJson !== undefined) out.soul_json = input.soulJson as unknown as Record<string, unknown>;
+  if (input.wpAuthorId !== undefined) out.wp_author_id = input.wpAuthorId;
+  if (input.isActive !== undefined) out.is_active = input.isActive;
+  return out;
 }
