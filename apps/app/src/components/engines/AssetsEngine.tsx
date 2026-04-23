@@ -649,6 +649,14 @@ export function AssetsEngine({
         <p className="text-sm text-muted-foreground mt-1">
           Generate prompt briefs, refine them, then upload images for each section.
         </p>
+        {context.personaName && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2 mt-3">
+            <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-medium">
+              {context.personaName[0]}
+            </div>
+            <span>{context.personaName}</span>
+          </div>
+        )}
       </div>
 
       {/* Phase stepper */}
