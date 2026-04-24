@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Layers, Loader2, Lock, Shield } from "lucide-react";
+import { Layers, Loader2, Lock, Shield, Users } from "lucide-react";
 
 interface AgentPrompt {
     id: string;
@@ -58,6 +58,13 @@ export default function AgentsSettingsPage() {
             </div>
 
             <div className="flex gap-3 pb-4 border-b">
+                <Link
+                    href={`/${locale}/personas`}
+                    className="flex items-center gap-2 px-3 py-2 text-sm rounded-md border hover:bg-muted transition-colors"
+                >
+                    <Users className="h-4 w-4" />
+                    Personas
+                </Link>
                 <Link
                     href={`/${locale}/settings/agents/personas/guardrails`}
                     className="flex items-center gap-2 px-3 py-2 text-sm rounded-md border hover:bg-muted transition-colors"
