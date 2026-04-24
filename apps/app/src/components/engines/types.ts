@@ -126,6 +126,43 @@ export interface BaseEngineProps {
   onStageProgress?: (partial: Partial<StageResult>) => void;
 }
 
+export interface PipelineSettings {
+  reviewRejectThreshold: number;
+  reviewApproveScore: number;
+  reviewMaxIterations: number;
+  defaultProviders: Record<string, string>;
+}
+
+export const DEFAULT_PIPELINE_SETTINGS: PipelineSettings = {
+  reviewRejectThreshold: 40,
+  reviewApproveScore: 90,
+  reviewMaxIterations: 5,
+  defaultProviders: {
+    brainstorm: 'gemini',
+    research: 'gemini',
+    draft: 'gemini',
+    review: 'gemini',
+  },
+};
+
+export interface CreditSettings {
+  costBlog: number;
+  costVideo: number;
+  costShorts: number;
+  costPodcast: number;
+  costCanonicalCore: number;
+  costReview: number;
+}
+
+export const DEFAULT_CREDIT_SETTINGS: CreditSettings = {
+  costBlog: 200,
+  costVideo: 200,
+  costShorts: 100,
+  costPodcast: 150,
+  costCanonicalCore: 80,
+  costReview: 20,
+};
+
 export interface PipelineState {
   mode: 'step-by-step' | 'auto';
   currentStage: PipelineStage;
@@ -150,7 +187,7 @@ export const DEFAULT_PIPELINE_STATE: PipelineState = {
   currentStage: 'brainstorm',
   stageResults: {},
   autoConfig: {
-    maxReviewIterations: 5,
-    targetScore: 90,
+    maxReviewIterations: DEFAULT_PIPELINE_SETTINGS.reviewMaxIterations,
+    targetScore: DEFAULT_PIPELINE_SETTINGS.reviewApproveScore,
   },
 };
