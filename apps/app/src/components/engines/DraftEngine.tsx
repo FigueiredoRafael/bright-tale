@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Loader2, BookOpen, FileText, Video, Zap, Mic, Check, ClipboardPaste,
   ArrowRight, Sparkles, ChevronDown, ChevronUp, Pencil,
@@ -77,6 +77,10 @@ export function DraftEngine({
 
   // Core settings — initialize title from pipeline context
   const [title, setTitle] = useState(context.ideaTitle ?? '');
+  const titleRef = useRef(title);
+  titleRef.current = title;
+  const contextRef = useRef(context);
+  contextRef.current = context;
   const [provider, setProvider] = useState<ProviderId>('ollama');
   const [model, setModel] = useState<string>('qwen2.5:7b');
 
@@ -163,7 +167,7 @@ export function DraftEngine({
         const d = json.data as Record<string, unknown>;
 
         setDraftId(context.draftId as string);
-        if (d.title && typeof d.title === 'string' && !title) setTitle(d.title);
+        if (d.title && typeof d.title === 'string' && !titleRef.current) setTitle(d.title);
         if (d.type && typeof d.type === 'string') setType(d.type as DraftType);
 
         // Check if draft is awaiting manual output
@@ -210,20 +214,19 @@ export function DraftEngine({
         // silent — will show fresh form
       }
     })();
-  }, [context.draftId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [context.draftId]);
 
   // Rank personas when data is ready
   useEffect(() => {
     if (personas.length === 0) return;
-    const ranked = rankPersonas(personas, context, undefined);
+    const ranked = rankPersonas(personas, contextRef.current, undefined);
     setRankedPersonas(ranked);
     // Pre-select the recommended persona
     const recommended = ranked.find((r) => r.isRecommended);
     if (recommended && !selectedPersonaId) {
       setSelectedPersonaId(recommended.persona.id);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [personas, context.ideaTitle, context.researchPrimaryKeyword]);
+  }, [personas, context.ideaTitle, context.researchPrimaryKeyword, selectedPersonaId]);
 
   // Derived: selected persona + its theme — drives color cascade through downstream cards
   const selectedPersona = personas.find((p) => p.id === selectedPersonaId);

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -70,8 +71,7 @@ export function PublishPanel({
     if (previewData?.suggestedDate && !scheduledDate) {
       setScheduledDate(previewData.suggestedDate);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewData?.suggestedDate]);
+  }, [previewData?.suggestedDate, scheduledDate]);
 
   return (
     <Card>
@@ -148,7 +148,7 @@ export function PublishPanel({
               ) : (
                 <p className="text-sm text-muted-foreground">
                   No WordPress configured for this channel.{' '}
-                  <a href="/channels" className="underline">Configure it here.</a>
+                  <Link href="/channels" className="underline">Configure it here.</Link>
                 </p>
               )}
             </div>

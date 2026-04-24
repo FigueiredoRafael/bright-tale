@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -84,12 +86,92 @@ export default function PublishingForm({
     const [publishing, setPublishing] = useState(false);
 
     useEffect(() => {
-        fetchConfigs();
-        fetchAssets();
-        fetchReviewMetadata();
-        fetchBlogContent();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [projectId]);
+        const fetchReviewMetadata = async () => {
+            try {
+                const response = await fetch(`/api/stages/${projectId}/review`);
+                if (response.ok) {
+                    const json = await response.json();
+                    const yamlContent = json.data?.stage?.yaml_artifact;
+                    if (yamlContent) {
+                        const parsed = yaml.load(yamlContent) as Record<string, unknown>;
+                        const reviewOutput = ((parsed?.review_output ?? parsed) as ReviewOutput);
+                        if (reviewOutput?.publication_plan?.blog) {
+                            const blogPlan = reviewOutput.publication_plan.blog;
+                            if (blogPlan.categories && blogPlan.categories.length > 0) {
+                                setCategories(blogPlan.categories);
+                            }
+                            if (blogPlan.tags && blogPlan.tags.length > 0) {
+                                setTags(blogPlan.tags);
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to fetch review metadata:", err);
+            }
+        };
+
+        const fetchBlogContent = async () => {
+            try {
+                const response = await fetch(`/api/stages/${projectId}/production`);
+                if (!response.ok) return;
+                const json = await response.json();
+                const yamlContent = json.data?.stage?.yaml_artifact;
+                if (!yamlContent) return;
+                const parsed = yaml.load(yamlContent) as Record<string, unknown>;
+                const blog = (parsed?.production_output as Record<string, unknown>)?.blog as BlogOutput | undefined;
+                if (blog) setFetchedBlogContent(blog);
+            } catch {
+                // Non-critical, ignore
+            }
+        };
+
+        const fetchConfigs = async () => {
+            try {
+                setLoadingConfigs(true);
+                const response = await fetch("/api/wordpress/config");
+                const json = await response.json();
+                if (json.data) {
+                    setConfigs(json.data);
+                    if (json.data.length > 0) {
+                        setSelectedConfigId(json.data[0].id);
+                    }
+                }
+            } catch {
+                toast({
+                    title: "Error",
+                    description: "Failed to load WordPress configurations",
+                    variant: "destructive",
+                });
+            } finally {
+                setLoadingConfigs(false);
+            }
+        };
+
+        const fetchAssets = async () => {
+            try {
+                setLoadingAssets(true);
+                const response = await fetch(`/api/assets/project/${projectId}`);
+                const json = await response.json();
+                if (json.data?.assets) {
+                    setAssets(json.data.assets);
+                    const featuredImage = json.data.assets.find((a: Asset) => a.asset_type === "featured_image");
+                    if (featuredImage) {
+                        setSelectedFeaturedImage(featuredImage.id);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to load assets:", err);
+            } finally {
+                setLoadingAssets(false);
+            }
+        };
+
+        void fetchConfigs();
+        void fetchAssets();
+        void fetchReviewMetadata();
+        void fetchBlogContent();
+    }, [projectId, toast]);
 
     // Restore saved state from initialYaml
     useEffect(() => {
@@ -109,89 +191,6 @@ export default function PublishingForm({
             // Invalid YAML, ignore
         }
     }, [initialYaml]);
-
-    const fetchReviewMetadata = async () => {
-        try {
-            const response = await fetch(`/api/stages/${projectId}/review`);
-            if (response.ok) {
-                const json = await response.json();
-                const yamlContent = json.data?.stage?.yaml_artifact;
-                if (yamlContent) {
-                    const parsed = yaml.load(yamlContent) as any;
-                    const reviewOutput = (parsed?.review_output || parsed) as ReviewOutput;
-                    
-                    if (reviewOutput?.publication_plan?.blog) {
-                        const blogPlan = reviewOutput.publication_plan.blog;
-                        if (blogPlan.categories && blogPlan.categories.length > 0) {
-                            setCategories(blogPlan.categories);
-                        }
-                        if (blogPlan.tags && blogPlan.tags.length > 0) {
-                            setTags(blogPlan.tags);
-                        }
-                    }
-                }
-            }
-        } catch (err) {
-            console.error("Failed to fetch review metadata:", err);
-        }
-    };
-
-    const fetchBlogContent = async () => {
-        try {
-            const response = await fetch(`/api/stages/${projectId}/production`);
-            if (!response.ok) return;
-            const json = await response.json();
-            const yamlContent = json.data?.stage?.yaml_artifact;
-            if (!yamlContent) return;
-            const parsed = yaml.load(yamlContent) as Record<string, unknown>;
-            const blog = (parsed?.production_output as Record<string, unknown>)?.blog as BlogOutput | undefined;
-            if (blog) setFetchedBlogContent(blog);
-        } catch {
-            // Non-critical, ignore
-        }
-    };
-
-    const fetchConfigs = async () => {
-        try {
-            setLoadingConfigs(true);
-            const response = await fetch("/api/wordpress/config");
-            const json = await response.json();
-            if (json.data) {
-                setConfigs(json.data);
-                if (json.data.length > 0) {
-                    setSelectedConfigId(json.data[0].id);
-                }
-            }
-        } catch (err) {
-            toast({
-                title: "Error",
-                description: "Failed to load WordPress configurations",
-                variant: "destructive",
-            });
-        } finally {
-            setLoadingConfigs(false);
-        }
-    };
-
-    const fetchAssets = async () => {
-        try {
-            setLoadingAssets(true);
-            const response = await fetch(`/api/assets/project/${projectId}`);
-            const json = await response.json();
-            if (json.data?.assets) {
-                setAssets(json.data.assets);
-                // Auto-select first featured image
-                const featuredImage = json.data.assets.find((a: Asset) => a.asset_type === "featured_image");
-                if (featuredImage) {
-                    setSelectedFeaturedImage(featuredImage.id);
-                }
-            }
-        } catch (err) {
-            console.error("Failed to load assets:", err);
-        } finally {
-            setLoadingAssets(false);
-        }
-    };
 
     const handleAddCategory = () => {
         if (categoryInput.trim() && !categories.includes(categoryInput.trim())) {
@@ -305,7 +304,7 @@ export default function PublishingForm({
                         You need to configure a WordPress site before publishing
                     </p>
                     <Button asChild>
-                        <a href="/channels">Configure WordPress</a>
+                        <Link href="/channels">Configure WordPress</Link>
                     </Button>
                 </CardContent>
             </Card>
@@ -393,11 +392,12 @@ export default function PublishingForm({
                                         : "border-border hover:border-border"
                                         }`}
                                 >
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img
+                                    <Image
                                         src={asset.source_url ?? ""}
                                         alt={asset.alt_text || "Asset"}
-                                        className="w-full h-full object-cover"
+                                        fill
+                                        className="object-cover"
+                                        unoptimized
                                     />
                                     {selectedFeaturedImage === asset.id && (
                                         <div className="absolute top-2 right-2 bg-green-500 text-white rounded-full p-1">
@@ -534,12 +534,13 @@ export default function PublishingForm({
                                 .filter(a => a.source === "generated" && a.source_url)
                                 .map((asset) => (
                                     <div key={asset.id} className="space-y-1">
-                                        <div className="aspect-video rounded overflow-hidden bg-muted border">
-                                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                                            <img
+                                        <div className="relative aspect-video rounded overflow-hidden bg-muted border">
+                                            <Image
                                                 src={asset.source_url!}
                                                 alt={asset.role ?? "image"}
-                                                className="w-full h-full object-cover"
+                                                fill
+                                                className="object-cover"
+                                                unoptimized
                                             />
                                         </div>
                                         <div className="flex items-center justify-between gap-1">

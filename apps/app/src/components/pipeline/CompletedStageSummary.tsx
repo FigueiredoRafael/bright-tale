@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -39,14 +39,11 @@ export function CompletedStageSummary({ stage, stageResults, currentStage, onNav
   // explicitly collapses it, we respect that choice for the rest of the
   // session. Re-expand automatically the next time this stage becomes active.
   const [userToggled, setUserToggled] = useState<boolean | null>(null);
-  const wasCurrentRef = useRef(isCurrent);
-  useEffect(() => {
-    if (isCurrent && !wasCurrentRef.current) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setUserToggled(null);
-    }
-    wasCurrentRef.current = isCurrent;
-  }, [isCurrent]);
+  const [prevIsCurrent, setPrevIsCurrent] = useState(isCurrent);
+  if (prevIsCurrent !== isCurrent) {
+    setPrevIsCurrent(isCurrent);
+    if (isCurrent) setUserToggled(null);
+  }
 
   const expanded = userToggled ?? isCurrent;
 

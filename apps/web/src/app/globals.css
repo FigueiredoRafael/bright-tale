@@ -6,6 +6,7 @@
 /* Scan admin and affiliate-portal packages for Tailwind class names */
 @source "../../../../node_modules/@tn-figueiredo/admin/dist";
 @source "../../../../node_modules/@tn-figueiredo/affiliate-portal/dist";
+@source "../../../../node_modules/@tn-figueiredo/affiliate-admin/dist";
 
 /* ═══ Admin component tokens — mirrors TôNaGarantia tailwind.config.ts ═══ */
 @theme {

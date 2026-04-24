@@ -98,73 +98,65 @@ export default function ReviewForm({
         }
 
         // Fetch data from previous stages
-        fetchPreviousStageData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        void (async () => {
+            try {
+                let fetchedIdea: BrainstormIdea | null = null;
+                let fetchedResearch: ResearchOutput | null = null;
+                let fetchedProduction: ProductionOutput | null = null;
+
+                const brainstormRes = await fetch(`/api/stages/${projectId}/brainstorm`);
+                if (brainstormRes.ok) {
+                    const brainstormData = await brainstormRes.json();
+                    if (brainstormData.data?.stage?.yaml_artifact) {
+                        const brainstormParsed = yaml.load(brainstormData.data.stage.yaml_artifact) as Record<string, unknown>;
+                        if (brainstormParsed.selected_idea) {
+                            fetchedIdea = brainstormParsed.selected_idea as BrainstormIdea;
+                            setSelectedIdea(fetchedIdea);
+                        }
+                    }
+                }
+
+                const researchRes = await fetch(`/api/stages/${projectId}/research`);
+                if (researchRes.ok) {
+                    const researchData = await researchRes.json();
+                    if (researchData.data?.stage?.yaml_artifact) {
+                        const researchParsed = yaml.load(researchData.data.stage.yaml_artifact) as Record<string, unknown>;
+                        if (researchParsed.research_output) {
+                            fetchedResearch = researchParsed.research_output as ResearchOutput;
+                            setResearchOutput(fetchedResearch);
+                        }
+                    }
+                }
+
+                const productionRes = await fetch(`/api/stages/${projectId}/production`);
+                if (productionRes.ok) {
+                    const productionData = await productionRes.json();
+                    if (productionData.data?.stage?.yaml_artifact) {
+                        const productionParsed = yaml.load(productionData.data.stage.yaml_artifact) as Record<string, unknown>;
+                        if (productionParsed.production_output) {
+                            fetchedProduction = productionParsed.production_output as ProductionOutput;
+                            setProductionOutput(fetchedProduction);
+                            setReviewInput({
+                                idea_id: fetchedIdea?.idea_id || fetchedProduction.idea_id,
+                                original_idea: {
+                                    title: fetchedIdea?.title || "",
+                                    core_tension: fetchedIdea?.core_tension || "",
+                                    target_audience: fetchedIdea?.target_audience || "",
+                                },
+                                research_validation: {
+                                    verified: fetchedResearch?.idea_validation?.core_claim_verified || false,
+                                    evidence_strength: fetchedResearch?.idea_validation?.evidence_strength || "unknown",
+                                },
+                                production: fetchedProduction,
+                            });
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to fetch previous stage data:", err);
+            }
+        })();
     }, [projectId, initialYaml]);
-
-    async function fetchPreviousStageData() {
-        try {
-            let fetchedIdea: BrainstormIdea | null = null;
-            let fetchedResearch: ResearchOutput | null = null;
-            let fetchedProduction: ProductionOutput | null = null;
-
-            // Fetch brainstorm stage for selected idea
-            const brainstormRes = await fetch(`/api/stages/${projectId}/brainstorm`);
-            if (brainstormRes.ok) {
-                const brainstormData = await brainstormRes.json();
-                if (brainstormData.data?.stage?.yaml_artifact) {
-                    const brainstormParsed = yaml.load(brainstormData.data.stage.yaml_artifact) as Record<string, unknown>;
-                    if (brainstormParsed.selected_idea) {
-                        fetchedIdea = brainstormParsed.selected_idea as BrainstormIdea;
-                        setSelectedIdea(fetchedIdea);
-                    }
-                }
-            }
-
-            // Fetch research stage
-            const researchRes = await fetch(`/api/stages/${projectId}/research`);
-            if (researchRes.ok) {
-                const researchData = await researchRes.json();
-                if (researchData.data?.stage?.yaml_artifact) {
-                    const researchParsed = yaml.load(researchData.data.stage.yaml_artifact) as Record<string, unknown>;
-                    if (researchParsed.research_output) {
-                        fetchedResearch = researchParsed.research_output as ResearchOutput;
-                        setResearchOutput(fetchedResearch);
-                    }
-                }
-            }
-
-            // Fetch production stage
-            const productionRes = await fetch(`/api/stages/${projectId}/production`);
-            if (productionRes.ok) {
-                const productionData = await productionRes.json();
-                if (productionData.data?.stage?.yaml_artifact) {
-                    const productionParsed = yaml.load(productionData.data.stage.yaml_artifact) as Record<string, unknown>;
-                    if (productionParsed.production_output) {
-                        fetchedProduction = productionParsed.production_output as ProductionOutput;
-                        setProductionOutput(fetchedProduction);
-
-                        // Build review input using fetched data
-                        setReviewInput({
-                            idea_id: fetchedIdea?.idea_id || fetchedProduction.idea_id,
-                            original_idea: {
-                                title: fetchedIdea?.title || "",
-                                core_tension: fetchedIdea?.core_tension || "",
-                                target_audience: fetchedIdea?.target_audience || "",
-                            },
-                            research_validation: {
-                                verified: fetchedResearch?.idea_validation?.core_claim_verified || false,
-                                evidence_strength: fetchedResearch?.idea_validation?.evidence_strength || "unknown",
-                            },
-                            production: fetchedProduction,
-                        });
-                    }
-                }
-            }
-        } catch (err) {
-            console.error("Failed to fetch previous stage data:", err);
-        }
-    }
 
     // ═══════════════════════════════════════════════════════════════════════
     // HANDLERS

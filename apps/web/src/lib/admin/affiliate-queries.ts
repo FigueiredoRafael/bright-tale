@@ -61,19 +61,36 @@ async function adminFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
       'Content-Type': 'application/json',
     },
   });
-  const body = (await res.json()) as {
-    data: T | null;
-    error: { code: string; message: string } | null;
-  };
-  if (!res.ok || body.error) {
-    throw new Error(
-      `[affiliate-admin] ${body.error?.code ?? res.status}: ${body.error?.message ?? res.statusText}`,
-    );
+  // The affiliate package returns { success, data } while our own API returns
+  // { data, error }. Handle both envelopes: success=false or !ok → throw.
+  const body = (await res.json()) as
+    | { success: true; data: T }
+    | { success: false; error: string }
+    | { data: T | null; error: { code: string; message: string } | null };
+
+  if (!res.ok) {
+    const errBody = body as { error?: { code?: string; message?: string } | string; message?: string; statusCode?: number };
+    const code = (typeof errBody.error === 'object' && errBody.error?.code) ? errBody.error.code : String(res.status);
+    const msg = (typeof errBody.error === 'object' && errBody.error?.message) ? errBody.error.message : (typeof errBody.error === 'string' ? errBody.error : res.statusText);
+    throw new Error(`[affiliate-admin] ${code}: ${msg}`);
   }
-  if (body.data === null) {
+
+  if ('success' in body) {
+    if (!body.success) {
+      const errMsg = (body as { success: false; error: string }).error;
+      throw new Error(`[affiliate-admin] FORBIDDEN: ${errMsg}`);
+    }
+    return (body as { success: true; data: T }).data;
+  }
+
+  const enveloped = body as { data: T | null; error: { code: string; message: string } | null };
+  if (enveloped.error) {
+    throw new Error(`[affiliate-admin] ${enveloped.error.code}: ${enveloped.error.message}`);
+  }
+  if (enveloped.data === null || enveloped.data === undefined) {
     throw new Error(`[affiliate-admin] unexpected null data in ${path}`);
   }
-  return body.data;
+  return enveloped.data;
 }
 
 export async function fetchAffiliates(sp: { tab?: string; type?: string; page?: string }) {
