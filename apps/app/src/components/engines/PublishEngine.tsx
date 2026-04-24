@@ -46,6 +46,7 @@ export function PublishEngine({
 
     const body: Record<string, unknown> = {
       draftId,
+      channelId,
       mode: params.mode,
       scheduledDate: params.scheduledDate,
       idempotencyToken: crypto.randomUUID(),

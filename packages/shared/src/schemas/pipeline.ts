@@ -150,6 +150,7 @@ export type ReviseInput = z.infer<typeof reviseSchema>;
 // ─── Publish Draft ────────────────────────────────────────────────────────
 export const publishDraftSchema = z.object({
   draftId: z.string().uuid(),
+  channelId: z.string().uuid().optional(),
   mode: z.enum(['draft', 'publish', 'schedule']),
   scheduledDate: z.string().datetime().optional(),
   categories: z.array(z.string()).optional(),
