@@ -26,23 +26,27 @@ import {
 } from "@brighttale/shared/schemas/pipeline";
 import { inngest } from "../jobs/client.js";
 import { emitJobEvent } from "../jobs/emitter.js";
-import { buildCanonicalCoreMessage, buildProduceMessage, buildReproduceMessage } from "../lib/ai/prompts/production.js";
-import { buildPersonaContext, buildPersonaVoice, loadPersonaForDraft } from "../lib/personas.js";
+import {
+  buildCanonicalCoreMessage,
+  buildProduceMessage,
+  buildReproduceMessage,
+} from "../lib/ai/prompts/production.js";
+import {
+  buildPersonaContext,
+  buildPersonaVoice,
+  loadPersonaForDraft,
+} from "../lib/personas.js";
 import { validateProducedDraft } from "../lib/ai/validators/index.js";
 import { buildReviewMessage } from "../lib/ai/prompts/review.js";
 import { buildAssetsMessage } from "../lib/ai/prompts/assets.js";
-import { loadIdeaContext, type IdeaContext } from "../lib/ai/loadIdeaContext.js";
+import {
+  loadIdeaContext,
+  type IdeaContext,
+} from "../lib/ai/loadIdeaContext.js";
 import { logAiUsage } from "../lib/axiom.js";
 import { deriveTier } from "@brighttale/shared/utils/reviewTierCompat";
+import { loadCreditSettings } from "../lib/credit-settings.js";
 
-const FORMAT_COSTS: Record<string, number> = {
-  blog: 200,
-  video: 200,
-  shorts: 100,
-  podcast: 150,
-};
-const CANONICAL_CORE_COST = 80;
-const REVIEW_COST = 20;
 
 const createSchema = z.object({
   channelId: z.string().uuid().optional(),
@@ -57,7 +61,9 @@ const createSchema = z.object({
 });
 
 const providerOverrideSchema = z.object({
-  provider: z.enum(["gemini", "openai", "anthropic", "ollama", "manual"]).optional(),
+  provider: z
+    .enum(["gemini", "openai", "anthropic", "ollama", "manual"])
+    .optional(),
   model: z.string().optional(),
   modelTier: z.string().optional(),
   productionParams: z.record(z.unknown()).optional(),
@@ -69,7 +75,9 @@ const updateSchema = z.object({
   draftJson: z.record(z.unknown()).optional(),
   reviewFeedbackJson: z.record(z.unknown()).optional(),
   reviewScore: z.number().min(0).max(100).optional(),
-  reviewVerdict: z.enum(['pending', 'approved', 'revision_required', 'rejected']).optional(),
+  reviewVerdict: z
+    .enum(["pending", "approved", "revision_required", "rejected"])
+    .optional(),
   iterationCount: z.number().int().min(0).optional(),
   status: z
     .enum([
@@ -122,58 +130,75 @@ function resolveSeoDefaults(draft: Record<string, unknown>): {
 } {
   const dj = (draft.draft_json ?? {}) as Record<string, unknown>;
   const blog = (dj.blog ?? dj) as Record<string, unknown>;
-  const feedback = (draft.review_feedback_json ?? {}) as Record<string, unknown>;
-  const root = (feedback.BC_REVIEW_OUTPUT ?? feedback) as Record<string, unknown>;
-  const blogReview = (root.blog_review ?? root.blog) as Record<string, unknown> | undefined;
-  const pubPlan = (root.publication_plan ?? blogReview?.publication_plan) as Record<string, unknown> | undefined;
-  const pubBlog = (pubPlan?.blog ?? pubPlan) as Record<string, unknown> | undefined;
-  const seo = (pubBlog?.final_seo ?? pubBlog?.seo ?? pubPlan?.final_seo ?? {}) as Record<string, string>;
+  const feedback = (draft.review_feedback_json ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const root = (feedback.BC_REVIEW_OUTPUT ?? feedback) as Record<
+    string,
+    unknown
+  >;
+  const blogReview = (root.blog_review ?? root.blog) as
+    | Record<string, unknown>
+    | undefined;
+  const pubPlan = (root.publication_plan ?? blogReview?.publication_plan) as
+    | Record<string, unknown>
+    | undefined;
+  const pubBlog = (pubPlan?.blog ?? pubPlan) as
+    | Record<string, unknown>
+    | undefined;
+  const seo = (pubBlog?.final_seo ??
+    pubBlog?.seo ??
+    pubPlan?.final_seo ??
+    {}) as Record<string, string>;
 
-  const title = seo.title
-    || (draft.title as string)
-    || (blog.title as string)
-    || "";
-  const slug = seo.slug
-    || (blog.slug as string)
-    || (dj.slug as string)
-    || "";
-  const metaDesc = seo.meta_description
-    || seo.metaDescription
-    || (blog.meta_description as string)
-    || (dj.meta_description as string)
-    || "";
-  const primaryKeyword = (blog.primary_keyword as string)
-    || (dj.primary_keyword as string)
-    || "";
-  const secondaryKeywords = (
-    (blog.secondary_keywords as string[])
-    ?? (dj.secondary_keywords as string[])
-    ?? []
-  );
-  const categories = (
-    (pubBlog?.categories as string[])
-    ?? (pubPlan?.categories as string[])
-    ?? (primaryKeyword ? [primaryKeyword] : [])
-  );
-  const tags = (
-    (pubBlog?.tags as string[])
-    ?? (pubPlan?.tags as string[])
-    ?? secondaryKeywords
-  );
+  const title =
+    seo.title || (draft.title as string) || (blog.title as string) || "";
+  const slug = seo.slug || (blog.slug as string) || (dj.slug as string) || "";
+  const metaDesc =
+    seo.meta_description ||
+    seo.metaDescription ||
+    (blog.meta_description as string) ||
+    (dj.meta_description as string) ||
+    "";
+  const primaryKeyword =
+    (blog.primary_keyword as string) || (dj.primary_keyword as string) || "";
+  const secondaryKeywords =
+    (blog.secondary_keywords as string[]) ??
+    (dj.secondary_keywords as string[]) ??
+    [];
+  const categories =
+    (pubBlog?.categories as string[]) ??
+    (pubPlan?.categories as string[]) ??
+    (primaryKeyword ? [primaryKeyword] : []);
+  const tags =
+    (pubBlog?.tags as string[]) ??
+    (pubPlan?.tags as string[]) ??
+    secondaryKeywords;
 
-  return { title, slug, meta_description: metaDesc, primary_keyword: primaryKeyword, secondary_keywords: secondaryKeywords, categories, tags };
+  return {
+    title,
+    slug,
+    meta_description: metaDesc,
+    primary_keyword: primaryKeyword,
+    secondary_keywords: secondaryKeywords,
+    categories,
+    tags,
+  };
 }
 
 /**
  * Build BC_ASSETS_INPUT from a draft row. Shared between the data-only
  * /asset-prompts route and the LLM-powered /generate-asset-prompts route.
  */
-async function buildAssetsInput(
-  draft: Record<string, unknown>,
-): Promise<{
+async function buildAssetsInput(draft: Record<string, unknown>): Promise<{
   title: string;
   content_type: string;
-  sections: Array<{ slot: string; section_title: string; key_points: string[] }>;
+  sections: Array<{
+    slot: string;
+    section_title: string;
+    key_points: string[];
+  }>;
   channel_context: Record<string, unknown>;
   idea_context: IdeaContext | null;
   draft_excerpt?: string;
@@ -190,11 +215,16 @@ async function buildAssetsInput(
       h2: (s.h2 as string) ?? (s.heading as string) ?? "",
       key_points: Array.isArray(s.key_points) ? (s.key_points as string[]) : [],
     }));
-  } else if (coreJson.argument_chain && Array.isArray(coreJson.argument_chain)) {
-    outline = (coreJson.argument_chain as Array<Record<string, unknown>>).map((s) => ({
-      h2: (s.claim as string) ?? (s.section as string) ?? "",
-      key_points: Array.isArray(s.evidence) ? (s.evidence as string[]) : [],
-    }));
+  } else if (
+    coreJson.argument_chain &&
+    Array.isArray(coreJson.argument_chain)
+  ) {
+    outline = (coreJson.argument_chain as Array<Record<string, unknown>>).map(
+      (s) => ({
+        h2: (s.claim as string) ?? (s.section as string) ?? "",
+        key_points: Array.isArray(s.evidence) ? (s.evidence as string[]) : [],
+      }),
+    );
   }
 
   const sections = [
@@ -235,20 +265,25 @@ async function buildAssetsInput(
 
   // Extract draft_excerpt: intro paragraph + H2 headings from full_draft
   let draft_excerpt: string | undefined;
-  const fullDraft = (draftJson?.full_draft as string | undefined)
-    ?? ((draftJson?.blog as Record<string, unknown> | undefined)?.full_draft as string | undefined)
-    ?? '';
+  const fullDraft =
+    (draftJson?.full_draft as string | undefined) ??
+    ((draftJson?.blog as Record<string, unknown> | undefined)?.full_draft as
+      | string
+      | undefined) ??
+    "";
   if (fullDraft) {
-    const lines = fullDraft.split('\n');
+    const lines = fullDraft.split("\n");
     const excerptParts: string[] = [];
     // Grab first non-empty paragraph (intro)
-    const firstPara = lines.find(l => l.trim() && !l.startsWith('#'));
+    const firstPara = lines.find((l) => l.trim() && !l.startsWith("#"));
     if (firstPara) excerptParts.push(firstPara.trim());
     // Grab all H2 headings
-    const headings = lines.filter(l => l.startsWith('## ')).map(l => l.trim());
+    const headings = lines
+      .filter((l) => l.startsWith("## "))
+      .map((l) => l.trim());
     excerptParts.push(...headings);
     if (excerptParts.length > 0) {
-      draft_excerpt = excerptParts.join('\n');
+      draft_excerpt = excerptParts.join("\n");
     }
   }
 
@@ -280,7 +315,12 @@ export async function contentDraftsRoutes(
       // content_drafts.idea_id FK references idea_archives.id, so slugs need translating.
       let resolvedIdeaId: string | null = null;
       if (body.ideaId) {
-        const column = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.ideaId) ? "id" : "idea_id";
+        const column =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+            body.ideaId,
+          )
+            ? "id"
+            : "idea_id";
         const { data: match } = await sb
           .from("idea_archives")
           .select("id")
@@ -315,8 +355,8 @@ export async function contentDraftsRoutes(
         .single();
 
       if (error) {
-        if ((error as { code?: string }).code === '23503') {
-          throw new ApiError(400, 'Persona not found', 'INVALID_PERSONA_ID');
+        if ((error as { code?: string }).code === "23503") {
+          throw new ApiError(400, "Persona not found", "INVALID_PERSONA_ID");
         }
         throw error;
       }
@@ -361,7 +401,9 @@ export async function contentDraftsRoutes(
       try {
         const { id } = request.params as { id: string };
         const draft = await loadDraft(id);
-        const resolved_seo = resolveSeoDefaults(draft as unknown as Record<string, unknown>);
+        const resolved_seo = resolveSeoDefaults(
+          draft as unknown as Record<string, unknown>,
+        );
         return reply.send({ data: { ...draft, resolved_seo }, error: null });
       } catch (error) {
         return sendError(reply, error);
@@ -444,6 +486,16 @@ export async function contentDraftsRoutes(
         const override = providerOverrideSchema.parse(request.body ?? {});
         const draft = (await loadDraft(id)) as Record<string, unknown>;
         const orgId = await getOrgId(request.userId);
+
+        const creditSettings = await loadCreditSettings(createServiceClient());
+        const FORMAT_COSTS: Record<string, number> = {
+          blog: creditSettings.costBlog,
+          video: creditSettings.costVideo,
+          shorts: creditSettings.costShorts,
+          podcast: creditSettings.costPodcast,
+        };
+        const CANONICAL_CORE_COST = creditSettings.costCanonicalCore;
+
         const type =
           (draft.type as "blog" | "video" | "shorts" | "podcast") ?? "blog";
         // Local Ollama runs cost us nothing → no internal credit charge.
@@ -583,11 +635,14 @@ export async function contentDraftsRoutes(
         const draft = (await loadDraft(id)) as Record<string, unknown>;
         const orgId = await getOrgId(request.userId);
 
+        const creditSettings = await loadCreditSettings(sb);
+        const CANONICAL_CORE_COST = creditSettings.costCanonicalCore;
+
         // Manual provider short-circuits the LLM call: build the prompt
         // synchronously, emit the full payload to Axiom, persist the draft in
         // awaiting_manual state, and return early. The user pastes the output
         // produced externally via POST /:id/manual-output.
-        if (override.provider === 'manual') {
+        if (override.provider === "manual") {
           // Pull research approved cards if linked
           let approvedCards: unknown = null;
           if (draft.research_session_id) {
@@ -615,9 +670,7 @@ export async function contentDraftsRoutes(
           // Load channel data for builder
           const channelData = draft.channel_id
             ? await (async () => {
-                const { data } = await (
-                  createServiceClient() as any
-                )
+                const { data } = await (createServiceClient() as any)
                   .from("channels")
                   .select("name, niche, language, tone, presentation_style")
                   .eq("id", draft.channel_id as string)
@@ -638,14 +691,24 @@ export async function contentDraftsRoutes(
             idea,
             researchCards: approvedCards as unknown[] | undefined,
             personaContext: persona ? buildPersonaContext(persona) : null,
-            channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+            channel: channelData as
+              | {
+                  name?: string;
+                  niche?: string;
+                  language?: string;
+                  tone?: string;
+                }
+              | undefined,
           });
 
           // Update draft to awaiting_manual status
           const { data: manualDraft, error: manualInsertErr } = await (
             sb.from("content_drafts") as unknown as {
               update: (row: Record<string, unknown>) => {
-                eq: (col: string, val: string) => {
+                eq: (
+                  col: string,
+                  val: string,
+                ) => {
                   select: () => {
                     single: () => Promise<{ data: unknown; error: unknown }>;
                   };
@@ -653,12 +716,15 @@ export async function contentDraftsRoutes(
               };
             }
           )
-            .update({ status: 'awaiting_manual' })
+            .update({ status: "awaiting_manual" })
             .eq("id", id)
             .select()
             .single();
           if (manualInsertErr || !manualDraft) {
-            throw manualInsertErr ?? new ApiError(500, 'Failed to update draft', 'DB_ERROR');
+            throw (
+              manualInsertErr ??
+              new ApiError(500, "Failed to update draft", "DB_ERROR")
+            );
           }
 
           // Combine system + user message so the operator can copy ONE prompt
@@ -670,17 +736,17 @@ export async function contentDraftsRoutes(
           logAiUsage({
             userId: request.userId,
             orgId,
-            action: 'manual.awaiting',
-            provider: 'manual',
-            model: 'manual',
+            action: "manual.awaiting",
+            provider: "manual",
+            model: "manual",
             inputTokens: 0,
             outputTokens: 0,
             totalTokens: 0,
             durationMs: 0,
-            status: 'awaiting_manual',
+            status: "awaiting_manual",
             metadata: {
               draftId: id,
-              stage: 'draft.core',
+              stage: "draft.core",
               channelId: (draft.channel_id as string) ?? null,
               prompt: combinedPrompt,
               input: { type: draft.type, title: draft.title },
@@ -688,7 +754,7 @@ export async function contentDraftsRoutes(
           });
 
           return reply.status(202).send({
-            data: { draftId: id, status: 'awaiting_manual' },
+            data: { draftId: id, status: "awaiting_manual" },
             error: null,
           });
         }
@@ -722,9 +788,7 @@ export async function contentDraftsRoutes(
         // Load channel data for builder
         const channelData = draft.channel_id
           ? await (async () => {
-              const { data } = await (
-                createServiceClient() as any
-              )
+              const { data } = await (createServiceClient() as any)
                 .from("channels")
                 .select("name, niche, language, tone, presentation_style")
                 .eq("id", draft.channel_id as string)
@@ -745,7 +809,14 @@ export async function contentDraftsRoutes(
           idea,
           researchCards: approvedCards as unknown[] | undefined,
           personaContext: persona ? buildPersonaContext(persona) : null,
-          channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+          channel: channelData as
+            | {
+                name?: string;
+                niche?: string;
+                language?: string;
+                tone?: string;
+              }
+            | undefined,
         });
 
         const { result } = await generateWithFallback(
@@ -753,7 +824,7 @@ export async function contentDraftsRoutes(
           override.modelTier ?? (draft.model_tier as string) ?? "standard",
           {
             agentType: "production",
-            systemPrompt: systemPrompt ?? '',
+            systemPrompt: systemPrompt ?? "",
             userMessage,
           },
           {
@@ -765,7 +836,7 @@ export async function contentDraftsRoutes(
               projectId: (draft.project_id as string) ?? undefined,
               channelId: (draft.channel_id as string) ?? undefined,
               sessionId: id,
-              sessionType: 'production',
+              sessionType: "production",
             },
           },
         );
@@ -785,9 +856,16 @@ export async function contentDraftsRoutes(
           }
         )
           .update({
-            canonical_core_json: draft.idea_id && result && typeof result === 'object' && !Array.isArray(result)
-              ? { ...(result as Record<string, unknown>), idea_id: draft.idea_id }
-              : result,
+            canonical_core_json:
+              draft.idea_id &&
+              result &&
+              typeof result === "object" &&
+              !Array.isArray(result)
+                ? {
+                    ...(result as Record<string, unknown>),
+                    idea_id: draft.idea_id,
+                  }
+                : result,
             status: "draft",
           })
           .eq("id", id)
@@ -870,6 +948,14 @@ export async function contentDraftsRoutes(
         const draft = (await loadDraft(id)) as Record<string, unknown>;
         const orgId = await getOrgId(request.userId);
 
+        const creditSettings = await loadCreditSettings(sb);
+        const FORMAT_COSTS: Record<string, number> = {
+          blog: creditSettings.costBlog,
+          video: creditSettings.costVideo,
+          shorts: creditSettings.costShorts,
+          podcast: creditSettings.costPodcast,
+        };
+
         const type = (draft.type as string) ?? "blog";
         const cost = FORMAT_COSTS[type] ?? 200;
 
@@ -877,7 +963,7 @@ export async function contentDraftsRoutes(
         // synchronously, emit the full payload to Axiom, persist the draft in
         // awaiting_manual state, and return early. The user pastes the output
         // produced externally via POST /:id/manual-output.
-        if (override.provider === 'manual') {
+        if (override.provider === "manual") {
           let systemPrompt =
             (await loadAgentPrompt(type)) ??
             (await loadAgentPrompt("production")) ??
@@ -897,7 +983,10 @@ export async function contentDraftsRoutes(
             if (settings.writingStyle)
               settingsContext.push(`Writing style: ${settings.writingStyle}`);
             if (settings.tone) settingsContext.push(`Tone: ${settings.tone}`);
-            if (Array.isArray(settings.keywords) && settings.keywords.length > 0)
+            if (
+              Array.isArray(settings.keywords) &&
+              settings.keywords.length > 0
+            )
               settingsContext.push(
                 `Keywords to include: ${settings.keywords.join(", ")}`,
               );
@@ -909,7 +998,9 @@ export async function contentDraftsRoutes(
                 `WordPress categories: ${settings.categories.join(", ")}`,
               );
             if (Array.isArray(settings.tags) && settings.tags.length > 0)
-              settingsContext.push(`WordPress tags: ${settings.tags.join(", ")}`);
+              settingsContext.push(
+                `WordPress tags: ${settings.tags.join(", ")}`,
+              );
             if (settingsContext.length > 0) {
               systemPrompt = `${systemPrompt}\n\n## Production Settings\n${settingsContext.join("\n")}`;
             }
@@ -926,9 +1017,7 @@ export async function contentDraftsRoutes(
           // Load channel data for builder
           const channelData = draft.channel_id
             ? await (async () => {
-                const { data } = await (
-                  createServiceClient() as any
-                )
+                const { data } = await (createServiceClient() as any)
                   .from("channels")
                   .select("name, niche, language, tone, presentation_style")
                   .eq("id", draft.channel_id as string)
@@ -947,16 +1036,28 @@ export async function contentDraftsRoutes(
             title: draft.title as string,
             canonicalCore: draft.canonical_core_json,
             idea,
-            productionParams: (draft.production_params as Record<string, unknown> | null) ?? undefined,
+            productionParams:
+              (draft.production_params as Record<string, unknown> | null) ??
+              undefined,
             persona: persona ? buildPersonaVoice(persona) : null,
-            channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+            channel: channelData as
+              | {
+                  name?: string;
+                  niche?: string;
+                  language?: string;
+                  tone?: string;
+                }
+              | undefined,
           });
 
           // Update draft to awaiting_manual status
           const { data: manualDraft, error: manualInsertErr } = await (
             sb.from("content_drafts") as unknown as {
               update: (row: Record<string, unknown>) => {
-                eq: (col: string, val: string) => {
+                eq: (
+                  col: string,
+                  val: string,
+                ) => {
                   select: () => {
                     single: () => Promise<{ data: unknown; error: unknown }>;
                   };
@@ -964,12 +1065,15 @@ export async function contentDraftsRoutes(
               };
             }
           )
-            .update({ status: 'awaiting_manual' })
+            .update({ status: "awaiting_manual" })
             .eq("id", id)
             .select()
             .single();
           if (manualInsertErr || !manualDraft) {
-            throw manualInsertErr ?? new ApiError(500, 'Failed to update draft', 'DB_ERROR');
+            throw (
+              manualInsertErr ??
+              new ApiError(500, "Failed to update draft", "DB_ERROR")
+            );
           }
 
           // Combine system + user message so the operator can copy ONE prompt
@@ -981,14 +1085,14 @@ export async function contentDraftsRoutes(
           logAiUsage({
             userId: request.userId,
             orgId,
-            action: 'manual.awaiting',
-            provider: 'manual',
-            model: 'manual',
+            action: "manual.awaiting",
+            provider: "manual",
+            model: "manual",
             inputTokens: 0,
             outputTokens: 0,
             totalTokens: 0,
             durationMs: 0,
-            status: 'awaiting_manual',
+            status: "awaiting_manual",
             metadata: {
               draftId: id,
               stage: `draft.${type}`,
@@ -999,7 +1103,7 @@ export async function contentDraftsRoutes(
           });
 
           return reply.status(202).send({
-            data: { draftId: id, status: 'awaiting_manual' },
+            data: { draftId: id, status: "awaiting_manual" },
             error: null,
           });
         }
@@ -1057,9 +1161,7 @@ export async function contentDraftsRoutes(
         // Load channel data for builder
         const channelData = draft.channel_id
           ? await (async () => {
-              const { data } = await (
-                createServiceClient() as any
-              )
+              const { data } = await (createServiceClient() as any)
                 .from("channels")
                 .select("name, niche, language, tone, presentation_style")
                 .eq("id", draft.channel_id as string)
@@ -1078,9 +1180,18 @@ export async function contentDraftsRoutes(
           title: draft.title as string,
           canonicalCore: draft.canonical_core_json,
           idea,
-          productionParams: (draft.production_params as Record<string, unknown> | null) ?? undefined,
+          productionParams:
+            (draft.production_params as Record<string, unknown> | null) ??
+            undefined,
           persona: persona ? buildPersonaVoice(persona) : null,
-          channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+          channel: channelData as
+            | {
+                name?: string;
+                niche?: string;
+                language?: string;
+                tone?: string;
+              }
+            | undefined,
         });
 
         const { result } = await generateWithFallback(
@@ -1088,7 +1199,7 @@ export async function contentDraftsRoutes(
           override.modelTier ?? (draft.model_tier as string) ?? "standard",
           {
             agentType: "production",
-            systemPrompt: systemPrompt ?? '',
+            systemPrompt: systemPrompt ?? "",
             userMessage,
           },
           {
@@ -1100,7 +1211,7 @@ export async function contentDraftsRoutes(
               projectId: (draft.project_id as string) ?? undefined,
               channelId: (draft.channel_id as string) ?? undefined,
               sessionId: id,
-              sessionType: 'production',
+              sessionType: "production",
             },
           },
         );
@@ -1144,7 +1255,9 @@ export async function contentDraftsRoutes(
         const updatedRow = updated as Record<string, unknown> | null;
         const validation = validateProducedDraft(
           updatedRow?.draft_json as Parameters<typeof validateProducedDraft>[0],
-          updatedRow?.canonical_core_json as Parameters<typeof validateProducedDraft>[1],
+          updatedRow?.canonical_core_json as Parameters<
+            typeof validateProducedDraft
+          >[1],
           persona,
         );
 
@@ -1163,7 +1276,8 @@ export async function contentDraftsRoutes(
     { preHandler: [authenticate] },
     async (request, reply) => {
       try {
-        if (!request.userId) throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        if (!request.userId)
+          throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
         const { id } = request.params as { id: string };
         const sb = createServiceClient();
 
@@ -1215,25 +1329,35 @@ export async function contentDraftsRoutes(
     { preHandler: [authenticate] },
     async (request, reply) => {
       try {
-        if (!request.userId) throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        if (!request.userId)
+          throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
         const { id } = request.params as { id: string };
-        const body = z.object({
-          phase: z.enum(["core", "blog", "video", "shorts", "podcast"]),
-          output: z.unknown(),
-        }).parse(request.body);
+        const body = z
+          .object({
+            phase: z.enum(["core", "blog", "video", "shorts", "podcast"]),
+            output: z.unknown(),
+          })
+          .parse(request.body);
         const sb = createServiceClient();
 
         const { data: draft, error: fetchErr } = await sb
           .from("content_drafts")
-          .select("id, status, channel_id, project_id, org_id, user_id, type, title")
+          .select(
+            "id, status, channel_id, project_id, org_id, user_id, type, title",
+          )
           .eq("id", id)
           .maybeSingle();
         if (fetchErr) throw fetchErr;
         if (!draft) throw new ApiError(404, "Draft not found", "NOT_FOUND");
         const row = draft as Record<string, unknown>;
-        if (row.user_id !== request.userId) throw new ApiError(403, "Forbidden", "FORBIDDEN");
+        if (row.user_id !== request.userId)
+          throw new ApiError(403, "Forbidden", "FORBIDDEN");
         if (row.status !== "awaiting_manual") {
-          throw new ApiError(409, `Draft is not awaiting manual output (status=${row.status})`, "CONFLICT");
+          throw new ApiError(
+            409,
+            `Draft is not awaiting manual output (status=${row.status})`,
+            "CONFLICT",
+          );
         }
 
         if (!body.output) {
@@ -1299,8 +1423,12 @@ export async function contentDraftsRoutes(
           const updatedRow = (updated ?? row) as Record<string, unknown>;
           const persona = await loadPersonaForDraft(updatedRow, sb);
           validation = validateProducedDraft(
-            updatedRow.draft_json as Parameters<typeof validateProducedDraft>[0],
-            updatedRow.canonical_core_json as Parameters<typeof validateProducedDraft>[1],
+            updatedRow.draft_json as Parameters<
+              typeof validateProducedDraft
+            >[0],
+            updatedRow.canonical_core_json as Parameters<
+              typeof validateProducedDraft
+            >[1],
             persona,
           );
         }
@@ -1333,6 +1461,9 @@ export async function contentDraftsRoutes(
         const draft = (await loadDraft(id)) as Record<string, unknown>;
         const orgId = await getOrgId(request.userId);
 
+        const creditSettings = await loadCreditSettings(sb);
+        const REVIEW_COST = creditSettings.costReview;
+
         if (draft.status !== "in_review") {
           throw new ApiError(
             400,
@@ -1345,7 +1476,7 @@ export async function contentDraftsRoutes(
         // synchronously, emit the full payload to Axiom, persist the draft in
         // awaiting_manual state, and return early. The user pastes the output
         // produced externally via POST /:id/manual-review-output.
-        if (override.provider === 'manual') {
+        if (override.provider === "manual") {
           let systemPrompt = (await loadAgentPrompt("review")) ?? undefined;
 
           // Inject channel context into system prompt
@@ -1359,9 +1490,7 @@ export async function contentDraftsRoutes(
           // Load channel data for builder
           const channelData = draft.channel_id
             ? await (async () => {
-                const { data } = await (
-                  createServiceClient() as any
-                )
+                const { data } = await (createServiceClient() as any)
                   .from("channels")
                   .select("name, niche, language, tone, presentation_style")
                   .eq("id", draft.channel_id as string)
@@ -1393,14 +1522,24 @@ export async function contentDraftsRoutes(
             idea: ideaData,
             research: researchData,
             contentTypesRequested: [draft.type as string],
-            channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+            channel: channelData as
+              | {
+                  name?: string;
+                  niche?: string;
+                  language?: string;
+                  tone?: string;
+                }
+              | undefined,
           });
 
           // Update draft to awaiting_manual status
           const { data: manualDraft, error: manualInsertErr } = await (
             sb.from("content_drafts") as unknown as {
               update: (row: Record<string, unknown>) => {
-                eq: (col: string, val: string) => {
+                eq: (
+                  col: string,
+                  val: string,
+                ) => {
                   select: () => {
                     single: () => Promise<{ data: unknown; error: unknown }>;
                   };
@@ -1408,12 +1547,15 @@ export async function contentDraftsRoutes(
               };
             }
           )
-            .update({ status: 'awaiting_manual' })
+            .update({ status: "awaiting_manual" })
             .eq("id", id)
             .select()
             .single();
           if (manualInsertErr || !manualDraft) {
-            throw manualInsertErr ?? new ApiError(500, 'Failed to update draft', 'DB_ERROR');
+            throw (
+              manualInsertErr ??
+              new ApiError(500, "Failed to update draft", "DB_ERROR")
+            );
           }
 
           // Combine system + user message so the operator can copy ONE prompt
@@ -1425,17 +1567,17 @@ export async function contentDraftsRoutes(
           logAiUsage({
             userId: request.userId,
             orgId,
-            action: 'manual.awaiting',
-            provider: 'manual',
-            model: 'manual',
+            action: "manual.awaiting",
+            provider: "manual",
+            model: "manual",
             inputTokens: 0,
             outputTokens: 0,
             totalTokens: 0,
             durationMs: 0,
-            status: 'awaiting_manual',
+            status: "awaiting_manual",
             metadata: {
               draftId: id,
-              stage: 'review',
+              stage: "review",
               channelId: (draft.channel_id as string) ?? null,
               prompt: combinedPrompt,
               input: { type: draft.type, title: draft.title },
@@ -1443,7 +1585,7 @@ export async function contentDraftsRoutes(
           });
 
           return reply.status(202).send({
-            data: { draftId: id, status: 'awaiting_manual' },
+            data: { draftId: id, status: "awaiting_manual" },
             error: null,
           });
         }
@@ -1479,9 +1621,7 @@ export async function contentDraftsRoutes(
         // Load channel data for builder
         const channelData = draft.channel_id
           ? await (async () => {
-              const { data } = await (
-                createServiceClient() as any
-              )
+              const { data } = await (createServiceClient() as any)
                 .from("channels")
                 .select("name, niche, language, tone, presentation_style")
                 .eq("id", draft.channel_id as string)
@@ -1500,7 +1640,14 @@ export async function contentDraftsRoutes(
             idea: ideaData,
             research: researchData,
             contentTypesRequested: [draft.type as string],
-            channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+            channel: channelData as
+              | {
+                  name?: string;
+                  niche?: string;
+                  language?: string;
+                  tone?: string;
+                }
+              | undefined,
           });
 
           const response = await generateWithFallback(
@@ -1508,7 +1655,7 @@ export async function contentDraftsRoutes(
             (draft.model_tier as string) ?? "standard",
             {
               agentType: "review",
-              systemPrompt: systemPrompt ?? '',
+              systemPrompt: systemPrompt ?? "",
               userMessage,
             },
             {
@@ -1518,7 +1665,7 @@ export async function contentDraftsRoutes(
                 projectId: (draft.project_id as string) ?? undefined,
                 channelId: (draft.channel_id as string) ?? undefined,
                 sessionId: id,
-                sessionType: 'review',
+                sessionType: "review",
               },
             },
           );
@@ -1548,9 +1695,16 @@ export async function contentDraftsRoutes(
           | Record<string, unknown>
           | undefined;
         const tier = deriveTier(formatReview);
-        const legacyScoreMap: Record<string, number> = { excellent: 95, good: 82, needs_revision: 60, reject: 20, not_requested: 0 };
+        const legacyScoreMap: Record<string, number> = {
+          excellent: 95,
+          good: 82,
+          needs_revision: 60,
+          reject: 20,
+          not_requested: 0,
+        };
         const rawScore = (formatReview?.score as number | undefined) ?? null;
-        const reviewScore: number | null = rawScore !== null ? rawScore : (legacyScoreMap[tier] ?? null);
+        const reviewScore: number | null =
+          rawScore !== null ? rawScore : (legacyScoreMap[tier] ?? null);
         const iterationCount = ((draft.iteration_count as number) ?? 0) + 1;
 
         // Determine status based on agent verdict
@@ -1649,20 +1803,36 @@ export async function contentDraftsRoutes(
     { preHandler: [authenticate] },
     async (request, reply) => {
       try {
-        if (!request.userId) throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        if (!request.userId)
+          throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
         const { id } = request.params as { id: string };
-        const body = z.record(z.unknown())
+        const body = z
+          .record(z.unknown())
           .refine(
             (data) => {
               // At least one verdict field must be present
-              const hasOverallVerdict = typeof data.overall_verdict === 'string';
-              const hasBlogReview = data.blog_review && typeof data.blog_review === 'object';
-              const hasVideoReview = data.video_review && typeof data.video_review === 'object';
-              const hasShortsReview = data.shorts_review && typeof data.shorts_review === 'object';
-              const hasPodcastReview = data.podcast_review && typeof data.podcast_review === 'object';
-              return hasOverallVerdict || hasBlogReview || hasVideoReview || hasShortsReview || hasPodcastReview;
+              const hasOverallVerdict =
+                typeof data.overall_verdict === "string";
+              const hasBlogReview =
+                data.blog_review && typeof data.blog_review === "object";
+              const hasVideoReview =
+                data.video_review && typeof data.video_review === "object";
+              const hasShortsReview =
+                data.shorts_review && typeof data.shorts_review === "object";
+              const hasPodcastReview =
+                data.podcast_review && typeof data.podcast_review === "object";
+              return (
+                hasOverallVerdict ||
+                hasBlogReview ||
+                hasVideoReview ||
+                hasShortsReview ||
+                hasPodcastReview
+              );
             },
-            { message: 'Review output must contain verdict and/or format-specific review data' }
+            {
+              message:
+                "Review output must contain verdict and/or format-specific review data",
+            },
           )
           .parse(request.body);
 
@@ -1670,42 +1840,66 @@ export async function contentDraftsRoutes(
 
         const { data: draft, error: fetchErr } = await sb
           .from("content_drafts")
-          .select("id, status, channel_id, project_id, org_id, user_id, type, title, iteration_count")
+          .select(
+            "id, status, channel_id, project_id, org_id, user_id, type, title, iteration_count",
+          )
           .eq("id", id)
           .maybeSingle();
         if (fetchErr) throw fetchErr;
         if (!draft) throw new ApiError(404, "Draft not found", "NOT_FOUND");
         const row = draft as Record<string, unknown>;
-        if (row.user_id !== request.userId) throw new ApiError(403, "Forbidden", "FORBIDDEN");
+        if (row.user_id !== request.userId)
+          throw new ApiError(403, "Forbidden", "FORBIDDEN");
         if (row.status !== "awaiting_manual") {
-          throw new ApiError(409, `Draft is not awaiting manual review (status=${row.status})`, "CONFLICT");
+          throw new ApiError(
+            409,
+            `Draft is not awaiting manual review (status=${row.status})`,
+            "CONFLICT",
+          );
         }
 
         // Extract verdict and score from the review output, matching AI review logic
         const draftType = row.type as string;
-        const formatReview = body[`${draftType}_review` as keyof typeof body] as
-          | Record<string, unknown>
-          | undefined;
+        const formatReview = body[
+          `${draftType}_review` as keyof typeof body
+        ] as Record<string, unknown> | undefined;
 
         const tier2 = deriveTier(formatReview);
-        const legacyScoreMap2: Record<string, number> = { excellent: 95, good: 82, needs_revision: 60, reject: 20, not_requested: 0 };
-        const rawScore2 = (formatReview && typeof formatReview.score === 'number') ? formatReview.score : null;
-        let reviewScore: number | null = rawScore2 !== null ? rawScore2 : (legacyScoreMap2[tier2] ?? null);
+        const legacyScoreMap2: Record<string, number> = {
+          excellent: 95,
+          good: 82,
+          needs_revision: 60,
+          reject: 20,
+          not_requested: 0,
+        };
+        const rawScore2 =
+          formatReview && typeof formatReview.score === "number"
+            ? formatReview.score
+            : null;
+        let reviewScore: number | null =
+          rawScore2 !== null ? rawScore2 : (legacyScoreMap2[tier2] ?? null);
         let reviewVerdict = "revision_required";
 
-        const overallVerdict = body.overall_verdict ? String(body.overall_verdict) : null;
-        if (formatReview && typeof formatReview.verdict === 'string') {
-          reviewVerdict = String(formatReview.verdict).toLowerCase().replace(/\s+/g, '_');
+        const overallVerdict = body.overall_verdict
+          ? String(body.overall_verdict)
+          : null;
+        if (formatReview && typeof formatReview.verdict === "string") {
+          reviewVerdict = String(formatReview.verdict)
+            .toLowerCase()
+            .replace(/\s+/g, "_");
         }
         if (overallVerdict) {
-          reviewVerdict = overallVerdict.toLowerCase().replace(/\s+/g, '_');
+          reviewVerdict = overallVerdict.toLowerCase().replace(/\s+/g, "_");
         }
 
         // Determine status based on verdict
         let newStatus: string;
         let approvedAt: string | null = null;
 
-        if (reviewVerdict === "approved" || (reviewScore !== null && reviewScore >= 90)) {
+        if (
+          reviewVerdict === "approved" ||
+          (reviewScore !== null && reviewScore >= 90)
+        ) {
           newStatus = "approved";
           reviewVerdict = "approved";
           approvedAt = new Date().toISOString();
@@ -1776,7 +1970,7 @@ export async function contentDraftsRoutes(
           status: "success",
           metadata: {
             draftId: id,
-            stage: 'review',
+            stage: "review",
             output: body,
           },
         });
@@ -1895,7 +2089,7 @@ export async function contentDraftsRoutes(
 
         const userMessage = buildAssetsMessage(input);
 
-        if (override.provider === 'manual') {
+        if (override.provider === "manual") {
           const combinedPrompt = systemPrompt
             ? `${systemPrompt}\n\n${userMessage}`
             : userMessage;
@@ -1903,17 +2097,17 @@ export async function contentDraftsRoutes(
           logAiUsage({
             userId: request.userId,
             orgId,
-            action: 'manual.awaiting',
-            provider: 'manual',
-            model: 'manual',
+            action: "manual.awaiting",
+            provider: "manual",
+            model: "manual",
             inputTokens: 0,
             outputTokens: 0,
             totalTokens: 0,
             durationMs: 0,
-            status: 'awaiting_manual',
+            status: "awaiting_manual",
             metadata: {
               draftId: id,
-              stage: 'assets',
+              stage: "assets",
               channelId: (draft.channel_id as string) ?? null,
               prompt: combinedPrompt,
               input,
@@ -1921,7 +2115,11 @@ export async function contentDraftsRoutes(
           });
 
           return reply.status(202).send({
-            data: { draftId: id, status: 'awaiting_manual', prompt: combinedPrompt },
+            data: {
+              draftId: id,
+              status: "awaiting_manual",
+              prompt: combinedPrompt,
+            },
             error: null,
           });
         }
@@ -2068,6 +2266,14 @@ export async function contentDraftsRoutes(
           );
         }
 
+        const creditSettings = await loadCreditSettings(sb);
+        const FORMAT_COSTS: Record<string, number> = {
+          blog: creditSettings.costBlog,
+          video: creditSettings.costVideo,
+          shorts: creditSettings.costShorts,
+          podcast: creditSettings.costPodcast,
+        };
+
         const type = (draft.type as string) ?? "blog";
         const cost = FORMAT_COSTS[type] ?? 200;
         await checkCredits(orgId, request.userId, cost);
@@ -2106,9 +2312,7 @@ export async function contentDraftsRoutes(
         // Load channel data for builder
         const channelData = draft.channel_id
           ? await (async () => {
-              const { data } = await (
-                createServiceClient() as any
-              )
+              const { data } = await (createServiceClient() as any)
                 .from("channels")
                 .select("name, niche, language, tone, presentation_style")
                 .eq("id", draft.channel_id as string)
@@ -2123,13 +2327,22 @@ export async function contentDraftsRoutes(
           canonicalCore: draft.canonical_core_json,
           previousDraft: draft.draft_json,
           reviewFeedback: {
-            overall_verdict: reviewFeedback.overall_verdict as string | undefined,
+            overall_verdict: reviewFeedback.overall_verdict as
+              | string
+              | undefined,
             score: formatReview?.score as number | null | undefined,
             critical_issues: (formatReview?.critical_issues ?? []) as string[],
             minor_issues: (formatReview?.minor_issues ?? []) as string[],
             strengths: (formatReview?.strengths ?? []) as string[],
           },
-          channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+          channel: channelData as
+            | {
+                name?: string;
+                niche?: string;
+                language?: string;
+                tone?: string;
+              }
+            | undefined,
         });
 
         const { result } = await generateWithFallback(
@@ -2137,7 +2350,7 @@ export async function contentDraftsRoutes(
           (draft.model_tier as string) ?? "standard",
           {
             agentType: "production",
-            systemPrompt: systemPrompt ?? '',
+            systemPrompt: systemPrompt ?? "",
             userMessage,
           },
           {
@@ -2147,7 +2360,7 @@ export async function contentDraftsRoutes(
               projectId: (draft.project_id as string) ?? undefined,
               channelId: (draft.channel_id as string) ?? undefined,
               sessionId: id,
-              sessionType: 'production',
+              sessionType: "production",
             },
           },
         );
