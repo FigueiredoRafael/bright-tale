@@ -59,10 +59,10 @@ export function WpIntegrationSection({ personaId, currentWpAuthorId, channelId }
     return (
         <div className="space-y-3">
             <div className="flex gap-2">
-                <Button size="sm" variant={mode === "link" ? "default" : "outline"} onClick={() => setMode("link")}>
+                <Button type="button" size="sm" variant={mode === "link" ? "default" : "outline"} onClick={() => setMode("link")}>
                     <Link2 className="h-3 w-3 mr-1" /> Link existing
                 </Button>
-                <Button size="sm" variant={mode === "create" ? "default" : "outline"} onClick={() => setMode("create")}>
+                <Button type="button" size="sm" variant={mode === "create" ? "default" : "outline"} onClick={() => setMode("create")}>
                     <UserPlus className="h-3 w-3 mr-1" /> Create new
                 </Button>
             </div>
@@ -78,7 +78,7 @@ export function WpIntegrationSection({ personaId, currentWpAuthorId, channelId }
                 <p className="text-xs text-muted-foreground">A new WordPress author will be created using this persona's name and slug.</p>
             )}
 
-            <Button size="sm" onClick={handleSubmit} disabled={loading || !channelId || (mode === "link" && !wpUsername)}>
+            <Button type="button" size="sm" onClick={handleSubmit} disabled={loading || !channelId || (mode === "link" && !wpUsername)}>
                 {loading && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
                 {mode === "link" ? "Link Author" : "Create WP Author"}
             </Button>

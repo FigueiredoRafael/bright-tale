@@ -59,10 +59,10 @@ export function AvatarSection({ personaId, currentUrl, onAccept }: AvatarSection
                     <AvatarFallback className="rounded-xl text-2xl">?</AvatarFallback>
                 </Avatar>
                 <div className="flex gap-2">
-                    <Button size="sm" variant={mode === "upload" ? "default" : "outline"} onClick={() => setMode("upload")}>
+                    <Button type="button" size="sm" variant={mode === "upload" ? "default" : "outline"} onClick={() => setMode("upload")}>
                         <Upload className="h-3 w-3 mr-1" /> Upload
                     </Button>
-                    <Button size="sm" variant={mode === "ai" ? "default" : "outline"} onClick={() => setMode("ai")}>
+                    <Button type="button" size="sm" variant={mode === "ai" ? "default" : "outline"} onClick={() => setMode("ai")}>
                         <Sparkles className="h-3 w-3 mr-1" /> AI Generate
                     </Button>
                 </div>
@@ -92,7 +92,7 @@ export function AvatarSection({ personaId, currentUrl, onAccept }: AvatarSection
                             <Input value={noFaceElement} onChange={e => setNoFaceElement(e.target.value)} placeholder="A hawk, chess piece..." className="h-8" />
                         </div>
                     </div>
-                    <Button onClick={handleGenerate} disabled={generating || !personaId} className="w-full" size="sm">
+                    <Button type="button" onClick={handleGenerate} disabled={generating || !personaId} className="w-full" size="sm">
                         {generating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
                         Generate Avatar
                     </Button>
