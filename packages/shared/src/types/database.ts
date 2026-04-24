@@ -1893,6 +1893,113 @@ export type Database = {
         }
         Relationships: []
       }
+      managers: {
+        Row: {
+          created_at: string
+          deactivated_at: string | null
+          deactivated_by: string | null
+          deactivation_reason: string | null
+          department: string | null
+          display_name: string | null
+          id: string
+          invited_at: string
+          invited_by: string | null
+          is_active: boolean
+          last_login_at: string | null
+          notes: string | null
+          role: Database["public"]["Enums"]["manager_role"]
+          title: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          deactivated_at?: string | null
+          deactivated_by?: string | null
+          deactivation_reason?: string | null
+          department?: string | null
+          display_name?: string | null
+          id?: string
+          invited_at?: string
+          invited_by?: string | null
+          is_active?: boolean
+          last_login_at?: string | null
+          notes?: string | null
+          role?: Database["public"]["Enums"]["manager_role"]
+          title?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          deactivated_at?: string | null
+          deactivated_by?: string | null
+          deactivation_reason?: string | null
+          department?: string | null
+          display_name?: string | null
+          id?: string
+          invited_at?: string
+          invited_by?: string | null
+          is_active?: boolean
+          last_login_at?: string | null
+          notes?: string | null
+          role?: Database["public"]["Enums"]["manager_role"]
+          title?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      managers_audit_log: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          event: Database["public"]["Enums"]["managers_audit_event"]
+          id: number
+          ip_hash: string | null
+          manager_id: string | null
+          metadata: Json
+          new_role: Database["public"]["Enums"]["manager_role"] | null
+          old_role: Database["public"]["Enums"]["manager_role"] | null
+          target_user_id: string
+          ua_hash: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          event: Database["public"]["Enums"]["managers_audit_event"]
+          id?: number
+          ip_hash?: string | null
+          manager_id?: string | null
+          metadata?: Json
+          new_role?: Database["public"]["Enums"]["manager_role"] | null
+          old_role?: Database["public"]["Enums"]["manager_role"] | null
+          target_user_id: string
+          ua_hash?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          event?: Database["public"]["Enums"]["managers_audit_event"]
+          id?: number
+          ip_hash?: string | null
+          manager_id?: string | null
+          metadata?: Json
+          new_role?: Database["public"]["Enums"]["manager_role"] | null
+          old_role?: Database["public"]["Enums"]["manager_role"] | null
+          target_user_id?: string
+          ua_hash?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "managers_audit_log_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "managers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       org_invites: {
         Row: {
           accepted_at: string | null
@@ -3250,7 +3357,14 @@ export type Database = {
       users_page_sparklines: { Args: never; Returns: Json }
     }
     Enums: {
-      [_ in never]: never
+      manager_role: "owner" | "admin" | "support" | "billing" | "readonly"
+      managers_audit_event:
+        | "invited"
+        | "role_changed"
+        | "metadata_changed"
+        | "deactivated"
+        | "reactivated"
+        | "removed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -3377,6 +3491,16 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      manager_role: ["owner", "admin", "support", "billing", "readonly"],
+      managers_audit_event: [
+        "invited",
+        "role_changed",
+        "metadata_changed",
+        "deactivated",
+        "reactivated",
+        "removed",
+      ],
+    },
   },
 } as const
