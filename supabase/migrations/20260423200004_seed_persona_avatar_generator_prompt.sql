@@ -18,8 +18,8 @@ Rules:
 - If no face is requested, lean into symbolic/abstract representation of the domain.
 - Always produce a single, detailed, comma-separated prompt string ready for direct submission to an image generation API.
 - Do not include any explanation or preamble. Output only the prompt string.$bt$,
-  $bt${\"personaName\": \"string\", \"primaryDomain\": \"string\", \"domainLens\": \"string\", \"suggestions\": \"object\"}$bt$,
-  $bt${\"prompt\": \"string\"}$bt$,
+  $bt${"personaName": "string", "primaryDomain": "string", "domainLens": "string", "suggestions": "object"}$bt$,
+  $bt${"prompt": "string"}$bt$,
   now(),
   now()
 )

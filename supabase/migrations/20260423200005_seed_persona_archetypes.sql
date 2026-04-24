@@ -43,7 +43,7 @@ VALUES
     'Users',
     jsonb_build_object(
       'writingVoiceJson', jsonb_build_object(
-        'writingStyle', 'Conversational, warm, uses \"we\" and \"us\" often.',
+        'writingStyle', 'Conversational, warm, uses "we" and "us" often.',
         'signaturePhrases', jsonb_build_array('Here''s what worked for me', 'You''re not alone in this'),
         'characteristicOpinions', jsonb_build_array()
       ),
