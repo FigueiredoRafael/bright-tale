@@ -652,6 +652,10 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         sendEvent('preparing', 'Loading WordPress configuration...');
+        if (!draft.channel_id && draft.project_id) {
+          const { data: proj } = await sb.from('projects').select('channel_id').eq('id', draft.project_id as string).maybeSingle();
+          if (proj?.channel_id) draft.channel_id = proj.channel_id;
+        }
         if (!draft.channel_id) {
           throw new ApiError(400, 'Draft has no channel', 'VALIDATION_ERROR');
         }
@@ -1208,7 +1212,11 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         throw new ApiError(409, 'Draft is already being published');
       }
 
-      // Get WordPress credentials from draft's channel
+      // Get WordPress credentials from draft's channel (fall back to project's channel)
+      if (!draft.channel_id && draft.project_id) {
+        const { data: proj } = await sb.from('projects').select('channel_id').eq('id', draft.project_id as string).maybeSingle();
+        if (proj?.channel_id) draft.channel_id = proj.channel_id;
+      }
       if (!draft.channel_id) {
         throw new ApiError(400, 'Draft has no channel', 'VALIDATION_ERROR');
       }
