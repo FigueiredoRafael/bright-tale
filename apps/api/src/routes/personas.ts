@@ -230,6 +230,24 @@ Return ONLY valid JSON, no explanation.`
     if (!personaRow) throw new ApiError(404, 'Persona not found', 'PERSONA_NOT_FOUND')
     const persona = mapPersonaFromDb(personaRow as DbPersona)
 
+    // Verify channel belongs to requester's org
+    const { data: orgMembership } = await sb
+      .from('org_memberships')
+      .select('org_id')
+      .eq('user_id', req.userId!)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    if (!orgMembership) throw new ApiError(403, 'No organization found', 'UNAUTHORIZED')
+
+    const { data: channelCheck } = await sb
+      .from('channels')
+      .select('id')
+      .eq('id', body.channelId)
+      .eq('org_id', orgMembership.org_id)
+      .maybeSingle()
+    if (!channelCheck) throw new ApiError(404, 'Channel not found', 'CHANNEL_NOT_FOUND')
+
     const { decrypt } = await import('../lib/crypto.js')
     const { data: wpConfig } = await sb
       .from('wordpress_configs')
