@@ -5,9 +5,12 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Loader2, Sparkles } from "lucide-react"
 import { PersonaForm, type PersonaFormValues } from "@/components/personas/PersonaForm"
+import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker"
 
 export default function NewPersonaAiPage() {
     const [description, setDescription] = useState("")
+    const [provider, setProvider] = useState<ProviderId>("gemini")
+    const [model, setModel] = useState<string>(MODELS_BY_PROVIDER.gemini[0].id)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [extracted, setExtracted] = useState<Partial<PersonaFormValues> | null>(null)
@@ -19,7 +22,7 @@ export default function NewPersonaAiPage() {
             const res = await fetch("/api/personas/extract", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ description }),
+                body: JSON.stringify({ description, provider, model }),
             })
             const { data, error: apiError } = await res.json()
             if (apiError) {
@@ -57,6 +60,15 @@ export default function NewPersonaAiPage() {
                 onChange={e => setDescription(e.target.value)}
                 placeholder="A no-nonsense fitness coach who's been competing for 15 years, very direct, hates pseudoscience, speaks in short punchy sentences..."
                 className="min-h-[160px]"
+            />
+            <ModelPicker
+                provider={provider}
+                model={model}
+                onProviderChange={p => {
+                    setProvider(p)
+                    setModel(MODELS_BY_PROVIDER[p][0].id)
+                }}
+                onModelChange={setModel}
             />
             {error && <p className="text-xs text-destructive">{error}</p>}
             <Button onClick={handleExtract} disabled={loading || description.length < 10} className="w-full">

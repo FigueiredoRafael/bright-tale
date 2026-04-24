@@ -49,7 +49,13 @@ export async function personasRoutes(app: FastifyInstance) {
 
   // AI-assisted mode: free text → structured persona fields
   app.post('/extract', async (req, reply) => {
-    const body = z.object({ description: z.string().min(10) }).parse(req.body)
+    const body = z
+      .object({
+        description: z.string().min(10),
+        provider: z.enum(['gemini', 'openai', 'anthropic', 'ollama']).optional(),
+        model: z.string().optional(),
+      })
+      .parse(req.body)
     const sb = createServiceClient()
 
     const { data: promptRow } = await sb
@@ -96,6 +102,9 @@ Return ONLY valid JSON, no explanation.`
       'standard',
       { agentType: 'brainstorm', systemPrompt, userMessage: body.description },
       {
+        provider: body.provider,
+        model: body.model,
+        allowFallback: true,
         logContext: {
           userId: req.userId ?? '',
           orgId: undefined,
