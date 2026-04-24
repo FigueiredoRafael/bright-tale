@@ -7,7 +7,6 @@ import type { FastifyInstance } from 'fastify';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { z } from 'zod';
 import yaml from 'js-yaml';
 import { authenticateWithUser } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
@@ -24,18 +23,36 @@ import {
 } from '@brighttale/shared/schemas/wordpress';
 import { publishDraftSchema } from '@brighttale/shared/schemas/pipeline';
 import { ingest, flushAxiom } from '../lib/axiom.js';
+import { loadPersonaForDraft } from '../lib/personas.js';
 
-const createConfigSchema = z.object({
-  site_url: z.string().url('Invalid WordPress site URL'),
-  username: z.string().min(1, 'Username is required'),
-  password: z.string().min(1, 'Password is required'),
-});
+export interface WpPostDataInput {
+  title: string;
+  slug?: string;
+  content: string;
+  excerpt: string;
+  status: string;
+  date?: string;
+  categories?: number[];
+  tags?: number[];
+  featuredMedia?: number;
+  authorId?: number | null;
+}
 
-const updateConfigSchema = z.object({
-  site_url: z.string().url('Invalid WordPress site URL').optional(),
-  username: z.string().min(1, 'Username is required').optional(),
-  password: z.string().min(1, 'Password is required').optional(),
-});
+export function buildWpPostData(input: WpPostDataInput): Record<string, unknown> {
+  const postData: Record<string, unknown> = {
+    title: input.title,
+    content: input.content,
+    excerpt: input.excerpt,
+    status: input.status,
+  };
+  if (input.slug) postData.slug = input.slug;
+  if (input.date) postData.date = input.date;
+  if (input.categories?.length) postData.categories = input.categories;
+  if (input.tags?.length) postData.tags = input.tags;
+  if (input.featuredMedia) postData.featured_media = input.featuredMedia;
+  if (input.authorId != null) postData.author = input.authorId;
+  return postData;
+}
 
 // Helper: Upload image to WordPress Media Library
 async function uploadImageToWordPress(
@@ -307,293 +324,8 @@ async function loadDraftForPublish(sb: ReturnType<typeof createServiceClient>, d
   return draft;
 }
 
-// Helper: Resolve WordPress config (fetch and decrypt)
-async function resolveWpConfig(sb: ReturnType<typeof createServiceClient>, configId?: string) {
-  if (!configId) return null;
-  const { data: config, error } = await sb
-    .from('wordpress_configs')
-    .select('*')
-    .eq('id', configId)
-    .maybeSingle();
-  if (error) throw error;
-  if (!config) return null;
-  return {
-    site_url: config.site_url as string,
-    username: config.username as string,
-    password: decrypt(config.password as string),
-  };
-}
 
 export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
-  /**
-   * POST /config — Create new WordPress config (password encrypted)
-   */
-  fastify.post('/config', { preHandler: [authenticateWithUser] }, async (request, reply) => {
-    try {
-      const sb = createServiceClient();
-      const body = createConfigSchema.parse(request.body);
-
-      // Check if encryption is available
-      if (!process.env.ENCRYPTION_SECRET) {
-        return reply.status(500).send({
-          data: null,
-          error: {
-            message:
-              'ENCRYPTION_SECRET environment variable is not set. Please configure it in your .env file.',
-            code: 'CONFIGURATION_ERROR',
-          },
-        });
-      }
-
-      // Encrypt password before storing
-      const encryptedPassword = encrypt(body.password);
-
-      const { data: config, error } = await sb
-        .from('wordpress_configs')
-        .insert({
-          site_url: body.site_url,
-          username: body.username,
-          password: encryptedPassword,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      request.log.info(`WordPress config created: ${config.id}`);
-
-      return reply.status(201).send({
-        data: {
-          id: config.id,
-          site_url: config.site_url,
-          username: config.username,
-          created_at: config.created_at,
-        },
-        error: null,
-      });
-    } catch (error) {
-      return sendError(reply, error);
-    }
-  });
-
-  /**
-   * GET /config — List all configs (passwords masked)
-   */
-  fastify.get('/config', { preHandler: [authenticateWithUser] }, async (request, reply) => {
-    try {
-      const sb = createServiceClient();
-      const { data: configs, error } = await sb
-        .from('wordpress_configs')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      // Mask passwords in response
-      const maskedConfigs = (configs ?? []).map((c: any) => ({
-        id: c.id,
-        site_url: c.site_url,
-        username: c.username,
-        created_at: c.created_at,
-        updated_at: c.updated_at,
-      }));
-
-      return reply.send({ data: maskedConfigs, error: null });
-    } catch (error) {
-      return sendError(reply, error);
-    }
-  });
-
-  /**
-   * GET /config/:id — Get config (password masked)
-   */
-  fastify.get('/config/:id', { preHandler: [authenticateWithUser] }, async (request, reply) => {
-    try {
-      const sb = createServiceClient();
-      const { id } = request.params as { id: string };
-
-      const { data: config, error } = await sb
-        .from('wordpress_configs')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      if (!config) {
-        throw new ApiError(404, 'WordPress config not found', 'NOT_FOUND');
-      }
-
-      return reply.send({
-        data: {
-          id: config.id,
-          site_url: config.site_url,
-          username: config.username,
-          created_at: config.created_at,
-          updated_at: config.updated_at,
-        },
-        error: null,
-      });
-    } catch (error) {
-      return sendError(reply, error);
-    }
-  });
-
-  /**
-   * PUT /config/:id — Update config (password re-encrypted if changed)
-   */
-  fastify.put('/config/:id', { preHandler: [authenticateWithUser] }, async (request, reply) => {
-    try {
-      const sb = createServiceClient();
-      const { id } = request.params as { id: string };
-      const body = updateConfigSchema.parse(request.body);
-
-      const { data: existing, error: findErr } = await sb
-        .from('wordpress_configs')
-        .select('id')
-        .eq('id', id)
-        .maybeSingle();
-
-      if (findErr) throw findErr;
-      if (!existing) {
-        throw new ApiError(404, 'WordPress config not found', 'NOT_FOUND');
-      }
-
-      // Encrypt new password if provided
-      const updateData: Record<string, string> = {};
-      if (body.site_url) updateData.site_url = body.site_url;
-      if (body.username) updateData.username = body.username;
-      if (body.password) {
-        if (!process.env.ENCRYPTION_SECRET) {
-          return reply.status(500).send({
-            data: null,
-            error: {
-              message:
-                'ENCRYPTION_SECRET environment variable is not set. Please configure it in your .env file.',
-              code: 'CONFIGURATION_ERROR',
-            },
-          });
-        }
-        updateData.password = encrypt(body.password);
-      }
-
-      const { data: updated, error } = await sb
-        .from('wordpress_configs')
-        .update(updateData as any)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      request.log.info(`WordPress config updated: ${id}`);
-
-      return reply.send({
-        data: {
-          id: updated.id,
-          site_url: updated.site_url,
-          username: updated.username,
-          updated_at: updated.updated_at,
-        },
-        error: null,
-      });
-    } catch (error) {
-      return sendError(reply, error);
-    }
-  });
-
-  /**
-   * PATCH /config/:id — Same as PUT
-   */
-  fastify.patch('/config/:id', { preHandler: [authenticateWithUser] }, async (request, reply) => {
-    try {
-      const sb = createServiceClient();
-      const { id } = request.params as { id: string };
-      const body = updateConfigSchema.parse(request.body);
-
-      const { data: existing, error: findErr } = await sb
-        .from('wordpress_configs')
-        .select('id')
-        .eq('id', id)
-        .maybeSingle();
-
-      if (findErr) throw findErr;
-      if (!existing) {
-        throw new ApiError(404, 'WordPress config not found', 'NOT_FOUND');
-      }
-
-      const updateData: Record<string, string> = {};
-      if (body.site_url) updateData.site_url = body.site_url;
-      if (body.username) updateData.username = body.username;
-      if (body.password) {
-        if (!process.env.ENCRYPTION_SECRET) {
-          return reply.status(500).send({
-            data: null,
-            error: {
-              message:
-                'ENCRYPTION_SECRET environment variable is not set. Please configure it in your .env file.',
-              code: 'CONFIGURATION_ERROR',
-            },
-          });
-        }
-        updateData.password = encrypt(body.password);
-      }
-
-      const { data: updated, error } = await sb
-        .from('wordpress_configs')
-        .update(updateData as any)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      request.log.info(`WordPress config updated: ${id}`);
-
-      return reply.send({
-        data: {
-          id: updated.id,
-          site_url: updated.site_url,
-          username: updated.username,
-          updated_at: updated.updated_at,
-        },
-        error: null,
-      });
-    } catch (error) {
-      return sendError(reply, error);
-    }
-  });
-
-  /**
-   * DELETE /config/:id — Delete config
-   */
-  fastify.delete('/config/:id', { preHandler: [authenticateWithUser] }, async (request, reply) => {
-    try {
-      const sb = createServiceClient();
-      const { id } = request.params as { id: string };
-
-      const { data: existing, error: findErr } = await sb
-        .from('wordpress_configs')
-        .select('id')
-        .eq('id', id)
-        .maybeSingle();
-
-      if (findErr) throw findErr;
-      if (!existing) {
-        throw new ApiError(404, 'WordPress config not found', 'NOT_FOUND');
-      }
-
-      const { error } = await sb.from('wordpress_configs').delete().eq('id', id);
-      if (error) throw error;
-
-      request.log.info(`WordPress config deleted: ${id}`);
-
-      return reply.send({ data: { deleted: true, id }, error: null });
-    } catch (error) {
-      return sendError(reply, error);
-    }
-  });
-
   /**
    * @deprecated Use POST /publish-draft instead for content_drafts pipeline.
    * POST /publish — Legacy publish flow (uses projects/stages tables).
@@ -648,32 +380,30 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       let username: string;
       let password: string;
 
-      if (body.config_id) {
-        // Use stored config
-        const { data: config, error: cfgErr } = await sb
-          .from('wordpress_configs')
-          .select('*')
-          .eq('id', body.config_id)
-          .maybeSingle();
-
-        if (cfgErr) throw cfgErr;
-
-        if (!config) {
-          throw new ApiError(404, 'WordPress config not found');
-        }
-
-        site_url = config.site_url;
-        username = config.username;
-        password = decrypt(config.password);
-      } else if (body.site_url && body.username && body.password) {
-        // Use provided credentials
+      if (body.site_url && body.username && body.password) {
+        // Use provided credentials (backward compatibility)
         site_url = body.site_url;
         username = body.username;
         password = body.password;
+      } else if (project.channel_id) {
+        // Derive from project's channel
+        const { data: wpCfg } = await sb
+          .from('wordpress_configs')
+          .select('site_url, username, password')
+          .eq('channel_id', project.channel_id as string)
+          .maybeSingle();
+
+        if (!wpCfg) {
+          throw new ApiError(400, 'Channel has no WordPress configured', 'NO_WP_CONFIG');
+        }
+
+        site_url = wpCfg.site_url as string;
+        username = wpCfg.username as string;
+        password = decrypt(wpCfg.password as string);
       } else {
         throw new ApiError(
           400,
-          'Either config_id or site_url/username/password must be provided',
+          'Project has no channel, and no site credentials provided',
         );
       }
 
@@ -772,25 +502,16 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       const tagIds = await resolveTags(body.tags || [], site_url, headers);
 
       // Prepare WordPress post data
-      const postData: Record<string, unknown> = {
+      const postData = buildWpPostData({
         title: blogContent.title,
         slug: blogContent.slug,
         content: htmlContent,
         excerpt: blogContent.meta_description,
         status: body.status,
-      };
-
-      if (categoryIds.length > 0) {
-        postData.categories = categoryIds;
-      }
-
-      if (tagIds.length > 0) {
-        postData.tags = tagIds;
-      }
-
-      if (featuredMediaId) {
-        postData.featured_media = featuredMediaId;
-      }
+        categories: categoryIds.length > 0 ? categoryIds : undefined,
+        tags: tagIds.length > 0 ? tagIds : undefined,
+        featuredMedia: featuredMediaId || undefined,
+      });
 
       // Publish to WordPress
       const response = await fetch(`${site_url}/wp-json/wp/v2/posts`, {
@@ -893,6 +614,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         }
         const draft = draftRaw as Record<string, unknown>;
         const draftStatus = draft.status as string;
+        const persona = await loadPersonaForDraft(draft, sb);
 
 
         if (draftStatus === 'publishing') {
@@ -916,10 +638,27 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         sendEvent('preparing', 'Loading WordPress configuration...');
-        const wpConfig = await resolveWpConfig(sb, body.configId);
-        if (!wpConfig) throw new ApiError(404, 'WordPress config not found');
+        if (!draft.channel_id) draft.channel_id = body.channelId ?? null;
+        if (!draft.channel_id && draft.project_id) {
+          const { data: proj } = await sb.from('projects').select('channel_id').eq('id', draft.project_id as string).maybeSingle();
+          if (proj?.channel_id) draft.channel_id = proj.channel_id;
+        }
+        if (!draft.channel_id) {
+          throw new ApiError(400, 'Draft has no channel', 'VALIDATION_ERROR');
+        }
 
-        const { site_url, username, password } = wpConfig;
+        const { data: wpCfg } = await sb
+          .from('wordpress_configs')
+          .select('site_url, username, password')
+          .eq('channel_id', draft.channel_id as string)
+          .maybeSingle();
+        if (!wpCfg) {
+          throw new ApiError(400, 'Channel has no WordPress configured', 'NO_WP_CONFIG');
+        }
+
+        const site_url = wpCfg.site_url as string;
+        const username = wpCfg.username as string;
+        const password = decrypt(wpCfg.password as string);
         const auth = Buffer.from(`${username}:${password}`).toString('base64');
         const headers = {
           Authorization: `Basic ${auth}`,
@@ -1100,21 +839,18 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
 
         // Step 6: Publishing
         sendEvent('publishing', 'Creating post on WordPress...');
-        const postData: Record<string, unknown> = {
-          title: body.seoOverrides?.title ?? draft.title ?? draftJson?.title ?? 'Untitled',
+        const postData = buildWpPostData({
+          title: body.seoOverrides?.title ?? (draft.title as string) ?? (draftJson?.title as string) ?? 'Untitled',
           slug: body.seoOverrides?.slug ?? (draftJson?.slug as string) ?? undefined,
           content: blogBody,
           excerpt: body.seoOverrides?.metaDescription ?? (draftJson?.meta_description as string) ?? '',
           status: body.mode === 'schedule' ? 'future' : body.mode,
-        };
-        if (body.mode === 'schedule' && body.scheduledDate) {
-          postData.date = body.scheduledDate;
-        }
-        if (categoryIds.length > 0) postData.categories = categoryIds;
-        if (tagIds.length > 0) postData.tags = tagIds;
-
-        const featured = uploadedMedia['featured_image'];
-        if (featured) postData.featured_media = featured.wpId;
+          date: body.mode === 'schedule' && body.scheduledDate ? body.scheduledDate : undefined,
+          categories: categoryIds.length > 0 ? categoryIds : undefined,
+          tags: tagIds.length > 0 ? tagIds : undefined,
+          featuredMedia: uploadedMedia['featured_image']?.wpId,
+          authorId: body.authorId ?? persona?.wpAuthorId ?? null,
+        });
 
 
         // Create or update WordPress post
@@ -1440,6 +1176,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       }
       const draft = draftRaw as Record<string, unknown>;
       const draftStatus = draft.status as string;
+      const persona = await loadPersonaForDraft(draft, sb);
 
 
       if (draftStatus === 'publishing') {
@@ -1462,25 +1199,28 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         throw new ApiError(409, 'Draft is already being published');
       }
 
-      // Get WordPress credentials
-      let site_url: string;
-      let username: string;
-      let password: string;
-
-      if (body.configId) {
-        const { data: config, error: cfgErr } = await sb
-          .from('wordpress_configs')
-          .select('*')
-          .eq('id', body.configId)
-          .maybeSingle();
-        if (cfgErr) throw cfgErr;
-        if (!config) throw new ApiError(404, 'WordPress config not found');
-        site_url = config.site_url;
-        username = config.username;
-        password = decrypt(config.password);
-      } else {
-        throw new ApiError(400, 'configId is required for publish-draft');
+      // Get WordPress credentials — body.channelId → draft.channel_id → project.channel_id
+      if (!draft.channel_id) draft.channel_id = body.channelId ?? null;
+      if (!draft.channel_id && draft.project_id) {
+        const { data: proj } = await sb.from('projects').select('channel_id').eq('id', draft.project_id as string).maybeSingle();
+        if (proj?.channel_id) draft.channel_id = proj.channel_id;
       }
+      if (!draft.channel_id) {
+        throw new ApiError(400, 'Draft has no channel', 'VALIDATION_ERROR');
+      }
+
+      const { data: wpCfg } = await sb
+        .from('wordpress_configs')
+        .select('site_url, username, password')
+        .eq('channel_id', draft.channel_id as string)
+        .maybeSingle();
+      if (!wpCfg) {
+        throw new ApiError(400, 'Channel has no WordPress configured', 'NO_WP_CONFIG');
+      }
+
+      const site_url = wpCfg.site_url as string;
+      const username = wpCfg.username as string;
+      const password = decrypt(wpCfg.password as string);
 
       const auth = Buffer.from(`${username}:${password}`).toString('base64');
       const headers = {
@@ -1594,21 +1334,18 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       const tagIds = await resolveTags(tagNames, site_url, headers);
 
       // Build post data — apply seoOverrides if present
-      const postData: Record<string, unknown> = {
-        title: body.seoOverrides?.title ?? draft.title ?? draftJson?.title ?? 'Untitled',
+      const postData = buildWpPostData({
+        title: body.seoOverrides?.title ?? (draft.title as string) ?? (draftJson?.title as string) ?? 'Untitled',
         slug: body.seoOverrides?.slug ?? (draftJson?.slug as string) ?? undefined,
         content: blogBody,
         excerpt: body.seoOverrides?.metaDescription ?? (draftJson?.meta_description as string) ?? '',
         status: body.mode === 'schedule' ? 'future' : body.mode,
-      };
-      if (body.mode === 'schedule' && body.scheduledDate) {
-        postData.date = body.scheduledDate;
-      }
-      if (categoryIds.length > 0) postData.categories = categoryIds;
-      if (tagIds.length > 0) postData.tags = tagIds;
-
-      const featured = uploadedMedia['featured_image'];
-      if (featured) postData.featured_media = featured.wpId;
+        date: body.mode === 'schedule' && body.scheduledDate ? body.scheduledDate : undefined,
+        categories: categoryIds.length > 0 ? categoryIds : undefined,
+        tags: tagIds.length > 0 ? tagIds : undefined,
+        featuredMedia: uploadedMedia['featured_image']?.wpId,
+        authorId: body.authorId ?? persona?.wpAuthorId ?? null,
+      });
 
       // Create or update WordPress post
       const existingPostId = (draft.wordpress_post_id as number | null) ?? null;

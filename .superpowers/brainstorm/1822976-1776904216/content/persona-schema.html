@@ -1,0 +1,106 @@
+<h2>Design Section 1 — Persona Schema</h2>
+<p class="subtitle">What fields define a persona? Color-coded by purpose. This is the data model stored in the DB.</p>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:2rem;">
+
+  <!-- LEFT: The Persona Card -->
+  <div>
+    <div class="label" style="margin-bottom:.75rem;">Example Persona Card</div>
+    <div style="background:linear-gradient(135deg,rgba(245,200,66,.08),rgba(61,220,132,.05));border:1px solid rgba(245,200,66,.25);border-radius:16px;padding:1.5rem;font-size:.82rem;">
+
+      <!-- Avatar + Name -->
+      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.25rem;padding-bottom:1.25rem;border-bottom:1px solid rgba(255,255,255,.08);">
+        <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#f5c842,#ff8c42);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.2rem;color:#07090f;flex-shrink:0;">L</div>
+        <div>
+          <div style="font-weight:800;font-size:1rem;color:#f0f4ff;">Leo Marcos</div>
+          <div style="color:#8899bb;font-size:.75rem;">slug: leo-marcos · WP author ID: 4</div>
+        </div>
+      </div>
+
+      <!-- Identity block -->
+      <div style="margin-bottom:1rem;">
+        <div style="font-size:.6rem;letter-spacing:.15em;text-transform:uppercase;color:#f5c842;margin-bottom:.4rem;font-weight:700;">① Identity (WordPress)</div>
+        <div style="background:rgba(245,200,66,.06);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.3rem;">
+          <div><span style="color:#8899bb;">bio_short:</span> <span style="color:#d0d8f0;">"Systems architect. I build businesses like software — with explicit interfaces and no hidden dependencies."</span></div>
+          <div style="margin-top:.25rem;"><span style="color:#8899bb;">bio_long:</span> <span style="color:#d0d8f0;">Full WP author page bio (2–3 paragraphs, includes credentials, past work, philosophy)</span></div>
+        </div>
+      </div>
+
+      <!-- Domain block -->
+      <div style="margin-bottom:1rem;">
+        <div style="font-size:.6rem;letter-spacing:.15em;text-transform:uppercase;color:#3ddc84;margin-bottom:.4rem;font-weight:700;">② Domain (what they write)</div>
+        <div style="background:rgba(61,220,132,.06);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.3rem;">
+          <div><span style="color:#8899bb;">primary_domain:</span> <span style="color:#d0d8f0;">"Business Systems & SaaS Ops"</span></div>
+          <div><span style="color:#8899bb;">domain_lens:</span> <span style="color:#d0d8f0;">"Every business is a system. If you can't diagram it, you can't fix it."</span></div>
+          <div><span style="color:#8899bb;">approved_categories:</span> <span style="color:#d0d8f0;">["SaaS", "Entrepreneurship", "Tool Audits", "Async Work"]</span></div>
+        </div>
+      </div>
+
+      <!-- Voice block -->
+      <div style="margin-bottom:1rem;">
+        <div style="font-size:.6rem;letter-spacing:.15em;text-transform:uppercase;color:#a78bfa;margin-bottom:.4rem;font-weight:700;">③ Voice (how Blog Agent writes)</div>
+        <div style="background:rgba(167,139,250,.06);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.3rem;">
+          <div><span style="color:#8899bb;">writing_style:</span> <span style="color:#d0d8f0;">"Precise, contrarian, slightly blunt. Writes like a senior dev reviewing bad architecture — finds the flaw, offers the fix."</span></div>
+          <div><span style="color:#8899bb;">signature_phrases:</span> <span style="color:#d0d8f0;">["What problem existed before this tool was created?", "Here's the actual cost:", "The math on this is simple:"]</span></div>
+          <div><span style="color:#8899bb;">characteristic_opinions:</span> <span style="color:#d0d8f0;">["PM tools create more coordination cost than they save", "most SaaS stacks are paying for features they don't use"]</span></div>
+        </div>
+      </div>
+
+      <!-- EEAT block -->
+      <div>
+        <div style="font-size:.6rem;letter-spacing:.15em;text-transform:uppercase;color:#22d3ee;margin-bottom:.4rem;font-weight:700;">④ EEAT Signals (injected into Content Core)</div>
+        <div style="background:rgba(34,211,238,.06);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.3rem;">
+          <div><span style="color:#8899bb;">analytical_lens:</span> <span style="color:#d0d8f0;">"Frames every thesis as: here's the failure mode, here's the system fix, here's the cost of not fixing it."</span></div>
+          <div><span style="color:#8899bb;">trust_signals:</span> <span style="color:#d0d8f0;">["Documents methodology explicitly", "Shows failure cases not just wins", "Cites implementation costs"]</span></div>
+          <div><span style="color:#8899bb;">expertise_claims:</span> <span style="color:#d0d8f0;">["AI automation pipeline architect", "6+ yrs WordPress/headless CMS", "built B2B SaaS tools"]</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- RIGHT: Schema + Storage -->
+  <div style="display:flex;flex-direction:column;gap:1.25rem;">
+
+    <div>
+      <div class="label" style="margin-bottom:.75rem;">DB Storage — New <code>personas</code> table</div>
+      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:1.25rem;font-family:'JetBrains Mono',monospace;font-size:.72rem;line-height:1.8;color:#8899bb;">
+        <span style="color:#f5c842;">id</span>            uuid, PK<br>
+        <span style="color:#f5c842;">slug</span>          text, unique<br>
+        <span style="color:#f5c842;">name</span>          text<br>
+        <span style="color:#f5c842;">avatar_url</span>    text<br>
+        <span style="color:#f5c842;">bio_short</span>     text  <span style="color:#4a5a7a;">-- byline (~160 chars)</span><br>
+        <span style="color:#f5c842;">bio_long</span>      text  <span style="color:#4a5a7a;">-- WP author page</span><br>
+        <span style="color:#3ddc84;">primary_domain</span>      text<br>
+        <span style="color:#3ddc84;">domain_lens</span>         text<br>
+        <span style="color:#3ddc84;">approved_categories</span> text[]<br>
+        <span style="color:#a78bfa;">writing_voice_json</span>  jsonb <span style="color:#4a5a7a;">-- style, phrases, opinions</span><br>
+        <span style="color:#22d3ee;">eeat_signals_json</span>   jsonb <span style="color:#4a5a7a;">-- lens, trust, expertise</span><br>
+        <span style="color:#ff5c5c;">wp_author_id</span>        integer <span style="color:#4a5a7a;">-- WP user ID (manual sync)</span><br>
+        <span style="opacity:.5;">is_active</span>           boolean, default true<br>
+        <span style="opacity:.5;">created_at / updated_at</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="label" style="margin-bottom:.75rem;">How it flows into agents</div>
+      <div style="display:flex;flex-direction:column;gap:.6rem;font-size:.82rem;">
+        <div style="background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.15);border-radius:8px;padding:.85rem;">
+          <div style="color:#f5c842;font-weight:700;margin-bottom:.25rem;">Content Core Agent</div>
+          <div style="color:#8899bb;">Receives <code>persona.domain_lens</code> + <code>persona.analytical_lens</code> → frames the thesis and argument chain through this lens</div>
+        </div>
+        <div style="background:rgba(167,139,250,.07);border:1px solid rgba(167,139,250,.15);border-radius:8px;padding:.85rem;">
+          <div style="color:#a78bfa;font-weight:700;margin-bottom:.25rem;">Blog Agent</div>
+          <div style="color:#8899bb;">Receives full <code>persona.writing_voice_json</code> → writes in this voice, uses signature phrases, expresses characteristic opinions</div>
+        </div>
+        <div style="background:rgba(34,211,238,.07);border:1px solid rgba(34,211,238,.15);border-radius:8px;padding:.85rem;">
+          <div style="color:#22d3ee;font-weight:700;margin-bottom:.25rem;">UI (DraftEngine)</div>
+          <div style="color:#8899bb;">Persona selector dropdown before generating — user picks which author writes this post</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<p class="subtitle" style="text-align:center;">Does this schema look right? Any fields to add, remove, or rename before we move to the next section?</p>

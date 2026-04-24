@@ -16,11 +16,12 @@ interface WordPressConfig {
 
 interface PublishPanelProps {
   draftId: string;
+  channelId: string;
   draftStatus: string;
   hasAssets: boolean;
   wordpressPostId: number | null;
   publishedUrl: string | null;
-  onPublish?: (params: { mode: string; configId: string; scheduledDate?: string }) => void;
+  onPublish?: (params: { mode: string; scheduledDate?: string }) => void;
   isPublishing?: boolean;
   previewData?: {
     categories: string[];
@@ -33,6 +34,7 @@ interface PublishPanelProps {
 }
 
 export function PublishPanel({
+  channelId,
   draftStatus,
   hasAssets,
   wordpressPostId,
@@ -42,38 +44,34 @@ export function PublishPanel({
   previewData,
 }: PublishPanelProps) {
   const [mode, setMode] = useState<'draft' | 'publish' | 'schedule'>('draft');
-  const [configId, setConfigId] = useState('');
   const [scheduledDate, setScheduledDate] = useState('');
-  const [configs, setConfigs] = useState<WordPressConfig[]>([]);
+  const [wpConfig, setWpConfig] = useState<WordPressConfig | null>(null);
   const [loadingConfigs, setLoadingConfigs] = useState(true);
 
   const canPublish = draftStatus === 'approved' && hasAssets;
   const isPublished = draftStatus === 'published' || draftStatus === 'scheduled';
 
   useEffect(() => {
-    async function fetchConfigs() {
+    async function fetchConfig() {
       try {
-        const res = await fetch('/api/wordpress/config');
+        const res = await fetch(`/api/channels/${channelId}/wordpress`);
         const { data } = await res.json();
-        const items = Array.isArray(data) ? data : (data?.configs ?? []);
-        setConfigs(items);
-        if (items.length === 1) setConfigId(items[0].id);
+        setWpConfig(data ?? null);
       } catch {
-        // No configs available
+        setWpConfig(null);
       } finally {
         setLoadingConfigs(false);
       }
     }
-    void fetchConfigs();
-  }, []);
+    void fetchConfig();
+  }, [channelId]);
 
   useEffect(() => {
     if (previewData?.suggestedDate && !scheduledDate) {
       setScheduledDate(previewData.suggestedDate);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewData?.suggestedDate]);
-
-  const selectedConfig = configs.find((c) => c.id === configId);
 
   return (
     <Card>
@@ -140,30 +138,18 @@ export function PublishPanel({
               {loadingConfigs ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  Loading sites...
+                  Loading...
                 </div>
-              ) : configs.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No WordPress sites configured. Add one in Settings.
-                </p>
-              ) : configs.length === 1 ? (
+              ) : wpConfig ? (
                 <div className="rounded-md border px-3 py-2 text-sm">
-                  {configs[0].site_url}
-                  <span className="text-muted-foreground ml-2">({configs[0].username})</span>
+                  {wpConfig.site_url}
+                  <span className="text-muted-foreground ml-2">({wpConfig.username})</span>
                 </div>
               ) : (
-                <select
-                  value={configId}
-                  onChange={(e) => setConfigId(e.target.value)}
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">Select a site...</option>
-                  {configs.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.site_url} ({c.username})
-                    </option>
-                  ))}
-                </select>
+                <p className="text-sm text-muted-foreground">
+                  No WordPress configured for this channel.{' '}
+                  <a href="/channels" className="underline">Configure it here.</a>
+                </p>
               )}
             </div>
 
@@ -196,11 +182,10 @@ export function PublishPanel({
 
             <Button
               className="w-full"
-              disabled={!configId || isPublishing || configs.length === 0}
+              disabled={!wpConfig || isPublishing}
               onClick={() =>
                 onPublish?.({
                   mode,
-                  configId,
                   scheduledDate: mode === 'schedule' ? new Date(scheduledDate).toISOString() : undefined,
                 })
               }
@@ -209,7 +194,7 @@ export function PublishPanel({
                 ? 'Publishing...'
                 : isPublished
                   ? 'Republish'
-                  : `Publish as ${mode}${selectedConfig ? ` to ${selectedConfig.site_url}` : ''}`}
+                  : `Publish as ${mode}${wpConfig ? ` to ${wpConfig.site_url}` : ''}`}
             </Button>
           </>
         )}

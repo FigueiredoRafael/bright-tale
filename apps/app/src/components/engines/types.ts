@@ -42,6 +42,15 @@ export interface PipelineContext {
   projectId?: string;
   projectTitle?: string;
   channelId?: string;
+  // Persona — set by DraftEngine on generation
+  personaId?: string;
+  personaName?: string;
+  personaSlug?: string;
+  personaWpAuthorId?: number | null;
+  // Research scoring signals — set by ResearchEngine on approval
+  researchPrimaryKeyword?: string;
+  researchSecondaryKeywords?: string[];
+  researchSearchIntent?: string;
 }
 
 export interface BrainstormResult {
@@ -56,16 +65,24 @@ export interface ResearchResult {
   researchSessionId: string;
   approvedCardsCount: number;
   researchLevel: string;
+  primaryKeyword?: string;
+  secondaryKeywords?: string[];
+  searchIntent?: string;
 }
 
 export interface DraftResult {
   draftId: string;
   draftTitle: string;
   draftContent: string;
+  personaId?: string;
+  personaName?: string;
+  personaSlug?: string;
+  personaWpAuthorId?: number | null;
 }
 
 export interface ReviewResult {
   score: number;
+  qualityTier?: string;
   verdict: string;
   feedbackJson: Record<string, unknown>;
   iterationCount: number;

@@ -126,6 +126,7 @@ export default function DraftDetailPage() {
   }, [draftId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchDraft();
     void fetchAssets();
   }, [fetchDraft, fetchAssets]);
@@ -198,7 +199,9 @@ export default function DraftDetailPage() {
               {draft.status.replace('_', ' ')}
             </Badge>
             {draft.review_score !== null && (
-              <span className="text-sm text-muted-foreground">Score: {draft.review_score}/100</span>
+              <Badge variant="outline" className="text-xs">
+                {draft.review_verdict === 'approved' ? 'Approved' : draft.review_verdict?.replace('_', ' ') ?? `${draft.review_score}/100`}
+              </Badge>
             )}
           </div>
         </div>

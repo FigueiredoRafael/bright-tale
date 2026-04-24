@@ -59,7 +59,6 @@ describe('publishDraftSchema validation', () => {
     const result = publishDraftSchema.parse(input);
     expect(result.draftId).toBe(input.draftId);
     expect(result.mode).toBe('publish');
-    expect(result.configId).toBeUndefined();
     expect(result.categories).toBeUndefined();
   });
 
@@ -631,7 +630,6 @@ describe('Edge cases and error scenarios', () => {
 
     const result = publishDraftSchema.parse(input);
     expect(result.mode).toBe('draft');
-    expect(result.configId).toBeUndefined();
   });
 
   it('schedule mode requires scheduledDate', () => {

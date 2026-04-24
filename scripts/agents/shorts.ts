@@ -1,5 +1,5 @@
 import type { AgentDefinition } from './_types';
-import { str, num, bool, obj, arr, arrOf, STANDARD_JSON_RULES } from './_helpers';
+import { str, num, bool, obj, arr, arrOf, STANDARD_JSON_RULES, contentWarningField } from './_helpers';
 
 export const shorts: AgentDefinition = {
   slug: 'shorts',
@@ -60,7 +60,7 @@ export const shorts: AgentDefinition = {
           str('sound_effects', 'Suggested sound effects'),
           str('background_music', 'Suggested background music'),
         ]),
-        str('content_warning', 'Set if material is insufficient for target duration', false),
+        contentWarningField('material for target duration'),
       ],
     },
     rules: {
@@ -79,11 +79,20 @@ export const shorts: AgentDefinition = {
         'cta: At least one short should include `cta_comment_prompt` as a question. At least one should reference `cta_subscribe`. "Watch the full video" is acceptable in `cta` but NOT in `hook` or `script` body.',
         'No fabricated stats — only use figures from `key_stats`.',
         'If production_params.target_duration_minutes is provided (in tenths), scale each short to that duration. 0.25 (15s) = 35-40 words, 0.5 (30s) = 70-80 words, 1.0 (60s) = 140-150 words. If material is insufficient, set content_warning instead of padding.',
+        'If input key_stats is empty, every short MUST use qualitative framing derived from thesis. Never paraphrase an invented number as fact. If a short\'s hook requires a stat and none is in input, populate content_warning and use a qualitative hook.',
       ],
       validation: [
         'Verify exactly 3 items in the output shorts array.',
         'Verify `short_number` is 1, 2, 3 in order.',
         'Verify each `visual_style` is exactly "talking head", "b-roll", or "text overlay".',
+        'Verify Short #1 hook is derived from turning_point.',
+        'Verify Shorts #2 and #3 hooks are derived from strongest argument_chain steps.',
+        'Verify each hook is max 2 sentences and has no preamble.',
+        'Verify each script is self-contained and fits within duration.',
+        'Verify "watch the full video" does not appear in hook or script body (only allowed in cta).',
+        'Verify at least one short includes cta_comment_prompt as a question.',
+        'Verify at least one short includes cta_subscribe reference.',
+        'Verify no fabricated stats — only use key_stats from input.',
       ],
     },
     customSections: [
@@ -235,20 +244,6 @@ Example CTAs:
 - "Subscribe for more research-backed sleep tips."
 - "Drop a comment — what's your best sleep window?"
 - "Watch the full video on our channel for the complete breakdown."`,
-      },
-      {
-        title: 'Before Finishing',
-        content: `1. Verify exactly 3 items in the shorts array
-2. Verify short_number is 1, 2, 3 in order
-3. Verify each visual_style is exactly "talking head", "b-roll", or "text overlay"
-4. Verify Short #1 hook is derived from turning_point
-5. Verify Shorts #2 and #3 hooks are derived from strongest argument_chain steps
-6. Verify each hook is max 2 sentences and no preamble
-7. Verify each script is self-contained and fits within duration
-8. Verify no "watch the full video" appears in hook or script body (only in cta)
-9. Verify at least one short includes cta_comment_prompt as a question
-10. Verify at least one short includes cta_subscribe reference
-11. Verify no fabricated stats — only use key_stats from input`,
       },
     ],
   },

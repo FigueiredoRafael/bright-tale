@@ -9,6 +9,7 @@ export interface AssetsPromptInput {
   sections: Array<{ slot: string; section_title: string; key_points: string[] }>;
   channel_context: Record<string, unknown>;
   idea_context: unknown;
+  draft_excerpt?: string;
 }
 
 export function buildAssetsMessage(input: AssetsPromptInput): string {
@@ -19,6 +20,7 @@ export function buildAssetsMessage(input: AssetsPromptInput): string {
       sections: input.sections,
       channel_context: input.channel_context,
       ...(input.idea_context ? { idea_context: input.idea_context } : {}),
+      ...(input.draft_excerpt ? { draft_excerpt: input.draft_excerpt } : {}),
     },
   };
 

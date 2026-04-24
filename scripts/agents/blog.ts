@@ -1,5 +1,5 @@
 import type { AgentDefinition } from './_types';
-import { str, num, bool, obj, arr, arrOf, STANDARD_JSON_RULES } from './_helpers';
+import { str, num, bool, obj, arr, arrOf, STANDARD_JSON_RULES, contentWarningField } from './_helpers';
 
 export const blog: AgentDefinition = {
   slug: 'blog',
@@ -56,6 +56,26 @@ export const blog: AgentDefinition = {
         ], false),
         str('cta_subscribe', 'Subscribe call-to-action'),
         str('cta_comment_prompt', 'Becomes the last line of the conclusion'),
+        arrOf('sources', 'Full source objects from the research phase — referenced by source_id in argument_chain and key_stats', [
+          str('source_id', 'Matches source_ids used in argument_chain steps'),
+          str('title', 'Source title or publication name'),
+          str('url', 'Full URL to the source'),
+          str('key_insight', 'The key finding used from this source'),
+        ], false),
+        obj('persona', 'Author persona for this post', [
+          str('name', 'Persona name — used in byline'),
+          str('bio_short', 'Short bio for post footer'),
+          obj('writing_voice', 'Voice definition', [
+            str('writing_style', 'Tone and manner'),
+            arr('signature_phrases', 'Natural phrases to use where they fit — never forced', 'string'),
+            arr('characteristic_opinions', 'Positions to express as conclusions the evidence leads to', 'string'),
+          ]),
+          obj('soul', 'Personality layer', [
+            str('humor_style', 'How and when to deploy humor'),
+            arr('recurring_jokes', 'Jokes to use sparingly when evidence creates an opening', 'string'),
+            arr('language_guardrails', 'Persona-specific hard rules that override default behavior', 'string'),
+          ]),
+        ], false),
       ],
     },
     outputSchema: {
@@ -71,7 +91,7 @@ export const blog: AgentDefinition = {
           arr('key_points', 'Bullet points the section will cover', 'string'),
           num('word_count_target', 'Target word count for this section'),
         ]),
-        str('full_draft', 'Complete blog post in markdown. Structure: Intro → H2 sections → Conclusion. Intro references opening_emotion, conclusion references closing_emotion and ends with cta_comment_prompt as question'),
+        str('full_draft', 'Complete blog post in markdown. Structure: Intro → H2 sections → Conclusion → Sources. Intro references opening_emotion, conclusion references closing_emotion and ends with cta_comment_prompt as question. Append a ## Sources section listing every source whose source_id is referenced in any argument_chain step, formatted as: - [title](url)'),
         obj('affiliate_integration', 'Affiliate placement and copy (optional)', [
           str('placement', 'MUST be: intro | middle | conclusion'),
           str('copy', 'The exact affiliate paragraph'),
@@ -82,7 +102,7 @@ export const blog: AgentDefinition = {
           str('topic', 'Related topic title'),
           str('anchor_text', 'Natural anchor text for linking'),
         ], false),
-        str('content_warning', 'Set if research material is insufficient for the target word count', false),
+        contentWarningField('research material'),
       ],
     },
     rules: {
@@ -91,21 +111,44 @@ export const blog: AgentDefinition = {
         'Do not add, remove, or rename keys in the output schema.',
       ],
       content: [
+        'PRE-OUTPUT CHECKLIST (run mentally before emitting full_draft): (1) Every outline[i].h2 string is rendered with exactly "## " (two hashes + single space) — never "### " or any other level. (2) The post ends with a non-empty "## Sources" section. The section contains one line per UNIQUE source_id referenced in argument_chain[].source_ids or key_stats[].source_id, and each line follows EXACTLY this format: - [Title](https://url). (3) Every bolded stat with a percentage, dollar amount, or "Nx" multiplier has a source name (one of input.sources[].title authors or organizations like McKinsey, BCG, Bessemer, a16z, Sequoia, NFX) within the same paragraph or the immediately adjacent one. If any of these three checks fail, fix the draft BEFORE returning JSON. The Review engine WILL catch and reject these violations.',
         'title: Must be curiosity-gap or benefit-driven. Include the primary keyword naturally.',
         'slug: Lowercase, hyphens only. Derive from title. No special characters.',
         'meta_description: Exactly 150-160 characters. Must include primary_keyword. Must entice the click.',
         'outline: One H2 entry per argument_chain step. key_points = bullet points the section will cover. word_count_target = 300-600 per section depending on complexity.',
-        'full_draft: Write the complete blog post in markdown. Intro must reference opening_emotion. Conclusion must reference closing_emotion and end with cta_comment_prompt as a reader question.',
+        'full_draft H2 rendering: every outline[i].h2 string MUST appear in full_draft preceded by exactly "## " (two hashes + space). Never "### " (three hashes — that is H3, breaks document hierarchy and SEO). The Sources section header is also "## Sources", never "### Sources".',
+        'full_draft: Write the complete blog post in markdown. Intro must reference opening_emotion. Conclusion must reference closing_emotion and end with cta_comment_prompt as a reader question. After conclusion, append a ## Sources section. For each unique source_id referenced in argument_chain[].source_ids or key_stats[].source_id, find the matching entry in input sources[] and output one line: - [title](url). IMPORTANT: if the url field value is already in markdown link format like "[https://example.com](https://example.com)", extract only the raw URL from inside the final parentheses — the output must be a plain URL, not nested markdown. Example correct output: - [Do Things that Don\'t Scale](https://www.paulgraham.com/ds.html). Example wrong output: - S1: Paul Graham - Do Things that Don\'t Scale.',
         'key_stats: Each stat belongs in the section whose claim it proves. Format as: **[figure]** — [brief context].',
         'key_quotes: Format as blockquote: > "quote" — Author Name, Credentials',
         'affiliate_integration.placement: ONLY intro, middle, or conclusion. Match the affiliate_context.trigger_context if provided.',
         'internal_links_suggested: Suggest 2-4 related topics that could be interlinked. Use natural anchor text.',
+        'NEVER use em-dashes as filler between normal sentence fragments.',
+        'NEVER start paragraphs with: furthermore, on the other hand, in addition, finally, moreover.',
+        'NEVER use hollow adjectives (fascinating, incredible, essential) without specific evidence to justify them.',
+        'NEVER use the "Not X, but Y" structure more than once per post.',
+        'NEVER convert prose arguments into bullet lists unless the data is genuinely list-shaped.',
+        'NEVER restate the same idea in different words for "comprehension."',
+        'NEVER use therefore, that is, or however as paragraph-level crutches.',
+        'NEVER use journey, essence, or universe as metaphors.',
+        'NEVER open a sentence with "It\'s important to" or "It\'s essential to."',
+        'NEVER use semicolons unless two independent clauses are genuinely linked.',
+        'NEVER pad word count with synonym substitution.',
+        'NEVER write a neutral "pros and cons" conclusion — take a position.',
+        'If persona is provided: write this post as [persona.name]. Apply writing_style for tone throughout. Drop signature_phrases naturally where they fit — never forced. Express characteristic_opinions as conclusions the evidence leads to, not as editorial rants. Apply humor_style sparingly — only when the evidence creates a genuine opening. Treat language_guardrails as hard rules that override default behavior.',
       ],
       validation: [
         'Verify that slug has no uppercase, no spaces, no special characters.',
         'Verify meta_description length is 150-160 chars.',
         'Verify affiliate_integration.placement is one of: intro | middle | conclusion',
         'If affiliate_context is provided, placement must match the specified position.',
+        'Verify every key_stat from input appears in full_draft.',
+        'Verify full_draft ends with a non-empty "## Sources" section. Count: number of "- [...](...)" lines in Sources MUST be >= the number of unique source_ids referenced across argument_chain[].source_ids and key_stats[].source_id. An empty Sources section is a hard failure — the Review engine will reject the draft.',
+        'Verify every outline[i].h2 string appears in full_draft preceded by exactly "## " (two hashes + space). Reject any rendering as "### " (three hashes = H3, wrong level).',
+        'Verify every bolded stat (e.g., **80%**, **$1M**, **5x**) has a source name (McKinsey, BCG, Bessemer, a16z, Sequoia, NFX, or the actual author name from input.sources[i].title) within the same paragraph or the next. Bare unattributed stats are a hard failure for the analyst persona (Alex Strand) and a quality concern for any persona.',
+        'Verify every key_quote from input appears as a blockquote with attribution.',
+        'Verify slug is URL-safe (lowercase, hyphens, no spaces or special chars).',
+        'Verify meta_description is exactly 150-160 characters.',
+        'If affiliate_context provided, verify placement and rationale are clear.',
       ],
     },
     customSections: [
@@ -168,11 +211,33 @@ CONCLUSION (75-150 words):
 - Summarize the transformation or insight
 - End with cta_comment_prompt as a reader question
 
+SOURCES SECTION (mandatory — comes after conclusion):
+- Header: ## Sources (exactly two hashes + space + the word "Sources" — never "### Sources" or "Sources:" or any other variant)
+- One bullet per UNIQUE source_id referenced anywhere in argument_chain[].source_ids or key_stats[].source_id
+- Format each line as: - [Source Title](https://raw-url-here)
+- Title comes from input.sources[i].title for the matching source_id
+- URL comes from input.sources[i].url — strip any wrapping markdown if the input url is already in the form "[https://...](https://...)" (extract just the raw URL)
+- An empty Sources section is a hard publish blocker. Do not return JSON with an empty Sources block.
+
+EXAMPLE Sources block (correct):
+\`\`\`
+## Sources
+- [The state of AI: How organizations are rewiring to capture value](https://www.mckinsey.com/capabilities/quantumblack/our-insights/the-state-of-ai-how-organizations-are-rewiring-to-capture-value)
+- [The AI pricing and monetization playbook](https://www.bvp.com/atlas/the-ai-pricing-and-monetization-playbook)
+- [Pricing the AI Workforce: From Pilots to Real Revenue](https://www.nfx.com/post/ai-pricing-innovation)
+\`\`\`
+
+EXAMPLES of WRONG Sources output (do NOT do these):
+- \`### Sources\` (H3 instead of H2 — wrong heading level)
+- \`- S1: McKinsey AI Report\` (forbidden Sx: prefix; missing markdown link)
+- \`- [[McKinsey](https://x)](https://y)\` (nested markdown link)
+- An empty \`## Sources\` header with nothing under it
+
 TARGET LENGTH:
 If input contains production_params.target_word_count, full_draft must hit that count (+-15%):
-- 300 words: 1 core idea + practical takeaway
-- 500-700 words: 2-3 sub-points with examples
-- 1000+ words: long-form with sub-headings, case studies, FAQ
+- 800-1000 words: 2-3 core points + practical takeaway + sources
+- 1000-1400 words: 3-4 sub-points with examples, stats, and quotes + sources
+- 1400+ words: long-form with sub-headings, case studies, FAQ, deep evidence + sources
 If research material is insufficient for the target, set content_warning instead of padding.`,
       },
       {
@@ -210,15 +275,6 @@ Examples:
   anchor_text: "determine whether you're a morning person or night owl"
 
 These are suggestions for your content team to implement with actual URLs.`,
-      },
-      {
-        title: 'Before Finishing',
-        content: `1. Verify every key_stat from input appears in full_draft
-2. Verify every key_quote from input appears as a blockquote with attribution
-3. Verify slug is URL-safe (lowercase, hyphens, no spaces or special chars)
-4. Verify meta_description is exactly 150-160 characters
-5. Verify affiliate_integration.placement is one of: intro | middle | conclusion
-6. If affiliate_context provided, verify placement and rationale are clear`,
       },
     ],
   },

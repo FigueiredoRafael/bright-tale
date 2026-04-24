@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import {
   ChevronDown, ChevronUp, RotateCcw,
 } from 'lucide-react';
 import type { PipelineStage, PipelineState } from '@/components/engines/types';
+import { deriveTier } from '@brighttale/shared';
 
 const STAGE_META: Record<PipelineStage, { icon: typeof Lightbulb; label: string; color: string }> = {
   brainstorm: { icon: Lightbulb, label: 'Idea', color: 'text-yellow-500' },
@@ -28,13 +29,28 @@ interface CompletedStageSummaryProps {
 }
 
 export function CompletedStageSummary({ stage, stageResults, currentStage, onNavigate }: CompletedStageSummaryProps) {
-  const [expanded, setExpanded] = useState(false);
   const meta = STAGE_META[stage];
   const Icon = meta.icon;
   const result = stageResults[stage];
-  if (!result) return null;
-
   const isCurrent = currentStage === stage;
+
+  // Default expanded when this stage is the active one — keeps the user's
+  // current focus visible without forcing them to click. Once the user
+  // explicitly collapses it, we respect that choice for the rest of the
+  // session. Re-expand automatically the next time this stage becomes active.
+  const [userToggled, setUserToggled] = useState<boolean | null>(null);
+  const wasCurrentRef = useRef(isCurrent);
+  useEffect(() => {
+    if (isCurrent && !wasCurrentRef.current) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setUserToggled(null);
+    }
+    wasCurrentRef.current = isCurrent;
+  }, [isCurrent]);
+
+  const expanded = userToggled ?? isCurrent;
+
+  if (!result) return null;
 
   function getSummary(): string {
     switch (stage) {
@@ -52,7 +68,19 @@ export function CompletedStageSummary({ stage, stageResults, currentStage, onNav
       }
       case 'review': {
         const r = stageResults.review;
-        return r ? `Score: ${r.score}/100 · ${r.verdict} · ${r.iterationCount} iteration(s)` : '';
+        if (!r) return '';
+        const tier = deriveTier({ quality_tier: r.qualityTier, score: r.score });
+        const tierLabel: Record<string, string> = {
+          excellent: 'Excellent',
+          good: 'Good',
+          needs_revision: 'Needs Revision',
+          reject: 'Rejected',
+          not_requested: 'Not Reviewed',
+        };
+        const display = tier === 'not_requested' && typeof r.score === 'number'
+          ? `${r.score}/100`
+          : (tierLabel[tier] ?? 'Unknown');
+        return `${display} · ${r.verdict} · ${r.iterationCount} iteration(s)`;
       }
       case 'assets': {
         const r = stageResults.assets;
@@ -86,7 +114,7 @@ export function CompletedStageSummary({ stage, stageResults, currentStage, onNav
               <RotateCcw className="h-3 w-3 mr-1" /> Go to
             </Button>
           )}
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setExpanded(!expanded)}>
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setUserToggled(!expanded)}>
             {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </Button>
         </div>

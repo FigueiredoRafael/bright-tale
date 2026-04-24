@@ -4,6 +4,11 @@
  * Brainstorm → Research → Production → Review
  */
 
+import type { QualityTier, RubricChecks } from "../schemas/review";
+
+// Forward-compat 30-day window: Research may emit either shape
+export type ResearchSecondaryKeyword = string | { keyword: string; source_id?: string };
+
 // ═══════════════════════════════════════════════════════════════════════════
 // STAGE 1: BRAINSTORM
 // ═══════════════════════════════════════════════════════════════════════════
@@ -65,6 +70,7 @@ export interface BrainstormOutput {
     pick: string;
     rationale: string;
   };
+  content_warning?: string;
 }
 
 // Legacy format support (30-day compatibility)
@@ -156,6 +162,8 @@ export interface ResearchCounterargument {
 
 export interface ResearchOutput {
   idea_id: string;
+  research_focus_applied?: string;
+  depth_applied?: "quick" | "standard" | "deep";
   idea_validation: {
     core_claim_verified: boolean;
     evidence_strength: "weak" | "moderate" | "strong";
@@ -164,7 +172,7 @@ export interface ResearchOutput {
   };
   seo: {
     primary_keyword: string;
-    secondary_keywords?: string[];
+    secondary_keywords?: ResearchSecondaryKeyword[];
     search_intent?: "informational" | "commercial" | "navigational" | "mixed";
   };
   sources: ResearchSource[];
@@ -180,6 +188,7 @@ export interface ResearchOutput {
     angle_notes: string;
     recommendation: "proceed" | "pivot" | "abandon";
   };
+  content_warning?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -266,6 +275,7 @@ export interface BlogOutput {
       prompt: string;
     }>;
   };
+  content_warning?: string;
 }
 
 export interface VideoScriptSection {
@@ -328,6 +338,7 @@ export interface VideoOutput {
       prompt: string;
     }>;
   };
+  content_warning?: string;
 }
 
 export interface ShortOutput {
@@ -340,6 +351,7 @@ export interface ShortOutput {
   cta: string;
   sound_effects?: string;
   background_music?: string;
+  content_warning?: string;
 }
 
 export interface PodcastOutput {
@@ -354,6 +366,7 @@ export interface PodcastOutput {
   guest_questions: string[];
   outro: string;
   duration_estimate: string;
+  content_warning?: string;
 }
 
 export interface EngagementOutput {
@@ -363,6 +376,7 @@ export interface EngagementOutput {
     hook_tweet: string;
     thread_outline: string[];
   };
+  content_warning?: string;
 }
 
 export interface ProductionOutput {
@@ -372,6 +386,7 @@ export interface ProductionOutput {
   shorts: ShortOutput[];
   podcast: PodcastOutput;
   engagement: EngagementOutput;
+  content_warning?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -402,7 +417,10 @@ export interface ReviewIssue {
 
 export interface ContentReview {
   verdict: "approved" | "revision_required" | "rejected" | "not_requested";
-  score: number;
+  /** @deprecated since agent-fleet-8.5 — use quality_tier. Kept for 30-day legacy compat. */
+  score?: number;
+  quality_tier?: QualityTier;
+  rubric_checks?: RubricChecks;
   strengths: string[];
   issues: {
     critical: ReviewIssue[];
@@ -429,7 +447,10 @@ export interface VideoReview extends ContentReview {
 // Podcast review has a flat issues array (different from blog/video)
 export interface PodcastReview {
   verdict: "approved" | "revision_required" | "rejected" | "not_requested";
-  score: number;
+  /** @deprecated since agent-fleet-8.5 — use quality_tier. Kept for 30-day legacy compat. */
+  score?: number;
+  quality_tier?: QualityTier;
+  rubric_checks?: RubricChecks;
   strengths: string[];
   issues: Array<{ issue: string; suggested_fix: string }>;
   notes: string;
@@ -494,11 +515,15 @@ export interface ReviewOutput {
   video_review: VideoReview;
   shorts_review: {
     verdict: "approved" | "revision_required" | "rejected" | "not_requested";
+    quality_tier?: QualityTier;
+    rubric_checks?: RubricChecks;
     individual_reviews: ShortReview[];
     notes: string;
   };
   podcast_review: PodcastReview;
   engagement_review: {
+    quality_tier?: QualityTier;
+    rubric_checks?: RubricChecks;
     pinned_comment_verdict: "approved" | "revision_required" | "not_requested";
     pinned_comment_notes: string;
     community_post_verdict: "approved" | "revision_required" | "not_requested";
@@ -665,9 +690,19 @@ const MAX_STATISTICS = 5;
 const MAX_QUOTES = 3;
 const MAX_COUNTERARGUMENTS = 3;
 
+import { legacyKeywordFallback } from "../mappers/pipeline";
+
 export function mapResearchToProductionInput(
   research: ResearchOutput,
-): ProductionInput["research"] & { seo?: ResearchOutput["seo"] } {
+): ProductionInput["research"] & { seo?: { primary_keyword: string; secondary_keywords?: string[]; search_intent?: string } } {
+  const normalizedSeo = research.seo
+    ? {
+        primary_keyword: research.seo.primary_keyword,
+        secondary_keywords: legacyKeywordFallback(research.seo.secondary_keywords),
+        search_intent: research.seo.search_intent,
+      }
+    : undefined;
+
   return {
     summary: research.research_summary,
     validation: {
@@ -699,6 +734,78 @@ export function mapResearchToProductionInput(
       angle_notes: research.refined_angle.angle_notes,
       recommendation: research.refined_angle.recommendation,
     },
-    seo: research.seo,
+    seo: normalizedSeo,
   };
+}
+
+// ── Persona types ──────────────────────────────────────────────────────────
+
+export interface PersonaWritingVoice {
+  writingStyle: string
+  signaturePhrases: string[]
+  characteristicOpinions: string[]
+}
+
+export interface PersonaEeatSignals {
+  analyticalLens: string
+  trustSignals: string[]
+  expertiseClaims: string[]
+}
+
+export interface PersonaSoul {
+  values: string[]
+  lifePhilosophy: string
+  strongOpinions: string[]
+  petPeeves: string[]
+  humorStyle: string
+  recurringJokes: string[]
+  whatExcites: string[]
+  innerTensions: string[]
+  languageGuardrails: string[]
+}
+
+export interface Persona {
+  id: string
+  slug: string
+  name: string
+  avatarUrl: string | null
+  bioShort: string
+  bioLong: string
+  primaryDomain: string
+  domainLens: string
+  approvedCategories: string[]
+  writingVoiceJson: PersonaWritingVoice
+  eeatSignalsJson: PersonaEeatSignals
+  soulJson: PersonaSoul
+  wpAuthorId: number | null
+  archetypeSlug: string | null
+  avatarParamsJson: Record<string, unknown> | null
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+// Subset injected into Content Core input
+export interface PersonaContext {
+  name: string
+  domainLens: string
+  analyticalLens: string
+  strongOpinions: string[]
+  approvedCategories: string[]
+}
+
+// Subset injected into Blog Agent input
+export interface PersonaVoice {
+  name: string
+  bioShort: string
+  writingVoice: {
+    writingStyle: string
+    signaturePhrases: string[]
+    characteristicOpinions: string[]
+  }
+  soul: {
+    humorStyle: string
+    recurringJokes: string[]
+    languageGuardrails: string[]
+  }
 }

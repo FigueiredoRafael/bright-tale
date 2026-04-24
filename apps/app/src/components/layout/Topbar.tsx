@@ -24,7 +24,6 @@ const PAGE_TITLE_KEYS: Record<string, { ns: string; key: string }> = {
     "/settings/image-generation": { ns: "nav", key: "imageGeneration" },
     "/settings/ai": { ns: "pages", key: "settingsAI" },
     "/settings/agents": { ns: "pages", key: "settingsAgents" },
-    "/settings/wordpress": { ns: "pages", key: "settingsWordpress" },
 };
 
 function getPageTitle(pathname: string, t: (ns: string, key: string) => string): string {

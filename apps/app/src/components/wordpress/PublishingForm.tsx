@@ -88,6 +88,7 @@ export default function PublishingForm({
         fetchAssets();
         fetchReviewMetadata();
         fetchBlogContent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectId]);
 
     // Restore saved state from initialYaml
@@ -304,7 +305,7 @@ export default function PublishingForm({
                         You need to configure a WordPress site before publishing
                     </p>
                     <Button asChild>
-                        <a href="/settings/wordpress">Configure WordPress</a>
+                        <a href="/channels">Configure WordPress</a>
                     </Button>
                 </CardContent>
             </Card>
@@ -392,6 +393,7 @@ export default function PublishingForm({
                                         : "border-border hover:border-border"
                                         }`}
                                 >
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
                                     <img
                                         src={asset.source_url ?? ""}
                                         alt={asset.alt_text || "Asset"}
@@ -533,6 +535,7 @@ export default function PublishingForm({
                                 .map((asset) => (
                                     <div key={asset.id} className="space-y-1">
                                         <div className="aspect-video rounded overflow-hidden bg-muted border">
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
                                             <img
                                                 src={asset.source_url!}
                                                 alt={asset.role ?? "image"}

@@ -18,6 +18,7 @@ import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/a
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
+import { getPersonaTheme } from './utils/personaTheme';
 import type { BaseEngineProps, AssetsResult } from './types';
 
 /* ── Types ── */
@@ -31,6 +32,7 @@ interface SlotCard {
   promptBrief: string;
   styleRationale: string;
   aspectRatio: string;
+  altText: string;
 }
 
 interface VisualDirection {
@@ -137,6 +139,7 @@ function parseAssetsOutput(raw: unknown): { visual: VisualDirection; slots: Slot
       promptBrief: (s.prompt_brief as string) ?? (s.promptBrief as string) ?? (s.prompt as string) ?? '',
       styleRationale: (s.style_rationale as string) ?? (s.styleRationale as string) ?? '',
       aspectRatio: (s.aspect_ratio as string) ?? (s.aspectRatio as string) ?? '16:9',
+      altText: (s.alt_text as string) ?? (s.altText as string) ?? '',
     }));
 
     return { visual, slots };
@@ -390,7 +393,7 @@ export function AssetsEngine({
       url: (asset.source_url as string) ?? (asset.url as string) ?? '',
       webpUrl: (asset.webp_url as string) ?? null,
       role: (asset.role as string) ?? role,
-      altText: (asset.alt_text as string) ?? card.sectionTitle,
+      altText: (asset.alt_text as string) ?? (card.altText || card.sectionTitle),
       sourceType: (asset.source as string) ?? 'generated',
     };
     setSlotAssets((prev) => ({ ...prev, [card.slot]: mapped }));
@@ -490,7 +493,7 @@ export function AssetsEngine({
             mimeType: pending.file.type,
             draftId,
             role,
-            altText: card?.sectionTitle ?? '',
+            altText: card?.altText || card?.sectionTitle || '',
             prompt: card?.promptBrief ?? '',
             styleRationale: card?.styleRationale ?? '',
           };
@@ -500,7 +503,7 @@ export function AssetsEngine({
             url: pending.sourceUrl,
             draftId,
             role,
-            altText: card?.sectionTitle ?? '',
+            altText: card?.altText || card?.sectionTitle || '',
             prompt: card?.promptBrief ?? '',
             styleRationale: card?.styleRationale ?? '',
           };
@@ -647,6 +650,35 @@ export function AssetsEngine({
         <p className="text-sm text-muted-foreground mt-1">
           Generate prompt briefs, refine them, then upload images for each section.
         </p>
+        {context.personaName && (() => {
+          const theme = getPersonaTheme(context.personaSlug);
+          return (
+            <div
+              className="mt-3 mb-2 inline-flex items-center gap-2.5 rounded-full border px-3 py-1.5 backdrop-blur-sm"
+              style={{
+                background: `rgba(${theme.glow}, 0.1)`,
+                borderColor: `rgba(${theme.glow}, 0.35)`,
+              }}
+              aria-label={`Authored by ${context.personaName}`}
+            >
+              <div
+                className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                style={{
+                  background: theme.gradient,
+                  boxShadow: `0 4px 12px -2px rgba(${theme.glow}, 0.5)`,
+                }}
+              >
+                {context.personaName[0]}
+              </div>
+              <span
+                className="text-xs font-semibold tracking-wide"
+                style={{ color: theme.accent }}
+              >
+                {context.personaName}
+              </span>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Phase stepper */}
@@ -853,6 +885,25 @@ export function AssetsEngine({
                     className="text-sm"
                   />
                 </div>
+                <div>
+                  <Label className="text-xs">Alt Text</Label>
+                  <Input
+                    value={card.altText}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setSlotCards((prev) => {
+                        const updated = [...prev];
+                        if (updated[i]) updated[i] = { ...updated[i], altText: value };
+                        return updated;
+                      });
+                    }}
+                    placeholder="Describe what is visually depicted..."
+                    className="text-sm mt-1"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Used for accessibility and SEO. Describe the image, not the concept.
+                  </p>
+                </div>
                 {card.styleRationale && (
                   <div className="text-xs text-muted-foreground">{card.styleRationale}</div>
                 )}
@@ -946,7 +997,7 @@ export function AssetsEngine({
             </CardContent>
           </Card>
 
-          {slotCards.map((card) => {
+          {slotCards.map((card, i) => {
             const role = slotToRole(card.slot);
             const existing = existingAssets.find((a) => a.role === role) ?? slotAssets[card.slot] ?? null;
             const pending = pendingUploads.find((p) => p.slot === card.slot);
@@ -965,6 +1016,13 @@ export function AssetsEngine({
                 onFileStage={(file) => handleFileStage(card.slot, file)}
                 onUrlStage={(url) => handleUrlStage(card.slot, url)}
                 onDeletePending={() => handleDeletePending(card.slot)}
+                onAltTextChange={(val) => {
+                  setSlotCards((prev) => {
+                    const updated = [...prev];
+                    if (updated[i]) updated[i] = { ...updated[i], altText: val };
+                    return updated;
+                  });
+                }}
               />
             );
           })}
@@ -1052,12 +1110,13 @@ interface BriefImageSlotCardProps {
   onFileStage: (file: File) => void;
   onUrlStage: (url: string) => void;
   onDeletePending: () => void;
+  onAltTextChange: (val: string) => void;
 }
 
 function BriefImageSlotCard({
   card, visualDirection, existingAsset, pendingPreview,
   generating, generateDisabled, generateProvider,
-  onGenerate, onFileStage, onUrlStage, onDeletePending,
+  onGenerate, onFileStage, onUrlStage, onDeletePending, onAltTextChange,
 }: BriefImageSlotCardProps) {
   const [urlInput, setUrlInput] = useState('');
   const [expanded, setExpanded] = useState(false);
@@ -1117,6 +1176,9 @@ function BriefImageSlotCard({
               alt={card.sectionTitle}
               className="w-full max-h-56 rounded-lg border object-cover"
             />
+            {existingAsset?.altText && !isStaged && (
+              <p className="text-[10px] text-muted-foreground italic">{existingAsset.altText}</p>
+            )}
             {isStaged && (
               <Button variant="outline" size="sm" className="gap-1.5" onClick={onDeletePending}>
                 <Trash2 className="h-3 w-3" /> Remove Staged

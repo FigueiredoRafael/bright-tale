@@ -1,5 +1,5 @@
 import type { AgentDefinition } from './_types';
-import { str, num, bool, obj, arr, arrOf, STANDARD_JSON_RULES } from './_helpers';
+import { str, num, bool, obj, arr, arrOf, contentWarningField, STANDARD_JSON_RULES } from './_helpers';
 
 export const contentCore: AgentDefinition = {
   slug: 'content-core',
@@ -44,6 +44,7 @@ export const contentCore: AgentDefinition = {
             str('evidence_strength', 'weak, moderate, or strong'),
           ]),
           arrOf('key_sources', 'Key sources from research', [
+            str('source_id', 'Unique identifier for this source (e.g., SRC-001) — referenced by key_statistics, expert_quotes, and argument_chain'),
             str('title', 'Source title'),
             str('url', 'URL if available', false),
             str('key_insight', 'Main takeaway'),
@@ -71,6 +72,13 @@ export const contentCore: AgentDefinition = {
             str('recommendation', 'proceed, pivot, or abandon'),
           ]),
         ]),
+        obj('persona_context', 'Persona whose lens frames this content', [
+          str('name', 'Persona name'),
+          str('domain_lens', 'Core analytical lens'),
+          str('analytical_lens', 'How they frame every thesis'),
+          arr('strong_opinions', 'Worldview-level positions that can inform the thesis angle', 'string'),
+          arr('approved_categories', 'Scope guard — reject angles outside these', 'string'),
+        ], false),
       ],
     },
     outputSchema: {
@@ -106,6 +114,7 @@ export const contentCore: AgentDefinition = {
         ], false),
         str('cta_subscribe', 'Subscribe call-to-action used in all formats'),
         str('cta_comment_prompt', 'Comment prompt that drives engagement on all platforms'),
+        contentWarningField('research material for canonical-core generation'),
       ],
     },
     rules: {
@@ -121,6 +130,8 @@ export const contentCore: AgentDefinition = {
         'Key_quotes: Only quotes from research.expert_quotes. Do not fabricate quotes.',
         'Knowledge_gaps in input: If research has knowledge gaps, do NOT make claims in argument_chain that depend on those gaps.',
         'Affiliate_moment: Point to a specific step number in argument_chain in trigger_context.',
+        'If research.sources or research.statistics cannot support the thesis (insufficient evidence), populate content_warning with "Thesis under-supported by research — recommend abandon or deeper research" instead of fabricating evidence.',
+        'If persona_context is provided: frame the thesis and argument chain through this persona\'s analytical_lens. The thesis must reflect how they would interpret this evidence. Where the research supports it, let their strong_opinions inform the editorial position. Reject angles that fall outside approved_categories.',
       ],
       validation: [
         'If refined_angle.recommendation is "pivot", update the thesis and argument chain to reflect the recommended angle.',
@@ -128,100 +139,33 @@ export const contentCore: AgentDefinition = {
         'Verify that every source_id in key_stats matches a source from the research input.',
         'Verify that every source_id in argument_chain steps matches a source from the research input.',
         'Verify argument_chain has 2-6 steps. If research supports more than 6 claims, consolidate related steps.',
+        'Verify every source_id in key_stats and argument_chain steps exists in research.key_sources.',
       ],
     },
     customSections: [
       {
         title: 'Field Guidance: Thesis',
-        content: `The thesis is the central claim that the entire narrative proves. It must be:
-- Specific and falsifiable (can be proven right or wrong with evidence)
-- 1-2 sentences maximum
-- The foundation for the argument chain
-- NOT aspirational or generic
-
+        content: `Central claim, specific and falsifiable, max 2 sentences.
 Bad: "Content is important for growth."
-Good: "Evergreen content with strong structural foundations outperforms trending content by 3:1 in 12-month ROI."`,
+Good: "Evergreen content outperforms trending content by 3:1 in 12-month ROI."`,
       },
       {
         title: 'Field Guidance: Argument Chain',
-        content: `Each step is a logical assertion with proof:
-- Steps must be in logical order (step 1 → step 2 → step 3)
-- Each step has a claim + evidence + source references
-- Claim: 1-sentence assertion
-- Evidence: Specific data point(s) from research that prove it
-- Source_ids: Array of IDs from research.key_sources that back this step
-
-Example (JSON):
+        content: `Each step: claim + evidence + source_ids in logical order. Example:
 {
   "step": 1,
-  "claim": "Sleep deprivation reduces focus and decision quality by measurable amounts.",
-  "evidence": "Research from Harvard Medical School found that 24 hours of sleep loss impairs cognitive performance equivalent to a 0.10 BAC (blood alcohol content).",
-  "source_ids": ["SRC-001", "SRC-003"]
+  "claim": "Sleep deprivation reduces decision quality.",
+  "evidence": "Harvard found 24-hour sleep loss impairs cognition equivalent to 0.10 BAC.",
+  "source_ids": ["SRC-001"]
 }`,
       },
       {
         title: 'Field Guidance: Emotional Arc',
-        content: `The emotional arc is the audience's journey:
-- opening_emotion: Where they start (confused, frustrated, curious, skeptical, etc.)
-- turning_point: The moment when perception shifts (revelation, surprise, clarity, validation)
-- closing_emotion: Where they end (confident, motivated, empowered, relieved, inspired)
-
-The same arc applies across ALL formats (blog, video, shorts, podcast). Format agents
-will shape the content to hit these emotional beats in their medium.
-
-Example (JSON):
-{
-  "opening_emotion": "Frustration - I feel like I'm working hard but not seeing results",
-  "turning_point": "Clarity - Ah! The problem isn't effort, it's timing and recovery",
-  "closing_emotion": "Confidence - I know exactly what to change to see progress"
-}`,
+        content: `Audience journey: opening_emotion → turning_point → closing_emotion. Same arc across all formats (blog, video, shorts, podcast).`,
       },
       {
         title: 'Field Guidance: Affiliate Moment',
-        content: `Affiliate_moment identifies the NATURAL place for a product recommendation:
-- NOT forced or promotional
-- Solves a problem revealed in the argument chain
-- Trigger_context must reference a specific step number in argument_chain
-- Product_angle: How the product directly solves the problem in that step
-- Cta_primary: The actual call-to-action text (e.g., "Get started with Notion")
-
-Example (JSON, if affiliate_moment applies):
-{
-  "affiliate_moment": {
-    "trigger_context": "Step 2 reveals that unorganized research wastes hours. A research tool solves this directly by providing templates and auto-linking.",
-    "product_angle": "Notion templates eliminate the setup cost and let researchers start organizing findings immediately instead of building from scratch.",
-    "cta_primary": "Start organizing your research with Notion - free tier available"
-  }
-}
-
-If monetization should be skipped for this content, set affiliate_moment to null or omit it entirely.`,
-      },
-      {
-        title: 'Field Guidance: Key Stats and Key Quotes',
-        content: `These are the SHARED ASSETS used across all formats:
-
-KEY_STATS:
-- Only include statistics verified in research.key_statistics
-- Each stat must have a matching source_id
-- Format: stat (description), figure (the number), source_id
-- All format agents will embed these stats in their output
-
-KEY_QUOTES:
-- Only include quotes from research.expert_quotes
-- Always include author name + credentials (for credibility)
-- Optional field — omit if no quotes in research
-
-Format agents (blog, video, podcast, etc.) will:
-- Blog: pull quotes as pull-quotes with attribution
-- Video: use quotes as voiceover with on-screen text overlays
-- Shorts: break quotes into hook or punchline moments
-- Podcast: read quotes with author intro`,
-      },
-      {
-        title: 'Before Finishing',
-        content: `1. Verify every source_id in key_stats and argument_chain steps exists in research.key_sources
-2. If refined_angle.recommendation = "pivot", thesis and argument chain must reflect it
-3. If recommendation = "abandon", return ONLY the abandoned state (no argument chain)`,
+        content: `Product recommendation fits naturally at a specific argument_chain step. Trigger_context references step number; product_angle describes how it solves the problem. Omit if no monetization.`,
       },
     ],
   },

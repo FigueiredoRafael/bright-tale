@@ -83,11 +83,18 @@ export function PipelineOrchestrator({
       ctx.researchSessionId = sr.research.researchSessionId;
       ctx.approvedCardsCount = sr.research.approvedCardsCount;
       ctx.researchLevel = sr.research.researchLevel;
+      ctx.researchPrimaryKeyword = sr.research.primaryKeyword;
+      ctx.researchSecondaryKeywords = sr.research.secondaryKeywords;
+      ctx.researchSearchIntent = sr.research.searchIntent;
     }
 
     if (sr.draft) {
       ctx.draftId = sr.draft.draftId;
       ctx.draftTitle = sr.draft.draftTitle;
+      ctx.personaId = sr.draft.personaId;
+      ctx.personaName = sr.draft.personaName;
+      ctx.personaSlug = sr.draft.personaSlug;
+      ctx.personaWpAuthorId = sr.draft.personaWpAuthorId;
     }
 
     if (sr.review) {

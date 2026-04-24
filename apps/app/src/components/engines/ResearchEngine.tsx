@@ -34,6 +34,7 @@ import {
 import { ManualOutputDialog } from '@/components/engines/ManualOutputDialog';
 import { ResearchFindingsReport } from '@/components/engines/ResearchFindingsReport';
 import { synthesizeFindingsFromLegacy } from '@/lib/research/synthesize-findings';
+import { extractResearchSignals } from './utils/extractResearchSignals';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
@@ -593,10 +594,15 @@ export function ResearchEngine({
     if (findings) {
       tracker.trackAction('findings.approved', { sessionId: sessionId || '' });
 
+      const signals = extractResearchSignals(findings);
+
       const result: ResearchResult = {
         researchSessionId: sessionId || '',
         approvedCardsCount: 1,
         researchLevel: level,
+        primaryKeyword: signals.primaryKeyword,
+        secondaryKeywords: signals.secondaryKeywords,
+        searchIntent: signals.searchIntent,
       };
       onComplete(result);
       return;

@@ -99,6 +99,7 @@ export default function ReviewForm({
 
         // Fetch data from previous stages
         fetchPreviousStageData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectId, initialYaml]);
 
     async function fetchPreviousStageData() {
@@ -302,7 +303,8 @@ export default function ReviewForm({
         );
     }
 
-    function getScoreBadge(score: number) {
+    function getScoreBadge(score: number | undefined) {
+        if (score === undefined) return null;
         const color = score >= 80 ? "bg-green-100 text-green-800" : score >= 60 ? "bg-yellow-100 text-yellow-800" : "bg-red-100 text-red-800";
         return <Badge className={color}>{score}/100</Badge>;
     }

@@ -27,10 +27,13 @@ import {
 import { inngest } from "../jobs/client.js";
 import { emitJobEvent } from "../jobs/emitter.js";
 import { buildCanonicalCoreMessage, buildProduceMessage, buildReproduceMessage } from "../lib/ai/prompts/production.js";
+import { buildPersonaContext, buildPersonaVoice, loadPersonaForDraft } from "../lib/personas.js";
+import { validateProducedDraft } from "../lib/ai/validators/index.js";
 import { buildReviewMessage } from "../lib/ai/prompts/review.js";
 import { buildAssetsMessage } from "../lib/ai/prompts/assets.js";
 import { loadIdeaContext, type IdeaContext } from "../lib/ai/loadIdeaContext.js";
 import { logAiUsage } from "../lib/axiom.js";
+import { deriveTier } from "@brighttale/shared/utils/reviewTierCompat";
 
 const FORMAT_COSTS: Record<string, number> = {
   blog: 200,
@@ -46,6 +49,7 @@ const createSchema = z.object({
   ideaId: z.string().optional(),
   researchSessionId: z.string().uuid().optional(),
   projectId: z.string().optional(),
+  personaId: z.string().uuid().optional(),
   type: z.enum(["blog", "video", "shorts", "podcast", "engagement"]),
   title: z.string().optional(),
   modelTier: z.string().default("standard"),
@@ -172,6 +176,7 @@ async function buildAssetsInput(
   sections: Array<{ slot: string; section_title: string; key_points: string[] }>;
   channel_context: Record<string, unknown>;
   idea_context: IdeaContext | null;
+  draft_excerpt?: string;
 }> {
   const sb = createServiceClient();
   const draftJson = (draft.draft_json ?? {}) as Record<string, unknown>;
@@ -228,12 +233,32 @@ async function buildAssetsInput(
     ? await loadIdeaContext(draft.idea_id as string)
     : null;
 
+  // Extract draft_excerpt: intro paragraph + H2 headings from full_draft
+  let draft_excerpt: string | undefined;
+  const fullDraft = (draftJson?.full_draft as string | undefined)
+    ?? ((draftJson?.blog as Record<string, unknown> | undefined)?.full_draft as string | undefined)
+    ?? '';
+  if (fullDraft) {
+    const lines = fullDraft.split('\n');
+    const excerptParts: string[] = [];
+    // Grab first non-empty paragraph (intro)
+    const firstPara = lines.find(l => l.trim() && !l.startsWith('#'));
+    if (firstPara) excerptParts.push(firstPara.trim());
+    // Grab all H2 headings
+    const headings = lines.filter(l => l.startsWith('## ')).map(l => l.trim());
+    excerptParts.push(...headings);
+    if (excerptParts.length > 0) {
+      draft_excerpt = excerptParts.join('\n');
+    }
+  }
+
   return {
     title: (draft.title as string) ?? "Untitled",
     content_type: contentType,
     sections,
     channel_context: channelContext,
     idea_context: idea,
+    ...(draft_excerpt ? { draft_excerpt } : {}),
   };
 }
 
@@ -280,6 +305,7 @@ export async function contentDraftsRoutes(
           idea_id: resolvedIdeaId,
           research_session_id: body.researchSessionId ?? null,
           project_id: body.projectId ?? null,
+          persona_id: body.personaId ?? null,
           type: body.type,
           title: body.title ?? null,
           status: "draft",
@@ -288,7 +314,12 @@ export async function contentDraftsRoutes(
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        if ((error as { code?: string }).code === '23503') {
+          throw new ApiError(400, 'Persona not found', 'INVALID_PERSONA_ID');
+        }
+        throw error;
+      }
       return reply.send({ data, error: null });
     } catch (error) {
       return sendError(reply, error);
@@ -598,6 +629,7 @@ export async function contentDraftsRoutes(
           const idea = draft.idea_id
             ? await loadIdeaContext(draft.idea_id as string)
             : null;
+          const persona = await loadPersonaForDraft(draft, sb);
 
           const userMessage = buildCanonicalCoreMessage({
             type: draft.type as string,
@@ -605,6 +637,7 @@ export async function contentDraftsRoutes(
             ideaId: draft.idea_id as string | undefined,
             idea,
             researchCards: approvedCards as unknown[] | undefined,
+            personaContext: persona ? buildPersonaContext(persona) : null,
             channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
           });
 
@@ -703,6 +736,7 @@ export async function contentDraftsRoutes(
         const idea = draft.idea_id
           ? await loadIdeaContext(draft.idea_id as string)
           : null;
+        const persona = await loadPersonaForDraft(draft, sb);
 
         const userMessage = buildCanonicalCoreMessage({
           type: draft.type as string,
@@ -710,6 +744,7 @@ export async function contentDraftsRoutes(
           ideaId: draft.idea_id as string | undefined,
           idea,
           researchCards: approvedCards as unknown[] | undefined,
+          personaContext: persona ? buildPersonaContext(persona) : null,
           channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
         });
 
@@ -905,6 +940,7 @@ export async function contentDraftsRoutes(
           const idea = draft.idea_id
             ? await loadIdeaContext(draft.idea_id as string)
             : null;
+          const persona = await loadPersonaForDraft(draft, sb);
 
           const userMessage = buildProduceMessage({
             type: type as string,
@@ -912,6 +948,7 @@ export async function contentDraftsRoutes(
             canonicalCore: draft.canonical_core_json,
             idea,
             productionParams: (draft.production_params as Record<string, unknown> | null) ?? undefined,
+            persona: persona ? buildPersonaVoice(persona) : null,
             channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
           });
 
@@ -1034,6 +1071,7 @@ export async function contentDraftsRoutes(
         const idea = draft.idea_id
           ? await loadIdeaContext(draft.idea_id as string)
           : null;
+        const persona = await loadPersonaForDraft(draft, sb);
 
         const userMessage = buildProduceMessage({
           type: type as string,
@@ -1041,6 +1079,7 @@ export async function contentDraftsRoutes(
           canonicalCore: draft.canonical_core_json,
           idea,
           productionParams: (draft.production_params as Record<string, unknown> | null) ?? undefined,
+          persona: persona ? buildPersonaVoice(persona) : null,
           channel: channelData as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
         });
 
@@ -1099,7 +1138,17 @@ export async function contentDraftsRoutes(
           },
         );
 
-        return reply.send({ data: updated, error: null });
+        // Run universal + persona validators on the produced draft. Findings are
+        // returned alongside the draft for the Review engine + UI to consume.
+        // Critical findings DO NOT block here yet — Phase 4 v1 surfaces only.
+        const updatedRow = updated as Record<string, unknown> | null;
+        const validation = validateProducedDraft(
+          updatedRow?.draft_json as Parameters<typeof validateProducedDraft>[0],
+          updatedRow?.canonical_core_json as Parameters<typeof validateProducedDraft>[1],
+          persona,
+        );
+
+        return reply.send({ data: updated, validation, error: null });
       } catch (error) {
         return sendError(reply, error);
       }
@@ -1243,8 +1292,22 @@ export async function contentDraftsRoutes(
           .eq("id", id)
           .maybeSingle();
 
+        // Validate produced content (blog/video/shorts/podcast — not core).
+        // Persona may be null on legacy drafts; validators degrade gracefully.
+        let validation: ReturnType<typeof validateProducedDraft> | undefined;
+        if (body.phase !== "core") {
+          const updatedRow = (updated ?? row) as Record<string, unknown>;
+          const persona = await loadPersonaForDraft(updatedRow, sb);
+          validation = validateProducedDraft(
+            updatedRow.draft_json as Parameters<typeof validateProducedDraft>[0],
+            updatedRow.canonical_core_json as Parameters<typeof validateProducedDraft>[1],
+            persona,
+          );
+        }
+
         return reply.send({
           data: updated ?? row,
+          ...(validation ? { validation } : {}),
           error: null,
         });
       } catch (error) {
@@ -1484,7 +1547,10 @@ export async function contentDraftsRoutes(
         const formatReview = result[`${draftType}_review`] as
           | Record<string, unknown>
           | undefined;
-        const reviewScore = (formatReview?.score as number) ?? null;
+        const tier = deriveTier(formatReview);
+        const legacyScoreMap: Record<string, number> = { excellent: 95, good: 82, needs_revision: 60, reject: 20, not_requested: 0 };
+        const rawScore = (formatReview?.score as number | undefined) ?? null;
+        const reviewScore: number | null = rawScore !== null ? rawScore : (legacyScoreMap[tier] ?? null);
         const iterationCount = ((draft.iteration_count as number) ?? 0) + 1;
 
         // Determine status based on agent verdict
@@ -1621,12 +1687,11 @@ export async function contentDraftsRoutes(
           | Record<string, unknown>
           | undefined;
 
-        let reviewScore: number | null = null;
+        const tier2 = deriveTier(formatReview);
+        const legacyScoreMap2: Record<string, number> = { excellent: 95, good: 82, needs_revision: 60, reject: 20, not_requested: 0 };
+        const rawScore2 = (formatReview && typeof formatReview.score === 'number') ? formatReview.score : null;
+        let reviewScore: number | null = rawScore2 !== null ? rawScore2 : (legacyScoreMap2[tier2] ?? null);
         let reviewVerdict = "revision_required";
-
-        if (formatReview && typeof formatReview.score === 'number') {
-          reviewScore = formatReview.score;
-        }
 
         const overallVerdict = body.overall_verdict ? String(body.overall_verdict) : null;
         if (formatReview && typeof formatReview.verdict === 'string') {
