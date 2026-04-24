@@ -28,8 +28,10 @@ import type {
   StageResult,
   ReviewResult,
   DEFAULT_PIPELINE_STATE,
+  PipelineSettings,
+  CreditSettings,
 } from '@/components/engines/types';
-import { PIPELINE_STAGES, DEFAULT_PIPELINE_STATE as DEFAULT_STATE } from '@/components/engines/types';
+import { PIPELINE_STAGES, DEFAULT_PIPELINE_STATE as DEFAULT_STATE, DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '@/components/engines/types';
 
 interface PipelineOrchestratorProps {
   projectId: string;
@@ -65,6 +67,8 @@ export function PipelineOrchestrator({
   const publishDraftFetched = useRef(false);
   const [researchData, setResearchData] = useState<Record<string, unknown> | null>(null);
   const { track } = useAnalytics();
+  const [pipelineSettings, setPipelineSettings] = useState<PipelineSettings>(DEFAULT_PIPELINE_SETTINGS);
+  const [creditSettings, setCreditSettings] = useState<CreditSettings>(DEFAULT_CREDIT_SETTINGS);
 
   // Build accumulated context from stageResults
   function buildContext(): PipelineContext {
@@ -225,7 +229,7 @@ export function PipelineOrchestrator({
         await savePipelineState(newState);
         setEngineMode(null);
         toast.success(`Completed ${stage}!`);
-      } else if (reviewResult.score < 40) {
+      } else if (reviewResult.score < pipelineSettings.reviewRejectThreshold) {
         // Rejected — too broken, pause
         toast.warning('Auto-pilot paused — content scored too low for auto-revision');
         const pausedState = {
@@ -403,6 +407,23 @@ export function PipelineOrchestrator({
     toast.info('Auto-pilot resumed');
   }
 
+  // Fetch pipeline and credit settings on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const [psRes, csRes] = await Promise.all([
+          fetch('/api/admin/pipeline-settings'),
+          fetch('/api/admin/credit-settings'),
+        ]);
+        const [ps, cs] = await Promise.all([psRes.json(), csRes.json()]);
+        if (ps?.data) setPipelineSettings(ps.data as PipelineSettings);
+        if (cs?.data) setCreditSettings(cs.data as CreditSettings);
+      } catch {
+        // silent — defaults are used
+      }
+    })();
+  }, []);
+
   // Fetch draft data for Review and Publish stages
   useEffect(() => {
     const ctx = buildContext();
@@ -560,6 +581,7 @@ export function PipelineOrchestrator({
             mode={mode as 'generate' | 'import'}
             channelId={channelId}
             context={ctx}
+            creditSettings={creditSettings}
             onComplete={handleStageComplete}
             onBack={handleBack}
             onStageProgress={handleStageProgress}
@@ -585,6 +607,7 @@ export function PipelineOrchestrator({
             context={ctx}
             draftId={ctx.draftId}
             draft={draftData as any}
+            pipelineSettings={pipelineSettings}
             onComplete={handleStageComplete}
             onBack={handleBack}
             onDraftUpdated={(draft) => setDraftData(draft)}
