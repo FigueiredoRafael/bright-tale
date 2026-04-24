@@ -5,7 +5,7 @@
  */
 
 import type { Json } from "../types/database.js"
-import type { Persona } from "../types/agents.js";
+import type { Persona, PersonaWritingVoice, PersonaEeatSignals, PersonaSoul } from "../types/agents.js";
 
 // ─── Project ──────────────────────────────────────────────────────────────────
 
@@ -535,7 +535,17 @@ export function mapPersonaFromDb(row: DbPersona): Persona {
   };
 }
 
-export function mapPersonaToDb(input: Partial<Persona>): Partial<DbPersona> {
+// Partial<Persona> requires nested JSON sub-types to be fully shaped (e.g.
+// writingVoiceJson.writingStyle: string), but the update schema derives its
+// types from Zod's .partial() + .default('') combination, which makes nested
+// fields optional in the inferred type. This local type matches reality.
+type PersonaDbInput = Partial<Omit<Persona, 'writingVoiceJson' | 'eeatSignalsJson' | 'soulJson'>> & {
+  writingVoiceJson?: Partial<PersonaWritingVoice>
+  eeatSignalsJson?: Partial<PersonaEeatSignals>
+  soulJson?: Partial<PersonaSoul>
+}
+
+export function mapPersonaToDb(input: PersonaDbInput): Partial<DbPersona> {
   const out: Partial<DbPersona> = {};
   if (input.slug !== undefined) out.slug = input.slug;
   if (input.name !== undefined) out.name = input.name;

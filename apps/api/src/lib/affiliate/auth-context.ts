@@ -9,8 +9,20 @@ const adminCache = new WeakMap<object, boolean>()
 
 export async function getAuthenticatedUser(request: unknown): Promise<{ id: string }> {
   const req = request as FastifyRequest
-  if (!req.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED')
-  return { id: req.userId }
+
+  // Fast path: x-user-id set by admin BFF (authenticate middleware)
+  if (req.userId) return { id: req.userId }
+
+  // Fallback: Supabase JWT sent by the portal's proxyToFastify as Bearer token
+  const authHeader = req.headers.authorization
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.slice(7)
+    const sb = createServiceClient()
+    const { data: { user }, error } = await sb.auth.getUser(token)
+    if (!error && user) return { id: user.id }
+  }
+
+  throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED')
 }
 
 export async function isAdmin(request: unknown): Promise<boolean> {
