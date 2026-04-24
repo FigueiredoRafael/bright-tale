@@ -1291,7 +1291,6 @@ export type Database = {
           voice_provider: string | null
           voice_speed: number
           voice_style: string | null
-          wordpress_config_id: string | null
           youtube_channel_id: string | null
           youtube_monthly_views: number | null
           youtube_subs: number | null
@@ -1325,7 +1324,6 @@ export type Database = {
           voice_provider?: string | null
           voice_speed?: number
           voice_style?: string | null
-          wordpress_config_id?: string | null
           youtube_channel_id?: string | null
           youtube_monthly_views?: number | null
           youtube_subs?: number | null
@@ -1359,7 +1357,6 @@ export type Database = {
           voice_provider?: string | null
           voice_speed?: number
           voice_style?: string | null
-          wordpress_config_id?: string | null
           youtube_channel_id?: string | null
           youtube_monthly_views?: number | null
           youtube_subs?: number | null
@@ -1378,13 +1375,6 @@ export type Database = {
             columns: ["template_id"]
             isOneToOne: false
             referencedRelation: "templates"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "channels_wordpress_config_id_fkey"
-            columns: ["wordpress_config_id"]
-            isOneToOne: false
-            referencedRelation: "wordpress_configs"
             referencedColumns: ["id"]
           },
         ]
@@ -3125,41 +3115,38 @@ export type Database = {
       }
       wordpress_configs: {
         Row: {
+          channel_id: string
           created_at: string
           id: string
-          org_id: string | null
           password: string
           site_url: string
           updated_at: string
-          user_id: string | null
           username: string
         }
         Insert: {
+          channel_id: string
           created_at?: string
           id?: string
-          org_id?: string | null
           password: string
           site_url: string
           updated_at?: string
-          user_id?: string | null
           username: string
         }
         Update: {
+          channel_id?: string
           created_at?: string
           id?: string
-          org_id?: string | null
           password?: string
           site_url?: string
           updated_at?: string
-          user_id?: string | null
           username?: string
         }
         Relationships: [
           {
-            foreignKeyName: "wordpress_configs_org_id_fkey"
-            columns: ["org_id"]
+            foreignKeyName: "wordpress_configs_channel_id_fkey"
+            columns: ["channel_id"]
             isOneToOne: false
-            referencedRelation: "organizations"
+            referencedRelation: "channels"
             referencedColumns: ["id"]
           },
         ]

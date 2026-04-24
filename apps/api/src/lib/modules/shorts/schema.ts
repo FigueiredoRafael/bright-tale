@@ -25,6 +25,7 @@ export const shortItemSchema = z.object({
   cta: z.string(),
   sound_effects: z.string().optional(),
   background_music: z.string().optional(),
+  content_warning: z.string().optional(),
 });
 
 /** The shorts output is an array of short items */

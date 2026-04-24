@@ -1,0 +1,146 @@
+<h2>Three Approaches to Persona Integration</h2>
+<p class="subtitle">Where in the pipeline do personas enter — and how deeply do they shape the content?</p>
+
+<div style="margin-bottom:2.5rem;">
+
+  <!-- APPROACH A -->
+  <div class="option" data-choice="a" onclick="toggleSelect(this)" style="margin-bottom:1rem;display:block;border-radius:16px;padding:1.75rem 2rem;cursor:pointer;">
+    <div style="display:flex;align-items:flex-start;gap:1.25rem;">
+      <div class="letter" style="flex-shrink:0;">A</div>
+      <div style="flex:1">
+        <h3 style="margin-bottom:.35rem;">Voice Layer — Persona at the Blog Agent only</h3>
+        <p style="font-size:.85rem;opacity:.75;margin-bottom:1rem;">Persona shapes <em>how</em> content is written. Facts and angle come from research.</p>
+
+        <!-- Pipeline -->
+        <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;margin-bottom:1rem;">
+          <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:.5rem .85rem;font-size:.72rem;white-space:nowrap;">Brainstorm</div>
+          <div style="padding:0 .4rem;opacity:.4;font-size:.8rem;">→</div>
+          <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:.5rem .85rem;font-size:.72rem;white-space:nowrap;">Research</div>
+          <div style="padding:0 .4rem;opacity:.4;font-size:.8rem;">→</div>
+          <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:.5rem .85rem;font-size:.72rem;white-space:nowrap;">Content Core</div>
+          <div style="padding:0 .4rem;opacity:.4;font-size:.8rem;">→</div>
+          <div style="background:rgba(61,220,132,.15);border:1px solid rgba(61,220,132,.4);border-radius:8px;padding:.5rem .85rem;font-size:.72rem;font-weight:700;color:#3ddc84;white-space:nowrap;">Blog Agent + Persona ✦</div>
+          <div style="padding:0 .4rem;opacity:.4;font-size:.8rem;">→</div>
+          <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:.5rem .85rem;font-size:.72rem;white-space:nowrap;">Publish</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;font-size:.82rem;">
+          <div style="background:rgba(61,220,132,.07);border:1px solid rgba(61,220,132,.15);border-radius:8px;padding:.75rem;">
+            <div style="color:#3ddc84;font-weight:700;margin-bottom:.3rem;">Pros</div>
+            <ul style="padding-left:1rem;margin:0;">
+              <li>Minimal pipeline changes</li>
+              <li>Clean: facts separate from voice</li>
+              <li>Easy to swap/add personas</li>
+              <li>Ship in 1 sprint</li>
+            </ul>
+          </div>
+          <div style="background:rgba(255,92,92,.07);border:1px solid rgba(255,92,92,.15);border-radius:8px;padding:.75rem;">
+            <div style="color:#ff5c5c;font-weight:700;margin-bottom:.3rem;">Cons</div>
+            <ul style="padding-left:1rem;margin:0;">
+              <li>Persona only shapes writing style</li>
+              <li>Doesn't affect which angle gets chosen</li>
+              <li>Weaker EEAT differentiation</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- APPROACH B -->
+  <div class="option" data-choice="b" onclick="toggleSelect(this)" style="margin-bottom:1rem;display:block;border-radius:16px;padding:1.75rem 2rem;cursor:pointer;">
+    <div style="display:flex;align-items:flex-start;gap:1.25rem;">
+      <div class="letter" style="flex-shrink:0;">B</div>
+      <div style="flex:1">
+        <h3 style="margin-bottom:.35rem;">Angle + Voice — Persona at Core AND Blog Agent</h3>
+        <p style="font-size:.85rem;opacity:.75;margin-bottom:1rem;">Persona shapes <em>which thesis gets selected</em> (Core) and <em>how it's written</em> (Blog). Deepest EEAT.</p>
+
+        <!-- Pipeline -->
+        <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;margin-bottom:1rem;">
+          <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:.5rem .85rem;font-size:.72rem;white-space:nowrap;">Brainstorm</div>
+          <div style="padding:0 .4rem;opacity:.4;font-size:.8rem;">→</div>
+          <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:.5rem .85rem;font-size:.72rem;white-space:nowrap;">Research</div>
+          <div style="padding:0 .4rem;opacity:.4;font-size:.8rem;">→</div>
+          <div style="background:rgba(245,200,66,.15);border:1px solid rgba(245,200,66,.4);border-radius:8px;padding:.5rem .85rem;font-size:.72rem;font-weight:700;color:#f5c842;white-space:nowrap;">Content Core + Persona ✦</div>
+          <div style="padding:0 .4rem;opacity:.4;font-size:.8rem;">→</div>
+          <div style="background:rgba(61,220,132,.15);border:1px solid rgba(61,220,132,.4);border-radius:8px;padding:.5rem .85rem;font-size:.72rem;font-weight:700;color:#3ddc84;white-space:nowrap;">Blog Agent + Persona ✦</div>
+          <div style="padding:0 .4rem;opacity:.4;font-size:.8rem;">→</div>
+          <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:.5rem .85rem;font-size:.72rem;white-space:nowrap;">Publish</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;font-size:.82rem;">
+          <div style="background:rgba(61,220,132,.07);border:1px solid rgba(61,220,132,.15);border-radius:8px;padding:.75rem;">
+            <div style="color:#3ddc84;font-weight:700;margin-bottom:.3rem;">Pros</div>
+            <ul style="padding-left:1rem;margin:0;">
+              <li>Persona shapes angle + voice</li>
+              <li>Strongest EEAT differentiation</li>
+              <li>Same content idea → different posts per persona</li>
+              <li>No new pipeline stage</li>
+            </ul>
+          </div>
+          <div style="background:rgba(255,92,92,.07);border:1px solid rgba(255,92,92,.15);border-radius:8px;padding:.75rem;">
+            <div style="color:#ff5c5c;font-weight:700;margin-bottom:.3rem;">Cons</div>
+            <ul style="padding-left:1rem;margin:0;">
+              <li>More complex prompt engineering</li>
+              <li>Risk of persona "bleeding" into facts</li>
+              <li>Needs careful validation rules</li>
+            </ul>
+          </div>
+        </div>
+
+        <div style="margin-top:.85rem;padding:.65rem 1rem;background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.2);border-radius:8px;font-size:.8rem;color:#f5c842;">
+          ⭐ Recommended — strongest EEAT with no new infrastructure
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- APPROACH C -->
+  <div class="option" data-choice="c" onclick="toggleSelect(this)" style="margin-bottom:0;display:block;border-radius:16px;padding:1.75rem 2rem;cursor:pointer;">
+    <div style="display:flex;align-items:flex-start;gap:1.25rem;">
+      <div class="letter" style="flex-shrink:0;">C</div>
+      <div style="flex:1">
+        <h3 style="margin-bottom:.35rem;">Dedicated Persona Stage — New agent step before Core</h3>
+        <p style="font-size:.85rem;opacity:.75;margin-bottom:1rem;">A new "Persona Context Agent" runs post-research, reframes the idea through the persona's worldview before Core.</p>
+
+        <!-- Pipeline -->
+        <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;margin-bottom:1rem;">
+          <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:.5rem .85rem;font-size:.72rem;white-space:nowrap;">Brainstorm</div>
+          <div style="padding:0 .4rem;opacity:.4;font-size:.8rem;">→</div>
+          <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:.5rem .85rem;font-size:.72rem;white-space:nowrap;">Research</div>
+          <div style="padding:0 .4rem;opacity:.4;font-size:.8rem;">→</div>
+          <div style="background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.4);border-radius:8px;padding:.5rem .85rem;font-size:.72rem;font-weight:700;color:#a78bfa;white-space:nowrap;">Persona Context ✦ NEW</div>
+          <div style="padding:0 .4rem;opacity:.4;font-size:.8rem;">→</div>
+          <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:.5rem .85rem;font-size:.72rem;white-space:nowrap;">Content Core</div>
+          <div style="padding:0 .4rem;opacity:.4;font-size:.8rem;">→</div>
+          <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:.5rem .85rem;font-size:.72rem;white-space:nowrap;">Blog Agent</div>
+          <div style="padding:0 .4rem;opacity:.4;font-size:.8rem;">→</div>
+          <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:.5rem .85rem;font-size:.72rem;white-space:nowrap;">Publish</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;font-size:.82rem;">
+          <div style="background:rgba(61,220,132,.07);border:1px solid rgba(61,220,132,.15);border-radius:8px;padding:.75rem;">
+            <div style="color:#3ddc84;font-weight:700;margin-bottom:.3rem;">Pros</div>
+            <ul style="padding-left:1rem;margin:0;">
+              <li>Cleanest separation of concerns</li>
+              <li>Persona reframing is explicit + auditable</li>
+              <li>Most future-proof for multiple personas</li>
+            </ul>
+          </div>
+          <div style="background:rgba(255,92,92,.07);border:1px solid rgba(255,92,92,.15);border-radius:8px;padding:.75rem;">
+            <div style="color:#ff5c5c;font-weight:700;margin-bottom:.3rem;">Cons</div>
+            <ul style="padding-left:1rem;margin:0;">
+              <li>New DB table + new agent definition</li>
+              <li>Extra token cost per post</li>
+              <li>More complex pipeline orchestration</li>
+              <li>Overkill for 2-3 personas</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="text-align:center;margin-top:1rem;">Click to select your preferred approach, then tell me in the terminal.</p>

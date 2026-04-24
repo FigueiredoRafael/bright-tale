@@ -37,6 +37,7 @@
     "principal": "Principal",
     "createContentSection": "Criar conteúdo",
     "library": "Biblioteca",
+    "personas": "Personas",
     "resources": "Recursos",
     "settings": "Configurações"
   },
@@ -52,8 +53,7 @@
     "settings": "Configurações",
     "settingsImageGeneration": "Geração de Imagens",
     "settingsAI": "Configurações de IA",
-    "settingsAgents": "Agentes",
-    "settingsWordpress": "WordPress"
+    "settingsAgents": "Agentes"
   },
   "dashboard": {
     "greeting": "Olá, {channelName}",

@@ -11,6 +11,7 @@ import { useManualMode } from '@/hooks/use-manual-mode';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { GenerationProgressModal } from '@/components/generation/GenerationProgressModal';
 import { ContextBanner } from './ContextBanner';
+import { ContentWarningBanner } from './ContentWarningBanner';
 import { friendlyAiError } from '@/lib/ai/error-message';
 import { useUpgrade } from '@/components/billing/UpgradeProvider';
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker';
@@ -38,6 +39,22 @@ interface ReviewEngineProps {
 }
 
 const REVIEW_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
+
+const TIER_LABEL: Record<string, string> = {
+  excellent: 'Excellent',
+  good: 'Good',
+  needs_revision: 'Needs Revision',
+  reject: 'Rejected',
+  not_requested: 'Not Reviewed',
+};
+
+const TIER_COLOR: Record<string, string> = {
+  excellent: 'bg-green-500/20 text-green-700 border-green-500/50',
+  good: 'bg-blue-500/20 text-blue-700 border-blue-500/50',
+  needs_revision: 'bg-amber-500/20 text-amber-700 border-amber-500/50',
+  reject: 'bg-red-500/20 text-red-700 border-red-500/50',
+  not_requested: 'bg-gray-500/20 text-gray-700 border-gray-500/50',
+};
 
 export function ReviewEngine({
   channelId,
@@ -286,12 +303,13 @@ export function ReviewEngine({
         }
         await refetchDraft();
 
+        const tierText = TIER_LABEL[tier] ?? 'Unknown';
         if (verdict === 'approved') {
-          toast.success(`Review imported — Score: ${score}/100 — Approved!`);
+          toast.success(`Review imported — ${tierText} — Approved!`);
         } else if (verdict === 'rejected') {
-          toast.error(`Review imported — Score: ${score}/100 — Rejected`);
+          toast.error(`Review imported — ${tierText} — Rejected`);
         } else {
-          toast.warning(`Review imported — Score: ${score}/100 — Revision required`);
+          toast.warning(`Review imported — ${tierText} — Revision required`);
         }
       } catch {
         toast.error('Failed to import review');
@@ -391,6 +409,7 @@ export function ReviewEngine({
   return (
     <div className="space-y-6">
       <ContextBanner stage="review" context={context} onBack={onBack} />
+      <ContentWarningBanner warning={typeof (draft.review_feedback_json as Record<string, unknown> | null)?.content_warning === 'string' ? (draft.review_feedback_json as Record<string, unknown>).content_warning as string : undefined} />
 
       {/* No review yet — submit for review */}
       {!hasReview && (
@@ -492,10 +511,14 @@ export function ReviewEngine({
                           }),
                         });
                       }
+                      const fb = draft.review_feedback_json as Record<string, unknown> | null ?? {};
+                      const fmtReview = (fb.blog_review ?? fb.video_review ?? fb.podcast_review ?? fb.shorts_review) as Record<string, unknown> | undefined;
+                      const localTier = deriveTier(fmtReview ?? fb);
                       const result: ReviewResult = {
                         score,
+                        qualityTier: localTier,
                         verdict,
-                        feedbackJson: draft.review_feedback_json ?? {},
+                        feedbackJson: fb,
                         iterationCount: draft.iteration_count,
                       };
                       onComplete(result);

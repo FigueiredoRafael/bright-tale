@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { review } from '../../../../../scripts/agents/review';
+import { brainstorm } from '../../../../../scripts/agents/brainstorm';
+import { research } from '../../../../../scripts/agents/research';
+import { blog } from '../../../../../scripts/agents/blog';
+import { video } from '../../../../../scripts/agents/video';
+import { shorts } from '../../../../../scripts/agents/shorts';
+import { podcast } from '../../../../../scripts/agents/podcast';
+import { engagement } from '../../../../../scripts/agents/engagement';
+import { contentCore } from '../../../../../scripts/agents/content-core';
 
 function collectFieldNames(fields: any[], prefix = ''): string[] {
   const names: string[] = [];
@@ -61,4 +69,31 @@ describe('Review agent inputSchema', () => {
       expect(allFields).toContain(f);
     }
   });
+});
+
+describe('content_warning field presence', () => {
+  const agentsToCheck = [
+    { name: 'brainstorm', agent: brainstorm },
+    { name: 'research', agent: research },
+    { name: 'blog', agent: blog },
+    { name: 'video', agent: video },
+    { name: 'shorts', agent: shorts },
+    { name: 'podcast', agent: podcast },
+    { name: 'engagement', agent: engagement },
+    { name: 'content-core', agent: contentCore },
+  ];
+
+  for (const { name, agent } of agentsToCheck) {
+    it(`${name}.outputSchema declares content_warning`, () => {
+      const findField = (fields: unknown[]): boolean =>
+        fields.some((f) => {
+          if (!f || typeof f !== 'object') return false;
+          const field = f as { name?: string; fields?: unknown[] };
+          if (field.name === 'content_warning') return true;
+          if (Array.isArray(field.fields)) return findField(field.fields);
+          return false;
+        });
+      expect(findField(agent.sections.outputSchema.fields)).toBe(true);
+    });
+  }
 });

@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Review da Semana — Hector Siman · 20 → 23 Abril 2026</title>
+<style>
+  :root {
+    --bg-0: #07090f;
+    --bg-1: #0c1019;
+    --bg-2: #121826;
+    --line: #1e2636;
+    --line-2: #2a3650;
+    --fg: #e5ecf9;
+    --fg-dim: #8f9cb8;
+    --fg-muted: #5e6a83;
+    --accent: #7c9cff;
+    --accent-2: #b488ff;
+    --accent-3: #5cdbb9;
+    --warn: #ffb86b;
+    --danger: #ff7a8a;
+    --chip: #1a2235;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: ui-sans-serif, -apple-system, "Inter", "SF Pro Text", system-ui, sans-serif;
+    background:
+      radial-gradient(1200px 600px at 10% -10%, rgba(124,156,255,0.12), transparent 60%),
+      radial-gradient(1000px 500px at 100% 0%, rgba(180,136,255,0.10), transparent 60%),
+      radial-gradient(900px 500px at 50% 100%, rgba(92,219,185,0.06), transparent 60%),
+      var(--bg-0);
+    color: var(--fg);
+    line-height: 1.6;
+    letter-spacing: 0.005em;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 48px 28px 96px; }
+
+  /* Hero */
+  .hero {
+    position: relative;
+    padding: 44px 40px;
+    border-radius: 22px;
+    background: linear-gradient(140deg, rgba(124,156,255,0.18), rgba(180,136,255,0.12) 45%, rgba(12,16,25,0.7) 90%);
+    border: 1px solid var(--line-2);
+    overflow: hidden;
+    box-shadow: 0 30px 80px -40px rgba(60, 80, 200, 0.45);
+  }
+  .hero::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: radial-gradient(600px 300px at 80% 0%, rgba(255,255,255,0.06), transparent 60%);
+    pointer-events: none;
+  }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-size: 12px; font-weight: 600;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 14px;
+  }
+  .eyebrow::before {
+    content: ""; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent-3); box-shadow: 0 0 14px var(--accent-3);
+  }
+  h1 {
+    margin: 0 0 14px; font-size: 40px; font-weight: 700;
+    line-height: 1.15; letter-spacing: -0.02em;
+    background: linear-gradient(120deg, #ffffff, #c6d1ff 60%, #b488ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub { color: var(--fg-dim); font-size: 16.5px; max-width: 820px; }
+  .sub strong { color: var(--fg); }
+
+  .meta-row {
+    display: flex; flex-wrap: wrap; gap: 10px;
+    margin-top: 22px;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 12px; border-radius: 999px;
+    background: rgba(18,24,38,0.7); border: 1px solid var(--line-2);
+    font-size: 12.5px; color: var(--fg-dim);
+    backdrop-filter: blur(6px);
+  }
+  .chip strong { color: var(--fg); font-weight: 600; }
+  .chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+  /* Thesis card */
+  .thesis {
+    margin-top: 28px;
+    padding: 22px 26px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(92,219,185,0.10), rgba(124,156,255,0.06));
+    border: 1px solid rgba(92,219,185,0.28);
+  }
+  .thesis .label { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent-3); font-weight: 700; margin-bottom: 8px; }
+  .thesis p { margin: 0; font-size: 16px; color: var(--fg); }
+  .thesis p b { color: #fff; }
+
+  /* Metric cards */
+  .grid { display: grid; gap: 18px; }
+  .metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 34px 0 10px;
+  }
+  @media (max-width: 880px) { .metrics { grid-template-columns: repeat(2, 1fr); } }
+  .metric {
+    position: relative;
+    padding: 20px 20px 18px;
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(30,38,54,0.55), rgba(12,16,25,0.6));
+    border: 1px solid var(--line);
+    overflow: hidden;
+  }
+  .metric::before {
+    content: ""; position: absolute; inset: auto 0 0 0; height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    opacity: 0.6;
+  }
+  .metric .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--fg-muted); margin-bottom: 8px; font-weight: 600; }
+  .metric .value { font-size: 30px; font-weight: 700; letter-spacing: -0.01em; }
+  .metric .hint { font-size: 12.5px; color: var(--fg-dim); margin-top: 4px; }
+  .value .plus { color: var(--accent-3); }
+  .value .minus { color: var(--danger); }
+
+  /* Story day */
+  h2.section-h {
+    margin: 56px 0 4px; font-size: 22px; letter-spacing: -0.01em;
+  }
+  .section-lede { color: var(--fg-dim); font-size: 14.5px; margin: 0 0 24px; max-width: 820px; }
+
+  .day {
+    position: relative;
+    padding: 26px 28px;
+    border-radius: 18px;
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    margin-bottom: 18px;
+  }
+  .day-head {
+    display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap;
+    gap: 10px; margin-bottom: 14px;
+  }
+  .day-date { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .day-title { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; color: var(--fg); margin: 4px 0 0; }
+  .day-count { color: var(--fg-muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .day p.lede {
+    margin: 0 0 14px; font-size: 15px; color: var(--fg-dim); max-width: 860px;
+  }
+  .day p.lede b { color: var(--fg); }
+
+  .beats { display: grid; gap: 10px; margin-top: 6px; }
+  .beat {
+    display: grid; grid-template-columns: 88px 1fr; gap: 16px;
+    padding: 12px 14px; border-radius: 10px;
+    background: rgba(18,24,38,0.5);
+    border: 1px solid var(--line);
+  }
+  .beat .when { color: var(--accent-2); font-weight: 600; font-size: 12.5px; font-variant-numeric: tabular-nums; padding-top: 2px; }
+  .beat .what { font-size: 14px; color: var(--fg); }
+  .beat .what b { color: #fff; }
+  .beat .what .why { display: block; margin-top: 4px; font-size: 13px; color: var(--fg-dim); }
+
+  /* Branch sections */
+  section.branch { margin-top: 48px; }
+  .branch-header {
+    display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+    gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--line);
+    margin-bottom: 22px;
+  }
+  .branch-title {
+    font-size: 22px; font-weight: 700; letter-spacing: -0.01em;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .branch-icon {
+    width: 34px; height: 34px; border-radius: 10px;
+    display: grid; place-items: center;
+    background: linear-gradient(135deg, rgba(124,156,255,0.25), rgba(180,136,255,0.25));
+    border: 1px solid var(--line-2);
+    font-size: 16px;
+  }
+  .branch-kpis { display: flex; gap: 16px; color: var(--fg-dim); font-size: 13px; }
+  .branch-kpis b { color: var(--fg); font-weight: 600; }
+  .branch-lede {
+    font-size: 15px; color: var(--fg-dim); margin: -6px 0 22px; max-width: 900px;
+  }
+  .branch-lede b { color: var(--fg); }
+
+  .themes { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; margin-bottom: 24px; }
+  @media (max-width: 880px) { .themes { grid-template-columns: 1fr; } }
+  .theme {
+    padding: 18px 20px; border-radius: 14px;
+    background: var(--bg-1); border: 1px solid var(--line);
+  }
+  .theme h3 {
+    margin: 0 0 8px; font-size: 15px; letter-spacing: 0.01em;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .theme h3 .bullet {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent-2);
+    box-shadow: 0 0 10px var(--accent-2);
+  }
+  .theme p { margin: 0; font-size: 13.8px; color: var(--fg-dim); }
+  .theme p b { color: var(--fg); }
+
+  /* Commit details */
+  details.commits {
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  details.commits > summary {
+    cursor: pointer;
+    padding: 14px 20px;
+    font-size: 13.5px;
+    color: var(--fg-dim);
+    list-style: none;
+    display: flex; align-items: center; justify-content: space-between;
+    user-select: none;
+  }
+  details.commits > summary::-webkit-details-marker { display: none; }
+  details.commits > summary::after {
+    content: "▸"; color: var(--fg-muted); transition: transform .2s;
+  }
+  details.commits[open] > summary::after { transform: rotate(90deg); }
+  details.commits > summary:hover { background: rgba(124,156,255,0.04); color: var(--fg); }
+  .commit-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .commit-table tr { border-top: 1px solid var(--line); }
+  .commit-table tr:hover td { background: rgba(124,156,255,0.03); }
+  .commit-table td { padding: 10px 14px; vertical-align: top; }
+  .commit-table td.sha { font-family: "JetBrains Mono", "Fira Code", monospace; color: var(--accent); width: 90px; }
+  .commit-table td.time { color: var(--fg-muted); white-space: nowrap; width: 130px; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .commit-table td.msg { color: var(--fg); }
+  .commit-table td.msg .pfx { color: var(--accent-2); font-weight: 600; }
+
+  /* Callout */
+  .callout {
+    padding: 18px 22px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(92,219,185,0.08), rgba(124,156,255,0.06));
+    border: 1px solid rgba(92,219,185,0.25);
+    color: var(--fg);
+    margin: 16px 0 24px;
+    font-size: 14.5px;
+  }
+  .callout h4 { margin: 0 0 8px; font-size: 12px; color: var(--accent-3); letter-spacing: 0.12em; text-transform: uppercase; font-weight: 700; }
+  .callout p { margin: 0; color: var(--fg); }
+  .callout p b { color: #fff; }
+
+  /* Risks */
+  .risk {
+    padding: 18px 20px; border-radius: 14px;
+    background: rgba(255,122,138,0.05);
+    border: 1px solid rgba(255,122,138,0.25);
+  }
+  .risk h3 { margin: 0 0 8px; font-size: 15px; color: var(--danger); }
+  .risk p { margin: 0; font-size: 13.8px; color: var(--fg-dim); }
+  .risk p b { color: var(--fg); }
+
+  footer {
+    margin-top: 64px; padding-top: 24px;
+    border-top: 1px solid var(--line);
+    color: var(--fg-muted);
+    font-size: 12.5px;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  }
+  code { background: rgba(124,156,255,0.08); color: #c6d1ff; padding: 1px 6px; border-radius: 4px; font-size: 12.5px; font-family: "JetBrains Mono", "Fira Code", monospace; }
+
+  /* Headlines */
+  .headlines {
+    margin-top: 48px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+  }
+  @media (max-width: 880px) { .headlines { grid-template-columns: 1fr; } }
+  .headline {
+    position: relative;
+    padding: 28px 30px 26px;
+    border-radius: 18px;
+    background:
+      linear-gradient(180deg, rgba(18,24,38,0.85), rgba(12,16,25,0.7));
+    border: 1px solid var(--line-2);
+    overflow: hidden;
+    transition: transform .2s ease, border-color .2s ease;
+  }
+  .headline:hover { transform: translateY(-2px); border-color: rgba(124,156,255,0.35); }
+  .headline::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent-3));
+  }
+  .headline .num {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.18em;
+    color: var(--accent-3); text-transform: uppercase;
+    margin-bottom: 12px; display: block;
+  }
+  .headline .big {
+    font-size: 54px; font-weight: 800; line-height: 0.98; letter-spacing: -0.03em;
+    background: linear-gradient(120deg, #ffffff 20%, #c6d1ff 60%, #b488ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    margin-bottom: 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  .headline .big small { font-size: 20px; font-weight: 600; color: var(--fg-muted); letter-spacing: 0; -webkit-text-fill-color: var(--fg-muted); }
+  .headline .line {
+    font-size: 17px; font-weight: 600; color: var(--fg);
+    line-height: 1.3; letter-spacing: -0.005em;
+  }
+  .headline .tail {
+    font-size: 13px; color: var(--fg-dim); margin-top: 8px;
+  }
+  .headline.hero-line {
+    grid-column: 1 / -1;
+    padding: 36px 40px 34px;
+    background:
+      radial-gradient(600px 200px at 100% 0%, rgba(92,219,185,0.18), transparent 60%),
+      linear-gradient(140deg, rgba(92,219,185,0.12), rgba(124,156,255,0.08) 50%, rgba(12,16,25,0.85));
+    border-color: rgba(92,219,185,0.35);
+  }
+  .headline.hero-line .big { font-size: 72px; }
+  .headline.hero-line .line { font-size: 19px; max-width: 820px; }
+
+  .section-h { display: flex; align-items: center; gap: 14px; }
+  .section-h .kicker {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--accent);
+    padding: 4px 10px; border-radius: 6px;
+    background: rgba(124,156,255,0.1);
+    border: 1px solid rgba(124,156,255,0.25);
+  }
+
+  /* WhatsApp summary */
+  .wa-wrap {
+    position: relative;
+    border-radius: 18px;
+    background:
+      radial-gradient(500px 200px at 100% 0%, rgba(37,211,102,0.12), transparent 60%),
+      linear-gradient(180deg, rgba(18,24,38,0.85), rgba(12,16,25,0.75));
+    border: 1px solid rgba(37,211,102,0.3);
+    overflow: hidden;
+  }
+  .wa-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 22px;
+    border-bottom: 1px solid rgba(37,211,102,0.2);
+    background: rgba(37,211,102,0.04);
+  }
+  .wa-head .wa-label {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-size: 12.5px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: #25d366;
+  }
+  .wa-head .wa-label::before {
+    content: ""; width: 10px; height: 10px; border-radius: 50%;
+    background: #25d366; box-shadow: 0 0 12px #25d366;
+  }
+  .wa-head .wa-hint { font-size: 12px; color: var(--fg-muted); }
+
+  .copy-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 9px 16px; border-radius: 10px;
+    background: #25d366; color: #0b1a12;
+    border: none; cursor: pointer;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.02em;
+    font-family: inherit;
+    transition: background .15s ease, transform .1s ease;
+  }
+  .copy-btn:hover { background: #2ee075; }
+  .copy-btn:active { transform: scale(0.97); }
+  .copy-btn.copied { background: var(--accent-3); }
+  .copy-btn svg { width: 14px; height: 14px; }
+
+  .wa-text {
+    margin: 0; padding: 24px 28px;
+    font-family: "SF Pro Text", "Inter", ui-sans-serif, system-ui, sans-serif;
+    font-size: 14.5px; line-height: 1.6;
+    color: var(--fg);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-x: auto;
+    tab-size: 2;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="eyebrow">Relatório de semana · Hector Siman</div>
+    <h1>Quatro dias. Três frentes.<br>Uma meta: destravar o lançamento de 8 de maio.</h1>
+    <p class="sub">Revisão de todos os commits do <strong>Hector Siman</strong> entre <strong>segunda 20/04 12:00</strong> e <strong>quinta 23/04 17:00</strong>, cobrindo as branches <code>staging</code>, <code>feat/agent-fleet-8.5-plan-b</code> e <code>feat/persona-eeat-layer</code>. Em vez de listar commit a commit, o relatório conta a história: o que foi quebrado, o que foi construído, e em que ordem.</p>
+    <div class="meta-row">
+      <span class="chip"><span class="dot"></span>Janela <strong>20/04 12:00 → 23/04 17:00 (ART)</strong></span>
+      <span class="chip">Autor <strong>Hector Siman</strong></span>
+      <span class="chip">Branches <strong>3</strong></span>
+      <span class="chip">Gerado em <strong>23/04/2026</strong></span>
+    </div>
+
+    <div class="thesis">
+      <div class="label">A tese da semana</div>
+      <p>Avaliando qualidade de posts pelo SEO, bateu a métrica do Google — <b>E-E-A-T</b>. Os posts estavam bem aquém. Inventar personagens fictícios seria antiético e insuficiente, então veio a decisão: <b>personas derivadas de humanos reais — os próprios editores que vão publicar</b>. A semana atacou em três camadas empilhadas — destravar o publish (segunda/terça), melhorar os agentes (Plan A + Plan B), e dar voz autêntica via persona (quarta/quinta). <b>Resultado aferido: 83.2/100 no SEO Grow Metrics</b> em E-E-A-T &amp; Topical Authority Checks.</p>
+    </div>
+  </div>
+
+  <!-- TOP METRICS -->
+  <div class="grid metrics">
+    <div class="metric">
+      <div class="label">Commits no total</div>
+      <div class="value">176</div>
+      <div class="hint">Somando as 3 branches, sem duplicar</div>
+    </div>
+    <div class="metric">
+      <div class="label">Linhas adicionadas</div>
+      <div class="value"><span class="plus">+50.521</span></div>
+      <div class="hint">Código + testes + docs + migrations</div>
+    </div>
+    <div class="metric">
+      <div class="label">Linhas removidas</div>
+      <div class="value"><span class="minus">−12.601</span></div>
+      <div class="hint">Compressão de prompts e refactors</div>
+    </div>
+    <div class="metric">
+      <div class="label">EEAT aferido</div>
+      <div class="value"><span class="plus">83.2</span><span style="font-size:16px;color:var(--fg-muted);">/100</span></div>
+      <div class="hint">SEO Grow Metrics — E-E-A-T &amp; Topical Authority</div>
+    </div>
+  </div>
+
+  <!-- HEADLINES -->
+  <h2 class="section-h" style="margin-top:56px;"><span class="kicker">Manchetes</span> Os avanços da semana, em uma frase cada</h2>
+  <p class="section-lede">Cada bloco é um ganho concreto que a semana entregou — número na frente, história em uma linha.</p>
+
+  <div class="headlines">
+
+    <div class="headline hero-line">
+      <span class="num">01 · A conquista que definiu a semana</span>
+      <div class="big">83.2<small> / 100</small></div>
+      <div class="line">Score de <b>E-E-A-T &amp; Topical Authority</b> no SEO Grow Metrics — partindo de posts que estavam bem aquém, sem inventar nenhum humano fictício.</div>
+      <div class="tail">Atingido via personas derivadas de editores reais + composição em 3 camadas + 68 validators de voz.</div>
+    </div>
+
+    <div class="headline">
+      <span class="num">02 · Publicação</span>
+      <div class="big">3 <small>bugs</small></div>
+      <div class="line">Pipeline de publish <b>destravado em uma manhã</b> — status lock, polling infinito e revert-on-failure corrigidos juntos.</div>
+      <div class="tail">+32 testes Vitest selam a regressão.</div>
+    </div>
+
+    <div class="headline">
+      <span class="num">03 · Review scoring</span>
+      <div class="big">0-100 → 4 <small>tiers</small></div>
+      <div class="line">Score subjetivo virou <b>enum determinístico</b> — mesmo conteúdo, mesma nota, run após run.</div>
+      <div class="tail">Dual-read mantém 30 dias de compat com reviews legadas.</div>
+    </div>
+
+    <div class="headline">
+      <span class="num">04 · Frota de agentes</span>
+      <div class="big">−1.300 <small>linhas</small></div>
+      <div class="line">5 agentes comprimidos — <b>Review 611→430, Video 308→234</b>, Content-Core, Engagement, Podcast — abrindo token budget pras instruções de SEO.</div>
+      <div class="tail">Checks "Before Finishing" migraram pra <code>rules.validation</code> enforceável.</div>
+    </div>
+
+    <div class="headline">
+      <span class="num">05 · Persona / E-E-A-T</span>
+      <div class="big">0 → <small>produto</small></div>
+      <div class="line">Saiu da folha em branco e chegou em <b>produto completo em ~24h</b> — 4 tabelas, composição 3-layer, admin UI, user builder, avatar AI, WP author.</div>
+      <div class="tail">3 personas reais de lançamento: Cole Merritt, Alex Strand, Casey Park.</div>
+    </div>
+
+    <div class="headline">
+      <span class="num">06 · Validators de voz</span>
+      <div class="big">68 <small>testes</small></div>
+      <div class="line">7 checks universais + 3 suites por persona — <b>pega vícios de IA antes do artigo virar post no WordPress</b>.</div>
+      <div class="tail">"Not X but Y", em-dashes, hollow adjectives, stats sem atribuição, imperativos do Cole, passive-income do Casey.</div>
+    </div>
+
+    <div class="headline">
+      <span class="num">07 · Página de ideia</span>
+      <div class="big">15 <small>tasks</small></div>
+      <div class="line">Uma tarde entregou o <b>terceiro modo de uso da ideia</b> — visualização individual fora de projeto, somando Standalone e Pipeline.</div>
+      <div class="tail">2 colunas, inline editing, 3 cards (monetização, repurpose, risk), channel picker, research banner.</div>
+    </div>
+
+    <div class="headline">
+      <span class="num">08 · Volume</span>
+      <div class="big">176 <small>commits</small></div>
+      <div class="line"><b>+50.521 linhas</b> adicionadas, <b>−12.601 removidas</b> em 4 dias — código novo, testes, docs, migrations.</div>
+      <div class="tail">Média de 44 commits/dia, 3 branches ativos em paralelo.</div>
+    </div>
+
+  </div>
+
+  <!-- STORY -->
+  <h2 class="section-h" style="margin-top:64px;"><span class="kicker">Timeline</span> A história, dia por dia</h2>
+  <p class="section-lede">Cada dia destravou uma camada diferente do produto. Segunda foi planejamento, terça quebrou três frentes ao mesmo tempo, quarta empilhou Plan B em cima do Plan A e começou o persona, quinta entregou o persona inteiro de ponta a ponta.</p>
+
+  <!-- SEGUNDA -->
+  <div class="day">
+    <div class="day-head">
+      <div>
+        <div class="day-date">Segunda · 20 de abril</div>
+        <div class="day-title">Auditoria + decisões de escopo pro 8 de maio</div>
+      </div>
+      <div class="day-count">2 commits</div>
+    </div>
+    <p class="lede">Dia curto e estratégico. O objetivo foi <b>fechar escopo antes de programar</b>: auditar o que já existia, decidir o que entra no lançamento, e organizar os cards de milestone.</p>
+    <div class="beats">
+      <div class="beat">
+        <div class="when">14:47</div>
+        <div class="what"><b>Atualização do Phase 2:</b> 50 cards no total, com F2-046 (YouTube Package), F2-047 (Target Length) e F2-050 (Manual Mode) adicionados. <span class="why">Base pra priorização da semana.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">19:11</div>
+        <div class="what"><b>Audit mestra de lançamento:</b> SaaS 78 / Dogfooding 86. Escopo travado — credits hold/reserve, WordPress por canal, alt-text on-publish, teste e2e de WP, catálogo de afiliados V1. <span class="why">Dois dos quatro achados do AUDIT_REPORT externo foram confirmados (race condition de créditos + RLS de afiliados).</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TERÇA -->
+  <div class="day">
+    <div class="day-head">
+      <div>
+        <div class="day-date">Terça · 21 de abril</div>
+        <div class="day-title">Três bugs quebrados, uma refatoração estrutural, uma página nova</div>
+      </div>
+      <div class="day-count">47 commits</div>
+    </div>
+    <p class="lede">O dia começou na urgência: o pipeline de publicação estava <b>travando drafts em status <code>publishing</code></b> e entrando em loop infinito de polling. Depois veio Plan A — uma refatoração grande dos prompts dos agentes. Fechou a tarde com uma página de detalhes de ideia feita em 15 tasks.</p>
+    <div class="beats">
+      <div class="beat">
+        <div class="when">12:00</div>
+        <div class="what"><b>Pipeline de publicação destravado.</b> Três bugs juntos: loop infinito no <code>PipelineOrchestrator</code> (dependência errada em useEffect), status <code>publishing</code> rejeitado pela CHECK constraint do Postgres (código interpretava como race condition), e reversão de status faltando no catch externo. <span class="why">Por que agora: dogfooding e QA precisam de um fluxo de publicar que não trava. Bug bloqueia o 8-May inteiro.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">11:54</div>
+        <div class="what"><b>V2-001 primary_keyword end-to-end.</b> Research agora emite <code>seo.primary_keyword</code>. Draft API resolve defaults no server. PreviewEngine consome <code>resolved_seo</code>. ResearchEngine avisa quando keyword falta. <span class="why">Meta: SEO automático sem fricção manual.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">13:00–15:00</div>
+        <div class="what"><b>Plan A dos agentes — arquitetura + confiabilidade de inputs/outputs.</b> Regras de formatação deduplicadas em uma única fonte (<code>STANDARD_JSON_RULES</code>). Seções em português traduzidas pra inglês (a frota vazou idioma em alguns prompts). Campos propensos a alucinação removidos. InputSchema do Review expandido pra avaliar conteúdo de verdade. <span class="why">Plan A foi sobre "o agente funcionar direito" — contrato estável, mesmo output pra mesmo input. Plan B virá depois em cima disso, focado em SEO.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">15:00–16:40</div>
+        <div class="what"><b>Rename estrutural: <code>monetization → monetization_hypothesis</code>.</b> Muda em types, seeds, UI e downstream. <code>product_fit</code> (string) vira <code>product_categories</code> (array), <code>sponsor_appeal</code> (string) vira <code>sponsor_category</code>. Rótulos da UI sinalizam "especulação da IA". Dual-read com fallback de 30 dias pra não quebrar ideias existentes. <span class="why">Força framing genérico pra evitar nomes de marca fabricados.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">17:03–18:12</div>
+        <div class="what"><b>Página dedicada <code>/en/ideas/[id]</code> — 15 tasks em uma tarde.</b> Layout 2 colunas, primitivos de edição inline (Text e Select), painel de edição por seção, cards (monetização, repurpose, risk flags), banner condicional de research, channel picker inline, ações Start Project / Send to Research, link do card na library. <span class="why">A ideia deixou de ser só ponto de partida — agora tem que funcionar em 3 lugares: <b>Standalone Engine, Engine integrada ao pipeline, e visualização individual fora de projeto</b>. A página é o terceiro modo.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">18:03–18:45</div>
+        <div class="what"><b>Caça-bugs pós-página:</b> <code>discovery_data</code> parseado como string onde devia ser objeto (cards renderizavam "Not set"), shape de resposta errada no Start Project (lia <code>data.project.id</code> quando era <code>data.id</code>), path <code>/api/library/:id</code> que na verdade é <code>/api/ideas/library/:id</code>. Duplicate de idea coagindo null pra valores válidos. Seed-idea builds o <code>stageResults.brainstorm</code> correto. <span class="why">Muito erro do agente de IA nessa camada — spec não bateu com o código real em vários pontos, gerando atraso. Cada commit aqui é uma correção contra uma hipótese errada que o agente assumiu.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">19:18–19:48</div>
+        <div class="what"><b>Fechamento do Plan A:</b> <code>score</code> 0-100 subjetivo vira <code>quality_tier</code> enum determinístico (4 tiers derivados de contagem de issues). Dual-read mantém 30 dias de compatibilidade com reviews legados. ReviewEngine usa <code>isApprovedTier()</code>. Podcast <code>personal_angle</code> (string fabricada em 1ª pessoa) vira <code>host_talking_prompts</code> (array de convites). Seed regenerado com migration timestamped pra forçar re-apply no remoto. Estimativa do handoff: Review +1.2, Podcast +0.3, outros +0.2.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- QUARTA -->
+  <div class="day">
+    <div class="day-head">
+      <div>
+        <div class="day-date">Quarta · 22 de abril</div>
+        <div class="day-title">Plan B fecha a frota + Persona começa à meia-noite</div>
+      </div>
+      <div class="day-count">52 commits</div>
+    </div>
+    <p class="lede">Se Plan A garantiu que os agentes são <b>confiáveis</b>, Plan B foi sobre <b>melhorar as instruções pra atingir notas melhores de SEO</b>. <code>content_warning</code> na frota, stats com atribuição, handoff de Research mais rico, badge de tier na UX. À noite, a decisão de EEAT bateu: <b>personas derivadas de editores reais</b> são o passo seguinte pra autoridade autêntica — e o trabalho começou num WIP dump à meia-noite, com a fundação pronta 1h depois.</p>
+    <div class="beats">
+      <div class="beat">
+        <div class="when">08:50</div>
+        <div class="what"><b>Plan B definido — foco em SEO.</b> 5 temas pra levar 8 de 9 agentes acima de 8.5 na auditoria. content_warning fleet-wide (credibilidade), compressão de customSections (token budget pra instruções SEO), guards contra alucinação (stats, brands), echo do handoff de Research (<code>research_focus</code>, <code>depth</code>, <code>source_id</code>), badge de tier na UX. <span class="why">Plan A destravou confiabilidade. Plan B usa essa base pra refinar as instruções que empurram o SEO — sem agente confiável, ajuste de prompt seria inútil.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">10:54–11:01</div>
+        <div class="what"><b><code>contentWarningField</code> — helper único aplicado em 7 agentes:</b> brainstorm, research, content-core, blog, video, shorts, podcast, engagement. Todos agora emitem o mesmo aviso de sensibilidade com a mesma regra de fallback. <span class="why">Sinal de respeito ao leitor + redução de risco jurídico e reputacional.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">11:04–11:05</div>
+        <div class="what"><b>Guards contra alucinação:</b> regex no brainstorm bloqueia nomes de marca em <code>product_categories</code>. Shorts e engagement têm que citar <code>key_stats[].figure</code> — chega de número inventado. Video ganha benchmarks de <code>cut_frequency</code>, <code>text_overlays</code>, <code>b_roll_density</code> pra calibração.</div>
+      </div>
+      <div class="beat">
+        <div class="when">11:09–11:18</div>
+        <div class="what"><b>Compressão de customSections:</b> Review 611→430 linhas. Video 308→234. Content-Core 230→163. Engagement 179→151. Podcast 179→120. Os checklists "Before Finishing" foram migrados pra <code>rules.validation</code> — <b>passam a ser enforceados programaticamente</b> em vez de depender do LLM se lembrar.</div>
+      </div>
+      <div class="beat">
+        <div class="when">11:22–11:25</div>
+        <div class="what"><b>Handoff de Research mais estrito:</b> agora o agente ecoa <code>research_focus</code> e <code>depth</code> no output (confirma que recebeu). <code>secondary_keywords</code> ganha <code>source_id</code> obrigatório. <code>legacyKeywordFallback</code> cobre reviews antigas. Preferência por domínios confiáveis.</div>
+      </div>
+      <div class="beat">
+        <div class="when">11:27–11:28</div>
+        <div class="what"><b>Badge de tier na UX:</b> ReviewEngine mostra "Excellent / Good / Needs Work / Reject" em vez de "87/100". CompletedStageSummary usa o mesmo. Score numérico sintetizado internamente pra manter o gate <code>&lt; 40</code> do auto-pilot vivo. <span class="why">Tier é determinístico, fácil de interpretar. Score era subjetivo e não reprodutível.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">11:34</div>
+        <div class="what"><b>Contract test:</b> <code>content_warning</code> verificado em 7 outputSchemas. Asserção recursiva pra pegar campos aninhados. <span class="why">Evita regressão silenciosa se alguém remover o campo.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">12:13</div>
+        <div class="what"><b>Fix de blockers do deep scrutiny:</b> contrato de tipos sincronizado entre research, review e schemas de módulo. <code>content_warning</code> persistido e surfaceado. Score gate hardening — a UI de drafts trocou "Score: X/100" pelo verdict badge. <span class="why">Uma varrida final antes do persona absorver a atenção.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">22:27–23:16</div>
+        <div class="what"><b>Spec + plano do persona / E-E-A-T ganham corpo:</b> 7 specs seguidas (UI, dataflow, seeder, scoring multi-sinal, recomendação client-side, testes, metodologia TDD red-green-refactor). Plano reorganizado em 5 waves paralelos. 22 tasks. <span class="why">A qualidade dos agentes sozinha não dá voz nem E-E-A-T — falta persona.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">23:26</div>
+        <div class="what"><b>WIP dump — checkpoint pré-persona:</b> fluxo de sources com <code>source_id</code>, alt-text nos AssetsEngine, draft_excerpt pro briefing de assets, 800/1200/1600 palavras em presets na DraftEngine, ContentWarningBanner, agente de assets registrado. 3 migrations refreshing agent_prompts. <span class="why">Pre-commit typecheck pulado — apps/web tem mismatch de <code>@tn-figueiredo/affiliate-portal</code> upstream, já autorizado.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">23:28–23:57</div>
+        <div class="what"><b>Fundação do persona (TDD puro):</b> tabela <code>personas</code> com RLS + trigger. Zod schemas, tipos <code>Persona/PersonaContext/PersonaVoice</code>. Definições de <b>Cole Merritt</b>, <b>Alex Strand</b>, <b>Casey Park</b>. Mapper DB. Seed. Score utilities (TDD). Persona + research signals no PipelineContext. Author field no WP publish (TDD). ContentCore + BlogAgent com injeção de persona + 12 guardrails contra vícios de IA. CRUD de personas. <span class="why">Dos 30 commits dessa janela, 5 explicitamente marcados (TDD) — red → green → refactor visível no histórico.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- QUINTA -->
+  <div class="day">
+    <div class="day-head">
+      <div>
+        <div class="day-date">Quinta · 23 de abril</div>
+        <div class="day-title">O persona vira produto completo — de ponta a ponta</div>
+      </div>
+      <div class="day-count">75 commits</div>
+    </div>
+    <p class="lede">O dia inteiro foi sobre <b>transformar a fundação da noite anterior em produto</b>: validators, composição em 3 camadas, admin UI, user builder, geração de avatar, integração com WordPress. A decisão-chave por trás de tudo: <b>persona não é personagem inventado, é derivação de editor real</b> — o humano que constrói o portal publica com a própria voz + experiência, e isso é o que produz autoridade EEAT genuína. Cada commit empurra uma peça a mais em direção a esse resultado.</p>
+    <div class="beats">
+      <div class="beat">
+        <div class="when">00:21–00:47</div>
+        <div class="what"><b>Correções de integração:</b> rota <code>/personas</code> montada com prefix correto pra casar com o rewrite do Next. Persona injetado nos dois endpoints sync (<code>canonical-core</code> e <code>produce</code>) — a task 9 tinha pego só o job Inngest, mas a DraftEngine usa os sync. Helper <code>loadPersonaForDraft</code> extraído pra <code>apps/api/src/lib/personas.ts</code> como fonte única. <span class="why">Sem essa correção, UI chamava o fluxo sem persona mesmo com <code>persona_id</code> na linha.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">00:39</div>
+        <div class="what"><b>Persona selector 3D — casting card carousel:</b> na DraftEngine, scoring por sobreposição de categoria pré-seleciona a persona que melhor casa com a ideia. Roda no navegador, sem chamada extra de API. <span class="why">UX vira mostruário — o usuário vê quem pode "assinar" o conteúdo antes de gerar.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">01:02</div>
+        <div class="what"><b>Dois auto-colapsos removidos:</b> CompletedStageSummary mantém a stage ativa expandida; DraftEngine não fecha mais o canonical core preview quando o usuário entra pra revisar. <span class="why">Pós-geração parecia que o trabalho sumia — cada clique no chevron gerava atrito desnecessário.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">01:25</div>
+        <div class="what"><b>Validators de draft (fases 1–4) — 68 testes.</b> 7 checks universais (<code>Sources</code> não vazia, headings certos, detecção de "not X but Y", uso de signature phrase, filler de em-dash, palavras banidas tipo "journey/essence", adjetivos ocos) + 3 suites por persona (Cole: sem imperativos; Alex: stat com atribuição; Casey: "passive income" qualificado). Ligado no <code>/produce</code> e <code>/manual-output</code>, só surfacing — não bloqueia publish ainda. <span class="why">A IA erra persona mesmo com o prompt certo — o validator pega antes de virar artigo no WordPress.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">11:50–12:27</div>
+        <div class="what"><b>Spec de arquitetura completa:</b> persona system layered composition. Avatar generation. Aterrissagem na arquitetura real do codebase. 3 planos (Fundação, Admin UI, User Builder). <span class="why">Antes de ir pro código, a spec virou "ground truth" — tudo depois execução.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">14:15–14:39</div>
+        <div class="what"><b>Schema expandido:</b> 3 tabelas novas — <code>persona_guardrails</code>, <code>persona_archetypes</code>, <code>channel_personas</code> (M:M). Colunas novas em <code>personas</code> (<code>archetype_slug</code>, <code>avatar_params_json</code>). Tipos do Supabase regenerados. Mappers. Persona_id em DbContentDraft sincronizado.</div>
+      </div>
+      <div class="beat">
+        <div class="when">14:51–15:04</div>
+        <div class="what"><b>Pipeline de composição em 3 camadas:</b> <code>buildLayeredPersonaContext</code> = persona base + archetype overlay + guardrails ativos compilados. <code>fetchActiveGuardrails</code>, <code>fetchArchetypeOverlay</code>, <code>compileConstraints</code> entram como primitivos. Wire into Inngest production-generate — constraints injetados nos system prompts. Schemas Zod pra tudo. Persona relaxada pra suportar blank-slate.</div>
+      </div>
+      <div class="beat">
+        <div class="when">15:10–15:20</div>
+        <div class="what"><b>Admin UI:</b> CRUD routes pra guardrails + archetypes. UI de editor de guardrails. UI de manager de archetypes. Links de Personas na página de agents settings. <span class="why">Admin precisa poder editar guardrails sem mexer em seed — é operação de conteúdo, não deploy.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">15:50–16:11</div>
+        <div class="what"><b>Fluxo AI + avatar:</b> endpoint <code>POST /:id/avatar/generate</code> com prompt builder. <code>/extract</code> endurecido no parse JSON e usando estágio brainstorm pra baixar custo. MIME type → extensão precisa. Agente <code>persona-avatar-generator</code> semeado. Timeout de 10s nas calls de WordPress. Endpoint de link/create de autor no WP. <span class="why">A persona tem rosto e tem autor — senão não cola o E-E-A-T no Google.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">16:06–16:13</div>
+        <div class="what"><b>Channel-personas e integração de publish:</b> CRUD da junção M:M. Fallback do <code>wp_author_id</code> da persona quando request não manda <code>authorId</code>. <span class="why">Conteúdo publica com a assinatura certa sem o usuário pensar.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">16:31–16:48</div>
+        <div class="what"><b>User builder:</b> página de manager + <code>PersonaCard</code>. Picker de modo de criação (blank / edit / AI / archetype). <code>PersonaForm</code>, <code>AvatarSection</code>, <code>WpIntegrationSection</code>. Fluxos de criação completos. Submit gated até nome/slug/bio/domain preenchidos.</div>
+      </div>
+      <div class="beat">
+        <div class="when">16:35–16:59</div>
+        <div class="what"><b>Passadas de code review:</b> erro da API surfaceado em vez de silenciar pra lista vazia. <code>aria-label</code> no botão de edit. Persona compartilhado do <code>@brighttale/shared</code>. Submit gate por campo obrigatório. <b>Envelope <code>{data,error}</code> enforceado no DELETE</b> (violava a regra do projeto). Admin-gate no GET de guardrails. <span class="why">Commits 9acb483, a6bdfd0, bba3c03 e 86a88d9 são explicitamente "code review follow-up" — disciplina de receber feedback e aplicar.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BRANCH DEEP DIVES -->
+  <h2 class="section-h">Zoom por branch</h2>
+  <p class="section-lede">Cada branch representou uma frente da semana. Os commits exclusivos (não herdados de staging) contam o que cada branch <em>realmente</em> adicionou.</p>
+
+  <!-- STAGING -->
+  <section class="branch">
+    <div class="branch-header">
+      <div class="branch-title"><span class="branch-icon">🌿</span>staging</div>
+      <div class="branch-kpis">
+        <span><b>62</b> commits</span>
+        <span><b>+23.747</b></span>
+        <span><b>−5.065</b></span>
+      </div>
+    </div>
+    <p class="branch-lede">A branch de integração. Recebeu o <b>fix do publish pipeline</b>, o <b>Plan A dos agentes</b>, o <b>rename monetization_hypothesis</b>, a <b>página de ideia detalhada</b> e o <b>V2-001 primary_keyword</b>. Merge do Rafael do docs-site (Nextra → Next+MDX) também entrou aqui.</p>
+
+    <div class="themes">
+      <div class="theme">
+        <h3><span class="bullet"></span>Pipeline de publish confiável</h3>
+        <p>Status <code>publishing</code> passou a ser aceito pelo Postgres. Polling infinito morreu com <i>ref guard</i>. Endpoint streaming reverte em falha. Idempotency key limpa em todas as saídas de erro. <b>+32 testes novos</b>.</p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span>Agentes — Plan A</h3>
+        <p>Regras dedupadas em <code>STANDARD_JSON_RULES</code>. Português traduzido. Campos alucinatórios removidos. Score 0-100 virou <code>quality_tier</code> determinístico. Dual-read de 30 dias pra não quebrar reviews legados.</p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span>Página de ideia</h3>
+        <p><code>/en/ideas/[id]</code> — 2 colunas, 3 cards (monetização, repurpose, risk), primitivos de edição inline, banner de research, channel picker, Start Project ↔ Go to Project. <b>15 tasks em uma tarde.</b></p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span>V2-001 primary_keyword</h3>
+        <p>Pipeline completo: Research emite, Draft API resolve defaults de SEO server-side, PreviewEngine consome, ResearchEngine avisa se falta.</p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span>monetization_hypothesis</h3>
+        <p>Rename através de types, seeds, UI, inputs downstream. Sub-campos reestruturados pra forçar categorias genéricas (sem marca). Dual-read com fallback legado.</p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span>Planejamento de lançamento</h3>
+        <p>Audit 8-May (SaaS 78 / Dogfooding 86). V2 cards reorganizados em v0.1 stable + v0.2 beta. Spec de subscription-ready.</p>
+      </div>
+    </div>
+
+    <details class="commits">
+      <summary>62 commits · clique pra expandir</summary>
+      <table class="commit-table">
+        <tbody>
+          <tr><td class="sha">cacbbc1</td><td class="time">22/04 10:50</td><td class="msg"><span class="pfx">merge:</span> feat/v2-001-primary-keyword em staging</td></tr>
+          <tr><td class="sha">f4bc124</td><td class="time">22/04 08:56</td><td class="msg"><span class="pfx">docs(agents):</span> Plan B — 28 tasks</td></tr>
+          <tr><td class="sha">1ae2c9e</td><td class="time">22/04 08:50</td><td class="msg"><span class="pfx">docs(agents):</span> Plan B spec — frota 8.5+</td></tr>
+          <tr><td class="sha">37b0323</td><td class="time">21/04 19:48</td><td class="msg"><span class="pfx">docs(agents):</span> Plan A handoff audit</td></tr>
+          <tr><td class="sha">e84fca7</td><td class="time">21/04 19:43</td><td class="msg"><span class="pfx">chore(db):</span> seed + migration timestamped pra Plan A</td></tr>
+          <tr><td class="sha">ffd9606</td><td class="time">21/04 19:40</td><td class="msg"><span class="pfx">feat(review):</span> quality_tier com fallback legado</td></tr>
+          <tr><td class="sha">ff7afee</td><td class="time">21/04 19:38</td><td class="msg"><span class="pfx">feat(shared):</span> reviewTierCompat dual-read</td></tr>
+          <tr><td class="sha">1a2f4ba</td><td class="time">21/04 19:31</td><td class="msg"><span class="pfx">feat(agents):</span> quality_tier em shorts + engagement</td></tr>
+          <tr><td class="sha">558863b</td><td class="time">21/04 19:28</td><td class="msg"><span class="pfx">feat(agents):</span> score → quality_tier + rubric_checks</td></tr>
+          <tr><td class="sha">5342ed4</td><td class="time">21/04 19:23</td><td class="msg"><span class="pfx">fix(shared):</span> exclui testes do tsc typecheck</td></tr>
+          <tr><td class="sha">c90fc7c</td><td class="time">21/04 19:21</td><td class="msg"><span class="pfx">refactor(schemas):</span> reviewOutputSchema alinhado</td></tr>
+          <tr><td class="sha">9a1be31</td><td class="time">21/04 19:19</td><td class="msg"><span class="pfx">test(agents):</span> Review inputSchema (task 7-9)</td></tr>
+          <tr><td class="sha">9f49b38</td><td class="time">21/04 19:18</td><td class="msg"><span class="pfx">test(agents):</span> trava review inputSchema</td></tr>
+          <tr><td class="sha">6eecf4f</td><td class="time">21/04 19:05</td><td class="msg"><span class="pfx">refactor(agents):</span> podcast personal_angle → host_talking_prompts</td></tr>
+          <tr><td class="sha">dd71279</td><td class="time">21/04 18:59</td><td class="msg"><span class="pfx">feat(agents):</span> Review inputSchema expandido</td></tr>
+          <tr><td class="sha">911087a</td><td class="time">21/04 18:45</td><td class="msg"><span class="pfx">fix(ideas):</span> duplicate com null coerção válida</td></tr>
+          <tr><td class="sha">d49029e</td><td class="time">21/04 18:44</td><td class="msg"><span class="pfx">fix(ideas):</span> duplicate stringifica discovery_data</td></tr>
+          <tr><td class="sha">dd9e540</td><td class="time">21/04 18:36</td><td class="msg"><span class="pfx">fix(ideas):</span> Send to Research via research/new?ideaId</td></tr>
+          <tr><td class="sha">9177770</td><td class="time">21/04 18:34</td><td class="msg"><span class="pfx">feat(ideas):</span> channel picker inline no detalhe</td></tr>
+          <tr><td class="sha">c7a3053</td><td class="time">21/04 18:28</td><td class="msg"><span class="pfx">feat(ideas):</span> Start Project ↔ Go to Project</td></tr>
+          <tr><td class="sha">483ad6b</td><td class="time">21/04 18:12</td><td class="msg"><span class="pfx">fix(projects):</span> seed_idea_id monta stageResults.brainstorm</td></tr>
+          <tr><td class="sha">ef06024</td><td class="time">21/04 18:06</td><td class="msg"><span class="pfx">fix(ideas):</span> shape de resposta correto</td></tr>
+          <tr><td class="sha">fa52ca4</td><td class="time">21/04 18:03</td><td class="msg"><span class="pfx">fix(ideas):</span> parse/stringify discovery_data</td></tr>
+          <tr><td class="sha">ae227d4</td><td class="time">21/04 17:57</td><td class="msg"><span class="pfx">fix(ideas):</span> path /api/ideas/library/:id correto</td></tr>
+          <tr><td class="sha">a147ae0</td><td class="time">21/04 17:53</td><td class="msg"><span class="pfx">feat(ideas):</span> título da library linka pro detalhe</td></tr>
+          <tr><td class="sha">95e3530</td><td class="time">21/04 17:52</td><td class="msg"><span class="pfx">feat(projects):</span> seed_idea_id em create</td></tr>
+          <tr><td class="sha">f41010c</td><td class="time">21/04 17:48</td><td class="msg"><span class="pfx">feat(ideas):</span> compor Header + Narrative columns</td></tr>
+          <tr><td class="sha">1636d59</td><td class="time">21/04 17:48</td><td class="msg"><span class="pfx">feat(ideas):</span> IdeaHeaderColumn + delete confirm</td></tr>
+          <tr><td class="sha">3940611</td><td class="time">21/04 17:47</td><td class="msg"><span class="pfx">feat(ideas):</span> IdeaNarrativeColumn + inline editing</td></tr>
+          <tr><td class="sha">da954a0</td><td class="time">21/04 17:44</td><td class="msg"><span class="pfx">feat(ideas):</span> ResearchSummaryBanner condicional</td></tr>
+          <tr><td class="sha">b125357</td><td class="time">21/04 17:43</td><td class="msg"><span class="pfx">feat(ideas):</span> RiskFlagsCard com tag chips</td></tr>
+          <tr><td class="sha">4343935</td><td class="time">21/04 17:42</td><td class="msg"><span class="pfx">feat(ideas):</span> RepurposePotentialCard 4-angle</td></tr>
+          <tr><td class="sha">fdada48</td><td class="time">21/04 17:41</td><td class="msg"><span class="pfx">feat(ideas):</span> MonetizationHypothesisCard dual-read</td></tr>
+          <tr><td class="sha">7fdfd61</td><td class="time">21/04 17:37</td><td class="msg"><span class="pfx">feat(ideas):</span> SectionEditPanel</td></tr>
+          <tr><td class="sha">f5f3713</td><td class="time">21/04 17:37</td><td class="msg"><span class="pfx">feat(ideas):</span> InlineEditableSelect</td></tr>
+          <tr><td class="sha">a33997d</td><td class="time">21/04 17:36</td><td class="msg"><span class="pfx">feat(ideas):</span> InlineEditableText</td></tr>
+          <tr><td class="sha">b07d06a</td><td class="time">21/04 17:29</td><td class="msg"><span class="pfx">feat(ideas):</span> useIdeaPatch com merge client-side</td></tr>
+          <tr><td class="sha">ffb1f57</td><td class="time">21/04 17:28</td><td class="msg"><span class="pfx">feat(ideas):</span> scaffold /en/ideas/[id]</td></tr>
+          <tr><td class="sha">d074702</td><td class="time">21/04 17:24</td><td class="msg"><span class="pfx">docs(ideas):</span> plano da página de detalhe</td></tr>
+          <tr><td class="sha">fef7ce9</td><td class="time">21/04 17:17</td><td class="msg"><span class="pfx">docs(ideas):</span> spec da página de detalhe</td></tr>
+          <tr><td class="sha">97ae5b0</td><td class="time">21/04 17:07</td><td class="msg"><span class="pfx">style(idea-dialog):</span> dark-theme amber</td></tr>
+          <tr><td class="sha">e85c7dd</td><td class="time">21/04 17:03</td><td class="msg"><span class="pfx">fix(brainstorm):</span> persiste monetization_hypothesis com fallback</td></tr>
+          <tr><td class="sha">25c114b</td><td class="time">21/04 16:38</td><td class="msg"><span class="pfx">chore(db):</span> migration timestamped pro rename</td></tr>
+          <tr><td class="sha">76b4964</td><td class="time">21/04 16:34</td><td class="msg"><span class="pfx">refactor(agents):</span> propaga monetization_hypothesis downstream</td></tr>
+          <tr><td class="sha">8540002</td><td class="time">21/04 15:15</td><td class="msg"><span class="pfx">refactor(agents):</span> rename no seed</td></tr>
+          <tr><td class="sha">1a285aa</td><td class="time">21/04 15:06</td><td class="msg"><span class="pfx">refactor(agents):</span> monetization → monetization_hypothesis</td></tr>
+          <tr><td class="sha">1ba6c02</td><td class="time">21/04 15:00</td><td class="msg"><span class="pfx">docs(agents):</span> Plan A spec + plano 8.5+</td></tr>
+          <tr><td class="sha">70a2d45</td><td class="time">21/04 14:59</td><td class="msg"><span class="pfx">chore(phase-4):</span> fecha agent prompt improvements</td></tr>
+          <tr><td class="sha">2570ce1</td><td class="time">21/04 13:43</td><td class="msg"><span class="pfx">feat(agents):</span> Review input schema rico</td></tr>
+          <tr><td class="sha">e635f47</td><td class="time">21/04 13:41</td><td class="msg"><span class="pfx">refactor(agents):</span> remove campos alucinatórios</td></tr>
+          <tr><td class="sha">d118e83</td><td class="time">21/04 13:37</td><td class="msg"><span class="pfx">refactor(agents):</span> traduz português → inglês</td></tr>
+          <tr><td class="sha">f9c36dc</td><td class="time">21/04 13:34</td><td class="msg"><span class="pfx">refactor(agents):</span> dedup em STANDARD_JSON_RULES</td></tr>
+          <tr><td class="sha">8f05b9f</td><td class="time">21/04 13:30</td><td class="msg"><span class="pfx">feat(agents):</span> seo block em research + escape rule</td></tr>
+          <tr><td class="sha">2c01978</td><td class="time">21/04 13:09</td><td class="msg"><span class="pfx">docs(plans):</span> agent prompt improvements plan</td></tr>
+          <tr><td class="sha">e55c8fe</td><td class="time">21/04 13:03</td><td class="msg"><span class="pfx">docs(specs):</span> agent prompt improvements design</td></tr>
+          <tr><td class="sha">ae2d639</td><td class="time">21/04 12:34</td><td class="msg"><span class="pfx">fix(publish):</span> 'publishing' na CHECK constraint</td></tr>
+          <tr><td class="sha">3ba9fe4</td><td class="time">21/04 12:00</td><td class="msg"><span class="pfx">fix(pipeline):</span> status lock, polling, UI bugs</td></tr>
+          <tr><td class="sha">dd7fe4a</td><td class="time">21/04 11:54</td><td class="msg"><span class="pfx">feat(agents):</span> primary_keyword V2-001 end-to-end</td></tr>
+          <tr><td class="sha">099e101</td><td class="time">21/04 10:09</td><td class="msg"><span class="pfx">docs(milestones):</span> cards subscription-ready em v0.2</td></tr>
+          <tr><td class="sha">d8ec3d0</td><td class="time">21/04 09:57</td><td class="msg"><span class="pfx">docs(specs):</span> subscription-ready design</td></tr>
+          <tr><td class="sha">da3d060</td><td class="time">20/04 19:11</td><td class="msg"><span class="pfx">docs(specs):</span> planning 8-May — audit + 7 specs + handoff</td></tr>
+          <tr><td class="sha">82920b9</td><td class="time">20/04 14:47</td><td class="msg"><span class="pfx">docs(milestones):</span> phase 2 cards atualizados</td></tr>
+        </tbody>
+      </table>
+    </details>
+  </section>
+
+  <!-- PLAN-B -->
+  <section class="branch">
+    <div class="branch-header">
+      <div class="branch-title"><span class="branch-icon">⚡</span>feat/agent-fleet-8.5-plan-b</div>
+      <div class="branch-kpis">
+        <span><b>40</b> commits exclusivos</span>
+        <span><b>+13.611</b></span>
+        <span><b>−7.198</b></span>
+      </div>
+    </div>
+    <p class="branch-lede">A branch do <b>Plan B dos agentes</b> — segundo passe sobre a base confiável do Plan A, com foco em <b>subir a nota de SEO</b>. Também virou onde o persona-eeat começou a ser especificado na noite de quarta. Saldo: prompts mais enxutos, comportamento mais determinístico, testes que trancam regressão, instruções de SEO mais estritas.</p>
+
+    <div class="callout">
+      <h4>Escopo</h4>
+      <p>Plan A fez arquitetura + confiabilidade. <b>Plan B é sobre melhorar as instruções pra subir o SEO.</b> Meta: 8 de 9 agentes acima de 8.5 na auditoria de 13 critérios (Brainstorm aceito em 8.3 com nota de iteração). Temas: content_warning na frota, compressão de customSections (libera token budget pra instruções SEO), guards contra alucinação, handoff de Research mais estrito, badge de tier na UX.</p>
+    </div>
+
+    <div class="themes">
+      <div class="theme">
+        <h3><span class="bullet"></span>content_warning fleet-wide</h3>
+        <p>Helper <code>contentWarningField</code> único. 7 agentes usam. Persistido em <code>recommendation_json</code>. <code>ContentWarningBanner</code> renderizado em Brainstorm, Draft e Review engines.</p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span>Compressão</h3>
+        <p>Review 611→430 · Video 308→234 · Content-Core 230→163 · Engagement 179→151 · Podcast 179→120. Cheks migraram de "Before Finishing" pra <code>rules.validation</code> <b>enforceável</b>.</p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span>Guards contra alucinação</h3>
+        <p>Brainstorm: regex contra nomes de marca em <code>product_categories</code>. Shorts + engagement: cite <code>key_stats[].figure</code>. Video: benchmarks pra <code>cut_frequency</code> / <code>text_overlays</code> / <code>b_roll_density</code>.</p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span>Handoff de Research</h3>
+        <p>Output ecoa <code>research_focus</code> + <code>depth</code>. <code>secondary_keywords</code> com <code>source_id</code> obrigatório + <code>legacyKeywordFallback</code>. Preferência por domínios confiáveis.</p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span>Tier badge na UX</h3>
+        <p>ReviewEngine import toast e CompletedStageSummary rendem tier em vez de número. Score sintetizado internamente mantém o gate de auto-pilot (<code>&lt; 40</code>) vivo.</p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span>Deep-scrutiny blockers (3d71c54)</h3>
+        <p>Sincronizou contratos entre research/review/schemas de módulo. content_warning persistido e surfaceado. Hardening do score gate pra aceitar tier.</p>
+      </div>
+    </div>
+
+    <details class="commits">
+      <summary>40 commits exclusivos · clique pra expandir</summary>
+      <table class="commit-table">
+        <tbody>
+          <tr><td class="sha">8aa8496</td><td class="time">22/04 23:26</td><td class="msg"><span class="pfx">wip(agents):</span> sources flow + alt-text + word-count + assets agent</td></tr>
+          <tr><td class="sha">8ea9e40</td><td class="time">22/04 23:16</td><td class="msg"><span class="pfx">docs(plan):</span> persona-eeat plan com 5-wave paralelo</td></tr>
+          <tr><td class="sha">ac1fedb</td><td class="time">22/04 22:53</td><td class="msg"><span class="pfx">docs(spec):</span> TDD methodology section</td></tr>
+          <tr><td class="sha">8d0b457</td><td class="time">22/04 22:51</td><td class="msg"><span class="pfx">docs(spec):</span> Testing edge cases</td></tr>
+          <tr><td class="sha">85291bc</td><td class="time">22/04 22:49</td><td class="msg"><span class="pfx">docs(spec):</span> 6 consistency fixes do audit</td></tr>
+          <tr><td class="sha">486abf6</td><td class="time">22/04 22:36</td><td class="msg"><span class="pfx">docs(spec):</span> seeder pattern correto</td></tr>
+          <tr><td class="sha">6c17f69</td><td class="time">22/04 22:33</td><td class="msg"><span class="pfx">docs(spec):</span> persona scoring multi-sinal</td></tr>
+          <tr><td class="sha">0f196c1</td><td class="time">22/04 22:31</td><td class="msg"><span class="pfx">docs(spec):</span> recomendação client-side</td></tr>
+          <tr><td class="sha">2436ca6</td><td class="time">22/04 22:27</td><td class="msg"><span class="pfx">docs(spec):</span> UI + dataflow + seeder + schema</td></tr>
+          <tr><td class="sha">3d71c54</td><td class="time">22/04 12:13</td><td class="msg"><span class="pfx">fix(frontend):</span> deep scrutiny blockers</td></tr>
+          <tr><td class="sha">f91f552</td><td class="time">22/04 11:43</td><td class="msg"><span class="pfx">docs(agents):</span> Plan B handoff + scores finais</td></tr>
+          <tr><td class="sha">1ea4478</td><td class="time">22/04 11:38</td><td class="msg"><span class="pfx">chore(db):</span> seed regen + verify-prompts.sh</td></tr>
+          <tr><td class="sha">c09cabf</td><td class="time">22/04 11:35</td><td class="msg"><span class="pfx">fix(video):</span> unescape apóstrofe que quebrou tsx</td></tr>
+          <tr><td class="sha">1888735</td><td class="time">22/04 11:34</td><td class="msg"><span class="pfx">test(agents):</span> content_warning em 7 outputSchemas</td></tr>
+          <tr><td class="sha">fed4ef5</td><td class="time">22/04 11:31</td><td class="msg"><span class="pfx">chore(db):</span> seed + migration Plan B</td></tr>
+          <tr><td class="sha">86f3ace</td><td class="time">22/04 11:28</td><td class="msg"><span class="pfx">feat(pipeline):</span> tier badge no stage summary</td></tr>
+          <tr><td class="sha">51accf0</td><td class="time">22/04 11:27</td><td class="msg"><span class="pfx">feat(review-engine):</span> tier no import toast</td></tr>
+          <tr><td class="sha">361dffd</td><td class="time">22/04 11:25</td><td class="msg"><span class="pfx">refactor(blog,shorts):</span> merge em rules.validation</td></tr>
+          <tr><td class="sha">bf64ed2</td><td class="time">22/04 11:25</td><td class="msg"><span class="pfx">feat(research):</span> domain preference + source_id estrito</td></tr>
+          <tr><td class="sha">7d0dc63</td><td class="time">22/04 11:24</td><td class="msg"><span class="pfx">feat(research):</span> secondary_keywords com source_id</td></tr>
+          <tr><td class="sha">5ac2447</td><td class="time">22/04 11:22</td><td class="msg"><span class="pfx">feat(research):</span> echo research_focus + depth</td></tr>
+          <tr><td class="sha">922fae5</td><td class="time">22/04 11:20</td><td class="msg"><span class="pfx">fix(podcast):</span> notes em customSections</td></tr>
+          <tr><td class="sha">f6785f5</td><td class="time">22/04 11:18</td><td class="msg"><span class="pfx">refactor(podcast):</span> 179→120 linhas</td></tr>
+          <tr><td class="sha">9436ab4</td><td class="time">22/04 11:15</td><td class="msg"><span class="pfx">refactor(engagement):</span> comprime + JSON example</td></tr>
+          <tr><td class="sha">3a7c288</td><td class="time">22/04 11:15</td><td class="msg"><span class="pfx">refactor(content-core):</span> 230→163</td></tr>
+          <tr><td class="sha">657c84d</td><td class="time">22/04 11:13</td><td class="msg"><span class="pfx">refactor(review):</span> 611→430</td></tr>
+          <tr><td class="sha">1fbad27</td><td class="time">22/04 11:09</td><td class="msg"><span class="pfx">refactor(video):</span> 308→234</td></tr>
+          <tr><td class="sha">0025722</td><td class="time">22/04 11:05</td><td class="msg"><span class="pfx">feat(video):</span> benchmarks de cut/b-roll/overlays</td></tr>
+          <tr><td class="sha">208e67d</td><td class="time">22/04 11:05</td><td class="msg"><span class="pfx">feat(engagement):</span> cita key_stats[].figure</td></tr>
+          <tr><td class="sha">a11b9e7</td><td class="time">22/04 11:05</td><td class="msg"><span class="pfx">feat(shorts):</span> sem números inventados</td></tr>
+          <tr><td class="sha">0dbe5c7</td><td class="time">22/04 11:04</td><td class="msg"><span class="pfx">feat(brainstorm):</span> regex contra brand names</td></tr>
+          <tr><td class="sha">c1bf9b6</td><td class="time">22/04 11:01</td><td class="msg"><span class="pfx">feat(content-core):</span> content_warning + fallback</td></tr>
+          <tr><td class="sha">35a9499</td><td class="time">22/04 11:01</td><td class="msg"><span class="pfx">feat(research):</span> content_warning + fallback</td></tr>
+          <tr><td class="sha">0aa031f</td><td class="time">22/04 11:01</td><td class="msg"><span class="pfx">feat(brainstorm):</span> content_warning + fallback</td></tr>
+          <tr><td class="sha">a6623b5</td><td class="time">22/04 10:58</td><td class="msg"><span class="pfx">refactor(podcast):</span> usa contentWarningField</td></tr>
+          <tr><td class="sha">3a7f16d</td><td class="time">22/04 10:58</td><td class="msg"><span class="pfx">refactor(shorts):</span> usa contentWarningField</td></tr>
+          <tr><td class="sha">370a873</td><td class="time">22/04 10:58</td><td class="msg"><span class="pfx">refactor(video):</span> usa contentWarningField</td></tr>
+          <tr><td class="sha">788417e</td><td class="time">22/04 10:58</td><td class="msg"><span class="pfx">refactor(blog):</span> usa contentWarningField</td></tr>
+          <tr><td class="sha">9df8c84</td><td class="time">22/04 10:56</td><td class="msg"><span class="pfx">style(helpers):</span> function declaration</td></tr>
+          <tr><td class="sha">bfb5663</td><td class="time">22/04 10:54</td><td class="msg"><span class="pfx">feat(agents):</span> contentWarningField helper</td></tr>
+        </tbody>
+      </table>
+    </details>
+  </section>
+
+  <!-- PERSONA -->
+  <section class="branch">
+    <div class="branch-header">
+      <div class="branch-title"><span class="branch-icon">🎭</span>feat/persona-eeat-layer <span class="chip" style="margin-left:10px;font-size:11px;">branch atual</span></div>
+      <div class="branch-kpis">
+        <span><b>74</b> commits exclusivos</span>
+        <span><b>+13.163</b></span>
+        <span><b>−338</b></span>
+      </div>
+    </div>
+    <p class="branch-lede">A branch maior da semana. <b>Saiu do zero e chegou em produto completo em ~24h</b>: banco, composição em 3 camadas, validators, admin UI, user builder, avatar, WordPress. Relação add/remove (+13k / −338) mostra que é construção quase pura, quase sem remoção.</p>
+
+    <div class="callout">
+      <h4>A decisão por trás da branch</h4>
+      <p>Avaliando qualidade dos posts, <b>bateu o E-E-A-T do Google</b> — e os posts estavam aquém. A saída óbvia seria inventar personagens fictícios, mas seria antiético (background inventado, experiência inventada) e insuficiente. <b>A decisão: derivar personas de editores reais.</b> Tom de voz, paradigmas e personalidade vêm de quem realmente publica no portal. O conteúdo fica autêntico, autoritativo, com experiência própria. <b>Resultado aferido: 83.2/100 no SEO Grow Metrics</b> (E-E-A-T &amp; Topical Authority Checks).</p>
+    </div>
+
+    <div class="callout">
+      <h4>O que a branch entrega</h4>
+      <p>3 personas de lançamento (Cole, Alex, Casey), pipeline de composição <b>base → archetype overlay → guardrails ativos</b>, validators que checam voz e vícios de IA na saída, UI de admin pra editar guardrails e archetypes sem deploy, UI de usuário pra criar personas (blank / edit / AI / archetype), geração de avatar ligada ao próprio agente, e integração com WordPress author pra assinar o conteúdo.</p>
+    </div>
+
+    <div class="themes">
+      <div class="theme">
+        <h3><span class="bullet"></span>Fundação de dados (Wave 1, TDD)</h3>
+        <p>Tabelas: <code>personas</code>, <code>persona_guardrails</code>, <code>persona_archetypes</code>, <code>channel_personas</code> (M:M). FK <code>content_drafts.persona_id</code>. Schemas Zod + tipos + mappers DB. Fix do DbContentDraft pra sincronizar persona_id.</p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span>Pipeline de composição</h3>
+        <p><code>buildLayeredPersonaContext</code>: base + overlay + constraints compiladas. Injetado no Inngest + sync canonical-core + produce. Loader único <code>loadPersonaForDraft</code> em <code>apps/api/src/lib/personas.ts</code>.</p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span>Validators de draft (68 testes)</h3>
+        <p>7 checks universais + 3 suites por persona. Surfaçam em <code>/produce</code> e <code>/manual-output</code>. Não bloqueiam publish ainda — é detection-first. <b>Pega vícios de IA antes do artigo virar WordPress post.</b></p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span>Admin UI</h3>
+        <p>Editor de guardrails. Manager de archetypes. Links na página de agents settings. <code>assertAdmin</code> nas rotas. Envelope <code>{data,error}</code> enforceado no DELETE no passe final.</p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span>User builder</h3>
+        <p>Manager + <code>PersonaCard</code>. Picker de modo (blank / edit / AI / archetype). <code>PersonaForm</code>, <code>AvatarSection</code>, <code>WpIntegrationSection</code>. Carousel 3D de casting card na DraftEngine com scoring por categoria. Submit gated.</p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span>Avatar generation</h3>
+        <p>Endpoint <code>POST /:id/avatar/generate</code> + <code>buildAvatarPrompt()</code>. MIME → extensão. Usa <code>image_generator_configs</code>. Agente <code>persona-avatar-generator</code> semeado. <code>/extract</code> usa estágio brainstorm pra baixar custo.</p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span>WordPress</h3>
+        <p>Endpoint de link/create de autor com timeout de 10s. Publish flow usa <code>persona.wpAuthorId</code> como fallback quando request não manda. Badge read-only de persona no AssetsEngine.</p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span>UX polish</h3>
+        <p>Stage ativa e canonical core preview expandidos por padrão — cortou dois auto-colapsos que faziam o trabalho parecer sumir. Erro de API surfaceado em vez de silenciar. aria-label no botão de edit.</p>
+      </div>
+    </div>
+
+    <details class="commits">
+      <summary>74 commits exclusivos · clique pra expandir</summary>
+      <table class="commit-table">
+        <tbody>
+          <tr><td class="sha">86a88d9</td><td class="time">23/04 16:59</td><td class="msg"><span class="pfx">fix(api):</span> envelope no DELETE + admin gate em guardrails GET</td></tr>
+          <tr><td class="sha">9acb483</td><td class="time">23/04 16:50</td><td class="msg"><span class="pfx">fix(app):</span> erro de API surfaceado no edit</td></tr>
+          <tr><td class="sha">53f774f</td><td class="time">23/04 16:48</td><td class="msg"><span class="pfx">feat(app):</span> fluxos de criação — blank / edit / AI / archetype</td></tr>
+          <tr><td class="sha">a6bdfd0</td><td class="time">23/04 16:45</td><td class="msg"><span class="pfx">fix(app):</span> erro surfaceado + submit gated</td></tr>
+          <tr><td class="sha">9cc20cc</td><td class="time">23/04 16:41</td><td class="msg"><span class="pfx">feat(app):</span> PersonaForm + AvatarSection + WpIntegrationSection</td></tr>
+          <tr><td class="sha">ecdb8ed</td><td class="time">23/04 16:37</td><td class="msg"><span class="pfx">feat(app):</span> picker de modo de criação</td></tr>
+          <tr><td class="sha">bba3c03</td><td class="time">23/04 16:35</td><td class="msg"><span class="pfx">fix(app):</span> error state + aria-label + shared type</td></tr>
+          <tr><td class="sha">e766417</td><td class="time">23/04 16:31</td><td class="msg"><span class="pfx">feat(app):</span> persona manager + PersonaCard</td></tr>
+          <tr><td class="sha">c277e88</td><td class="time">23/04 16:13</td><td class="msg"><span class="pfx">feat(api):</span> persona wp_author_id no publish</td></tr>
+          <tr><td class="sha">31792aa</td><td class="time">23/04 16:11</td><td class="msg"><span class="pfx">feat(db):</span> seed do persona-avatar-generator</td></tr>
+          <tr><td class="sha">db6addf</td><td class="time">23/04 16:10</td><td class="msg"><span class="pfx">fix(api):</span> clear-primary propaga erros + códigos específicos</td></tr>
+          <tr><td class="sha">4ca1c65</td><td class="time">23/04 16:06</td><td class="msg"><span class="pfx">feat(api):</span> channel-personas CRUD</td></tr>
+          <tr><td class="sha">7288eed</td><td class="time">23/04 16:04</td><td class="msg"><span class="pfx">fix(api):</span> timeout 10s nas chamadas WP</td></tr>
+          <tr><td class="sha">39be890</td><td class="time">23/04 16:01</td><td class="msg"><span class="pfx">feat(api):</span> link/create de autor WP por persona</td></tr>
+          <tr><td class="sha">d18e483</td><td class="time">23/04 15:59</td><td class="msg"><span class="pfx">fix(api):</span> MIME → extensão de avatar</td></tr>
+          <tr><td class="sha">e0b91c1</td><td class="time">23/04 15:56</td><td class="msg"><span class="pfx">feat(api):</span> avatar generation + prompt builder</td></tr>
+          <tr><td class="sha">3540e7a</td><td class="time">23/04 15:54</td><td class="msg"><span class="pfx">fix(api):</span> /extract endurecido + brainstorm stage</td></tr>
+          <tr><td class="sha">560db5f</td><td class="time">23/04 15:50</td><td class="msg"><span class="pfx">feat(api):</span> archetypes list + AI extract</td></tr>
+          <tr><td class="sha">53b7f3b</td><td class="time">23/04 15:20</td><td class="msg"><span class="pfx">feat(app):</span> Personas subsection na settings</td></tr>
+          <tr><td class="sha">1e7f62d</td><td class="time">23/04 15:19</td><td class="msg"><span class="pfx">feat(app):</span> admin archetypes UI</td></tr>
+          <tr><td class="sha">ec53fa2</td><td class="time">23/04 15:18</td><td class="msg"><span class="pfx">feat(app):</span> admin guardrails editor</td></tr>
+          <tr><td class="sha">22512c8</td><td class="time">23/04 15:17</td><td class="msg"><span class="pfx">feat(api):</span> registra admin guardrails + archetypes</td></tr>
+          <tr><td class="sha">7b0ec84</td><td class="time">23/04 15:16</td><td class="msg"><span class="pfx">chore(api):</span> remove import não usado</td></tr>
+          <tr><td class="sha">bac2e70</td><td class="time">23/04 15:13</td><td class="msg"><span class="pfx">feat(api):</span> admin CRUD archetypes</td></tr>
+          <tr><td class="sha">ccce65e</td><td class="time">23/04 15:10</td><td class="msg"><span class="pfx">feat(api):</span> admin CRUD guardrails</td></tr>
+          <tr><td class="sha">e90fd18</td><td class="time">23/04 15:04</td><td class="msg"><span class="pfx">feat(api):</span> wire buildLayeredPersonaContext no job</td></tr>
+          <tr><td class="sha">90972cd</td><td class="time">23/04 15:02</td><td class="msg"><span class="pfx">test(api):</span> overlay path coberto</td></tr>
+          <tr><td class="sha">91e69bf</td><td class="time">23/04 14:58</td><td class="msg"><span class="pfx">feat(api):</span> buildLayeredPersonaContext 3-layer</td></tr>
+          <tr><td class="sha">303c4cf</td><td class="time">23/04 14:55</td><td class="msg"><span class="pfx">feat(api):</span> fetchActive / fetchOverlay / compileConstraints</td></tr>
+          <tr><td class="sha">d4025d5</td><td class="time">23/04 14:51</td><td class="msg"><span class="pfx">feat(schemas):</span> guardrails + archetypes + channel-personas</td></tr>
+          <tr><td class="sha">4007ae0</td><td class="time">23/04 14:39</td><td class="msg"><span class="pfx">feat(types):</span> mappers das 3 tabelas novas</td></tr>
+          <tr><td class="sha">a95f698</td><td class="time">23/04 14:36</td><td class="msg"><span class="pfx">chore(types):</span> regen database types</td></tr>
+          <tr><td class="sha">67834e9</td><td class="time">23/04 14:31</td><td class="msg"><span class="pfx">feat(db):</span> archetype_slug + avatar_params_json</td></tr>
+          <tr><td class="sha">a60f4d6</td><td class="time">23/04 14:31</td><td class="msg"><span class="pfx">feat(db):</span> channel_personas M:M</td></tr>
+          <tr><td class="sha">fd484db</td><td class="time">23/04 14:31</td><td class="msg"><span class="pfx">feat(db):</span> persona_archetypes</td></tr>
+          <tr><td class="sha">03d3390</td><td class="time">23/04 14:29</td><td class="msg"><span class="pfx">feat(db):</span> persona_guardrails</td></tr>
+          <tr><td class="sha">8a5548a</td><td class="time">23/04 14:25</td><td class="msg"><span class="pfx">feat(types):</span> archetypeSlug + avatarParamsJson</td></tr>
+          <tr><td class="sha">d08d5d7</td><td class="time">23/04 14:15</td><td class="msg"><span class="pfx">fix(types):</span> persona_id em DbContentDraft</td></tr>
+          <tr><td class="sha">e5ef5e4</td><td class="time">23/04 13:53</td><td class="msg"><span class="pfx">docs(plans):</span> Plans 2 + 3 (admin + user)</td></tr>
+          <tr><td class="sha">be6f787</td><td class="time">23/04 12:27</td><td class="msg"><span class="pfx">docs(plan):</span> Plan 1 — Fundação</td></tr>
+          <tr><td class="sha">d0113ec</td><td class="time">23/04 12:22</td><td class="msg"><span class="pfx">docs(spec):</span> aterrissa na arquitetura real</td></tr>
+          <tr><td class="sha">81f206f</td><td class="time">23/04 12:17</td><td class="msg"><span class="pfx">docs(spec):</span> resolve inconsistências</td></tr>
+          <tr><td class="sha">9879f95</td><td class="time">23/04 12:14</td><td class="msg"><span class="pfx">docs(spec):</span> avatar generation</td></tr>
+          <tr><td class="sha">90a942d</td><td class="time">23/04 11:50</td><td class="msg"><span class="pfx">docs(spec):</span> persona redesign — layered composition</td></tr>
+          <tr><td class="sha">e87dd58</td><td class="time">23/04 01:25</td><td class="msg"><span class="pfx">feat(api):</span> validators fases 1-4 (68 testes)</td></tr>
+          <tr><td class="sha">29a2ba9</td><td class="time">23/04 01:02</td><td class="msg"><span class="pfx">fix(frontend):</span> stage ativa + canonical core expandidos</td></tr>
+          <tr><td class="sha">9234198</td><td class="time">23/04 00:47</td><td class="msg"><span class="pfx">fix(api):</span> persona nos sync canonical-core + produce</td></tr>
+          <tr><td class="sha">8b135f5</td><td class="time">23/04 00:39</td><td class="msg"><span class="pfx">feat(frontend):</span> 3D casting-card carousel</td></tr>
+          <tr><td class="sha">6694081</td><td class="time">23/04 00:21</td><td class="msg"><span class="pfx">fix(api):</span> personas route prefix</td></tr>
+          <tr><td class="sha">19e244e</td><td class="time">23/04 00:04</td><td class="msg"><span class="pfx">refactor(api):</span> remove as any casts</td></tr>
+          <tr><td class="sha">8d99442</td><td class="time">23/04 00:02</td><td class="msg"><span class="pfx">feat(frontend):</span> persona selector com scoring</td></tr>
+          <tr><td class="sha">e496fdd</td><td class="time">23/04 00:01</td><td class="msg"><span class="pfx">fix(api):</span> ApiError arg order</td></tr>
+          <tr><td class="sha">2e2496c</td><td class="time">23/04 00:00</td><td class="msg"><span class="pfx">fix(jobs):</span> mapPersonaFromDb real no teste</td></tr>
+          <tr><td class="sha">e6155bc</td><td class="time">22/04 23:57</td><td class="msg"><span class="pfx">feat(api):</span> personas CRUD (TDD)</td></tr>
+          <tr><td class="sha">7bc3968</td><td class="time">22/04 23:54</td><td class="msg"><span class="pfx">fix(shared):</span> Json type no DbPersona mapper</td></tr>
+          <tr><td class="sha">9463bc6</td><td class="time">22/04 23:53</td><td class="msg"><span class="pfx">feat(jobs):</span> injeta persona em ContentCore + BlogAgent (TDD)</td></tr>
+          <tr><td class="sha">19bea0f</td><td class="time">22/04 23:52</td><td class="msg"><span class="pfx">feat(seed):</span> seed-personas + 3 personas</td></tr>
+          <tr><td class="sha">87645a9</td><td class="time">22/04 23:48</td><td class="msg"><span class="pfx">feat(api):</span> personaId em content-drafts POST</td></tr>
+          <tr><td class="sha">fa4fb48</td><td class="time">22/04 23:47</td><td class="msg"><span class="pfx">feat(frontend):</span> SEO signals no PipelineContext</td></tr>
+          <tr><td class="sha">599400d</td><td class="time">22/04 23:46</td><td class="msg"><span class="pfx">feat(frontend):</span> personaWpAuthorId no publish</td></tr>
+          <tr><td class="sha">10ce30d</td><td class="time">22/04 23:46</td><td class="msg"><span class="pfx">feat(frontend):</span> badge de persona no AssetsEngine</td></tr>
+          <tr><td class="sha">1345f84</td><td class="time">22/04 23:44</td><td class="msg"><span class="pfx">feat(frontend):</span> persona scoring utils (TDD)</td></tr>
+          <tr><td class="sha">5f654fd</td><td class="time">22/04 23:43</td><td class="msg"><span class="pfx">feat(shared):</span> persona DB mapper</td></tr>
+          <tr><td class="sha">357bb7a</td><td class="time">22/04 23:43</td><td class="msg"><span class="pfx">feat(db):</span> persona_id FK em content_drafts</td></tr>
+          <tr><td class="sha">a72a26c</td><td class="time">22/04 23:35</td><td class="msg"><span class="pfx">feat(api):</span> author field no WP publish (TDD)</td></tr>
+          <tr><td class="sha">01d497b</td><td class="time">22/04 23:35</td><td class="msg"><span class="pfx">feat(frontend):</span> extractResearchSignals (TDD)</td></tr>
+          <tr><td class="sha">dfdff2b</td><td class="time">22/04 23:35</td><td class="msg"><span class="pfx">feat(frontend):</span> persona + research signals</td></tr>
+          <tr><td class="sha">3e88b43</td><td class="time">22/04 23:34</td><td class="msg"><span class="pfx">feat(agents):</span> persona input + 12 guardrails anti-vício</td></tr>
+          <tr><td class="sha">0aeee0f</td><td class="time">22/04 23:34</td><td class="msg"><span class="pfx">feat(agents):</span> persona_context no content-core</td></tr>
+          <tr><td class="sha">f784d06</td><td class="time">22/04 23:33</td><td class="msg"><span class="pfx">feat(ai):</span> personaContext nos prompt builders</td></tr>
+          <tr><td class="sha">765038a</td><td class="time">22/04 23:32</td><td class="msg"><span class="pfx">feat(personas):</span> Cole + Alex + Casey</td></tr>
+          <tr><td class="sha">ce4d997</td><td class="time">22/04 23:30</td><td class="msg"><span class="pfx">feat(shared):</span> Persona/Context/Voice types</td></tr>
+          <tr><td class="sha">578385b</td><td class="time">22/04 23:30</td><td class="msg"><span class="pfx">feat(shared):</span> persona Zod schemas</td></tr>
+          <tr><td class="sha">4b1ee97</td><td class="time">22/04 23:28</td><td class="msg"><span class="pfx">feat(db):</span> personas + RLS + updated_at</td></tr>
+        </tbody>
+      </table>
+    </details>
+  </section>
+
+  <!-- SINAIS DE QUALIDADE -->
+  <h2 class="section-h">Sinais de qualidade</h2>
+  <p class="section-lede">Além do volume, alguns padrões que indicam trabalho bem feito e sustentável.</p>
+
+  <div class="themes">
+    <div class="theme">
+      <h3><span class="bullet"></span>Disciplina TDD</h3>
+      <p>Múltiplos commits marcados <code>(TDD)</code> na semana do persona. Red → green → refactor visível: <code>mapPersonaFromDb</code> test antes do mapper, <code>extractResearchSignals</code>, scoring utils, CRUD, injeção no ContentCore/Blog. <b>68 validator tests</b> + 32 no publish + contract tests em 7 outputSchemas.</p>
+    </div>
+    <div class="theme">
+      <h3><span class="bullet"></span>Follow-up de code review</h3>
+      <p>Commits explicitamente marcados "code review follow-up": <code>9acb483</code>, <code>a6bdfd0</code>, <code>bba3c03</code>, <code>86a88d9</code>. Surface de erros, aria-labels, submit gate por campo, envelope no DELETE, admin-gate. <b>Disciplina de receber feedback e aplicar sem brigar.</b></p>
+    </div>
+    <div class="theme">
+      <h3><span class="bullet"></span>Scoring determinístico</h3>
+      <p>Review deixa de ser 0-100 subjetivo (mesma review dava número diferente em runs diferentes) e vira <code>quality_tier</code> enum de 4 níveis, derivado de contagem de issues. Dual-read com 30 dias de compatibilidade legada. Auto-pilot continua usando <code>&lt; 40</code> via score sintetizado.</p>
+    </div>
+    <div class="theme">
+      <h3><span class="bullet"></span>Higiene de prompt</h3>
+      <p>Português traduzido pra inglês (a frota é universal, contexto vira injection). Formatação deduplicada. Campos propensos a alucinação removidos (journey, essence, bare stats). Regex e validators programáticos assumem o que o LLM "devia lembrar".</p>
+    </div>
+  </div>
+
+  <!-- RISCOS ABERTOS -->
+  <h2 class="section-h">Riscos e pendências</h2>
+  <p class="section-lede">O que ficou em aberto e merece atenção antes do 8-May.</p>
+
+  <div class="themes">
+    <div class="risk">
+      <h3>WIP checkpoint com typecheck pulado</h3>
+      <p><code>8aa8496</code> explicitamente pulou o pre-commit typecheck por conta do mismatch do <code>@tn-figueiredo/affiliate-portal</code> no <code>apps/web</code>. Autorizado, mas precisa de resolução upstream.</p>
+    </div>
+    <div class="risk">
+      <h3>Validators ainda não bloqueiam auto-pilot</h3>
+      <p>Persona validators estão no fluxo sync (<code>/produce</code> e <code>/manual-output</code>). O job Inngest (<code>production-generate.ts</code>) do auto-pilot ainda não valida. Flagged em <code>e87dd58</code> como follow-up fácil.</p>
+    </div>
+    <div class="risk">
+      <h3>Drift de seed de agent_prompts</h3>
+      <p>Três migrations timestamped foram criadas só pra forçar re-apply no remoto (Plan A rename, Plan B, avatar agent). Root cause: <code>db:seed:agents</code> escreve migration de nome fixo. Refactor flagged pra emitir nome por data.</p>
+    </div>
+    <div class="risk">
+      <h3>Admin auth foi construído do zero</h3>
+      <p>A spec reconheceu que não existia padrão de role. <code>assertAdmin</code> foi adicionado em guardrails + archetypes. Envelope + admin-gate vieram no passe final (<code>86a88d9</code>). Vale auditar se outras rotas admin precisam do mesmo cuidado.</p>
+    </div>
+  </div>
+
+  <!-- WHATSAPP SUMMARY -->
+  <h2 class="section-h" style="margin-top:64px;"><span class="kicker">Resumo</span> Versão pra WhatsApp</h2>
+  <p class="section-lede">Texto pronto pra copiar e mandar — formatado com os asteriscos de negrito do WhatsApp. Um clique no botão copia tudo.</p>
+
+  <div class="wa-wrap">
+    <div class="wa-head">
+      <span class="wa-label">WhatsApp ready</span>
+      <button type="button" class="copy-btn" id="wa-copy-btn" onclick="copyWaSummary()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+        <span class="copy-btn-label">Copiar resumo</span>
+      </button>
+    </div>
+    <pre class="wa-text" id="wa-text">🚀 *Review da semana — 20 a 23/04*
+
+4 dias. 3 branches. 176 commits. Uma meta: destravar o lançamento de 8 de maio.
+
+📊 *O número que resume tudo*
+*83.2/100* em E-E-A-T & Topical Authority (SEO Grow Metrics) — partindo de posts que estavam bem aquém, sem inventar nenhum humano fictício.
+
+⚙️ *Os avanços da semana*
+
+• *Pipeline de publish destravado* — 3 bugs corrigidos em uma manhã (status lock no Postgres, polling infinito no orchestrator, revert-on-failure faltando) + 32 testes novos.
+
+• *Review scoring determinístico* — score 0-100 subjetivo virou enum de 4 tiers (excellent/good/needs-work/reject). Mesma review, mesma nota, run após run. Dual-read mantém 30 dias de compat legada.
+
+• *Frota de agentes comprimida* — -1.300 linhas em 5 agentes (Review 611→430, Video 308→234, Content-Core 230→163, Engagement 179→151, Podcast 179→120). Token budget liberado pras instruções de SEO.
+
+• *Plan A → Plan B dos agentes* — Plan A fez arquitetura + confiabilidade dos inputs/outputs. Plan B usou essa base pra melhorar as instruções e subir a nota de SEO.
+
+• *Persona / E-E-A-T em ~24h* — saiu do zero e chegou em produto completo. 3 personas reais (Cole Merritt, Alex Strand, Casey Park), composição 3-layer (base + archetype + guardrails ativos), admin UI pra editar sem deploy, user builder com 4 modos de criação, avatar AI, integração com WordPress author.
+
+• *68 validators de voz* — pegam vícios de IA antes do artigo virar post. 7 checks universais (Sources, headings, not-X-but-Y, em-dashes, hollow adjectives) + 3 suites por persona (Cole: sem imperativos; Alex: stat com atribuição; Casey: "passive income" qualificado).
+
+• *Página de ideia dedicada* — /en/ideas/[id] com 15 tasks numa tarde. É o terceiro modo de uso: Standalone Engine + Pipeline integrado + visualização individual fora de projeto.
+
+🎯 *A tese por trás*
+Avaliando qualidade de posts pelo SEO, bateu o E-E-A-T do Google. Inventar personagens fictícios seria antiético e insuficiente. A decisão: *derivar personas de editores reais* — o humano que constrói publica com a própria voz, experiência e autoridade. O conteúdo vira autêntico por construção.
+
+📈 *Volume*
++50.521 linhas adicionadas, -12.601 removidas. Média de 44 commits/dia.
+
+⏭️ *Próximos passos*
+Validator no auto-pilot (Inngest), resolução do mismatch do affiliate-portal, refactor do db:seed:agents pra emitir migration com nome por data.
+
+— Hector</pre>
+  </div>
+
+  <script>
+    function copyWaSummary() {
+      var text = document.getElementById('wa-text').innerText;
+      var btn = document.getElementById('wa-copy-btn');
+      var label = btn.querySelector('.copy-btn-label');
+      var original = label.textContent;
+      function success() {
+        btn.classList.add('copied');
+        label.textContent = 'Copiado ✓';
+        setTimeout(function () {
+          btn.classList.remove('copied');
+          label.textContent = original;
+        }, 2000);
+      }
+      function fallback() {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'absolute';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); success(); }
+        catch (e) { label.textContent = 'Erro ao copiar'; }
+        document.body.removeChild(ta);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(success).catch(fallback);
+      } else {
+        fallback();
+      }
+    }
+  </script>
+
+  <footer>
+    <div>Relatório · <b>Hector Siman</b> · 23/04/2026</div>
+    <div>Branches: <code>staging</code> · <code>feat/agent-fleet-8.5-plan-b</code> · <code>feat/persona-eeat-layer</code></div>
+  </footer>
+
+</div>
+</body>
+</html>

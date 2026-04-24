@@ -1,5 +1,5 @@
 import type { AgentDefinition } from './_types';
-import { str, num, bool, obj, arr, arrOf, STANDARD_JSON_RULES } from './_helpers';
+import { str, num, bool, obj, arr, arrOf, contentWarningField, STANDARD_JSON_RULES } from './_helpers';
 
 export const research: AgentDefinition = {
   slug: 'research',
@@ -52,6 +52,8 @@ export const research: AgentDefinition = {
       name: 'BC_RESEARCH_OUTPUT',
       fields: [
         str('idea_id', 'Echo back the idea_id from input'),
+        str('research_focus_applied', 'Echo of input research_focus array, joined by "; " if multiple. Must reflect exactly what was researched.'),
+        str('depth_applied', 'Echo of input depth: quick, standard, or deep. Must match input.'),
         obj('idea_validation', 'Validation of the core idea and its claims', [
           bool('core_claim_verified', 'Whether the core claim has been verified'),
           str('evidence_strength', 'weak, moderate, or strong'),
@@ -91,7 +93,10 @@ export const research: AgentDefinition = {
         ]),
         obj('seo', 'SEO data extracted during research', [
           str('primary_keyword', 'Primary keyword - use the input primary_keyword.term as baseline, refine if research reveals a better variant'),
-          arr('secondary_keywords', 'Related keywords found during research (3-5)', 'string', false),
+          arrOf('secondary_keywords', 'Related keywords with source attribution (3-5)', [
+            str('keyword', 'The keyword phrase'),
+            str('source_id', 'Must match an entry in sources[]'),
+          ], false),
           str('search_intent', 'Detected search intent: informational, commercial, navigational, or mixed', false),
         ]),
         arr('knowledge_gaps', 'Topics or claims that could not be verified or need more research', 'string'),
@@ -103,6 +108,7 @@ export const research: AgentDefinition = {
           str('angle_notes', 'Explanation of any refinements suggested'),
           str('recommendation', 'proceed, pivot, or abandon'),
         ]),
+        contentWarningField('research material (sources, statistics, or expert quotes)'),
       ],
     },
     rules: {
@@ -119,6 +125,7 @@ export const research: AgentDefinition = {
         'Identify potential objections and counterarguments for balanced content.',
         'Suggest angle refinements based on your research findings.',
         'If the selected idea is unclear or missing required fields, request clarification before proceeding.',
+        'Prefer well-known domains (.edu, .gov, major publications, Wikipedia) when choosing sources. Flag obscure domains in validation_notes.',
       ],
       validation: [
         'Be honest about evidence strength — do not overstate confidence.',
@@ -129,6 +136,11 @@ export const research: AgentDefinition = {
         'Always populate seo.primary_keyword - use the input primary_keyword.term as the baseline, refine it if research reveals a better-performing variant. Populate secondary_keywords (3-5) and search_intent based on your research findings.',
         'If you cannot verify a URL exists, set sources[].url to empty string. Never fabricate URLs.',
         'Only include statistics and quotes you found in sources. If paraphrasing, mark with "[paraphrased]". Never fabricate quotes attributed to real people.',
+        'If fewer than depth-implied minimum sources are verifiable (3 for standard, 5 for deep), populate content_warning with "Only N verifiable sources found for <depth> depth — results may be incomplete" instead of padding with weak sources.',
+        'research_focus_applied MUST reflect input research_focus exactly. If input research_focus is omitted, set to "general topic exploration".',
+        'depth_applied MUST equal input depth. If input depth is omitted, set to "standard".',
+        'Every entry in statistics[] MUST have source_id matching an entry in sources[]. No standalone figures.',
+        'Every entry in expert_quotes[] MUST have source_id matching sources[]. Never fabricate attributed quotes — if no verified quote, leave expert_quotes empty and note in content_warning.',
       ],
     },
     customSections: [

@@ -23,9 +23,14 @@ import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { GenerationProgressModal } from '@/components/generation/GenerationProgressModal';
 import { MarkdownPreview } from '@/components/preview/MarkdownPreview';
 import { ContextBanner } from './ContextBanner';
+import { ContentWarningBanner } from './ContentWarningBanner';
 import { ImportPicker } from './ImportPicker';
 import { friendlyAiError } from '@/lib/ai/error-message';
 import { useUpgrade } from '@/components/billing/UpgradeProvider';
+import { rankPersonas, type RankedPersona } from './utils/personaScoring';
+import { getPersonaTheme } from './utils/personaTheme';
+import { PersonaCarousel } from './PersonaCarousel';
+import type { Persona } from '@brighttale/shared/types/agents';
 import type { BaseEngineProps, DraftResult } from './types';
 
 type DraftType = 'blog' | 'video' | 'shorts' | 'podcast';
@@ -84,10 +89,11 @@ export function DraftEngine({
 
   // Produce state
   const [type, setType] = useState<DraftType>('blog');
-  const [targetWords, setTargetWords] = useState<number>(700);
+  const [targetWords, setTargetWords] = useState<number>(900);
   const [targetMinutes, setTargetMinutes] = useState<number>(8);
   const [targetShortsSeconds, setTargetShortsSeconds] = useState<number>(30);
   const [producedContent, setProducedContent] = useState<string>('');
+  const [contentWarning, setContentWarning] = useState<string | null>(null);
 
   // Generation state
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
@@ -98,6 +104,11 @@ export function DraftEngine({
     draftId: string;
     phase: 'core' | DraftType;
   } | null>(null);
+
+  // Personas
+  const [personas, setPersonas] = useState<Persona[]>([]);
+  const [rankedPersonas, setRankedPersonas] = useState<RankedPersona[]>([]);
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
 
   // Upgrade handling
   const { handleMaybeCreditsError } = useUpgrade();
@@ -124,6 +135,21 @@ export function DraftEngine({
       }
     })();
   }, [context.researchSessionId, title]);
+
+  // Fetch personas on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/personas');
+        const json = await res.json();
+        if (json?.data) {
+          setPersonas(json.data as Persona[]);
+        }
+      } catch {
+        // silent
+      }
+    })();
+  }, []);
 
   // Restore state from existing draft (when revisiting from review)
   useEffect(() => {
@@ -159,6 +185,7 @@ export function DraftEngine({
         if (core && typeof core === 'object' && Object.keys(core).length > 0) {
           setCanonicalCore(core);
 
+          let restoredAndDone = false;
           if (draftJson && typeof draftJson === 'object' && Object.keys(draftJson).length > 0) {
             // Has both core and produced content — go to done
             const content = extractProducedContent(d, (d.type as DraftType) ?? 'blog');
@@ -166,6 +193,7 @@ export function DraftEngine({
               setProducedContent(content);
               setPhase('done');
               setCoreApproved(true);
+              restoredAndDone = true;
             } else {
               setPhase('core-ready');
             }
@@ -173,13 +201,38 @@ export function DraftEngine({
             // Has core but no produced content — go to produce step
             setPhase('core-ready');
           }
-          setCoreExpanded(false);
+          // Keep the canonical core expanded by default so the user immediately sees
+          // what was generated. Only collapse when the draft is fully done (already
+          // produced content downstream) — at that point the core is ancient context.
+          setCoreExpanded(!restoredAndDone);
         }
       } catch {
         // silent — will show fresh form
       }
     })();
   }, [context.draftId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Rank personas when data is ready
+  useEffect(() => {
+    if (personas.length === 0) return;
+    const ranked = rankPersonas(personas, context, undefined);
+    setRankedPersonas(ranked);
+    // Pre-select the recommended persona
+    const recommended = ranked.find((r) => r.isRecommended);
+    if (recommended && !selectedPersonaId) {
+      setSelectedPersonaId(recommended.persona.id);
+    }
+  }, [personas, context.ideaTitle, context.researchPrimaryKeyword]);
+
+  // Derived: selected persona + its theme — drives color cascade through downstream cards
+  const selectedPersona = personas.find((p) => p.id === selectedPersonaId);
+  const selectedTheme = selectedPersona ? getPersonaTheme(selectedPersona.slug) : null;
+  const personaCardStyle = selectedTheme
+    ? {
+        borderColor: `rgba(${selectedTheme.glow}, 0.35)`,
+        boxShadow: `0 0 0 1px rgba(${selectedTheme.glow}, 0.08), 0 8px 28px -12px rgba(${selectedTheme.glow}, 0.18)`,
+      }
+    : undefined;
 
   // Fetch recommended model
   useEffect(() => {
@@ -227,6 +280,7 @@ export function DraftEngine({
     if (busy) return;
     if (!research) { toast.error('Select research first'); return; }
     if (!title.trim()) { toast.error('Enter a title'); return; }
+    if (!selectedPersonaId) { toast.error('Select a persona'); return; }
 
     tracker.trackStarted({
       draftId: draftId || '',
@@ -246,6 +300,7 @@ export function DraftEngine({
           researchSessionId: research.id,
           type,
           title,
+          personaId: selectedPersonaId,
           productionParams: {},
         }),
       })
@@ -359,6 +414,7 @@ export function DraftEngine({
 
     if (!research) { toast.error('Select research before importing'); return; }
     if (!title.trim()) { toast.error('Enter a title'); return; }
+    if (!selectedPersonaId) { toast.error('Select a persona'); return; }
 
     // Create draft scaffold
     const draft = await runStep('create draft', () =>
@@ -371,6 +427,7 @@ export function DraftEngine({
           researchSessionId: research.id,
           type,
           title,
+          personaId: selectedPersonaId,
           productionParams: {},
         }),
       })
@@ -516,6 +573,9 @@ export function DraftEngine({
 
     // The produce endpoint returns the full draft row; extract content from draft_json
     const content = extractProducedContent(produced as Record<string, unknown>, type);
+    const draftJsonRaw = (produced as Record<string, unknown>).draft_json as Record<string, unknown> | undefined;
+    const warning = typeof draftJsonRaw?.content_warning === 'string' ? draftJsonRaw.content_warning : null;
+    setContentWarning(warning);
     if (content) {
       setProducedContent(content);
       const wordCount = content.split(/\s+/).length;
@@ -665,11 +725,15 @@ export function DraftEngine({
     return JSON.stringify(draftJson, null, 2);
   }
 
-  const cardCount = Array.isArray(research?.cards_json)
-    ? research.cards_json.length
-    : Array.isArray(research?.approved_cards_json)
-      ? research.approved_cards_json.length
-      : 0;
+  const cardCount = (() => {
+    const data = research?.approved_cards_json ?? research?.cards_json;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return Array.isArray(data) ? data.length : 0;
+    const d = data as Record<string, unknown>;
+    const count = (Array.isArray(d.sources) ? d.sources.length : 0)
+      + (Array.isArray(d.statistics) ? d.statistics.length : 0)
+      + (Array.isArray(d.expert_quotes) ? d.expert_quotes.length : 0);
+    return count > 0 ? count : 0;
+  })();
 
   function renderCoreSummary(core: Record<string, unknown>) {
     const thesis = core.thesis as string | undefined;
@@ -1036,9 +1100,26 @@ export function DraftEngine({
         </Card>
       )}
 
+      {/* Persona selector — 3D casting-card carousel */}
+      {rankedPersonas.length > 0 && (
+        <div className="space-y-2">
+          <div className="px-1">
+            <h3 className="text-base font-semibold tracking-tight">Author Persona</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Whose voice tells this story? Click a card or use ← → to browse.
+            </p>
+          </div>
+          <PersonaCarousel
+            rankedPersonas={rankedPersonas}
+            selectedPersonaId={selectedPersonaId}
+            onSelect={setSelectedPersonaId}
+          />
+        </div>
+      )}
+
       {/* ═══ PHASE 1: Canonical Core ═══ */}
       {phase === 'core' && (
-        <Card>
+        <Card style={personaCardStyle}>
           <CardHeader>
             <CardTitle className="text-base">Step 1: Canonical Core</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
@@ -1075,7 +1156,7 @@ export function DraftEngine({
                   }}
                   onModelChange={setModel}
                 />
-                <Button onClick={handleGenerateCore} disabled={busy || !research || !title.trim()}>
+                <Button onClick={handleGenerateCore} disabled={busy || !research || !title.trim() || !selectedPersonaId}>
                   {busy ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating Core...</>
                   ) : (
@@ -1085,6 +1166,11 @@ export function DraftEngine({
                 {!research && (
                   <p className="text-xs text-muted-foreground">
                     Select research first — production without research is weak.
+                  </p>
+                )}
+                {!selectedPersonaId && (
+                  <p className="text-xs text-muted-foreground">
+                    Select a persona before generating.
                   </p>
                 )}
               </div>
@@ -1171,7 +1257,7 @@ export function DraftEngine({
 
       {/* ═══ PHASE 2: Produce Format-Specific Content ═══ */}
       {(phase === 'core-ready' || phase === 'produce') && coreApproved && (
-        <Card>
+        <Card style={personaCardStyle}>
           <CardHeader>
             <CardTitle className="text-base">Step 2: Produce Content</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
@@ -1211,19 +1297,19 @@ export function DraftEngine({
             {type === 'blog' && (
               <div className="space-y-2">
                 <Label>Post size</Label>
-                <div className="grid grid-cols-4 gap-2">
-                  {[300, 500, 700, 1000].map((n) => (
+                <div className="grid grid-cols-3 gap-2">
+                  {([{ value: 900, label: '800–1000' }, { value: 1200, label: '1000–1400' }, { value: 1600, label: '1400+' }] as const).map(({ value, label }) => (
                     <button
-                      key={n}
-                      onClick={() => setTargetWords(n)}
+                      key={value}
+                      onClick={() => setTargetWords(value)}
                       disabled={phase === 'produce'}
                       className={`p-2 rounded-md border text-sm ${
-                        targetWords === n
+                        targetWords === value
                           ? 'border-primary bg-primary/5 text-primary font-medium'
                           : 'border-border hover:border-muted-foreground/30'
                       } disabled:opacity-50`}
                     >
-                      {n}
+                      {label}
                       <span className="text-xs text-muted-foreground"> words</span>
                     </button>
                   ))}
@@ -1295,6 +1381,9 @@ export function DraftEngine({
                   }}
                   onModelChange={setModel}
                 />
+                {canonicalCore && typeof canonicalCore.content_warning === 'string' && canonicalCore.content_warning && (
+                  <ContentWarningBanner warning={canonicalCore.content_warning} />
+                )}
                 <Button onClick={handleProduce} disabled={busy || phase === 'produce'}>
                   {phase === 'produce' ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Producing...</>
@@ -1307,6 +1396,8 @@ export function DraftEngine({
           </CardContent>
         </Card>
       )}
+
+      <ContentWarningBanner warning={contentWarning} />
 
       {/* ═══ Final Content Preview ═══ */}
       {phase === 'done' && producedContent && (
@@ -1338,6 +1429,10 @@ export function DraftEngine({
                   draftId: draftId || '',
                   draftTitle: title,
                   draftContent: producedContent,
+                  personaId: selectedPersonaId || undefined,
+                  personaName: selectedPersona?.name,
+                  personaSlug: selectedPersona?.slug,
+                  personaWpAuthorId: selectedPersona?.wpAuthorId ?? null,
                 };
                 onComplete(result);
               }}>

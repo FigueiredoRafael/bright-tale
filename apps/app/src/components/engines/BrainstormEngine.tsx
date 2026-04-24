@@ -28,6 +28,7 @@ import {
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
+import { ContentWarningBanner } from './ContentWarningBanner';
 import { ManualOutputDialog } from './ManualOutputDialog';
 import { IdeaDetailsDialog } from './IdeaDetailsDialog';
 import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
@@ -108,7 +109,7 @@ export function BrainstormEngine({
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
 
   // Session-level recommendation (the AI's pick + rationale across all ideas)
-  const [recommendation, setRecommendation] = useState<{ pick?: string; rationale?: string } | null>(null);
+  const [recommendation, setRecommendation] = useState<{ pick?: string; rationale?: string; content_warning?: string } | null>(null);
   const [detailsIdeaId, setDetailsIdeaId] = useState<string | null>(null);
 
   const tracker = usePipelineTracker('brainstorm', context);
@@ -927,6 +928,7 @@ export function BrainstormEngine({
                 </Button>
               )}
             </div>
+            <ContentWarningBanner warning={recommendation?.content_warning} />
             {recommendation && (recommendation.pick || recommendation.rationale) && (
               <div className="relative mt-4 overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-4">
                 <div className="absolute -top-6 -right-6 h-24 w-24 rounded-full bg-primary/20 blur-2xl" />

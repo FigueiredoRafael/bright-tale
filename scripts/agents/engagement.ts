@@ -1,5 +1,5 @@
 import type { AgentDefinition } from './_types';
-import { str, num, arr, arrOf, STANDARD_JSON_RULES } from './_helpers';
+import { str, num, arr, arrOf, contentWarningField, STANDARD_JSON_RULES } from './_helpers';
 
 export const engagement: AgentDefinition = {
   slug: 'engagement',
@@ -15,7 +15,6 @@ export const engagement: AgentDefinition = {
         '`pinned_comment` = `comment_prompt_seed` expanded into a question that drives replies. Max 500 characters. Must end with a question mark.',
         '`community_post` = short-form take (2-4 short paragraphs or bullets). Leads with a contrarian claim or surprising stat from `key_stats`. Closes on `closing_emotion` and `cta_subscribe`.',
         '`twitter_thread`: `hook_tweet` is the most provocative restatement of thesis (hooks the scroll). `thread_outline` = 4-6 tweets expanding the argument with stats. Last tweet = CTA.',
-        'No fabricated stats — only use figures from `key_stats`.',
         'Output JSON only, no markdown fences, follow the contract exactly.',
       ],
       purpose: [],
@@ -42,6 +41,7 @@ export const engagement: AgentDefinition = {
         str('community_post', 'The community post. 2-4 short paragraphs or bullet points. Leads with a contrarian claim or surprising stat. Closes on closing_emotion and cta_subscribe.'),
         str('hook_tweet', 'The most provocative restatement of thesis. 1-2 sentences max. Designed to stop the scroll. No thread numbering on this tweet.'),
         arr('thread_outline', 'Supporting tweets expanding the argument. 4-6 tweets total. Each tweet = one sharp point, supported by a stat from key_stats where possible. Keep each tweet under 280 characters. Last tweet = CTA.', 'string'),
+        contentWarningField('key_stats or quantitative material'),
       ],
     },
     rules: {
@@ -53,15 +53,18 @@ export const engagement: AgentDefinition = {
         '`pinned_comment`: Must be derived from `comment_prompt_seed`. Expand it into a fuller question that invites personal reflection. Max 500 characters (count carefully). Must end with `?`. Do NOT include a subscribe CTA here - keep it purely conversational.',
         '`community_post`: Lead with the most surprising or contrarian angle from `key_stats` or the thesis. Write in a direct, slightly casual tone (not academic). 2-4 short paragraphs OR a short bulleted list - choose whatever fits the content better. Close with `closing_emotion` as the emotional landing, then `cta_subscribe` as the action.',
         '`hook_tweet`: The most scroll-stopping version of the thesis. Bold claim, surprising stat, or provocative question. 1-2 sentences, no hashtags needed, no thread numbering.',
-        '`thread_outline`: 4-6 tweets expanding the argument. Each tweet = one sharp point, supported by a stat from `key_stats` where possible. Keep each tweet under 280 characters. Last tweet = CTA (subscribe, video link placeholder, or engagement question).',
+        '`thread_outline`: 4-6 tweets expanding the argument. Each tweet = one sharp point. Every quantitative claim MUST cite a figure from input `key_stats[].figure`. Qualitative claims only allowed when no stat fits the point. Never invent percentages, dates, or counts. Keep each tweet under 280 characters. Last tweet = CTA (subscribe, video link placeholder, or engagement question).',
         'If key_stats is empty or not provided, use qualitative claims from the thesis or argument_chain evidence instead. Do not fabricate statistics.',
         'No fabricated stats in any asset. Only use figures from `key_stats`. If no relevant stat exists for a tweet, use the thesis claim directly.',
+        'If key_stats is empty and the thread requires quantitative claims (e.g., hook_tweet needs a stat to land), populate content_warning with "Missing key_stats — qualitative claims only" and use qualitative framing.',
       ],
       validation: [
         'Verify `pinned_comment` is 500 characters or fewer.',
         'Verify `pinned_comment` ends with `?`.',
         'Verify `thread_outline` has 4-6 items.',
         'Verify the last item in `thread_outline` is a CTA.',
+        'Verify `community_post` closes with `closing_emotion` followed by `cta_subscribe`.',
+        'Verify `hook_tweet` is 1-2 sentences and has no thread numbering (no "1/n" or "2/n").',
       ],
     },
     customSections: [
@@ -129,48 +132,19 @@ Good hook tweets:
       },
       {
         title: 'Field Guidance: Twitter Thread (Outline)',
-        content: `thread_outline expands the hook_tweet with 4-6 supporting tweets.
+        content: `thread_outline expands the hook_tweet with 4-6 supporting tweets. Each tweet = one sharp point, under 280 chars. Every quantitative claim cites a stat from key_stats[]. Last tweet = CTA.
 
-Structure:
-- Each tweet = one sharp point or stat
-- Under 280 characters each
-- Build from hook to CTA
-- Last tweet = Call-to-action
-
-Tweet structure per item:
-1. State the point
-2. Back it with a stat from key_stats (if available)
-3. Add a short insight or implication
-4. (optional) Transition to next point
-
-Example thread_outline for 5 tweets:
-
-  thread_outline:
-    - |
-      2/ Your body has a natural peak sleep window: usually 2-4 hours in your personal cycle.
-      Outside that window, your sleep quality tanks — even with 8 hours.
-    - |
-      3/ Test it: Track your energy levels for 5 days at different sleep times.
-      You'll find your peak window. Most people discover it's NOT their current schedule.
-    - |
-      4/ The data: Shifting sleep 1-2 hours to align with your peak window improves recovery by 40%.
-      That's not 40% more sleep — it's 40% better recovery FROM the same 7-8 hours.
-    - |
-      5/ The fix: Experiment with sleep timing for one week. Shift your schedule 1.5 hours earlier.
-      Track energy, mood, focus. Compare to your baseline.
-    - |
-      6/ If this lands for you, subscribe for more research-backed productivity insights.
-      Sleep timing is one lever. We cover the others: exercise timing, caffeine windows, light exposure.`,
-      },
-      {
-        title: 'Before Finishing',
-        content: `1. Verify pinned_comment is 500 characters or fewer (count carefully, including spaces)
-2. Verify pinned_comment ends with ?
-3. Verify thread_outline has 4-6 items
-4. Verify the last item in thread_outline is a CTA
-5. Verify community_post closes with closing_emotion followed by cta_subscribe
-6. Verify no fabricated stats — only use figures from key_stats
-7. Verify hook_tweet is 1-2 sentences and has no thread numbering`,
+Example (JSON — inline \\n for line breaks):
+{
+  "hook_tweet": "You don't need more sleep — you need the RIGHT sleep timing. Here's the science.",
+  "thread_outline": [
+    "2/ Your body has a peak sleep window (2-4 hours in your cycle). Outside it, sleep quality tanks even at 8 hours.",
+    "3/ Track energy at different sleep times for 5 days. You'll find your peak window — often NOT your current schedule.",
+    "4/ key_stats[0].figure: shifting sleep to peak window improves recovery by X%. Not 40% more sleep — 40% better.",
+    "5/ Try shifting your schedule 1.5 hours for one week. Track energy, mood, focus. Compare to baseline.",
+    "6/ Subscribe for more research-backed productivity insights. Sleep timing is one lever — we cover the others."
+  ]
+}`,
       },
     ],
   },

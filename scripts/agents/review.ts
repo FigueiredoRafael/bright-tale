@@ -317,6 +317,11 @@ export const review: AgentDefinition = {
         'If a content type is not in content_types_requested, set its quality_tier to "not_requested" and rubric_checks to empty arrays.',
         'overall_verdict must be "approved" only when every type in content_types_requested has quality_tier in (excellent, good). "revision_required" when any requested type is needs_revision. "rejected" when any requested type is reject.',
         'ready_to_publish is true only when overall_verdict is "approved".',
+        'Verify overall_verdict is one of: approved | revision_required | rejected. Never output other values.',
+        'Verify each per-type *_review block has quality_tier and rubric_checks if the type is in content_types_requested.',
+        'Verify rubric_checks.critical_issues, minor_issues, strengths are arrays (possibly empty but structure always present).',
+        'Verify ready_to_publish is true only when overall_verdict is "approved". Set false otherwise.',
+        'Verify no fabricated feedback — cite specific locations and provide suggested fixes.',
       ],
     },
     customSections: [
@@ -352,259 +357,73 @@ Base verdict ONLY on requested content types.
 Do not reject for "missing" content — only for content that was requested but failed review.`,
       },
       {
-        title: 'Field Guidance: Blog Review',
-        content: `Blog review assesses clarity, accuracy, brand voice, and SEO readiness.
-
-Score breakdown:
-- 90-100: Publication-ready, minor copyedits only
-- 75-89: Revision needed (typos, structure, clarity issues)
-- 50-74: Major revision required (tone, accuracy, engagement)
-- Below 50: Reject and recommend rewrite
-
-Issues structure:
-- critical: Must fix before publish (factual errors, tone misalignment, clarity failures)
-- minor: Should fix (typos, weak transitions, awkward phrasing)
-
-Strengths: List 2-3 strongest elements (research depth, angle, clarity, engagement)
-
-SEO check:
-- title_optimized: Does title include primary keyword naturally?
-- meta_description_optimized: Is it 150-160 chars with keyword?
-- keyword_usage: good (natural, 1-2%), needs_improvement (0% or stuffed), poor
-- readability_score: Flesch Kincaid estimation
-
-Example:
-
-  blog_review:
-    verdict: "revision_required"
-    score: 78
-    strengths:
-      - "Strong research foundation with credible sources"
-      - "Clear narrative arc from problem to solution"
-    issues:
-      critical:
-        - location: "Section 2, paragraph 2"
-          issue: "Claim about sleep timing lacks citation"
-          suggested_fix: "Add reference to sleep study from research phase"
-      minor:
-        - location: "Intro"
-          issue: "Opening sentence is too long"
-          suggested_fix: "Split into two sentences for clarity"
-    seo_check:
-      title_optimized: true
-      meta_description_optimized: false
-      keyword_usage: "good"
-      readability_score: "easy"
-    notes: "Strong foundation. Fix citation gap in Section 2 and tighten SEO meta. Otherwise ready."
-
-SEO checks:
-- slug: Verify URL-safe (lowercase, hyphens, no spaces or special chars)
-- primary_keyword: Verify it appears naturally in title, meta_description, and full_draft`,
+        title: 'Blog Review Rubric',
+        content: `- critical_issues: missing required fields, fabricated stats, factual errors, off-topic, tone misalignment
+- minor_issues: typos, weak transitions, unclear sentences, redundant phrases, minor inconsistencies
+- strengths: strong research, clear thesis, well-cited evidence, crisp prose, natural keyword integration
+- quality_tier derivation: 0 critical + 0-2 minor = excellent; 0 critical + 3-5 minor = good; 1-2 critical OR 6+ minor = needs_revision; 3+ critical = reject
+- SEO: Verify primary_keyword naturally in title, meta_description (150-160 chars), and body; slug URL-safe (lowercase, hyphens, no spaces)
+- Issue severity guide: Missing citation = critical; weak prose = minor; missing field = critical`,
       },
       {
-        title: 'Field Guidance: Video Review',
-        content: `Video review assesses hook effectiveness, pacing, clarity, and publication readiness.
-
-Score breakdown (if applicable):
-- 90-100: Publication-ready
-- 75-89: Needs minor cuts/tweaks
-- 50-74: Major restructuring needed
-- Below 50: Recommend re-shoot
-
-Hook effectiveness (critical for video):
-- **strong**: Grabs attention in first 5 seconds; clear reason to keep watching
-- **moderate**: Takes 10-15 seconds to establish interest; decent but could be sharper
-- **weak**: Unclear stakes; viewer might not engage; needs redesign
-
-Pacing notes: Is the video too fast, too slow, or well-balanced? Any dead time?
-
-Thumbnail feedback: Does it match final video content? Is it eye-catching? Misleading?
-
-Example:
-
-  video_review:
-    verdict: "revision_required"
-    score: 72
-    strengths:
-      - "Hook is clear and attention-grabbing"
-      - "Pacing maintains energy throughout"
-    issues:
-      critical:
-        - location: "2:15 - 2:45"
-          issue: "Segment feels off-brand (too casual tone)"
-          suggested_fix: "Re-shoot to match BrightCurios voice: more direct, less conversational"
-      minor:
-        - location: "End card"
-          issue: "End card calls subscribe but no urgency"
-          suggested_fix: "Add reason: 'for weekly research breakdowns'"
-    hook_effectiveness: "strong"
-    pacing_notes: "Overall good. 0:45 intro is tight. Middle section (2:15-4:00) feels slightly rushed."
-    thumbnail_feedback: "Clear, but text is hard to read at small size. Consider larger, bolder text."
-    notes: "Fix 2:15-2:45 tone issue. Rest is strong."`,
+        title: 'Video Review Rubric',
+        content: `- critical_issues: missing hook, off-brand tone/messaging, non-functional script structure, poor pacing
+- minor_issues: weak transitions, unclear CTA, thumbnail mismatch, minor audio/visual inconsistencies
+- strengths: strong hook (grabs attention in 5 sec), clear message, good pacing, engaging visuals, strong CTA
+- quality_tier derivation: 0 critical + 0-2 minor = excellent; 0 critical + 3-5 minor = good; 1-2 critical OR 6+ minor = needs_revision; 3+ critical = reject
+- Hook effectiveness: strong (5 sec max grab, clear stakes) | moderate (10-15 sec, decent) | weak (unclear, redesign needed)
+- Assess: Pacing (too fast/slow/balanced?), thumbnail match, end-screen CTA urgency, script length vs. duration estimate`,
       },
       {
-        title: 'Field Guidance: Shorts Review',
-        content: `Shorts are individual mini-videos (under 60 seconds each) optimized for vertical viewing.
-
-For each short:
-- verdict: approved | revision_required | rejected
-- hook_strength: strong | moderate | weak (CRITICAL for shorts)
-- notes: Specific feedback on this short
-
-Hook strength for shorts is CRITICAL — viewers decide in 1-2 seconds:
-- **strong**: Immediate visual hook or on-screen text hook; clear reason to keep watching
-- **moderate**: Takes 3-5 seconds to establish; decent but could snap viewers faster
-- **weak**: Slow start; viewers will scroll away; needs redesign
-
-Example:
-
-  shorts_review:
-    verdict: "revision_required"
-    individual_reviews:
-      - short_number: 1
-        verdict: "approved"
-        hook_strength: "strong"
-        notes: "Opening visual hook is excellent. Quick transition to key stat. Ends with CTA. Ready to publish."
-      - short_number: 2
-        verdict: "revision_required"
-        hook_strength: "weak"
-        notes: "Opening 2 seconds are too slow. Viewer is already scrolling. Recommend adding on-screen text hook immediately or cutting first 1-2 seconds and starting with the stat."
-      - short_number: 3
-        verdict: "approved"
-        hook_strength: "strong"
-        notes: "Contrarian claim opens strong. Good pacing. Clear CTA at end."
-    notes: "Short 2 needs tighter opening hook. Otherwise ready to publish."
-
-For each short, also assess:
-- hook: Does it stop the scroll in 1-2 seconds?
-- visual_style: Is it consistent across shorts? Does it match the content type?`,
+        title: 'Shorts Review Rubric',
+        content: `- critical_issues: no hook, confusing opening, missing CTA, slow scroll-stop (<1 sec)
+- minor_issues: unclear messaging after hook, weak visual consistency, suboptimal pacing for vertical format
+- strengths: immediate visual hook, clear message, strong CTA, optimized for vertical viewing, viewer retention
+- quality_tier derivation: 0 critical + 0-2 minor = excellent; 0 critical + 3-5 minor = good; 1-2 critical OR 6+ minor = needs_revision; 3+ critical = reject
+- Hook strength CRITICAL: strong (stops scroll in 1-2 sec) | moderate (3-5 sec) | weak (scroll away, redesign)
+- For each short: verify hook, visual consistency, CTA presence, pacing for <60 sec format`,
       },
       {
-        title: 'Field Guidance: Podcast Review',
-        content: `Podcast review assesses structure, talking point clarity, engagement, and pacing.
-
-Score breakdown:
-- 90-100: Publication-ready episode
-- 75-89: Minor edits (pacing tweaks, clarity issues)
-- 50-74: Restructure needed (weak transitions, unclear points)
-- Below 50: Recommend re-record or major rewrite
-
-Assess:
-- Does each talking point clearly support the thesis?
-- Are transitions between points smooth?
-- Are stats and quotes properly attributed?
-- Does the outro land on the intended closing_emotion and include CTA?
-- Is the pacing natural for the target duration?
-
-Example:
-
-  podcast_review:
-    verdict: "revision_required"
-    score: 81
-    strengths:
-      - "Personal angle is authentic and relatable"
-      - "Talking points flow naturally"
-    issues:
-      - issue: "Point 3 lacks supporting evidence — feels unsupported"
-        suggested_fix: "Add stat or quote from research phase to back up the claim"
-      - issue: "Outro is rushed; closing_emotion isn't clear"
-        suggested_fix: "Slow down closing remarks. Land more deliberately on the emotional moment before CTA."
-    notes: "Strong structure. Add evidence to point 3 and slow outro pacing. Otherwise ready."`,
+        title: 'Podcast Review Rubric',
+        content: `- critical_issues: missing research support, incoherent structure, no CTA, fabricated personal claims
+- minor_issues: weak transitions, unclear talking points, slow pacing, awkward outro
+- strengths: authentic voice, clear thesis, smooth point flow, strong narrative arc, compelling CTA
+- quality_tier derivation: 0 critical + 0-2 minor = excellent; 0 critical + 3-5 minor = good; 1-2 critical OR 6+ minor = needs_revision; 3+ critical = reject
+- Assess: Do talking points support thesis? Are stats/quotes attributed? Does outro land CTA? Is pacing natural for duration?
+- Verify host_talking_prompts contain no fabricated first-person claims; ensure none sound like guest testimony`,
       },
       {
-        title: 'Field Guidance: Engagement Review',
-        content: `Engagement assets (pinned comment + community post) drive interaction and subscriber growth.
-
-For each asset:
-- verdict: approved | revision_required
-- notes: Specific feedback
-
-Pinned comment (YouTube):
-- Max 500 characters
-- Must end with ?
-- Invites replies (not a CTA, but a question)
-- Should reference the video or thesis
-
-Community post (YouTube Community / social):
-- 2-4 short paragraphs or bullets
-- Leads with surprising angle or stat
-- Closes with closing_emotion + CTA
-
-Example:
-
-  engagement_review:
-    pinned_comment_verdict: "approved"
-    pinned_comment_notes: "Strong opening question. Directly invites personal experience sharing. Under 500 chars. Ready."
-    community_post_verdict: "revision_required"
-    community_post_notes: "First 2 paragraphs are strong (great stat placement), but closing is weak. Needs stronger closing_emotion + clearer CTA. Rewrite final paragraph."
-
-hook_tweet (Twitter/X):
-- Is it the most provocative restatement of the thesis?
-- 1-2 sentences, no hashtags, no thread numbering
-- Would it stop the scroll?
-
-thread_outline:
-- 4-6 tweets expanding the argument
-- Each under 280 characters
-- Last tweet is CTA
-- Stats used match key_stats from research`,
+        title: 'Engagement Review Rubric',
+        content: `- critical_issues: missing CTA, fabricated claims, copy too long (comment >500 chars), no engagement hook
+- minor_issues: weak question framing, vague closing, unclear community post CTA
+- strengths: strong question, high engagement potential, concise copy, aligned with video thesis, clear CTA
+- quality_tier derivation: 0 critical + 0-2 minor = excellent; 0 critical + 3-5 minor = good; 1-2 critical OR 6+ minor = needs_revision; 3+ critical = reject
+- Pinned comment: max 500 chars, ends with ?, invites replies, references video; hook_tweet: 1-2 sentences, provocative, stops scroll
+- Thread: 4-6 tweets, each <280 chars, last is CTA, stats match research`,
       },
       {
-        title: 'Field Guidance: Publication Plan',
-        content: `Publication plan guides actual publish operations. Only include if overall_verdict is approved.
+        title: 'Rubric Application',
+        content: `When reviewing each content asset, apply the rubric in this order:
 
-ready_to_publish: true ONLY if ALL requested content types are approved with no critical issues.
+1. Check all required schema fields are present. Missing field = critical_issue.
+2. Verify every stat/quote traces to input research.sources or research.statistics. Unsourced = critical_issue.
+3. Check factual correctness against research.idea_validation. Contradicts research = critical_issue.
+4. Evaluate prose quality (clarity, flow, engagement). Weak prose = minor_issue.
+5. Aggregate critical + minor counts → derive quality_tier via the deterministic rule.
+6. Populate rubric_checks.strengths with 2-4 specific positives.
 
-Blog publication:
-- final_seo: WordPress slug should be URL-friendly (lowercase, hyphens, under 75 chars)
-- internal_links: Topic suggestions for the content team to interlink. Do not include actual URLs — these are topic ideas.
-- categories: Align with site structure
-- tags: 5-10 relevant tags (not for SEO, but for internal organization)
-
-YouTube publication:
-- final_title: Select best-performing title from title_options
-- description: Include timestamps, links, sponsor mentions, CTA
-- tags: 10-15 relevant tags
-- cards_and_endscreens: Link to related videos, playlists, channel
-
-Shorts schedule: Note platform and short sequence number. Content team will determine publication timing.
-
-Cross-promotion: How do blog + video + shorts + podcast complement each other? Newsletter mention details only.
-
-Publication timing should be determined by the content team based on their calendar and analytics.`,
+Reject payload rule: if production.<type> is null/undefined/empty-string, quality_tier = "reject" and critical_issue = "Missing required payload: production.<type>".
+Malformed JSON rule: if production field is a malformed JSON string (truncated), quality_tier = "reject" and critical_issue = "Malformed production payload".
+Missing type rule: if content_types_requested contains a type not present in production, critical_issue = "Requested <type> but no <type> payload provided".`,
       },
       {
-        title: 'Field Guidance: A/B Testing',
-        content: `A/B testing suggestions optimize performance (optional but encouraged).
+        title: 'Publication & Testing Guidance',
+        content: `Publication plan: Only include if overall_verdict is approved. ready_to_publish: true ONLY if ALL requested types approved with no critical issues.
+Blog: slug URL-friendly (lowercase, hyphens, <75 chars). internal_links are topics, not URLs.
+YouTube: Select best title from title_options. Include timestamps (if >1 chapter), links, sponsor mentions.
+Shorts/Podcast: Content team determines timing and episode number.
 
-Thumbnail variants: Usually focus on image, text color, emotional expression, framing
-Title variants: Often contrarian vs. benefit-driven, specific vs. broad, emotional vs. factual
-
-Example:
-
-  ab_tests:
-    thumbnail_variants:
-      - variant: "A"
-        description: "Blue background, white text, shocked facial expression"
-      - variant: "B"
-        description: "Orange background, black text, confident pointing gesture"
-    title_variants:
-      - variant: "A"
-        title: "Why Sleep Timing Beats Duration (Here's The Science)"
-      - variant: "B"
-        title: "Your Sleep Schedule is Broken. Here's Why."
-    testing_notes: "Test both thumbnails for 48 hours each. Measure CTR and watch-time. Rotate in A/B/A/B pattern. If clear winner, use for future reposts."`,
-      },
-      {
-        title: 'Before Finishing',
-        content: `1. Verify overall_verdict is approved | revision_required | rejected
-2. Verify ALL content types not in content_types_requested have verdict: "not_requested"
-3. Verify each content type has appropriate notes explaining the verdict
-4. Verify critical issues are specific (location + suggested fix)
-5. Verify scores are 0-100 (0 for not_requested types)
-6. Verify ready_to_publish: true ONLY when all requested content is approved
-7. Verify publication_plan is only included if overall_verdict is approved
-8. Verify no fabricated feedback — cite specific locations`,
+A/B testing (optional): Thumbnail variants focus on image, text color, emotion, framing. Title variants: contrarian vs. benefit-driven. Example: "Why Sleep Timing Beats Duration" (variant A) vs. "Your Sleep Schedule is Broken" (variant B).`,
       },
     ],
   },
