@@ -582,6 +582,23 @@ export default function ChannelDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Personas */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" /> Personas
+              </CardTitle>
+              <CardDescription>
+                Writing personas available on the platform. Manage or assign from the Personas page.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button variant="outline" size="sm" onClick={() => router.push('/personas')}>
+                <Users className="h-4 w-4 mr-2" /> Manage Personas
+              </Button>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ── YOUTUBE TAB ── */}
