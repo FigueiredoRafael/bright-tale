@@ -7,30 +7,10 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -160,7 +140,7 @@ export type Database = {
             foreignKeyName: "affiliate_commissions_referral_id_fkey"
             columns: ["referral_id"]
             isOneToOne: false
-            referencedRelation: "affiliate_referrals"
+            referencedRelation: "affiliate_referrals_legacy"
             referencedColumns: ["id"]
           },
         ]
@@ -335,7 +315,7 @@ export type Database = {
             foreignKeyName: "affiliate_fraud_flags_referral_id_fkey"
             columns: ["referral_id"]
             isOneToOne: false
-            referencedRelation: "affiliate_referrals"
+            referencedRelation: "affiliate_referrals_legacy"
             referencedColumns: ["id"]
           },
         ]
@@ -449,46 +429,67 @@ export type Database = {
           },
         ]
       }
-      affiliate_programs: {
+      affiliate_referrals: {
         Row: {
-          code: string
-          commission_pct: number
+          affiliate_code: string
+          affiliate_id: string
+          attribution_status: string
+          click_id: string | null
+          converted_at: string | null
           created_at: string
           id: string
-          payout_details: Json | null
-          payout_method: string | null
-          total_paid_cents: number
-          total_referrals: number
-          total_revenue_cents: number
+          platform: string | null
+          signup_date: string
+          signup_ip_hash: string | null
           user_id: string
+          window_end: string
         }
         Insert: {
-          code: string
-          commission_pct?: number
+          affiliate_code: string
+          affiliate_id: string
+          attribution_status?: string
+          click_id?: string | null
+          converted_at?: string | null
           created_at?: string
           id?: string
-          payout_details?: Json | null
-          payout_method?: string | null
-          total_paid_cents?: number
-          total_referrals?: number
-          total_revenue_cents?: number
+          platform?: string | null
+          signup_date?: string
+          signup_ip_hash?: string | null
           user_id: string
+          window_end?: string
         }
         Update: {
-          code?: string
-          commission_pct?: number
+          affiliate_code?: string
+          affiliate_id?: string
+          attribution_status?: string
+          click_id?: string | null
+          converted_at?: string | null
           created_at?: string
           id?: string
-          payout_details?: Json | null
-          payout_method?: string | null
-          total_paid_cents?: number
-          total_referrals?: number
-          total_revenue_cents?: number
+          platform?: string | null
+          signup_date?: string
+          signup_ip_hash?: string | null
           user_id?: string
+          window_end?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_referrals_affiliate_id_fkey1"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "affiliates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_referrals_click_id_fkey1"
+            columns: ["click_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_clicks"
+            referencedColumns: ["id"]
+          },
+        ]
       }
-      affiliate_referrals: {
+      affiliate_referrals_legacy: {
         Row: {
           affiliate_code: string
           affiliate_id: string
@@ -544,57 +545,6 @@ export type Database = {
             columns: ["click_id"]
             isOneToOne: false
             referencedRelation: "affiliate_clicks"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      affiliate_referrals_legacy: {
-        Row: {
-          affiliate_program_id: string
-          commission_cents: number | null
-          conversion_at: string | null
-          created_at: string
-          first_touch_at: string
-          id: string
-          referred_org_id: string
-          status: string
-          subscription_amount_cents: number | null
-        }
-        Insert: {
-          affiliate_program_id: string
-          commission_cents?: number | null
-          conversion_at?: string | null
-          created_at?: string
-          first_touch_at?: string
-          id?: string
-          referred_org_id: string
-          status?: string
-          subscription_amount_cents?: number | null
-        }
-        Update: {
-          affiliate_program_id?: string
-          commission_cents?: number | null
-          conversion_at?: string | null
-          created_at?: string
-          first_touch_at?: string
-          id?: string
-          referred_org_id?: string
-          status?: string
-          subscription_amount_cents?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "affiliate_referrals_affiliate_program_id_fkey"
-            columns: ["affiliate_program_id"]
-            isOneToOne: false
-            referencedRelation: "affiliate_programs"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "affiliate_referrals_referred_org_id_fkey"
-            columns: ["referred_org_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -1210,6 +1160,42 @@ export type Database = {
           },
         ]
       }
+      channel_personas: {
+        Row: {
+          channel_id: string
+          created_at: string
+          is_primary: boolean
+          persona_id: string
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string
+          is_primary?: boolean
+          persona_id: string
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string
+          is_primary?: boolean
+          persona_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_personas_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_personas_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       channel_references: {
         Row: {
           analyzed_at: string | null
@@ -1486,6 +1472,7 @@ export type Database = {
           idea_id: string | null
           iteration_count: number
           org_id: string
+          persona_id: string | null
           production_params: Json | null
           production_settings_json: Json | null
           project_id: string | null
@@ -1513,6 +1500,7 @@ export type Database = {
           idea_id?: string | null
           iteration_count?: number
           org_id: string
+          persona_id?: string | null
           production_params?: Json | null
           production_settings_json?: Json | null
           project_id?: string | null
@@ -1540,6 +1528,7 @@ export type Database = {
           idea_id?: string | null
           iteration_count?: number
           org_id?: string
+          persona_id?: string | null
           production_params?: Json | null
           production_settings_json?: Json | null
           project_id?: string | null
@@ -1577,6 +1566,13 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_drafts_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
             referencedColumns: ["id"]
           },
           {
@@ -2064,6 +2060,144 @@ export type Database = {
           stripe_subscription_id?: string | null
           updated_at?: string
           vip_note?: string | null
+        }
+        Relationships: []
+      }
+      persona_archetypes: {
+        Row: {
+          behavioral_overlay_json: Json
+          created_at: string
+          default_fields_json: Json
+          description: string
+          icon: string
+          id: string
+          is_active: boolean
+          name: string
+          slug: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          behavioral_overlay_json?: Json
+          created_at?: string
+          default_fields_json?: Json
+          description?: string
+          icon?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          slug: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          behavioral_overlay_json?: Json
+          created_at?: string
+          default_fields_json?: Json
+          description?: string
+          icon?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          slug?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      persona_guardrails: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          is_active: boolean
+          label: string
+          rule_text: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label: string
+          rule_text: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          rule_text?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      personas: {
+        Row: {
+          approved_categories: string[]
+          archetype_slug: string | null
+          avatar_params_json: Json | null
+          avatar_url: string | null
+          bio_long: string
+          bio_short: string
+          created_at: string
+          domain_lens: string
+          eeat_signals_json: Json
+          id: string
+          is_active: boolean
+          name: string
+          primary_domain: string
+          slug: string
+          soul_json: Json
+          updated_at: string
+          wp_author_id: number | null
+          writing_voice_json: Json
+        }
+        Insert: {
+          approved_categories: string[]
+          archetype_slug?: string | null
+          avatar_params_json?: Json | null
+          avatar_url?: string | null
+          bio_long: string
+          bio_short: string
+          created_at?: string
+          domain_lens: string
+          eeat_signals_json: Json
+          id?: string
+          is_active?: boolean
+          name: string
+          primary_domain: string
+          slug: string
+          soul_json: Json
+          updated_at?: string
+          wp_author_id?: number | null
+          writing_voice_json: Json
+        }
+        Update: {
+          approved_categories?: string[]
+          archetype_slug?: string | null
+          avatar_params_json?: Json | null
+          avatar_url?: string | null
+          bio_long?: string
+          bio_short?: string
+          created_at?: string
+          domain_lens?: string
+          eeat_signals_json?: Json
+          id?: string
+          is_active?: boolean
+          name?: string
+          primary_domain?: string
+          slug?: string
+          soul_json?: Json
+          updated_at?: string
+          wp_author_id?: number | null
+          writing_voice_json?: Json
         }
         Relationships: []
       }
@@ -3255,11 +3389,7 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },
 } as const
-
