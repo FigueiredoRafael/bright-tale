@@ -98,7 +98,8 @@ export function PersonaForm({ initial, personaId, archetypeSlug }: PersonaFormPr
     const params = useParams()
     const locale = params.locale as string
 
-    const [channels, setChannels] = useState<Array<{ id: string; name: string }>>([])
+    const [channels, setChannels] = useState<Array<{ id: string; name: string; wordpress_config_id: string | null }>>([])
+    const [rawChannelCount, setRawChannelCount] = useState(0)
     const [selectedChannelId, setSelectedChannelId] = useState<string>("")
 
     useEffect(() => {
@@ -106,9 +107,11 @@ export function PersonaForm({ initial, personaId, archetypeSlug }: PersonaFormPr
         fetch("/api/channels")
             .then(r => r.json())
             .then(({ data }) => {
-                const items = (data?.items ?? []) as Array<{ id: string; name: string }>
-                setChannels(items)
-                if (items.length && !selectedChannelId) setSelectedChannelId(items[0].id)
+                const items = (data?.items ?? []) as Array<{ id: string; name: string; wordpress_config_id: string | null }>
+                setRawChannelCount(items.length)
+                const wpConfiguredChannels = items.filter(c => c.wordpress_config_id != null)
+                setChannels(wpConfiguredChannels)
+                if (wpConfiguredChannels.length && !selectedChannelId) setSelectedChannelId(wpConfiguredChannels[0].id)
             })
             .catch(() => { /* channel list is optional — silently skip if it fails */ })
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -261,8 +264,10 @@ export function PersonaForm({ initial, personaId, archetypeSlug }: PersonaFormPr
             <Section title="Integrations">
                 {!personaId ? (
                     <p className="text-xs text-muted-foreground">Save the persona first to connect WordPress.</p>
-                ) : channels.length === 0 ? (
+                ) : rawChannelCount === 0 ? (
                     <p className="text-xs text-muted-foreground">Create a content channel first to connect WordPress.</p>
+                ) : channels.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">None of your channels have WordPress configured. Add a WordPress config in Channel → Settings → WordPress first.</p>
                 ) : (
                     <div className="space-y-3">
                         <div className="space-y-1">
