@@ -70,7 +70,7 @@ export async function adminCreditSettingsRoutes(app: FastifyInstance) {
 
     const { data, error } = await sb
       .from('credit_settings')
-      .update(update)
+      .update(update as any)
       .eq('lock_key', 'global')
       .select()
       .single()

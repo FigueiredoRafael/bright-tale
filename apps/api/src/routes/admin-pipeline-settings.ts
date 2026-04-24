@@ -64,7 +64,7 @@ export async function adminPipelineSettingsRoutes(app: FastifyInstance) {
 
     const { data, error } = await sb
       .from('pipeline_settings')
-      .update(update)
+      .update(update as any)
       .eq('lock_key', 'global')
       .select()
       .single()
