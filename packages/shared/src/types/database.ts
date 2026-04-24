@@ -1160,6 +1160,42 @@ export type Database = {
           },
         ]
       }
+      channel_personas: {
+        Row: {
+          channel_id: string
+          created_at: string
+          is_primary: boolean
+          persona_id: string
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string
+          is_primary?: boolean
+          persona_id: string
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string
+          is_primary?: boolean
+          persona_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_personas_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_personas_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       channel_references: {
         Row: {
           analyzed_at: string | null
@@ -1436,6 +1472,7 @@ export type Database = {
           idea_id: string | null
           iteration_count: number
           org_id: string
+          persona_id: string | null
           production_params: Json | null
           production_settings_json: Json | null
           project_id: string | null
@@ -1463,6 +1500,7 @@ export type Database = {
           idea_id?: string | null
           iteration_count?: number
           org_id: string
+          persona_id?: string | null
           production_params?: Json | null
           production_settings_json?: Json | null
           project_id?: string | null
@@ -1490,6 +1528,7 @@ export type Database = {
           idea_id?: string | null
           iteration_count?: number
           org_id?: string
+          persona_id?: string | null
           production_params?: Json | null
           production_settings_json?: Json | null
           project_id?: string | null
@@ -1527,6 +1566,13 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_drafts_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
             referencedColumns: ["id"]
           },
           {
@@ -2014,6 +2060,144 @@ export type Database = {
           stripe_subscription_id?: string | null
           updated_at?: string
           vip_note?: string | null
+        }
+        Relationships: []
+      }
+      persona_archetypes: {
+        Row: {
+          behavioral_overlay_json: Json
+          created_at: string
+          default_fields_json: Json
+          description: string
+          icon: string
+          id: string
+          is_active: boolean
+          name: string
+          slug: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          behavioral_overlay_json?: Json
+          created_at?: string
+          default_fields_json?: Json
+          description?: string
+          icon?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          slug: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          behavioral_overlay_json?: Json
+          created_at?: string
+          default_fields_json?: Json
+          description?: string
+          icon?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          slug?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      persona_guardrails: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          is_active: boolean
+          label: string
+          rule_text: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label: string
+          rule_text: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          rule_text?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      personas: {
+        Row: {
+          approved_categories: string[]
+          archetype_slug: string | null
+          avatar_params_json: Json | null
+          avatar_url: string | null
+          bio_long: string
+          bio_short: string
+          created_at: string
+          domain_lens: string
+          eeat_signals_json: Json
+          id: string
+          is_active: boolean
+          name: string
+          primary_domain: string
+          slug: string
+          soul_json: Json
+          updated_at: string
+          wp_author_id: number | null
+          writing_voice_json: Json
+        }
+        Insert: {
+          approved_categories: string[]
+          archetype_slug?: string | null
+          avatar_params_json?: Json | null
+          avatar_url?: string | null
+          bio_long: string
+          bio_short: string
+          created_at?: string
+          domain_lens: string
+          eeat_signals_json: Json
+          id?: string
+          is_active?: boolean
+          name: string
+          primary_domain: string
+          slug: string
+          soul_json: Json
+          updated_at?: string
+          wp_author_id?: number | null
+          writing_voice_json: Json
+        }
+        Update: {
+          approved_categories?: string[]
+          archetype_slug?: string | null
+          avatar_params_json?: Json | null
+          avatar_url?: string | null
+          bio_long?: string
+          bio_short?: string
+          created_at?: string
+          domain_lens?: string
+          eeat_signals_json?: Json
+          id?: string
+          is_active?: boolean
+          name?: string
+          primary_domain?: string
+          slug?: string
+          soul_json?: Json
+          updated_at?: string
+          wp_author_id?: number | null
+          writing_voice_json?: Json
         }
         Relationships: []
       }
