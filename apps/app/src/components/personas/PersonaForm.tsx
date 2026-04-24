@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -29,6 +29,7 @@ export interface PersonaFormValues {
     archetypeSlug?: string | null
     avatarUrl?: string | null
     avatarParamsJson?: Record<string, unknown> | null
+    wpAuthorId?: number | null
 }
 
 const EMPTY: PersonaFormValues = {
@@ -40,7 +41,7 @@ const EMPTY: PersonaFormValues = {
         values: [], lifePhilosophy: "", strongOpinions: [], petPeeves: [],
         humorStyle: "", recurringJokes: [], whatExcites: [], innerTensions: [], languageGuardrails: [],
     },
-    archetypeSlug: null, avatarUrl: null, avatarParamsJson: null,
+    archetypeSlug: null, avatarUrl: null, avatarParamsJson: null, wpAuthorId: null,
 }
 
 function TagInput({ value, onChange, placeholder }: { value: string[]; onChange: (v: string[]) => void; placeholder?: string }) {
@@ -96,6 +97,21 @@ export function PersonaForm({ initial, personaId, archetypeSlug }: PersonaFormPr
     const router = useRouter()
     const params = useParams()
     const locale = params.locale as string
+
+    const [channels, setChannels] = useState<Array<{ id: string; name: string }>>([])
+    const [selectedChannelId, setSelectedChannelId] = useState<string>("")
+
+    useEffect(() => {
+        if (!personaId) return
+        fetch("/api/channels")
+            .then(r => r.json())
+            .then(({ data }) => {
+                const items = (data?.items ?? []) as Array<{ id: string; name: string }>
+                setChannels(items)
+                if (items.length && !selectedChannelId) setSelectedChannelId(items[0].id)
+            })
+            .catch(() => { /* channel list is optional — silently skip if it fails */ })
+    }, [personaId, selectedChannelId])
 
     function set<K extends keyof PersonaFormValues>(key: K, val: PersonaFormValues[K]) {
         setValues(prev => ({ ...prev, [key]: val }))
@@ -242,10 +258,31 @@ export function PersonaForm({ initial, personaId, archetypeSlug }: PersonaFormPr
             </Section>
 
             <Section title="Integrations">
-                {personaId ? (
-                    <WpIntegrationSection personaId={personaId} currentWpAuthorId={null} />
-                ) : (
+                {!personaId ? (
                     <p className="text-xs text-muted-foreground">Save the persona first to connect WordPress.</p>
+                ) : channels.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Create a content channel first to connect WordPress.</p>
+                ) : (
+                    <div className="space-y-3">
+                        <div className="space-y-1">
+                            <Label className="text-xs">Channel</Label>
+                            <select
+                                value={selectedChannelId}
+                                onChange={e => setSelectedChannelId(e.target.value)}
+                                className="w-full h-8 px-2 text-sm rounded-md border bg-background"
+                            >
+                                {channels.map(c => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </select>
+                            <p className="text-[10px] text-muted-foreground">Which channel's WordPress site to link against.</p>
+                        </div>
+                        <WpIntegrationSection
+                            personaId={personaId}
+                            currentWpAuthorId={values.wpAuthorId ?? null}
+                            channelId={selectedChannelId}
+                        />
+                    </div>
                 )}
             </Section>
 
