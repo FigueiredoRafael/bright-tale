@@ -68,7 +68,7 @@ export default function Sidebar() {
         {
             label: t('resources'),
             items: [
-                { href: "/personas", label: "Personas", icon: Users },
+                { href: "/personas", label: t('personas'), icon: Users },
                 { href: "/images", label: t('imageBank'), icon: Images },
                 { href: "/assets", label: t('assets'), icon: Archive },
                 { href: "/templates", label: t('templates'), icon: Database },
