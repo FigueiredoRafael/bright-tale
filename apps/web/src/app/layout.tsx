@@ -32,6 +32,10 @@ export const metadata: Metadata = {
   keywords:
     'AI content automation, blog automation, AI writing, content pipeline, WordPress automation, affiliate content',
   authors: [{ name: 'BrightLabs' }],
+  // Landing page remains indexable. Admin and API routes are made
+  // explicitly non-indexable via per-path metadata + headers (see
+  // next.config.ts headers() + apps/web/src/app/zadmin/layout.tsx
+  // metadata override).
   robots: 'index, follow',
   openGraph: {
     title: 'BrightTale — Your AI Content Engine',

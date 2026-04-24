@@ -4,7 +4,7 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { authenticate } from '../middleware/authenticate.js';
+import { authenticateWithUser } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
@@ -36,7 +36,7 @@ export async function youtubeRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * POST /analyze-channel — Analyze a YouTube channel by URL
    */
-  fastify.post('/analyze-channel', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.post('/analyze-channel', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
 
@@ -69,7 +69,7 @@ export async function youtubeRoutes(fastify: FastifyInstance): Promise<void> {
    * POST /analyze-niche — Full niche analysis with YouTube Intelligence
    * Costs 150 credits.
    */
-  fastify.post('/analyze-niche', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.post('/analyze-niche', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
 

@@ -66,6 +66,7 @@ import {
 } from "@tn-figueiredo/affiliate/routes";
 import { buildAffiliateContainer } from "./lib/affiliate/container.js";
 import { authenticate } from "./middleware/authenticate.js";
+import { registerUserAuthHardening } from "./middleware/user-auth-hardening.js";
 import { logRequest, flushAxiom } from "./lib/axiom.js";
 import { flushPostHog } from "./lib/posthog.js";
 
@@ -110,7 +111,103 @@ server.register(fastifyCors, {
 
 server.register(fastifyCookie);
 
+// ── Origin enforcement for state-changing requests ────────────────────────
+// CORS blocks the browser from reading cross-origin responses, but it does
+// not stop the server from processing the request. For POST/PUT/PATCH/DELETE,
+// we reject outright when Origin is present and not in our allowlist —
+// defense in depth against CSRF / side-effect attacks from forged browser
+// contexts. Server-to-server calls (e.g. apps/app rewrite) typically don't
+// include an Origin header; they're gated by INTERNAL_API_KEY instead.
+const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const ALLOWED_ORIGIN_SET = new Set(allowedOrigins);
+server.addHook("onRequest", async (request, reply) => {
+  if (!STATE_CHANGING_METHODS.has(request.method)) return;
+  const origin = request.headers.origin;
+  if (origin && !ALLOWED_ORIGIN_SET.has(origin)) {
+    return reply.status(403).send({
+      data: null,
+      error: {
+        code: "ORIGIN_NOT_ALLOWED",
+        message: "Origin not permitted for this request",
+      },
+    });
+  }
+});
+
+// ── Security headers ──────────────────────────────────────────────────────
+// apps/api only serves JSON, so CSP can be the strictest possible. Bots
+// probing :3001 get the same baseline headers as apps/app and apps/web.
+// In dev, CSP goes Report-Only so HMR / error-pages are not broken.
+const isDev = process.env.NODE_ENV !== "production";
+server.addHook("onSend", (_request, reply, payload, done) => {
+  reply.header("X-Content-Type-Options", "nosniff");
+  reply.header("X-Frame-Options", "DENY");
+  reply.header("Referrer-Policy", "no-referrer");
+  reply.header(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=(), usb=(), bluetooth=(), payment=(), magnetometer=(), gyroscope=(), interest-cohort=()",
+  );
+  reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  reply.header(
+    isDev ? "Content-Security-Policy-Report-Only" : "Content-Security-Policy",
+    "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+  );
+  reply.header("Cross-Origin-Opener-Policy", "same-origin");
+  reply.header("Cross-Origin-Resource-Policy", "same-site");
+  reply.removeHeader("X-Powered-By");
+  done(null, payload);
+});
+
 Sentry.setupFastifyErrorHandler(server);
+
+// ── Central error handler ────────────────────────────────────────────────
+// Every thrown error gets mapped to the {data, error} envelope we document
+// in CLAUDE.md. Client never sees Postgres codes, Zod field paths, or
+// framework stack frames. Full detail stays in server logs (and Sentry).
+server.setErrorHandler((err, request, reply) => {
+  const status =
+    typeof (err as { statusCode?: number }).statusCode === "number" &&
+    (err as { statusCode: number }).statusCode >= 400 &&
+    (err as { statusCode: number }).statusCode < 600
+      ? (err as { statusCode: number }).statusCode
+      : 500;
+
+  // Map framework / library errors to stable codes without leaking internals.
+  const map: Array<{ test: RegExp; code: string; safeMessage: string; status?: number }> = [
+    { test: /FST_ERR_CTP_INVALID_JSON|Unexpected token|valid JSON|SyntaxError/i, code: "BAD_JSON", safeMessage: "Malformed JSON body", status: 400 },
+    { test: /FST_ERR_CTP_EMPTY_JSON_BODY|empty[\w\s]*body/i, code: "EMPTY_BODY", safeMessage: "Request body is empty", status: 400 },
+    { test: /body[\w\s.]*exceeded|payload.*large|FST_ERR_CTP_BODY_TOO_LARGE/i, code: "PAYLOAD_TOO_LARGE", safeMessage: "Payload too large", status: 413 },
+    { test: /FST_ERR_CTP_INVALID_MEDIA_TYPE|content-type/i, code: "UNSUPPORTED_CONTENT_TYPE", safeMessage: "Unsupported Content-Type", status: 415 },
+    { test: /ZodError|validation/i, code: "VALIDATION_ERROR", safeMessage: "Invalid input" },
+    { test: /PGRST\d+|PostgresError|duplicate key|violates.*constraint/i, code: "DATABASE_ERROR", safeMessage: "Database error", status: 500 },
+    { test: /timeout/i, code: "TIMEOUT", safeMessage: "Request timed out", status: 504 },
+  ];
+  const match = map.find(
+    (m) =>
+      m.test.test(err.message ?? "") ||
+      m.test.test(err.name ?? "") ||
+      m.test.test(String((err as { code?: string }).code ?? "")),
+  );
+  const code = match?.code ?? (status === 404 ? "NOT_FOUND" : status === 401 ? "UNAUTHORIZED" : status === 403 ? "FORBIDDEN" : status >= 500 ? "INTERNAL_ERROR" : "BAD_REQUEST");
+  // For 5xx: always the generic safe message — never leak internals.
+  // For 4xx: the match's safeMessage, or a generic "Request failed" — never the raw err.message
+  // which can contain parser fragments, field paths, etc.
+  const message = match?.safeMessage ?? (status >= 500 ? "Internal server error" : "Request failed");
+  const finalStatus = match?.status ?? status;
+
+  // Log full detail server-side for diagnosis.
+  request.log.error({ err, code }, `error → ${code}`);
+
+  reply.status(finalStatus).send({ data: null, error: { code, message } });
+});
+
+// Same for 404 — don't leak the framework default body shape.
+server.setNotFoundHandler((request, reply) => {
+  reply.status(404).send({
+    data: null,
+    error: { code: "NOT_FOUND", message: "Route not found" },
+  });
+});
 
 // Request/response logging — skip Inngest polling noise
 const SILENT_ROUTES = new Set(["/inngest", "/health"]);
@@ -154,6 +251,11 @@ server.get("/generated-images/*", async (request, reply) => {
   const mime = mimeMap[ext] ?? "application/octet-stream";
   return reply.header("Content-Type", mime).send(fs.createReadStream(safe));
 });
+
+// SEC-001: rate-limit + uniform-timing + response-unification hooks
+// for the user-facing auth POST endpoints. Registered BEFORE authRoutes
+// so preHandler gates fire first.
+registerUserAuthHardening(server);
 
 server.register(healthRoutes);
 server.register(authRoutes);

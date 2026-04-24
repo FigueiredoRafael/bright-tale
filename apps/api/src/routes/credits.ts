@@ -4,7 +4,7 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { authenticate } from '../middleware/authenticate.js';
+import { authenticateWithUser } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
@@ -29,7 +29,7 @@ export async function creditsRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * GET /balance — Current org credit balance
    */
-  fastify.get('/balance', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.get('/balance', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
 
@@ -45,7 +45,7 @@ export async function creditsRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * GET /usage — Credit usage history
    */
-  fastify.get('/usage', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.get('/usage', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
       const sb = createServiceClient();
@@ -77,7 +77,7 @@ export async function creditsRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * GET /usage/by-member — Usage aggregated by member (admin+)
    */
-  fastify.get('/usage/by-member', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.get('/usage/by-member', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
       const sb = createServiceClient();
@@ -101,7 +101,7 @@ export async function creditsRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * GET /usage/by-category — Usage aggregated by category
    */
-  fastify.get('/usage/by-category', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.get('/usage/by-category', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
       const sb = createServiceClient();

@@ -4,7 +4,7 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { authenticate } from '../middleware/authenticate.js';
+import { authenticateWithUser } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { encrypt } from '../lib/crypto.js';
@@ -16,7 +16,7 @@ export async function aiConfigRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * POST /config — Create a new AI provider config
    */
-  fastify.post('/config', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.post('/config', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const sb = createServiceClient();
       const validated = createAIConfigSchema.parse(request.body);
@@ -64,7 +64,7 @@ export async function aiConfigRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * GET /config — List all AI provider configs
    */
-  fastify.get('/config', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.get('/config', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const sb = createServiceClient();
       const { data: configs, error } = await sb
@@ -93,7 +93,7 @@ export async function aiConfigRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * GET /config/:id — Get a single AI provider config
    */
-  fastify.get('/config/:id', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.get('/config/:id', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const sb = createServiceClient();
       const { id } = request.params as { id: string };
@@ -127,7 +127,7 @@ export async function aiConfigRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * PUT /config/:id — Update an AI provider config
    */
-  fastify.put('/config/:id', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.put('/config/:id', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const sb = createServiceClient();
       const { id } = request.params as { id: string };
@@ -199,7 +199,7 @@ export async function aiConfigRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * DELETE /config/:id — Delete an AI provider config
    */
-  fastify.delete('/config/:id', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.delete('/config/:id', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const sb = createServiceClient();
       const { id } = request.params as { id: string };
@@ -216,7 +216,7 @@ export async function aiConfigRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * POST /discovery — Run AI discovery
    */
-  fastify.post('/discovery', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.post('/discovery', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const body = discoveryInputSchema.parse(request.body);
 

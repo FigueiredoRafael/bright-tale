@@ -6,7 +6,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { authenticate } from '../middleware/authenticate.js';
+import { authenticateWithUser } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
@@ -31,7 +31,7 @@ async function getOrgId(userId: string): Promise<string> {
 }
 
 export async function publishingDestinationsRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.get('/', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.get('/', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
       const orgId = await getOrgId(request.userId);
@@ -47,7 +47,7 @@ export async function publishingDestinationsRoutes(fastify: FastifyInstance): Pr
     }
   });
 
-  fastify.post('/', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.post('/', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
       const body = createSchema.parse(request.body);
@@ -74,7 +74,7 @@ export async function publishingDestinationsRoutes(fastify: FastifyInstance): Pr
     }
   });
 
-  fastify.delete('/:id', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.delete('/:id', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
       const { id } = request.params as { id: string };

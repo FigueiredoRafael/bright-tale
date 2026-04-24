@@ -12,6 +12,7 @@ import {
   EyeOff,
   Pencil,
   Shield,
+  ShieldCheck,
   UserX,
   UserCheck,
   Trash2,
@@ -19,6 +20,7 @@ import {
 import type { UserListItem } from '@brighttale/shared/types/users';
 import { UserEditModal } from './user-edit-modal';
 import { UserRoleModal } from './user-role-modal';
+import { UserPromoteToManagerModal } from './user-promote-to-manager-modal';
 import { UserDeleteDialog } from './user-delete-dialog';
 
 const AVATAR_GRADIENTS = [
@@ -98,10 +100,11 @@ function SortHeader({
   );
 }
 
-function ActionMenu({ user, onEdit, onRole, onDelete, openUpward }: {
+function ActionMenu({ user, onEdit, onRole, onPromoteManager, onDelete, openUpward }: {
   user: UserListItem;
   onEdit: () => void;
   onRole: () => void;
+  onPromoteManager: () => void;
   onDelete: () => void;
   openUpward: boolean;
 }) {
@@ -141,6 +144,10 @@ function ActionMenu({ user, onEdit, onRole, onDelete, openUpward }: {
               <Shield className="w-3.5 h-3.5" />
               {user.role === 'admin' ? 'Remover admin' : 'Tornar admin'}
             </button>
+            <button type="button" onClick={() => { setOpen(false); onPromoteManager(); }} className={menuCls}>
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Promover para manager
+            </button>
             <button type="button" onClick={handleToggleActive} className={menuCls}>
               {user.isActive ? (
                 <><UserX className="w-3.5 h-3.5" /> Desativar</>
@@ -176,6 +183,7 @@ export function UsersTable({ users }: UsersTableProps) {
 
   const [editUser, setEditUser] = useState<UserListItem | null>(null);
   const [roleUser, setRoleUser] = useState<UserListItem | null>(null);
+  const [promoteUser, setPromoteUser] = useState<UserListItem | null>(null);
   const [deleteUser, setDeleteUser] = useState<UserListItem | null>(null);
 
   const handleSort = (field: SortKey) => {
@@ -347,6 +355,7 @@ export function UsersTable({ users }: UsersTableProps) {
                       user={user}
                       onEdit={() => setEditUser(user)}
                       onRole={() => setRoleUser(user)}
+                      onPromoteManager={() => setPromoteUser(user)}
                       onDelete={() => setDeleteUser(user)}
                       openUpward={i >= users.length - 2}
                     />
@@ -364,6 +373,13 @@ export function UsersTable({ users }: UsersTableProps) {
       )}
       {roleUser && (
         <UserRoleModal user={roleUser} onClose={() => setRoleUser(null)} />
+      )}
+      {promoteUser && (
+        <UserPromoteToManagerModal
+          user={promoteUser}
+          callerIsOwner={false}
+          onClose={() => setPromoteUser(null)}
+        />
       )}
       {deleteUser && (
         <UserDeleteDialog user={deleteUser} onClose={() => setDeleteUser(null)} />

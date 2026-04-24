@@ -3,7 +3,7 @@
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { authenticate } from '../middleware/authenticate.js';
+import { authenticateWithUser } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
@@ -184,7 +184,7 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * GET /status — current org's plan, credits, next reset.
    */
-  fastify.get('/status', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.get('/status', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
       const org = await getOrg(request.userId);
@@ -223,7 +223,7 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * POST /checkout — create a Stripe Checkout Session and return the URL.
    */
-  fastify.post('/checkout', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.post('/checkout', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
       const body = checkoutSchema.parse(request.body);
@@ -294,7 +294,7 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
    * (não assinatura). Creditos são creditados em `organizations.credits_addon`
    * via webhook `checkout.session.completed` quando pago.
    */
-  fastify.post('/addons/checkout', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.post('/addons/checkout', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
       const body = addonCheckoutSchema.parse(request.body);
@@ -338,7 +338,7 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * POST /portal — Stripe Customer Portal link.
    */
-  fastify.post('/portal', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.post('/portal', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
       const org = await getOrg(request.userId);

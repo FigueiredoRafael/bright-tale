@@ -33,7 +33,46 @@ Estabilizar o produto para uso diário real (Bright Curios blog + YouTube) e hab
 | V2-009 | Billing settings page (plan + credits + Portal) | MUST | 2 | 🔲 |
 | | **Subtotal subscription** | | **8** | |
 
-| | **Total estimado v0.2** | | **22** | |
+## Cards — Segurança
+
+> Trilha criada 2026-04-23 após pentest inicial. Baseline: `reports/history/001-initial-baseline.html` (49 findings, 2 crit, 17 high). Estado atual: `reports/history/003-after-crown-jewel-fix.html` (21 findings, 1 crit, 3 high). Dashboard: `reports/history.html`.
+
+### Fixes já aplicados (iterations 001 → 003)
+
+| Fix | Findings fechados | Arquivo(s) |
+|---|---|---|
+| **Crown-jewel leak** — `/api/agents` exigia só `INTERNAL_API_KEY`; proxy sempre injeta, então endpoint servia 272 KB de prompts sem sessão | 1 CRIT | `apps/api/src/middleware/authenticate.ts` (novo `authenticateWithUser`), `apps/api/src/routes/agents.ts` |
+| Security headers (CSP, HSTS, X-CTO, X-Frame, Referrer, Permissions) em 3001 + 3002 | 6 MED | `apps/api/src/index.ts` (Fastify `onSend` hook), `apps/web/next.config.ts` |
+| X-Powered-By removido | 1 INFO | `apps/web/next.config.ts` (`poweredByHeader: false`) |
+| Origin check em POST/PUT/PATCH/DELETE (CSRF defense in depth) | 2 MED | `apps/api/src/index.ts` (`onRequest` hook) |
+| Constant-time compare da `INTERNAL_API_KEY` | timing attack surface | `apps/api/src/middleware/authenticate.ts` (`crypto.timingSafeEqual`) |
+| Gitleaks false positives em `.env.example`, test files, docs/plans | 14 HIGH (FP) | `.gitleaks.toml` allowlist |
+| Cache-Control: no-store nas rotas `/admin/*` | defense in depth | `apps/web/next.config.ts` (per-route headers) |
+| Hook anti-leak em `.claude/settings.json` (bloqueia Write/Edit em .env*, secrets) | preventivo | `.claude/hooks/anti-leak.sh` + `.claude/settings.json` |
+
+### Cards abertos (bloqueados por refactor arquitetural)
+
+| Card | Nome | Prioridade | Pts | Status | Spec |
+|---|---|---|---:|---|---|
+| SEC-001 | User login hardening (constant-time + rate-limit + HIBP + Turnstile) | MUST | 5–8 | 🔲 | `docs/security/SEC-001-login-hardening.md` |
+| **SEC-002** | **Admin MFA + AAL2 gate + short JWT + rate-limit** — _prioridade máxima, cobre 1 CRIT + 1 HIGH_ | MUST | 8–13 | 🔲 | `docs/security/SEC-002-admin-hardening.md` |
+| SEC-003 | Agent prompts crown-jewel (AES-GCM + AAD + audit log + step-up MFA em writes) | MUST | 13–21 | 🔲 | `docs/security/SEC-003-agent-prompts-protection.md` |
+| SEC-004 | Auditoria de auth das ~175 rotas restantes em apps/api | MUST | 5–8 | 🔲 | `docs/security/SEC-004-route-auth-audit.md` |
+| SEC-005 | Polish: slug rotation, reset-password uniformity, error envelope, probe refinements | SHOULD | 5 | 🔲 | `docs/security/SEC-005-polish.md` |
+| | **Subtotal segurança** | | **36–55** | |
+
+### Dependências internas de segurança
+
+```
+SEC-001 ─┬─> SEC-002 (shared rate-limit infra)
+         └─> SEC-003 (precisa da AAL2 criada em SEC-002 pra step-up em writes)
+SEC-002 ────> SEC-003
+SEC-003 ────> SEC-004 (usa o mesmo padrão authenticateWithUser)
+```
+
+SEC-002 é o card mais urgente — sem ele, uma senha de admin interceptada/phishada = takeover total do painel (users, orgs, prompts, affiliates, payouts).
+
+| | **Total estimado v0.2** | | **58–77** | |
 
 ## Dependências entre cards
 
@@ -42,6 +81,7 @@ V2-001 (primaryKeyword) → V2-003 (alt text)
 V2-006 (credits race) → V2-008 (e2e checkout validation)
 V2-007 (Stripe setup) → V2-008 (e2e checkout validation)
 V2-008 (e2e validation) → V2-009 (billing settings page)
+SEC-001 → SEC-002 → SEC-003 → SEC-004
 ```
 
 ## Cortado (pós-launch)

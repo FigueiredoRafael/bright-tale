@@ -9,7 +9,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { z } from 'zod';
 import yaml from 'js-yaml';
-import { authenticate } from '../middleware/authenticate.js';
+import { authenticateWithUser } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
@@ -328,7 +328,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * POST /config — Create new WordPress config (password encrypted)
    */
-  fastify.post('/config', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.post('/config', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const sb = createServiceClient();
       const body = createConfigSchema.parse(request.body);
@@ -379,7 +379,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * GET /config — List all configs (passwords masked)
    */
-  fastify.get('/config', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.get('/config', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const sb = createServiceClient();
       const { data: configs, error } = await sb
@@ -407,7 +407,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * GET /config/:id — Get config (password masked)
    */
-  fastify.get('/config/:id', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.get('/config/:id', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const sb = createServiceClient();
       const { id } = request.params as { id: string };
@@ -442,7 +442,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * PUT /config/:id — Update config (password re-encrypted if changed)
    */
-  fastify.put('/config/:id', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.put('/config/:id', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const sb = createServiceClient();
       const { id } = request.params as { id: string };
@@ -505,7 +505,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * PATCH /config/:id — Same as PUT
    */
-  fastify.patch('/config/:id', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.patch('/config/:id', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const sb = createServiceClient();
       const { id } = request.params as { id: string };
@@ -567,7 +567,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * DELETE /config/:id — Delete config
    */
-  fastify.delete('/config/:id', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.delete('/config/:id', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const sb = createServiceClient();
       const { id } = request.params as { id: string };
@@ -598,7 +598,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
    * @deprecated Use POST /publish-draft instead for content_drafts pipeline.
    * POST /publish — Legacy publish flow (uses projects/stages tables).
    */
-  fastify.post('/publish', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.post('/publish', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const sb = createServiceClient();
       const body = publishToWordPressSchema.parse(request.body);
@@ -839,7 +839,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
    * POST /publish-draft/stream — Streaming version with SSE progress updates.
    * Emits events for each step: preparing, uploading_featured, uploading_images, composing, categories, tags, publishing, done.
    */
-  fastify.post('/publish-draft/stream', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.post('/publish-draft/stream', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const sb = createServiceClient();
       const body = publishDraftSchema.parse(request.body);
@@ -1243,7 +1243,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * GET /tags — Fetch WordPress tags
    */
-  fastify.get('/tags', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.get('/tags', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const url = new URL(request.url, 'http://localhost');
       const params = fetchTagsQuerySchema.parse(Object.fromEntries(url.searchParams));
@@ -1324,7 +1324,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * GET /categories — Fetch WordPress categories
    */
-  fastify.get('/categories', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.get('/categories', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const url = new URL(request.url, 'http://localhost');
       const params = fetchCategoriesQuerySchema.parse(Object.fromEntries(url.searchParams));
@@ -1407,7 +1407,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
    * POST /publish-draft — New publish flow for content_drafts pipeline.
    * Uploads images (WebP preferred), resolves taxonomies, creates/updates WP post.
    */
-  fastify.post('/publish-draft', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.post('/publish-draft', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const sb = createServiceClient();
       const body = publishDraftSchema.parse(request.body);
@@ -1708,7 +1708,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
    * GET /blog-metrics — Fetch public blog metrics from a WordPress site
    * Calls the WP REST API (no auth needed for published posts).
    */
-  fastify.get('/blog-metrics', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.get('/blog-metrics', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const { url } = request.query as { url?: string };
       if (!url) throw new ApiError(400, 'url query param is required', 'VALIDATION_ERROR');

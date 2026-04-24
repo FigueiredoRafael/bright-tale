@@ -14,6 +14,7 @@ export const ADMIN_LAYOUT_CONFIG: AdminLayoutConfig = {
     {
       group: 'Gestão',
       items: [
+        { label: 'Managers', path: adminPath('/managers'), icon: 'ShieldCheck' },
         { label: 'Usuários', path: adminPath('/users'), icon: 'Users' },
         { label: 'Organizations', path: adminPath('/orgs'), icon: 'Building2' },
         { label: 'Agentes', path: adminPath('/agents'), icon: 'Bot' },

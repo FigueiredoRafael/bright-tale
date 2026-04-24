@@ -5,7 +5,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { authenticate } from '../middleware/authenticate.js';
+import { authenticate, authenticateWithUser } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 
@@ -19,9 +19,12 @@ const updateAgentSchema = z.object({
 
 export async function agentsRoutes(fastify: FastifyInstance): Promise<void> {
   /**
-   * GET / — List all agent prompts ordered by stage
+   * GET / — List all agent prompts ordered by stage.
+   * Crown-jewel data: requires a real user session, not just INTERNAL_API_KEY.
+   * Without this, anyone hitting /api/agents through apps/app (which always
+   * injects INTERNAL_API_KEY) downloads the prompt inventory unauthenticated.
    */
-  fastify.get('/', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.get('/', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const sb = createServiceClient();
 
@@ -39,9 +42,9 @@ export async function agentsRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   /**
-   * GET /:slug — Get a single agent by slug
+   * GET /:slug — Get a single agent by slug. Same crown-jewel protection as list.
    */
-  fastify.get('/:slug', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.get('/:slug', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const sb = createServiceClient();
       const { slug } = request.params as { slug: string };
@@ -70,7 +73,7 @@ export async function agentsRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * PUT /:slug — Update an agent's prompts and schemas
    */
-  fastify.put('/:slug', { preHandler: [authenticate] }, async (request, reply) => {
+  fastify.put('/:slug', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       const sb = createServiceClient();
       const { slug } = request.params as { slug: string };
