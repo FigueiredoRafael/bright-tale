@@ -111,7 +111,8 @@ export function PersonaForm({ initial, personaId, archetypeSlug }: PersonaFormPr
                 if (items.length && !selectedChannelId) setSelectedChannelId(items[0].id)
             })
             .catch(() => { /* channel list is optional — silently skip if it fails */ })
-    }, [personaId, selectedChannelId])
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [personaId])
 
     function set<K extends keyof PersonaFormValues>(key: K, val: PersonaFormValues[K]) {
         setValues(prev => ({ ...prev, [key]: val }))
