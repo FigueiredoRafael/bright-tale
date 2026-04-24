@@ -38,15 +38,14 @@ export function PublishEngine({
   const modeRef = useRef<string | null>(null);
   const tracker = usePipelineTracker('publish', context);
 
-  function handlePublish(params: { mode: string; configId: string; scheduledDate?: string }) {
+  function handlePublish(params: { mode: string; scheduledDate?: string }) {
     if (publishing) return;
 
     modeRef.current = params.mode;
-    tracker.trackStarted({ draftId, mode: params.mode, configId: params.configId });
+    tracker.trackStarted({ draftId, mode: params.mode });
 
     const body: Record<string, unknown> = {
       draftId,
-      configId: params.configId,
       mode: params.mode,
       scheduledDate: params.scheduledDate,
       idempotencyToken: crypto.randomUUID(),
@@ -100,6 +99,7 @@ export function PublishEngine({
         <div>
           <PublishPanel
             draftId={draftId}
+            channelId={channelId}
             draftStatus={draft.status}
             hasAssets={assetCount > 0}
             wordpressPostId={draft.wordpress_post_id}
