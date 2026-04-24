@@ -4,7 +4,6 @@ import { Link } from "@/i18n/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-    Globe,
     Settings as SettingsIcon,
     ChevronRight,
     Users,
@@ -38,12 +37,6 @@ export default function SettingsPage() {
             description: "Convide pessoas pra colaborar nesse workspace, gerencie roles e permissões.",
             href: "/settings/team",
             icon: <Users className="h-6 w-6" />,
-        },
-        {
-            title: "WordPress",
-            description: "Conecte o site WordPress pra publicar posts direto da plataforma. Sem isso, dá pra marcar como publicado manualmente.",
-            href: "/settings/wordpress",
-            icon: <Globe className="h-6 w-6" />,
         },
         {
             title: "Plano & créditos",

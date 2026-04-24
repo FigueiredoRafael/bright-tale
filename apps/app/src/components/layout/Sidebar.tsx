@@ -8,7 +8,6 @@ import {
     Images, Archive, Database, Settings, Users, Wand2, Sparkles,
     FolderKanban,
     type LucideIcon,
-    Globe,
 } from "lucide-react";
 import { ChannelSwitcher } from "./ChannelSwitcher";
 import { useActiveChannel } from "@/hooks/use-active-channel";
@@ -79,7 +78,6 @@ export default function Sidebar() {
             items: [
                 { href: "/settings", label: "Configurações", icon: Settings, exact: true },
                 { href: "/settings/team", label: "Time", icon: Users },
-                { href: "/settings/wordpress", label: "WordPress", icon: Globe },
             ],
         },
     ];

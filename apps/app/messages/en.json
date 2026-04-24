@@ -53,8 +53,7 @@
     "settings": "Settings",
     "settingsImageGeneration": "Image Generation",
     "settingsAI": "AI Settings",
-    "settingsAgents": "Agents",
-    "settingsWordpress": "WordPress"
+    "settingsAgents": "Agents"
   },
   "dashboard": {
     "greeting": "Hello, {channelName}",

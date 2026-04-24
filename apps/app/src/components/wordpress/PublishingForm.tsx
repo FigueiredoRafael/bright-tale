@@ -304,7 +304,7 @@ export default function PublishingForm({
                         You need to configure a WordPress site before publishing
                     </p>
                     <Button asChild>
-                        <a href="/settings/wordpress">Configure WordPress</a>
+                        <a href="/channels">Configure WordPress</a>
                     </Button>
                 </CardContent>
             </Card>

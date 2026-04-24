@@ -291,10 +291,6 @@ export default function ChannelDetailPage() {
     }
   }, [id]);
 
-  useEffect(() => {
-    if (hasBlog) fetchWpConfig();
-  }, [hasBlog, fetchWpConfig]);
-
   async function handleSave() {
     setSaving(true);
     try {
@@ -428,6 +424,10 @@ export default function ChannelDetailPage() {
       setWpTesting(false);
     }
   }
+
+  useEffect(() => {
+    if (mediaTypes.includes('blog')) fetchWpConfig();
+  }, [mediaTypes, fetchWpConfig]);
 
   if (loading) {
     return (
