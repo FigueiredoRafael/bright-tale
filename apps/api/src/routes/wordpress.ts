@@ -56,6 +56,7 @@ export function buildWpPostData(input: WpPostDataInput): Record<string, unknown>
 }
 
 const createConfigSchema = z.object({
+  channel_id: z.string().uuid('Invalid channel ID'),
   site_url: z.string().url('Invalid WordPress site URL'),
   username: z.string().min(1, 'Username is required'),
   password: z.string().min(1, 'Password is required'),
@@ -381,6 +382,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       const { data: config, error } = await sb
         .from('wordpress_configs')
         .insert({
+          channel_id: body.channel_id,
           site_url: body.site_url,
           username: body.username,
           password: encryptedPassword,

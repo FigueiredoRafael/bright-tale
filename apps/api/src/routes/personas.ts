@@ -230,20 +230,13 @@ Return ONLY valid JSON, no explanation.`
     if (!personaRow) throw new ApiError(404, 'Persona not found', 'PERSONA_NOT_FOUND')
     const persona = mapPersonaFromDb(personaRow as DbPersona)
 
-    const { data: channel } = await sb
-      .from('channels')
-      .select('wordpress_config_id')
-      .eq('id', body.channelId)
-      .maybeSingle()
-    if (!channel?.wordpress_config_id) throw new ApiError(400, 'Channel has no WordPress config', 'NO_WP_CONFIG')
-
     const { decrypt } = await import('../lib/crypto.js')
     const { data: wpConfig } = await sb
       .from('wordpress_configs')
       .select('site_url, username, password')
-      .eq('id', channel.wordpress_config_id)
+      .eq('channel_id', body.channelId)
       .maybeSingle()
-    if (!wpConfig) throw new ApiError(404, 'WordPress config not found', 'WP_CONFIG_NOT_FOUND')
+    if (!wpConfig) throw new ApiError(400, 'Channel has no WordPress config', 'NO_WP_CONFIG')
 
     const auth = Buffer.from(`${wpConfig.username}:${decrypt(wpConfig.password)}`).toString('base64')
     const wpBase = wpConfig.site_url.replace(/\/$/, '')

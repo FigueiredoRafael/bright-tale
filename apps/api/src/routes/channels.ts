@@ -15,6 +15,7 @@ import {
 } from '@brighttale/shared/schemas/channels';
 import { ensureOrgId } from '../lib/orgs.js';
 import { uploadFile } from '../lib/storage.js';
+import { encrypt, decrypt } from '../lib/crypto.js';
 
 /** Helper: get user's org_id */
 async function getOrgId(userId: string): Promise<string> {
@@ -50,16 +51,21 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
 
       const { data: channels, error, count } = await sb
         .from('channels')
-        .select('*', { count: 'exact' })
+        .select('*, wordpress_configs(id)', { count: 'exact' })
         .eq('org_id', orgId)
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
       if (error) throw error;
 
+      const items = (channels ?? []).map(c => {
+        const { wordpress_configs: wpc, ...rest } = c as typeof c & { wordpress_configs: { id: string } | null };
+        return { ...rest, has_wordpress: wpc !== null };
+      });
+
       reply.header('Cache-Control', 'private, max-age=60');
       return reply.send({
-        data: { items: channels, total: count, page, limit },
+        data: { items, total: count, page, limit },
         error: null,
       });
     } catch (error) {
@@ -285,6 +291,153 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
       if (error) throw error;
 
       return reply.send({ data: { deleted: true }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * GET /:id/wordpress — Fetch WP config for channel (password masked)
+   */
+  fastify.get<{ Params: { id: string } }>('/:id/wordpress', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
+      const orgId = await getOrgId(request.userId);
+      const { id } = request.params;
+
+      const { data: channel } = await sb.from('channels').select('id').eq('id', id).eq('org_id', orgId).single();
+      if (!channel) throw new ApiError(404, 'Channel not found', 'CHANNEL_NOT_FOUND');
+
+      const { data: config } = await sb.from('wordpress_configs').select('id, site_url, username, created_at, updated_at').eq('channel_id', id).maybeSingle();
+      if (!config) throw new ApiError(404, 'No WordPress config on this channel', 'WP_CONFIG_NOT_FOUND');
+
+      return reply.send({ data: { ...config, password: '••••••••' }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * POST /:id/wordpress — Create WP config for channel
+   */
+  fastify.post<{ Params: { id: string } }>('/:id/wordpress', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
+      const orgId = await getOrgId(request.userId);
+      const { id } = request.params;
+
+      const { data: channel } = await sb.from('channels').select('id').eq('id', id).eq('org_id', orgId).single();
+      if (!channel) throw new ApiError(404, 'Channel not found', 'CHANNEL_NOT_FOUND');
+
+      const body = request.body as { site_url: string; username: string; password: string };
+      if (!body.site_url || !body.username || !body.password) {
+        throw new ApiError(400, 'site_url, username, and password are required', 'VALIDATION_ERROR');
+      }
+
+      const { data: config, error } = await sb
+        .from('wordpress_configs')
+        .insert({ channel_id: id, site_url: body.site_url.replace(/\/$/, ''), username: body.username, password: encrypt(body.password) })
+        .select('id, site_url, username, created_at, updated_at')
+        .single();
+
+      if (error) {
+        if (error.code === '23505') throw new ApiError(409, 'This channel already has WordPress configured', 'WP_CONFIG_EXISTS');
+        throw error;
+      }
+
+      return reply.status(201).send({ data: { ...config, password: '••••••••' }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * PUT /:id/wordpress — Partial update WP config
+   */
+  fastify.put<{ Params: { id: string } }>('/:id/wordpress', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
+      const orgId = await getOrgId(request.userId);
+      const { id } = request.params;
+
+      const { data: channel } = await sb.from('channels').select('id').eq('id', id).eq('org_id', orgId).single();
+      if (!channel) throw new ApiError(404, 'Channel not found', 'CHANNEL_NOT_FOUND');
+
+      const body = request.body as { site_url?: string; username?: string; password?: string };
+      const updates = {} as any;
+      if (body.site_url) updates.site_url = body.site_url.replace(/\/$/, '');
+      if (body.username) updates.username = body.username;
+      if (body.password) updates.password = encrypt(body.password);
+
+      const { data: config, error } = await sb
+        .from('wordpress_configs')
+        .update(updates)
+        .eq('channel_id', id)
+        .select('id, site_url, username, created_at, updated_at')
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!config) throw new ApiError(404, 'No WordPress config on this channel', 'WP_CONFIG_NOT_FOUND');
+
+      return reply.send({ data: { ...config, password: '••••••••' }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * DELETE /:id/wordpress — Remove WP config
+   */
+  fastify.delete<{ Params: { id: string } }>('/:id/wordpress', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
+      const orgId = await getOrgId(request.userId);
+      const { id } = request.params;
+
+      const { data: channel } = await sb.from('channels').select('id').eq('id', id).eq('org_id', orgId).single();
+      if (!channel) throw new ApiError(404, 'Channel not found', 'CHANNEL_NOT_FOUND');
+
+      await sb.from('wordpress_configs').delete().eq('channel_id', id);
+
+      return reply.send({ data: { deleted: true }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * POST /:id/wordpress/test — Test WP connection
+   */
+  fastify.post<{ Params: { id: string } }>('/:id/wordpress/test', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
+      const orgId = await getOrgId(request.userId);
+      const { id } = request.params;
+
+      const { data: channel } = await sb.from('channels').select('id').eq('id', id).eq('org_id', orgId).single();
+      if (!channel) throw new ApiError(404, 'Channel not found', 'CHANNEL_NOT_FOUND');
+
+      const { data: config } = await sb.from('wordpress_configs').select('site_url, username, password').eq('channel_id', id).maybeSingle();
+      if (!config) throw new ApiError(404, 'No WordPress config on this channel', 'WP_CONFIG_NOT_FOUND');
+
+      const auth = Buffer.from(`${config.username}:${decrypt(config.password)}`).toString('base64');
+      try {
+        const res = await fetch(`${config.site_url.replace(/\/$/, '')}/wp-json/wp/v2/users/me`, {
+          headers: { Authorization: `Basic ${auth}` },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (res.ok) {
+          return reply.send({ data: { ok: true, message: 'Connection successful' }, error: null });
+        }
+        return reply.send({ data: { ok: false, message: `WordPress returned ${res.status}` }, error: null });
+      } catch {
+        return reply.send({ data: { ok: false, message: 'Could not reach WordPress site' }, error: null });
+      }
     } catch (error) {
       return sendError(reply, error);
     }
