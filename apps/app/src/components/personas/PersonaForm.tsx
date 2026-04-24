@@ -98,7 +98,7 @@ export function PersonaForm({ initial, personaId, archetypeSlug }: PersonaFormPr
     const params = useParams()
     const locale = params.locale as string
 
-    const [channels, setChannels] = useState<Array<{ id: string; name: string; wordpress_config_id: string | null }>>([])
+    const [channels, setChannels] = useState<Array<{ id: string; name: string; has_wordpress: boolean }>>([])
     const [rawChannelCount, setRawChannelCount] = useState(0)
     const [selectedChannelId, setSelectedChannelId] = useState<string>("")
 
@@ -107,9 +107,9 @@ export function PersonaForm({ initial, personaId, archetypeSlug }: PersonaFormPr
         fetch("/api/channels")
             .then(r => r.json())
             .then(({ data }) => {
-                const items = (data?.items ?? []) as Array<{ id: string; name: string; wordpress_config_id: string | null }>
+                const items = (data?.items ?? []) as Array<{ id: string; name: string; has_wordpress: boolean }>
                 setRawChannelCount(items.length)
-                const wpConfiguredChannels = items.filter(c => c.wordpress_config_id != null)
+                const wpConfiguredChannels = items.filter(c => c.has_wordpress === true)
                 setChannels(wpConfiguredChannels)
                 if (wpConfiguredChannels.length && !selectedChannelId) setSelectedChannelId(wpConfiguredChannels[0].id)
             })

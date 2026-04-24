@@ -35,7 +35,19 @@ import {
   Loader2,
   PenLine,
   Calendar,
+  Globe,
 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { NichePicker } from '@/components/channels/NichePicker';
 import { LogoUpload } from '@/components/channels/LogoUpload';
 import { VoiceConfigSection } from '@/components/channels/VoiceConfigSection';
@@ -125,6 +137,15 @@ export default function ChannelDetailPage() {
   // Blog metrics
   const [blogMetrics, setBlogMetrics] = useState<BlogMetrics | null>(null);
   const [blogLoading, setBlogLoading] = useState(false);
+
+  // WordPress config state
+  const [wpConfig, setWpConfig] = useState<{ id: string; site_url: string; username: string } | null>(null);
+  const [wpLoading, setWpLoading] = useState(false);
+  const [wpEditing, setWpEditing] = useState(false);
+  const [wpForm, setWpForm] = useState({ site_url: '', username: '', password: '' });
+  const [wpSaving, setWpSaving] = useState(false);
+  const [wpTesting, setWpTesting] = useState(false);
+  const [wpTestResult, setWpTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   // Editable fields
   const [name, setName] = useState('');
@@ -256,6 +277,24 @@ export default function ChannelDetailPage() {
     if (channel?.blog_url) fetchBlogMetrics(channel.blog_url);
   }, [channel?.blog_url, fetchBlogMetrics]);
 
+  const fetchWpConfig = useCallback(async () => {
+    setWpLoading(true);
+    try {
+      const res = await fetch(`/api/channels/${id}/wordpress`);
+      const json = await res.json();
+      if (json.data) setWpConfig(json.data);
+      else setWpConfig(null);
+    } catch {
+      setWpConfig(null);
+    } finally {
+      setWpLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (hasBlog) fetchWpConfig();
+  }, [hasBlog, fetchWpConfig]);
+
   async function handleSave() {
     setSaving(true);
     try {
@@ -346,6 +385,47 @@ export default function ChannelDetailPage() {
       toast.error('Analysis failed');
     } finally {
       setAnalyzing(false);
+    }
+  }
+
+  async function handleWpSave() {
+    setWpSaving(true);
+    try {
+      const method = wpConfig ? 'PUT' : 'POST';
+      const res = await fetch(`/api/channels/${id}/wordpress`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(wpForm),
+      });
+      const json = await res.json();
+      if (json.error) toast.error(json.error.message);
+      else { toast.success('WordPress config saved'); setWpEditing(false); fetchWpConfig(); }
+    } catch {
+      toast.error('Failed to save');
+    } finally {
+      setWpSaving(false);
+    }
+  }
+
+  async function handleWpDelete() {
+    if (!confirm('Remove WordPress config from this channel?')) return;
+    await fetch(`/api/channels/${id}/wordpress`, { method: 'DELETE' });
+    setWpConfig(null);
+    setWpTestResult(null);
+    toast.success('WordPress config removed');
+  }
+
+  async function handleWpTest() {
+    setWpTesting(true);
+    setWpTestResult(null);
+    try {
+      const res = await fetch(`/api/channels/${id}/wordpress/test`, { method: 'POST' });
+      const json = await res.json();
+      if (json.data) setWpTestResult(json.data);
+    } catch {
+      setWpTestResult({ ok: false, message: 'Request failed' });
+    } finally {
+      setWpTesting(false);
     }
   }
 
@@ -823,6 +903,106 @@ export default function ChannelDetailPage() {
                         <ExternalLink className="h-4 w-4 mr-2" /> Abrir blog
                       </a>
                     </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* WordPress Config Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Globe className="h-5 w-5 text-blue-600" /> WordPress
+                </CardTitle>
+                <CardDescription>
+                  Connect your WordPress site to publish posts directly from the platform.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {wpLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : wpConfig && !wpEditing ? (
+                  <div className="space-y-4">
+                    <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm">
+                      <div><span className="font-medium">Site:</span> {wpConfig.site_url}</div>
+                      <div><span className="font-medium">Username:</span> {wpConfig.username}</div>
+                      <div><span className="font-medium">Password:</span> ••••••••</div>
+                    </div>
+                    {wpTestResult && (
+                      <p className={`text-sm ${wpTestResult.ok ? 'text-green-600' : 'text-destructive'}`}>
+                        {wpTestResult.ok ? '✓' : '✗'} {wpTestResult.message}
+                      </p>
+                    )}
+                    <div className="flex gap-2 flex-wrap">
+                      <Button size="sm" variant="outline" onClick={handleWpTest} disabled={wpTesting}>
+                        {wpTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Test Connection'}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => {
+                        setWpForm({ site_url: wpConfig.site_url, username: wpConfig.username, password: '' });
+                        setWpEditing(true);
+                      }}>Edit</Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button size="sm" variant="destructive">Remove</Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Remove WordPress Config?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will disconnect WordPress from this channel. You can reconnect anytime.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleWpDelete}>Remove</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="grid gap-3">
+                      <div className="space-y-1.5">
+                        <Label>Site URL</Label>
+                        <Input
+                          placeholder="https://meublog.com.br"
+                          value={wpForm.site_url}
+                          onChange={(e) => setWpForm(f => ({ ...f, site_url: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Username</Label>
+                        <Input
+                          placeholder="admin"
+                          value={wpForm.username}
+                          onChange={(e) => setWpForm(f => ({ ...f, username: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Application Password</Label>
+                        <Input
+                          type="password"
+                          placeholder="xxxx xxxx xxxx xxxx"
+                          value={wpForm.password}
+                          onChange={(e) => setWpForm(f => ({ ...f, password: e.target.value }))}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Generate an application password in WordPress → Users → Profile → Application Passwords.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={handleWpSave} disabled={wpSaving || !wpForm.site_url || !wpForm.username || !wpForm.password}>
+                        {wpSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                        {wpConfig ? 'Update' : 'Connect WordPress'}
+                      </Button>
+                      {wpEditing && (
+                        <Button size="sm" variant="ghost" onClick={() => setWpEditing(false)}>Cancel</Button>
+                      )}
+                    </div>
                   </div>
                 )}
               </CardContent>
