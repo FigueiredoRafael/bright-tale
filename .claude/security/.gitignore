@@ -1,0 +1,7 @@
+# Never commit any real secrets, raw scan output, or baseline snapshots that
+# could leak enumeration data to a public fork.
+.prod-auth
+raw/
+findings/
+baselines/*.json
+*.log

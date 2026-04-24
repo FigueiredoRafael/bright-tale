@@ -1,0 +1,147 @@
+# ============================================================================
+# Authorized Pentest Targets — bright-tale
+# ============================================================================
+# This file is the AUTHORIZATION GATE for /sec-pentest and /sec-recon.
+# A target is only scanned if its host matches a pattern here.
+# Scanning a host you do NOT own is illegal in most jurisdictions. Don't.
+#
+# Owner of this file:   Rafael Figueiredo <socials@brightcurios.com>
+# Last reviewed:        2026-04-23
+# Review cadence:       every 90 days or on new domain/subdomain
+# ============================================================================
+
+version: 1
+owner: socials@brightcurios.com
+
+# Maximum request rate for any active scan, per host. Nuclei, nikto, zap honor this.
+# Keep low: we are not trying to DoS ourselves.
+rate_limit_rps: 10
+
+# User-Agent every scanner must advertise. Identifies traffic as authorized pentest
+# so Cloudflare/WAF logs can distinguish from real attackers.
+user_agent: "BrightSec/1.0 (authorized-pentest; owner=socials@brightcurios.com)"
+
+# Scopes define what a scanner may do against a matched host.
+#   recon              — passive only: headers, TLS, DNS, tech fingerprint
+#   passive            — read-only HTTP requests, no payloads, no auth brute
+#   active-light       — nuclei medium+, nikto safe tuning, zap-baseline
+#   active-aggressive  — nuclei low+, nikto full, intruder-style fuzzing
+#
+# Aggressive is ONLY permitted on localhost/127.0.0.1 — never on a real host.
+
+authorized:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Local development — anything goes
+  # ──────────────────────────────────────────────────────────────────────────
+  - pattern: "localhost"
+    ports: [3000, 3001, 3002, 54321, 54322, 54323]
+    scope: [recon, passive, active-light, active-aggressive]
+    note: "local dev — scan hard"
+
+  - pattern: "127.0.0.1"
+    ports: [3000, 3001, 3002, 54321, 54322, 54323]
+    scope: [recon, passive, active-light, active-aggressive]
+    note: "local dev — scan hard"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Preview deployments — Vercel preview URLs for bright-tale
+  # Pattern matches the generated preview hostnames.
+  # ──────────────────────────────────────────────────────────────────────────
+  - pattern: "*.vercel.app"
+    scope: [recon, passive]
+    note: "Vercel previews — passive only; active on preview risks triggering rate limits on shared infra"
+    require_confirmation: true
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Staging — tagged explicitly
+  # ──────────────────────────────────────────────────────────────────────────
+  - pattern: "staging.brighttale.io"
+    scope: [recon, passive, active-light]
+    note: "staging env — light active OK"
+
+  - pattern: "*.staging.brighttale.io"
+    scope: [recon, passive, active-light]
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Production — you own these, but by default only passive.
+  # Active scans require: --target=prod AND explicit timestamped confirmation
+  # written into the command invocation. The agent enforces this.
+  # ──────────────────────────────────────────────────────────────────────────
+  - pattern: "brighttale.io"
+    scope: [recon, passive]
+    note: "prod — passive only. For active, use --target=prod flag and out-of-hours window."
+    prod: true
+    require_confirmation: true
+
+  - pattern: "app.brighttale.io"
+    scope: [recon, passive]
+    prod: true
+    require_confirmation: true
+
+  - pattern: "api.brighttale.io"
+    scope: [recon, passive]
+    prod: true
+    require_confirmation: true
+
+  - pattern: "brightcurios.com"
+    scope: [recon, passive]
+    prod: true
+    require_confirmation: true
+
+  - pattern: "*.brightcurios.com"
+    scope: [recon, passive]
+    prod: true
+    require_confirmation: true
+
+# ============================================================================
+# Explicit DENY — hosts that look owned but are not. Short-circuit before
+# any match attempt.
+# ============================================================================
+denied:
+  - "anthropic.com"
+  - "*.anthropic.com"
+  - "supabase.co"
+  - "*.supabase.co"          # our DB host — never pentest Supabase infra
+  - "supabase.com"
+  - "vercel.com"
+  - "*.vercel.com"
+  - "openai.com"
+  - "*.openai.com"
+  - "google.com"
+  - "*.googleapis.com"
+  - "cloudflare.com"
+  - "*.cloudflare.com"
+  - "wordpress.com"
+  - "*.wordpress.com"
+
+# ============================================================================
+# Private-range guard — any resolved IP in these ranges OTHER than
+# authorized localhost/127.0.0.1 is an instant stop. Prevents pivot into
+# corporate network, VPN, cloud metadata.
+# ============================================================================
+ip_deny:
+  - "169.254.0.0/16"         # link-local + AWS/Azure metadata
+  - "fd00:ec2::/64"          # IMDSv2 IPv6
+  - "metadata.google.internal"
+  - "10.0.0.0/8"
+  - "172.16.0.0/12"
+  - "192.168.0.0/16"
+  - "fc00::/7"
+  - "::1/128"                # only "localhost" string match permitted, not bare ::1
+
+# ============================================================================
+# Prod active-scan window — if a prod scan is approved, it may only run
+# within these hours (local TZ: America/Sao_Paulo). Outside the window,
+# agent refuses.
+# ============================================================================
+prod_active_window:
+  timezone: "America/Sao_Paulo"
+  allowed_hours: [2, 3, 4]   # 02:00 — 04:59 local
+  allowed_weekdays: [2, 3]   # Tuesday, Wednesday only
+
+# ============================================================================
+# Authorization token — reset this value to a random hex string when
+# rotating access. Agent requires it on every `--target=prod` invocation.
+# (Gitignore'd in practice — see .claude/security/.gitignore)
+# ============================================================================
+prod_authorization_secret_file: ".claude/security/.prod-auth"

@@ -1,0 +1,64 @@
+# gitleaks configuration — bright-tale
+# Inherits from the default ruleset; adds an allowlist for the recurring
+# false-positive sources confirmed on 2026-04-23 (initial pentest):
+#   • .env.example files — placeholders only
+#   • test files referencing dummy keys
+#   • CI workflow files that carry encrypted GitHub secrets (not literals)
+#   • docs/plans/ — design-time examples, never live secrets
+# After this baseline, any new finding is a real signal.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "bright-tale canonical false-positive paths"
+paths = [
+  # Placeholder env templates (values never real)
+  '''\.env\.example$''',
+  '''\.env\.sample$''',
+  # Legacy repo mirror kept for migration reference
+  '''^bright-curios-automation-workflow-main/''',
+  '''^bright-curios-workflow/''',
+  # Planning / design docs that contain example secrets
+  '''^docs/superpowers/''',
+  '''^docs/plans/''',
+  '''^docs/specs/''',
+  # Test files by convention — crypto tests instantiate dummy keys
+  '''.*__tests__/.*\.test\.[tj]sx?$''',
+  '''.*\.test\.[tj]sx?$''',
+  '''.*\.spec\.[tj]sx?$''',
+  # Vitest + Jest configs often reference dummy env for setup
+  '''vitest\..*\.config\.[tj]s$''',
+  '''vitest\.config\.[tj]s$''',
+  '''jest\.config\.[tj]s$''',
+  # Security tool output and its own raw captures
+  '''^\.claude/security/''',
+  '''^reports/''',
+  # Node.js workspaces and build artifacts
+  '''^node_modules/''',
+  '''^apps/[^/]+/\.next/''',
+  '''^apps/[^/]+/dist/''',
+  '''^dist/''',
+  # Supabase locally-generated artifacts (keys regenerated per-install)
+  '''^supabase/\.branches/''',
+  '''^supabase/\.temp/''',
+]
+
+# Known-dummy values frequently appearing in placeholders + fixtures.
+regexes = [
+  # Canonical "example" placeholders
+  '''your[_-]?(api[_-]?key|token|secret)''',
+  '''(changeme|replaceme|xxxx+|example|placeholder|dummy|fake|sample)''',
+  # Base64-encoded JWT anon-key used in local Supabase dev (public by design)
+  '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIi''',
+]
+
+# Bright-tale-specific dummy tokens used in test/docs that may otherwise trip
+# rules. Hash-prefix-redacted here on purpose — match on *structure*, not
+# on literal values we don't want to bless forever.
+[[rules]]
+id = "btale-dummy-test-key"
+description = "Bright-tale test fixture keys (all start with 'test-' prefix)"
+regex = '''\btest-(api-key|sk|token|secret)-[a-z0-9]{4,}\b'''
+[rules.allowlist]
+description = "intentional test fixtures"

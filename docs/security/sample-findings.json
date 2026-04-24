@@ -1,0 +1,79 @@
+{
+  "host": "localhost:3000",
+  "scope": "active-light",
+  "date": "2026-04-23T19:00:00Z",
+  "duration_ms": 182000,
+  "tools": ["httpx", "nuclei", "zap-baseline", "sslscan", "gitleaks"],
+  "user_agent": "BrightSec/1.0 (authorized-pentest; owner=socials@brightcurios.com)",
+  "rate_limit_rps": 10,
+  "findings": [
+    {
+      "id": "FIND-auth-ab12cd34",
+      "title": "Username enumeration via login response timing delta",
+      "severity": "high",
+      "cvss": { "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "score": 5.3 },
+      "cwe": ["CWE-208", "CWE-204"],
+      "asvs": ["V2.2.1"],
+      "owasp": ["A07:2021"],
+      "category": "auth",
+      "stack_area": "api-route",
+      "location": { "file": "apps/api/src/routes/auth/login.ts", "line": 42, "method": "POST", "url": "https://localhost:3000/api/auth/login" },
+      "evidence": {
+        "request": "POST /api/auth/login\nContent-Type: application/json\n\n{\"email\":\"real@example.com\",\"password\":\"x\"}",
+        "response": "HTTP 401 · 142ms mean (n=50)\nvs invalid email · 91ms mean (n=50)\nΔ=51ms  (t=8.3, p<0.001)"
+      },
+      "repro": "for i in $(seq 1 50); do curl -w '%{time_total}\\n' -o /dev/null -s -X POST https://localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"real@example.com\",\"password\":\"wrong\"}'; done",
+      "fix": {
+        "summary": "Always run the password check (against a fixed dummy hash when user is not found) and pad response to a deterministic floor of 400ms + jitter.",
+        "diff": "--- a/apps/api/src/routes/auth/login.ts\n+++ b/apps/api/src/routes/auth/login.ts\n@@ -15,9 +15,15 @@\n-  if (!user) return fail(res, 401, { code: 'INVALID' })\n-  const ok = await verify(password, user.password_hash)\n+  const hash = user?.password_hash ?? DUMMY_ARGON2ID_HASH\n+  const ok = await verify(password, hash)\n+  if (!user) ok; // discard\n+  const elapsed = Date.now() - started\n+  await wait(Math.max(0, 400 - elapsed) + Math.random() * 100)\n"
+      },
+      "tags": ["unauthenticated", "internet-exposed"],
+      "baseline_status": "new",
+      "discovered_at": "2026-04-23T19:02:17Z",
+      "references": ["https://cwe.mitre.org/data/definitions/208.html"]
+    },
+    {
+      "id": "FIND-headers-ef56gh78",
+      "title": "Content-Security-Policy missing on app origin",
+      "severity": "medium",
+      "cvss": { "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N", "score": 5.4 },
+      "cwe": ["CWE-693"],
+      "asvs": ["V14.4.1"],
+      "owasp": ["A05:2021"],
+      "category": "headers",
+      "stack_area": "app-middleware",
+      "location": { "url": "https://localhost:3000/", "method": "GET" },
+      "evidence": { "response": "HTTP/2 200\nx-powered-by: Next.js\n(no content-security-policy)" },
+      "fix": { "summary": "Add a restrictive CSP in next.config.ts with per-route nonces for any inline script." },
+      "baseline_status": "unchanged",
+      "discovered_at": "2026-04-23T19:03:04Z"
+    },
+    {
+      "id": "FIND-crypto-ij90kl12",
+      "title": "AES-256-GCM without AAD binding — swappable ciphertexts across records",
+      "severity": "medium",
+      "cvss": { "vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:H/A:N", "score": 5.5 },
+      "cwe": ["CWE-353"],
+      "owasp": ["A02:2021"],
+      "category": "crypto",
+      "stack_area": "crypto",
+      "location": { "file": "apps/api/src/lib/crypto.ts", "line": 37 },
+      "evidence": { "snippet": "const cipher = createCipheriv(ALGORITHM, key, iv);\n// no cipher.setAAD(...)" },
+      "fix": { "summary": "Bind AAD = `${table}:${column}:${record_id}:${user_id}` on both encrypt and decrypt. Reject if AAD mismatches (GCM auth tag will fail)." },
+      "baseline_status": "new",
+      "discovered_at": "2026-04-23T19:05:22Z"
+    },
+    {
+      "id": "FIND-tls-mn34op56",
+      "title": "HSTS header missing",
+      "severity": "low",
+      "cwe": ["CWE-319"],
+      "category": "tls",
+      "stack_area": "app-middleware",
+      "location": { "url": "https://localhost:3000/" },
+      "fix": { "summary": "Add `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload` once you've verified all subdomains serve HTTPS." },
+      "baseline_status": "fixed",
+      "discovered_at": "2026-04-23T19:06:00Z"
+    }
+  ]
+}

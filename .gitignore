@@ -41,3 +41,9 @@ apps/api/public/generated-images/
 
 # Worktrees (superpowers isolated workspaces)
 .worktrees/
+
+# Security testing artifacts — pentest reports and assessment data
+reports/
+.claude/security/baselines/
+.claude/security/findings/
+.claude/security/run-*/
