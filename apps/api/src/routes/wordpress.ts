@@ -338,22 +338,6 @@ async function loadDraftForPublish(sb: ReturnType<typeof createServiceClient>, d
   return draft;
 }
 
-// Helper: Resolve WordPress config (fetch and decrypt)
-async function resolveWpConfig(sb: ReturnType<typeof createServiceClient>, configId?: string) {
-  if (!configId) return null;
-  const { data: config, error } = await sb
-    .from('wordpress_configs')
-    .select('*')
-    .eq('id', configId)
-    .maybeSingle();
-  if (error) throw error;
-  if (!config) return null;
-  return {
-    site_url: config.site_url as string,
-    username: config.username as string,
-    password: decrypt(config.password as string),
-  };
-}
 
 export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
   /**
