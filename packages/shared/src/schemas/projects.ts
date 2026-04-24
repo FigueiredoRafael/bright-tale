@@ -40,6 +40,7 @@ export const updateProjectSchema = z.object({
   winner: z.boolean().optional(),
   completed_stages: z.array(z.string()).optional(),
   pipelineStateJson: z.record(z.unknown()).optional(),
+  channelId: z.string().uuid().nullable().optional(),
 });
 
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
