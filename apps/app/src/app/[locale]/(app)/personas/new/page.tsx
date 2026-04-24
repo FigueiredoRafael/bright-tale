@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
-import { FileText, Wand2, Layers, Sparkles } from "lucide-react"
+import { FileText, Layers, Sparkles } from "lucide-react"
 
 const MODES = [
     {
@@ -12,13 +12,6 @@ const MODES = [
         title: "Blank Slate",
         description: "Start from scratch and fill every field manually.",
         href: (locale: string) => `/${locale}/personas/new/blank`,
-    },
-    {
-        key: "wizard",
-        icon: Wand2,
-        title: "Guided Wizard",
-        description: "Answer a few questions step by step. We'll build the persona for you.",
-        href: (locale: string) => `/${locale}/personas/new/wizard`,
     },
     {
         key: "archetype",
@@ -47,7 +40,7 @@ export default function NewPersonaModePage() {
                 <p className="text-sm text-muted-foreground mt-1">Choose how you want to start.</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {MODES.map(mode => (
                     <Link key={mode.key} href={mode.href(locale)}>
                         <Card className="h-full hover:border-primary/50 hover:shadow-sm transition-all cursor-pointer">
