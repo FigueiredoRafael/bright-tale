@@ -12,6 +12,25 @@ interface WpIntegrationSectionProps {
     channelId?: string
 }
 
+interface ApiError {
+    code: string
+    message: string
+}
+
+const WP_ERROR_MESSAGES: Record<string, string> = {
+    NO_WP_CONFIG: "This channel has no WordPress site configured. Configure it in Channel → Settings → WordPress first.",
+    WP_CONFIG_NOT_FOUND: "WordPress config missing. Re-link WordPress in Channel → Settings.",
+    WP_USER_NOT_FOUND: "No WordPress user matches that username on this site.",
+    WP_FETCH_ERROR: "Could not reach WordPress. Check the site URL in Channel → Settings.",
+}
+
+function getErrorMessage(error: ApiError): string {
+    if (error.code in WP_ERROR_MESSAGES) {
+        return WP_ERROR_MESSAGES[error.code]
+    }
+    return error.message ?? "Failed to link WordPress author"
+}
+
 export function WpIntegrationSection({ personaId, currentWpAuthorId, channelId }: WpIntegrationSectionProps) {
     const [mode, setMode] = useState<"link" | "create">("link")
     const [wpUsername, setWpUsername] = useState("")
@@ -31,7 +50,8 @@ export function WpIntegrationSection({ personaId, currentWpAuthorId, channelId }
             })
             const { data, error: apiError } = await res.json()
             if (apiError) {
-                setError(apiError.message ?? "Failed to link WordPress author")
+                const errorMessage = getErrorMessage(apiError)
+                setError(errorMessage)
                 return
             }
             if (data?.wpAuthorId) setResult(data.wpAuthorId)
