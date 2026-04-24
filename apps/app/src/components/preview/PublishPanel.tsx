@@ -147,7 +147,7 @@ export function PublishPanel({
               ) : (
                 <p className="text-sm text-muted-foreground">
                   No WordPress configured for this channel.{' '}
-                  <a href={`/channels/${channelId}?tab=blog`} className="underline">Configure it here.</a>
+                  <a href="/channels" className="underline">Configure it here.</a>
                 </p>
               )}
             </div>
