@@ -5,8 +5,7 @@ import { useParams } from 'next/navigation';
 import { useRouter } from '@/i18n/navigation';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { PipelineOrchestrator } from '@/components/pipeline/PipelineOrchestrator';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ConnectChannelEmptyState } from '@/components/projects/ConnectChannelEmptyState';
 
 interface Channel {
   id: string;
@@ -75,38 +74,14 @@ export default function ProjectPipelinePage() {
 
   if (!channelId) {
     return (
-      <div className="p-6 max-w-md mx-auto mt-12 space-y-4">
-        <button
-          onClick={() => router.push('/projects')}
-          className="text-xs text-muted-foreground hover:underline flex items-center gap-1"
-        >
-          <ArrowLeft className="h-3 w-3" /> Back to projects
-        </button>
-        <div className="border rounded-lg p-6 space-y-4">
-          <div>
-            <h2 className="font-semibold">Connect a Channel</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              This project needs a content channel to use the pipeline and publish to WordPress.
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Select value={selectedChannelId} onValueChange={setSelectedChannelId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a channel..." />
-              </SelectTrigger>
-              <SelectContent>
-                {channels.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button onClick={handleSaveChannel} disabled={!selectedChannelId || savingChannel}>
-            {savingChannel ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Connect Channel
-          </Button>
-        </div>
-      </div>
+      <ConnectChannelEmptyState
+        channels={channels}
+        selectedChannelId={selectedChannelId}
+        onChannelChange={setSelectedChannelId}
+        onConnect={handleSaveChannel}
+        onBack={() => router.push('/projects')}
+        connecting={savingChannel}
+      />
     );
   }
 
