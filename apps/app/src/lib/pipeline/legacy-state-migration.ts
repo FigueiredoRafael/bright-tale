@@ -53,6 +53,7 @@ function looksLegacy(x: LegacyShape): boolean {
 export function mapLegacyPipelineState(raw: unknown): MigratedPipelineInput | null {
   if (!raw || !isPlainObject(raw) || Object.keys(raw).length === 0) return null
 
+  // Safe cast: all fields are validated by type guards and null checks before use.
   const input = raw as LegacyShape
 
   // stageResults must be an object if present
@@ -64,6 +65,7 @@ export function mapLegacyPipelineState(raw: unknown): MigratedPipelineInput | nu
   const mode = normalizeMode(input.mode)
   const stageResults = (input.stageResults ?? {}) as StageResultMap
 
+  // Prefer explicit top-level iterationCount (new shape); fall back to review stage's embedded count (legacy shape).
   const iterationFromReview =
     (input.stageResults?.review as Record<string, unknown> | undefined)?.iterationCount
   const initialIterationCount =
