@@ -9,6 +9,7 @@ describe('reproduceActor', () => {
 
   it('resolves when API returns no error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
       json: async () => ({ data: {}, error: null }),
     }))
 
@@ -32,6 +33,7 @@ describe('reproduceActor', () => {
 
   it('throws when API returns error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
       json: async () => ({ data: null, error: { message: 'Reproduce failed' } }),
     }))
 
@@ -57,6 +59,6 @@ describe('reproduceActor', () => {
       setTimeout(() => reject(new Error('Timeout waiting for error state')), 2000)
     })
 
-    expect((error as Error).message).toBe('Reproduce failed')
+    expect(error instanceof Error ? error.message : String(error)).toBe('Reproduce failed')
   })
 })

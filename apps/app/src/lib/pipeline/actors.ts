@@ -10,6 +10,7 @@ export const reproduceActor = fromPromise(async ({
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ feedbackJson: input.feedbackJson }),
   })
-  const { error } = await res.json()
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const { error } = await res.json() as { data: unknown; error: { message: string } | null }
   if (error) throw new Error(error.message)
 })
