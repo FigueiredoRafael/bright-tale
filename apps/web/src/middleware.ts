@@ -100,6 +100,8 @@ const MANAGER_ROLES = new Set(['owner', 'admin', 'support', 'billing', 'readonly
 
 // Uses the user's own JWT + anon key so RLS (managers_select_own) handles
 // auth — no service_role key needed, works in Edge Runtime on Vercel.
+// Requires `GRANT SELECT ON public.managers TO authenticated` (see
+// docs/security/ADMIN-PROVISIONING.md "New Supabase project bootstrap").
 async function isManagerViaRest(userId: string, jwt: string): Promise<boolean> {
   try {
     const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/managers?select=role&user_id=eq.${userId}&is_active=eq.true&limit=1`;
@@ -109,16 +111,10 @@ async function isManagerViaRest(userId: string, jwt: string): Promise<boolean> {
         Authorization: `Bearer ${jwt}`,
       },
     });
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      console.error('[mw:isManagerViaRest] non-ok response', { userId, status: res.status, body: body.slice(0, 200) });
-      return false;
-    }
+    if (!res.ok) return false;
     const rows: { role: string }[] = await res.json();
-    console.log('[mw:isManagerViaRest] result', { userId, rowCount: rows.length, role: rows[0]?.role });
     return rows.length > 0 && MANAGER_ROLES.has(rows[0].role);
-  } catch (e) {
-    console.error('[mw:isManagerViaRest] threw', { userId, err: (e as Error).message });
+  } catch {
     return false;
   }
 }
@@ -228,17 +224,11 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    console.log('[mw:auth] no user → /login', { pathname });
     return NextResponse.redirect(new URL(adminPath('/login'), request.url));
   }
 
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) {
-    console.error('[mw:auth] user but no session.access_token → /login?error=unauthorized', { pathname, userId: user.id, hasSession: !!session });
-    return NextResponse.redirect(new URL(adminPath('/login?error=unauthorized'), request.url));
-  }
-  if (!(await isManagerViaRest(user.id, session.access_token))) {
-    console.error('[mw:auth] not a manager → /login?error=unauthorized', { pathname, userId: user.id });
+  if (!session?.access_token || !await isManagerViaRest(user.id, session.access_token)) {
     return NextResponse.redirect(new URL(adminPath('/login?error=unauthorized'), request.url));
   }
 

@@ -2,6 +2,35 @@
 
 How a person becomes an admin of the BrightTale platform.
 
+## New Supabase project bootstrap (must-run)
+
+When pointing the admin app at a brand-new Supabase project (e.g. spinning
+up a fresh prod DB), the migrations in `supabase/migrations/` cover schema
++ RLS policies — but verify these privileges are in place before the first
+admin login attempt, otherwise every login bounces to `?error=unauthorized`:
+
+```sql
+-- managers tables: authenticated role needs base SELECT before RLS even
+-- gets evaluated. Without this, queries fail with `42501 permission denied`.
+GRANT SELECT ON public.managers TO authenticated;
+GRANT SELECT ON public.managers_audit_log TO authenticated;
+
+-- RLS policies (from migration 20260425160000_managers_read_own_policy.sql):
+-- restrict the SELECT above to each user's own row.
+-- Verify they exist; if not, re-apply that migration.
+```
+
+Sanity check from the SQL editor (logged in as the user you just inserted):
+
+```sql
+SELECT role FROM public.managers WHERE user_id = auth.uid() AND is_active = true;
+-- expected: 1 row with your role ('owner' / 'admin' / etc.)
+-- if 0 rows: RLS policy is missing
+-- if 42501 error: GRANT is missing (run the GRANTs above)
+```
+
+After that, run the regular onboarding checklist below.
+
 ## TL;DR
 
 **There is no self-serve path.** Admin role must be granted by an
