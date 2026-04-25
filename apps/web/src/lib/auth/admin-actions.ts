@@ -30,13 +30,10 @@ export async function signInWithPassword(input: { email: string; password: strin
   const gate = await gateAdminLogin({ email: input.email })
   if (!gate.allowed) {
     await finishWithUniformDelay(startedAt)
-    // Return shape matches ActionResult from @tn-figueiredo/admin/login:
-    // { ok: false, error: string } — component renders `error` in the
-    // inline error panel. Keep the string uniform so rate-limit and
-    // bad-creds look identical to the user.
     return {
       ok: false as const,
-      error: 'Credenciais inválidas',
+      error: 'rate_limited' as const,
+      retryAfter: gate.retryAfter ?? 900,
     }
   }
 

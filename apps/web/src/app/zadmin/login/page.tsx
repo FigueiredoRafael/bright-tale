@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react'
 import { AdminLogin } from '@tn-figueiredo/admin/login'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { adminPath } from '@/lib/admin-path'
 import * as actions from '@/lib/auth/admin-actions'
 import { RateLimitBanner } from './RateLimitBanner'
@@ -10,24 +10,33 @@ import { RateLimitBanner } from './RateLimitBanner'
 export const dynamic = 'force-dynamic'
 
 const THEME = {
-  bg: 'var(--auth-bg)',
-  card: 'var(--auth-card-bg)',
-  accent: 'var(--auth-accent)',
-  accentHover: 'var(--auth-accent-hover)',
-  text: 'var(--auth-text)',
-  muted: 'var(--auth-muted)',
-  border: 'var(--auth-border)',
+  bg: '#0a0e1a',
+  card: '#121826',
+  accent: '#22d3ee',
+  accentHover: '#06b6d4',
+  text: '#e6edf7',
+  muted: '#8b98b0',
+  border: '#263146',
 } as const
 
 function LoginForm() {
+  const router = useRouter()
   const params = useSearchParams()
   const errorParam = params.get('error') ?? undefined
-  const retry = Number(params.get('retry') ?? 0)
   const isRateLimited = errorParam === 'rate_limited'
-  // When rate-limited, don't pass the error down to AdminLogin — the
-  // banner handles the messaging and the form's own error panel would be
-  // confusing on top of the countdown.
   const authError = isRateLimited ? undefined : errorParam
+
+  async function handleSignIn(input: { email: string; password: string }) {
+    const result = await actions.signInWithPassword(input)
+    if (!result.ok && result.error === 'rate_limited' && 'retryAfter' in result) {
+      const resetAt = Date.now() + (result.retryAfter as number) * 1000
+      localStorage.setItem('adminRateLimitResetAt', String(resetAt))
+      router.push(adminPath('/login?error=rate_limited'))
+      return result
+    }
+    return result
+  }
+
   return (
     <>
       {/*
@@ -56,7 +65,7 @@ function LoginForm() {
       */}
       <AdminLogin
         actions={{
-          signInWithPassword: actions.signInWithPassword,
+          signInWithPassword: handleSignIn,
           // Required by external component type; our impl is a no-op
           // rejector (see admin-actions.ts). The CSS above hides the
           // visible button so the user never sees it.
@@ -65,11 +74,7 @@ function LoginForm() {
         theme={THEME}
         authError={authError}
         redirectTo={adminPath()}
-        logo={
-          isRateLimited ? (
-            <RateLimitBanner retrySeconds={retry} />
-          ) : undefined
-        }
+        logo={isRateLimited ? <RateLimitBanner /> : undefined}
       />
     </>
   )

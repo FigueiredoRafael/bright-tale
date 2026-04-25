@@ -1,40 +1,50 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-/**
- * Banner rendered above the admin login form when the edge rate limiter
- * redirected the user here with `?error=rate_limited&retry=<seconds>`.
- *
- * Shows a live countdown. When it hits zero, the banner hides itself and
- * the form becomes usable again.
- */
-export function RateLimitBanner({ retrySeconds }: { retrySeconds: number }) {
-  const [remaining, setRemaining] = useState(retrySeconds)
+const LS_RESET_AT = 'adminRateLimitResetAt'
+
+function getRemainingSeconds(): number {
+  try {
+    const resetAt = Number(localStorage.getItem(LS_RESET_AT) ?? 0)
+    return Math.max(0, Math.ceil((resetAt - Date.now()) / 1000))
+  } catch {
+    return 0
+  }
+}
+
+export function RateLimitBanner() {
+  const [remaining, setRemaining] = useState(0)
+  const totalRef = useRef(0)
 
   useEffect(() => {
-    if (remaining <= 0) return
+    const initial = getRemainingSeconds()
+    totalRef.current = initial
+    setRemaining(initial)
+
     const t = setInterval(() => {
-      setRemaining((r) => Math.max(0, r - 1))
+      const r = getRemainingSeconds()
+      setRemaining(r)
+      if (r <= 0) {
+        clearInterval(t)
+        try { localStorage.removeItem(LS_RESET_AT) } catch { /* noop */ }
+      }
     }, 1000)
     return () => clearInterval(t)
-  }, [remaining])
+  }, [])
 
-  if (retrySeconds <= 0 || remaining <= 0) return null
+  if (remaining <= 0) return null
 
   const m = Math.floor(remaining / 60)
   const s = remaining % 60
   const label = m > 0 ? `${m}m ${String(s).padStart(2, '0')}s` : `${s}s`
-  const pct = Math.max(0, (100 * remaining) / Math.max(retrySeconds, 1))
+  const pct = totalRef.current > 0 ? (100 * remaining) / totalRef.current : 100
 
   return (
     <div
       role="alert"
       aria-live="polite"
       style={{
-        // Rendered inside the AdminLogin card via the `logo` prop — so the
-        // sizing matches the card, no external margin, and it sits just
-        // above the "Admin" title where a logo normally goes.
         width: '100%',
         marginBottom: 16,
         padding: '12px 14px',
@@ -64,14 +74,7 @@ export function RateLimitBanner({ retrySeconds }: { retrySeconds: number }) {
       <div style={{ fontSize: 11.5, color: 'var(--auth-muted, #8b98b0)', margin: '4px 0 8px' }}>
         Por segurança, este IP está temporariamente bloqueado. Aguarde antes de tentar novamente.
       </div>
-      <div
-        style={{
-          height: 4,
-          borderRadius: 2,
-          background: '#1a2235',
-          overflow: 'hidden',
-        }}
-      >
+      <div style={{ height: 4, borderRadius: 2, background: '#1a2235', overflow: 'hidden' }}>
         <div
           style={{
             height: '100%',

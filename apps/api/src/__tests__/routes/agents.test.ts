@@ -16,8 +16,8 @@ mockChain.maybeSingle = vi.fn();
 vi.mock('@/lib/supabase', () => ({
   createServiceClient: () => mockChain,
 }));
-vi.mock('@/middleware/authenticate', () => ({
-  authenticate: vi.fn(async (request: any, reply: any) => {
+vi.mock('@/middleware/authenticate', () => {
+  const handler = vi.fn(async (request: any, reply: any) => {
     const key = request.headers['x-internal-key'];
     if (!key || key !== process.env.INTERNAL_API_KEY) {
       return reply.status(401).send({
@@ -27,8 +27,9 @@ vi.mock('@/middleware/authenticate', () => ({
     }
     const userId = request.headers['x-user-id'];
     request.userId = typeof userId === 'string' ? userId : undefined;
-  }),
-}));
+  });
+  return { authenticate: handler, authenticateWithUser: handler };
+});
 vi.mock('@/lib/api/fastify-errors', () => ({
   sendError: vi.fn(async (reply: any, error: any) => {
     if (error && error.statusCode) {

@@ -33,7 +33,7 @@
     "db:reset": "supabase db reset",
     "db:status": "supabase status",
     "db:link:dev": "echo '[DEV] fxwykfyiicalcgbxslng' && bash scripts/db-with-token.sh link --project-ref fxwykfyiicalcgbxslng",
-    "db:link:prod": "echo '[PROD] fxwykfyiicalcgbxslng' && bash scripts/db-with-token.sh link --project-ref fxwykfyiicalcgbxslng",
+    "db:link:prod": "echo '[PROD] mzdtknroizehxrjptlwd' && bash scripts/db-with-token.sh link --project-ref mzdtknroizehxrjptlwd",
     "db:push:dev": "npm run db:link:dev && bash scripts/db-with-token.sh db push",
     "db:push:prod": "npm run db:link:prod && bash scripts/db-push-prod.sh",
     "db:drift": "bash scripts/db-drift-check.sh",

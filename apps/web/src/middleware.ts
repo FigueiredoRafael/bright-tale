@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@tn-figueiredo/auth-nextjs';
-import { isAdminUser } from '@/lib/admin-check';
 import { adminPath, ADMIN_INTERNAL } from '@/lib/admin-path';
 import { verifyBypass } from '@/lib/auth/bypass-verify';
 
@@ -95,6 +94,25 @@ p  { margin:0 0 10px; color:#8b98b0; font-size:13.5px; line-height:1.55; }
 </script>
 </body>
 </html>`;
+}
+
+const MANAGER_ROLES = new Set(['owner', 'admin', 'support', 'billing', 'readonly']);
+
+async function isManagerViaRest(userId: string): Promise<boolean> {
+  try {
+    const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/managers?select=role&user_id=eq.${userId}&is_active=eq.true&limit=1`;
+    const res = await fetch(url, {
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+      },
+    });
+    if (!res.ok) return false;
+    const rows: { role: string }[] = await res.json();
+    return rows.length > 0 && MANAGER_ROLES.has(rows[0].role);
+  } catch {
+    return false;
+  }
 }
 
 export async function middleware(request: NextRequest) {
@@ -205,7 +223,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(adminPath('/login'), request.url));
   }
 
-  if (!await isAdminUser(supabase, user.id)) {
+  if (!await isManagerViaRest(user.id)) {
     return NextResponse.redirect(new URL(adminPath('/login?error=unauthorized'), request.url));
   }
 
