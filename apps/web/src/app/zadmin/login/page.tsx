@@ -23,14 +23,15 @@ function LoginForm() {
   const router = useRouter()
   const params = useSearchParams()
   const errorParam = params.get('error') ?? undefined
-  const retry = Number(params.get('retry') ?? 0)
   const isRateLimited = errorParam === 'rate_limited'
   const authError = isRateLimited ? undefined : errorParam
 
   async function handleSignIn(input: { email: string; password: string }) {
     const result = await actions.signInWithPassword(input)
     if (!result.ok && result.error === 'rate_limited' && 'retryAfter' in result) {
-      router.push(adminPath(`/login?error=rate_limited&retry=${result.retryAfter}`))
+      const resetAt = Date.now() + (result.retryAfter as number) * 1000
+      localStorage.setItem('adminRateLimitResetAt', String(resetAt))
+      router.push(adminPath('/login?error=rate_limited'))
       return result
     }
     return result
@@ -73,11 +74,7 @@ function LoginForm() {
         theme={THEME}
         authError={authError}
         redirectTo={adminPath()}
-        logo={
-          isRateLimited ? (
-            <RateLimitBanner retrySeconds={retry} />
-          ) : undefined
-        }
+        logo={isRateLimited ? <RateLimitBanner /> : undefined}
       />
     </>
   )
