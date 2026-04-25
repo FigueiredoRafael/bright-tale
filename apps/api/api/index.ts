@@ -5,7 +5,7 @@
  * All requests are routed here via vercel.json rewrites.
  */
 import type { IncomingMessage, ServerResponse } from 'http';
-import server from '../src/index.js';
+import server from '../src/bundle.js';
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   try {
