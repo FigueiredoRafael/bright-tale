@@ -10,13 +10,13 @@ import { RateLimitBanner } from './RateLimitBanner'
 export const dynamic = 'force-dynamic'
 
 const THEME = {
-  bg: 'var(--auth-bg)',
-  card: 'var(--auth-card-bg)',
-  accent: 'var(--auth-accent)',
-  accentHover: 'var(--auth-accent-hover)',
-  text: 'var(--auth-text)',
-  muted: 'var(--auth-muted)',
-  border: 'var(--auth-border)',
+  bg: '#0a0e1a',
+  card: '#121826',
+  accent: '#22d3ee',
+  accentHover: '#06b6d4',
+  text: '#e6edf7',
+  muted: '#8b98b0',
+  border: '#263146',
 } as const
 
 function LoginForm() {
