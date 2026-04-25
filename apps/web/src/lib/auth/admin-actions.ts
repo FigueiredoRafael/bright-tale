@@ -1,5 +1,6 @@
 'use server'
 
+import { redirect } from 'next/navigation'
 import {
   signInWithPassword as _signInWithPassword,
   signInWithGoogle as _signInWithGoogle,
@@ -12,6 +13,7 @@ import {
   gateForgotPassword,
   finishWithUniformDelay,
 } from './admin-login-gate'
+import { adminPath } from '@/lib/admin-path'
 
 function requireAppUrl(): string {
   const url = process.env.NEXT_PUBLIC_APP_URL
@@ -30,14 +32,10 @@ export async function signInWithPassword(input: { email: string; password: strin
   const gate = await gateAdminLogin({ email: input.email })
   if (!gate.allowed) {
     await finishWithUniformDelay(startedAt)
-    // Return shape matches ActionResult from @tn-figueiredo/admin/login:
-    // { ok: false, error: string } — component renders `error` in the
-    // inline error panel. Keep the string uniform so rate-limit and
-    // bad-creds look identical to the user.
-    return {
-      ok: false as const,
-      error: 'Credenciais inválidas',
-    }
+    // Redirect with the countdown so the RateLimitBanner can show a live
+    // timer. Admin-only surface — revealing the rate-limit state to a
+    // legitimate admin is fine; the block is already in place regardless.
+    redirect(adminPath(`/login?error=rate_limited&retry=${gate.retryAfter ?? 900}`))
   }
 
   try {
