@@ -41,9 +41,9 @@ Eight waves, each a self-contained execution file. Open the wave file, satisfy i
 | 2 | ✅ completed | [`2026-04-24-pipeline-xstate-wave-2-providers.md`](./2026-04-24-pipeline-xstate-wave-2-providers.md) | 8, 8.5 | settings provider, actor provider, hook, legacy `pipeline_state_json` migration helper | Wave 1 |
 | 3 | ✅ completed | [`2026-04-24-pipeline-xstate-wave-3-orchestrator.md`](./2026-04-24-pipeline-xstate-wave-3-orchestrator.md) | 9 | orchestrator swap with engine bridge (preserves all features) | Wave 2 |
 | 4 | ✅ completed (commit `7175149`) | [`2026-04-24-pipeline-xstate-wave-4-engines.md`](./2026-04-24-pipeline-xstate-wave-4-engines.md) | 9.5, 10, 11, 12, 13, 14 | StandaloneEngineHost helper + sequential engine peel-off (Brainstorm → Research → Draft → Review → Assets). Bridge survives narrowed to preview/publish — Waves 4.1 + 4.2 finish the deletion. | Wave 3 |
-| 4.1 | ⏳ pending | [`2026-04-24-pipeline-xstate-wave-4-1-preview-engine.md`](./2026-04-24-pipeline-xstate-wave-4-1-preview-engine.md) | 14.1 (new) | PreviewEngine off bridge → `LegacyStage = 'publish'` only | Wave 4 |
-| 4.2 | ⏳ pending | [`2026-04-24-pipeline-xstate-wave-4-2-publish-engine.md`](./2026-04-24-pipeline-xstate-wave-4-2-publish-engine.md) | 14.2 (new) | PublishEngine off bridge + bridge fully deleted; standalone draftId page wrapped in `StandaloneEngineHost` | Wave 4.1 |
-| 5 | ⏳ pending | [`2026-04-24-pipeline-xstate-wave-5-cleanup.md`](./2026-04-24-pipeline-xstate-wave-5-cleanup.md) | 15, 16, 17 | FORMAT_COSTS dedup; provider wiring at project page; docs sync; final acceptance | Wave 4.2 |
+| 4.1 | ✅ completed (commit `04ebf9f`) | [`2026-04-24-pipeline-xstate-wave-4-1-preview-engine.md`](./2026-04-24-pipeline-xstate-wave-4-1-preview-engine.md) | 14.1 (new) | PreviewEngine off bridge → `LegacyStage = 'publish'` only | Wave 4 |
+| 4.2 | ✅ completed (commit `dd1ec57`) | [`2026-04-24-pipeline-xstate-wave-4-2-publish-engine.md`](./2026-04-24-pipeline-xstate-wave-4-2-publish-engine.md) | 14.2 (new) | PublishEngine off bridge + bridge fully deleted; standalone draftId page wrapped in `StandaloneEngineHost` | Wave 4.1 |
+| 5 | ✅ completed (commits `76b6996`, `b3b6f5e`, `762011f`) | [`2026-04-24-pipeline-xstate-wave-5-cleanup.md`](./2026-04-24-pipeline-xstate-wave-5-cleanup.md) | 15, 16, 17 | FORMAT_COSTS dedup; provider wiring at project page; docs sync; final acceptance | Wave 4.2 |
 
 ---
 
