@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSelector } from '@xstate/react';
+import { usePipelineActor } from '@/hooks/usePipelineActor';
 import {
   Loader2,
   Lightbulb,
@@ -33,7 +35,7 @@ import { ManualOutputDialog } from './ManualOutputDialog';
 import { IdeaDetailsDialog } from './IdeaDetailsDialog';
 import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
 import { friendlyAiError } from '@/lib/ai/error-message';
-import type { BaseEngineProps, BrainstormResult } from './types';
+import type { BrainstormResult, PipelineContext } from './types';
 
 const BRAINSTORM_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
 
@@ -49,7 +51,8 @@ interface Idea {
   discovery_data?: string;
 }
 
-interface BrainstormEngineProps extends BaseEngineProps {
+interface BrainstormEngineProps {
+  mode?: 'generate' | 'import';
   initialSession?: Record<string, unknown>;
   initialIdeas?: Record<string, unknown>[];
   preSelectedIdeaId?: string;
@@ -75,15 +78,27 @@ const MODES: { id: Mode; label: string; description: string }[] = [
 ];
 
 export function BrainstormEngine({
-  mode: engineMode,
-  channelId,
-  context,
-  onComplete,
-  onStageProgress,
+  mode: engineMode = 'generate',
   initialSession,
   initialIdeas,
   preSelectedIdeaId,
 }: BrainstormEngineProps) {
+  const actor = usePipelineActor();
+  const channelId = useSelector(actor, (s) => s.context.channelId);
+  const projectId = useSelector(actor, (s) => s.context.projectId);
+  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
+
+  // Build a legacy PipelineContext for usePipelineTracker and ContextBanner
+  // (both still expect this shape; brainstorm ContextBanner returns null anyway).
+  const trackerContext: PipelineContext = {
+    channelId,
+    projectId,
+    brainstormSessionId: brainstormResult?.brainstormSessionId,
+    ideaId: brainstormResult?.ideaId,
+    ideaTitle: brainstormResult?.ideaTitle,
+    ideaVerdict: brainstormResult?.ideaVerdict,
+    ideaCoreTension: brainstormResult?.ideaCoreTension,
+  };
   // Input mode
   const [mode, setMode] = useState<Mode>('blind');
   const [provider, setProvider] = useState<ProviderId>('gemini');
@@ -112,7 +127,7 @@ export function BrainstormEngine({
   const [recommendation, setRecommendation] = useState<{ pick?: string; rationale?: string; content_warning?: string } | null>(null);
   const [detailsIdeaId, setDetailsIdeaId] = useState<string | null>(null);
 
-  const tracker = usePipelineTracker('brainstorm', context);
+  const tracker = usePipelineTracker('brainstorm', trackerContext);
 
   // Regenerate state
   const [regenerating, setRegenerating] = useState(false);
@@ -211,22 +226,23 @@ export function BrainstormEngine({
     }
   }, [initialSession, initialIdeas, preSelectedIdeaId]);
 
-  // Load existing session from context when navigating back in the pipeline
+  // Load existing session when navigating back in the pipeline.
+  // Reads from actor context instead of prop — actor owns brainstorm state.
   useEffect(() => {
     if (initialSession || initialIdeas) return;
-    const ctxSessionId = context.brainstormSessionId;
+    const ctxSessionId = brainstormResult?.brainstormSessionId;
     if (!ctxSessionId) {
-      // Imported ideas have no session — hydrate from context fields
-      if (context.ideaId && context.ideaTitle && ideas.length === 0) {
+      // Imported ideas have no session — hydrate from actor stageResults
+      if (brainstormResult?.ideaId && brainstormResult?.ideaTitle && ideas.length === 0) {
         setIdeas([{
-          id: context.ideaId,
-          idea_id: context.ideaId,
-          title: context.ideaTitle,
-          core_tension: context.ideaCoreTension || undefined,
+          id: brainstormResult.ideaId,
+          idea_id: brainstormResult.ideaId,
+          title: brainstormResult.ideaTitle,
+          core_tension: brainstormResult.ideaCoreTension || undefined,
           target_audience: '',
-          verdict: (context.ideaVerdict as 'viable' | 'weak' | 'experimental') || 'experimental',
+          verdict: (brainstormResult.ideaVerdict as 'viable' | 'weak' | 'experimental') || 'experimental',
         }]);
-        setSelectedIdeaId(context.ideaId);
+        setSelectedIdeaId(brainstormResult.ideaId);
       }
       return;
     }
@@ -291,8 +307,8 @@ export function BrainstormEngine({
             };
           });
           setIdeas(mapped);
-          if (context.ideaId) {
-            setSelectedIdeaId(context.ideaId);
+          if (brainstormResult?.ideaId) {
+            setSelectedIdeaId(brainstormResult.ideaId);
           }
         }
       } catch {
@@ -300,7 +316,7 @@ export function BrainstormEngine({
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [context.brainstormSessionId]);
+  }, [brainstormResult?.brainstormSessionId]);
 
   // Reconnect to running session after page reload
   useEffect(() => {
@@ -471,7 +487,7 @@ export function BrainstormEngine({
 
       setIdeas(mapped);
       if (sessionId && mapped.length > 0) {
-        onStageProgress?.({ brainstormSessionId: sessionId });
+        actor.send({ type: 'STAGE_PROGRESS', stage: 'brainstorm', partial: { brainstormSessionId: sessionId } });
       }
       tracker.trackCompleted({
         sessionId: sessionId || undefined,
@@ -533,7 +549,7 @@ export function BrainstormEngine({
       setRecommendation(json.data.recommendation as { pick?: string; rationale?: string });
     }
     if (newIdeas.length > 0) {
-      onStageProgress?.({ brainstormSessionId: manualSessionId });
+      actor.send({ type: 'STAGE_PROGRESS', stage: 'brainstorm', partial: { brainstormSessionId: manualSessionId } });
     }
     setManualSessionId(null);
     tracker.trackCompleted({
@@ -555,7 +571,7 @@ export function BrainstormEngine({
     setSessionId(null);
     setIdeas([]);
     setRecommendation(null);
-    onStageProgress?.({ brainstormSessionId: undefined });
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'brainstorm', partial: { brainstormSessionId: undefined } });
     toast.success('Manual session abandoned');
   }
 
@@ -626,7 +642,7 @@ export function BrainstormEngine({
       coreTension: result.ideaCoreTension,
     });
 
-    onComplete(result);
+    actor.send({ type: 'BRAINSTORM_COMPLETE', result });
   }
 
   const selectedIdea = ideas.find(
@@ -640,7 +656,7 @@ export function BrainstormEngine({
   if (engineMode === 'import' && !initialSession) {
     return (
       <div className="space-y-6">
-        <ContextBanner stage="brainstorm" context={context} />
+        <ContextBanner stage="brainstorm" context={trackerContext} />
 
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -678,12 +694,15 @@ export function BrainstormEngine({
               ideaCount: 1,
               source: 'library',
             });
-            onComplete({
-              ideaId: (item.id ?? item.idea_id) as string,
-              ideaTitle: item.title as string,
-              ideaVerdict: (item.verdict as string) ?? 'experimental',
-              ideaCoreTension: (item.core_tension as string) ?? '',
-            } as BrainstormResult);
+            actor.send({
+              type: 'BRAINSTORM_COMPLETE',
+              result: {
+                ideaId: (item.id ?? item.idea_id) as string,
+                ideaTitle: item.title as string,
+                ideaVerdict: (item.verdict as string) ?? 'experimental',
+                ideaCoreTension: (item.core_tension as string) ?? '',
+              } as BrainstormResult,
+            });
           }}
         />
       </div>
@@ -692,7 +711,7 @@ export function BrainstormEngine({
 
   return (
     <div className="space-y-6">
-      <ContextBanner stage="brainstorm" context={context} />
+      <ContextBanner stage="brainstorm" context={trackerContext} />
 
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">

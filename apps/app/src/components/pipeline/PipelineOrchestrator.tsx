@@ -311,13 +311,7 @@ function OrchestratorInner({
 
     switch (currentStage) {
       case 'brainstorm':
-        return (
-          <BrainstormEngine
-            mode={mode}
-            {...bridge('brainstorm')}
-            onComplete={(r: any) => actorRef.send({ type: 'BRAINSTORM_COMPLETE', result: r })}
-          />
-        )
+        return <BrainstormEngine mode={mode} />
       case 'research':
         return (
           <ResearchEngine

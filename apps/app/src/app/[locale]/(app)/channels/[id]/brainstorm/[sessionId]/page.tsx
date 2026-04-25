@@ -5,17 +5,23 @@ import { useParams } from 'next/navigation';
 import { useRouter } from '@/i18n/navigation';
 import { PipelineStages } from '@/components/pipeline/PipelineStages';
 import { BrainstormEngine } from '@/components/engines/BrainstormEngine';
-import type { BrainstormResult, PipelineContext } from '@/components/engines/types';
+import { StandaloneEngineHost } from '@/components/engines/StandaloneEngineHost';
+import type { BrainstormResult } from '@/components/engines/types';
+
+interface PipelineCtx {
+  projectId?: string;
+  projectTitle?: string;
+  researchSessionId?: string;
+  draftId?: string;
+  ideaId?: string;
+}
 
 export default function BrainstormSessionPage() {
-  const { id: channelId, sessionId } = useParams<{
-    id: string;
-    sessionId: string;
-  }>();
+  const { id: channelId, sessionId } = useParams<{ id: string; sessionId: string }>();
   const router = useRouter();
   const [session, setSession] = useState<Record<string, unknown> | null>(null);
   const [ideas, setIdeas] = useState<Record<string, unknown>[]>([]);
-  const [pipeline, setPipeline] = useState<PipelineContext>({});
+  const [pipeline, setPipeline] = useState<PipelineCtx>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -27,35 +33,23 @@ export default function BrainstormSessionPage() {
           setSession(json.data.session);
           setIdeas(json.data.ideas ?? []);
 
-          const projectId = (json.data.session as Record<string, unknown>)
-            ?.project_id;
+          const projectId = (json.data.session as Record<string, unknown>)?.project_id;
           if (projectId) {
             try {
               const pRes = await fetch(`/api/projects/${projectId}/pipeline`);
               const pJson = await pRes.json();
               if (pJson.data) {
-                const ctx: PipelineContext = {
+                const ctx: PipelineCtx = {
                   projectId: projectId as string,
-                  projectTitle: (pJson.data.project as Record<string, unknown>)
-                    ?.title as string,
-                  researchSessionId: (
-                    pJson.data.researchSessions as Array<Record<string, unknown>>
-                  )?.[0]?.id as string,
-                  draftId: (
-                    pJson.data.contentDrafts as Array<Record<string, unknown>>
-                  )?.[0]?.id as string,
+                  projectTitle: (pJson.data.project as Record<string, unknown>)?.title as string,
+                  researchSessionId: (pJson.data.researchSessions as Array<Record<string, unknown>>)?.[0]?.id as string,
+                  draftId: (pJson.data.contentDrafts as Array<Record<string, unknown>>)?.[0]?.id as string,
                 };
-                const projIdea = (
-                  pJson.data.ideas as Array<Record<string, unknown>>
-                )?.[0];
-                if (projIdea) {
-                  ctx.ideaId = projIdea.id as string;
-                }
+                const projIdea = (pJson.data.ideas as Array<Record<string, unknown>>)?.[0];
+                if (projIdea) ctx.ideaId = projIdea.id as string;
                 setPipeline(ctx);
               }
-            } catch {
-              /* optional */
-            }
+            } catch { /* optional */ }
           }
         }
       } finally {
@@ -64,33 +58,8 @@ export default function BrainstormSessionPage() {
     })();
   }, [sessionId]);
 
-  async function handleComplete(result: unknown) {
-    const r = result as BrainstormResult;
-    const ideaId = r.ideaId;
-    try {
-      const res = await fetch('/api/projects/from-idea', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ideaId, channelId }),
-      });
-      const json = await res.json();
-      const projectId = (json.data?.project as Record<string, unknown>)
-        ?.id as string;
-      router.push(
-        `/channels/${channelId}/research/new?ideaId=${ideaId}&projectId=${projectId ?? ''}`
-      );
-    } catch {
-      router.push(`/channels/${channelId}/research/new?ideaId=${ideaId}`);
-    }
-  }
-
-  if (loading) {
-    return <div className="p-6 text-muted-foreground">Loading session...</div>;
-  }
-
-  if (!session) {
-    return <div className="p-6 text-red-500">Session not found.</div>;
-  }
+  if (loading) return <div className="p-6 text-muted-foreground">Loading session...</div>;
+  if (!session) return <div className="p-6 text-red-500">Session not found.</div>;
 
   return (
     <div>
@@ -104,15 +73,33 @@ export default function BrainstormSessionPage() {
         projectTitle={pipeline.projectTitle}
       />
       <div className="p-6 max-w-4xl mx-auto">
-        <BrainstormEngine
-          mode="generate"
+        <StandaloneEngineHost
+          stage="brainstorm"
           channelId={channelId}
-          context={pipeline}
-          initialSession={session}
-          initialIdeas={ideas}
-          preSelectedIdeaId={pipeline.ideaId}
-          onComplete={handleComplete}
-        />
+          projectId={pipeline.projectId}
+          onStageComplete={async (_stage, result) => {
+            const r = result as unknown as BrainstormResult;
+            try {
+              const res = await fetch('/api/projects/from-idea', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ideaId: r.ideaId, channelId }),
+              });
+              const json = await res.json();
+              const pid = (json.data?.project as Record<string, unknown>)?.id as string;
+              router.push(`/channels/${channelId}/research/new?ideaId=${r.ideaId}&projectId=${pid ?? ''}`);
+            } catch {
+              router.push(`/channels/${channelId}/research/new?ideaId=${r.ideaId}`);
+            }
+          }}
+        >
+          <BrainstormEngine
+            mode="generate"
+            initialSession={session}
+            initialIdeas={ideas}
+            preSelectedIdeaId={pipeline.ideaId}
+          />
+        </StandaloneEngineHost>
       </div>
     </div>
   );
