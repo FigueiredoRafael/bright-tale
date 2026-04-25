@@ -35,9 +35,11 @@ function LoginForm() {
       return result
     }
     if (result.ok) {
-      // External AdminLogin ignores redirectTo and hardcodes /admin — take
-      // control of navigation here so the correct admin slug is always used.
-      router.push(adminPath())
+      // Hard navigation — the external AdminLogin component cannot override
+      // it with a subsequent router.push('/admin') call. Never resolving the
+      // promise means AdminLogin never processes the result and never navigates.
+      window.location.href = adminPath()
+      await new Promise<never>(() => {})
     }
     return result
   }
@@ -78,7 +80,7 @@ function LoginForm() {
         }}
         theme={THEME}
         authError={authError}
-        redirectTo={adminPath()}
+        redirectTo={adminPath('/')}
         logo={isRateLimited ? <RateLimitBanner /> : undefined}
       />
     </>
