@@ -4,6 +4,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { useRouter } from '@/i18n/navigation';
 import { PipelineStages } from '@/components/pipeline/PipelineStages';
 import { ResearchEngine } from '@/components/engines/ResearchEngine';
+import { StandaloneEngineHost } from '@/components/engines/StandaloneEngineHost';
 import type { ResearchResult } from '@/components/engines/types';
 
 export default function NewResearchPage() {
@@ -13,15 +14,6 @@ export default function NewResearchPage() {
   const ideaIdParam = searchParams.get('ideaId') ?? undefined;
   const projectIdParam = searchParams.get('projectId') ?? undefined;
 
-  const handleComplete = (result: unknown) => {
-    const r = result as ResearchResult;
-    const params = new URLSearchParams();
-    if (r.researchSessionId) params.set('researchSessionId', r.researchSessionId);
-    if (ideaIdParam) params.set('ideaId', ideaIdParam);
-    if (projectIdParam) params.set('projectId', projectIdParam);
-    router.push(`/channels/${channelId}/drafts/new?${params.toString()}`);
-  };
-
   return (
     <div>
       <PipelineStages
@@ -30,16 +22,21 @@ export default function NewResearchPage() {
         projectId={projectIdParam}
       />
       <div className="p-6 max-w-4xl mx-auto">
-        <ResearchEngine
-          mode="generate"
+        <StandaloneEngineHost
+          stage="research"
           channelId={channelId}
-          context={{
-            ideaId: ideaIdParam,
-            projectId: projectIdParam,
-            channelId,
+          projectId={projectIdParam}
+          onStageComplete={(_stage, result) => {
+            const r = result as unknown as ResearchResult;
+            const params = new URLSearchParams();
+            if (r.researchSessionId) params.set('researchSessionId', r.researchSessionId);
+            if (ideaIdParam) params.set('ideaId', ideaIdParam);
+            if (projectIdParam) params.set('projectId', projectIdParam);
+            router.push(`/channels/${channelId}/drafts/new?${params.toString()}`);
           }}
-          onComplete={handleComplete}
-        />
+        >
+          <ResearchEngine mode="generate" initialIdeaId={ideaIdParam} />
+        </StandaloneEngineHost>
       </div>
     </div>
   );

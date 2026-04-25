@@ -39,7 +39,9 @@ import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
 import { friendlyAiError } from '@/lib/ai/error-message';
-import type { BaseEngineProps, ResearchResult } from './types';
+import { useSelector } from '@xstate/react';
+import { usePipelineActor } from '@/hooks/usePipelineActor';
+import type { ResearchResult, PipelineContext } from './types';
 
 type Level = 'surface' | 'medium' | 'deep';
 
@@ -54,32 +56,13 @@ interface Card {
   [k: string]: unknown;
 }
 
-interface ResearchEngineProps extends BaseEngineProps {
+interface ResearchEngineProps {
+  mode?: 'generate' | 'import';
   initialSession?: Record<string, unknown>;
   initialCards?: Record<string, unknown>[];
   initialApproved?: number[];
+  initialIdeaId?: string;
 }
-
-const LEVELS: { id: Level; label: string; cost: number; description: string }[] = [
-  {
-    id: 'surface',
-    label: 'Surface',
-    cost: 60,
-    description: 'Top 3 sources, basic statistics',
-  },
-  {
-    id: 'medium',
-    label: 'Medium',
-    cost: 100,
-    description: '5-8 sources, expert quotes, supporting data',
-  },
-  {
-    id: 'deep',
-    label: 'Deep',
-    cost: 180,
-    description: '10+ sources, counterarguments, cross-validation',
-  },
-];
 
 const FOCUS_OPTIONS = [
   { id: 'stats', label: 'Statistics' },
@@ -92,16 +75,34 @@ const RESEARCH_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'olla
 
 export function ResearchEngine({
   mode: engineMode,
-  channelId,
-  context,
-  onComplete,
-  onStageProgress,
   initialSession,
   initialCards,
   initialApproved,
+  initialIdeaId,
 }: ResearchEngineProps) {
+  const actor = usePipelineActor();
+  const channelId = useSelector(actor, (s) => s.context.channelId);
+  const projectId = useSelector(actor, (s) => s.context.projectId);
+  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
+  const researchResult = useSelector(actor, (s) => s.context.stageResults.research);
+  const creditSettings = useSelector(actor, (s) => s.context.creditSettings);
+
+  const trackerContext: PipelineContext = {
+    channelId,
+    projectId,
+    ideaId: brainstormResult?.ideaId ?? initialIdeaId,
+    ideaTitle: brainstormResult?.ideaTitle,
+    researchSessionId: researchResult?.researchSessionId,
+  };
+
+  const levels = [
+    { id: 'surface' as Level, label: 'Surface', cost: creditSettings.costResearchSurface, description: 'Top 3 sources, basic statistics' },
+    { id: 'medium' as Level, label: 'Medium', cost: creditSettings.costResearchMedium, description: '5-8 sources, expert quotes, supporting data' },
+    { id: 'deep' as Level, label: 'Deep', cost: creditSettings.costResearchDeep, description: '10+ sources, counterarguments, cross-validation' },
+  ];
+
   // Input mode
-  const [topic, setTopic] = useState(context.ideaTitle ?? '');
+  const [topic, setTopic] = useState(brainstormResult?.ideaTitle ?? '');
   const [level, setLevel] = useState<Level>('medium');
   const [focusTags, setFocusTags] = useState<string[]>(['stats']);
   const [provider, setProvider] = useState<ProviderId>('gemini');
@@ -126,7 +127,7 @@ export function ResearchEngine({
   // Manual provider — open dialog when API responds with awaiting_manual
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
 
-  const tracker = usePipelineTracker('research', context);
+  const tracker = usePipelineTracker('research', trackerContext);
 
   // When initialSession is provided, we're in "session detail" mode
   const isSessionDetail = !!initialSession;
@@ -194,7 +195,7 @@ export function ResearchEngine({
   // Load existing session from context when navigating back in the pipeline
   useEffect(() => {
     if (initialSession || initialCards) return;
-    const ctxSessionId = context.researchSessionId;
+    const ctxSessionId = researchResult?.researchSessionId;
     if (!ctxSessionId) return;
     if (sessionId === ctxSessionId && (cards.length > 0 || findings)) return;
 
@@ -236,7 +237,7 @@ export function ResearchEngine({
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [context.researchSessionId]);
+  }, [researchResult?.researchSessionId]);
 
   // Fetch recommended agent
   useEffect(() => {
@@ -379,9 +380,9 @@ export function ResearchEngine({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(channelId ? { channelId } : {}),
-          ...(context.projectId ? { projectId: context.projectId } : {}),
-          ...(context.ideaId ? { ideaId: context.ideaId } : {}),
-          topic: topic || context.ideaTitle || undefined,
+          ...(projectId ? { projectId } : {}),
+          ...(trackerContext.ideaId ? { ideaId: trackerContext.ideaId } : {}),
+          topic: topic || trackerContext.ideaTitle || undefined,
           level,
           cardsJson: allCards,
           ...(refinedAngleObj ? { refinedAngleJson: refinedAngleObj } : {}),
@@ -423,8 +424,8 @@ export function ResearchEngine({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(channelId ? { channelId } : {}),
-          ...(context.projectId ? { projectId: context.projectId } : {}),
-          ...(context.ideaId ? { ideaId: context.ideaId } : {}),
+          ...(projectId ? { projectId } : {}),
+          ...(trackerContext.ideaId ? { ideaId: trackerContext.ideaId } : {}),
           topic: topic.trim(),
           level,
           focusTags,
@@ -573,7 +574,7 @@ export function ResearchEngine({
     }
 
     setManualSessionId(null);
-    onStageProgress?.({ researchSessionId: manualSessionId });
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'research', partial: { researchSessionId: manualSessionId } });
   }
 
   async function handleManualAbandon() {
@@ -586,7 +587,7 @@ export function ResearchEngine({
     setManualSessionId(null);
     setCards([]);
     setSessionId(null);
-    onStageProgress?.({ researchSessionId: undefined });
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'research', partial: { researchSessionId: undefined } });
   }
 
   async function handleApprove() {
@@ -604,7 +605,7 @@ export function ResearchEngine({
         secondaryKeywords: signals.secondaryKeywords,
         searchIntent: signals.searchIntent,
       };
-      onComplete(result);
+      actor.send({ type: 'RESEARCH_COMPLETE', result });
       return;
     }
 
@@ -638,7 +639,7 @@ export function ResearchEngine({
       approvedCardsCount: approvedCards.length,
       researchLevel: level,
     };
-    onComplete(result);
+    actor.send({ type: 'RESEARCH_COMPLETE', result });
   }
 
   const shouldPivot = refinedAngle && Boolean(refinedAngle.should_pivot);
@@ -652,7 +653,7 @@ export function ResearchEngine({
   if (engineMode === 'import' && !initialSession) {
     return (
       <div className="space-y-6">
-        <ContextBanner stage="research" context={context} />
+        <ContextBanner stage="research" context={trackerContext} />
 
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -681,11 +682,14 @@ export function ResearchEngine({
           )}
           onSelect={(item) => {
             const cards = (item.approved_cards_json ?? item.cards_json ?? []) as unknown[];
-            onComplete({
-              researchSessionId: item.id as string,
-              approvedCardsCount: cards.length,
-              researchLevel: (item.level as string) ?? 'medium',
-            } as ResearchResult);
+            actor.send({
+              type: 'RESEARCH_COMPLETE',
+              result: {
+                researchSessionId: item.id as string,
+                approvedCardsCount: cards.length,
+                researchLevel: (item.level as string) ?? 'medium',
+              } as ResearchResult,
+            });
           }}
         />
       </div>
@@ -694,7 +698,7 @@ export function ResearchEngine({
 
   return (
     <div className="space-y-6">
-      <ContextBanner stage="research" context={context} />
+      <ContextBanner stage="research" context={trackerContext} />
 
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -717,7 +721,7 @@ export function ResearchEngine({
             <div className="space-y-2">
               <Label>
                 Topic
-                {context.ideaId && (
+                {trackerContext.ideaId && (
                   <span className="text-xs text-muted-foreground">
                     {' '}
                     (pre-filled from idea)
@@ -735,7 +739,7 @@ export function ResearchEngine({
             <div className="space-y-2">
               <Label>Research depth</Label>
               <div className="grid grid-cols-3 gap-2">
-                {LEVELS.map((l) => (
+                {levels.map((l) => (
                   <button
                     key={l.id}
                     onClick={() => setLevel(l.id)}
