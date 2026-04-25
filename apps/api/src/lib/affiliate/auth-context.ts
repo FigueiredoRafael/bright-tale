@@ -14,7 +14,7 @@ export async function getAuthenticatedUser(request: unknown): Promise<{ id: stri
   if (req.userId) return { id: req.userId }
 
   // Fallback: Supabase JWT sent by the portal's proxyToFastify as Bearer token
-  const authHeader = req.headers.authorization
+  const authHeader = req.headers?.authorization
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.slice(7)
     const sb = createServiceClient()

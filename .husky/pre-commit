@@ -11,6 +11,12 @@
 
 set -e
 
+# Use nvm-managed node/npm if available (system npm may be outdated/broken)
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+# shellcheck source=/dev/null
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use
+[ -f .nvmrc ] && nvm use --silent 2>/dev/null || true
+
 echo "→ Building shared package (Vercel parity)..."
 npm run build -w packages/shared
 
