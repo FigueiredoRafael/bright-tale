@@ -321,18 +321,34 @@ export default function DraftDetailPage() {
 
         {/* Publish Tab */}
         <TabsContent value="publish">
-          <PublishEngine
+          <StandaloneEngineHost
+            stage="publish"
             channelId={channelId}
-            context={{
-              draftId,
-              draftTitle: draft.title ?? undefined,
-              reviewScore: draft.review_score ?? undefined,
+            projectId={projectId}
+            initialStageResults={{
+              draft: {
+                draftId,
+                draftTitle: draft.title ?? '',
+                draftContent: '',
+                completedAt: new Date(0).toISOString(),
+              },
+              review: {
+                score: draft.review_score ?? 0,
+                verdict: draft.review_verdict ?? '',
+                feedbackJson: draft.review_feedback_json ?? {},
+                iterationCount: 0,
+                completedAt: new Date(0).toISOString(),
+              },
+              assets: {
+                assetIds: assets.map((a) => a.id),
+                featuredImageUrl: assets.find((a) => a.role === 'featured_image')?.url ?? undefined,
+                completedAt: new Date(0).toISOString(),
+              },
             }}
-            draftId={draftId}
-            draft={draft}
-            assetCount={assets.length}
-            onComplete={() => void fetchDraft()}
-          />
+            onStageComplete={() => void fetchDraft()}
+          >
+            <PublishEngine draft={draft} />
+          </StandaloneEngineHost>
         </TabsContent>
       </Tabs>
     </div>

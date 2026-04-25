@@ -2,16 +2,15 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
+import { useSelector } from '@xstate/react';
+import { usePipelineActor } from '@/hooks/usePipelineActor';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { PublishPanel } from '@/components/preview/PublishPanel';
 import { PublishProgress } from '@/components/publish/PublishProgress';
 import { ContextBanner } from './ContextBanner';
-import type { PipelineContext, PipelineStage, PublishResult, StageResult } from './types';
+import type { PipelineContext, PipelineStage, PublishResult } from './types';
 
 interface PublishEngineProps {
-  channelId: string;
-  context: PipelineContext;
-  draftId: string;
   draft: {
     id: string;
     title: string | null;
@@ -19,24 +18,54 @@ interface PublishEngineProps {
     wordpress_post_id: number | null;
     published_url: string | null;
   };
-  assetCount: number;
-  onComplete: (result: StageResult) => void;
-  onBack?: (targetStage?: PipelineStage) => void;
 }
 
-export function PublishEngine({
-  channelId,
-  context,
-  draftId,
-  draft,
-  assetCount,
-  onComplete,
-  onBack,
-}: PublishEngineProps) {
+export function PublishEngine({ draft }: PublishEngineProps) {
+  const actor = usePipelineActor();
+  const channelId = useSelector(actor, (s) => s.context.channelId);
+  const projectId = useSelector(actor, (s) => s.context.projectId);
+  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
+  const researchResult  = useSelector(actor, (s) => s.context.stageResults.research);
+  const draftResult     = useSelector(actor, (s) => s.context.stageResults.draft);
+  const reviewResult    = useSelector(actor, (s) => s.context.stageResults.review);
+  const assetsResult    = useSelector(actor, (s) => s.context.stageResults.assets);
+  const previewResult   = useSelector(actor, (s) => s.context.stageResults.preview);
+  const draftId = draftResult?.draftId ?? draft.id;
+
+  const trackerContext: PipelineContext = {
+    channelId,
+    projectId,
+    ideaId: brainstormResult?.ideaId,
+    ideaTitle: brainstormResult?.ideaTitle,
+    ideaVerdict: brainstormResult?.ideaVerdict,
+    researchSessionId: researchResult?.researchSessionId,
+    draftId,
+    draftTitle: draftResult?.draftTitle,
+    personaId: draftResult?.personaId,
+    personaName: draftResult?.personaName,
+    personaSlug: draftResult?.personaSlug,
+    personaWpAuthorId: draftResult?.personaWpAuthorId,
+    reviewScore: reviewResult?.score,
+    assetIds: assetsResult?.assetIds,
+    featuredImageUrl: assetsResult?.featuredImageUrl,
+    previewImageMap: previewResult?.imageMap,
+    previewAltTexts: previewResult?.altTexts,
+    previewCategories: previewResult?.categories,
+    previewTags: previewResult?.tags,
+    previewSeoOverrides: previewResult?.seoOverrides,
+    previewPublishDate: previewResult?.suggestedPublishDate,
+  };
+
+  function navigate(toStage?: PipelineStage) {
+    actor.send({ type: 'NAVIGATE', toStage: toStage ?? 'preview' });
+  }
+
   const [publishing, setPublishing] = useState(false);
   const [publishBody, setPublishBody] = useState<Record<string, unknown> | null>(null);
   const modeRef = useRef<string | null>(null);
-  const tracker = usePipelineTracker('publish', context);
+  const tracker = usePipelineTracker('publish', trackerContext);
+
+  const assetCount = assetsResult?.assetIds?.length ?? 0;
 
   function handlePublish(params: { mode: string; scheduledDate?: string }) {
     if (publishing) return;
@@ -52,43 +81,48 @@ export function PublishEngine({
       idempotencyToken: crypto.randomUUID(),
     };
 
-    // Inject preview data from pipeline context
-    if (context.previewImageMap) body.imageMap = context.previewImageMap;
-    if (context.previewAltTexts) body.altTexts = context.previewAltTexts;
-    if (context.previewCategories) body.categories = context.previewCategories;
-    if (context.previewTags) body.tags = context.previewTags;
-    if (context.previewSeoOverrides) body.seoOverrides = context.previewSeoOverrides;
-    if (context.personaWpAuthorId != null) body.authorId = context.personaWpAuthorId;
+    if (previewResult?.imageMap)        body.imageMap     = previewResult.imageMap;
+    if (previewResult?.altTexts)        body.altTexts     = previewResult.altTexts;
+    if (previewResult?.categories)      body.categories   = previewResult.categories;
+    if (previewResult?.tags)            body.tags         = previewResult.tags;
+    if (previewResult?.seoOverrides)    body.seoOverrides = previewResult.seoOverrides;
+    if (draftResult?.personaWpAuthorId != null) body.authorId = draftResult.personaWpAuthorId;
 
     setPublishBody(body);
     setPublishing(true);
   }
 
-  const handleStreamComplete = useCallback((result: { wordpressPostId: number; publishedUrl: string }) => {
-    toast.success('Published successfully!');
-    const publishResult: PublishResult = {
-      wordpressPostId: result.wordpressPostId,
-      publishedUrl: result.publishedUrl,
-    };
-    tracker.trackCompleted({
-      draftId,
-      wordpressPostId: result.wordpressPostId,
-      publishedUrl: result.publishedUrl,
-      mode: modeRef.current ?? 'unknown',
-    });
-    onComplete(publishResult);
-  }, [draftId, tracker, onComplete]);
+  const handleStreamComplete = useCallback(
+    (result: { wordpressPostId: number; publishedUrl: string }) => {
+      toast.success('Published successfully!');
+      const publishResult: PublishResult = {
+        wordpressPostId: result.wordpressPostId,
+        publishedUrl: result.publishedUrl,
+      };
+      tracker.trackCompleted({
+        draftId,
+        wordpressPostId: result.wordpressPostId,
+        publishedUrl: result.publishedUrl,
+        mode: modeRef.current ?? 'unknown',
+      });
+      actor.send({ type: 'PUBLISH_COMPLETE', result: publishResult });
+    },
+    [draftId, tracker, actor],
+  );
 
-  const handleStreamError = useCallback((message: string) => {
-    toast.error(message);
-    tracker.trackFailed(message);
-    setPublishing(false);
-    setPublishBody(null);
-  }, [tracker]);
+  const handleStreamError = useCallback(
+    (message: string) => {
+      toast.error(message);
+      tracker.trackFailed(message);
+      setPublishing(false);
+      setPublishBody(null);
+    },
+    [tracker],
+  );
 
   return (
     <div className="space-y-6">
-      <ContextBanner stage="publish" context={context} onBack={onBack} />
+      <ContextBanner stage="publish" context={trackerContext} onBack={navigate} />
 
       {publishing && publishBody ? (
         <PublishProgress
@@ -107,13 +141,13 @@ export function PublishEngine({
             publishedUrl={draft.published_url}
             onPublish={handlePublish}
             isPublishing={publishing}
-            previewData={context.previewSeoOverrides ? {
-              categories: context.previewCategories ?? [],
-              tags: context.previewTags ?? [],
-              seo: context.previewSeoOverrides,
-              featuredImageUrl: context.featuredImageUrl,
-              imageCount: context.assetIds?.length ?? 0,
-              suggestedDate: context.previewPublishDate,
+            previewData={previewResult?.seoOverrides ? {
+              categories: previewResult.categories ?? [],
+              tags: previewResult.tags ?? [],
+              seo: previewResult.seoOverrides,
+              featuredImageUrl: assetsResult?.featuredImageUrl,
+              imageCount: assetsResult?.assetIds?.length ?? 0,
+              suggestedDate: previewResult.suggestedPublishDate,
             } : undefined}
           />
         </div>

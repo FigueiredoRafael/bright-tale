@@ -81,6 +81,14 @@ interface InnerProps extends Props {
   creditSettings: CreditSettings
 }
 
+type PublishEngineDraft = {
+  id: string
+  title: string | null
+  status: string
+  wordpress_post_id: number | null
+  published_url: string | null
+}
+
 function OrchestratorInner({
   projectId,
   channelId,
@@ -301,20 +309,6 @@ function OrchestratorInner({
 
     const mode: 'generate' | 'import' = engineMode ?? 'generate'
 
-    // TODO(pipeline-refactor-v2): PublishEngine still consumes the legacy
-    // channelId/context/onComplete prop surface. The `buildLegacyContext`
-    // helper and `bridge<LegacyStage>` function below exist solely for it.
-    // Wave 4.2 deletes this block + helper + simplifies publish to
-    // `<PublishEngine draft={draftData} />`.
-    type LegacyStage = 'publish'
-    const legacyContext = buildLegacyContext(ctx)
-    const bridge = <S extends LegacyStage>(stage: S) => ({
-      channelId,
-      context: legacyContext,
-      onStageProgress: (partial: Record<string, unknown>) =>
-        actorRef.send({ type: 'STAGE_PROGRESS', stage, partial }),
-    })
-
     switch (currentStage) {
       case 'brainstorm':
         return <BrainstormEngine mode={mode} />
@@ -329,32 +323,9 @@ function OrchestratorInner({
       case 'preview':
         return <PreviewEngine />
       case 'publish':
-        return (
-          <PublishEngine
-            draftId={ctx.stageResults.draft?.draftId || ''}
-            draft={draftData as any}
-            {...(bridge('publish') as any)}
-            onComplete={(r: any) => actorRef.send({ type: 'PUBLISH_COMPLETE', result: r })}
-            onBack={() => handleNavigate('preview')}
-          />
-        )
+        return <PublishEngine draft={draftData as PublishEngineDraft} />
       default:
         return null
-    }
-  }
-
-  function buildLegacyContext(c: typeof ctx): Record<string, unknown> {
-    return {
-      projectId: c.projectId,
-      channelId: c.channelId,
-      ideaId: c.stageResults.brainstorm?.ideaId,
-      ideaTitle: c.stageResults.brainstorm?.ideaTitle,
-      researchSessionId: c.stageResults.research?.researchSessionId,
-      researchLevel: c.stageResults.research?.researchLevel,
-      draftId: c.stageResults.draft?.draftId,
-      draftTitle: c.stageResults.draft?.draftTitle,
-      creditSettings: c.creditSettings,
-      pipelineSettings: c.pipelineSettings,
     }
   }
 
