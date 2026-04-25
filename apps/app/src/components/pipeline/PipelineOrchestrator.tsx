@@ -315,14 +315,7 @@ function OrchestratorInner({
       case 'research':
         return <ResearchEngine mode={mode} />
       case 'draft':
-        return (
-          <DraftEngine
-            mode={mode}
-            {...bridge('draft')}
-            onComplete={(r: any) => actorRef.send({ type: 'DRAFT_COMPLETE', result: r })}
-            onBack={() => handleNavigate('research')}
-          />
-        )
+        return <DraftEngine mode={mode} />
       case 'review':
         return (
           <ReviewEngine

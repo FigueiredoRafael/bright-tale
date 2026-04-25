@@ -31,8 +31,9 @@ import { rankPersonas, type RankedPersona } from './utils/personaScoring';
 import { getPersonaTheme } from './utils/personaTheme';
 import { PersonaCarousel } from './PersonaCarousel';
 import type { Persona } from '@brighttale/shared/types/agents';
-import type { BaseEngineProps, DraftResult, CreditSettings } from './types';
-import { DEFAULT_CREDIT_SETTINGS } from './types';
+import { useSelector } from '@xstate/react';
+import { usePipelineActor } from '@/hooks/usePipelineActor';
+import type { DraftResult, PipelineContext } from './types';
 
 type DraftType = 'blog' | 'video' | 'shorts' | 'podcast';
 type DraftMode = 'ai' | 'manual';
@@ -52,22 +53,42 @@ interface ResearchOption {
   approved_cards_json?: unknown[];
 }
 
-interface DraftEngineProps extends BaseEngineProps {
+interface DraftEngineProps {
+  mode?: 'generate' | 'import';
   initialDraft?: Record<string, unknown>;
-  creditSettings?: CreditSettings;
 }
 
 const DRAFT_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
 
 export function DraftEngine({
   mode: engineMode,
-  channelId,
-  context,
-  onComplete,
   initialDraft,
-  onStageProgress,
-  creditSettings = DEFAULT_CREDIT_SETTINGS,
 }: DraftEngineProps) {
+  const actor = usePipelineActor();
+  const channelId = useSelector(actor, (s) => s.context.channelId);
+  const projectId = useSelector(actor, (s) => s.context.projectId);
+  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
+  const researchResult = useSelector(actor, (s) => s.context.stageResults.research);
+  const draftResult = useSelector(actor, (s) => s.context.stageResults.draft);
+  const creditSettings = useSelector(actor, (s) => s.context.creditSettings);
+
+  const trackerContext: PipelineContext = {
+    channelId,
+    projectId,
+    ideaId: brainstormResult?.ideaId,
+    ideaTitle: brainstormResult?.ideaTitle,
+    ideaVerdict: brainstormResult?.ideaVerdict,
+    ideaCoreTension: brainstormResult?.ideaCoreTension,
+    brainstormSessionId: brainstormResult?.brainstormSessionId,
+    researchSessionId: researchResult?.researchSessionId,
+    researchPrimaryKeyword: researchResult?.primaryKeyword,
+    researchSecondaryKeywords: researchResult?.secondaryKeywords,
+    researchSearchIntent: researchResult?.searchIntent,
+    draftId: draftResult?.draftId,
+  };
+  const trackerContextRef = useRef<PipelineContext>(trackerContext);
+  trackerContextRef.current = trackerContext;
+
   const TYPES: { id: DraftType; label: string; icon: typeof FileText; cost: number }[] = [
     { id: 'blog', label: 'Blog', icon: FileText, cost: creditSettings.costBlog },
     { id: 'video', label: 'Video', icon: Video, cost: creditSettings.costVideo },
@@ -78,11 +99,9 @@ export function DraftEngine({
   const [research, setResearch] = useState<ResearchOption | null>(null);
 
   // Core settings — initialize title from pipeline context
-  const [title, setTitle] = useState(context.ideaTitle ?? '');
+  const [title, setTitle] = useState(brainstormResult?.ideaTitle ?? '');
   const titleRef = useRef(title);
   titleRef.current = title;
-  const contextRef = useRef(context);
-  contextRef.current = context;
   const [provider, setProvider] = useState<ProviderId>('ollama');
   const [model, setModel] = useState<string>('qwen2.5:7b');
 
@@ -120,15 +139,16 @@ export function DraftEngine({
   const { handleMaybeCreditsError } = useUpgrade();
 
   // Pipeline tracker
-  const tracker = usePipelineTracker('draft', context);
+  const tracker = usePipelineTracker('draft', trackerContext);
 
   // Fetch research data if researchSessionId is in context
   useEffect(() => {
-    if (!context.researchSessionId) return;
+    const rsid = researchResult?.researchSessionId;
+    if (!rsid) return;
 
     (async () => {
       try {
-        const res = await fetch(`/api/research-sessions/${context.researchSessionId}`);
+        const res = await fetch(`/api/research-sessions/${rsid}`);
         const json = await res.json();
         if (json?.data) {
           setResearch(json.data as ResearchOption);
@@ -140,7 +160,7 @@ export function DraftEngine({
         // silent
       }
     })();
-  }, [context.researchSessionId, title]);
+  }, [researchResult?.researchSessionId, title]);
 
   // Fetch personas on mount
   useEffect(() => {
@@ -159,16 +179,17 @@ export function DraftEngine({
 
   // Restore state from existing draft (when revisiting from review)
   useEffect(() => {
-    if (!context.draftId) return;
+    const ctxDraftId = draftResult?.draftId;
+    if (!ctxDraftId) return;
 
     (async () => {
       try {
-        const res = await fetch(`/api/content-drafts/${context.draftId}`);
+        const res = await fetch(`/api/content-drafts/${ctxDraftId}`);
         const json = await res.json();
         if (!json?.data) return;
         const d = json.data as Record<string, unknown>;
 
-        setDraftId(context.draftId as string);
+        setDraftId(ctxDraftId);
         if (d.title && typeof d.title === 'string' && !titleRef.current) setTitle(d.title);
         if (d.type && typeof d.type === 'string') setType(d.type as DraftType);
 
@@ -179,7 +200,7 @@ export function DraftEngine({
           const hasDraft = d.draft_json && typeof d.draft_json === 'object' && Object.keys(d.draft_json as Record<string, unknown>).length > 0;
           const phase_type = hasCore && !hasDraft ? 'core' : ((d.type as DraftType) ?? 'blog');
           setManualState({
-            draftId: context.draftId as string,
+            draftId: ctxDraftId,
             phase: phase_type,
           });
           return;
@@ -216,19 +237,19 @@ export function DraftEngine({
         // silent — will show fresh form
       }
     })();
-  }, [context.draftId]);
+  }, [draftResult?.draftId]);
 
   // Rank personas when data is ready
   useEffect(() => {
     if (personas.length === 0) return;
-    const ranked = rankPersonas(personas, contextRef.current, undefined);
+    const ranked = rankPersonas(personas, trackerContextRef.current, undefined);
     setRankedPersonas(ranked);
     // Pre-select the recommended persona
     const recommended = ranked.find((r) => r.isRecommended);
     if (recommended && !selectedPersonaId) {
       setSelectedPersonaId(recommended.persona.id);
     }
-  }, [personas, context.ideaTitle, context.researchPrimaryKeyword, selectedPersonaId]);
+  }, [personas, brainstormResult?.ideaTitle, researchResult?.primaryKeyword, selectedPersonaId]);
 
   // Derived: selected persona + its theme — drives color cascade through downstream cards
   const selectedPersona = personas.find((p) => p.id === selectedPersonaId);
@@ -302,7 +323,7 @@ export function DraftEngine({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(channelId ? { channelId } : {}),
-          ...(context.ideaId ? { ideaId: context.ideaId } : {}),
+          ...(trackerContext.ideaId ? { ideaId: trackerContext.ideaId } : {}),
           researchSessionId: research.id,
           type,
           title,
@@ -389,7 +410,7 @@ export function DraftEngine({
         toast.success(`${manualState.phase.charAt(0).toUpperCase() + manualState.phase.slice(1)} content submitted`);
       }
       setManualState(null);
-      onStageProgress?.({ draftId: manualState.draftId });
+      actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: manualState.draftId } });
     } catch (err) {
       toast.error('Submit failed', { description: err instanceof Error ? err.message : 'Unknown error' });
     } finally {
@@ -407,7 +428,7 @@ export function DraftEngine({
     } finally {
       setBusy(false);
       setManualState(null);
-      onStageProgress?.({ draftId: undefined });
+      actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: undefined } });
     }
   }
 
@@ -429,7 +450,7 @@ export function DraftEngine({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(channelId ? { channelId } : {}),
-          ...(context.ideaId ? { ideaId: context.ideaId } : {}),
+          ...(trackerContext.ideaId ? { ideaId: trackerContext.ideaId } : {}),
           researchSessionId: research.id,
           type,
           title,
@@ -992,7 +1013,7 @@ export function DraftEngine({
   if (engineMode === 'import' && !initialDraft) {
     return (
       <div className="space-y-6">
-        <ContextBanner stage="draft" context={context} />
+        <ContextBanner stage="draft" context={trackerContext} />
 
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -1019,11 +1040,14 @@ export function DraftEngine({
           )}
           onSelect={(item) => {
             const draftJson = item.draft_json as Record<string, unknown> | null;
-            onComplete({
-              draftId: item.id as string,
-              draftTitle: (item.title as string) ?? 'Untitled',
-              draftContent: (draftJson?.full_draft as string) ?? '',
-            } as DraftResult);
+            actor.send({
+              type: 'DRAFT_COMPLETE',
+              result: {
+                draftId: item.id as string,
+                draftTitle: (item.title as string) ?? 'Untitled',
+                draftContent: (draftJson?.full_draft as string) ?? '',
+              } as DraftResult,
+            });
           }}
         />
       </div>
@@ -1033,7 +1057,7 @@ export function DraftEngine({
   // ── Main render ───────────────────────────────────────────────
   return (
     <div className="space-y-6">
-      <ContextBanner stage="draft" context={context} />
+      <ContextBanner stage="draft" context={trackerContext} />
 
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -1434,7 +1458,7 @@ export function DraftEngine({
                   personaSlug: selectedPersona?.slug,
                   personaWpAuthorId: selectedPersona?.wpAuthorId ?? null,
                 };
-                onComplete(result);
+                actor.send({ type: 'DRAFT_COMPLETE', result });
               }}>
                 <Check className="h-4 w-4 mr-2" /> Done <ArrowRight className="h-4 w-4 ml-2" />
               </Button>
