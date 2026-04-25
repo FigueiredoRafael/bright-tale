@@ -317,15 +317,7 @@ function OrchestratorInner({
       case 'draft':
         return <DraftEngine mode={mode} />
       case 'review':
-        return (
-          <ReviewEngine
-            draftId={ctx.stageResults.draft?.draftId || ''}
-            draft={draftData as any}
-            {...(bridge('review') as any)}
-            onComplete={(r: any) => actorRef.send({ type: 'REVIEW_COMPLETE', result: r })}
-            onBack={() => handleNavigate('draft')}
-          />
-        )
+        return <ReviewEngine draft={draftData} />
       case 'assets':
         return (
           <AssetsEngine
