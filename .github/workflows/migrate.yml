@@ -1,0 +1,45 @@
+name: Database Migrations
+
+on:
+  push:
+    branches: [staging, main]
+    paths:
+      - 'supabase/migrations/**'
+
+jobs:
+  migrate-dev:
+    if: github.ref == 'refs/heads/staging'
+    name: Migrate (dev)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Apply migrations (dev)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase link --project-ref fxwykfyiicalcgbxslng
+          supabase db push
+
+  migrate-prod:
+    if: github.ref == 'refs/heads/main'
+    name: Migrate (prod)
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Apply migrations (prod)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase link --project-ref mzdtknroizehxrjptlwd
+          supabase db push
