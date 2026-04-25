@@ -1,5 +1,9 @@
 # Wave 0 — Foundation (Install + DB Migration)
 
+> **Status:** ✅ **COMPLETED** 2026-04-25 — commits [`7b0d8a4`](../../../) (xstate install) + [`3b1ec79`](../../../) (research costs schema/types/migration). Migration applied to dev Supabase (project `fxwykfyiicalcgbxslng`). Pushed to `origin/feat/pipeline-orchestrator-refactor`.
+>
+> Side effect during execution: pre-existing migration drift on `20260424130000_managers_table` (table+triggers existed remote, history record missing) was repaired via `supabase migration repair --status applied 20260424130000` before our migration could push. Pre-existing apps/api + apps/web test failures are unrelated to Wave 0 work.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Parent plan:** [`2026-04-24-pipeline-xstate-refactor.md`](./2026-04-24-pipeline-xstate-refactor.md)
