@@ -109,10 +109,16 @@ async function isManagerViaRest(userId: string, jwt: string): Promise<boolean> {
         Authorization: `Bearer ${jwt}`,
       },
     });
-    if (!res.ok) return false;
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.error('[mw:isManagerViaRest] non-ok response', { userId, status: res.status, body: body.slice(0, 200) });
+      return false;
+    }
     const rows: { role: string }[] = await res.json();
+    console.log('[mw:isManagerViaRest] result', { userId, rowCount: rows.length, role: rows[0]?.role });
     return rows.length > 0 && MANAGER_ROLES.has(rows[0].role);
-  } catch {
+  } catch (e) {
+    console.error('[mw:isManagerViaRest] threw', { userId, err: (e as Error).message });
     return false;
   }
 }
@@ -222,11 +228,17 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
+    console.log('[mw:auth] no user → /login', { pathname });
     return NextResponse.redirect(new URL(adminPath('/login'), request.url));
   }
 
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token || !await isManagerViaRest(user.id, session.access_token)) {
+  if (!session?.access_token) {
+    console.error('[mw:auth] user but no session.access_token → /login?error=unauthorized', { pathname, userId: user.id, hasSession: !!session });
+    return NextResponse.redirect(new URL(adminPath('/login?error=unauthorized'), request.url));
+  }
+  if (!(await isManagerViaRest(user.id, session.access_token))) {
+    console.error('[mw:auth] not a manager → /login?error=unauthorized', { pathname, userId: user.id });
     return NextResponse.redirect(new URL(adminPath('/login?error=unauthorized'), request.url));
   }
 
