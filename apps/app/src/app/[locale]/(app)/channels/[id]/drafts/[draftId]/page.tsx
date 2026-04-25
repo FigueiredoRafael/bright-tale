@@ -294,14 +294,29 @@ export default function DraftDetailPage() {
 
         {/* Assets Tab */}
         <TabsContent value="assets">
-          <AssetsEngine
-            mode="generate"
+          <StandaloneEngineHost
+            stage="assets"
             channelId={channelId}
-            context={{ draftId, draftTitle: draft.title ?? undefined }}
-            draftId={draftId}
-            draftStatus={draft.status}
-            onComplete={() => setActiveTab('publish')}
-          />
+            projectId={projectId}
+            initialStageResults={{
+              draft: {
+                draftId,
+                draftTitle: draft.title ?? '',
+                draftContent: '',
+                completedAt: new Date(0).toISOString(),
+              },
+              review: {
+                score: draft.review_score ?? 0,
+                verdict: draft.review_verdict ?? '',
+                feedbackJson: draft.review_feedback_json ?? {},
+                iterationCount: 0,
+                completedAt: new Date(0).toISOString(),
+              },
+            }}
+            onStageComplete={() => setActiveTab('publish')}
+          >
+            <AssetsEngine mode="generate" draft={draft as unknown as Record<string, unknown>} />
+          </StandaloneEngineHost>
         </TabsContent>
 
         {/* Publish Tab */}

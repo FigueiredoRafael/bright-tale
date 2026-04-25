@@ -301,8 +301,16 @@ function OrchestratorInner({
 
     const mode: 'generate' | 'import' = engineMode ?? 'generate'
 
+    // TODO(pipeline-refactor-v2): PreviewEngine and PublishEngine still consume
+    // the legacy onComplete/context/channelId prop surface. The `buildLegacyContext`
+    // helper and `bridge<LegacyStage>` function below exist solely for them.
+    // When those engines are refactored (out of scope for this PR, see spec
+    // §Out of Scope), delete this block, `buildLegacyContext`, and the `bridge`
+    // helper, and simplify the preview/publish cases to `<PreviewEngine draft={draftData} />`
+    // and `<PublishEngine draft={draftData} />`.
+    type LegacyStage = 'preview' | 'publish'
     const legacyContext = buildLegacyContext(ctx)
-    const bridge = (stage: PipelineStage) => ({
+    const bridge = <S extends LegacyStage>(stage: S) => ({
       channelId,
       context: legacyContext,
       onStageProgress: (partial: Record<string, unknown>) =>
@@ -319,16 +327,7 @@ function OrchestratorInner({
       case 'review':
         return <ReviewEngine draft={draftData} />
       case 'assets':
-        return (
-          <AssetsEngine
-            mode={mode}
-            draftId={ctx.stageResults.draft?.draftId}
-            draftStatus={draftData?.status as string | undefined}
-            {...bridge('assets')}
-            onComplete={(r: any) => actorRef.send({ type: 'ASSETS_COMPLETE', result: r })}
-            onBack={() => handleNavigate('review')}
-          />
-        )
+        return <AssetsEngine mode={mode} draft={draftData} />
       case 'preview':
         return (
           <PreviewEngine

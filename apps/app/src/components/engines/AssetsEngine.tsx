@@ -16,10 +16,12 @@ import { toast } from 'sonner';
 import { ManualOutputDialog } from './ManualOutputDialog';
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
+import { useSelector } from '@xstate/react';
+import { usePipelineActor } from '@/hooks/usePipelineActor';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
 import { getPersonaTheme } from './utils/personaTheme';
-import type { BaseEngineProps, AssetsResult } from './types';
+import type { AssetsResult, PipelineContext, PipelineStage } from './types';
 
 /* ── Types ── */
 
@@ -60,9 +62,13 @@ interface ContentAsset {
   sourceType: string;
 }
 
-interface AssetsEngineProps extends BaseEngineProps {
-  draftId?: string;
-  draftStatus?: string;
+/**
+ * Non-null invariant for `draft` — orchestrator gates render until draft is hydrated.
+ * Guard in the engine is defensive, not normal flow.
+ */
+interface AssetsEngineProps {
+  mode?: 'generate' | 'import';
+  draft: Record<string, unknown> | null;
 }
 
 interface NoBriefSection {
@@ -170,15 +176,40 @@ interface PendingUpload {
 
 /* ── Component ── */
 
-export function AssetsEngine({
-  mode: engineMode,
-  channelId,
-  context,
-  draftId,
-  draftStatus,
-  onComplete,
-  onBack,
-}: AssetsEngineProps) {
+export function AssetsEngine({ mode: engineMode, draft }: AssetsEngineProps) {
+  const actor = usePipelineActor();
+  const channelId = useSelector(actor, (s) => s.context.channelId);
+  const projectId = useSelector(actor, (s) => s.context.projectId);
+  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
+  const researchResult = useSelector(actor, (s) => s.context.stageResults.research);
+  const draftResult = useSelector(actor, (s) => s.context.stageResults.draft);
+  const draftId = draftResult?.draftId;
+  const draftStatus = draft?.status as string | undefined;
+
+  const trackerContext: PipelineContext = {
+    channelId,
+    projectId,
+    ideaId: brainstormResult?.ideaId,
+    ideaTitle: brainstormResult?.ideaTitle,
+    ideaVerdict: brainstormResult?.ideaVerdict,
+    ideaCoreTension: brainstormResult?.ideaCoreTension,
+    brainstormSessionId: brainstormResult?.brainstormSessionId,
+    researchSessionId: researchResult?.researchSessionId,
+    researchPrimaryKeyword: researchResult?.primaryKeyword,
+    researchSecondaryKeywords: researchResult?.secondaryKeywords,
+    researchSearchIntent: researchResult?.searchIntent,
+    draftId: draftResult?.draftId,
+    draftTitle: draftResult?.draftTitle,
+    personaId: draftResult?.personaId,
+    personaName: draftResult?.personaName,
+    personaSlug: draftResult?.personaSlug,
+    personaWpAuthorId: draftResult?.personaWpAuthorId,
+  };
+
+  function navigate(toStage?: PipelineStage) {
+    actor.send({ type: 'NAVIGATE', toStage: toStage ?? 'review' });
+  }
+
   const [phase, setPhase] = useState<AssetPhase>('briefs');
   const [imagesMode, setImagesMode] = useState<ImagesMode>('brief');
   const [visualDirection, setVisualDirection] = useState<VisualDirection | null>(null);
@@ -197,7 +228,7 @@ export function AssetsEngine({
   const [imageProvider, setImageProvider] = useState<ImageProvider>('gemini');
   const [generatingAll, setGeneratingAll] = useState(false);
   const inFlightRef = useRef(false);
-  const tracker = usePipelineTracker('assets', context);
+  const tracker = usePipelineTracker('assets', trackerContext);
 
   // Fetch existing assets on mount → skip to done if present
   useEffect(() => {
@@ -470,7 +501,7 @@ export function AssetsEngine({
         const assetIds = existingAssets.map((a) => a.id);
         const featuredUrl = existingAssets.find((a) => a.role === 'featured_image')?.url;
         tracker.trackCompleted({ draftId, assetCount: existingAssets.length, assetIds, featuredImageUrl: featuredUrl });
-        onComplete({ assetIds, featuredImageUrl: featuredUrl } as AssetsResult);
+        actor.send({ type: 'ASSETS_COMPLETE', result: { assetIds, featuredImageUrl: featuredUrl } as AssetsResult });
         return;
       }
 
@@ -569,7 +600,7 @@ export function AssetsEngine({
         assetIds,
         featuredImageUrl: featuredUrl,
       });
-      onComplete({ assetIds, featuredImageUrl: featuredUrl } as AssetsResult);
+      actor.send({ type: 'ASSETS_COMPLETE', result: { assetIds, featuredImageUrl: featuredUrl } as AssetsResult });
     } catch (e) {
       tracker.trackFailed(e instanceof Error ? e.message : 'Failed to save images');
       toast.error('Failed to save images');
@@ -579,11 +610,22 @@ export function AssetsEngine({
     }
   }
 
+  /* ── Defensive guard — orchestrator gates render until draft hydrates ── */
+  if (!draft) {
+    return (
+      <Card>
+        <CardContent className="py-6">
+          <p className="text-sm text-destructive">Draft not loaded. Please refresh.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   /* ── Import mode ── */
   if (engineMode === 'import' && !draftId) {
     return (
       <div className="space-y-6">
-        <ContextBanner stage="assets" context={context} onBack={onBack} />
+        <ContextBanner stage="assets" context={trackerContext} onBack={navigate} />
         <div className="space-y-4">
           <div>
             <h1 className="text-2xl font-bold">Assets</h1>
@@ -620,10 +662,13 @@ export function AssetsEngine({
               );
             }}
             onSelect={(item) => {
-              onComplete({
-                assetIds: [item.id as string],
-                featuredImageUrl: (item.url as string | undefined) || undefined,
-              } as AssetsResult);
+              actor.send({
+                type: 'ASSETS_COMPLETE',
+                result: {
+                  assetIds: [item.id as string],
+                  featuredImageUrl: (item.url as string | undefined) || undefined,
+                } as AssetsResult,
+              });
             }}
           />
         </div>
@@ -641,7 +686,7 @@ export function AssetsEngine({
 
   return (
     <div className="space-y-6">
-      <ContextBanner stage="assets" context={context} onBack={onBack} />
+      <ContextBanner stage="assets" context={trackerContext} onBack={navigate} />
 
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -650,8 +695,8 @@ export function AssetsEngine({
         <p className="text-sm text-muted-foreground mt-1">
           Generate prompt briefs, refine them, then upload images for each section.
         </p>
-        {context.personaName && (() => {
-          const theme = getPersonaTheme(context.personaSlug);
+        {trackerContext.personaName && (() => {
+          const theme = getPersonaTheme(trackerContext.personaSlug);
           return (
             <div
               className="mt-3 mb-2 inline-flex items-center gap-2.5 rounded-full border px-3 py-1.5 backdrop-blur-sm"
@@ -659,7 +704,7 @@ export function AssetsEngine({
                 background: `rgba(${theme.glow}, 0.1)`,
                 borderColor: `rgba(${theme.glow}, 0.35)`,
               }}
-              aria-label={`Authored by ${context.personaName}`}
+              aria-label={`Authored by ${trackerContext.personaName}`}
             >
               <div
                 className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
@@ -668,13 +713,13 @@ export function AssetsEngine({
                   boxShadow: `0 4px 12px -2px rgba(${theme.glow}, 0.5)`,
                 }}
               >
-                {context.personaName[0]}
+                {trackerContext.personaName![0]}
               </div>
               <span
                 className="text-xs font-semibold tracking-wide"
                 style={{ color: theme.accent }}
               >
-                {context.personaName}
+                {trackerContext.personaName}
               </span>
             </div>
           );
