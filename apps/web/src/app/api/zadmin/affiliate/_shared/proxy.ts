@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { isAdminUser } from '@/lib/admin-check';
 
 function apiBase() {
-  return process.env.API_URL ?? 'http://localhost:3001';
+  return (process.env.API_URL ?? 'http://localhost:3001').replace(/\/$/, '');
 }
 
 function jsonError(message: string, code: string, status: number) {
