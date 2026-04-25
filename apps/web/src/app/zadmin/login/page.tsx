@@ -34,6 +34,11 @@ function LoginForm() {
       router.push(adminPath('/login?error=rate_limited'))
       return result
     }
+    if (result.ok) {
+      // External AdminLogin ignores redirectTo and hardcodes /admin — take
+      // control of navigation here so the correct admin slug is always used.
+      router.push(adminPath())
+    }
     return result
   }
 
