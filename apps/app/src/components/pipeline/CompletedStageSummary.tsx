@@ -8,7 +8,8 @@ import {
   Lightbulb, Search, FileText, CheckCircle, Image, Eye, Globe,
   ChevronDown, ChevronUp, RotateCcw,
 } from 'lucide-react';
-import type { PipelineStage, PipelineState } from '@/components/engines/types';
+import type { PipelineStage } from '@/components/engines/types';
+import type { StageResultMap } from '@/lib/pipeline/machine.types';
 import { deriveTier } from '@brighttale/shared';
 
 const STAGE_META: Record<PipelineStage, { icon: typeof Lightbulb; label: string; color: string }> = {
@@ -23,12 +24,19 @@ const STAGE_META: Record<PipelineStage, { icon: typeof Lightbulb; label: string;
 
 interface CompletedStageSummaryProps {
   stage: PipelineStage;
-  stageResults: PipelineState['stageResults'];
+  stageResults: StageResultMap;
   currentStage: PipelineStage;
   onNavigate: (stage: PipelineStage) => void;
+  onRedoFrom?: (stage: PipelineStage) => void;
 }
 
-export function CompletedStageSummary({ stage, stageResults, currentStage, onNavigate }: CompletedStageSummaryProps) {
+export function CompletedStageSummary({
+  stage,
+  stageResults,
+  currentStage,
+  onNavigate,
+  onRedoFrom,
+}: CompletedStageSummaryProps) {
   const meta = STAGE_META[stage];
   const Icon = meta.icon;
   const result = stageResults[stage];
@@ -106,7 +114,17 @@ export function CompletedStageSummary({ stage, stageResults, currentStage, onNav
           </Badge>
           <span className="text-sm font-medium">{meta.label}</span>
           <span className="text-xs text-muted-foreground truncate flex-1">{getSummary()}</span>
-          {!isCurrent && (
+          {!isCurrent && onRedoFrom && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => onRedoFrom(stage)}
+            >
+              <RotateCcw className="h-3 w-3 mr-1" /> Redo
+            </Button>
+          )}
+          {!isCurrent && !onRedoFrom && (
             <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onNavigate(stage)}>
               <RotateCcw className="h-3 w-3 mr-1" /> Go to
             </Button>

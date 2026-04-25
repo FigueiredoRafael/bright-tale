@@ -1,808 +1,532 @@
-'use client';
+'use client'
 
-import { useEffect, useRef, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { Loader2, Sparkles, Copy, ArrowLeft } from 'lucide-react';
-import { toast } from 'sonner';
-import { useAnalytics } from '@/hooks/use-analytics';
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMachine } from '@xstate/react'
+import { toast } from 'sonner'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Loader2, Sparkles, Copy } from 'lucide-react'
+import { useAnalytics } from '@/hooks/use-analytics'
+import { pipelineMachine } from '@/lib/pipeline/machine'
+import { usePipelineSettings } from '@/providers/PipelineSettingsProvider'
+import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
+import { mapLegacyPipelineState } from '@/lib/pipeline/legacy-state-migration'
+import { PipelineStages, type PipelineStep } from './PipelineStages'
+import { AutoModeControls } from './AutoModeControls'
+import { CompletedStageSummary } from './CompletedStageSummary'
+import { BrainstormEngine } from '@/components/engines/BrainstormEngine'
+import { ResearchEngine } from '@/components/engines/ResearchEngine'
+import { DraftEngine } from '@/components/engines/DraftEngine'
+import { ReviewEngine } from '@/components/engines/ReviewEngine'
+import { AssetsEngine } from '@/components/engines/AssetsEngine'
+import { PreviewEngine } from '@/components/engines/PreviewEngine'
+import { PublishEngine } from '@/components/engines/PublishEngine'
+import { PIPELINE_STAGES } from '@/components/engines/types'
+import type { PipelineStage, PipelineSettings, CreditSettings } from '@/components/engines/types'
 
-import { BrainstormEngine } from '@/components/engines/BrainstormEngine';
-import { ResearchEngine } from '@/components/engines/ResearchEngine';
-import { DraftEngine } from '@/components/engines/DraftEngine';
-import { ReviewEngine } from '@/components/engines/ReviewEngine';
-import { AssetsEngine } from '@/components/engines/AssetsEngine';
-import { PreviewEngine } from '@/components/engines/PreviewEngine';
-import { PublishEngine } from '@/components/engines/PublishEngine';
-import { ImportPicker } from '@/components/engines/ImportPicker';
-import { PipelineStages, type PipelineStep } from './PipelineStages';
-import { AutoModeControls } from './AutoModeControls';
-import { CompletedStageSummary } from './CompletedStageSummary';
-
-import type {
-  PipelineState,
-  PipelineContext,
-  PipelineStage,
-  StageResult,
-  ReviewResult,
-  DEFAULT_PIPELINE_STATE,
-  PipelineSettings,
-  CreditSettings,
-} from '@/components/engines/types';
-import { PIPELINE_STAGES, DEFAULT_PIPELINE_STATE as DEFAULT_STATE, DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '@/components/engines/types';
-
-interface PipelineOrchestratorProps {
-  projectId: string;
-  channelId: string;
-  projectTitle: string;
-  initialPipelineState?: Record<string, unknown>;
+interface Props {
+  projectId: string
+  channelId: string
+  projectTitle: string
+  initialPipelineState?: Record<string, unknown>
 }
+
+const IMPORTABLE_STAGES: PipelineStage[] = ['brainstorm', 'research', 'draft', 'assets']
 
 export function PipelineOrchestrator({
   projectId,
   channelId,
   projectTitle: initialProjectTitle,
   initialPipelineState,
-}: PipelineOrchestratorProps) {
-  const [pipelineState, setPipelineState] = useState<PipelineState>(() => {
-    if (initialPipelineState && Object.keys(initialPipelineState).length > 0) {
-      return {
-        ...DEFAULT_STATE,
-        ...initialPipelineState,
-        stageResults: { ...DEFAULT_STATE.stageResults, ...(initialPipelineState as Record<string, unknown>).stageResults as Record<string, unknown> },
-        autoConfig: { ...DEFAULT_STATE.autoConfig, ...(initialPipelineState as Record<string, unknown>).autoConfig as Record<string, unknown> },
-      } as PipelineState;
-    }
-    return DEFAULT_STATE;
-  });
+}: Props) {
+  const { pipelineSettings, creditSettings, isLoaded } = usePipelineSettings()
 
-  const [projectTitle, setProjectTitle] = useState(initialProjectTitle);
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [titleDraft, setTitleDraft] = useState(initialProjectTitle);
-  const [engineMode, setEngineMode] = useState<'generate' | 'import' | null>(null);
-  const [isRunning, setIsRunning] = useState(false);
-  const [draftData, setDraftData] = useState<Record<string, unknown> | null>(null);
-  const publishDraftFetched = useRef(false);
-  const [researchData, setResearchData] = useState<Record<string, unknown> | null>(null);
-  const { track } = useAnalytics();
-  const [pipelineSettings, setPipelineSettings] = useState<PipelineSettings>(DEFAULT_PIPELINE_SETTINGS);
-  const [creditSettings, setCreditSettings] = useState<CreditSettings>(DEFAULT_CREDIT_SETTINGS);
-
-  // Build accumulated context from stageResults
-  function buildContext(): PipelineContext {
-    const ctx: PipelineContext = { projectId, projectTitle, channelId };
-    const sr = pipelineState.stageResults;
-
-    if (sr.brainstorm) {
-      ctx.ideaId = sr.brainstorm.ideaId;
-      ctx.ideaTitle = sr.brainstorm.ideaTitle;
-      ctx.ideaVerdict = sr.brainstorm.ideaVerdict;
-      ctx.ideaCoreTension = sr.brainstorm.ideaCoreTension;
-      ctx.brainstormSessionId = sr.brainstorm.brainstormSessionId;
-    }
-
-    if (sr.research) {
-      ctx.researchSessionId = sr.research.researchSessionId;
-      ctx.approvedCardsCount = sr.research.approvedCardsCount;
-      ctx.researchLevel = sr.research.researchLevel;
-      ctx.researchPrimaryKeyword = sr.research.primaryKeyword;
-      ctx.researchSecondaryKeywords = sr.research.secondaryKeywords;
-      ctx.researchSearchIntent = sr.research.searchIntent;
-    }
-
-    if (sr.draft) {
-      ctx.draftId = sr.draft.draftId;
-      ctx.draftTitle = sr.draft.draftTitle;
-      ctx.personaId = sr.draft.personaId;
-      ctx.personaName = sr.draft.personaName;
-      ctx.personaSlug = sr.draft.personaSlug;
-      ctx.personaWpAuthorId = sr.draft.personaWpAuthorId;
-    }
-
-    if (sr.review) {
-      ctx.reviewScore = sr.review.score;
-      ctx.reviewVerdict = sr.review.verdict;
-      ctx.iterationCount = sr.review.iterationCount;
-    }
-
-    if (sr.assets) {
-      ctx.assetIds = sr.assets.assetIds;
-      ctx.featuredImageUrl = sr.assets.featuredImageUrl;
-    }
-
-    if (sr.preview) {
-      ctx.previewImageMap = sr.preview.imageMap;
-      ctx.previewAltTexts = sr.preview.altTexts;
-      ctx.previewCategories = sr.preview.categories;
-      ctx.previewTags = sr.preview.tags;
-      ctx.previewSeoOverrides = sr.preview.seoOverrides;
-      ctx.previewPublishDate = sr.preview.suggestedPublishDate;
-    }
-
-    if (sr.publish) {
-      ctx.wordpressPostId = sr.publish.wordpressPostId;
-      ctx.publishedUrl = sr.publish.publishedUrl;
-    }
-
-    return ctx;
+  if (!isLoaded) {
+    return (
+      <Card>
+        <CardContent className="py-8" data-testid="pipeline-loading">
+          <div className="flex items-center justify-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading pipeline settings…
+          </div>
+        </CardContent>
+      </Card>
+    )
   }
 
-  // Save project title to database
-  async function saveProjectTitle(newTitle: string) {
-    setProjectTitle(newTitle);
-    setTitleDraft(newTitle);
+  return (
+    <OrchestratorInner
+      projectId={projectId}
+      channelId={channelId}
+      projectTitle={initialProjectTitle}
+      initialPipelineState={initialPipelineState}
+      pipelineSettings={pipelineSettings!}
+      creditSettings={creditSettings!}
+    />
+  )
+}
+
+interface InnerProps extends Props {
+  pipelineSettings: PipelineSettings
+  creditSettings: CreditSettings
+}
+
+function OrchestratorInner({
+  projectId,
+  channelId,
+  projectTitle,
+  initialPipelineState,
+  pipelineSettings,
+  creditSettings,
+}: InnerProps) {
+  const legacy = useMemo(() => mapLegacyPipelineState(initialPipelineState), [initialPipelineState])
+  const { track } = useAnalytics()
+
+  const [state, send, actorRef] = useMachine(pipelineMachine, {
+    input: {
+      projectId,
+      channelId,
+      projectTitle,
+      pipelineSettings,
+      creditSettings,
+      mode: legacy?.mode,
+      initialStageResults: legacy?.initialStageResults,
+      initialIterationCount: legacy?.initialIterationCount,
+    },
+    inspect:
+      process.env.NODE_ENV === 'development'
+        ? (ev) => {
+            if (ev.type === '@xstate.event') {
+              console.debug('[pipeline]', (ev as any).event?.type, (ev as any).event)
+            }
+          }
+        : undefined,
+  })
+
+  const didRestoreRef = useRef(false)
+  const restoredRef = useRef(false)
+  useEffect(() => {
+    if (didRestoreRef.current) return
+    didRestoreRef.current = true
+    if (legacy?.initialStage && legacy.initialStage !== 'brainstorm') {
+      send({ type: 'NAVIGATE', toStage: legacy.initialStage })
+    }
+    queueMicrotask(() => {
+      restoredRef.current = true
+    })
+  }, [legacy?.initialStage, send])
+
+  const ctx = state.context
+  const stateValue = state.value
+  const currentStage = (
+    typeof stateValue === 'string' ? stateValue : Object.keys(stateValue)[0]
+  ) as PipelineStage
+  const subState =
+    typeof stateValue === 'string'
+      ? 'idle'
+      : ((stateValue as Record<string, string>)[currentStage] ?? 'idle')
+
+  const lastPersistedRef = useRef<string>('')
+  useEffect(() => {
+    if (!restoredRef.current) return
+    const snapshot = JSON.stringify({
+      mode: ctx.mode,
+      stageResults: ctx.stageResults,
+      iterationCount: ctx.iterationCount,
+      currentStage,
+    })
+    if (snapshot === lastPersistedRef.current) return
+    const t = setTimeout(() => {
+      lastPersistedRef.current = snapshot
+      void fetch(`/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pipelineStateJson: {
+            mode: ctx.mode,
+            stageResults: ctx.stageResults,
+            iterationCount: ctx.iterationCount,
+            currentStage,
+          },
+        }),
+      }).catch(() => {
+        toast.error('Failed to persist pipeline state')
+      })
+    }, 150)
+    return () => clearTimeout(t)
+  }, [ctx.mode, ctx.stageResults, ctx.iterationCount, currentStage, projectId])
+
+  useEffect(() => {
+    if (ctx.lastError) toast.error(ctx.lastError)
+  }, [ctx.lastError])
+
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(ctx.projectTitle)
+  useEffect(() => {
+    if (!editingTitle) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTitleDraft(ctx.projectTitle)
+    }
+  }, [ctx.projectTitle, editingTitle])
+
+  async function saveTitle(newTitle: string) {
+    send({ type: 'SET_PROJECT_TITLE', title: newTitle })
     try {
       await fetch(`/api/projects/${projectId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: newTitle }),
-      });
+      })
     } catch {
-      // Silent — title is cosmetic
+      // title is cosmetic; ignore
     }
   }
 
-  // Save pipeline state to database
-  async function savePipelineState(newState: PipelineState) {
-    setPipelineState(newState);
-    try {
-      const res = await fetch(`/api/projects/${projectId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pipelineStateJson: newState }),
-      });
-      const { error } = await res.json();
-      if (error) {
-        toast.error(error.message || 'Failed to save pipeline state');
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      toast.error(`Failed to save pipeline state: ${message}`);
+  const [engineMode, setEngineMode] = useState<'generate' | 'import' | null>(null)
+
+  useEffect(() => {
+    if (ctx.mode !== 'auto') return
+    if (currentStage === 'publish') return
+    if (currentStage === 'review' && subState === 'idle') {
+      send({ type: 'RESUME' })
+      return
     }
-  }
-
-  // Persist partial progress (e.g., session id) without advancing the stage.
-  async function handleStageProgress(partial: Partial<StageResult>) {
-    const stage = pipelineState.currentStage;
-    const existing = (pipelineState.stageResults[stage] ?? {}) as Record<string, unknown>;
-    const merged = { ...existing, ...partial } as StageResult;
-    const newState: PipelineState = {
-      ...pipelineState,
-      stageResults: { ...pipelineState.stageResults, [stage]: merged },
-    };
-    await savePipelineState(newState);
-  }
-
-  // Handle stage completion
-  async function handleStageComplete(result: StageResult) {
-    const stage = pipelineState.currentStage;
-    const completedAt = new Date().toISOString();
-    const currentIndex = PIPELINE_STAGES.indexOf(stage);
-
-    // Check for downstream stages that will be invalidated
-    const downstreamWithResults = PIPELINE_STAGES.slice(currentIndex + 1)
-      .filter((s) => pipelineState.stageResults[s]);
-
-    if (downstreamWithResults.length > 0) {
-      const names = downstreamWithResults.join(', ');
-      if (!window.confirm(
-        `Completing "${stage}" will discard results for: ${names}.\n\nContinue?`
-      )) {
-        return;
-      }
-      track('pipeline.stage.redone', { projectId, channelId, stage, discardedStages: downstreamWithResults });
+    if (subState === 'idle' && !ctx.stageResults[currentStage]) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setEngineMode('generate')
     }
+  }, [ctx.mode, currentStage, subState, ctx.stageResults, send])
 
-    // Auto-update project title from brainstorm idea
-    if (stage === 'brainstorm' && 'ideaTitle' in result && result.ideaTitle) {
-      void saveProjectTitle(result.ideaTitle);
-    }
-
-    // Merge result into stageResults, clearing downstream
-    const newStageResults = {
-      ...pipelineState.stageResults,
-      [stage]: { ...result, completedAt },
-    };
-    for (const downstream of downstreamWithResults) {
-      delete newStageResults[downstream];
-    }
-
-    // Find next stage
-    const nextStage =
-      currentIndex < PIPELINE_STAGES.length - 1
-        ? PIPELINE_STAGES[currentIndex + 1]
-        : stage;
-
-    const newState: PipelineState = {
-      ...pipelineState,
-      stageResults: newStageResults,
-      currentStage: nextStage,
-    };
-
-    // Special handling for review in auto mode
-    if (stage === 'review' && pipelineState.mode === 'auto') {
-      const reviewResult = result as ReviewResult;
-      if (reviewResult.verdict === 'approved') {
-        // Normal flow — advance to assets
-        await savePipelineState(newState);
-        setEngineMode(null);
-        toast.success(`Completed ${stage}!`);
-      } else if (reviewResult.score < pipelineSettings.reviewRejectThreshold) {
-        // Rejected — too broken, pause
-        toast.warning('Auto-pilot paused — content scored too low for auto-revision');
-        const pausedState = {
-          ...newState,
-          autoConfig: { ...newState.autoConfig, pausedAt: 'review' as PipelineStage },
-        };
-        await savePipelineState(pausedState);
-        setEngineMode(null);
-        setIsRunning(false);
-        return;
-      } else if (reviewResult.iterationCount >= pipelineState.autoConfig.maxReviewIterations) {
-        // Max iterations reached — pause
-        toast.warning(
-          `Auto-pilot paused — reached ${reviewResult.iterationCount} review iterations without approval`
-        );
-        const pausedState = {
-          ...newState,
-          autoConfig: { ...newState.autoConfig, pausedAt: 'review' as PipelineStage },
-        };
-        await savePipelineState(pausedState);
-        setEngineMode(null);
-        setIsRunning(false);
-        return;
-      } else {
-        // Auto-revise: call reproduce, then re-trigger review
-        toast.info(`Auto-revising draft (iteration ${reviewResult.iterationCount + 1})...`);
-        try {
-          const draftId = pipelineState.stageResults.draft?.draftId;
-          if (draftId) {
-            const res = await fetch(`/api/content-drafts/${draftId}/reproduce`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ feedbackJson: reviewResult.feedbackJson }),
-            });
-            const { error } = await res.json();
-            if (error) {
-              toast.error('Auto-revision failed: ' + error.message);
-              const pausedState = {
-                ...newState,
-                autoConfig: { ...newState.autoConfig, pausedAt: 'review' as PipelineStage },
-              };
-              await savePipelineState(pausedState);
-              setEngineMode(null);
-              setIsRunning(false);
-              return;
-            }
-            // Update state with the iteration count and stay on review
-            await savePipelineState(newState);
-            setEngineMode('generate');
-            setIsRunning(true);
-            return; // Don't advance — stay on review
-          }
-        } catch (err) {
-          const message = err instanceof Error ? err.message : 'Unknown error';
-          toast.error(`Auto-revision failed: ${message}`);
-          const pausedState = {
-            ...newState,
-            autoConfig: { ...newState.autoConfig, pausedAt: 'review' as PipelineStage },
-          };
-          await savePipelineState(pausedState);
-          setEngineMode(null);
-          setIsRunning(false);
-          return;
-        }
-      }
-    }
-
-    // Re-fetch draft after review approval so downstream stages see the fresh status
-    const draftId = pipelineState.stageResults.draft?.draftId;
-    if (stage === 'review' && (result as ReviewResult).verdict === 'approved' && draftId) {
+  const [draftData, setDraftData] = useState<Record<string, unknown> | null>(null)
+  useEffect(() => {
+    const draftId = ctx.stageResults.draft?.draftId
+    const needsDraft = ['review', 'assets', 'preview', 'publish'].includes(currentStage) && !!draftId
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDraftData(null)
+    if (!needsDraft) return
+    let cancelled = false
+    ;(async () => {
       try {
-        const res = await fetch(`/api/content-drafts/${draftId}`);
-        const { data } = await res.json();
-        if (data) setDraftData(data as Record<string, unknown>);
-      } catch { /* publish gate will fall back to stale draftData */ }
-    }
-
-    await savePipelineState(newState);
-    setEngineMode(null);
-
-    if (stage !== nextStage) {
-      toast.success(`Completed ${stage}!`);
-    }
-
-    // Auto mode: auto-advance to next stage
-    if (newState.mode === 'auto' && !newState.autoConfig.pausedAt) {
-      const nextStageForAuto = newState.currentStage;
-      if (nextStageForAuto === 'publish') {
-        // Always pause before publish
-        const pausedState = {
-          ...newState,
-          autoConfig: { ...newState.autoConfig, pausedAt: 'publish' as PipelineStage },
-        };
-        await savePipelineState(pausedState);
-        setIsRunning(false);
-        toast.info('Auto-pilot paused — publish requires manual confirmation');
-      } else {
-        // Auto-start next engine in generate mode
-        setEngineMode('generate');
-        setIsRunning(true);
+        const res = await fetch(`/api/content-drafts/${draftId}`)
+        const { data, error } = await res.json()
+        if (cancelled) return
+        if (error) toast.error((error as any).message ?? 'Failed to load draft')
+        if (data) setDraftData(data as Record<string, unknown>)
+      } catch (e) {
+        if (!cancelled) toast.error(e instanceof Error ? e.message : 'Failed to load draft')
       }
+    })()
+    return () => {
+      cancelled = true
     }
+  }, [currentStage, ctx.stageResults.draft?.draftId])
+
+  function handleNavigate(toStage: PipelineStage) {
+    track('pipeline.stage.navigated', { projectId, channelId, from: currentStage, to: toStage })
+    send({ type: 'NAVIGATE', toStage })
+    setEngineMode(null)
   }
 
-  // Navigate to a stage without clearing any results.
-  // The engine will render with existing data; user can regenerate.
-  // Downstream data is only cleared when handleStageComplete fires.
-  async function handleNavigate(targetStage: PipelineStage) {
-    track('pipeline.stage.navigated', {
+  const [pendingRedo, setPendingRedo] = useState<{
+    fromStage: PipelineStage
+    discarded: PipelineStage[]
+  } | null>(null)
+
+  function handleRedoFrom(fromStage: PipelineStage) {
+    const fromIndex = PIPELINE_STAGES.indexOf(fromStage)
+    const discarded = PIPELINE_STAGES.slice(fromIndex + 1).filter((s) => ctx.stageResults[s])
+    if (discarded.length === 0) {
+      send({ type: 'REDO_FROM', fromStage })
+      setEngineMode(null)
+      return
+    }
+    setPendingRedo({ fromStage, discarded })
+  }
+
+  function confirmRedo() {
+    if (!pendingRedo) return
+    track('pipeline.stage.redone', {
       projectId,
       channelId,
-      from: pipelineState.currentStage,
-      to: targetStage,
-      hasDownstreamResults: PIPELINE_STAGES.slice(PIPELINE_STAGES.indexOf(targetStage) + 1).some((s) => !!pipelineState.stageResults[s]),
-    });
-    const newState: PipelineState = {
-      ...pipelineState,
-      currentStage: targetStage,
-    };
-    await savePipelineState(newState);
-    setEngineMode(null);
+      fromStage: pendingRedo.fromStage,
+      discardedStages: pendingRedo.discarded,
+    })
+    send({ type: 'REDO_FROM', fromStage: pendingRedo.fromStage })
+    setEngineMode(null)
+    setPendingRedo(null)
   }
 
-  // Compute the furthest stage that has results (or current if none)
-  function getFurthestStage(): PipelineStage {
-    let furthest = pipelineState.currentStage;
-    for (let i = PIPELINE_STAGES.length - 1; i >= 0; i--) {
-      if (pipelineState.stageResults[PIPELINE_STAGES[i]]) {
-        const next = PIPELINE_STAGES[i + 1];
-        furthest = next ?? PIPELINE_STAGES[i];
-        break;
-      }
-    }
-    return furthest;
+  function handleToggleMode() {
+    track('pipeline.mode.changed', {
+      projectId,
+      channelId,
+      from: ctx.mode,
+      to: ctx.mode === 'auto' ? 'step' : 'auto',
+    })
+    send({ type: 'TOGGLE_AUTO_PILOT' })
   }
 
-  // Handle mode toggle
-  async function handleToggleMode(mode: 'step-by-step' | 'auto') {
-    track('pipeline.mode.changed', { projectId, channelId, from: pipelineState.mode, to: mode });
-    const newState: PipelineState = {
-      ...pipelineState,
-      mode,
-      autoConfig: { ...pipelineState.autoConfig, pausedAt: undefined },
-    };
-    await savePipelineState(newState);
-    if (mode === 'auto') {
-      setEngineMode('generate');
-      setIsRunning(true);
-      toast.info('Auto-pilot activated');
-    } else {
-      setIsRunning(false);
-    }
+  function pipelineStep(): PipelineStep {
+    return currentStage === 'publish' ? 'published' : currentStage
   }
 
-  // Handle pause
-  async function handlePause() {
-    const newState: PipelineState = {
-      ...pipelineState,
-      autoConfig: { ...pipelineState.autoConfig, pausedAt: pipelineState.currentStage },
-    };
-    await savePipelineState(newState);
-    setIsRunning(false);
-    toast.info('Auto-pilot paused');
-  }
-
-  // Handle resume
-  async function handleResume() {
-    const newState: PipelineState = {
-      ...pipelineState,
-      autoConfig: { ...pipelineState.autoConfig, pausedAt: undefined },
-    };
-    await savePipelineState(newState);
-    setEngineMode('generate');
-    setIsRunning(true);
-    toast.info('Auto-pilot resumed');
-  }
-
-  // Fetch pipeline and credit settings on mount
-  useEffect(() => {
-    (async () => {
-      try {
-        const [psRes, csRes] = await Promise.all([
-          fetch('/api/admin/pipeline-settings'),
-          fetch('/api/admin/credit-settings'),
-        ]);
-        const [ps, cs] = await Promise.all([psRes.json(), csRes.json()]);
-        if (ps?.data) setPipelineSettings(ps.data as PipelineSettings);
-        if (cs?.data) setCreditSettings(cs.data as CreditSettings);
-      } catch {
-        // silent — defaults are used
-      }
-    })();
-  }, []);
-
-  // Fetch draft data for Review and Publish stages
-  useEffect(() => {
-    const ctx = buildContext();
-    const stage = pipelineState.currentStage;
-
-    const needsFresh = stage === 'publish' && !publishDraftFetched.current;
-    if ((stage === 'review' || stage === 'publish' || stage === 'assets' || stage === 'preview') && ctx.draftId && (needsFresh || !draftData)) {
-      (async () => {
-        try {
-          const res = await fetch(`/api/content-drafts/${ctx.draftId}`);
-          const { data, error } = await res.json();
-          if (error) {
-            toast.error(error.message || 'Failed to load draft');
-            return;
-          }
-          if (stage === 'publish') publishDraftFetched.current = true;
-          setDraftData(data);
-        } catch (err) {
-          const message = err instanceof Error ? err.message : 'Unknown error';
-          toast.error(`Failed to load draft: ${message}`);
-        }
-      })();
-    }
-    if (stage !== 'publish') publishDraftFetched.current = false;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pipelineState.currentStage, pipelineState.stageResults?.draft]);
-
-  // Map PipelineStage to PipelineStep
-  function getPipelineStep(): PipelineStep {
-    const stage = pipelineState.currentStage;
-    if (stage === 'publish') return 'published';
-    return stage;
-  }
-
-  // Render mode picker (Generate vs Import)
-  function renderModePicker() {
-    const stage = pipelineState.currentStage;
-    const isAutoMode = pipelineState.mode === 'auto';
-
-    // Skip picker for review, preview, and publish (always generate)
-    if (stage === 'review' || stage === 'preview' || stage === 'publish') {
-      return null;
-    }
-
-    // In auto mode, default to generate
-    if (isAutoMode) {
-      return null;
-    }
-
-    return (
-      <Card className="border-blue-500/20 bg-blue-500/5">
-        <CardContent className="py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Mode for {stage}</p>
-              <p className="text-xs text-muted-foreground">
-                Generate fresh or import from library?
-              </p>
+  function renderEngine() {
+    const needsDraftPrefetch = ['review', 'assets', 'preview', 'publish'].includes(currentStage)
+    if (needsDraftPrefetch && ctx.stageResults.draft?.draftId && !draftData) {
+      return (
+        <Card>
+          <CardContent className="py-8">
+            <div className="flex items-center justify-center gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading draft…
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setEngineMode('generate')}
-              >
-                <Sparkles className="h-4 w-4 mr-1" /> Generate Fresh
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setEngineMode('import')}
-              >
-                <Copy className="h-4 w-4 mr-1" /> Import Existing
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // Render active engine
-  function renderActiveEngine() {
-    const ctx = buildContext();
-    const stage = pipelineState.currentStage;
-
-    // Show mode picker only when the stage has no results yet. Revisiting a
-    // completed stage drops straight into the engine so its hydration effect
-    // can restore the saved ideas/research/draft from the linked session id.
-    const hasResults = !!pipelineState.stageResults[stage];
-    if (!engineMode && pipelineState.mode === 'step-by-step' && !hasResults) {
-      const picker = renderModePicker();
-      if (picker) return picker;
+          </CardContent>
+        </Card>
+      )
     }
 
-    // Auto-set mode for stages without import
-    const mode = engineMode || (stage === 'review' || stage === 'preview' || stage === 'publish' ? 'generate' : 'generate');
-    const showBackToOptions = engineMode !== null && stage !== 'review' && stage !== 'preview' && stage !== 'publish';
+    const canImport = IMPORTABLE_STAGES.includes(currentStage)
+    if (ctx.mode === 'step' && canImport && !engineMode && !ctx.stageResults[currentStage]) {
+      return <ModePicker onPick={setEngineMode} stage={currentStage} />
+    }
 
-    const handleBack = (targetStage?: PipelineStage) => {
-      if (targetStage) {
-        handleNavigate(targetStage);
-      } else {
-        const currentIndex = PIPELINE_STAGES.indexOf(stage);
-        if (currentIndex > 0) {
-          handleNavigate(PIPELINE_STAGES[currentIndex - 1]);
-        }
-      }
-    };
+    const mode: 'generate' | 'import' = engineMode ?? 'generate'
 
-    const backBar = showBackToOptions ? (
-      <div className="mb-3 flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-xs text-muted-foreground"
-          onClick={() => setEngineMode(null)}
-        >
-          <ArrowLeft className="h-3 w-3 mr-1" /> Back to options
-        </Button>
-        <Badge variant="outline" className="text-[10px]">
-          {engineMode === 'generate' ? 'Generating' : 'Importing'}
-        </Badge>
-      </div>
-    ) : null;
+    const legacyContext = buildLegacyContext(ctx)
+    const bridge = (stage: PipelineStage) => ({
+      channelId,
+      context: legacyContext,
+      onStageProgress: (partial: Record<string, unknown>) =>
+        actorRef.send({ type: 'STAGE_PROGRESS', stage, partial }),
+    })
 
-    switch (stage) {
+    switch (currentStage) {
       case 'brainstorm':
         return (
-          <>{backBar}<BrainstormEngine
-            mode={mode as 'generate' | 'import'}
-            channelId={channelId}
-            context={ctx}
-            onComplete={handleStageComplete}
-            onStageProgress={handleStageProgress}
-            onBack={handleBack}
-          /></>
-        );
-
+          <BrainstormEngine
+            mode={mode}
+            {...bridge('brainstorm')}
+            onComplete={(r: any) => actorRef.send({ type: 'BRAINSTORM_COMPLETE', result: r })}
+          />
+        )
       case 'research':
         return (
-          <>{backBar}<ResearchEngine
-            mode={mode as 'generate' | 'import'}
-            channelId={channelId}
-            context={ctx}
-            onComplete={handleStageComplete}
-            onBack={handleBack}
-            onStageProgress={handleStageProgress}
-          /></>
-        );
-
+          <ResearchEngine
+            mode={mode}
+            {...bridge('research')}
+            onComplete={(r: any) => actorRef.send({ type: 'RESEARCH_COMPLETE', result: r })}
+            onBack={() => handleNavigate('brainstorm')}
+          />
+        )
       case 'draft':
         return (
-          <>{backBar}<DraftEngine
-            mode={mode as 'generate' | 'import'}
-            channelId={channelId}
-            context={ctx}
-            creditSettings={creditSettings}
-            onComplete={handleStageComplete}
-            onBack={handleBack}
-            onStageProgress={handleStageProgress}
-          /></>
-        );
-
+          <DraftEngine
+            mode={mode}
+            {...bridge('draft')}
+            onComplete={(r: any) => actorRef.send({ type: 'DRAFT_COMPLETE', result: r })}
+            onBack={() => handleNavigate('research')}
+          />
+        )
       case 'review':
-        if (!draftData || !ctx.draftId) {
-          return (
-            <Card>
-              <CardContent className="py-8">
-                <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading draft...
-                </div>
-              </CardContent>
-            </Card>
-          );
-        }
         return (
           <ReviewEngine
-            channelId={channelId}
-            context={ctx}
-            draftId={ctx.draftId}
+            draftId={ctx.stageResults.draft?.draftId || ''}
             draft={draftData as any}
-            pipelineSettings={pipelineSettings}
-            onComplete={handleStageComplete}
-            onBack={handleBack}
-            onDraftUpdated={(draft) => setDraftData(draft)}
-            onStageProgress={handleStageProgress}
+            {...(bridge('review') as any)}
+            onComplete={(r: any) => actorRef.send({ type: 'REVIEW_COMPLETE', result: r })}
+            onBack={() => handleNavigate('draft')}
           />
-        );
-
+        )
       case 'assets':
-        if (!draftData || !ctx.draftId) {
-          return (
-            <Card>
-              <CardContent className="py-8">
-                <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading draft...
-                </div>
-              </CardContent>
-            </Card>
-          );
-        }
         return (
-          <>{backBar}<AssetsEngine
-            mode={mode as 'generate' | 'import'}
-            channelId={channelId}
-            context={ctx}
-            draftId={ctx.draftId}
-            draftStatus={draftData.status as string}
-            onComplete={handleStageComplete}
-            onBack={handleBack}
-          /></>
-        );
-
+          <AssetsEngine
+            mode={mode}
+            draftId={ctx.stageResults.draft?.draftId}
+            draftStatus={draftData?.status as string | undefined}
+            {...bridge('assets')}
+            onComplete={(r: any) => actorRef.send({ type: 'ASSETS_COMPLETE', result: r })}
+            onBack={() => handleNavigate('review')}
+          />
+        )
       case 'preview':
-        if (!ctx.draftId) {
-          return (
-            <Card>
-              <CardContent className="py-8">
-                <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading draft...
-                </div>
-              </CardContent>
-            </Card>
-          );
-        }
         return (
           <PreviewEngine
-            channelId={channelId}
-            context={ctx}
-            draftId={ctx.draftId}
-            onComplete={handleStageComplete}
-            onBack={handleBack}
+            draftId={ctx.stageResults.draft?.draftId || ''}
+            {...(bridge('preview') as any)}
+            onComplete={(r: any) => actorRef.send({ type: 'PREVIEW_COMPLETE', result: r })}
+            onBack={() => handleNavigate('assets')}
           />
-        );
-
+        )
       case 'publish':
-        if (!draftData || !ctx.draftId) {
-          return (
-            <Card>
-              <CardContent className="py-8">
-                <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading draft...
-                </div>
-              </CardContent>
-            </Card>
-          );
-        }
         return (
           <PublishEngine
-            channelId={channelId}
-            context={ctx}
-            draftId={ctx.draftId}
+            draftId={ctx.stageResults.draft?.draftId || ''}
             draft={draftData as any}
-            assetCount={ctx.assetIds?.length ?? 0}
-            onComplete={handleStageComplete}
-            onBack={handleBack}
+            {...(bridge('publish') as any)}
+            onComplete={(r: any) => actorRef.send({ type: 'PUBLISH_COMPLETE', result: r })}
+            onBack={() => handleNavigate('preview')}
           />
-        );
-
+        )
       default:
-        return null;
+        return null
     }
   }
 
-  const ctx = buildContext();
+  function buildLegacyContext(c: typeof ctx): Record<string, unknown> {
+    return {
+      projectId: c.projectId,
+      channelId: c.channelId,
+      ideaId: c.stageResults.brainstorm?.ideaId,
+      ideaTitle: c.stageResults.brainstorm?.ideaTitle,
+      researchSessionId: c.stageResults.research?.researchSessionId,
+      researchLevel: c.stageResults.research?.researchLevel,
+      draftId: c.stageResults.draft?.draftId,
+      draftTitle: c.stageResults.draft?.draftTitle,
+      creditSettings: c.creditSettings,
+      pipelineSettings: c.pipelineSettings,
+    }
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Project Header */}
-      <div>
-        {editingTitle ? (
-          <input
-            autoFocus
-            className="text-2xl font-bold bg-transparent border-b-2 border-primary outline-none w-full"
-            value={titleDraft}
-            onChange={(e) => setTitleDraft(e.target.value)}
-            onBlur={() => {
-              setEditingTitle(false);
-              if (titleDraft.trim() && titleDraft !== projectTitle) {
-                void saveProjectTitle(titleDraft.trim());
-              } else {
-                setTitleDraft(projectTitle);
-              }
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                (e.target as HTMLInputElement).blur();
-              }
-              if (e.key === 'Escape') {
-                setTitleDraft(projectTitle);
-                setEditingTitle(false);
-              }
-            }}
-          />
-        ) : (
-          <h2
-            className="text-2xl font-bold cursor-pointer hover:text-primary/80 transition-colors"
-            title="Click to edit"
-            onClick={() => { setTitleDraft(projectTitle); setEditingTitle(true); }}
-          >
-            {projectTitle}
-          </h2>
-        )}
-        <p className="text-sm text-muted-foreground mt-1">
-          Project ID: <code className="text-xs bg-muted px-2 py-1 rounded">{projectId}</code>
-        </p>
+    <PipelineActorProvider value={actorRef}>
+      <div className="space-y-6">
+        <div>
+          {editingTitle ? (
+            <input
+              autoFocus
+              className="text-2xl font-bold bg-transparent border-b-2 border-primary outline-none w-full"
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={() => {
+                setEditingTitle(false)
+                if (titleDraft.trim() && titleDraft !== ctx.projectTitle)
+                  void saveTitle(titleDraft.trim())
+                else setTitleDraft(ctx.projectTitle)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                if (e.key === 'Escape') {
+                  setTitleDraft(ctx.projectTitle)
+                  setEditingTitle(false)
+                }
+              }}
+            />
+          ) : (
+            <h2
+              className="text-2xl font-bold cursor-pointer hover:text-primary/80 transition-colors"
+              title="Click to edit"
+              onClick={() => {
+                setTitleDraft(ctx.projectTitle)
+                setEditingTitle(true)
+              }}
+            >
+              {ctx.projectTitle}
+            </h2>
+          )}
+          <p className="text-sm text-muted-foreground mt-1">
+            Project ID: <code className="text-xs bg-muted px-2 py-1 rounded">{projectId}</code>
+          </p>
+        </div>
+
+        <AutoModeControls
+          mode={ctx.mode}
+          isPaused={subState === 'paused'}
+          onToggle={handleToggleMode}
+          onPause={() => send({ type: 'PAUSE' })}
+          onResume={() => send({ type: 'RESUME' })}
+        />
+
+        <Separator />
+
+        <PipelineStages
+          currentStep={pipelineStep()}
+          channelId={channelId}
+          draftId={ctx.stageResults.draft?.draftId}
+          projectId={projectId}
+          projectTitle={ctx.projectTitle}
+          ideaTitle={ctx.stageResults.brainstorm?.ideaTitle}
+          brainstormSessionId={ctx.stageResults.brainstorm?.brainstormSessionId}
+          researchSessionId={ctx.stageResults.research?.researchSessionId}
+          onStepClick={(step) => {
+            const stage: PipelineStage =
+              step === 'published' ? 'publish' : (step as PipelineStage)
+            if (stage !== currentStage && ctx.stageResults[stage]) handleNavigate(stage)
+          }}
+        />
+
+        <div className="space-y-2">
+          {PIPELINE_STAGES.map((stage) => (
+            <CompletedStageSummary
+              key={stage}
+              stage={stage}
+              stageResults={ctx.stageResults}
+              currentStage={currentStage}
+              onNavigate={handleNavigate}
+              onRedoFrom={handleRedoFrom}
+            />
+          ))}
+        </div>
+
+        <Separator />
+
+        {renderEngine()}
+
+        <AlertDialog open={!!pendingRedo} onOpenChange={(o) => !o && setPendingRedo(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Redo from "{pendingRedo?.fromStage}"?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will discard the following completed stages:{' '}
+                <strong>{pendingRedo?.discarded.join(', ')}</strong>. The
+                "{pendingRedo?.fromStage}" result itself is preserved until you
+                re-complete it. This cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmRedo}>Discard and redo</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
+    </PipelineActorProvider>
+  )
+}
 
-      {/* Auto Mode Controls */}
-      <AutoModeControls
-        pipelineState={pipelineState}
-        isRunning={isRunning}
-        onToggleMode={handleToggleMode}
-        onPause={handlePause}
-        onResume={handleResume}
-      />
-
-      <Separator />
-
-      {/* Pipeline Stepper */}
-      <PipelineStages
-        currentStep={getPipelineStep()}
-        channelId={channelId}
-        draftId={ctx.draftId}
-        projectId={projectId}
-        projectTitle={projectTitle}
-        ideaTitle={ctx.ideaTitle}
-        brainstormSessionId={ctx.brainstormSessionId}
-        researchSessionId={ctx.researchSessionId}
-        onStepClick={(step) => {
-          const stage: PipelineStage = step === 'published' ? 'publish' : step;
-          if (stage !== pipelineState.currentStage && pipelineState.stageResults[stage]) {
-            handleNavigate(stage);
-          }
-        }}
-      />
-
-      {/* Completed Stage Summaries */}
-      <div className="space-y-2">
-        {PIPELINE_STAGES.map((stage) => (
-          <CompletedStageSummary
-            key={stage}
-            stage={stage}
-            stageResults={pipelineState.stageResults}
-            currentStage={pipelineState.currentStage}
-            onNavigate={handleNavigate}
-          />
-        ))}
-      </div>
-
-      <Separator />
-
-      {/* "Continue to furthest" banner when user navigated back */}
-      {(() => {
-        const furthest = getFurthestStage();
-        const furthestIdx = PIPELINE_STAGES.indexOf(furthest);
-        const currentIdx = PIPELINE_STAGES.indexOf(pipelineState.currentStage);
-        if (furthestIdx > currentIdx) {
-          return (
-            <div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-2">
-              <span className="text-sm text-amber-600 dark:text-amber-400">
-                You have progress up to <strong>{furthest}</strong>. Regenerating here will discard downstream stages.
-              </span>
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleNavigate(furthest)}>
-                Continue to {furthest}
-              </Button>
-            </div>
-          );
-        }
-        return null;
-      })()}
-
-      {/* Active Engine */}
-      {renderActiveEngine()}
-    </div>
-  );
+function ModePicker({
+  onPick,
+  stage,
+}: {
+  onPick: (m: 'generate' | 'import') => void
+  stage: PipelineStage
+}) {
+  return (
+    <Card className="border-blue-500/20 bg-blue-500/5">
+      <CardContent className="py-4 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium">Mode for {stage}</p>
+          <p className="text-xs text-muted-foreground">
+            Generate fresh or import from library?
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => onPick('generate')}>
+            <Sparkles className="h-4 w-4 mr-1" /> Generate Fresh
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => onPick('import')}>
+            <Copy className="h-4 w-4 mr-1" /> Import Existing
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
 }
