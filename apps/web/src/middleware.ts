@@ -98,13 +98,15 @@ p  { margin:0 0 10px; color:#8b98b0; font-size:13.5px; line-height:1.55; }
 
 const MANAGER_ROLES = new Set(['owner', 'admin', 'support', 'billing', 'readonly']);
 
-async function isManagerViaRest(userId: string): Promise<boolean> {
+// Uses the user's own JWT + anon key so RLS (managers_select_own) handles
+// auth — no service_role key needed, works in Edge Runtime on Vercel.
+async function isManagerViaRest(userId: string, jwt: string): Promise<boolean> {
   try {
     const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/managers?select=role&user_id=eq.${userId}&is_active=eq.true&limit=1`;
     const res = await fetch(url, {
       headers: {
-        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        Authorization: `Bearer ${jwt}`,
       },
     });
     if (!res.ok) return false;
@@ -223,7 +225,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(adminPath('/login'), request.url));
   }
 
-  if (!await isManagerViaRest(user.id)) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token || !await isManagerViaRest(user.id, session.access_token)) {
     return NextResponse.redirect(new URL(adminPath('/login?error=unauthorized'), request.url));
   }
 
