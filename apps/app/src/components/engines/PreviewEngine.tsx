@@ -18,20 +18,12 @@ import {
   Loader2, ArrowRight, Eye, X, Plus, ImageIcon, AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useSelector } from '@xstate/react';
+import { usePipelineActor } from '@/hooks/usePipelineActor';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { markdownToHtml } from '@/lib/utils';
-import type { PipelineContext, PipelineStage, PreviewResult, StageResult } from './types';
-
-/* ── Types ── */
-
-interface PreviewEngineProps {
-  channelId: string;
-  context: PipelineContext;
-  draftId: string;
-  onComplete: (result: StageResult) => void;
-  onBack?: (targetStage?: PipelineStage) => void;
-}
+import type { PipelineContext, PipelineStage, PreviewResult } from './types';
 
 interface ContentAsset {
   id: string;
@@ -239,19 +231,55 @@ function composedHtmlFromMarkdown(
 
 /* ── Component ── */
 
-export function PreviewEngine({
-  channelId,
-  context,
-  draftId,
-  onComplete,
-  onBack,
-}: PreviewEngineProps) {
+/* PreviewEngine reads everything from the pipeline actor — no pipeline-state props.
+ * The component is rendered by PipelineOrchestrator only; standalone usage would
+ * require <StandaloneEngineHost stage="preview"> like ReviewEngine/AssetsEngine. */
+export function PreviewEngine() {
+  const actor = usePipelineActor();
+  const channelId = useSelector(actor, (s) => s.context.channelId);
+  const projectId = useSelector(actor, (s) => s.context.projectId);
+  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
+  const researchResult  = useSelector(actor, (s) => s.context.stageResults.research);
+  const draftResult     = useSelector(actor, (s) => s.context.stageResults.draft);
+  const reviewResult    = useSelector(actor, (s) => s.context.stageResults.review);
+  const assetsResult    = useSelector(actor, (s) => s.context.stageResults.assets);
+  const draftId = draftResult?.draftId ?? '';
+
+  const trackerContext: PipelineContext = {
+    channelId,
+    projectId,
+    ideaId: brainstormResult?.ideaId,
+    ideaTitle: brainstormResult?.ideaTitle,
+    ideaVerdict: brainstormResult?.ideaVerdict,
+    ideaCoreTension: brainstormResult?.ideaCoreTension,
+    brainstormSessionId: brainstormResult?.brainstormSessionId,
+    researchSessionId: researchResult?.researchSessionId,
+    researchLevel: researchResult?.researchLevel,
+    researchPrimaryKeyword: researchResult?.primaryKeyword,
+    researchSecondaryKeywords: researchResult?.secondaryKeywords,
+    researchSearchIntent: researchResult?.searchIntent,
+    draftId,
+    draftTitle: draftResult?.draftTitle,
+    personaId: draftResult?.personaId,
+    personaName: draftResult?.personaName,
+    personaSlug: draftResult?.personaSlug,
+    personaWpAuthorId: draftResult?.personaWpAuthorId,
+    reviewScore: reviewResult?.score,
+    reviewVerdict: reviewResult?.verdict,
+    assetIds: assetsResult?.assetIds,
+    featuredImageUrl: assetsResult?.featuredImageUrl,
+  };
+
+  function navigate(toStage?: PipelineStage) {
+    actor.send({ type: 'NAVIGATE', toStage: toStage ?? 'assets' });
+  }
+
   // Fetch state
   const [busy, setBusy] = useState(true);
   const [draft, setDraft] = useState<DraftData | null>(null);
   const [assets, setAssets] = useState<ContentAsset[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const tracker = usePipelineTracker('preview', context);
+  const tracker = usePipelineTracker('preview', trackerContext);
 
   // Draft data
   const [markdown, setMarkdown] = useState('');
@@ -464,7 +492,7 @@ export function PreviewEngine({
       seoOverrides: result.seoOverrides,
     });
 
-    onComplete(result);
+    actor.send({ type: 'PREVIEW_COMPLETE', result });
   };
 
   /* ── Render ── */
@@ -472,7 +500,7 @@ export function PreviewEngine({
   if (loadError) {
     return (
       <div className="space-y-4">
-        <ContextBanner stage="preview" context={context} onBack={onBack} />
+        <ContextBanner stage="preview" context={trackerContext} onBack={navigate} />
         <Card className="border-destructive">
           <CardContent className="pt-6">
             <div className="flex items-start gap-3">
@@ -491,7 +519,7 @@ export function PreviewEngine({
   if (busy || !draft) {
     return (
       <div className="space-y-4">
-        <ContextBanner stage="preview" context={context} onBack={onBack} />
+        <ContextBanner stage="preview" context={trackerContext} onBack={navigate} />
         <Card>
           <CardContent className="pt-6 flex items-center gap-2 text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -504,7 +532,7 @@ export function PreviewEngine({
 
   return (
     <div className="space-y-4">
-      <ContextBanner stage="preview" context={context} onBack={onBack} />
+      <ContextBanner stage="preview" context={trackerContext} onBack={navigate} />
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Left Panel: Live Preview (larger) */}
@@ -693,7 +721,7 @@ export function PreviewEngine({
 
           {/* Action Buttons */}
           <div className="flex gap-2 sticky bottom-4">
-            <Button variant="outline" onClick={() => onBack?.('assets')} size="sm">
+            <Button variant="outline" onClick={() => navigate('assets')} size="sm">
               Back
             </Button>
             <Button onClick={handleApprove} size="sm" className="flex-1 gap-2">

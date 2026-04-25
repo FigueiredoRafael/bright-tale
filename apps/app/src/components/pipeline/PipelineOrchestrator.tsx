@@ -301,14 +301,12 @@ function OrchestratorInner({
 
     const mode: 'generate' | 'import' = engineMode ?? 'generate'
 
-    // TODO(pipeline-refactor-v2): PreviewEngine and PublishEngine still consume
-    // the legacy onComplete/context/channelId prop surface. The `buildLegacyContext`
-    // helper and `bridge<LegacyStage>` function below exist solely for them.
-    // When those engines are refactored (out of scope for this PR, see spec
-    // §Out of Scope), delete this block, `buildLegacyContext`, and the `bridge`
-    // helper, and simplify the preview/publish cases to `<PreviewEngine draft={draftData} />`
-    // and `<PublishEngine draft={draftData} />`.
-    type LegacyStage = 'preview' | 'publish'
+    // TODO(pipeline-refactor-v2): PublishEngine still consumes the legacy
+    // channelId/context/onComplete prop surface. The `buildLegacyContext`
+    // helper and `bridge<LegacyStage>` function below exist solely for it.
+    // Wave 4.2 deletes this block + helper + simplifies publish to
+    // `<PublishEngine draft={draftData} />`.
+    type LegacyStage = 'publish'
     const legacyContext = buildLegacyContext(ctx)
     const bridge = <S extends LegacyStage>(stage: S) => ({
       channelId,
@@ -329,14 +327,7 @@ function OrchestratorInner({
       case 'assets':
         return <AssetsEngine mode={mode} draft={draftData} />
       case 'preview':
-        return (
-          <PreviewEngine
-            draftId={ctx.stageResults.draft?.draftId || ''}
-            {...(bridge('preview') as any)}
-            onComplete={(r: any) => actorRef.send({ type: 'PREVIEW_COMPLETE', result: r })}
-            onBack={() => handleNavigate('assets')}
-          />
-        )
+        return <PreviewEngine />
       case 'publish':
         return (
           <PublishEngine
