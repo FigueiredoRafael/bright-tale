@@ -58,7 +58,7 @@ Enfileira o pipeline de produção completo (canonical-core + produce + review).
 
 Response `202 { draftId, status: "queued" }`.
 
-Créditos: **0 se provider=ollama**; senão `FORMAT_COSTS[type] + 80` (canonical core).
+**Credit cost:** 0 if provider=ollama; otherwise `calculateDraftCost(type, creditSettings) + costCanonicalCore`. The helper maps format types (blog, video, shorts, podcast) to their configured costs via the `credit_settings` table.
 
 ## GET `/:id/events`
 
