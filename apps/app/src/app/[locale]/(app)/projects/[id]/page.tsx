@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { useRouter } from '@/i18n/navigation';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { PipelineOrchestrator } from '@/components/pipeline/PipelineOrchestrator';
+import { PipelineSettingsProvider } from '@/providers/PipelineSettingsProvider';
 import { ConnectChannelEmptyState } from '@/components/projects/ConnectChannelEmptyState';
 
 interface Channel {
@@ -95,12 +96,14 @@ export default function ProjectPipelinePage() {
           <ArrowLeft className="h-3 w-3" /> Back to projects
         </button>
       </div>
-      <PipelineOrchestrator
-        projectId={projectId}
-        channelId={channelId}
-        projectTitle={(project.title as string) ?? 'Untitled Project'}
-        initialPipelineState={project.pipeline_state_json as Record<string, unknown> | undefined}
-      />
+      <PipelineSettingsProvider>
+        <PipelineOrchestrator
+          projectId={projectId}
+          channelId={channelId}
+          projectTitle={(project.title as string) ?? 'Untitled Project'}
+          initialPipelineState={project.pipeline_state_json as Record<string, unknown> | undefined}
+        />
+      </PipelineSettingsProvider>
     </div>
   );
 }
