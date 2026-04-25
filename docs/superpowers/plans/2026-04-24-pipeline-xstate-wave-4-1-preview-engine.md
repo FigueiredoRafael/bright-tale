@@ -56,7 +56,7 @@ The test mounts `PreviewEngine` inside a `<PipelineActorProvider>` whose actor h
 ```typescript
 // apps/app/src/components/engines/__tests__/PreviewEngine.test.tsx
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createActor } from 'xstate'
 import React from 'react'
@@ -158,18 +158,19 @@ describe('PreviewEngine', () => {
 
     await user.click(approveBtn)
 
-    await waitFor(() => {
-      const preview = actor.getSnapshot().context.stageResults.preview
-      expect(preview).toBeDefined()
-      expect(preview!.imageMap).toMatchObject({
-        featured_image: 'asset-feat',
-        body_section_1: 'asset-1',
-        body_section_2: 'asset-2',
-      })
-      expect(preview!.categories).toEqual(['cat-1'])
-      expect(preview!.tags).toEqual(['tag-1'])
-      expect(preview!.seoOverrides).toEqual({ title: 'SEO Title', slug: 'seo-slug', metaDescription: 'SEO desc' })
+    // XState v5 `assign` actions are synchronous; `await user.click(...)` already
+    // flushes React updates + microtasks, so the snapshot is settled here. Match
+    // the BrainstormEngine.test.tsx convention — no `waitFor` wrapper.
+    const preview = actor.getSnapshot().context.stageResults.preview
+    expect(preview).toBeDefined()
+    expect(preview!.imageMap).toMatchObject({
+      featured_image: 'asset-feat',
+      body_section_1: 'asset-1',
+      body_section_2: 'asset-2',
     })
+    expect(preview!.categories).toEqual(['cat-1'])
+    expect(preview!.tags).toEqual(['tag-1'])
+    expect(preview!.seoOverrides).toEqual({ title: 'SEO Title', slug: 'seo-slug', metaDescription: 'SEO desc' })
   })
 
   it('dispatches NAVIGATE to assets when Back is clicked', async () => {
@@ -180,10 +181,8 @@ describe('PreviewEngine', () => {
     const backBtn = screen.getByRole('button', { name: /^back$/i })
     await user.click(backBtn)
 
-    await waitFor(() => {
-      // NAVIGATE to 'assets' rewinds the machine to the assets state.
-      expect(actor.getSnapshot().value).toMatchObject({ assets: expect.anything() })
-    })
+    // NAVIGATE to 'assets' rewinds the machine synchronously.
+    expect(actor.getSnapshot().value).toMatchObject({ assets: expect.anything() })
   })
 })
 ```

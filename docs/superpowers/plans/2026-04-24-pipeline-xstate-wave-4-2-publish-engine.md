@@ -55,7 +55,7 @@ The test mounts `PublishEngine` inside `<PipelineActorProvider>` whose actor sit
 ```typescript
 // apps/app/src/components/engines/__tests__/PublishEngine.test.tsx
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createActor } from 'xstate'
 import React from 'react'
@@ -173,7 +173,10 @@ describe('PublishEngine', () => {
 
     await user.click(screen.getByRole('button', { name: /publish now/i }))
 
-    await waitFor(() => expect(capturedBodies.length).toBe(1))
+    // `await user.click(...)` already flushes React renders; the PublishProgress
+    // mock captures `publishBody` synchronously during render. Match
+    // BrainstormEngine.test.tsx convention — no `waitFor` wrapper.
+    expect(capturedBodies.length).toBe(1)
     const body = capturedBodies[0]!
     expect(body.draftId).toBe('draft-1')
     expect(body.channelId).toBe('ch-1')
@@ -190,15 +193,14 @@ describe('PublishEngine', () => {
     const { actor } = mountAtPublishStage()
 
     await user.click(screen.getByRole('button', { name: /publish now/i }))
-    await waitFor(() => expect(lastOnComplete).not.toBeNull())
+    expect(lastOnComplete).not.toBeNull()
     lastOnComplete!({ wordpressPostId: 999, publishedUrl: 'https://wp/example' })
 
-    await waitFor(() => {
-      const publish = actor.getSnapshot().context.stageResults.publish
-      expect(publish).toBeDefined()
-      expect(publish!.wordpressPostId).toBe(999)
-      expect(publish!.publishedUrl).toBe('https://wp/example')
-    })
+    // `actor.send(...)` inside lastOnComplete is synchronous (XState v5 `assign`).
+    const publish = actor.getSnapshot().context.stageResults.publish
+    expect(publish).toBeDefined()
+    expect(publish!.wordpressPostId).toBe(999)
+    expect(publish!.publishedUrl).toBe('https://wp/example')
   })
 
   it('hasAssets is false when assetIds is empty', () => {
