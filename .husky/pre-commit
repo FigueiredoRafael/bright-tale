@@ -4,6 +4,12 @@
 
 set -e
 
+# Git hooks don't inherit the interactive shell's nvm env — source it explicitly.
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+# shellcheck source=/dev/null
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use
+[ -f ".nvmrc" ] && nvm use --silent 2>/dev/null || true
+
 echo "→ Typecheck all workspaces..."
 npm run typecheck
 
