@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
-# Pre-commit: typecheck + lint to catch build-breaking issues before push.
-# Tests and full builds are left to CI — keeping this hook fast reduces --no-verify temptation.
+# Pre-commit: build shared → typecheck → lint.
+#
+# "Build shared first" mirrors the Vercel build pipeline (build.sh compiles
+# packages/shared to dist before the API is type-checked). Without this step,
+# Zod inference differences between local and Vercel can let broken types slip
+# through locally and only blow up in the Vercel build.
+#
+# Tests and full app builds are left to GitHub Actions — keeping this hook
+# fast to reduce --no-verify temptation.
 
 set -e
+
+echo "→ Building shared package (Vercel parity)..."
+npm run build -w packages/shared
 
 echo "→ Typecheck all workspaces..."
 npm run typecheck
