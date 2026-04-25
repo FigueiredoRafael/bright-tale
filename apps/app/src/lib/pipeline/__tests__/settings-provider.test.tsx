@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
 import { PipelineSettingsProvider, usePipelineSettings } from '@/providers/PipelineSettingsProvider'
+import { DEFAULT_PIPELINE_SETTINGS } from '@/components/engines/types'
 
 vi.stubGlobal('fetch', vi.fn())
 
@@ -71,5 +72,21 @@ describe('PipelineSettingsProvider', () => {
       </PipelineSettingsProvider>
     )
     expect(screen.getByText('loading')).toBeTruthy()
+  })
+
+  it('falls back to defaults when API returns an error envelope', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      json: async () => ({ data: null, error: { code: 'SERVER_ERROR', message: 'DB failed' } }),
+    } as Response)
+    render(
+      <PipelineSettingsProvider>
+        <TestConsumer />
+      </PipelineSettingsProvider>
+    )
+    // isLoaded becomes true (finally runs) and defaults are kept
+    await waitFor(() => expect(screen.getByTestId('approve-score')).toBeTruthy())
+    expect(screen.getByTestId('approve-score').textContent).toBe(
+      String(DEFAULT_PIPELINE_SETTINGS.reviewApproveScore)
+    )
   })
 })
