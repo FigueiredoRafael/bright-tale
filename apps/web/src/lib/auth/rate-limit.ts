@@ -54,6 +54,11 @@ class MemoryStore implements RateLimitStore {
       return next
     }
     bucket.count += 1
+    // Punitive extension: every attempt while blocked resets the full window,
+    // making brute-force increasingly expensive.
+    if (bucket.count > 1) {
+      bucket.resetAt = now + windowMs
+    }
     return bucket
   }
 }

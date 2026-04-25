@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react'
 import { AdminLogin } from '@tn-figueiredo/admin/login'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { adminPath } from '@/lib/admin-path'
 import * as actions from '@/lib/auth/admin-actions'
 import { RateLimitBanner } from './RateLimitBanner'
@@ -20,14 +20,22 @@ const THEME = {
 } as const
 
 function LoginForm() {
+  const router = useRouter()
   const params = useSearchParams()
   const errorParam = params.get('error') ?? undefined
   const retry = Number(params.get('retry') ?? 0)
   const isRateLimited = errorParam === 'rate_limited'
-  // When rate-limited, don't pass the error down to AdminLogin — the
-  // banner handles the messaging and the form's own error panel would be
-  // confusing on top of the countdown.
   const authError = isRateLimited ? undefined : errorParam
+
+  async function handleSignIn(input: { email: string; password: string }) {
+    const result = await actions.signInWithPassword(input)
+    if (!result.ok && result.error === 'rate_limited' && 'retryAfter' in result) {
+      router.push(adminPath(`/login?error=rate_limited&retry=${result.retryAfter}`))
+      return result
+    }
+    return result
+  }
+
   return (
     <>
       {/*
@@ -56,7 +64,7 @@ function LoginForm() {
       */}
       <AdminLogin
         actions={{
-          signInWithPassword: actions.signInWithPassword,
+          signInWithPassword: handleSignIn,
           // Required by external component type; our impl is a no-op
           // rejector (see admin-actions.ts). The CSS above hides the
           // visible button so the user never sees it.
