@@ -29,12 +29,18 @@ echo "=== Bundling API server with esbuild (resolves @/ path aliases) ==="
 # We pre-bundle src/index.ts into src/bundle.js so all @/ imports become
 # relative paths. api/index.ts then imports src/bundle.js (plain JS) and
 # @vercel/node follows that import without needing to resolve any aliases.
+#
+# --alias:@/ must come BEFORE --packages=external: esbuild processes aliases
+# first, converting @/lib/foo → absolute path (not a package name), so
+# --packages=external never sees it as external. Without --alias, esbuild
+# treats @/lib/* as a scoped npm package and skips tsconfig path resolution.
 "$REPO_ROOT/node_modules/.bin/esbuild" \
   "$REPO_ROOT/apps/api/src/index.ts" \
   --bundle \
   --platform=node \
   --format=esm \
   --packages=external \
+  "--alias:@/=$REPO_ROOT/apps/api/src/" \
   --tsconfig="$REPO_ROOT/apps/api/tsconfig.json" \
   --outfile="$REPO_ROOT/apps/api/src/bundle.js"
 
