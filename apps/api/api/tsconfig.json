@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["../src/*"],
+      "@brighttale/shared": ["../../../packages/shared/src"],
+      "@brighttale/shared/*": ["../../../packages/shared/src/*"]
+    }
+  }
+}
