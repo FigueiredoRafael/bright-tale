@@ -27,16 +27,22 @@ const DEFAULTS = {
   cost_podcast: 150,
   cost_canonical_core: 80,
   cost_review: 20,
+  cost_research_surface: 60,
+  cost_research_medium: 100,
+  cost_research_deep: 180,
 }
 
 function mapRow(row: Record<string, unknown>) {
   return {
-    costBlog: row.cost_blog ?? DEFAULTS.cost_blog,
-    costVideo: row.cost_video ?? DEFAULTS.cost_video,
-    costShorts: row.cost_shorts ?? DEFAULTS.cost_shorts,
-    costPodcast: row.cost_podcast ?? DEFAULTS.cost_podcast,
-    costCanonicalCore: row.cost_canonical_core ?? DEFAULTS.cost_canonical_core,
-    costReview: row.cost_review ?? DEFAULTS.cost_review,
+    costBlog:            row.cost_blog            ?? DEFAULTS.cost_blog,
+    costVideo:           row.cost_video           ?? DEFAULTS.cost_video,
+    costShorts:          row.cost_shorts          ?? DEFAULTS.cost_shorts,
+    costPodcast:         row.cost_podcast         ?? DEFAULTS.cost_podcast,
+    costCanonicalCore:   row.cost_canonical_core  ?? DEFAULTS.cost_canonical_core,
+    costReview:          row.cost_review          ?? DEFAULTS.cost_review,
+    costResearchSurface: row.cost_research_surface ?? DEFAULTS.cost_research_surface,
+    costResearchMedium:  row.cost_research_medium  ?? DEFAULTS.cost_research_medium,
+    costResearchDeep:    row.cost_research_deep    ?? DEFAULTS.cost_research_deep,
   }
 }
 
@@ -67,6 +73,9 @@ export async function adminCreditSettingsRoutes(app: FastifyInstance) {
     if (body.costPodcast !== undefined) update.cost_podcast = body.costPodcast
     if (body.costCanonicalCore !== undefined) update.cost_canonical_core = body.costCanonicalCore
     if (body.costReview !== undefined) update.cost_review = body.costReview
+    if (body.costResearchSurface !== undefined) update.cost_research_surface = body.costResearchSurface
+    if (body.costResearchMedium  !== undefined) update.cost_research_medium  = body.costResearchMedium
+    if (body.costResearchDeep    !== undefined) update.cost_research_deep    = body.costResearchDeep
 
     const { data, error } = await sb
       .from('credit_settings')
