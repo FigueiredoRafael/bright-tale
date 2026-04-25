@@ -563,10 +563,10 @@ describe('Edge cases and error scenarios', () => {
     // In route handler: if (!draft) throw ApiError(404, 'Draft not found')
   });
 
-  it('rejects publish when configId is invalid UUID', () => {
+  it('rejects publish when channelId is invalid UUID', () => {
     const input = {
       draftId: '550e8400-e29b-41d4-a716-446655440000',
-      configId: 'not-a-uuid',
+      channelId: 'not-a-uuid',
       mode: 'publish' as const,
     };
 
