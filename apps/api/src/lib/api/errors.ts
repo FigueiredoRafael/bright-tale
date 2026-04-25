@@ -21,6 +21,7 @@ export class SupabaseError extends Error {
  * Custom API error class for route handlers
  */
 export class ApiError extends Error {
+  public readonly statusCode: number
   constructor(
     public readonly status: number,
     message: string,
@@ -28,6 +29,7 @@ export class ApiError extends Error {
   ) {
     super(message);
     this.name = 'ApiError';
+    this.statusCode = status;
   }
 }
 

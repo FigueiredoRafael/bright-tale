@@ -27,7 +27,7 @@ const soulSchema = z.object({
 export const createPersonaSchema = z.object({
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/, 'slug must be lowercase with hyphens'),
   name: z.string().min(1),
-  avatarUrl: z.string().url().nullable().optional(),
+  avatarUrl: z.string().nullable().optional(),
   bioShort: z.string().default(''),
   bioLong: z.string().default(''),
   primaryDomain: z.string().default(''),

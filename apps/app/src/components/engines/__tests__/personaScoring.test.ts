@@ -17,6 +17,8 @@ function makePersona(overrides: Partial<Persona>): Persona {
     eeatSignalsJson: { analyticalLens: '', trustSignals: [], expertiseClaims: [] },
     soulJson: { values: [], lifePhilosophy: '', strongOpinions: [], petPeeves: [], humorStyle: '', recurringJokes: [], whatExcites: [], innerTensions: [], languageGuardrails: [] },
     wpAuthorId: null,
+    archetypeSlug: null,
+    avatarParamsJson: null,
     isActive: true,
     createdAt: '',
     updatedAt: '',
