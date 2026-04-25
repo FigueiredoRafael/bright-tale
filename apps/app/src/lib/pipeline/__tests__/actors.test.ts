@@ -40,23 +40,12 @@ describe('reproduceActor', () => {
     const actor = createActor(reproduceActor, {
       input: { draftId: 'd-1', feedbackJson: {} },
     })
-    actor.start()
 
-    // XState v5's fromPromise emits state changes via getSnapshot() polling
-    // rather than through subscription callbacks for error states
-    const error = await new Promise<unknown>((resolve, reject) => {
-      const checkState = () => {
-        const snap = actor.getSnapshot()
-        if (snap.status === 'error') {
-          resolve(snap.error)
-        } else if (snap.status === 'done') {
-          reject(new Error('Expected error but got done'))
-        } else {
-          setTimeout(checkState, 5)
-        }
-      }
-      checkState()
-      setTimeout(() => reject(new Error('Timeout waiting for error state')), 2000)
+    const error = await new Promise<unknown>((resolve) => {
+      actor.subscribe({
+        error: (err) => resolve(err),
+      })
+      actor.start()
     })
 
     expect(error instanceof Error ? error.message : String(error)).toBe('Reproduce failed')
