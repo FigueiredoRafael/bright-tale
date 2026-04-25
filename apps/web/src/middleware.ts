@@ -182,9 +182,10 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // Public admin paths — no auth required
+  // Public admin paths that bypass auth entirely (forgot/reset/logout).
+  // Login is handled below so we can redirect already-authenticated managers
+  // away from the form.
   const PUBLIC_ADMIN_PATHS = new Set([
-    adminPath('/login'),
     adminPath('/forgot'),
     adminPath('/reset-password'),
     adminPath('/logout'),
@@ -193,6 +194,7 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  const isLoginPath = pathname === adminPath('/login');
   // MFA page is authenticated but skips the AAL2 gate (otherwise redirect loop).
   const isMfaPath = pathname === adminPath('/mfa');
 
@@ -222,6 +224,19 @@ export async function middleware(request: NextRequest) {
   });
 
   const { data: { user } } = await supabase.auth.getUser();
+
+  // /login: if user is already authenticated and is a manager, send them to
+  // the admin home. If they're not a manager (or not signed in at all), let
+  // the login form render so they can sign in / see the unauthorized banner.
+  if (isLoginPath) {
+    if (user) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token && await isManagerViaRest(user.id, session.access_token)) {
+        return NextResponse.redirect(new URL(adminPath(), request.url));
+      }
+    }
+    return response;
+  }
 
   if (!user) {
     return NextResponse.redirect(new URL(adminPath('/login'), request.url));
