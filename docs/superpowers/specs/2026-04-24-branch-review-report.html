@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Review do Dia — Hector Siman · 24 Abril 2026</title>
+<style>
+  :root {
+    --bg-0: #07090f;
+    --bg-1: #0c1019;
+    --bg-2: #121826;
+    --line: #1e2636;
+    --line-2: #2a3650;
+    --fg: #e5ecf9;
+    --fg-dim: #8f9cb8;
+    --fg-muted: #5e6a83;
+    --accent: #7c9cff;
+    --accent-2: #b488ff;
+    --accent-3: #5cdbb9;
+    --warn: #ffb86b;
+    --danger: #ff7a8a;
+    --chip: #1a2235;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: ui-sans-serif, -apple-system, "Inter", "SF Pro Text", system-ui, sans-serif;
+    background:
+      radial-gradient(1200px 600px at 10% -10%, rgba(124,156,255,0.12), transparent 60%),
+      radial-gradient(1000px 500px at 100% 0%, rgba(180,136,255,0.10), transparent 60%),
+      radial-gradient(900px 500px at 50% 100%, rgba(92,219,185,0.06), transparent 60%),
+      var(--bg-0);
+    color: var(--fg);
+    line-height: 1.6;
+    letter-spacing: 0.005em;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 48px 28px 96px; }
+
+  .hero {
+    position: relative;
+    padding: 44px 40px;
+    border-radius: 22px;
+    background: linear-gradient(140deg, rgba(124,156,255,0.18), rgba(180,136,255,0.12) 45%, rgba(12,16,25,0.7) 90%);
+    border: 1px solid var(--line-2);
+    overflow: hidden;
+    box-shadow: 0 30px 80px -40px rgba(60, 80, 200, 0.45);
+  }
+  .hero::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: radial-gradient(600px 300px at 80% 0%, rgba(255,255,255,0.06), transparent 60%);
+    pointer-events: none;
+  }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-size: 12px; font-weight: 600;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 14px;
+  }
+  .eyebrow::before {
+    content: ""; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent-3); box-shadow: 0 0 14px var(--accent-3);
+  }
+  h1 {
+    margin: 0 0 14px; font-size: 40px; font-weight: 700;
+    line-height: 1.15; letter-spacing: -0.02em;
+    background: linear-gradient(120deg, #ffffff, #c6d1ff 60%, #b488ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub { color: var(--fg-dim); font-size: 16.5px; max-width: 820px; }
+  .sub strong { color: var(--fg); }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 12px; border-radius: 999px;
+    background: rgba(18,24,38,0.7); border: 1px solid var(--line-2);
+    font-size: 12.5px; color: var(--fg-dim);
+    backdrop-filter: blur(6px);
+  }
+  .chip strong { color: var(--fg); font-weight: 600; }
+  .chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+  .thesis {
+    margin-top: 28px; padding: 22px 26px; border-radius: 16px;
+    background: linear-gradient(135deg, rgba(92,219,185,0.10), rgba(124,156,255,0.06));
+    border: 1px solid rgba(92,219,185,0.28);
+  }
+  .thesis .label { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent-3); font-weight: 700; margin-bottom: 8px; }
+  .thesis p { margin: 0; font-size: 16px; color: var(--fg); }
+  .thesis p b { color: #fff; }
+
+  .grid { display: grid; gap: 18px; }
+  .metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 34px 0 10px; }
+  @media (max-width: 880px) { .metrics { grid-template-columns: repeat(2, 1fr); } }
+  .metric {
+    position: relative; padding: 20px 20px 18px; border-radius: 16px;
+    background: linear-gradient(180deg, rgba(30,38,54,0.55), rgba(12,16,25,0.6));
+    border: 1px solid var(--line); overflow: hidden;
+  }
+  .metric::before {
+    content: ""; position: absolute; inset: auto 0 0 0; height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2)); opacity: 0.6;
+  }
+  .metric .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--fg-muted); margin-bottom: 8px; font-weight: 600; }
+  .metric .value { font-size: 30px; font-weight: 700; letter-spacing: -0.01em; }
+  .metric .hint { font-size: 12.5px; color: var(--fg-dim); margin-top: 4px; }
+  .value .plus { color: var(--accent-3); }
+  .value .minus { color: var(--danger); }
+
+  h2.section-h { margin: 56px 0 4px; font-size: 22px; letter-spacing: -0.01em; }
+  .section-lede { color: var(--fg-dim); font-size: 14.5px; margin: 0 0 24px; max-width: 820px; }
+
+  .day {
+    position: relative; padding: 26px 28px; border-radius: 18px;
+    background: var(--bg-1); border: 1px solid var(--line); margin-bottom: 18px;
+  }
+  .day-head {
+    display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap;
+    gap: 10px; margin-bottom: 14px;
+  }
+  .day-date { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .day-title { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; color: var(--fg); margin: 4px 0 0; }
+  .day-count { color: var(--fg-muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .day p.lede { margin: 0 0 14px; font-size: 15px; color: var(--fg-dim); max-width: 860px; }
+  .day p.lede b { color: var(--fg); }
+
+  .beats { display: grid; gap: 10px; margin-top: 6px; }
+  .beat {
+    display: grid; grid-template-columns: 88px 1fr; gap: 16px;
+    padding: 12px 14px; border-radius: 10px;
+    background: rgba(18,24,38,0.5); border: 1px solid var(--line);
+  }
+  .beat .when { color: var(--accent-2); font-weight: 600; font-size: 12.5px; font-variant-numeric: tabular-nums; padding-top: 2px; }
+  .beat .what { font-size: 14px; color: var(--fg); }
+  .beat .what b { color: #fff; }
+  .beat .what .why { display: block; margin-top: 4px; font-size: 13px; color: var(--fg-dim); }
+
+  section.branch { margin-top: 48px; }
+  .branch-header {
+    display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+    gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 22px;
+  }
+  .branch-title {
+    font-size: 22px; font-weight: 700; letter-spacing: -0.01em;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .branch-icon {
+    width: 34px; height: 34px; border-radius: 10px;
+    display: grid; place-items: center;
+    background: linear-gradient(135deg, rgba(124,156,255,0.25), rgba(180,136,255,0.25));
+    border: 1px solid var(--line-2); font-size: 16px;
+  }
+  .branch-kpis { display: flex; gap: 16px; color: var(--fg-dim); font-size: 13px; }
+  .branch-kpis b { color: var(--fg); font-weight: 600; }
+  .branch-lede { font-size: 15px; color: var(--fg-dim); margin: -6px 0 22px; max-width: 900px; }
+  .branch-lede b { color: var(--fg); }
+
+  .themes { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; margin-bottom: 24px; }
+  @media (max-width: 880px) { .themes { grid-template-columns: 1fr; } }
+  .theme { padding: 18px 20px; border-radius: 14px; background: var(--bg-1); border: 1px solid var(--line); }
+  .theme h3 { margin: 0 0 8px; font-size: 15px; letter-spacing: 0.01em; display: flex; align-items: center; gap: 10px; }
+  .theme h3 .bullet { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-2); box-shadow: 0 0 10px var(--accent-2); }
+  .theme p { margin: 0; font-size: 13.8px; color: var(--fg-dim); }
+  .theme p b { color: var(--fg); }
+
+  details.commits {
+    background: var(--bg-1); border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+  }
+  details.commits > summary {
+    cursor: pointer; padding: 14px 20px; font-size: 13.5px; color: var(--fg-dim);
+    list-style: none; display: flex; align-items: center; justify-content: space-between; user-select: none;
+  }
+  details.commits > summary::-webkit-details-marker { display: none; }
+  details.commits > summary::after { content: "▸"; color: var(--fg-muted); transition: transform .2s; }
+  details.commits[open] > summary::after { transform: rotate(90deg); }
+  details.commits > summary:hover { background: rgba(124,156,255,0.04); color: var(--fg); }
+  .commit-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .commit-table tr { border-top: 1px solid var(--line); }
+  .commit-table tr:hover td { background: rgba(124,156,255,0.03); }
+  .commit-table td { padding: 10px 14px; vertical-align: top; }
+  .commit-table td.sha { font-family: "JetBrains Mono", "Fira Code", monospace; color: var(--accent); width: 90px; }
+  .commit-table td.time { color: var(--fg-muted); white-space: nowrap; width: 130px; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .commit-table td.msg { color: var(--fg); }
+  .commit-table td.msg .pfx { color: var(--accent-2); font-weight: 600; }
+
+  .callout {
+    padding: 18px 22px; border-radius: 14px;
+    background: linear-gradient(135deg, rgba(92,219,185,0.08), rgba(124,156,255,0.06));
+    border: 1px solid rgba(92,219,185,0.25);
+    color: var(--fg); margin: 16px 0 24px; font-size: 14.5px;
+  }
+  .callout h4 { margin: 0 0 8px; font-size: 12px; color: var(--accent-3); letter-spacing: 0.12em; text-transform: uppercase; font-weight: 700; }
+  .callout p { margin: 0; color: var(--fg); }
+  .callout p b { color: #fff; }
+
+  .risk {
+    padding: 18px 20px; border-radius: 14px;
+    background: rgba(255,122,138,0.05); border: 1px solid rgba(255,122,138,0.25);
+  }
+  .risk h3 { margin: 0 0 8px; font-size: 15px; color: var(--danger); }
+  .risk p { margin: 0; font-size: 13.8px; color: var(--fg-dim); }
+  .risk p b { color: var(--fg); }
+
+  .headlines { margin-top: 48px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+  @media (max-width: 880px) { .headlines { grid-template-columns: 1fr; } }
+  .headline {
+    position: relative; padding: 28px 30px 26px; border-radius: 18px;
+    background: linear-gradient(180deg, rgba(18,24,38,0.85), rgba(12,16,25,0.7));
+    border: 1px solid var(--line-2); overflow: hidden; transition: transform .2s ease, border-color .2s ease;
+  }
+  .headline:hover { transform: translateY(-2px); border-color: rgba(124,156,255,0.35); }
+  .headline::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent-3));
+  }
+  .headline .num { font-size: 11px; font-weight: 700; letter-spacing: 0.18em; color: var(--accent-3); text-transform: uppercase; margin-bottom: 12px; display: block; }
+  .headline .big {
+    font-size: 54px; font-weight: 800; line-height: 0.98; letter-spacing: -0.03em;
+    background: linear-gradient(120deg, #ffffff 20%, #c6d1ff 60%, #b488ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    margin-bottom: 10px; font-variant-numeric: tabular-nums;
+  }
+  .headline .big small { font-size: 20px; font-weight: 600; color: var(--fg-muted); letter-spacing: 0; -webkit-text-fill-color: var(--fg-muted); }
+  .headline .line { font-size: 17px; font-weight: 600; color: var(--fg); line-height: 1.3; letter-spacing: -0.005em; }
+  .headline .tail { font-size: 13px; color: var(--fg-dim); margin-top: 8px; }
+  .headline.hero-line {
+    grid-column: 1 / -1; padding: 36px 40px 34px;
+    background:
+      radial-gradient(600px 200px at 100% 0%, rgba(92,219,185,0.18), transparent 60%),
+      linear-gradient(180deg, rgba(18,24,38,0.9), rgba(12,16,25,0.8));
+  }
+  .headline.hero-line .big { font-size: 72px; }
+
+  footer {
+    margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line);
+    color: var(--fg-muted); font-size: 12.5px;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  }
+  code { background: rgba(124,156,255,0.08); color: #c6d1ff; padding: 1px 6px; border-radius: 4px; font-size: 12.5px; font-family: "JetBrains Mono", "Fira Code", monospace; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="eyebrow">Branch Review · 24 Abril 2026</div>
+    <h1>WordPress Channel-Scoping<br>+ Persona E-E-A-T Layer</h1>
+    <p class="sub">
+      Um dia inteiro de refatoração estrutural: <strong>WordPress config migrado de global para channel-scoped (1:1)</strong>,
+      pipeline de publicação desacoplado de <code>configId</code>, cinco bugs encontrados em QA manual e corrigidos ao vivo,
+      e a camada de integração persona–WordPress totalmente refeita.
+    </p>
+    <div class="meta-row">
+      <div class="chip"><span class="dot"></span> <strong>feat/persona-eeat-layer</strong> → staging</div>
+      <div class="chip"><strong>25</strong> commits · 1 dia</div>
+      <div class="chip"><strong>2</strong> migrations aplicadas</div>
+      <div class="chip"><strong>7</strong> novas rotas de API</div>
+      <div class="chip"><strong>5</strong> bugs corrigidos em QA</div>
+      <div class="chip">11h10 → 14h39 (BRT)</div>
+    </div>
+    <div class="thesis">
+      <div class="label">Decisão arquitetural central</div>
+      <p>
+        <b>WordPress config deixa de ser um recurso global e passa a pertencer ao canal (1:1).</b>
+        A FK inverteu de <code>channels.wordpress_config_id</code> para <code>wordpress_configs.channel_id</code>.
+        O pipeline de publicação deriva as credenciais automaticamente — <code>configId</code> é eliminado do contrato do cliente.
+        Toda a UI de configuração global em <code>/settings/wordpress</code> foi deletada; agora vive em Channel → Blog → WordPress.
+      </p>
+    </div>
+  </div>
+
+  <!-- METRICS -->
+  <div class="grid metrics">
+    <div class="metric">
+      <div class="label">Commits hoje</div>
+      <div class="value">25</div>
+      <div class="hint">feat · fix · refactor · chore · docs</div>
+    </div>
+    <div class="metric">
+      <div class="label">Migrations</div>
+      <div class="value">2</div>
+      <div class="hint">channel-scope + drop stale triggers</div>
+    </div>
+    <div class="metric">
+      <div class="label">Rotas API novas</div>
+      <div class="value">7</div>
+      <div class="hint">GET/POST/PUT/DELETE/test em /channels/:id/wordpress</div>
+    </div>
+    <div class="metric">
+      <div class="label">Bugs QA → fix</div>
+      <div class="value"><span class="minus">5</span></div>
+      <div class="hint">encontrados e corrigidos no mesmo dia</div>
+    </div>
+  </div>
+
+  <!-- HEADLINE NUMBERS -->
+  <div class="headlines">
+    <div class="headline hero-line">
+      <span class="num">impacto do dia</span>
+      <div class="big">1<small> tabela refatorada</small></div>
+      <div class="line">wordpress_configs agora pertence ao canal, não ao usuário</div>
+      <div class="tail">FK invertida, triggers obsoletos removidos, contrato do cliente limpo sem configId</div>
+    </div>
+    <div class="headline">
+      <span class="num">pipeline</span>
+      <div class="big">3<small> fallbacks</small></div>
+      <div class="line">body.channelId → draft.channel_id → project.channel_id</div>
+      <div class="tail">Drafts legados publicam sem precisar de migração de dados</div>
+    </div>
+    <div class="headline">
+      <span class="num">cleanup</span>
+      <div class="big">745<small> linhas</small></div>
+      <div class="line">Página /settings/wordpress deletada</div>
+      <div class="tail">+ nav, breadcrumb, i18n keys e 6 endpoints globais removidos</div>
+    </div>
+  </div>
+
+  <!-- TIMELINE DO DIA -->
+  <h2 class="section-h">Linha do tempo</h2>
+  <p class="section-lede">Quatro blocos de trabalho no mesmo branch, do setup de Personas até QA do pipeline completo.</p>
+
+  <div class="day">
+    <div class="day-head">
+      <div>
+        <div class="day-date">24 Abr · 11h10 → 12h13</div>
+        <div class="day-title">Bloco 1 — Persona E-E-A-T Layer: UX & polish</div>
+      </div>
+      <div class="day-count">11 commits</div>
+    </div>
+    <p class="lede">
+      Finalização da camada de integração persona–WordPress: <b>channel picker no formulário</b>,
+      <b>wpAuthorId wireado</b>, erros de API surfaceados com códigos específicos,
+      e remoção do wizard guiado da criação de persona.
+    </p>
+    <div class="beats">
+      <div class="beat">
+        <div class="when">11h10</div>
+        <div class="what"><b>fix:</b> parar submit do PersonaForm ao clicar em avatar/integração<span class="why">Botões de ação dentro do form disparavam submit involuntário</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">11h15</div>
+        <div class="what"><b>feat(db):</b> seed 4 archetypes iniciais para fluxo de criação de persona<span class="why">Facilita onboarding com personas pré-configuradas</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">11h19</div>
+        <div class="what"><b>chore:</b> remover card de wizard guiado do picker de criação<span class="why">Simplifica o fluxo — usuário escolhe diretamente blank, AI ou archetype</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">11h24</div>
+        <div class="what"><b>feat(api,app):</b> seleção de provider/model na extração AI de persona<span class="why">Permite usar modelos diferentes por persona (standard vs premium)</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">11h31</div>
+        <div class="what"><b>feat(app):</b> channel picker + wpAuthorId wireado em Integrations<span class="why">Persona agora se vincula a canal específico para resolver config WP</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">11h34</div>
+        <div class="what"><b>fix:</b> remover selectedChannelId do useEffect de fetch de canais<span class="why">Causava loop infinito de re-fetch ao mudar canal</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">11h37</div>
+        <div class="what"><b>feat(app):</b> entrada de Personas na sidebar e na página de canal<span class="why">Personas precisavam de ponto de entrada na navegação principal</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">11h40–45</div>
+        <div class="what"><b>fix(app):</b> chave i18n + link de Personas no topbar de /settings/agents<span class="why">Entrada sem tradução e sem link quebravam a UI de gestão de agentes</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">12h03</div>
+        <div class="what"><b>fix(app):</b> filtrar channel picker por canais com WordPress configurado<span class="why">Sem filtro, persona tentava linkar a canal sem WP e falhava silenciosamente</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">12h07</div>
+        <div class="what"><b>fix(app):</b> surfacear códigos de erro específicos na UI de link persona → WP<span class="why">Erros genéricos impossibilitavam diagnóstico; agora NO_WP_CONFIG, WP_USER_NOT_FOUND etc. aparecem</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="day">
+    <div class="day-head">
+      <div>
+        <div class="day-date">24 Abr · 12h13 → 12h31</div>
+        <div class="day-title">Bloco 2 — DB sync + spec</div>
+      </div>
+      <div class="day-count">3 commits</div>
+    </div>
+    <p class="lede">
+      Sincronização de 19 migrations que haviam sido aplicadas diretamente no remote sem commit,
+      e publicação da spec aprovada do channel-scoping.
+    </p>
+    <div class="beats">
+      <div class="beat">
+        <div class="when">12h13</div>
+        <div class="what"><b>fix(db):</b> commitar 19 migrations aplicadas diretamente no remote dev<span class="why">Migrations sem commit causariam divergência na próxima push de outro dev</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">12h26</div>
+        <div class="what"><b>fix(db):</b> unescape de artefatos PG array em migrations reverse-engineered<span class="why">Arrays com \{ \} quebravam o parser SQL em alguns ambientes</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">12h31</div>
+        <div class="what"><b>docs:</b> publicar spec aprovada do WordPress config channel-scoping<span class="why">Spec serve como contrato de referência para a implementação e revisão futura</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="day">
+    <div class="day-head">
+      <div>
+        <div class="day-date">24 Abr · 12h50 → 13h06</div>
+        <div class="day-title">Bloco 3 — Implementação do channel-scoping (spec → código)</div>
+      </div>
+      <div class="day-count">6 commits</div>
+    </div>
+    <p class="lede">
+      Execução completa da spec em 7 fases com subagentes paralelos:
+      <b>migration, 7 rotas API, refactor de publish-draft, remoção de endpoints globais, WordPress card na UI, filtro has_wordpress, e cleanup de /settings/wordpress</b>.
+    </p>
+    <div class="beats">
+      <div class="beat">
+        <div class="when">12h50</div>
+        <div class="what"><b>feat(api):</b> migration channel-scope + tipos gerados + 5 rotas WordPress em /channels/:id/wordpress<span class="why">Migration inverte FK: channels.wordpress_config_id → wordpress_configs.channel_id com unique index</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">12h54</div>
+        <div class="what"><b>refactor(api):</b> publish-draft deriva config WP do canal, elimina configId<span class="why">configId removido do schema Zod e dos dois handlers (stream + não-stream)</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">12h58</div>
+        <div class="what"><b>fix(api):</b> verificar org ownership do canal na rota persona → WP<span class="why">Qualquer usuário autenticado podia acessar config WP de canal de outra org — falha de autorização</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">13h00</div>
+        <div class="what"><b>feat(app):</b> PersonaForm usa has_wordpress em vez de wordpress_config_id<span class="why">Campo antigo não existe mais após a migration; has_wordpress vem do join no GET /api/channels</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">13h01</div>
+        <div class="what"><b>feat(app):</b> WordPress card no Blog tab do detalhe de canal + cleanup /settings/wordpress<span class="why">Dois estados: formulário de conexão e sumário com Test/Edit/Remove. Página global deletada.</span></div>
+      </div>
+      <div class="beat">
+        <div class="when">13h06</div>
+        <div class="what"><b>refactor(api):</b> remover helper resolveWpConfig morto + 6 endpoints globais /wordpress/config<span class="why">270 linhas de código morto; endpoints substituídos pelas rotas channel-scoped</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="day">
+    <div class="day-head">
+      <div>
+        <div class="day-date">24 Abr · 13h19 → 14h39</div>
+        <div class="day-title">Bloco 4 — QA manual + 5 bugs encontrados e corrigidos</div>
+      </div>
+      <div class="day-count">5 commits</div>
+    </div>
+    <p class="lede">
+      QA do fluxo completo revelou cinco bugs de integração — todos resolvidos sem rollback.
+      O mais crítico foi um trigger PostgreSQL obsoleto bloqueando qualquer INSERT na tabela <code>wordpress_configs</code>.
+    </p>
+    <div class="beats">
+      <div class="beat">
+        <div class="when">13h19</div>
+        <div class="what">
+          <b>Bug 1 (crítico):</b> "record 'new' has no field 'org_id'" ao salvar config WP
+          <span class="why">Triggers trg_wordpress_configs_org_id e trg_wordpress_configs_user_id continuavam disparando após a migration dropar as colunas. Fix: nova migration drop trigger + PublishPanel refatorado para usar /api/channels/:id/wordpress.</span>
+        </div>
+      </div>
+      <div class="beat">
+        <div class="when">13h40</div>
+        <div class="what">
+          <b>Bug 2:</b> Link "Configure it here" apontava para rota inexistente
+          <span class="why">URL com ?tab=blog não é processada pela página de canal (sem URL-driven tabs). Corrigido para /channels.</span>
+        </div>
+      </div>
+      <div class="beat">
+        <div class="when">13h47</div>
+        <div class="what">
+          <b>Bug 3:</b> "No WordPress sites configured" no PublishPanel mesmo após configurar o canal
+          <span class="why">PublishPanel chamava GET /api/wordpress/config (endpoint deletado). Refatorado para buscar do canal via /api/channels/:channelId/wordpress. PublishEngine agora passa channelId.</span>
+        </div>
+      </div>
+      <div class="beat">
+        <div class="when">13h47</div>
+        <div class="what">
+          <b>Bug 4:</b> Projeto sem channel_id → sem caminho para publicar
+          <span class="why">Projetos criados antes do channel-scoping não tinham canal associado. Adicionado channel picker na página de projeto quando channel_id está nulo. updateProjectSchema recebeu channelId.</span>
+        </div>
+      </div>
+      <div class="beat">
+        <div class="when">14h37–39</div>
+        <div class="what">
+          <b>Bug 5:</b> "Draft has no channel" ao publicar — mesmo com projeto vinculado
+          <span class="why">publish-draft/stream checava draft.channel_id diretamente; drafts legados não têm o campo. Implementada cadeia de fallback: body.channelId → draft.channel_id → project.channel_id. PublishEngine passa channelId explicitamente no body.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BRANCH SECTION -->
+  <section class="branch">
+    <div class="branch-header">
+      <div class="branch-title">
+        <div class="branch-icon">🔀</div>
+        feat/persona-eeat-layer
+      </div>
+      <div class="branch-kpis">
+        <span><b>25</b> commits</span>
+        <span><b>mergeado</b> → staging</span>
+      </div>
+    </div>
+    <p class="branch-lede">
+      Branch de longa duração (iniciada para a camada E-E-A-T de Personas) que culminou com a
+      <b>maior refatoração de infraestrutura WP do projeto</b>: migração de schema, inversão de FK, remoção de endpoints legados,
+      e redesign completo da UX de configuração WordPress.
+    </p>
+
+    <div class="themes">
+      <div class="theme">
+        <h3><span class="bullet"></span> Schema: FK invertida</h3>
+        <p>
+          <b>Antes:</b> <code>channels.wordpress_config_id → wordpress_configs.id</code> (N:1, config compartilhada).<br>
+          <b>Depois:</b> <code>wordpress_configs.channel_id → channels.id</code> (1:1 com unique index, cascade delete).
+          <code>user_id</code> e <code>org_id</code> removidos da tabela — redundantes com <code>channel_id</code>.
+        </p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span> API: 6 endpoints globais → 5 channel-scoped</h3>
+        <p>
+          Deletados: <code>POST/GET/GET(:id)/PUT/PATCH/DELETE /api/wordpress/config</code>.<br>
+          Adicionados: <code>GET/POST/PUT/DELETE/test /api/channels/:id/wordpress</code>
+          com verificação de org ownership em cada rota.
+        </p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span> Pipeline: sem configId</h3>
+        <p>
+          <code>publishDraftSchema</code> removeu <code>configId</code>. Os handlers agora resolvem via
+          cadeia: <b>body.channelId → draft.channel_id → project.channel_id</b>.
+          Drafts e projetos legados publicam sem migração de dados.
+        </p>
+      </div>
+      <div class="theme">
+        <h3><span class="bullet"></span> UI: /settings/wordpress deletada</h3>
+        <p>
+          745 linhas removidas. Nav, breadcrumb, settings card e chaves i18n limpos.
+          <b>Novo:</b> WordPress card no Blog tab do canal com estados de connect/edit/test/remove e AlertDialog de confirmação.
+        </p>
+      </div>
+    </div>
+
+    <div class="callout">
+      <h4>Segurança corrigida</h4>
+      <p>A rota <code>POST /api/personas/:id/integrations/wordpress</code> não validava que <code>body.channelId</code> pertencia à org do requester — qualquer usuário autenticado podia acessar credenciais WP de outro tenant. <b>Corrigido</b> com lookup de org_membership antes de acessar wordpress_configs.</p>
+    </div>
+
+    <details class="commits">
+      <summary>25 commits · expandir log completo</summary>
+      <table class="commit-table">
+        <tbody>
+          <tr><td class="sha">597f1af</td><td class="time">14:39 BRT</td><td class="msg"><span class="pfx">fix(api,app):</span> pass channelId explicitly in publish-draft body</td></tr>
+          <tr><td class="sha">17c3a09</td><td class="time">14:37 BRT</td><td class="msg"><span class="pfx">fix(api):</span> fall back to project.channel_id when draft.channel_id is null on publish</td></tr>
+          <tr><td class="sha">ed8b849</td><td class="time">13:47 BRT</td><td class="msg"><span class="pfx">feat(app,api):</span> project → channel connection picker</td></tr>
+          <tr><td class="sha">b4b4c2a</td><td class="time">13:40 BRT</td><td class="msg"><span class="pfx">fix(app):</span> PublishPanel configure link points to /channels</td></tr>
+          <tr><td class="sha">e509bdb</td><td class="time">13:19 BRT</td><td class="msg"><span class="pfx">fix(db,app):</span> drop stale WP triggers + wire channel-scoped config in PublishPanel</td></tr>
+          <tr><td class="sha">576b1f2</td><td class="time">13:06 BRT</td><td class="msg"><span class="pfx">refactor(api):</span> remove dead resolveWpConfig helper + global /wordpress/config endpoints</td></tr>
+          <tr><td class="sha">33b1932</td><td class="time">13:01 BRT</td><td class="msg"><span class="pfx">feat(app):</span> channel detail Blog tab — WordPress card + remove /settings/wordpress</td></tr>
+          <tr><td class="sha">88f5db1</td><td class="time">13:00 BRT</td><td class="msg"><span class="pfx">feat(app):</span> PersonaForm channel filter via has_wordpress flag</td></tr>
+          <tr><td class="sha">c3dd7f1</td><td class="time">12:58 BRT</td><td class="msg"><span class="pfx">fix(api):</span> verify channel org ownership in persona → WP integration route</td></tr>
+          <tr><td class="sha">17fc592</td><td class="time">12:54 BRT</td><td class="msg"><span class="pfx">refactor(api):</span> publish-draft derives WP config from channel, drop configId</td></tr>
+          <tr><td class="sha">7ef710d</td><td class="time">12:50 BRT</td><td class="msg"><span class="pfx">feat(api):</span> channel-scoped WordPress routes (POST/GET/PUT/DELETE/test)</td></tr>
+          <tr><td class="sha">3505e48</td><td class="time">12:31 BRT</td><td class="msg"><span class="pfx">docs:</span> add WordPress config channel-scoping design</td></tr>
+          <tr><td class="sha">77781ed</td><td class="time">12:26 BRT</td><td class="msg"><span class="pfx">fix(db):</span> unescape PG array artifacts in reverse-engineered migrations</td></tr>
+          <tr><td class="sha">7e5c2a1</td><td class="time">12:13 BRT</td><td class="msg"><span class="pfx">fix(db):</span> commit 19 migrations applied directly on dev remote</td></tr>
+          <tr><td class="sha">ae9d16e</td><td class="time">12:07 BRT</td><td class="msg"><span class="pfx">fix(app):</span> surface specific WordPress integration error codes in persona → WP link UI</td></tr>
+          <tr><td class="sha">3bb6f63</td><td class="time">12:03 BRT</td><td class="msg"><span class="pfx">fix(app):</span> filter channel picker to WordPress-configured channels only</td></tr>
+          <tr><td class="sha">badaf76</td><td class="time">11:45 BRT</td><td class="msg"><span class="pfx">feat(app):</span> link Personas from /settings/agents top bar</td></tr>
+          <tr><td class="sha">c5b91cf</td><td class="time">11:40 BRT</td><td class="msg"><span class="pfx">fix(app):</span> use i18n key for Personas sidebar entry</td></tr>
+          <tr><td class="sha">cdce0c1</td><td class="time">11:37 BRT</td><td class="msg"><span class="pfx">feat(app):</span> add Personas entry to sidebar and channel detail page</td></tr>
+          <tr><td class="sha">2f0a998</td><td class="time">11:34 BRT</td><td class="msg"><span class="pfx">fix(app):</span> drop selectedChannelId from channel-fetch useEffect deps</td></tr>
+          <tr><td class="sha">e95cda1</td><td class="time">11:31 BRT</td><td class="msg"><span class="pfx">feat(app):</span> add channel picker + wire wpAuthorId in Integrations section</td></tr>
+          <tr><td class="sha">07116c7</td><td class="time">11:24 BRT</td><td class="msg"><span class="pfx">feat(api,app):</span> provider/model selection on persona AI extract</td></tr>
+          <tr><td class="sha">d5cc844</td><td class="time">11:19 BRT</td><td class="msg"><span class="pfx">chore(app):</span> remove guided-wizard card from persona creation picker</td></tr>
+          <tr><td class="sha">ee8bc7c</td><td class="time">11:15 BRT</td><td class="msg"><span class="pfx">feat(db):</span> seed 4 starter archetypes for persona creation flow</td></tr>
+          <tr><td class="sha">74f54d8</td><td class="time">11:10 BRT</td><td class="msg"><span class="pfx">fix(app):</span> stop persona form submit when clicking avatar/integration buttons</td></tr>
+        </tbody>
+      </table>
+    </details>
+  </section>
+
+  <!-- OPEN ITEMS -->
+  <h2 class="section-h" style="margin-top:56px">Itens em aberto</h2>
+  <p class="section-lede">O que ficou de fora do escopo hoje e pode ser endereçado a seguir.</p>
+  <div class="themes">
+    <div class="theme">
+      <h3><span class="bullet"></span> Testes automatizados para rotas channel-scoped</h3>
+      <p>
+        A spec previa <code>apps/api/src/routes/__tests__/channels.wordpress.test.ts</code> com 5 casos (create, conflict, PUT sem password, delete→GET, cross-org). <b>Não foi implementado</b> — apenas testes Category C (DB-hitting) são viáveis; ficam como TODO-test.
+      </p>
+    </div>
+    <div class="theme">
+      <h3><span class="bullet"></span> URL-driven tab no Channel Detail</h3>
+      <p>
+        O link "Configure it here" aponta para <code>/channels</code> genérico porque a página de canal não suporta <code>?tab=blog</code> via URL. Adicionar roteamento por query param seria a UX ideal para chegar direto no WordPress card.
+      </p>
+    </div>
+    <div class="theme">
+      <h3><span class="bullet"></span> Projetos legados sem channel_id</h3>
+      <p>
+        O picker de canal foi adicionado, mas projetos existentes precisam ser vinculados manualmente. Uma migration de backfill automático (derivar canal do idea.channel_id) reduziria o atrito.
+      </p>
+    </div>
+    <div class="theme">
+      <h3><span class="bullet"></span> apps/web — affiliate-portal types</h3>
+      <p>
+        Erros de typecheck pré-existentes em <code>@tn-figueiredo/affiliate-portal</code> continuam bloqueando <code>npm run typecheck</code> global. Não relacionado a este branch; requer atenção separada.
+      </p>
+    </div>
+  </div>
+
+  <footer>
+    <span>bright-tale · feat/persona-eeat-layer → staging · 24 Abril 2026</span>
+    <span>Hector Siman · generated with Claude Sonnet 4.6</span>
+  </footer>
+
+</div>
+</body>
+</html>
