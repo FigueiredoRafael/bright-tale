@@ -46,6 +46,7 @@ import {
 import { logAiUsage } from "../lib/axiom.js";
 import { deriveTier } from "@brighttale/shared/utils/reviewTierCompat";
 import { loadCreditSettings } from "../lib/credit-settings.js";
+import { calculateDraftCost } from "../lib/calculate-draft-cost.js";
 
 
 const createSchema = z.object({
@@ -488,12 +489,6 @@ export async function contentDraftsRoutes(
         const orgId = await getOrgId(request.userId);
 
         const creditSettings = await loadCreditSettings(createServiceClient());
-        const FORMAT_COSTS: Record<string, number> = {
-          blog: creditSettings.costBlog,
-          video: creditSettings.costVideo,
-          shorts: creditSettings.costShorts,
-          podcast: creditSettings.costPodcast,
-        };
         const CANONICAL_CORE_COST = creditSettings.costCanonicalCore;
 
         const type =
@@ -502,7 +497,7 @@ export async function contentDraftsRoutes(
         const totalCost =
           override.provider === "ollama"
             ? 0
-            : (FORMAT_COSTS[type] ?? 200) + CANONICAL_CORE_COST;
+            : calculateDraftCost(type, creditSettings) + CANONICAL_CORE_COST;
 
         if (totalCost > 0) await checkCredits(orgId, request.userId, totalCost);
         await emitJobEvent(id, "production", "queued", "Iniciando…");
@@ -949,15 +944,9 @@ export async function contentDraftsRoutes(
         const orgId = await getOrgId(request.userId);
 
         const creditSettings = await loadCreditSettings(sb);
-        const FORMAT_COSTS: Record<string, number> = {
-          blog: creditSettings.costBlog,
-          video: creditSettings.costVideo,
-          shorts: creditSettings.costShorts,
-          podcast: creditSettings.costPodcast,
-        };
 
         const type = (draft.type as string) ?? "blog";
-        const cost = FORMAT_COSTS[type] ?? 200;
+        const cost = calculateDraftCost(type, creditSettings);
 
         // Manual provider short-circuits the LLM call: build the prompt
         // synchronously, emit the full payload to Axiom, persist the draft in
@@ -2267,15 +2256,9 @@ export async function contentDraftsRoutes(
         }
 
         const creditSettings = await loadCreditSettings(sb);
-        const FORMAT_COSTS: Record<string, number> = {
-          blog: creditSettings.costBlog,
-          video: creditSettings.costVideo,
-          shorts: creditSettings.costShorts,
-          podcast: creditSettings.costPodcast,
-        };
 
         const type = (draft.type as string) ?? "blog";
-        const cost = FORMAT_COSTS[type] ?? 200;
+        const cost = calculateDraftCost(type, creditSettings);
         await checkCredits(orgId, request.userId, cost);
 
         let systemPrompt =
