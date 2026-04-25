@@ -24,17 +24,18 @@ mkdir -p "$REPO_ROOT/node_modules/@brighttale/shared"
 cp -r "$REPO_ROOT/packages/shared/dist" "$REPO_ROOT/node_modules/@brighttale/shared/dist"
 cp "$REPO_ROOT/packages/shared/package.json" "$REPO_ROOT/node_modules/@brighttale/shared/package.json"
 
-echo "=== Bundling API with esbuild (resolves @/ path aliases) ==="
-# @vercel/node does not resolve tsconfig path aliases in ESM mode.
-# We pre-bundle the entry point so all @/ imports are converted to relative
-# paths at build time. npm packages remain external (NFT traces them).
+echo "=== Bundling API server with esbuild (resolves @/ path aliases) ==="
+# @vercel/node compiles TS but does NOT resolve tsconfig path aliases in ESM.
+# We pre-bundle src/index.ts into src/bundle.js so all @/ imports become
+# relative paths. api/index.ts then imports src/bundle.js (plain JS) and
+# @vercel/node follows that import without needing to resolve any aliases.
 "$REPO_ROOT/node_modules/.bin/esbuild" \
-  "$REPO_ROOT/apps/api/api/index.ts" \
+  "$REPO_ROOT/apps/api/src/index.ts" \
   --bundle \
   --platform=node \
   --format=esm \
   --packages=external \
   --tsconfig="$REPO_ROOT/apps/api/tsconfig.json" \
-  --outfile="$REPO_ROOT/apps/api/api/bundle.js"
+  --outfile="$REPO_ROOT/apps/api/src/bundle.js"
 
 echo "=== BUILD COMPLETE ==="
