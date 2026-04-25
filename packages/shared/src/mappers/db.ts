@@ -684,8 +684,14 @@ export function mapPersonaArchetypeAdmin(row: DbPersonaArchetype): DomainPersona
   };
 }
 
+// Same problem as PersonaDbInput: Zod .default([]) on nested fields makes them
+// optional in the inferred type, but ArchetypeOverlay requires them.
+type PersonaArchetypeDbInput = Partial<Omit<DomainPersonaArchetypeAdmin, 'behavioralOverlayJson'>> & {
+  behavioralOverlayJson?: Partial<ArchetypeOverlay>
+}
+
 export function mapPersonaArchetypeToDb(
-  input: Partial<DomainPersonaArchetypeAdmin>
+  input: PersonaArchetypeDbInput
 ): Partial<DbPersonaArchetype> {
   const out: Partial<DbPersonaArchetype> = {};
   if (input.name !== undefined) out.name = input.name;
