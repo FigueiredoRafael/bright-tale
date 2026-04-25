@@ -1,4 +1,5 @@
-import { createKey, getKeyByToken, consumeKey } from "@/lib/idempotency";
+import { describe, it, expect } from 'vitest';
+import { createKey, getKeyByToken, consumeKey } from "../idempotency";
 
 // TODO-test: skip until Supabase integration tests are set up
 // These tests assume a working DB in test environment. They serve as integration tests and may be skipped in unit setups.

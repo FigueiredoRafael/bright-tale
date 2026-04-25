@@ -16,6 +16,7 @@ import { friendlyAiError } from '@/lib/ai/error-message';
 import { useUpgrade } from '@/components/billing/UpgradeProvider';
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker';
 import type { PipelineContext, PipelineStage, ReviewResult, StageResult } from './types';
+import { type PipelineSettings, DEFAULT_PIPELINE_SETTINGS } from './types';
 import { deriveTier, isApprovedTier } from '@brighttale/shared';
 
 interface ReviewEngineProps {
@@ -36,6 +37,7 @@ interface ReviewEngineProps {
   onBack?: (targetStage?: PipelineStage) => void;
   onDraftUpdated: (draft: Record<string, unknown>) => void;
   onStageProgress?: (partial: { score?: number; verdict?: string }) => void;
+  pipelineSettings?: PipelineSettings;
 }
 
 const REVIEW_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
@@ -65,6 +67,7 @@ export function ReviewEngine({
   onBack,
   onDraftUpdated,
   onStageProgress,
+  pipelineSettings = DEFAULT_PIPELINE_SETTINGS,
 }: ReviewEngineProps) {
   const [provider, setProvider] = useState<ProviderId>('gemini');
   const [model, setModel] = useState<string>(MODELS_BY_PROVIDER.gemini[0].id);
@@ -391,9 +394,9 @@ export function ReviewEngine({
         ? (blogReview.verdict as string).toLowerCase().replace(/\s+/g, '_')
         : draft.review_verdict;
 
-  // Score ≥ 90 always means approved, regardless of text verdict
+  // Score ≥ reviewApproveScore always means approved, regardless of text verdict
   const effectiveVerdict =
-    (effectiveScore !== null && effectiveScore >= 90) ? 'approved'
+    (effectiveScore !== null && effectiveScore >= pipelineSettings.reviewApproveScore) ? 'approved'
     : (rawVerdict && rawVerdict.includes('approved')) ? 'approved'
     : (rawVerdict && rawVerdict.includes('rejected')) ? 'rejected'
     : (rawVerdict && rawVerdict !== 'pending') ? 'revision_required'

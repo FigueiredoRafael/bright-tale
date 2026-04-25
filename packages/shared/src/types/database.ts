@@ -1581,6 +1581,45 @@ export type Database = {
           },
         ]
       }
+      credit_settings: {
+        Row: {
+          cost_blog: number
+          cost_canonical_core: number
+          cost_podcast: number
+          cost_review: number
+          cost_shorts: number
+          cost_video: number
+          created_at: string
+          id: string
+          lock_key: string
+          updated_at: string
+        }
+        Insert: {
+          cost_blog?: number
+          cost_canonical_core?: number
+          cost_podcast?: number
+          cost_review?: number
+          cost_shorts?: number
+          cost_video?: number
+          created_at?: string
+          id?: string
+          lock_key?: string
+          updated_at?: string
+        }
+        Update: {
+          cost_blog?: number
+          cost_canonical_core?: number
+          cost_podcast?: number
+          cost_review?: number
+          cost_shorts?: number
+          cost_video?: number
+          created_at?: string
+          id?: string
+          lock_key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       credit_usage: {
         Row: {
           action: string
@@ -2295,6 +2334,39 @@ export type Database = {
           updated_at?: string
           wp_author_id?: number | null
           writing_voice_json?: Json
+        }
+        Relationships: []
+      }
+      pipeline_settings: {
+        Row: {
+          created_at: string
+          default_providers_json: Json
+          id: string
+          lock_key: string
+          review_approve_score: number
+          review_max_iterations: number
+          review_reject_threshold: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          default_providers_json?: Json
+          id?: string
+          lock_key?: string
+          review_approve_score?: number
+          review_max_iterations?: number
+          review_reject_threshold?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          default_providers_json?: Json
+          id?: string
+          lock_key?: string
+          review_approve_score?: number
+          review_max_iterations?: number
+          review_reject_threshold?: number
+          updated_at?: string
         }
         Relationships: []
       }

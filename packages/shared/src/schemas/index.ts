@@ -210,3 +210,15 @@ export {
   type AssignChannelPersonaInput,
   type SetPrimaryChannelPersonaInput,
 } from "./channel-personas";
+
+// Pipeline Settings & Credit Settings schemas
+export {
+  updatePipelineSettingsSchema,
+  pipelineSettingsResponseSchema,
+  updateCreditSettingsSchema,
+  creditSettingsResponseSchema,
+  type UpdatePipelineSettingsInput,
+  type PipelineSettingsResponse,
+  type UpdateCreditSettingsInput,
+  type CreditSettingsResponse,
+} from "./pipeline-settings";

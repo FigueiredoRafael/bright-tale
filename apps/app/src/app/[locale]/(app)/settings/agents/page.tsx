@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Layers, Loader2, Lock, Shield, Users } from "lucide-react";
+import { Layers, Loader2, Lock, Shield, SlidersHorizontal, Users } from "lucide-react";
 
 interface AgentPrompt {
     id: string;
@@ -78,6 +78,13 @@ export default function AgentsSettingsPage() {
                 >
                     <Layers className="h-4 w-4" />
                     Archetypes
+                </Link>
+                <Link
+                    href={`/${locale}/settings/agents/pipeline`}
+                    className="flex items-center gap-2 px-3 py-2 text-sm rounded-md border hover:bg-muted transition-colors"
+                >
+                    <SlidersHorizontal className="h-4 w-4" />
+                    Pipeline
                 </Link>
             </div>
 

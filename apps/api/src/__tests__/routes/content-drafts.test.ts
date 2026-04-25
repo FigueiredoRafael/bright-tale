@@ -103,18 +103,28 @@ describe('POST /content-drafts', () => {
 
 describe('POST /content-drafts/:id/canonical-core', () => {
   it('runs agent-3a and stores canonical_core_json', async () => {
-    // loadDraft → maybeSingle returns draft
-    mockChain.maybeSingle.mockResolvedValueOnce({
-      data: { id: 'cd-1', type: 'blog', research_session_id: null, model_tier: 'standard' },
-      error: null,
-    });
-    // org lookup
+    // loadDraft → maybeSingle returns draft; loadCreditSettings → maybeSingle returns null (uses defaults)
+    mockChain.maybeSingle
+      .mockResolvedValueOnce({
+        data: { id: 'cd-1', type: 'blog', research_session_id: null, model_tier: 'standard' },
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: null, error: null });
+    // org lookup + draft update
     mockChain.single
       .mockResolvedValueOnce({ data: { org_id: 'org-1' }, error: null })
       .mockResolvedValueOnce({
         data: { id: 'cd-1', canonical_core_json: { stage: 'canonical-core', produced: true } },
         error: null,
       });
+    // override generateWithFallback to avoid relying on params.input.stage
+    const router = await import('@/lib/ai/router');
+    (router.generateWithFallback as any).mockResolvedValueOnce({
+      result: { stage: 'canonical-core', produced: true },
+      providerName: 'mock',
+      model: 'mock',
+      attempts: 1,
+    });
 
     const res = await app.inject({
       method: 'POST',
@@ -130,22 +140,33 @@ describe('POST /content-drafts/:id/canonical-core', () => {
 
 describe('POST /content-drafts/:id/produce', () => {
   it('runs agent-3b-{type} and stores draft_json', async () => {
-    mockChain.maybeSingle.mockResolvedValueOnce({
-      data: {
-        id: 'cd-1',
-        type: 'blog',
-        canonical_core_json: { hook: 'x' },
-        production_settings_json: { wordCountTarget: 1500 },
-        model_tier: 'standard',
-      },
-      error: null,
-    });
+    // loadDraft → maybeSingle returns draft; loadCreditSettings → maybeSingle returns null (uses defaults)
+    mockChain.maybeSingle
+      .mockResolvedValueOnce({
+        data: {
+          id: 'cd-1',
+          type: 'blog',
+          canonical_core_json: { hook: 'x' },
+          production_settings_json: { wordCountTarget: 1500 },
+          model_tier: 'standard',
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: null, error: null });
     mockChain.single
       .mockResolvedValueOnce({ data: { org_id: 'org-1' }, error: null })
       .mockResolvedValueOnce({
         data: { id: 'cd-1', draft_json: { stage: 'produce', produced: true }, status: 'in_review' },
         error: null,
       });
+    // override generateWithFallback to avoid relying on params.input.stage
+    const router = await import('@/lib/ai/router');
+    (router.generateWithFallback as any).mockResolvedValueOnce({
+      result: { stage: 'produce', produced: true, body: 'content' },
+      providerName: 'mock',
+      model: 'mock',
+      attempts: 1,
+    });
 
     const res = await app.inject({
       method: 'POST',

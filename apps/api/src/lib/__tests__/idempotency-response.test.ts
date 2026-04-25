@@ -1,4 +1,5 @@
-import { createKey, consumeKey, getKeyByToken } from "@/lib/idempotency";
+import { describe, it, expect } from 'vitest';
+import { createKey, consumeKey, getKeyByToken } from "../idempotency";
 
 // TODO-test: skip until Supabase integration tests are set up
 describe.skip("Idempotency helper store/consume response", () => {

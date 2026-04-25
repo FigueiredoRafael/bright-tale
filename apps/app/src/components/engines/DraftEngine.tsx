@@ -31,7 +31,8 @@ import { rankPersonas, type RankedPersona } from './utils/personaScoring';
 import { getPersonaTheme } from './utils/personaTheme';
 import { PersonaCarousel } from './PersonaCarousel';
 import type { Persona } from '@brighttale/shared/types/agents';
-import type { BaseEngineProps, DraftResult } from './types';
+import type { BaseEngineProps, DraftResult, CreditSettings } from './types';
+import { DEFAULT_CREDIT_SETTINGS } from './types';
 
 type DraftType = 'blog' | 'video' | 'shorts' | 'podcast';
 type DraftMode = 'ai' | 'manual';
@@ -53,14 +54,8 @@ interface ResearchOption {
 
 interface DraftEngineProps extends BaseEngineProps {
   initialDraft?: Record<string, unknown>;
+  creditSettings?: CreditSettings;
 }
-
-const TYPES: { id: DraftType; label: string; icon: typeof FileText; cost: number }[] = [
-  { id: 'blog', label: 'Blog', icon: FileText, cost: 200 },
-  { id: 'video', label: 'Video', icon: Video, cost: 200 },
-  { id: 'shorts', label: 'Shorts', icon: Zap, cost: 100 },
-  { id: 'podcast', label: 'Podcast', icon: Mic, cost: 150 },
-];
 
 const DRAFT_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
 
@@ -71,7 +66,14 @@ export function DraftEngine({
   onComplete,
   initialDraft,
   onStageProgress,
+  creditSettings = DEFAULT_CREDIT_SETTINGS,
 }: DraftEngineProps) {
+  const TYPES: { id: DraftType; label: string; icon: typeof FileText; cost: number }[] = [
+    { id: 'blog', label: 'Blog', icon: FileText, cost: creditSettings.costBlog },
+    { id: 'video', label: 'Video', icon: Video, cost: creditSettings.costVideo },
+    { id: 'shorts', label: 'Shorts', icon: Zap, cost: creditSettings.costShorts },
+    { id: 'podcast', label: 'Podcast', icon: Mic, cost: creditSettings.costPodcast },
+  ];
   // Research context
   const [research, setResearch] = useState<ResearchOption | null>(null);
 
@@ -233,9 +235,9 @@ export function DraftEngine({
   const selectedTheme = selectedPersona ? getPersonaTheme(selectedPersona.slug) : null;
   const personaCardStyle = selectedTheme
     ? {
-        borderColor: `rgba(${selectedTheme.glow}, 0.35)`,
-        boxShadow: `0 0 0 1px rgba(${selectedTheme.glow}, 0.08), 0 8px 28px -12px rgba(${selectedTheme.glow}, 0.18)`,
-      }
+      borderColor: `rgba(${selectedTheme.glow}, 0.35)`,
+      boxShadow: `0 0 0 1px rgba(${selectedTheme.glow}, 0.08), 0 8px 28px -12px rgba(${selectedTheme.glow}, 0.18)`,
+    }
     : undefined;
 
   // Fetch recommended model
@@ -1044,9 +1046,8 @@ export function DraftEngine({
 
       {/* Phase stepper */}
       <div className="flex items-center gap-3">
-        <div className={`flex items-center gap-1.5 text-sm ${
-          phase === 'core' ? 'text-primary font-medium' : 'text-muted-foreground'
-        }`}>
+        <div className={`flex items-center gap-1.5 text-sm ${phase === 'core' ? 'text-primary font-medium' : 'text-muted-foreground'
+          }`}>
           {phase !== 'core' ? (
             <Check className="h-4 w-4 text-green-500" />
           ) : (
@@ -1057,10 +1058,9 @@ export function DraftEngine({
           Canonical Core
         </div>
         <div className="h-px w-8 bg-border" />
-        <div className={`flex items-center gap-1.5 text-sm ${
-          phase === 'core-ready' || phase === 'produce' ? 'text-primary font-medium'
+        <div className={`flex items-center gap-1.5 text-sm ${phase === 'core-ready' || phase === 'produce' ? 'text-primary font-medium'
             : phase === 'done' ? 'text-muted-foreground' : 'text-muted-foreground/50'
-        }`}>
+          }`}>
           {phase === 'done' ? (
             <Check className="h-4 w-4 text-green-500" />
           ) : phase === 'core-ready' || phase === 'produce' ? (
@@ -1280,11 +1280,10 @@ export function DraftEngine({
                       key={t.id}
                       onClick={() => setType(t.id)}
                       disabled={phase === 'produce'}
-                      className={`p-3 rounded-lg border-2 text-left transition-all ${
-                        type === t.id
+                      className={`p-3 rounded-lg border-2 text-left transition-all ${type === t.id
                           ? 'border-primary bg-primary/5'
                           : 'border-border hover:border-muted-foreground/30'
-                      } disabled:opacity-50`}
+                        } disabled:opacity-50`}
                     >
                       <Icon className="h-4 w-4 mb-1.5" />
                       <div className="text-sm font-medium">{t.label}</div>
@@ -1307,11 +1306,10 @@ export function DraftEngine({
                       key={value}
                       onClick={() => setTargetWords(value)}
                       disabled={phase === 'produce'}
-                      className={`p-2 rounded-md border text-sm ${
-                        targetWords === value
+                      className={`p-2 rounded-md border text-sm ${targetWords === value
                           ? 'border-primary bg-primary/5 text-primary font-medium'
                           : 'border-border hover:border-muted-foreground/30'
-                      } disabled:opacity-50`}
+                        } disabled:opacity-50`}
                     >
                       {label}
                       <span className="text-xs text-muted-foreground"> words</span>
@@ -1330,11 +1328,10 @@ export function DraftEngine({
                         key={m}
                         onClick={() => setTargetMinutes(m)}
                         disabled={phase === 'produce'}
-                        className={`p-2 rounded-md border text-sm ${
-                          targetMinutes === m
+                        className={`p-2 rounded-md border text-sm ${targetMinutes === m
                             ? 'border-primary bg-primary/5 text-primary font-medium'
                             : 'border-border hover:border-muted-foreground/30'
-                        } disabled:opacity-50`}
+                          } disabled:opacity-50`}
                       >
                         {m}
                         <span className="text-xs text-muted-foreground">min</span>
@@ -1353,11 +1350,10 @@ export function DraftEngine({
                       key={s}
                       onClick={() => setTargetShortsSeconds(s)}
                       disabled={phase === 'produce'}
-                      className={`p-2 rounded-md border text-sm ${
-                        targetShortsSeconds === s
+                      className={`p-2 rounded-md border text-sm ${targetShortsSeconds === s
                           ? 'border-primary bg-primary/5 text-primary font-medium'
                           : 'border-border hover:border-muted-foreground/30'
-                      } disabled:opacity-50`}
+                        } disabled:opacity-50`}
                     >
                       {s}
                       <span className="text-xs text-muted-foreground">s</span>
