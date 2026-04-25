@@ -32,16 +32,18 @@ If a commit ever needs to bypass the hook, fix the underlying hook/signing issue
 
 ## Execution Manifest — Run These Wave Files in Order
 
-Six waves, each a self-contained execution file. Open the wave file, satisfy its pre-flight, run its tasks, satisfy its exit criteria, then move to the next.
+Eight waves, each a self-contained execution file. Open the wave file, satisfy its pre-flight, run its tasks, satisfy its exit criteria, then move to the next.
 
 | Wave | Status | File | Tasks (in parent's old numbering) | Scope | Depends on |
 |---|---|---|---|---|---|
 | 0 | ✅ completed 2026-04-25 (commits `7b0d8a4`, `3b1ec79`) | [`2026-04-24-pipeline-xstate-wave-0-foundation.md`](./2026-04-24-pipeline-xstate-wave-0-foundation.md) | 1, 2 | install XState; DB migration for research costs | — |
-| 1 | ⏳ pending | [`2026-04-24-pipeline-xstate-wave-1-machine.md`](./2026-04-24-pipeline-xstate-wave-1-machine.md) | 3, 4, 5, 6, 7 | pure machine: types, guards, actions, actors, definition + integration tests | Wave 0 |
-| 2 | ⏳ pending | [`2026-04-24-pipeline-xstate-wave-2-providers.md`](./2026-04-24-pipeline-xstate-wave-2-providers.md) | 8, 8.5 | settings provider, actor provider, hook, legacy `pipeline_state_json` migration helper | Wave 1 |
-| 3 | ⏳ pending | [`2026-04-24-pipeline-xstate-wave-3-orchestrator.md`](./2026-04-24-pipeline-xstate-wave-3-orchestrator.md) | 9 | orchestrator swap with engine bridge (preserves all features) | Wave 2 |
-| 4 | ⏳ pending | [`2026-04-24-pipeline-xstate-wave-4-engines.md`](./2026-04-24-pipeline-xstate-wave-4-engines.md) | 9.5, 10, 11, 12, 13, 14 | StandaloneEngineHost helper + sequential engine peel-off (Brainstorm → Research → Draft → Review → Assets); each engine task also updates its standalone `channels/[id]/.../new/page.tsx` | Wave 3 |
-| 5 | ⏳ pending | [`2026-04-24-pipeline-xstate-wave-5-cleanup.md`](./2026-04-24-pipeline-xstate-wave-5-cleanup.md) | 15, 16, 17 | FORMAT_COSTS dedup; provider wiring at project page; docs sync; final acceptance | Wave 4 |
+| 1 | ✅ completed | [`2026-04-24-pipeline-xstate-wave-1-machine.md`](./2026-04-24-pipeline-xstate-wave-1-machine.md) | 3, 4, 5, 6, 7 | pure machine: types, guards, actions, actors, definition + integration tests | Wave 0 |
+| 2 | ✅ completed | [`2026-04-24-pipeline-xstate-wave-2-providers.md`](./2026-04-24-pipeline-xstate-wave-2-providers.md) | 8, 8.5 | settings provider, actor provider, hook, legacy `pipeline_state_json` migration helper | Wave 1 |
+| 3 | ✅ completed | [`2026-04-24-pipeline-xstate-wave-3-orchestrator.md`](./2026-04-24-pipeline-xstate-wave-3-orchestrator.md) | 9 | orchestrator swap with engine bridge (preserves all features) | Wave 2 |
+| 4 | ✅ completed (commit `7175149`) | [`2026-04-24-pipeline-xstate-wave-4-engines.md`](./2026-04-24-pipeline-xstate-wave-4-engines.md) | 9.5, 10, 11, 12, 13, 14 | StandaloneEngineHost helper + sequential engine peel-off (Brainstorm → Research → Draft → Review → Assets). Bridge survives narrowed to preview/publish — Waves 4.1 + 4.2 finish the deletion. | Wave 3 |
+| 4.1 | ⏳ pending | [`2026-04-24-pipeline-xstate-wave-4-1-preview-engine.md`](./2026-04-24-pipeline-xstate-wave-4-1-preview-engine.md) | 14.1 (new) | PreviewEngine off bridge → `LegacyStage = 'publish'` only | Wave 4 |
+| 4.2 | ⏳ pending | [`2026-04-24-pipeline-xstate-wave-4-2-publish-engine.md`](./2026-04-24-pipeline-xstate-wave-4-2-publish-engine.md) | 14.2 (new) | PublishEngine off bridge + bridge fully deleted; standalone draftId page wrapped in `StandaloneEngineHost` | Wave 4.1 |
+| 5 | ⏳ pending | [`2026-04-24-pipeline-xstate-wave-5-cleanup.md`](./2026-04-24-pipeline-xstate-wave-5-cleanup.md) | 15, 16, 17 | FORMAT_COSTS dedup; provider wiring at project page; docs sync; final acceptance | Wave 4.2 |
 
 ---
 
@@ -64,7 +66,7 @@ Tasks 9.5 → 10 → 11 → 12 → 13 → 14 must run **sequentially**. Task 9.5
 
 Why: Wave 3 introduces a `bridge(...)` helper in `PipelineOrchestrator.tsx` that passes both old (`onComplete`, `onBack`, `context`) and new props to every engine, so each commit stays tsc-green while engines refactor one at a time. Each engine task's final step is **strip the bridge for that one engine** — meaning the bridge keeps shrinking but is never partially typed for an engine that has already cut over. If a later engine is refactored before an earlier one, the bridge's TypeScript surface for the in-between engines is wrong and tsc fails for the whole branch.
 
-By the end of Wave 4 the bridge helper, `buildLegacyContext`, and all `onComplete`/`onBack`/`context` props are deleted; the orchestrator drops to ~250 lines.
+By the end of Wave 4 the bridge is **narrowed** to preview + publish only (Brainstorm/Research/Draft/Review/Assets all migrated). Full deletion of `bridge`, `buildLegacyContext`, and `onComplete`/`onBack`/`context` props happens across Waves 4.1 (PreviewEngine) and 4.2 (PublishEngine). After Wave 4.2 the orchestrator drops to ~250 lines.
 
 ---
 
@@ -85,9 +87,10 @@ Code-health gates: `npm run test` green across all workspaces, `npm run typechec
 
 ## Out of Scope (Separate PRs)
 
-- PreviewEngine and PublishEngine refactor (already thin — kept on bridge until separate refactor PR)
 - Production prompt agent config externalization
 - Admin settings navigation wiring
 - XState Stately visualizer integration
 - Parallel stage execution (assets + preview simultaneously) — future enhancement
 - Collaborative editing on shared pipelines — future enhancement
+
+> **Note:** PreviewEngine + PublishEngine refactor was originally out of scope but was reincluded as Waves 4.1 + 4.2 because Wave 5's exit criterion ("bridge helper deleted; orchestrator ~250 lines") cannot pass while either engine still consumes the legacy prop interface.

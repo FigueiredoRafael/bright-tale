@@ -4,7 +4,7 @@
 
 **Parent plan:** [`2026-04-24-pipeline-xstate-refactor.md`](./2026-04-24-pipeline-xstate-refactor.md)
 **Design spec:** [`../specs/2026-04-24-pipeline-xstate-refactor-design.md`](../specs/2026-04-24-pipeline-xstate-refactor-design.md)
-**Depends on:** Wave 4 (all engines refactored, bridge gone)
+**Depends on:** Wave 4.2 (PublishEngine off bridge; `bridge`, `buildLegacyContext`, `LegacyStage` all deleted; orchestrator ~250 lines)
 
 **Scope:** Final cleanup — extract `calculateDraftCost` helper to dedupe FORMAT_COSTS across `content-drafts.ts`, wire `PipelineSettingsProvider` + `PipelineActorProvider` into the project page, sync docs, and run the full smoke checklist.
 
@@ -14,7 +14,7 @@
 
 ## Pre-flight
 
-- [ ] Wave 4 merged; bridge helper fully deleted
+- [ ] Waves 4.1 + 4.2 merged; bridge helper fully deleted
 - [ ] Read parent plan tasks 15, 16, 17
 - [ ] Confirm orchestrator line count ≈250
 - [ ] Confirm `npm run test` and `npm run typecheck` green across all workspaces
