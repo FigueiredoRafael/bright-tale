@@ -20,7 +20,7 @@ Cards para a release v0.2 (monetização + polish). Origem das decisões:
 
 | ID | Título | Status | Estimate |
 |---|---|---|---:|
-| [M-000](./M-000-foundations.md) | Foundations: nomenclature, currency, base infra | ready | 1d |
+| [M-000](./M-000-foundations.md) | Foundations: nomenclature, currency, base infra | ✅ done | 1d |
 
 ## Sprint 1 — Revenue Path
 

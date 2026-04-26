@@ -1,10 +1,11 @@
 ---
 id: M-000
 title: Foundations — nomenclature, currency, base infra
-status: ready
+status: done
 sprint: foundations
 depends-on: []
 estimate: 1d
+delivered: 2026-04-25
 ---
 
 # M-000 — Foundations

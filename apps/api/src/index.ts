@@ -59,6 +59,7 @@ import { adminPersonaGuardrailsRoutes } from "./routes/admin-persona-guardrails.
 import { adminPersonaArchetypesRoutes } from "./routes/admin-persona-archetypes.js";
 import { adminPipelineSettingsRoutes } from "./routes/admin-pipeline-settings.js";
 import { adminCreditSettingsRoutes } from "./routes/admin-credit-settings.js";
+import { currencyRefreshRoutes } from "./routes/currency-refresh.js";
 import rateLimit from "@fastify/rate-limit";
 // Side-effect import: activates `rawBody?: boolean` on FastifyContextConfig
 // so routes/billing.ts can use `{ config: { rawBody: true } }` without a
@@ -308,6 +309,7 @@ server.register(adminPersonaGuardrailsRoutes, { prefix: "/agents/personas/guardr
 server.register(adminPersonaArchetypesRoutes, { prefix: "/agents/personas/archetypes" });
 server.register(adminPipelineSettingsRoutes, { prefix: "/admin/pipeline-settings" });
 server.register(adminCreditSettingsRoutes, { prefix: "/admin/credit-settings" });
+server.register(currencyRefreshRoutes);
 
 // Affiliate platform — @tn-figueiredo/affiliate@0.4.0 (Phase 2A.3 wires /ref + /internal)
 const affiliateContainer = buildAffiliateContainer();

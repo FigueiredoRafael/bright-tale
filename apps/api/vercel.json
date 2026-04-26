@@ -2,5 +2,11 @@
   "buildCommand": "sh build.sh",
   "rewrites": [
     { "source": "/(.*)", "destination": "/api" }
+  ],
+  "crons": [
+    {
+      "path": "/currency-refresh",
+      "schedule": "0 8 * * *"
+    }
   ]
 }
