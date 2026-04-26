@@ -1,10 +1,11 @@
 ---
 id: M-017
 title: End-user optional 2FA (TOTP)
-status: ready
+status: done
 sprint: S3
 depends-on: []
 estimate: 2d
+delivered: 2026-04-25
 ---
 
 # M-017 — End-user optional 2FA

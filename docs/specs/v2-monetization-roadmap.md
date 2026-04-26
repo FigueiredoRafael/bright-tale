@@ -282,16 +282,16 @@ check-ins, health score). Integração com afiliado que vendeu.
 Lifecycle do usuário depois que paga.
 
 **Triggers:**
-- [ ] Email de boas-vindas (logo após primeiro pagamento)
+- [x] Email de boas-vindas (logo após primeiro pagamento)
 - [ ] Wizard de onboarding na 1ª sessão (qual stack ele quer? canal? estilo?)
 - [ ] Check-in 7d após pagamento ("tá tudo ok?")
 - [ ] Alerta de "não usou nos últimos N dias" (churn risk)
-- [ ] Pesquisa NPS após M dias
+- [x] Pesquisa NPS após M dias podemos fazer igual o claude pergunta, como estou indo nessa sessao
 - [ ] Email de aniversário do plano (1 mês, 6 meses, 1 ano)
 - **Sua resposta:**
 
 **Health score:**
-- [ ] Sim, score por user (uso, NPS, tickets) visível no admin
+- [x] Sim, score por user (uso, NPS, tickets) visível no admin
 - [ ] Não — ainda é cedo
 - **Sua resposta:**
 
@@ -303,17 +303,17 @@ Afiliado que vendeu o usuário recebe avisos do ciclo de vida dele.
 - [ ] Sempre que o referral abrir ticket
 - [ ] Só em refund/cancel (pra ele tentar reverter ou entender perda)
 - [ ] Só em milestones positivos (renovou plano, upgrade)
-- [ ] Tudo acima
+- [x] Tudo acima
 - **Sua resposta:**
 
 **Privacidade:**
-- [ ] Afiliado vê só evento (sem detalhes do ticket) — recomendado pra LGPD
-- [ ] Afiliado vê detalhes (consentimento explícito do user)
+- [x] Afiliado vê só evento (sem detalhes do ticket) — recomendado pra LGPD
+- [x] Afiliado vê detalhes (consentimento explícito do user)
 - **Sua resposta:**
 
 **Canal:**
-- [ ] Email pro afiliado
-- [ ] Notificação no painel do afiliado (em `/affiliate/dashboard`)
+- [x] Email pro afiliado
+- [x] Notificação no painel do afiliado (em `/affiliate/dashboard`)
 - [ ] Webhook pra automações dele (opcional)
 - **Sua resposta:**
 
@@ -392,10 +392,10 @@ Página `/admin/finance` com gráficos de receita vs custo. Tudo em USD por
 enquanto (BRL convertido via cotação do dia, com `toFixed(2)`).
 
 **Métricas principais:**
-- [ ] **Receita** total / mês / dia (Stripe + Mercado Pago consolidados)
-- [ ] **Custo de operação** (soma de chamadas AI + storage + serviços) — vem do log de uso por user × tabela de custo do `pricing-projections.md`
-- [ ] **Margem** = receita − custo (absoluto + %)
-- [ ] **Status visual:** verde quando margem > X%, amarelo entre Y–X%, vermelho < Y%
+- [x] **Receita** total / mês / dia (Stripe + Mercado Pago consolidados)
+- [x] **Custo de operação** (soma de chamadas AI + storage + serviços) — vem do log de uso por user × tabela de custo do `pricing-projections.md`
+- [x] **Margem** = receita − custo (absoluto + %)
+- [x] **Status visual:** verde quando margem > X%, amarelo entre Y–X%, vermelho < Y%
 - **Sua resposta (X e Y):**
 
 **Charts:**
@@ -404,7 +404,7 @@ enquanto (BRL convertido via cotação do dia, com `toFixed(2)`).
 - [ ] Barras: top 10 users mais caros (custo de operação) — pra detectar power user "preju"
 - [ ] Pizza: custo por provider (OpenAI / Anthropic / Gemini / ElevenLabs / etc.)
 - [ ] MRR / ARR (subscription revenue recorrente) com waterfall: novo + expansão − churn
-- [ ] **Sua resposta (escolher quais e quais cortes):**
+- [ ] **Sua resposta (escolher quais e quais cortes):** todos
 
 **Granularidade — qual cobrir:**
 - [ ] Por plano (Free / Starter / Creator / Pro)
@@ -412,19 +412,19 @@ enquanto (BRL convertido via cotação do dia, com `toFixed(2)`).
 - [ ] Por org (se time)
 - [ ] Por país / moeda (BR vs gringa quando lançar)
 - [ ] Por afiliado (receita gerada pelo afiliado X, comissão paga, líquido)
-- **Sua resposta:**
+- **Sua resposta:** todos
 
 **Alertas / dashboards proativos:**
 - [ ] User no preju (custo > receita do plano dele) — listar
 - [ ] Provider AI custou mais que threshold no dia (ex.: $X em Anthropic)
 - [ ] Refunds passaram de Y% da receita no mês
 - [ ] Churn rate subiu acima de Z%
-- **Sua resposta:**
+- **Sua resposta:** todos
 
 **Export:**
 - [ ] CSV das métricas (pra contabilidade)
 - [ ] Relatório mensal automático por email (pro `owner`)
-- **Sua resposta:**
+- **Sua resposta:** todos
 
 **Cotação USD/BRL:**
 - [ ] API gratuita (ex.: AwesomeAPI, Banco Central) — atualizada 1x/dia
@@ -434,7 +434,7 @@ enquanto (BRL convertido via cotação do dia, com `toFixed(2)`).
 
 **Quem vê:**
 - [ ] Só `owner`
-- [ ] `owner` + `admin`
+- [x] `owner` + `admin`
 - [ ] `billing` também (role específica)
 - **Sua resposta:**
 

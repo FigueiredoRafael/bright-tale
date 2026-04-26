@@ -57,7 +57,7 @@ Cards para a release v0.2 (monetização + polish). Origem das decisões:
 | ID | Título | Status | Depends | Estimate |
 |---|---|---|---|---:|
 | [M-016](./M-016-mfa-recovery-codes.md) | MFA recovery codes + lost-phone UI | ready | — | 3d |
-| [M-017](./M-017-enduser-2fa.md) | End-user optional 2FA | ready | — | 2d |
+| [M-017](./M-017-enduser-2fa.md) | End-user optional 2FA | ✅ done | — | 2d |
 | [M-018](./M-018-admin-redesign.md) | Admin redesign (layout + user mgmt) | needs-decisions | — | 5d |
 | [M-019](./M-019-sales-page.md) | Sales page redo (apps/web + apps/app upgrade) | needs-decisions | — | 4d |
 

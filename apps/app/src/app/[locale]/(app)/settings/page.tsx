@@ -10,6 +10,7 @@ import {
     User,
     TrendingUp,
     CreditCard,
+    Shield,
 } from "lucide-react";
 
 interface SettingsCard {
@@ -49,6 +50,12 @@ export default function SettingsPage() {
             description: "Tokens gastos e custo estimado por mês, provider e formato. Ollama local é free; Gemini/Anthropic/OpenAI usam preços públicos.",
             href: "/settings/usage",
             icon: <TrendingUp className="h-6 w-6" />,
+        },
+        {
+            title: "Segurança",
+            description: "Autenticação em dois fatores (2FA) opcional para proteger sua conta.",
+            href: "/settings/security",
+            icon: <Shield className="h-6 w-6" />,
         },
     ];
 
