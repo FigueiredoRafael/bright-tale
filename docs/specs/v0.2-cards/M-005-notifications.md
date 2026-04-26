@@ -1,11 +1,14 @@
 ---
 id: M-005
 title: Notification system — Realtime + email + bell
-status: needs-decisions
+status: ready
 sprint: S1.5
 depends-on: [M-000]
 estimate: 5d
+defaults-applied: 2026-04-25
 ---
+
+> **[autopilot defaults]** TTL: 90 dias (cron limpa). Preferences granulares: incluir já no v0.2 (Settings → Notifications). Rate-limit broadcast: `admin` 1/hora, `owner` ilimitado.
 
 # M-005 — Notification system
 

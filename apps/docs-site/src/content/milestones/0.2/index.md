@@ -61,6 +61,78 @@ Estabilizar o produto para uso diário real (Bright Curios blog + YouTube) e hab
 | SEC-005 | Polish: slug rotation, reset-password uniformity, error envelope, probe refinements | SHOULD | 5 | 🔲 | `docs/security/SEC-005-polish.md` |
 | | **Subtotal segurança** | | **36–55** | |
 
+## Cards — Monetização & Polish (M-XXX)
+
+> Specs originais: [`docs/specs/v0.2-cards/`](https://github.com/FigueiredoRafael/bright-tale/tree/staging/docs/specs/v0.2-cards) — README + 20 cards detalhados. Roadmap fonte: [`docs/specs/v2-monetization-roadmap.md`](https://github.com/FigueiredoRafael/bright-tale/blob/staging/docs/specs/v2-monetization-roadmap.md).
+
+### Foundations
+
+| Card | Nome | Prioridade | Dias | Status |
+|---|---|---|---:|---|
+| M-000 | Foundations: nomenclature + currency + FX cache | MUST | 1 | ✅ |
+
+### Sprint 1 — Revenue Path
+
+| Card | Nome | Prioridade | Dias | Status |
+|---|---|---|---:|---|
+| M-001 | Stripe wiring (cartão + Pix BR + Apple Pay) | MUST | 5 | 🔲 |
+| M-002 | Credits model in DB + uso extra com cap | MUST | 4 | 🔲 |
+| M-003 | Free tier setup (500/mês + bônus 1ª semana) | MUST | 1 | 🔲 |
+| M-004 | `/usage` page (Claude-style) | MUST | 4 | 🔲 |
+| | **Subtotal S1** | | **14** | |
+
+### Sprint 1.5 — Notifications + Support
+
+| Card | Nome | Prioridade | Dias | Status |
+|---|---|---|---:|---|
+| M-005 | Notification system (Supabase Realtime + Resend + sino) | MUST | 5 | 🔲 |
+| M-006 | Support chatbot (Claude com tools) | MUST | 6 | 🔲 |
+| M-007 | Auto-refund + anti-fraud safeguards | MUST | 4 | 🔲 |
+| M-008 | Support escalation + admin queue (P0–P3 + SLA) | MUST | 5 | 🔲 |
+| M-009 | Post-sale lifecycle (welcome / NPS / churn) | SHOULD | 3 | 🔲 |
+| M-010 | Affiliate lifecycle notifications | SHOULD | 2 | 🔲 |
+| | **Subtotal S1.5** | | **25** | |
+
+### Sprint 2 — Admin tooling
+
+| Card | Nome | Prioridade | Dias | Status |
+|---|---|---|---:|---|
+| M-011 | Reset usage (individual + bulk) | MUST | 2 | 🔲 |
+| M-012 | Credit donations (admin → user) | MUST | 3 | 🔲 |
+| M-013 | Custom plans (owner full / admin 30% temp) | SHOULD | 3 | 🔲 |
+| M-014 | Coupons (Stripe + custom credit-grant) | SHOULD | 4 | 🔲 |
+| M-015 | Finance dashboard (revenue × cost × margin) | MUST | 5 | 🔲 |
+| | **Subtotal S2** | | **17** | |
+
+### Sprint 3 — Polish
+
+| Card | Nome | Prioridade | Dias | Status |
+|---|---|---|---:|---|
+| M-016 | MFA recovery codes + lost-phone UI | SHOULD | 3 | 🔲 |
+| M-017 | End-user optional 2FA (TOTP) | SHOULD | 2 | ✅ |
+| M-018 | Admin redesign (layout + user mgmt) | SHOULD | 5 | 🔲 |
+| M-019 | Sales page redo (apps/web + upgrade) | MUST | 4 | 🔲 |
+| | **Subtotal S3** | | **14** | |
+
+| | **Total monetização & polish** | | **71** | |
+
+### Ordem de ataque recomendada (M-series)
+
+```
+M-000 ✅ (foundations)
+   ↓
+M-001 (Stripe) ─┬─> M-002 (credits) ─┬─> M-003 (free tier)
+                │                    └─> M-004 (usage page)
+                │                    └─> M-007 (auto-refund) → M-006 (chatbot) → M-008 (escalation)
+                │                    └─> M-011 (reset) + M-012 (donations) + M-013 (custom plans)
+                │                    └─> M-014 (coupons)
+                └─> M-015 (finance)
+M-005 (notifications) — pré-req de M-006/008/009/010/012
+M-016 (recovery codes) — paralelo
+M-018 (admin UX) — paralelo (review visual)
+M-019 (sales page) — depende de M-001
+```
+
 ### Dependências internas de segurança
 
 ```

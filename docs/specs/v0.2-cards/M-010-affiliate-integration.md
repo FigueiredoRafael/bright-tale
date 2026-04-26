@@ -1,11 +1,14 @@
 ---
 id: M-010
 title: Affiliate lifecycle notifications
-status: needs-decisions
+status: ready
 sprint: S1.5
 depends-on: [M-005, M-008]
 estimate: 2d
+defaults-applied: 2026-04-25
 ---
+
+> **[autopilot defaults]** Notifica em **todos** eventos (refunds + cancels + upgrades + tickets). Privacidade LGPD-safe: afiliado vê só evento (sem detalhe do ticket / PII). Canal: email + painel (`/affiliate/dashboard`). Webhook customizado fica pra v0.3.
 
 # M-010 — Affiliate notifications
 

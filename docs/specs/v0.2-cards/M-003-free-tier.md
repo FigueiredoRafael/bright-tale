@@ -1,11 +1,14 @@
 ---
 id: M-003
 title: Free tier — setup do plano grátis
-status: needs-decisions
+status: ready
 sprint: S1
 depends-on: [M-002]
 estimate: 1d
+defaults-applied: 2026-04-25
 ---
+
+> **[autopilot defaults]** Opção C — 500 tokens/mês recorrente + 2.000 tokens bônus na 1ª semana (gancho de ativação). Bônus expira ao virar pago.
 
 # M-003 — Free tier
 

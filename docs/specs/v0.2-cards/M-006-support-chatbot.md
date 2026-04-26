@@ -1,11 +1,14 @@
 ---
 id: M-006
 title: Support chatbot — FAQ + refunds + plan changes
-status: needs-decisions
+status: ready
 sprint: S1.5
 depends-on: [M-005, M-007]
 estimate: 6d
+defaults-applied: 2026-04-25
 ---
+
+> **[autopilot defaults]** Stack: Anthropic Claude Haiku 4.5 com tools customizadas (rota própria `/api/support/chat`). Reusa convenção dos agents BC_*. Bug reports: bot coleta info + escala P2.
 
 # M-006 — Support chatbot
 

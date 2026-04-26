@@ -1,11 +1,14 @@
 ---
 id: M-001
 title: Stripe wiring — checkout, webhooks, métodos de pagamento
-status: needs-decisions
+status: ready
 sprint: S1
 depends-on: [M-000]
 estimate: 5d
+defaults-applied: 2026-04-25
 ---
+
+> **[autopilot defaults]** Pix via Stripe BR nativo (sem MP). Desconto anual: 20% off (2 meses grátis). Geo-detect via header `x-vercel-ip-country` (Vercel Edge); user pode override em settings.
 
 # M-001 — Stripe wiring
 

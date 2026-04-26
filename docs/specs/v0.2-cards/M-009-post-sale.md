@@ -1,11 +1,14 @@
 ---
 id: M-009
 title: Post-sale lifecycle (welcome / check-in / NPS / churn)
-status: needs-decisions
+status: ready
 sprint: S1.5
 depends-on: [M-005]
 estimate: 3d
+defaults-applied: 2026-04-25
 ---
+
+> **[autopilot defaults]** Triggers: ligar todos (welcome / wizard / check-in 7d / churn warning 14d / NPS 30d / aniversário 1m+6m+1y). Health score: ligar (engagement 40% + NPS 30% + tickets 30%).
 
 # M-009 — Post-sale lifecycle
 

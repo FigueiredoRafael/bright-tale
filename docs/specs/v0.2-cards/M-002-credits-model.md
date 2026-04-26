@@ -1,11 +1,14 @@
 ---
 id: M-002
 title: Credits model — DB, débito, uso extra com cap
-status: needs-decisions
+status: ready
 sprint: S1
 depends-on: [M-001]
 estimate: 4d
+defaults-applied: 2026-04-25
 ---
+
+> **[autopilot defaults]** Bloco de top-up: 1.000 tokens por $5 (1.5× preço efetivo do Starter — Starter $9 / 5k = $0.0018/token; extra $5 / 1.000 = $0.005/token).
 
 # M-002 — Credits model
 

@@ -1,11 +1,14 @@
 ---
 id: M-007
 title: Auto-refund + anti-fraud safeguards
-status: needs-decisions
+status: ready
 sprint: S1.5
 depends-on: [M-001]
 estimate: 4d
+defaults-applied: 2026-04-25
 ---
+
+> **[autopilot defaults]** Janela 24h: uso máx 10% do plano. Cap auto-aprovação: $50 USD. Limites das traps: email = 1 refund vitalício; IP = 2 em 30d; cartão (fingerprint) = 1 vitalício; conta < 24h = bloqueia; velocity global > 10/h = alerta. Reverter auto-refund: diferido até consultar advogado.
 
 # M-007 — Auto-refund
 

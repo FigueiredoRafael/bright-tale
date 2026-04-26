@@ -1,11 +1,14 @@
 ---
 id: M-014
 title: Coupons (all types)
-status: needs-decisions
+status: ready
 sprint: S2
 depends-on: [M-001]
 estimate: 4d
+defaults-applied: 2026-04-25
 ---
+
+> **[autopilot defaults]** Stack híbrida: Stripe Coupons + Promotion Codes pra `percentual / fixo / trial estendido` (zero código adicional). Custom só pra `credit_grant` (Stripe não modela). Limites por cupom: max usos total, max usos/user, validade, planos permitidos.
 
 # M-014 — Coupons
 

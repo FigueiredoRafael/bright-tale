@@ -1,11 +1,14 @@
 ---
 id: M-015
 title: Finance dashboard (revenue × cost × margin)
-status: needs-decisions
+status: ready
 sprint: S2
 depends-on: [M-001, M-002]
 estimate: 5d
+defaults-applied: 2026-04-25
 ---
+
+> **[autopilot defaults]** Margem: verde > 40%, amarelo 20-40%, vermelho < 20%. Charts: TODOS (linha receita×custo, área margem, top 10 users caros, pizza por provider, MRR waterfall). Granularidade: TODA (plano / user / org / país / afiliado). Alertas proativos: TODOS. Cotação: usa USD do Stripe (sem FX próprio). Acesso: `owner` + nova role `billing`.
 
 # M-015 — Finance dashboard
 

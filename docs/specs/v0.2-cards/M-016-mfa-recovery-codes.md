@@ -1,11 +1,14 @@
 ---
 id: M-016
 title: MFA recovery codes + lost-phone UI
-status: needs-decisions
+status: ready
 sprint: S3
 depends-on: []
 estimate: 3d
+defaults-applied: 2026-04-25
 ---
+
+> **[autopilot defaults]** Recovery codes: SIM (10 one-shot Argon2id-hashed). Lost-phone UI: SIM (admin A pede, admin B aprova). Auto-unenroll após N falhas: NÃO (vira DoS fácil contra admin).
 
 # M-016 — MFA recovery codes
 
