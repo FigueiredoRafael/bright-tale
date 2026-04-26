@@ -9,10 +9,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import {
   Loader2, ArrowRight, Check, Upload, Image as ImageIcon,
-  Sparkles, Palette, Trash2, Link2, ChevronDown, ChevronUp, Copy,
+  Sparkles, FolderOpen, Palette, Trash2, Link2, ChevronDown, ChevronUp, Copy,
   ClipboardPaste, SkipForward,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ManualOutputDialog } from './ManualOutputDialog';
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
@@ -68,6 +69,7 @@ interface ContentAsset {
  */
 interface AssetsEngineProps {
   mode?: 'generate' | 'import';
+  onModeChange?: (m: 'generate' | 'import') => void;
   draft: Record<string, unknown> | null;
 }
 
@@ -176,7 +178,7 @@ interface PendingUpload {
 
 /* ── Component ── */
 
-export function AssetsEngine({ mode: engineMode, draft }: AssetsEngineProps) {
+export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEngineProps) {
   const actor = usePipelineActor();
   const channelId = useSelector(actor, (s) => s.context.channelId);
   const projectId = useSelector(actor, (s) => s.context.projectId);
@@ -627,11 +629,20 @@ export function AssetsEngine({ mode: engineMode, draft }: AssetsEngineProps) {
       <div className="space-y-6">
         <ContextBanner stage="assets" context={trackerContext} onBack={navigate} />
         <div className="space-y-4">
-          <div>
+          <div className="flex items-start justify-between gap-4">
             <h1 className="text-2xl font-bold">Assets</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Import assets from your library.
-            </p>
+            {onModeChange && (
+              <Tabs value="import" onValueChange={(v) => onModeChange(v as 'generate' | 'import')}>
+                <TabsList>
+                  <TabsTrigger value="generate" className="gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5" /> Generate
+                  </TabsTrigger>
+                  <TabsTrigger value="import" className="gap-1.5">
+                    <FolderOpen className="h-3.5 w-3.5" /> Import
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
           </div>
           <ImportPicker
             entityType="content-assets"
@@ -688,42 +699,56 @@ export function AssetsEngine({ mode: engineMode, draft }: AssetsEngineProps) {
     <div className="space-y-6">
       <ContextBanner stage="assets" context={trackerContext} onBack={navigate} />
 
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <ImageIcon className="h-5 w-5" /> Assets
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Generate prompt briefs, refine them, then upload images for each section.
-        </p>
-        {trackerContext.personaName && (() => {
-          const theme = getPersonaTheme(trackerContext.personaSlug);
-          return (
-            <div
-              className="mt-3 mb-2 inline-flex items-center gap-2.5 rounded-full border px-3 py-1.5 backdrop-blur-sm"
-              style={{
-                background: `rgba(${theme.glow}, 0.1)`,
-                borderColor: `rgba(${theme.glow}, 0.35)`,
-              }}
-              aria-label={`Authored by ${trackerContext.personaName}`}
-            >
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <ImageIcon className="h-5 w-5" /> Assets
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Generate prompt briefs, refine them, then upload images for each section.
+          </p>
+          {trackerContext.personaName && (() => {
+            const theme = getPersonaTheme(trackerContext.personaSlug);
+            return (
               <div
-                className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                className="mt-3 mb-2 inline-flex items-center gap-2.5 rounded-full border px-3 py-1.5 backdrop-blur-sm"
                 style={{
-                  background: theme.gradient,
-                  boxShadow: `0 4px 12px -2px rgba(${theme.glow}, 0.5)`,
+                  background: `rgba(${theme.glow}, 0.1)`,
+                  borderColor: `rgba(${theme.glow}, 0.35)`,
                 }}
+                aria-label={`Authored by ${trackerContext.personaName}`}
               >
-                {trackerContext.personaName![0]}
+                <div
+                  className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                  style={{
+                    background: theme.gradient,
+                    boxShadow: `0 4px 12px -2px rgba(${theme.glow}, 0.5)`,
+                  }}
+                >
+                  {trackerContext.personaName![0]}
+                </div>
+                <span
+                  className="text-xs font-semibold tracking-wide"
+                  style={{ color: theme.accent }}
+                >
+                  {trackerContext.personaName}
+                </span>
               </div>
-              <span
-                className="text-xs font-semibold tracking-wide"
-                style={{ color: theme.accent }}
-              >
-                {trackerContext.personaName}
-              </span>
-            </div>
-          );
-        })()}
+            );
+          })()}
+        </div>
+        {onModeChange && (
+          <Tabs value="generate" onValueChange={(v) => onModeChange(v as 'generate' | 'import')}>
+            <TabsList>
+              <TabsTrigger value="generate" className="gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" /> Generate
+              </TabsTrigger>
+              <TabsTrigger value="import" className="gap-1.5">
+                <FolderOpen className="h-3.5 w-3.5" /> Import
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
       </div>
 
       {/* Phase stepper */}

@@ -7,6 +7,7 @@ import {
   Loader2,
   Lightbulb,
   Sparkles,
+  FolderOpen,
   RefreshCw,
   Check,
   ArrowRight,
@@ -22,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   ModelPicker,
   MODELS_BY_PROVIDER,
@@ -53,6 +55,7 @@ interface Idea {
 
 interface BrainstormEngineProps {
   mode?: 'generate' | 'import';
+  onModeChange?: (m: 'generate' | 'import') => void;
   initialSession?: Record<string, unknown>;
   initialIdeas?: Record<string, unknown>[];
   preSelectedIdeaId?: string;
@@ -79,6 +82,7 @@ const MODES: { id: Mode; label: string; description: string }[] = [
 
 export function BrainstormEngine({
   mode: engineMode = 'generate',
+  onModeChange,
   initialSession,
   initialIdeas,
   preSelectedIdeaId,
@@ -658,13 +662,22 @@ export function BrainstormEngine({
       <div className="space-y-6">
         <ContextBanner stage="brainstorm" context={trackerContext} />
 
-        <div>
+        <div className="flex items-start justify-between gap-4">
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Lightbulb className="h-5 w-5" /> Brainstorm
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Import an idea from your library to continue.
-          </p>
+          {onModeChange && (
+            <Tabs value="import" onValueChange={(v) => onModeChange(v as 'generate' | 'import')}>
+              <TabsList>
+                <TabsTrigger value="generate" className="gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5" /> Generate
+                </TabsTrigger>
+                <TabsTrigger value="import" className="gap-1.5">
+                  <FolderOpen className="h-3.5 w-3.5" /> Import
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
         </div>
 
         <ImportPicker
@@ -713,15 +726,29 @@ export function BrainstormEngine({
     <div className="space-y-6">
       <ContextBanner stage="brainstorm" context={trackerContext} />
 
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Lightbulb className="h-5 w-5" /> Brainstorm
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {isSessionDetail
-            ? `Session: ${topic_display || 'Untitled'} · ${ideas.length} ideas`
-            : 'Generate ideas for this channel using AI. Each brainstorm costs 50 credits.'}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Lightbulb className="h-5 w-5" /> Brainstorm
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {isSessionDetail
+              ? `Session: ${topic_display || 'Untitled'} · ${ideas.length} ideas`
+              : 'Generate ideas for this channel using AI. Each brainstorm costs 50 credits.'}
+          </p>
+        </div>
+        {onModeChange && !isSessionDetail && (
+          <Tabs value="generate" onValueChange={(v) => onModeChange(v as 'generate' | 'import')}>
+            <TabsList>
+              <TabsTrigger value="generate" className="gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" /> Generate
+              </TabsTrigger>
+              <TabsTrigger value="import" className="gap-1.5">
+                <FolderOpen className="h-3.5 w-3.5" /> Import
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
       </div>
 
       {/* Show form only if not in session detail mode */}

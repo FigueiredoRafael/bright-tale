@@ -16,7 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Loader2, Sparkles, Copy } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useAnalytics } from '@/hooks/use-analytics'
 import { pipelineMachine } from '@/lib/pipeline/machine'
 import { usePipelineSettings } from '@/providers/PipelineSettingsProvider'
@@ -303,23 +303,22 @@ function OrchestratorInner({
     }
 
     const canImport = IMPORTABLE_STAGES.includes(currentStage)
-    if (ctx.mode === 'step' && canImport && !engineMode && !ctx.stageResults[currentStage]) {
-      return <ModePicker onPick={setEngineMode} stage={currentStage} />
-    }
-
     const mode: 'generate' | 'import' = engineMode ?? 'generate'
+    const onModeChange = (canImport && !ctx.stageResults[currentStage])
+      ? setEngineMode
+      : undefined
 
     switch (currentStage) {
       case 'brainstorm':
-        return <BrainstormEngine mode={mode} />
+        return <BrainstormEngine mode={mode} onModeChange={onModeChange} />
       case 'research':
-        return <ResearchEngine mode={mode} />
+        return <ResearchEngine mode={mode} onModeChange={onModeChange} />
       case 'draft':
-        return <DraftEngine mode={mode} />
+        return <DraftEngine mode={mode} onModeChange={onModeChange} />
       case 'review':
         return <ReviewEngine draft={draftData} />
       case 'assets':
-        return <AssetsEngine mode={mode} draft={draftData} />
+        return <AssetsEngine mode={mode} onModeChange={onModeChange} draft={draftData} />
       case 'preview':
         return <PreviewEngine />
       case 'publish':
@@ -435,31 +434,3 @@ function OrchestratorInner({
   )
 }
 
-function ModePicker({
-  onPick,
-  stage,
-}: {
-  onPick: (m: 'generate' | 'import') => void
-  stage: PipelineStage
-}) {
-  return (
-    <Card className="border-blue-500/20 bg-blue-500/5">
-      <CardContent className="py-4 flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium">Mode for {stage}</p>
-          <p className="text-xs text-muted-foreground">
-            Generate fresh or import from library?
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => onPick('generate')}>
-            <Sparkles className="h-4 w-4 mr-1" /> Generate Fresh
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => onPick('import')}>
-            <Copy className="h-4 w-4 mr-1" /> Import Existing
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}

@@ -10,6 +10,7 @@ import {
   ArrowRight,
   AlertTriangle,
   Sparkles,
+  FolderOpen,
   BookOpen,
   BarChart3,
   Quote,
@@ -58,6 +59,7 @@ interface Card {
 
 interface ResearchEngineProps {
   mode?: 'generate' | 'import';
+  onModeChange?: (m: 'generate' | 'import') => void;
   initialSession?: Record<string, unknown>;
   initialCards?: Record<string, unknown>[];
   initialApproved?: number[];
@@ -75,6 +77,7 @@ const RESEARCH_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'olla
 
 export function ResearchEngine({
   mode: engineMode,
+  onModeChange,
   initialSession,
   initialCards,
   initialApproved,
@@ -655,13 +658,22 @@ export function ResearchEngine({
       <div className="space-y-6">
         <ContextBanner stage="research" context={trackerContext} />
 
-        <div>
+        <div className="flex items-start justify-between gap-4">
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Search className="h-5 w-5" /> Research
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Import a research session to continue.
-          </p>
+          {onModeChange && (
+            <Tabs value="import" onValueChange={(v) => onModeChange(v as 'generate' | 'import')}>
+              <TabsList>
+                <TabsTrigger value="generate" className="gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5" /> Generate
+                </TabsTrigger>
+                <TabsTrigger value="import" className="gap-1.5">
+                  <FolderOpen className="h-3.5 w-3.5" /> Import
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
         </div>
 
         <ImportPicker
@@ -700,15 +712,29 @@ export function ResearchEngine({
     <div className="space-y-6">
       <ContextBanner stage="research" context={trackerContext} />
 
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Search className="h-5 w-5" /> Research
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {isSessionDetail
-            ? `Session: ${topic_display || 'Untitled'} · ${cards.length} cards · ${level} depth`
-            : 'Research your idea with AI. Gather sources, statistics, expert quotes, and counterarguments.'}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Search className="h-5 w-5" /> Research
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {isSessionDetail
+              ? `Session: ${topic_display || 'Untitled'} · ${cards.length} cards · ${level} depth`
+              : 'Research your idea with AI. Gather sources, statistics, expert quotes, and counterarguments.'}
+          </p>
+        </div>
+        {onModeChange && !isSessionDetail && (
+          <Tabs value="generate" onValueChange={(v) => onModeChange(v as 'generate' | 'import')}>
+            <TabsList>
+              <TabsTrigger value="generate" className="gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" /> Generate
+              </TabsTrigger>
+              <TabsTrigger value="import" className="gap-1.5">
+                <FolderOpen className="h-3.5 w-3.5" /> Import
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
       </div>
 
       {/* Show form only if not in session detail mode */}

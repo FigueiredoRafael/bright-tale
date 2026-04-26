@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Loader2, BookOpen, FileText, Video, Zap, Mic, Check, ClipboardPaste,
-  ArrowRight, Sparkles, ChevronDown, ChevronUp, Pencil,
+  ArrowRight, Sparkles, FolderOpen, ChevronDown, ChevronUp, Pencil,
   Quote, TrendingUp, Target, MessageSquare, Megaphone, Link2,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -55,6 +55,7 @@ interface ResearchOption {
 
 interface DraftEngineProps {
   mode?: 'generate' | 'import';
+  onModeChange?: (m: 'generate' | 'import') => void;
   initialDraft?: Record<string, unknown>;
 }
 
@@ -62,6 +63,7 @@ const DRAFT_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama'
 
 export function DraftEngine({
   mode: engineMode,
+  onModeChange,
   initialDraft,
 }: DraftEngineProps) {
   const actor = usePipelineActor();
@@ -1015,13 +1017,22 @@ export function DraftEngine({
       <div className="space-y-6">
         <ContextBanner stage="draft" context={trackerContext} />
 
-        <div>
+        <div className="flex items-start justify-between gap-4">
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Sparkles className="h-5 w-5" /> Draft
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Import a draft to continue.
-          </p>
+          {onModeChange && (
+            <Tabs value="import" onValueChange={(v) => onModeChange(v as 'generate' | 'import')}>
+              <TabsList>
+                <TabsTrigger value="generate" className="gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5" /> Generate
+                </TabsTrigger>
+                <TabsTrigger value="import" className="gap-1.5">
+                  <FolderOpen className="h-3.5 w-3.5" /> Import
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
         </div>
 
         <ImportPicker
@@ -1059,13 +1070,27 @@ export function DraftEngine({
     <div className="space-y-6">
       <ContextBanner stage="draft" context={trackerContext} />
 
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Sparkles className="h-5 w-5" /> Draft
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Two-step production: generate the canonical core narrative, then produce formatted content.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Sparkles className="h-5 w-5" /> Draft
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Two-step production: generate the canonical core narrative, then produce formatted content.
+          </p>
+        </div>
+        {onModeChange && (
+          <Tabs value="generate" onValueChange={(v) => onModeChange(v as 'generate' | 'import')}>
+            <TabsList>
+              <TabsTrigger value="generate" className="gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" /> Generate
+              </TabsTrigger>
+              <TabsTrigger value="import" className="gap-1.5">
+                <FolderOpen className="h-3.5 w-3.5" /> Import
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
       </div>
 
       {/* Phase stepper */}
