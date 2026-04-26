@@ -65,6 +65,13 @@ Estabilizar o produto para uso diário real (Bright Curios blog + YouTube) e hab
 
 > Specs originais: [`docs/specs/v0.2-cards/`](https://github.com/FigueiredoRafael/bright-tale/tree/staging/docs/specs/v0.2-cards) — README + 20 cards detalhados. Roadmap fonte: [`docs/specs/v2-monetization-roadmap.md`](https://github.com/FigueiredoRafael/bright-tale/blob/staging/docs/specs/v2-monetization-roadmap.md).
 
+### Phases
+
+- [Sprint 1 — Revenue Path](/milestones/0.2/sprint-1-revenue/) (M-001..M-004) — 14 dias
+- [Sprint 1.5 — Notifications + Support](/milestones/0.2/sprint-1-5-support/) (M-005..M-010) — 25 dias
+- [Sprint 2 — Admin Tooling](/milestones/0.2/sprint-2-admin/) (M-011..M-015) — 17 dias
+- [Sprint 3 — Polish](/milestones/0.2/sprint-3-polish/) (M-016..M-019) — 14 dias (M-017 ✅ done)
+
 ### Foundations
 
 | Card | Nome | Prioridade | Dias | Status |
