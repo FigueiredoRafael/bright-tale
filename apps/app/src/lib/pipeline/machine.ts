@@ -84,6 +84,33 @@ export const pipelineMachine = setup({
     clearStrictlyAfter: clearStrictlyAfterEvent as any,
     toggleMode: assign({
       mode: ({ context }: any) => (context.mode === 'auto' ? 'step' : 'auto'),
+      paused: () => false,
+      pauseReason: () => null,
+    }) as any,
+    pauseAuto: assign({
+      paused: () => true,
+      pauseReason: ({ context }: any) =>
+        (context.pauseReason ?? 'user_paused') as
+          | 'user_paused'
+          | 'max_iterations'
+          | 'rejected'
+          | 'reproduce_error',
+    }) as any,
+    resumeAuto: assign({
+      paused: () => false,
+      pauseReason: () => null,
+    }) as any,
+    setPauseReasonRejected: assign({
+      paused: () => true,
+      pauseReason: () => 'rejected' as const,
+    }) as any,
+    setPauseReasonMaxIter: assign({
+      paused: () => true,
+      pauseReason: () => 'max_iterations' as const,
+    }) as any,
+    setPauseReasonReproduceError: assign({
+      paused: () => true,
+      pauseReason: () => 'reproduce_error' as const,
     }) as any,
     setProjectTitle: assign({
       projectTitle: ({ event }: any) => {
@@ -122,10 +149,13 @@ export const pipelineMachine = setup({
     lastError: null,
     pipelineSettings: input.pipelineSettings ?? DEFAULT_PIPELINE_SETTINGS,
     creditSettings: input.creditSettings ?? DEFAULT_CREDIT_SETTINGS,
+    paused: false,
+    pauseReason: null,
   }),
   initial: 'brainstorm',
   on: {
     TOGGLE_AUTO_PILOT: { actions: 'toggleMode' },
+    PAUSE: { actions: 'pauseAuto' },
     SET_PROJECT_TITLE: { actions: 'setProjectTitle' },
     STAGE_PROGRESS: { actions: 'mergeStageProgress' },
     NAVIGATE: [
@@ -207,16 +237,10 @@ export const pipelineMachine = setup({
     review: {
       initial: 'idle',
       states: {
-        idle: { on: { RESUME: { target: 'reviewing' } } },
+        idle: { on: { RESUME: { target: 'reviewing', actions: 'resumeAuto' } } },
         reviewing: {
           entry: 'incrementIteration',
           on: {
-            REVIEW_COMPLETE: [
-              { guard: 'isApproved', target: '#pipeline.assets', actions: 'saveReviewResult' },
-              { guard: 'isRejected', target: 'paused', actions: 'saveReviewResult' },
-              { guard: 'hasReachedMaxIterations', target: 'paused', actions: 'saveReviewResult' },
-              { target: 'reproducing', actions: 'saveReviewResult' },
-            ],
             STAGE_ERROR: { target: 'error', actions: 'recordError' },
           },
         },
@@ -228,12 +252,33 @@ export const pipelineMachine = setup({
               feedbackJson: (context.stageResults.review?.feedbackJson ?? {}) as Record<string, unknown>,
             }),
             onDone: [{ guard: 'isAutoMode', target: 'reviewing' }, { target: 'idle' }],
-            onError: { target: 'paused', actions: 'recordActorError' },
+            onError: {
+              target: 'paused',
+              actions: ['recordActorError', 'setPauseReasonReproduceError'],
+            },
           },
         },
-        paused: { on: { RESUME: { target: 'reviewing' } } },
+        paused: {
+          on: { RESUME: { target: 'reviewing', actions: 'resumeAuto' } },
+        },
         done: {},
         error: { on: { RETRY: { target: 'idle', actions: 'clearError' } } },
+      },
+      on: {
+        REVIEW_COMPLETE: [
+          { guard: 'isApproved', target: '#pipeline.assets', actions: 'saveReviewResult' },
+          {
+            guard: 'isRejected',
+            target: '#pipeline.review.paused',
+            actions: ['saveReviewResult', 'setPauseReasonRejected'],
+          },
+          {
+            guard: 'hasReachedMaxIterations',
+            target: '#pipeline.review.paused',
+            actions: ['saveReviewResult', 'setPauseReasonMaxIter'],
+          },
+          { target: '#pipeline.review.reproducing', actions: 'saveReviewResult' },
+        ],
       },
     },
     assets: {

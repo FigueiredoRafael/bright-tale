@@ -33,6 +33,7 @@ import { PersonaCarousel } from './PersonaCarousel';
 import type { Persona } from '@brighttale/shared/types/agents';
 import { useSelector } from '@xstate/react';
 import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import type { DraftResult, PipelineContext } from './types';
 
 type DraftType = 'blog' | 'video' | 'shorts' | 'podcast';
@@ -264,6 +265,7 @@ export function DraftEngine({
     : undefined;
 
   // Fetch recommended model
+  const [recommendationLoaded, setRecommendationLoaded] = useState(false);
   useEffect(() => {
     (async () => {
       try {
@@ -280,9 +282,98 @@ export function DraftEngine({
         }
       } catch {
         // silent
+      } finally {
+        setRecommendationLoaded(true);
       }
     })();
   }, []);
+
+  // ── Auto-pilot wiring ─────────────────────────────────────────────
+  const autoMode = useSelector(actor, (s) => s.context.mode);
+  const autoPaused = useSelector(actor, (s) => s.context.paused);
+
+  // Phase 1: auto-fire canonical core generation when prerequisites are ready
+  useAutoPilotTrigger({
+    stage: 'draft',
+    canFire: () =>
+      phase === 'core' &&
+      !busy &&
+      !activeDraftId &&
+      !manualState &&
+      !!research &&
+      title.trim().length > 0 &&
+      !!selectedPersonaId &&
+      recommendationLoaded,
+    fire: handleGenerateCore,
+  });
+
+  // Phase 2: auto-approve core when it lands
+  const autoCoreApprovedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (autoMode !== 'auto' || autoPaused) return;
+    if (phase !== 'core-ready') return;
+    if (!canonicalCore || !draftId) return;
+    if (coreApproved) return;
+    if (autoCoreApprovedRef.current === draftId) return;
+    autoCoreApprovedRef.current = draftId;
+    setCoreApproved(true);
+  }, [autoMode, autoPaused, phase, canonicalCore, draftId, coreApproved]);
+
+  // Phase 3: auto-fire produce when core approved
+  const autoProducedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (autoMode !== 'auto' || autoPaused) return;
+    if (phase !== 'core-ready') return;
+    if (!coreApproved || !draftId) return;
+    if (busy || activeDraftId || manualState) return;
+    if (autoProducedRef.current === draftId) return;
+    autoProducedRef.current = draftId;
+    void handleProduce();
+    // handleProduce defined below — referenced by hoisting since it's a function declaration.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoMode, autoPaused, phase, coreApproved, draftId, busy, activeDraftId, manualState]);
+
+  // Phase 4: auto-dispatch DRAFT_COMPLETE when produced content is ready
+  const autoDraftDispatchedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (autoMode !== 'auto' || autoPaused) return;
+    if (phase !== 'done') return;
+    if (!draftId || !producedContent) return;
+    if (draftResult?.draftId === draftId) return;
+    if (autoDraftDispatchedRef.current === draftId) return;
+    autoDraftDispatchedRef.current = draftId;
+
+    const wordCount = producedContent.split(/\s+/).length;
+    tracker.trackCompleted({
+      draftId,
+      draftTitle: title,
+      wordCount,
+      format: type,
+    });
+    const result: DraftResult = {
+      draftId,
+      draftTitle: title,
+      draftContent: producedContent,
+      personaId: selectedPersonaId || undefined,
+      personaName: selectedPersona?.name,
+      personaSlug: selectedPersona?.slug,
+      personaWpAuthorId: selectedPersona?.wpAuthorId ?? null,
+    };
+    actor.send({ type: 'DRAFT_COMPLETE', result });
+  }, [
+    autoMode,
+    autoPaused,
+    phase,
+    draftId,
+    producedContent,
+    title,
+    type,
+    selectedPersonaId,
+    selectedPersona,
+    draftResult?.draftId,
+    actor,
+    tracker,
+  ]);
 
   async function runStep(label: string, fn: () => Promise<Response>) {
     setBusy(true);
@@ -496,20 +587,48 @@ export function DraftEngine({
       try {
         const res = await fetch(`/api/content-drafts/${draftId}`);
         const json = await res.json();
-        const coreJson = json.data?.canonical_core_json ?? json.data?.canonicalCoreJson;
+        const draftRow = json.data as Record<string, unknown> | null;
+        if (!draftRow) {
+          toast.error('Failed to load draft');
+          return;
+        }
+        const coreJson = draftRow.canonical_core_json ?? draftRow.canonicalCoreJson;
+        const draftJson = draftRow.draft_json as Record<string, unknown> | null | undefined;
+        const hasProducedContent =
+          draftJson && typeof draftJson === 'object' && Object.keys(draftJson).length > 0;
+
         if (coreJson && typeof coreJson === 'object') {
           setCanonicalCore(coreJson as Record<string, unknown>);
           tracker.trackAction('core.generated', {
             draftId,
             canonicalCoreJson: coreJson,
           });
+
+          // The /generate Inngest worker runs the full pipeline (core +
+          // produce + review). If draft_json is already populated, skip the
+          // separate /produce call — re-invoking it would burn another LLM
+          // round-trip and (worse) the sync route times out the apps/app
+          // proxy with ECONNRESET on slow models.
+          if (hasProducedContent) {
+            const content = extractProducedContent(draftRow, type);
+            if (content && content !== '{}') {
+              setProducedContent(content);
+              setCoreApproved(true);
+              setPhase('done');
+              const warning = typeof draftJson?.content_warning === 'string' ? draftJson.content_warning : null;
+              setContentWarning(warning);
+              toast.success('Canonical core + content generated');
+              return;
+            }
+          }
+
           setPhase('core-ready');
           setCoreExpanded(true);
           setCoreApproved(false);
           toast.success('Canonical core generated — review before producing');
-        } else {
-          // If the API generates full content in one step, handle that too
-          const content = extractProducedContent(json.data as Record<string, unknown>, type);
+        } else if (hasProducedContent) {
+          // No core but full content — handle one-shot generators
+          const content = extractProducedContent(draftRow, type);
           if (content && content !== '{}') {
             setProducedContent(content);
             setPhase('done');
@@ -517,6 +636,8 @@ export function DraftEngine({
           } else {
             toast.error('No canonical core found in draft');
           }
+        } else {
+          toast.error('No canonical core found in draft');
         }
       } catch {
         toast.error('Failed to load draft');

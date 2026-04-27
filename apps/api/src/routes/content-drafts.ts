@@ -1581,6 +1581,10 @@ export async function contentDraftsRoutes(
 
         await checkCredits(orgId, request.userId, REVIEW_COST);
 
+        // Emit progress events so the SSE-driven modal in ReviewEngine has
+        // something to render during this synchronous review run.
+        await emitJobEvent(id, "production", "queued", "Iniciando review…");
+
         // Build review input from draft context
         let ideaData: IdeaContext | null = null;
         if (draft.idea_id) {
@@ -1597,6 +1601,7 @@ export async function contentDraftsRoutes(
           researchData = rs?.approved_cards_json ?? rs?.cards_json ?? null;
         }
 
+        await emitJobEvent(id, "production", "loading_prompt", "Carregando agente de review…");
         let systemPrompt = (await loadAgentPrompt("review")) ?? undefined;
 
         // Inject channel context into system prompt
@@ -1639,6 +1644,14 @@ export async function contentDraftsRoutes(
               | undefined,
           });
 
+          await emitJobEvent(
+            id,
+            "production",
+            "calling_provider",
+            `Revisando com ${override.provider ?? "AI"}${override.model ? ` (${override.model})` : ""}…`,
+            { stage: "review", provider: override.provider, model: override.model },
+          );
+
           const response = await generateWithFallback(
             "review",
             (draft.model_tier as string) ?? "standard",
@@ -1660,6 +1673,12 @@ export async function contentDraftsRoutes(
           );
           result = response.result as Record<string, unknown>;
         } catch (agentError) {
+          await emitJobEvent(
+            id,
+            "production",
+            "failed",
+            (agentError as Error)?.message?.slice(0, 200) ?? "Review falhou",
+          );
           // On agent failure: mark failed, don't debit credits
           await (
             sb.from("content_drafts") as unknown as {
@@ -1770,6 +1789,14 @@ export async function contentDraftsRoutes(
             type: draftType,
             iteration: iterationCount,
           },
+        );
+
+        await emitJobEvent(
+          id,
+          "production",
+          "completed",
+          `Review concluída — ${tier}`,
+          { tier, score: reviewScore, verdict: newVerdict, iterationCount },
         );
 
         return reply.send({

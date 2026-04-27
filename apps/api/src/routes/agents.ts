@@ -30,7 +30,7 @@ export async function agentsRoutes(fastify: FastifyInstance): Promise<void> {
 
       const { data: agents, error } = await sb
         .from('agent_prompts')
-        .select('id, name, slug, stage, instructions, input_schema, output_schema, sections_json, created_at, updated_at')
+        .select('id, name, slug, stage, instructions, input_schema, output_schema, sections_json, recommended_provider, recommended_model, created_at, updated_at')
         .order('stage', { ascending: true });
 
       if (error) throw error;

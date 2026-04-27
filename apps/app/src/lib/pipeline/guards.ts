@@ -4,7 +4,7 @@ type ReviewCompleteEvent = Extract<PipelineEvent, { type: 'REVIEW_COMPLETE' }>
 type GuardArgs = { context: PipelineMachineContext; event: ReviewCompleteEvent }
 
 export function isApprovedGuard({ context, event }: GuardArgs): boolean {
-  return event.result.score >= context.pipelineSettings.reviewApproveScore
+  return event.result.verdict === 'approved' || event.result.score >= context.pipelineSettings.reviewApproveScore
 }
 
 export function isRejectedGuard({ context, event }: GuardArgs): boolean {

@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSelector } from '@xstate/react';
 import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import {
   Loader2,
   Lightbulb,
@@ -372,6 +373,73 @@ export function BrainstormEngine({
       }
     })();
   }, []);
+
+  // Auto-pilot: trigger generation when topic is filled and we're on the
+  // brainstorm stage. Brainstorm is the entry point so the user types the
+  // topic; once it's there, auto-pilot can run without further clicks.
+  useAutoPilotTrigger({
+    stage: 'brainstorm',
+    canFire: () =>
+      recommended.provider !== null &&
+      !running &&
+      !manualSessionId &&
+      !ideas.length &&
+      !brainstormResult?.ideaId &&
+      (mode === 'reference_guided' ? !!referenceUrl.trim() : !!topic.trim()),
+    fire: handleRun,
+  });
+
+  // Auto-pilot: when ideas finish generating and the AI flagged a `pick`,
+  // select that idea and advance the machine. Falls back to the first 'viable'
+  // verdict if no explicit pick is provided.
+  const autoPickedRef = useRef<string | null>(null);
+  const autoMode = useSelector(actor, (s) => s.context.mode);
+  const autoPaused = useSelector(actor, (s) => s.context.paused);
+  useEffect(() => {
+    if (autoMode !== 'auto' || autoPaused) return;
+    if (brainstormResult?.ideaId) return;
+    if (!ideas.length) return;
+    if (running || regenerating) return;
+
+    const matchByPick = recommendation?.pick
+      ? ideas.find(
+          (i) =>
+            (i.title ?? '').trim().toLowerCase() ===
+            recommendation.pick!.trim().toLowerCase(),
+        )
+      : null;
+    const firstViable = ideas.find((i) => i.verdict === 'viable');
+    const chosen = matchByPick ?? firstViable ?? ideas[0];
+    const chosenId = chosen.id ?? chosen.idea_id;
+    if (!chosenId || autoPickedRef.current === chosenId) return;
+    autoPickedRef.current = chosenId;
+
+    const result: BrainstormResult = {
+      ideaId: chosenId,
+      ideaTitle: chosen.title,
+      ideaVerdict: chosen.verdict,
+      ideaCoreTension: chosen.core_tension || '',
+      brainstormSessionId: sessionId || undefined,
+    };
+    setSelectedIdeaId(chosenId);
+    tracker.trackAction('idea.auto_selected', {
+      ideaId: chosenId,
+      ideaTitle: result.ideaTitle,
+      reason: matchByPick ? 'ai_pick' : firstViable ? 'first_viable' : 'fallback_first',
+    });
+    actor.send({ type: 'BRAINSTORM_COMPLETE', result });
+  }, [
+    autoMode,
+    autoPaused,
+    ideas,
+    recommendation,
+    brainstormResult,
+    running,
+    regenerating,
+    sessionId,
+    actor,
+    tracker,
+  ]);
 
   async function handleRun() {
     if (mode !== 'reference_guided' && !topic.trim()) {

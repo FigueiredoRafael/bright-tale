@@ -201,19 +201,29 @@ function OrchestratorInner({
   }
 
   const [engineMode, setEngineMode] = useState<'generate' | 'import' | null>(null)
+  const [pendingAssetsConfirm, setPendingAssetsConfirm] = useState(false)
+  const [assetsConfirmed, setAssetsConfirmed] = useState(false)
 
   useEffect(() => {
     if (ctx.mode !== 'auto') return
+    if (ctx.paused) return
     if (currentStage === 'publish') return
     if (currentStage === 'review' && subState === 'idle') {
       send({ type: 'RESUME' })
       return
     }
     if (subState === 'idle' && !ctx.stageResults[currentStage]) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // Assets stage costs credits — gate behind explicit user confirmation.
+      if (currentStage === 'assets' && !assetsConfirmed) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setPendingAssetsConfirm(true)
+        return
+      }
       setEngineMode('generate')
     }
-  }, [ctx.mode, currentStage, subState, ctx.stageResults, send])
+  }, [ctx.mode, ctx.paused, currentStage, subState, ctx.stageResults, assetsConfirmed, send])
+
+  const isWorking = subState === 'reviewing' || subState === 'reproducing'
 
   const [draftData, setDraftData] = useState<Record<string, unknown> | null>(null)
   useEffect(() => {
@@ -243,6 +253,8 @@ function OrchestratorInner({
     track('pipeline.stage.navigated', { projectId, channelId, from: currentStage, to: toStage })
     send({ type: 'NAVIGATE', toStage })
     setEngineMode(null)
+    if (toStage !== 'assets') setAssetsConfirmed(false)
+    setPendingAssetsConfirm(false)
   }
 
   const [pendingRedo, setPendingRedo] = useState<{
@@ -371,10 +383,15 @@ function OrchestratorInner({
 
         <AutoModeControls
           mode={ctx.mode}
-          isPaused={subState === 'paused'}
+          isPaused={ctx.paused || subState === 'paused'}
+          isWorking={isWorking}
+          pauseReason={ctx.pauseReason}
           onToggle={handleToggleMode}
           onPause={() => send({ type: 'PAUSE' })}
-          onResume={() => send({ type: 'RESUME' })}
+          onResume={() => {
+            setPendingAssetsConfirm(false)
+            send({ type: 'RESUME' })
+          }}
         />
 
         <Separator />
@@ -426,6 +443,41 @@ function OrchestratorInner({
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction onClick={confirmRedo}>Discard and redo</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
+          open={pendingAssetsConfirm}
+          onOpenChange={(o) => !o && setPendingAssetsConfirm(false)}
+        >
+          <AlertDialogContent data-testid="assets-confirm-dialog">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Generate images for this draft?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Auto-pilot is about to generate visual assets, which consumes
+                image-generation credits. You can skip this stage and supply
+                images manually instead.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                onClick={() => {
+                  setPendingAssetsConfirm(false)
+                  send({ type: 'PAUSE' })
+                }}
+              >
+                Skip — pause auto-pilot
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  setAssetsConfirmed(true)
+                  setPendingAssetsConfirm(false)
+                  setEngineMode('generate')
+                }}
+              >
+                Generate images
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

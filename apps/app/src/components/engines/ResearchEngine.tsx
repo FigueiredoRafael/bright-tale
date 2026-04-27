@@ -42,6 +42,8 @@ import { ImportPicker } from './ImportPicker';
 import { friendlyAiError } from '@/lib/ai/error-message';
 import { useSelector } from '@xstate/react';
 import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
+import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
 import type { ResearchResult, PipelineContext } from './types';
 
 type Level = 'surface' | 'medium' | 'deep';
@@ -129,6 +131,9 @@ export function ResearchEngine({
 
   // Manual provider — open dialog when API responds with awaiting_manual
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
+
+  // Background generation tracking (Inngest job + SSE events)
+  const [activeGenerationId, setActiveGenerationId] = useState<string | null>(null);
 
   const tracker = usePipelineTracker('research', trackerContext);
 
@@ -421,6 +426,7 @@ export function ResearchEngine({
 
     tracker.trackStarted({ topic: topic.trim(), level, focusTags, provider, model });
 
+    let wentAsync = false;
     try {
       const res = await fetch('/api/research-sessions', {
         method: 'POST',
@@ -462,21 +468,29 @@ export function ResearchEngine({
         return;
       }
 
+      const newSessionId = json?.data?.sessionId || null;
+      setSessionId(newSessionId);
+
+      // Async path (status='queued', 202 from API): subscribe to SSE and load
+      // findings on completion. The sync legacy path (findings/cards in body)
+      // is kept as a fallback.
       const generatedFindings = json?.data?.findings;
       const generatedCards = json?.data?.cards ?? [];
 
-      setSessionId(json?.data?.sessionId || null);
-
-      // Prefer findings if available (new format), otherwise use cards (legacy)
       if (generatedFindings && typeof generatedFindings === 'object') {
         setFindings(generatedFindings);
-        tracker.trackCompleted({ sessionId: json?.data?.sessionId || '', cardCount: generatedCards.length, approvedCount: generatedCards.length, level });
+        tracker.trackCompleted({ sessionId: newSessionId || '', cardCount: generatedCards.length, approvedCount: generatedCards.length, level });
         toast.success('Research completed');
       } else if (generatedCards.length > 0) {
         setCards(generatedCards);
         setApproved(new Set(generatedCards.map((_, i) => i)));
-        tracker.trackCompleted({ sessionId: json?.data?.sessionId || '', cardCount: generatedCards.length, approvedCount: generatedCards.length, level });
+        tracker.trackCompleted({ sessionId: newSessionId || '', cardCount: generatedCards.length, approvedCount: generatedCards.length, level });
         toast.success(`${generatedCards.length} research cards found`);
+      } else if (newSessionId) {
+        // Background job — show progress float, hydrate on complete
+        wentAsync = true;
+        setActiveGenerationId(newSessionId);
+        return;
       } else {
         toast.warning('No research data recognized in output', {
           description:
@@ -489,9 +503,108 @@ export function ResearchEngine({
       tracker.trackFailed(message);
       toast.error(friendly.title, { description: friendly.hint });
     } finally {
+      // Keep running=true while a background job is in flight; let
+      // handleGenerationComplete / handleGenerationFailed clear it.
+      if (!wentAsync) setRunning(false);
+    }
+  }
+
+  async function handleGenerationComplete() {
+    const id = activeGenerationId;
+    setActiveGenerationId(null);
+    if (!id) return;
+    try {
+      const res = await fetch(`/api/research-sessions/${id}`);
+      const json = await res.json();
+      const sess = (json.data?.session ?? json.data) as Record<string, unknown> | undefined;
+      if (!sess) {
+        toast.error('Failed to load research session');
+        return;
+      }
+      if (sess.cards_json && typeof sess.cards_json === 'object' && !Array.isArray(sess.cards_json)) {
+        setFindings(sess.cards_json as Record<string, unknown>);
+        tracker.trackCompleted({ sessionId: id, cardCount: 0, approvedCount: 0, level });
+        toast.success('Research completed');
+      } else if (Array.isArray(sess.cards_json) && sess.cards_json.length > 0) {
+        const legacy = sess.cards_json as Array<Record<string, unknown>>;
+        setFindings(synthesizeFindingsFromLegacy(legacy));
+        tracker.trackCompleted({ sessionId: id, cardCount: legacy.length, approvedCount: legacy.length, level });
+        toast.success(`${legacy.length} research cards found`);
+      } else {
+        toast.warning('Research finished but no findings were saved', {
+          description: 'Try regenerating with a different model.',
+        });
+      }
+      if (sess.refined_angle_json && typeof sess.refined_angle_json === 'object') {
+        setRefinedAngle(sess.refined_angle_json as Record<string, unknown>);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      toast.error('Failed to load research findings', { description: message });
+    } finally {
       setRunning(false);
     }
   }
+
+  function handleGenerationFailed(message: string) {
+    setActiveGenerationId(null);
+    setRunning(false);
+    tracker.trackFailed(message);
+    const friendly = friendlyAiError(message);
+    toast.error(friendly.title, { description: friendly.hint });
+  }
+
+  // Auto-pilot: when findings render, auto-approve and advance to draft.
+  const autoApprovedRef = useRef<string | null>(null);
+  const autoMode = useSelector(actor, (s) => s.context.mode);
+  const autoPaused = useSelector(actor, (s) => s.context.paused);
+  useEffect(() => {
+    if (autoMode !== 'auto' || autoPaused) return;
+    if (researchResult?.researchSessionId) return;
+    if (!findings || !sessionId) return;
+    if (running || regenerating) return;
+    if (autoApprovedRef.current === sessionId) return;
+    autoApprovedRef.current = sessionId;
+
+    const signals = extractResearchSignals(findings);
+    const result: ResearchResult = {
+      researchSessionId: sessionId,
+      approvedCardsCount: 1,
+      researchLevel: level,
+      primaryKeyword: signals.primaryKeyword,
+      secondaryKeywords: signals.secondaryKeywords,
+      searchIntent: signals.searchIntent,
+    };
+    tracker.trackAction('findings.auto_approved', { sessionId });
+    actor.send({ type: 'RESEARCH_COMPLETE', result });
+  }, [
+    autoMode,
+    autoPaused,
+    findings,
+    sessionId,
+    running,
+    regenerating,
+    researchResult?.researchSessionId,
+    level,
+    actor,
+    tracker,
+  ]);
+
+  useAutoPilotTrigger({
+    stage: 'research',
+    canFire: () =>
+      topic.trim().length > 0 &&
+      !running &&
+      !manualSessionId &&
+      !activeGenerationId &&
+      !findings &&
+      cards.length === 0 &&
+      !researchResult?.researchSessionId &&
+      // Gate on the recommended provider/model fetch so we don't auto-fire
+      // with the gemini default before /api/agents resolves.
+      recommended.provider !== null,
+    fire: handleRun,
+  });
 
   async function handleRegenerate() {
     if (!sessionId) {
@@ -1312,6 +1425,17 @@ export function ResearchEngine({
         submitLabel="Import Research"
         onSubmit={handleManualOutputSubmit}
         onAbandon={handleManualAbandon}
+      />
+
+      <GenerationProgressFloat
+        open={!!activeGenerationId}
+        sessionId={activeGenerationId ?? ''}
+        sseUrl={activeGenerationId ? `/api/research-sessions/${activeGenerationId}/events` : ''}
+        cancelUrl={activeGenerationId ? `/api/research-sessions/${activeGenerationId}/cancel` : undefined}
+        title={`Generating research with ${model}`}
+        onComplete={handleGenerationComplete}
+        onFailed={handleGenerationFailed}
+        onClose={() => setActiveGenerationId(null)}
       />
     </div>
   );

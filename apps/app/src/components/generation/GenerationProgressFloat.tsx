@@ -48,7 +48,12 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
     }, [open]);
 
     useEffect(() => {
-        if (status === "completed") onComplete?.();
+        if (status === "completed") {
+            // Hold the float open briefly so users see the success state
+            // before the parent unmounts us (autopilot otherwise flashes it).
+            const t = setTimeout(() => onComplete?.(), 1500);
+            return () => clearTimeout(t);
+        }
         if (status === "failed") {
             const msg = events.find((e) => e.stage === "failed")?.message ?? "Failed";
             onFailed?.(msg);

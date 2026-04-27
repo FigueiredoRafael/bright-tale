@@ -20,6 +20,8 @@ const baseContext: PipelineMachineContext = {
   lastError: null,
   pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
   creditSettings: DEFAULT_CREDIT_SETTINGS,
+  paused: false,
+  pauseReason: null,
 }
 
 const brainstormResult = {

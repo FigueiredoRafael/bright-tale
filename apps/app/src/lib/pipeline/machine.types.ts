@@ -22,6 +22,12 @@ export type StageResultMap = {
   publish?:    PublishResult    & { completedAt: string }
 }
 
+export type PauseReason =
+  | 'user_paused'
+  | 'max_iterations'
+  | 'rejected'
+  | 'reproduce_error'
+
 export interface PipelineMachineContext {
   projectId: string
   channelId: string
@@ -32,6 +38,10 @@ export interface PipelineMachineContext {
   lastError: string | null
   pipelineSettings: PipelineSettings
   creditSettings: CreditSettings
+  /** True when auto-pilot is halted; orchestrator effects skip while set. */
+  paused: boolean
+  /** Human-readable cause; null when not paused. */
+  pauseReason: PauseReason | null
 }
 
 export interface PipelineMachineInput {
