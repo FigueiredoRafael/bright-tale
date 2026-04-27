@@ -10,6 +10,11 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --reporter verbose",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:watch": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:report": "playwright show-report",
     "storybook": "npx storybook dev -p 6006 -s public",
     "build-storybook": "npx build-storybook -o .out/storybook",
     "generate:secret": "node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""

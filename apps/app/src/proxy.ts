@@ -83,7 +83,15 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user: realUser } } = await supabase.auth.getUser();
+
+  // E2E mode may inject a fake user-id so live API calls authorize without
+  // needing a real Supabase session. Production never sets these vars.
+  const e2eUserId =
+    process.env.NEXT_PUBLIC_E2E === '1' && process.env.E2E_USER_ID
+      ? process.env.E2E_USER_ID
+      : null;
+  const user = realUser ?? (e2eUserId ? { id: e2eUserId } : null);
 
   // API proxy — inject headers AND preserve refreshed cookies
   if (pathname.startsWith('/api/')) {
@@ -119,8 +127,11 @@ export async function proxy(request: NextRequest) {
     return intlMiddleware(request);
   }
 
-  // App pages — redirect to login if not authenticated
-  if (!user) {
+  // App pages — redirect to login if not authenticated.
+  // E2E bypass: when NEXT_PUBLIC_E2E === '1' the auth gate is skipped so
+  // Playwright can drive the UI without a real Supabase session. Production
+  // never sets this var; tests start the dev server with it explicitly.
+  if (!user && process.env.NEXT_PUBLIC_E2E !== '1') {
     const loginUrl = new URL('/auth/login', request.url);
     loginUrl.searchParams.set('next', pathname);
     return NextResponse.redirect(loginUrl);
