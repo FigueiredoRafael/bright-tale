@@ -190,8 +190,9 @@ export function OrgsTable({ orgs }: { orgs: Org[] }) {
                 <label className="text-sm font-medium block mb-1">Credits Total</label>
                 <input
                   type="number"
+                  min={0}
                   value={formCreditsTotal}
-                  onChange={(e) => setFormCreditsTotal(parseInt(e.target.value, 10) || 0)}
+                  onChange={(e) => setFormCreditsTotal(Math.max(0, parseInt(e.target.value, 10) || 0))}
                   className="w-full border border-border rounded-md px-3 py-2 text-sm bg-secondary text-foreground"
                 />
               </div>
@@ -200,8 +201,9 @@ export function OrgsTable({ orgs }: { orgs: Org[] }) {
                 <label className="text-sm font-medium block mb-1">Addon Credits</label>
                 <input
                   type="number"
+                  min={0}
                   value={formCreditsAddon}
-                  onChange={(e) => setFormCreditsAddon(parseInt(e.target.value, 10) || 0)}
+                  onChange={(e) => setFormCreditsAddon(Math.max(0, parseInt(e.target.value, 10) || 0))}
                   className="w-full border border-border rounded-md px-3 py-2 text-sm bg-secondary text-foreground"
                 />
               </div>

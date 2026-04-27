@@ -5,9 +5,10 @@
  * pattern as the text AI provider factory (src/lib/ai/index.ts):
  *
  * 1. IMAGE_PROVIDER=mock  → mock provider (dev/testing)
- * 2. IMAGE_PROVIDER=gemini + GEMINI_API_KEY env → use ENV key
- * 3. Otherwise → fetch active ImageGeneratorConfig from DB, decrypt key
- * 4. Fallback → mock provider with console warning
+ * 2. IMAGE_PROVIDER=gemini + (GEMINI_API_KEY | GOOGLE_AI_KEY) env → use ENV key
+ * 3. Any (GEMINI_API_KEY | GOOGLE_AI_KEY) env present → Gemini (no DB needed)
+ * 4. Otherwise → fetch active ImageGeneratorConfig from DB, decrypt key
+ * 5. Fallback → mock provider with console warning
  */
 
 import { mockImageProvider } from "./providers/mock-imagen.js";
@@ -18,19 +19,27 @@ import type { ImageProvider } from "./imageProvider.js";
 
 export async function getImageProvider(): Promise<ImageProvider> {
   const envProvider = process.env.IMAGE_PROVIDER;
+  const envGeminiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_AI_KEY;
 
   if (envProvider === "mock") {
     return mockImageProvider;
   }
 
   if (envProvider === "gemini") {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      console.warn("IMAGE_PROVIDER=gemini but GEMINI_API_KEY not set, falling back to mock");
+    if (!envGeminiKey) {
+      console.warn("IMAGE_PROVIDER=gemini but neither GEMINI_API_KEY nor GOOGLE_AI_KEY is set, falling back to mock");
       return mockImageProvider;
     }
     const model = process.env.IMAGE_GENERATION_MODEL ?? "gemini-2.5-flash-image";
-    return new GeminiImagenProvider(apiKey, model);
+    return new GeminiImagenProvider(envGeminiKey, model);
+  }
+
+  // No explicit IMAGE_PROVIDER set: prefer real Gemini whenever a key is
+  // present in the environment. Avoids silently dropping to the 1×1 mock PNG
+  // when the operator forgot to set IMAGE_PROVIDER but did configure a key.
+  if (envGeminiKey) {
+    const model = process.env.IMAGE_GENERATION_MODEL ?? "gemini-2.5-flash-image";
+    return new GeminiImagenProvider(envGeminiKey, model);
   }
 
   // Fetch from database

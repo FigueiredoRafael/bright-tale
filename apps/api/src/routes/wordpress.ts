@@ -766,8 +766,17 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
           sendEvent('composing', 'Converting markdown to HTML...');
           blogBody = markdownToHtml(blogBody);
 
+          // Translate assetId-keyed altTexts → role-keyed for stitchImagesAfterH2
+          const roleAltTexts: Record<string, string> = {};
+          if (body.imageMap && body.altTexts) {
+            for (const [role, assetId] of Object.entries(body.imageMap)) {
+              const text = body.altTexts[assetId as string];
+              if (text) roleAltTexts[role] = text;
+            }
+          }
+
           // Stitch images after H2 tags
-          blogBody = stitchImagesAfterH2(blogBody, uploadedMedia, body.altTexts ?? {});
+          blogBody = stitchImagesAfterH2(blogBody, uploadedMedia, roleAltTexts);
         } else {
           // Legacy flow: fetch all assets, upload all, replace placeholders
           const { data: assets } = await sb
@@ -1276,8 +1285,17 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         // Convert markdown to HTML first
         blogBody = markdownToHtml(blogBody);
 
+        // Translate assetId-keyed altTexts → role-keyed for stitchImagesAfterH2
+        const roleAltTexts: Record<string, string> = {};
+        if (body.imageMap && body.altTexts) {
+          for (const [role, assetId] of Object.entries(body.imageMap)) {
+            const text = body.altTexts[assetId as string];
+            if (text) roleAltTexts[role] = text;
+          }
+        }
+
         // Then stitch images after H2 tags
-        blogBody = stitchImagesAfterH2(blogBody, uploadedMedia, body.altTexts ?? {});
+        blogBody = stitchImagesAfterH2(blogBody, uploadedMedia, roleAltTexts);
       } else {
         // Legacy flow: fetch all assets, upload all, replace placeholders
         const { data: assets } = await sb

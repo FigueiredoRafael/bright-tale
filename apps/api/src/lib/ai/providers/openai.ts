@@ -59,10 +59,12 @@ export class OpenAIProvider implements AIProvider {
       // Parse JSON response
       const parsed = JSON.parse(content);
 
-      // Validate with Zod schema
-      const validated = (schema as any).parse(parsed);
-
-      return validated;
+      // Validate with Zod schema only when caller provided one — schema is
+      // optional per GenerateContentParams; some agents validate downstream.
+      if (schema && typeof (schema as { parse?: unknown }).parse === 'function') {
+        return (schema as { parse: (v: unknown) => unknown }).parse(parsed);
+      }
+      return parsed;
     } catch (error: any) {
       if (error instanceof OpenAI.APIError) {
         throw new Error(`OpenAI API Error: ${error.message}`);
