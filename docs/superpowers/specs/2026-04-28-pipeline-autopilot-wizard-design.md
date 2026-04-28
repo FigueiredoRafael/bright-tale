@@ -1,6 +1,6 @@
 # Pipeline Autopilot Wizard — Design Spec
 
-**Status:** approved · **Date:** 2026-04-28 · **Branch:** `feat/pipeline-autopilot-wizard`
+**Status:** draft · **Date:** 2026-04-28 · **Branch:** `feat/pipeline-autopilot-wizard` _(provisional — confirm at sign-off; current dev is on `feat/pipeline-orchestrator-refactor`)_
 
 ---
 
@@ -37,7 +37,16 @@ state === 'setup'                                         → <PipelineWizard />
 mode === 'overview' && !showEngine                        → <PipelineOverview />
 mode === 'overview' && showEngine                         → <CurrentEngineForStage stage={showEngine} />
                                                             (with "← Back to overview" button)
-otherwise (mode === 'step-by-step' | 'supervised')        → <CurrentEngineForStage stage={state.value} />
+otherwise (mode === 'step-by-step' | 'supervised')        → <CurrentEngineForStage stage={topStage} />
+```
+
+`state.value` is an object for stages with substates (e.g., `{ review: 'reviewing' }`); engines need the top-level key. Derive once:
+
+```ts
+const topStage: PipelineStage =
+  typeof state.value === 'string'
+    ? state.value
+    : (Object.keys(state.value)[0] as PipelineStage)
 ```
 
 `showEngine` is a local React state on the orchestrator — not a machine state. Used only by Overview's `Open ... engine →` action. Engines stay mounted under the same orchestrator instance, so the machine remains authoritative.
@@ -163,7 +172,16 @@ Lands in Wave 0 — must precede Wave 4's abort plumbing that writes `'paused'`.
 UPDATE ai_provider_configs SET provider = 'ollama' WHERE provider = 'local';
 ```
 
-Zod schema `aiProviderSchema` updated to `['openai', 'anthropic', 'gemini', 'ollama']`. Coerce-`'local'`-to-`'ollama'` Zod transform retained for one release window, dropped in Wave 9.
+Zod schema `aiProviderSchema` updated to `['openai', 'anthropic', 'gemini', 'ollama']`. A sister schema `aiProviderSchemaWithAlias` accepts the legacy `'local'` value and coerces to `'ollama'` for one release window, applied only in API ingestion routes that may receive client-supplied provider strings:
+
+```ts
+export const aiProviderSchemaWithAlias = z.union([
+  aiProviderSchema,
+  z.literal('local').transform(() => 'ollama' as const),
+])
+```
+
+Wave 9 drops `aiProviderSchemaWithAlias` after `ai_provider_configs` rows confirmed clean and admin UI migrated.
 
 ### 4.5 Pipeline settings extension
 
@@ -410,18 +428,21 @@ Document in `.claude/rules/api-routes.md`.
 
 ### 7.1 States (flat — no `running` compound parent)
 
+Existing machine substate shapes preserved verbatim. Only `setup` is new.
+
 ```
 pipelineMachine
-├── setup                ← NEW sibling, initial for fresh projects
-├── brainstorm.{idle, running, paused, done}
-├── research.{idle, running, paused, done}
-├── draft.{idle, running, paused, done}
-├── review               ← top-level (substate is 'reviewing'; do not confuse names)
-├── reproducing
-├── assets.{idle, running, paused, done}
-├── preview.{idle, running, paused, done}
-└── publish.{idle, running, done}    ← publish.done is terminal (D1-B)
+├── setup                                     ← NEW sibling, initial for fresh projects
+├── brainstorm.{idle, error}
+├── research.{idle, error}
+├── draft.{idle, error}
+├── review.{idle, reviewing, reproducing, paused, done, error}
+├── assets.{idle, error}
+├── preview.{idle, error}
+└── publish.{idle, error, done}               ← publish.done is terminal (D1-B)
 ```
+
+`reproducing` lives under `review` (it is the AI re-draft loop, scoped to the review stage). Stages other than `review` have only `idle` + `error` substates today; the wave plan does not introduce new substates.
 
 ### 7.2 Context
 
@@ -446,8 +467,9 @@ interface PipelineMachineContext {
 | `RESET_TO_SETUP` | `{}` | Top-level handler. Returns to setup, clears all results |
 | `GO_AUTOPILOT` | `{ mode: 'supervised' \| 'overview', autopilotConfig }` | Mid-flow toggle. Updates mode + config, no stage change |
 | `REQUEST_ABORT` | `{}` | Invokes `abortRequester` actor |
-| `RESUME` | `{}` | Clears abort flag via DELETE, re-enters current running stage |
-| `*_COMPLETE` (per stage) | stage-specific | Existing — unchanged |
+| `RESUME` | `{}` | Clears abort flag via DELETE, re-enters current stage |
+| `DRAFT_COMPLETE` | stage-specific | **Modified** — adds `shouldSkipReview` branch: `[{ target: 'assets', guard: 'shouldSkipReview' }, { target: 'review' }]` |
+| `*_COMPLETE` (other stages) | stage-specific | Existing — unchanged |
 | `NAVIGATE` / `REDO_FROM` | existing | Existing — unchanged |
 
 `TOGGLE_AUTO_PILOT` and `toggleMode` action are removed.
@@ -483,11 +505,15 @@ actions: {
   clearAllResults: assign({ stageResults: () => emptyStageResults(), iterationCount: 0 }),
   saveDraftResult: /* existing */,
   showAbortFailedToast: ({ context }) => { toast.error(`Failed to pause: ${context.lastError}`) },
-  // ... existing
+  // pauseAuto / resumeAuto / clearError / recordError / recordActorError /
+  // setPauseReasonReproduceError / saveReviewResult / incrementIteration /
+  // resetIteration / saveStageResult — all existing, unchanged
 }
 ```
 
 ### 7.6 Snapshot hydration
+
+Wave 5 extends `MigratedPipelineInput` to include `autopilotConfig: AutopilotConfig | null`. Legacy rows always produce `null` here (they pre-date the wizard); the field exists so the snapshot builder can populate context unconditionally.
 
 `apps/app/src/lib/pipeline/legacy-state-migration.ts`:
 
@@ -515,9 +541,11 @@ export function mapLegacyToSnapshot(
     context: {
       mode: migrated.mode,
       iterationCount: migrated.initialIterationCount,
-      stageResults: migrated.stageResults,
-      autopilotConfig: migrated.autopilotConfig ?? null,
-      // ...
+      stageResults: migrated.initialStageResults,
+      autopilotConfig: migrated.autopilotConfig ?? null,  // always null for pre-wizard rows
+      templateId: null,
+      lastError: null,
+      // remaining context fields populated from machine defaults
     },
     status: 'active',
   } as Snapshot<typeof pipelineMachine>
@@ -542,7 +570,7 @@ abortRequester: fromPromise(async ({ input }: { input: { projectId: string } }) 
 }),
 ```
 
-Top-level `aborting` state with `onDone` / `onError` transitions back to previous stage with `markPaused` or `showAbortFailedToast`.
+Top-level `aborting` state with `onDone` / `onError` transitions back to previous stage with the existing `pauseAuto` action (sets `paused: true`, `pauseReason: 'user_paused'`) or `showAbortFailedToast` on failure.
 
 ---
 
@@ -608,7 +636,18 @@ If `mode === 'step-by-step'` (no existing `autopilotConfig`), pre-fills upstream
 └──────────────────────────┴────────────────────────────────────────┘
 ```
 
-- Left rail: 7 stage rows with status icons (`✓ ◐ ○ ⏸ ✗`); current-stage live indicators; bottom action group.
+- Left rail: 7 stage rows with status icons:
+
+  | Icon | Meaning |
+  |---|---|
+  | `✓` | Stage completed |
+  | `◐` | Stage currently running |
+  | `○` | Stage pending |
+  | `⏸` | Stage paused (user requested abort or hit a human gate) |
+  | `✗` | Stage errored |
+  | `⊘` | Stage skipped (e.g., review with `maxIterations === 0`) |
+
+  Current-stage live indicators inline (review iteration count, abort spinner). Bottom action group below the rail.
 - Right column: one card per stage. Done = summary + "Open engine" link. Current = live status. Pending = config preview from `autopilotConfig`. Pause-at-gate = inline action panel (Approve anyway / Open engine).
 - "Open engine" calls `setShowEngine(stage)` on parent orchestrator — same machine, same actor, no routing.
 - Skipped review (maxIterations = 0): right column Review card renders "Skipped" badge, rail shows Skipped instead of `✓`.
@@ -682,10 +721,12 @@ Used only for template-load + form-edit, never for server-side merge.
 
 ```ts
 export function deepMergeAutopilotConfig(
-  base: AutopilotConfig | null,
+  base: AutopilotConfig,
   patch: DeepPartial<AutopilotConfig>,
 ): AutopilotConfig {
-  if (!base) return patch as AutopilotConfig
+  // Helper is for template-load + form-edit only. Both call sites guarantee a
+  // non-null base. Fail fast if that invariant breaks.
+  if (!base) throw new Error('deepMergeAutopilotConfig requires a non-null base')
   return {
     defaultProvider: patch.defaultProvider ?? base.defaultProvider,
     brainstorm:    base.brainstorm    === null ? null : { ...base.brainstorm,    ...(patch.brainstorm    ?? {}) },
@@ -711,7 +752,7 @@ Null-slot preservation: `base.brainstorm === null` (project from research) → p
 | **2** | Shared schemas: `autopilotConfigSchema`, `setupProjectSchema`, `startStageSchema`, `autopilotConfigPatchSchema`. All cross-field refines. |
 | **3** | API routes: `/api/projects/:id/setup`, `/api/projects/:id/abort` (PATCH + DELETE), `/api/autopilot-templates` CRUD · `assertProjectOwner` helper with legacy fallback · `derivedFromStageResults` + `nextStageAfter` helpers · Zod-gated startStage validation |
 | **4** | Abort plumbing (D2-B): `signal` through `GenerateContentParams`, all 5 providers, `generateWithFallback`, cancellable retry-sleep · `assertNotAborted` helper + insert between every `step.run` in 5 Inngest jobs · `JobAborted extends NonRetriableError` · `content_drafts.status='paused'` path |
-| **5** | Machine: new `setup` state · `SETUP_COMPLETE` (with stage guards), `RESET_TO_SETUP`, `GO_AUTOPILOT` events · drop `TOGGLE_AUTO_PILOT` + `toggleMode` action · `shouldSkipReview` guard · `setMode`/`applyConfigPatch` actions · `abortRequester` invoked actor · legacy migration: `looksLegacy` (structural-only), `normalizeMode` (tri-mode), `mapLegacyToSnapshot` |
+| **5** | Machine: new `setup` state · `SETUP_COMPLETE` (with stage guards), `RESET_TO_SETUP`, `GO_AUTOPILOT` events · drop `TOGGLE_AUTO_PILOT` + `toggleMode` action · `shouldSkipReview` guard · `setMode`/`setAutopilotConfig`/`applySetup` actions · `abortRequester` invoked actor · legacy migration: `looksLegacy` (structural-only), `normalizeMode` (tri-mode), `mapLegacyToSnapshot` · **type amendments:** `PipelineMachineContext.channelId: string \| null`, `PipelineMachineContext.autopilotConfig: AutopilotConfig \| null`, `PipelineMachineContext.templateId: string \| null`, `MigratedPipelineInput.autopilotConfig` (always null for legacy) |
 | **6** | `PipelineWizard` component · template dropdown · mode picker · per-stage form sections · validation/error-expand · `Update template "X"` flow + confirm dialog · channel chip · mid-flow `MiniWizardSheet` · `PickChannelModal` for legacy NULL projects |
 | **7** | `PipelineOverview` 2-col layout · `OverviewProgressRail` · `OverviewStageResults` · `showEngine` UI flag in orchestrator · `← Back to overview` button · inline pause-at-gate panels · `PipelineAbortProvider` (polling-based) |
 | **8** | Orchestrator render branch for `setup`/`overview`/`engine` · project page wraps with `PipelineAbortProvider` · entry-point `startStage` derivation · `RESET_TO_SETUP` redo-modal flow (3 strategies) · `Reconfigure...` mid-flow · "from idea/research/blog" entry endpoints write `channel_id` · templates admin page (`/channels/[id]/autopilot-templates`) · **`auto_advance` → `mode` code sweep** (5 sites) |
