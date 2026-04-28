@@ -19,6 +19,7 @@ import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/a
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { useSelector } from '@xstate/react';
 import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
 import { getPersonaTheme } from './utils/personaTheme';
@@ -26,7 +27,11 @@ import type { AssetsResult, PipelineContext, PipelineStage } from './types';
 
 /* ── Types ── */
 
-type AssetPhase = 'briefs' | 'refine' | 'images';
+// Stepper phases. 'images' is the AI generation step (kept verbatim so
+// the autopilot wiring's `phase === 'images'` checks stay valid).
+// 'approve' is the new final step where the user reviews / overrides
+// generated images before clicking Finish & Save.
+type AssetPhase = 'briefs' | 'refine' | 'images' | 'approve';
 type ImagesMode = 'brief' | 'no-briefs';
 
 interface SlotCard {
@@ -220,10 +225,25 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
     actor.send({ type: 'NAVIGATE', toStage: toStage ?? 'review' });
   }
 
-  const [phase, setPhase] = useState<AssetPhase>('briefs');
+  // Sync-init from the draft prop so re-entry from a later stage lands
+  // immediately on the right phase instead of flashing Briefs while the
+  // async fetchAssets effect resolves. Best-effort: if draft is missing
+  // or has no asset_briefs, we fall through to Briefs and let the effect
+  // promote later.
+  const initialBriefs = (
+    (draft?.draft_json as { asset_briefs?: { visualDirection?: VisualDirection | null; slots?: SlotCard[] } } | undefined)
+      ?.asset_briefs
+  );
+  const [phase, setPhase] = useState<AssetPhase>(() =>
+    (initialBriefs?.slots && initialBriefs.slots.length > 0) ? 'approve' : 'briefs',
+  );
   const [imagesMode, setImagesMode] = useState<ImagesMode>('brief');
-  const [visualDirection, setVisualDirection] = useState<VisualDirection | null>(null);
-  const [slotCards, setSlotCards] = useState<SlotCard[]>([]);
+  const [visualDirection, setVisualDirection] = useState<VisualDirection | null>(
+    () => initialBriefs?.visualDirection ?? null,
+  );
+  const [slotCards, setSlotCards] = useState<SlotCard[]>(
+    () => initialBriefs?.slots ?? [],
+  );
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
   const [existingAssets, setExistingAssets] = useState<ContentAsset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -239,6 +259,74 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
   const [generatingAll, setGeneratingAll] = useState(false);
   const inFlightRef = useRef(false);
   const tracker = usePipelineTracker('assets', trackerContext);
+
+  // ── Auto-pilot wiring ────────────────────────────────────────────
+  // Drives the engine after the user confirms the assets dialog in
+  // PipelineOrchestrator (engineMode flips to 'generate' on confirm).
+  // Path A — generate fresh: briefs → auto-skip refine → generate-all →
+  //   handleFinish dispatches ASSETS_COMPLETE.
+  // Path B — existing assets already present: handleFinish dispatches
+  //   immediately with the existing IDs.
+  const autoMode = useSelector(actor, (s) => s.context.mode);
+  const autoPaused = useSelector(actor, (s) => s.context.paused);
+  const assetsResult = useSelector(actor, (s) => s.context.stageResults.assets);
+
+  useAutoPilotTrigger({
+    stage: 'assets',
+    canFire: () =>
+      !!draftId &&
+      !loading &&
+      !generatingBriefs &&
+      !generatingAll &&
+      !manualBriefsOpen &&
+      slotCards.length === 0 &&
+      existingAssets.length === 0 &&
+      phase === 'briefs' &&
+      engineMode === 'generate' &&
+      !assetsResult,
+    fire: handleGenerateBriefs,
+  });
+
+  useEffect(() => {
+    if (autoMode !== 'auto' || autoPaused) return;
+    if (assetsResult) return;
+    if (phase === 'refine' && slotCards.length > 0) {
+      setImagesMode('brief');
+      setPhase('images');
+    }
+  }, [autoMode, autoPaused, phase, slotCards.length, assetsResult]);
+
+  const autoGenAllRef = useRef(false);
+  useEffect(() => {
+    if (autoMode !== 'auto' || autoPaused) return;
+    if (assetsResult) return;
+    if (phase !== 'images') return;
+    if (slotCards.length === 0) return;
+    if (Object.keys(slotAssets).length > 0) return;
+    if (generatingAll || generatingSlot) return;
+    if (autoGenAllRef.current) return;
+    autoGenAllRef.current = true;
+    void handleGenerateAllSlots();
+  // handleGenerateAllSlots is a stable function declaration in this scope.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoMode, autoPaused, phase, slotCards.length, slotAssets, generatingAll, generatingSlot, assetsResult]);
+
+  const autoFinishRef = useRef(false);
+  useEffect(() => {
+    if (autoMode !== 'auto' || autoPaused) return;
+    if (assetsResult) return;
+    if (phase !== 'images') return;
+    if (finishing) return;
+    if (autoFinishRef.current) return;
+    const hasGeneratedAll =
+      slotCards.length > 0 && Object.keys(slotAssets).length >= slotCards.length;
+    const hasExistingOnly = slotCards.length === 0 && existingAssets.length > 0;
+    if (!hasGeneratedAll && !hasExistingOnly) return;
+    autoFinishRef.current = true;
+    void handleFinish();
+  // handleFinish is a stable function declaration in this scope.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoMode, autoPaused, phase, slotCards.length, slotAssets, existingAssets.length, finishing, assetsResult]);
 
   // Fetch existing assets on mount. Hydration priority:
   //   1. draft_json.asset_briefs — full briefs persisted by the engine
@@ -280,7 +368,9 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
           setVisualDirection(persistedBriefs.visualDirection ?? null);
           setSlotCards(persistedBriefs.slots);
           setImagesMode('brief');
-          setPhase(items.length > 0 ? 'images' : 'refine');
+          // Images already exist → land on Approve so user sees results;
+          // no images yet → land on Refine to let user re-enter generation.
+          setPhase(items.length > 0 ? 'approve' : 'refine');
           return;
         }
 
@@ -323,7 +413,8 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
         } else {
           setImagesMode('no-briefs');
         }
-        setPhase('images');
+        // Items already exist → user is reviewing, land on Approve.
+        setPhase('approve');
       } catch {
         // No existing assets, start fresh
       } finally {
@@ -332,7 +423,10 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
     }
     if (draftId) void fetchAssets();
     else setLoading(false);
-  }, [draftId, draft]);
+    // `draft` is intentionally excluded — sync-init reads draft on first render
+    // and the network refresh below doesn't need to refire when draft mutates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftId]);
 
   useEffect(() => {
     async function fetchNoBriefSections() {
@@ -441,10 +535,11 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
   }
 
   function handleSkipBriefs() {
+    // No briefs = no AI generation; go straight to upload-only Approve phase.
     setImagesMode('no-briefs');
     setSlotCards([]);
     setVisualDirection(null);
-    setPhase('images');
+    setPhase('approve');
   }
 
 
@@ -846,13 +941,15 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
         {([
           { key: 'briefs' as const, label: 'Briefs' },
           { key: 'refine' as const, label: 'Refine', disabled: imagesMode === 'no-briefs' || slotCards.length === 0 },
-          { key: 'images' as const, label: 'Images' },
+          { key: 'images' as const, label: 'Generate', disabled: imagesMode === 'no-briefs' || slotCards.length === 0 },
+          { key: 'approve' as const, label: 'Approve' },
         ]).map((step, i, arr) => {
           const active = phase === step.key;
           const reached =
             step.key === 'briefs' ||
             (step.key === 'refine' && slotCards.length > 0) ||
-            step.key === 'images';
+            (step.key === 'images' && slotCards.length > 0) ||
+            step.key === 'approve';
           const canClick = reached && !step.disabled;
           return (
             <div key={step.key} className="flex items-center gap-3">
@@ -1101,7 +1198,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
               }}
               className="gap-2"
             >
-              Continue to Images
+              Continue to Generate
               <ArrowRight className="h-4 w-4" />
             </Button>
             <Button variant="outline" onClick={() => setPhase('briefs')}>
@@ -1111,7 +1208,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
         </div>
       )}
 
-      {/* ═══ PHASE 3: Upload Images ═══ */}
+      {/* ═══ PHASE 3: Generate Images (AI generation only) ═══ */}
       {phase === 'images' && imagesMode === 'brief' && (
         <div className="space-y-4">
           {/* Bulk action bar */}
@@ -1176,6 +1273,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
                 generating={isGeneratingThis}
                 generateDisabled={!!generatingSlot || generatingAll}
                 generateProvider={imageProvider}
+                showUpload={false}
                 onGenerate={() => handleGenerateSlot(card)}
                 onFileStage={(file) => handleFileStage(card.slot, file)}
                 onUrlStage={(url) => handleUrlStage(card.slot, url)}
@@ -1194,10 +1292,60 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
           {/* Actions */}
           <div className="flex items-center gap-3">
             <Button
-              onClick={handleFinish}
-              disabled={finishing}
+              onClick={() => setPhase('approve')}
+              disabled={generatingAll || !!generatingSlot}
               className="gap-2"
             >
+              Continue to Approve
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setPhase('refine')}
+              disabled={generatingAll || !!generatingSlot}
+            >
+              Back to Refine
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ PHASE 4: Approve (review + override + finalize) ═══ */}
+      {phase === 'approve' && imagesMode === 'brief' && (
+        <div className="space-y-4">
+          {slotCards.map((card, i) => {
+            const role = slotToRole(card.slot);
+            const existing = existingAssets.find((a) => a.role === role) ?? slotAssets[card.slot] ?? null;
+            const pending = pendingUploads.find((p) => p.slot === card.slot);
+            const isGeneratingThis = generatingSlot === card.slot;
+            return (
+              <BriefImageSlotCard
+                key={card.slot}
+                card={card}
+                visualDirection={visualDirection}
+                existingAsset={existing}
+                pendingPreview={pending?.preview}
+                generating={isGeneratingThis}
+                generateDisabled={!!generatingSlot || generatingAll}
+                generateProvider={imageProvider}
+                showUpload
+                onGenerate={() => handleGenerateSlot(card)}
+                onFileStage={(file) => handleFileStage(card.slot, file)}
+                onUrlStage={(url) => handleUrlStage(card.slot, url)}
+                onDeletePending={() => handleDeletePending(card.slot)}
+                onAltTextChange={(val) => {
+                  setSlotCards((prev) => {
+                    const updated = [...prev];
+                    if (updated[i]) updated[i] = { ...updated[i], altText: val };
+                    return updated;
+                  });
+                }}
+              />
+            );
+          })}
+
+          <div className="flex items-center gap-3">
+            <Button onClick={handleFinish} disabled={finishing} className="gap-2">
               {finishing ? (
                 <><Loader2 className="h-4 w-4 animate-spin" />Saving…</>
               ) : (
@@ -1206,17 +1354,17 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
             </Button>
             <Button
               variant="outline"
-              onClick={() => setPhase('refine')}
+              onClick={() => setPhase('images')}
               disabled={finishing}
             >
-              Back to Refine
+              Back to Generate
             </Button>
           </div>
         </div>
       )}
 
-      {/* ═══ PHASE 3: Upload Images (no-briefs mode) ═══ */}
-      {phase === 'images' && imagesMode === 'no-briefs' && (
+      {/* ═══ PHASE 4: Approve (no-briefs mode — upload only) ═══ */}
+      {phase === 'approve' && imagesMode === 'no-briefs' && (
         <div className="space-y-4">
           {noBriefSections.length === 0 ? (
             <Card>
@@ -1270,6 +1418,10 @@ interface BriefImageSlotCardProps {
   generating: boolean;
   generateDisabled: boolean;
   generateProvider: ImageProvider;
+  /** When false, hides the Upload File / paste-URL / drag-drop affordances.
+   *  Used by the Generate phase to keep the UI focused on AI generation;
+   *  the Approve phase passes true to allow overrides. */
+  showUpload?: boolean;
   onGenerate: () => void;
   onFileStage: (file: File) => void;
   onUrlStage: (url: string) => void;
@@ -1280,6 +1432,7 @@ interface BriefImageSlotCardProps {
 function BriefImageSlotCard({
   card, visualDirection, existingAsset, pendingPreview,
   generating, generateDisabled, generateProvider,
+  showUpload = true,
   onGenerate, onFileStage, onUrlStage, onDeletePending, onAltTextChange,
 }: BriefImageSlotCardProps) {
   const [urlInput, setUrlInput] = useState('');
@@ -1371,41 +1524,45 @@ function BriefImageSlotCard({
               : existingAsset ? 'Regenerate with AI' : 'Generate with AI'}
           </Button>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) onFileStage(file);
-            }}
-          />
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => fileInputRef.current?.click()}>
-            <Upload className="h-3.5 w-3.5" /> Upload File
-          </Button>
+          {showUpload && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) onFileStage(file);
+                }}
+              />
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => fileInputRef.current?.click()}>
+                <Upload className="h-3.5 w-3.5" /> Upload File
+              </Button>
 
-          <div className="flex items-center gap-1.5">
-            <Input
-              value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
-              placeholder="…or paste image URL"
-              className="text-xs h-8 w-56"
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 shrink-0"
-              disabled={!urlInput.trim()}
-              onClick={() => { onUrlStage(urlInput); setUrlInput(''); }}
-            >
-              <Link2 className="h-3.5 w-3.5" /> Add URL
-            </Button>
-          </div>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  placeholder="…or paste image URL"
+                  className="text-xs h-8 w-56"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 shrink-0"
+                  disabled={!urlInput.trim()}
+                  onClick={() => { onUrlStage(urlInput); setUrlInput(''); }}
+                >
+                  <Link2 className="h-3.5 w-3.5" /> Add URL
+                </Button>
+              </div>
+            </>
+          )}
         </div>
 
-        {/* Drag-drop zone when no preview yet */}
-        {!preview && (
+        {/* Drag-drop zone when no preview yet (only when uploads allowed) */}
+        {showUpload && !preview && (
           <div
             className={`rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
               dragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/20'
