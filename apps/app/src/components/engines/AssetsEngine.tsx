@@ -97,6 +97,13 @@ function slotToRole(slot: string): string {
   return `body_${slot}`;
 }
 
+function roleToSlot(role: string | null): string | null {
+  if (!role) return null;
+  if (role === 'featured_image') return 'featured';
+  if (role.startsWith('body_')) return role.slice(5);
+  return null;
+}
+
 function findSlotsArray(obj: unknown): Array<Record<string, unknown>> | null {
   if (!obj || typeof obj !== 'object') return null;
   const o = obj as Record<string, unknown>;
@@ -233,13 +240,29 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
   const inFlightRef = useRef(false);
   const tracker = usePipelineTracker('assets', trackerContext);
 
-  // Fetch existing assets on mount → skip to done if present
+  // Fetch existing assets on mount. Hydration priority:
+  //   1. draft_json.asset_briefs — full briefs persisted by the engine
+  //   2. existing assets + asset-prompts section titles — best-effort rebuild
+  //      for legacy drafts that don't have asset_briefs yet
+  //   3. nothing — start fresh
+  // Either way, if assets exist we land on the Images phase but keep Refine
+  // reachable (slotCards present + imagesMode='brief').
   useEffect(() => {
     async function fetchAssets() {
       try {
-        const res = await fetch(`/api/assets?content_id=${draftId}`);
-        const { data } = await res.json();
+        const persistedBriefs = (
+          (draft?.draft_json as { asset_briefs?: { visualDirection?: VisualDirection | null; slots?: SlotCard[] } } | undefined)
+            ?.asset_briefs
+        );
+
+        const [assetsRes, promptsRes] = await Promise.all([
+          fetch(`/api/assets?content_id=${draftId}`),
+          fetch(`/api/content-drafts/${draftId}/asset-prompts`, { method: 'POST' })
+            .catch(() => null),
+        ]);
+        const { data } = await assetsRes.json();
         const items = Array.isArray(data) ? data : (data?.assets ?? data?.items ?? []);
+
         if (items.length > 0) {
           const mapped = (items as Array<Record<string, unknown>>).map((a) => ({
             id: a.id as string,
@@ -250,9 +273,57 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
             sourceType: (a.source as string) ?? 'ai_generated',
           }));
           setExistingAssets(mapped);
-          setPhase('images');
+        }
+
+        // Path 1: prefer persisted briefs.
+        if (persistedBriefs?.slots && persistedBriefs.slots.length > 0) {
+          setVisualDirection(persistedBriefs.visualDirection ?? null);
+          setSlotCards(persistedBriefs.slots);
+          setImagesMode('brief');
+          setPhase(items.length > 0 ? 'images' : 'refine');
+          return;
+        }
+
+        if (items.length === 0) return;
+
+        // Path 2: rebuild from assets + section titles.
+        let titlesBySlot: Record<string, string> = {};
+        if (promptsRes?.ok) {
+          try {
+            const promptsJson = await promptsRes.json();
+            const sections = (promptsJson.data?.sections ?? []) as Array<{
+              slot: string; section_title: string;
+            }>;
+            titlesBySlot = Object.fromEntries(
+              sections.map((s) => [s.slot, s.section_title]),
+            );
+          } catch {
+            // Title hydration is best-effort.
+          }
+        }
+
+        const cards: SlotCard[] = (items as Array<Record<string, unknown>>)
+          .map((a) => {
+            const slot = roleToSlot((a.role as string) ?? null);
+            if (!slot) return null;
+            return {
+              slot,
+              sectionTitle: titlesBySlot[slot] ?? slot,
+              promptBrief: (a.prompt as string) ?? '',
+              styleRationale: '',
+              aspectRatio: '16:9',
+              altText: (a.alt_text as string) ?? '',
+            } satisfies SlotCard;
+          })
+          .filter((c): c is SlotCard => c !== null);
+
+        if (cards.length > 0) {
+          setSlotCards(cards);
+          setImagesMode('brief');
+        } else {
           setImagesMode('no-briefs');
         }
+        setPhase('images');
       } catch {
         // No existing assets, start fresh
       } finally {
@@ -261,7 +332,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
     }
     if (draftId) void fetchAssets();
     else setLoading(false);
-  }, [draftId]);
+  }, [draftId, draft]);
 
   useEffect(() => {
     async function fetchNoBriefSections() {
@@ -307,6 +378,23 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
     void fetchNoBriefSections();
   }, [draftId, imagesMode, noBriefSections.length]);
 
+  /* ── Persist briefs to draft_json.asset_briefs so they survive reloads ── */
+  const persistBriefs = useCallback(
+    async (visual: VisualDirection | null, slots: SlotCard[]) => {
+      if (!draftId || slots.length === 0) return;
+      try {
+        await fetch(`/api/content-drafts/${draftId}/asset-briefs`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ visualDirection: visual, slots }),
+        });
+      } catch {
+        // Persistence is best-effort; in-memory state still works for this session.
+      }
+    },
+    [draftId],
+  );
+
   /* ── Manual mode: import BC_ASSETS_OUTPUT ── */
   const handleManualImport = useCallback(async (parsed: unknown) => {
     const result = parseAssetsOutput(parsed);
@@ -319,8 +407,9 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
     setSlotCards(result.slots);
     setImagesMode('brief');
     setPhase('refine');
+    void persistBriefs(result.visual, result.slots);
     toast.success(`Imported ${result.slots.length} prompt briefs`);
-  }, []);
+  }, [persistBriefs]);
 
   /* ── Generate briefs via AI or manual ── */
   async function handleGenerateBriefs() {
@@ -1005,7 +1094,11 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
           {/* Actions */}
           <div className="flex items-center gap-3">
             <Button
-              onClick={() => { setImagesMode('brief'); setPhase('images'); }}
+              onClick={() => {
+                void persistBriefs(visualDirection, slotCards);
+                setImagesMode('brief');
+                setPhase('images');
+              }}
               className="gap-2"
             >
               Continue to Images

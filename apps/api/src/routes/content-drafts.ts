@@ -2169,6 +2169,75 @@ export async function contentDraftsRoutes(
   );
 
   /**
+   * PUT /:id/asset-briefs — Persist the visual_direction + slot prompt briefs
+   * produced by agent-5-assets (or pasted manually) into draft_json.asset_briefs
+   * so the AssetsEngine can rehydrate them across reloads, enabling a user to
+   * return to the Refine phase after the page is closed.
+   */
+  fastify.put(
+    "/:id/asset-briefs",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        if (!request.userId)
+          throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        const { id } = request.params as { id: string };
+
+        const slotSchema = z.object({
+          slot: z.string(),
+          sectionTitle: z.string().default(""),
+          promptBrief: z.string().default(""),
+          styleRationale: z.string().default(""),
+          aspectRatio: z.string().default("16:9"),
+          altText: z.string().default(""),
+        });
+        const visualSchema = z.object({
+          style: z.string().default(""),
+          colorPalette: z.array(z.string()).default([]),
+          mood: z.string().default(""),
+          constraints: z.array(z.string()).default([]),
+        }).nullable();
+        const body = z
+          .object({
+            visualDirection: visualSchema.optional(),
+            slots: z.array(slotSchema),
+          })
+          .parse(request.body ?? {});
+
+        const draft = (await loadDraft(id)) as Record<string, unknown>;
+        const sb = createServiceClient();
+        const existing = (draft.draft_json ?? {}) as Record<string, unknown>;
+        const newDraftJson = {
+          ...existing,
+          asset_briefs: {
+            visualDirection: body.visualDirection ?? null,
+            slots: body.slots,
+            updated_at: new Date().toISOString(),
+          },
+        };
+
+        const { error: updateErr } = await (
+          sb.from("content_drafts") as unknown as {
+            update: (row: Record<string, unknown>) => {
+              eq: (c: string, v: string) => Promise<{ error: unknown }>;
+            };
+          }
+        )
+          .update({ draft_json: newDraftJson })
+          .eq("id", id);
+        if (updateErr) throw updateErr;
+
+        return reply.send({
+          data: { saved: true, slotCount: body.slots.length },
+          error: null,
+        });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  /**
    * POST /:id/images — F2-042. Generate a hero image for this draft using the
    * configured image provider. Stored as base64 in the draft's draft_json.images[].
    * Body: { prompt?: string, slot?: "hero" | "inline", aspectRatio?: string }.
