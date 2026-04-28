@@ -83,9 +83,10 @@ interface NoBriefSection {
 /* ── Constants ── */
 
 const ASSETS_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'manual'];
-type ImageProvider = 'gemini' | 'manual';
+type ImageProvider = 'gemini' | 'openai' | 'manual';
 const IMAGE_PROVIDERS: { id: ImageProvider; label: string; hint: string }[] = [
   { id: 'gemini', label: 'Nano-banana (Gemini)', hint: 'Runs the image model directly.' },
+  { id: 'openai', label: 'GPT Image (OpenAI)', hint: 'Uses gpt-image-1 via the OpenAI API.' },
   { id: 'manual', label: 'Manual (Axiom)', hint: 'Emits the prompt to Axiom; upload the resulting image when ready.' },
 ];
 
@@ -392,7 +393,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
       return;
     }
 
-    // AI (Gemini): replace any existing asset for this role so the new one wins.
+    // AI provider: replace any existing asset for this role so the new one wins.
     const existing = existingAssets.find((a) => a.role === role);
     if (existing) {
       await fetch(`/api/assets/${existing.id}`, { method: 'DELETE' }).catch(() => null);
@@ -408,7 +409,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
         role,
         aspectRatio: card.aspectRatio,
         numImages: 1,
-        provider: 'gemini',
+        provider: imageProvider,
       }),
     });
     const json = await res.json();
@@ -439,7 +440,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
     setGeneratingSlot(card.slot);
     try {
       await generateSlotImage(card);
-      if (imageProvider === 'gemini') toast.success(`Generated image for ${card.slot}`);
+      if (imageProvider !== 'manual') toast.success(`Generated image for ${card.slot}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Image generation failed');
     } finally {
@@ -455,7 +456,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
         setGeneratingSlot(card.slot);
         await generateSlotImage(card);
       }
-      if (imageProvider === 'gemini') toast.success('All images generated');
+      if (imageProvider !== 'manual') toast.success('All images generated');
       else toast.success('All prompts emitted to Axiom');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Bulk generation failed');
@@ -1026,7 +1027,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Image provider
               </Label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {IMAGE_PROVIDERS.map((p) => (
                   <button
                     key={p.id}

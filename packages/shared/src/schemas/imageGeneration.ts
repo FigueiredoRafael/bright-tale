@@ -9,15 +9,17 @@ export const generateImageRequestSchema = z.object({
   numImages: z.number().int().min(1).max(4).default(1),
   aspectRatio: z.enum(["16:9", "1:1", "9:16", "4:3"]).default("16:9"),
   outputMimeType: z.enum(["image/jpeg", "image/png"]).default("image/jpeg"),
-  provider: z.enum(["gemini", "manual"]).default("gemini"),
+  provider: z.enum(["gemini", "openai", "manual"]).default("gemini"),
 });
 
 export const imageGeneratorConfigSchema = z.object({
-  provider: z.enum(["gemini"]),
+  provider: z.enum(["gemini", "openai"]),
   api_key: z.string().min(1, "API key is required"),
   model: z.enum([
     "gemini-2.5-flash-image",
     "imagen-3.0-generate-002",
+    "gpt-image-1",
+    "dall-e-3",
   ]),
   is_active: z.boolean().default(false),
   config_json: z.string().optional(), // JSON string for advanced config
