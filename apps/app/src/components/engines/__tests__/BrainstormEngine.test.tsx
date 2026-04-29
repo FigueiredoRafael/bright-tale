@@ -107,4 +107,49 @@ describe('BrainstormEngine', () => {
     expect(actor.getSnapshot().context.stageResults.brainstorm?.ideaId).toBe('lib-idea-1')
     expect(actor.getSnapshot().value).toMatchObject({ research: 'idle' })
   })
+
+  it('hydrates topic + niche from autopilotConfig.brainstorm on mount', () => {
+    const actor = createActor(pipelineMachine, {
+      input: {
+        projectId: 'proj-1',
+        channelId: 'ch-1',
+        projectTitle: 'T',
+        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+        creditSettings: DEFAULT_CREDIT_SETTINGS,
+      },
+    }).start()
+    actor.send({
+      type: 'SETUP_COMPLETE',
+      mode: 'overview',
+      autopilotConfig: {
+        defaultProvider: 'recommended',
+        brainstorm: {
+          providerOverride: null,
+          mode: 'topic_driven',
+          topic: 'AI agents in 2026',
+          referenceUrl: null,
+          niche: 'enterprise',
+          tone: '', audience: '', goal: '', constraints: '',
+        },
+        research: { providerOverride: null, depth: 'medium' },
+        canonicalCore: { providerOverride: null, personaId: null },
+        draft: { providerOverride: null, format: 'blog', wordCount: 1500 },
+        review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
+        assets: { providerOverride: null, mode: 'skip' },
+      } as never,
+      templateId: null,
+      startStage: 'brainstorm',
+    })
+
+    render(
+      <PipelineActorProvider value={actor}>
+        <BrainstormEngine mode="generate" />
+      </PipelineActorProvider>,
+    )
+
+    expect((screen.getByLabelText(/topic/i) as HTMLInputElement).value)
+      .toBe('AI agents in 2026')
+    expect((screen.getByLabelText(/niche/i) as HTMLInputElement).value)
+      .toBe('enterprise')
+  })
 })

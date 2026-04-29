@@ -39,6 +39,7 @@ import { IdeaDetailsDialog } from './IdeaDetailsDialog';
 import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
 import { friendlyAiError } from '@/lib/ai/error-message';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
+import { hydrateBrainstormFromConfig } from '@/lib/pipeline/hydrateEngineFromConfig';
 import type { BrainstormResult, PipelineContext } from './types';
 
 const BRAINSTORM_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
@@ -153,9 +154,31 @@ export function BrainstormEngine({
     : 'brainstorm-form-global';
   const [formRestored, setFormRestored] = useState(false);
 
-  // Restore form state from localStorage on mount (only for new brainstorm, not session detail)
+  // Hydrate from autopilotConfig once on mount. Runs BEFORE the localStorage
+  // restore so wizard inputs take precedence over stale localStorage state
+  // for fresh autopilot runs. localStorage restore won't fire for fresh
+  // autopilot because initialSession is undefined.
+  const autopilotConfig = useSelector(actor, (s) => s.context.autopilotConfig);
+  useEffect(() => {
+    const hydration = hydrateBrainstormFromConfig(autopilotConfig);
+    if (Object.keys(hydration).length === 0) return;
+    if (hydration.mode !== undefined) setMode(hydration.mode === 'topic_driven' ? 'fine_tuned' : 'reference_guided');
+    if (hydration.topic !== undefined) setTopic(hydration.topic);
+    if (hydration.niche !== undefined) setNiche(hydration.niche);
+    if (hydration.tone !== undefined) setTone(hydration.tone);
+    if (hydration.audience !== undefined) setAudience(hydration.audience);
+    if (hydration.goal !== undefined) setGoal(hydration.goal);
+    if (hydration.constraints !== undefined) setConstraints(hydration.constraints);
+    if (hydration.referenceUrl !== undefined) setReferenceUrl(hydration.referenceUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Restore form state from localStorage on mount (only for new brainstorm, not session detail,
+  // and not for autopilot runs — autopilotConfig hydration takes precedence).
   useEffect(() => {
     if (initialSession) { setFormRestored(true); return; }
+    // Skip localStorage restore for autopilot runs; hydration above already populated fields.
+    if (autopilotConfig?.brainstorm) { setFormRestored(true); return; }
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
@@ -873,8 +896,9 @@ export function BrainstormEngine({
 
             {mode !== 'reference_guided' && (
               <div className="space-y-2">
-                <Label>Topic</Label>
+                <Label htmlFor="brainstorm-topic">Topic</Label>
                 <Input
+                  id="brainstorm-topic"
                   placeholder="e.g. produtividade pra desenvolvedores"
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
@@ -886,8 +910,9 @@ export function BrainstormEngine({
             {mode === 'fine_tuned' && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Niche</Label>
+                  <Label htmlFor="brainstorm-niche" className="text-xs">Niche</Label>
                   <Input
+                    id="brainstorm-niche"
                     value={niche}
                     onChange={(e) => setNiche(e.target.value)}
                     placeholder="tech / educação"
