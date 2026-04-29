@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createActor } from 'xstate'
 import React from 'react'
@@ -7,6 +7,7 @@ import { pipelineMachine } from '@/lib/pipeline/machine'
 import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
 import { PreviewEngine } from '../PreviewEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
+import type { AutopilotConfig } from '@brighttale/shared'
 
 vi.mock('@/hooks/use-analytics', () => ({
   useAnalytics: () => ({ track: vi.fn() }),
@@ -42,7 +43,24 @@ const STUB_ASSETS = [
   { id: 'asset-2',    source_url: 'https://x/2.jpg', webp_url: null, alt_text: 's2 alt',   role: 'body_section_2' },
 ]
 
-function mountAtPreviewStage() {
+const STUB_AUTOPILOT_CONFIG_PREVIEW_ENABLED: AutopilotConfig = {
+  defaultProvider: 'recommended',
+  brainstorm: null,
+  research: null,
+  canonicalCore: { providerOverride: null, personaId: null },
+  draft: { providerOverride: null, format: 'blog', wordCount: 1000 },
+  review: { providerOverride: null, maxIterations: 3, autoApproveThreshold: 90, hardFailThreshold: 50 },
+  assets: { providerOverride: null, mode: 'briefs_only' },
+  preview: { enabled: true },
+  publish: { status: 'draft' },
+}
+
+const STUB_AUTOPILOT_CONFIG_PREVIEW_DISABLED: AutopilotConfig = {
+  ...STUB_AUTOPILOT_CONFIG_PREVIEW_ENABLED,
+  preview: { enabled: false },
+}
+
+function mountAtPreviewStage(opts?: { autopilotConfig?: AutopilotConfig | null; mode?: 'step-by-step' | 'overview' | 'supervised' | null }) {
   const actor = createActor(pipelineMachine, {
     input: {
       projectId: 'proj-1',
@@ -50,6 +68,8 @@ function mountAtPreviewStage() {
       projectTitle: 'T',
       pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
       creditSettings: DEFAULT_CREDIT_SETTINGS,
+      mode: opts?.mode ?? null,
+      autopilotConfig: opts?.autopilotConfig ?? null,
       initialStageResults: {
         brainstorm: { ideaId: 'idea-1', ideaTitle: 'Idea T', ideaVerdict: 'viable', ideaCoreTension: 'tension', completedAt: new Date().toISOString() },
         research:   { researchSessionId: 'rs-1', approvedCardsCount: 3, researchLevel: 'medium', completedAt: new Date().toISOString() },
@@ -126,5 +146,42 @@ describe('PreviewEngine', () => {
 
     // NAVIGATE to 'assets' rewinds the machine to the assets state.
     expect(actor.getSnapshot().value).toMatchObject({ assets: expect.anything() })
+  })
+
+  it('preview.enabled=false in overview mode → auto-derives + fires PREVIEW_COMPLETE without user interaction', async () => {
+    const { actor } = mountAtPreviewStage({
+      mode: 'overview',
+      autopilotConfig: STUB_AUTOPILOT_CONFIG_PREVIEW_DISABLED,
+    })
+
+    // After fetch resolves the load effect sets busy=false; the auto-derive effect
+    // then fires PREVIEW_COMPLETE, advancing the machine to publish.
+    await waitFor(() => {
+      const snap = actor.getSnapshot()
+      expect(snap.context.stageResults.preview).toBeDefined()
+    })
+
+    const preview = actor.getSnapshot().context.stageResults.preview
+    expect(preview!.autoDerived).toBe(true)
+    // Machine advances to publish after PREVIEW_COMPLETE
+    expect(actor.getSnapshot().value).toMatchObject({ publish: expect.anything() })
+    // PREVIEW_GATE_TRIGGERED was NOT sent (no pendingDrillIn set)
+    expect(actor.getSnapshot().context.pendingDrillIn).toBeNull()
+  })
+
+  it('preview.enabled=true in overview mode → fires PREVIEW_GATE_TRIGGERED, does not auto-complete', async () => {
+    const { actor } = mountAtPreviewStage({
+      mode: 'overview',
+      autopilotConfig: STUB_AUTOPILOT_CONFIG_PREVIEW_ENABLED,
+    })
+
+    await waitFor(() => {
+      // PREVIEW_GATE_TRIGGERED sets pendingDrillIn to 'preview'
+      expect(actor.getSnapshot().context.pendingDrillIn).toBe('preview')
+    })
+
+    // Machine stays in preview state — no auto-complete
+    expect(actor.getSnapshot().value).toMatchObject({ preview: expect.anything() })
+    expect(actor.getSnapshot().context.stageResults.preview).toBeUndefined()
   })
 })

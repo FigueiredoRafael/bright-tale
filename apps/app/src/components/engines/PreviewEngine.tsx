@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -195,6 +195,10 @@ export function PreviewEngine() {
   const assetsResult    = useSelector(actor, (s) => s.context.stageResults.assets);
   const draftId = draftResult?.draftId ?? '';
 
+  // Overview-mode / autopilot selectors
+  const overviewMode = useSelector(actor, (s) => s.context.mode === 'overview');
+  const previewEnabled = useSelector(actor, (s) => s.context.autopilotConfig?.preview.enabled);
+
   const trackerContext: PipelineContext = {
     channelId: channelId ?? undefined,
     projectId,
@@ -365,6 +369,57 @@ export function PreviewEngine() {
       }
     })();
   }, [draftId, abortController?.signal]);
+
+  // ── Overview-mode auto-derive gate ─────────────────────────────────────────
+  // Fires exactly once after data is loaded (busy=false, draft≠null).
+  //   preview.enabled=true  → gate user in via PREVIEW_GATE_TRIGGERED
+  //   preview.enabled=false → derive metadata immediately, fire PREVIEW_COMPLETE
+  const initialBehaviorRef = useRef(false);
+  useEffect(() => {
+    if (initialBehaviorRef.current) return;
+    if (!overviewMode) return;
+    if (previewEnabled === undefined) return;
+    if (busy || draft === null) return;
+
+    initialBehaviorRef.current = true;
+
+    if (previewEnabled) {
+      actor.send({ type: 'PREVIEW_GATE_TRIGGERED' });
+      return;
+    }
+
+    // Auto-derive path: build a full PreviewResult from feedback + loaded assets.
+    const feedbackJson = reviewResult?.feedbackJson ?? null;
+    const derivedMeta = derivePreview(feedbackJson, assets);
+
+    // Build imageMap and altTexts from auto-assigned assets (role → id).
+    const autoImageMap: Record<string, string> = {};
+    const autoAltTexts: Record<string, string> = {};
+    for (const asset of assets) {
+      if (asset.role) {
+        autoImageMap[asset.role] = asset.id;
+        autoAltTexts[asset.id] = asset.alt_text ?? '';
+      }
+    }
+
+    const result: PreviewResult = {
+      imageMap: autoImageMap,
+      altTexts: autoAltTexts,
+      categories: derivedMeta.categories,
+      tags: derivedMeta.tags,
+      seoOverrides: {
+        title: derivedMeta.seo.title ?? draftResult?.draftTitle ?? '',
+        slug: derivedMeta.seo.slug ?? '',
+        metaDescription: derivedMeta.seo.meta_description ?? derivedMeta.seo.metaDescription ?? '',
+      },
+      suggestedPublishDate: derivedMeta.publishDate ?? undefined,
+      // composedHtml is omitted for auto-derived results (no UI render needed)
+      composedHtml: '',
+      autoDerived: true,
+    };
+
+    actor.send({ type: 'PREVIEW_COMPLETE', result });
+  }, [overviewMode, previewEnabled, busy, draft, actor, assets, reviewResult, draftResult]);
 
   // Build asset map for quick lookup
   const assetMap = useMemo(() => {

@@ -107,6 +107,7 @@ export interface PreviewResult {
   seoOverrides: { title: string; slug: string; metaDescription: string };
   suggestedPublishDate?: string;
   composedHtml: string;  // client-side preview (display only)
+  autoDerived?: boolean;
 }
 
 export interface PublishResult {
