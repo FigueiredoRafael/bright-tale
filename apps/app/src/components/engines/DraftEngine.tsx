@@ -35,6 +35,7 @@ import { useSelector } from '@xstate/react';
 import { usePipelineActor } from '@/hooks/usePipelineActor';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
+import { hydrateDraftFromConfig } from '@/lib/pipeline/hydrateEngineFromConfig';
 import type { DraftResult, PipelineContext } from './types';
 
 type DraftType = 'blog' | 'video' | 'shorts' | 'podcast';
@@ -149,6 +150,20 @@ export function DraftEngine({
 
   // Pipeline tracker
   const tracker = usePipelineTracker('draft', trackerContext);
+
+  // Hydrate from autopilotConfig once on mount. Runs BEFORE the draft restore
+  // effect so wizard inputs take precedence over any stale restore. If
+  // initialDraft is provided, the user is revisiting an existing draft — skip
+  // hydration so the live draft values are not overwritten.
+  const autopilotConfig = useSelector(actor, (s) => s.context.autopilotConfig);
+  useEffect(() => {
+    if (initialDraft) return;
+    const h = hydrateDraftFromConfig(autopilotConfig);
+    if (h.format !== undefined) setType(h.format);
+    if (h.wordCount !== undefined && h.wordCount !== null) setTargetWords(h.wordCount);
+    if (h.selectedPersonaId !== undefined) setSelectedPersonaId(h.selectedPersonaId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fetch research data if researchSessionId is in context
   useEffect(() => {
@@ -1233,6 +1248,11 @@ export function DraftEngine({
   // ── Main render ───────────────────────────────────────────────
   return (
     <div className="space-y-6">
+      {/* Always-rendered sr-only spans for test queries. */}
+      <span data-testid="draft-type" className="sr-only">{type}</span>
+      <span data-testid="draft-word-count" className="sr-only">{targetWords}</span>
+      <span data-testid="persona-select" className="sr-only">{selectedPersonaId ?? ''}</span>
+
       <ContextBanner stage="draft" context={trackerContext} />
 
       <div className="flex items-start justify-between gap-4">
