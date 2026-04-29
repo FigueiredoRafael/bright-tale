@@ -57,6 +57,7 @@ import { notificationsRoutes } from "./routes/notifications.js";
 import { personasRoutes } from "./routes/personas.js";
 import { channelPersonasRoutes } from "./routes/channel-personas.js";
 import { adminPersonaGuardrailsRoutes } from "./routes/admin-persona-guardrails.js";
+import { autopilotTemplatesRoutes } from "./routes/autopilot-templates.js";
 import { adminPersonaArchetypesRoutes } from "./routes/admin-persona-archetypes.js";
 import { adminPipelineSettingsRoutes } from "./routes/admin-pipeline-settings.js";
 import { adminCreditSettingsRoutes } from "./routes/admin-credit-settings.js";
@@ -318,6 +319,7 @@ server.register(adminPersonaGuardrailsRoutes, { prefix: "/agents/personas/guardr
 server.register(adminPersonaArchetypesRoutes, { prefix: "/agents/personas/archetypes" });
 server.register(adminPipelineSettingsRoutes, { prefix: "/admin/pipeline-settings" });
 server.register(adminCreditSettingsRoutes, { prefix: "/admin/credit-settings" });
+server.register(autopilotTemplatesRoutes, { prefix: "/autopilot-templates" });
 server.register(currencyRefreshRoutes);
 
 // Affiliate platform — @tn-figueiredo/affiliate@0.4.0 (Phase 2A.3 wires /ref + /internal)
