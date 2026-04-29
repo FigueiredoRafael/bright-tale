@@ -88,7 +88,7 @@ export function IdeaHeaderColumn({ idea, onIdeaUpdated, onPatchDiscovery }: Prop
           title: idea.title,
           current_stage: 'brainstorm',
           status: 'active',
-          mode: 'overview',
+          mode: 'supervised',
           winner: false,
           seed_idea_id: idea.id,
         }),

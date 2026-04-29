@@ -42,7 +42,7 @@ export async function createProjectsFromDiscovery(input: DiscoveryInput) {
     research_id: research.id,
     current_stage: 'brainstorm',
     completed_stages: [] as string[],
-    mode: 'overview',
+    mode: 'supervised',
     status: 'active',
   }));
 

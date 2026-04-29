@@ -2,8 +2,6 @@
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
 import { Pause, Play, Loader2, Hourglass } from 'lucide-react'
 import type { PauseReason } from '@/lib/pipeline/machine.types'
 
@@ -12,7 +10,6 @@ interface AutoModeControlsProps {
   isPaused: boolean
   isWorking: boolean
   pauseReason: PauseReason | null
-  onToggle: () => void
   onPause: () => void
   onResume: () => void
 }
@@ -29,7 +26,6 @@ export function AutoModeControls({
   isPaused,
   isWorking,
   pauseReason,
-  onToggle,
   onPause,
   onResume,
 }: AutoModeControlsProps) {
@@ -37,16 +33,6 @@ export function AutoModeControls({
 
   return (
     <div className="flex items-center gap-4">
-      <div className="flex items-center gap-2">
-        <Label htmlFor="auto-mode" className="text-xs text-muted-foreground">
-          Step-by-step
-        </Label>
-        <Switch id="auto-mode" checked={isAuto} onCheckedChange={onToggle} />
-        <Label htmlFor="auto-mode" className="text-xs text-muted-foreground">
-          Auto-pilot
-        </Label>
-      </div>
-
       {isAuto && isPaused && (
         <>
           <Badge

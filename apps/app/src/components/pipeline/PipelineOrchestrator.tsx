@@ -334,8 +334,12 @@ function OrchestratorInner({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          title: `${ctx.projectTitle} (clone)`.slice(0, 200),
+          current_stage: 'brainstorm',
+          status: 'active',
+          mode: ctx.mode ?? 'step-by-step',
           channelId,
-          autopilotConfigJson: ctx.autopilotConfig,
+          autopilotConfigJson: ctx.autopilotConfig ?? undefined,
         }),
       })
       const { data, error } = await res.json()
@@ -355,12 +359,6 @@ function OrchestratorInner({
   function handleRedoNew() {
     setRedoModalOpen(false)
     router.push('/projects/new')
-  }
-
-  function handleToggleMode() {
-    // TODO(T-8.4): wizard-driven mode change replaces inline toggle
-    // Inline mode toggle removed in favor of setup-driven wizard flow.
-    // This handler is deprecated and will be removed when AutoModeControls is refactored.
   }
 
   function pipelineStep(): PipelineStep {
@@ -471,7 +469,6 @@ function OrchestratorInner({
             isPaused={ctx.paused || subState === 'paused'}
             isWorking={isWorking}
             pauseReason={ctx.pauseReason}
-            onToggle={handleToggleMode}
             onPause={() => send({ type: 'PAUSE' })}
             onResume={() => {
               setPendingAssetsConfirm(false)

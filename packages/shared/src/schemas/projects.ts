@@ -26,6 +26,8 @@ export const createProjectSchema = z.object({
   status: z.enum(["active", "paused", "completed", "archived"]),
   winner: z.boolean().default(false),
   seed_idea_id: z.string().uuid().optional(),
+  channelId: z.string().uuid().optional(),
+  autopilotConfigJson: z.record(z.unknown()).optional(),
 });
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;

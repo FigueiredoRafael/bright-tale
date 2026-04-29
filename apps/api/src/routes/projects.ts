@@ -19,6 +19,7 @@ import {
   markWinnerSchema,
 } from '@brighttale/shared/schemas/projects';
 import { bulkCreateSchema } from '@brighttale/shared/schemas/discovery';
+import type { Json } from '@brighttale/shared/types/database';
 
 export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
   /**
@@ -68,6 +69,8 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
           status: data.status,
           winner: data.winner,
           user_id: request.userId ?? null,
+          channel_id: data.channelId ?? null,
+          autopilot_config_json: (data.autopilotConfigJson as Json | undefined) ?? null,
         })
         .select('*, research:research_archives!research_id(id, title, theme), stages(count)')
         .single();
@@ -891,6 +894,7 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
           channel_id: body.channelId ?? (ideaData.channel_id as string) ?? null,
           status: 'active',
           current_stage: 'research',
+          mode: 'step-by-step',
           pipeline_state_json: pipelineStateJson,
           user_id: request.userId,
           org_id: (ideaData.org_id as string) ?? null,
