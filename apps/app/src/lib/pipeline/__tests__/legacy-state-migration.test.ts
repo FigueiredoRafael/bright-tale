@@ -114,6 +114,78 @@ describe('mapLegacyToSnapshot', () => {
   })
 })
 
+// ─── Fixtures for autopilotConfig migration tests ───────────────────────────
+
+const minimalLegacy = {
+  mode: 'auto' as const,
+  stageResults: { brainstorm: {} },
+}
+
+const legacyConfig = {
+  defaultProvider: 'recommended' as const,
+  brainstorm: null,
+  research: null,
+  canonicalCore: { providerOverride: null, personaId: null },
+  draft: { providerOverride: null, format: 'blog' as const, wordCount: 800 },
+  review: { providerOverride: null, maxIterations: 3, autoApproveThreshold: 90, hardFailThreshold: 50 },
+  assets: { providerOverride: null, mode: 'auto_generate' as const },
+  preview: { enabled: false },
+  publish: { status: 'draft' as const },
+}
+
+// ─── autopilotConfig migration ───────────────────────────────────────────────
+
+describe('autopilotConfig legacy migration', () => {
+  it("maps legacy assets.mode='briefing' → 'briefs_only'", () => {
+    const legacy = {
+      ...minimalLegacy,
+      autopilotConfig: { ...legacyConfig, assets: { providerOverride: null, mode: 'briefing' } },
+    }
+    const snap = mapLegacyToSnapshot(legacy)
+    expect((snap as any)?.context.autopilotConfig?.assets.mode).toBe('briefs_only')
+  })
+
+  it("maps legacy assets.mode='auto' → 'auto_generate'", () => {
+    const legacy = {
+      ...minimalLegacy,
+      autopilotConfig: { ...legacyConfig, assets: { providerOverride: null, mode: 'auto' } },
+    }
+    const snap = mapLegacyToSnapshot(legacy)
+    expect((snap as any)?.context.autopilotConfig?.assets.mode).toBe('auto_generate')
+  })
+
+  it("maps legacy assets.mode='manual' → 'skip'", () => {
+    const legacy = {
+      ...minimalLegacy,
+      autopilotConfig: { ...legacyConfig, assets: { providerOverride: null, mode: 'manual' } },
+    }
+    const snap = mapLegacyToSnapshot(legacy)
+    expect((snap as any)?.context.autopilotConfig?.assets.mode).toBe('skip')
+  })
+
+  it('fills missing preview slot with { enabled: false }', () => {
+    const { preview: _preview, ...configWithoutPreview } = legacyConfig
+    const legacy = {
+      ...minimalLegacy,
+      autopilotConfig: configWithoutPreview,
+    }
+    const snap = mapLegacyToSnapshot(legacy)
+    expect((snap as any)?.context.autopilotConfig?.preview).toEqual({ enabled: false })
+  })
+
+  it("fills missing publish slot with { status: 'draft' }", () => {
+    const { publish: _publish, ...configWithoutPublish } = legacyConfig
+    const legacy = {
+      ...minimalLegacy,
+      autopilotConfig: configWithoutPublish,
+    }
+    const snap = mapLegacyToSnapshot(legacy)
+    expect((snap as any)?.context.autopilotConfig?.publish).toEqual({ status: 'draft' })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 describe('mapLegacyPipelineState', () => {
   it('returns null for null/empty input', () => {
     expect(mapLegacyPipelineState(null)).toBeNull()

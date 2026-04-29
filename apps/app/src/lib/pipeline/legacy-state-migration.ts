@@ -13,6 +13,7 @@ import type {
 } from './machine.types'
 import { pipelineMachine } from './machine'
 import type { PipelineMachineContext } from './machine.types'
+import type { AutopilotConfig } from '@brighttale/shared'
 
 type LegacyMode = 'step-by-step' | 'auto'
 type NewMode = 'step-by-step' | 'supervised' | 'overview' | null
@@ -32,6 +33,7 @@ interface LegacyShape {
   currentStage?: string
   stageResults?: Record<string, unknown>
   autoConfig?: Record<string, unknown>
+  autopilotConfig?: Record<string, unknown>
   iterationCount?: number
   paused?: unknown
   pauseReason?: unknown
@@ -154,6 +156,36 @@ export function mapLegacyPipelineState(raw: unknown): MigratedPipelineInput | nu
   }
 }
 
+function migrateAssetsMode(legacy: string | undefined): 'skip' | 'briefs_only' | 'auto_generate' {
+  switch (legacy) {
+    case 'briefing':      return 'briefs_only'
+    case 'auto':          return 'auto_generate'
+    case 'manual':        return 'skip'
+    case 'skip':          return 'skip'
+    case 'briefs_only':   return 'briefs_only'
+    case 'auto_generate': return 'auto_generate'
+    default:              return 'skip'
+  }
+}
+
+function migrateAutopilotConfig(raw: Record<string, unknown> | undefined): AutopilotConfig | null {
+  if (!isPlainObject(raw)) return null
+  const assets = isPlainObject(raw.assets) ? raw.assets : undefined
+  return {
+    ...(raw as unknown as AutopilotConfig),
+    assets: {
+      providerOverride: (assets?.providerOverride ?? null) as AutopilotConfig['assets']['providerOverride'],
+      mode: migrateAssetsMode(typeof assets?.mode === 'string' ? assets.mode : undefined),
+    },
+    preview: isPlainObject(raw.preview)
+      ? (raw.preview as AutopilotConfig['preview'])
+      : { enabled: false },
+    publish: isPlainObject(raw.publish)
+      ? (raw.publish as AutopilotConfig['publish'])
+      : { status: 'draft' },
+  }
+}
+
 /**
  * Convert legacy pipeline state to an XState v5 snapshot for direct hydration.
  * When a project is restored with existing state, this snapshot boots the actor
@@ -180,6 +212,9 @@ export function mapLegacyToSnapshot(
   const channelId = typeof input.channelId === 'string' ? input.channelId : null
   const projectTitle = typeof input.projectTitle === 'string' ? input.projectTitle : ''
 
+  // Migrate legacy autopilotConfig if present, filling in new required slots.
+  const autopilotConfig = migrateAutopilotConfig(input.autopilotConfig)
+
   // Build a machine input that represents the restored state.
   const machineInput: PipelineMachineInput = {
     projectId,
@@ -188,7 +223,7 @@ export function mapLegacyToSnapshot(
     pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
     creditSettings: DEFAULT_CREDIT_SETTINGS,
     mode: migrated.mode,
-    autopilotConfig: null,
+    autopilotConfig,
     templateId: null,
     initialStageResults: migrated.initialStageResults,
     initialIterationCount: migrated.initialIterationCount,
