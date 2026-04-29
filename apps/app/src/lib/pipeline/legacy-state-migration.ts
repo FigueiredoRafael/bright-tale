@@ -201,9 +201,12 @@ export function mapLegacyToSnapshot(
   const baseSnapshot = tempActor.getSnapshot()
 
   // Reconstruct the snapshot with the restored stage value.
+  // Pipeline stages are compound states with `initial: 'idle'`. The canonical
+  // XState value at e.g. draft.idle is { draft: 'idle' }, not 'draft'. XState
+  // auto-corrects on boot, but a malformed value breaks snapshot round-trips.
   const snapshotWithValue = {
     ...baseSnapshot,
-    value: migrated.initialStage,
+    value: { [migrated.initialStage]: 'idle' } as Record<string, string>,
   }
   const snapshot = snapshotWithValue as unknown as Snapshot<typeof pipelineMachine> & {
     context: PipelineMachineContext

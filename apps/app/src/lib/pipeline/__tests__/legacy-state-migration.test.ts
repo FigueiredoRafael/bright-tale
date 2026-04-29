@@ -55,6 +55,8 @@ describe('mapLegacyToSnapshot', () => {
       },
     })
     expect(snap).not.toBeNull()
+    // Verify the snapshot itself has the canonical compound value (not just after boot).
+    expect(((snap as unknown) as { value: unknown }).value).toEqual({ draft: 'idle' })
 
     // Boot a real actor with the snapshot
     const actor = createActor(pipelineMachine, { snapshot: snap! } as any)
