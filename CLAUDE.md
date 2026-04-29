@@ -59,7 +59,7 @@ npm run db:seed       # runs scripts/generate-seed.ts → seed.sql → supabase 
 ### Apps
 
 - **`apps/app`** — the main UI. All `/api/*` calls are rewritten (Next.js rewrites) to `apps/api` at runtime. A Next.js middleware at `src/middleware.ts` intercepts `/api/*`, strips any client-supplied `x-internal-key` and `x-user-id` (anti-spoofing), injects the real `X-Internal-Key` from `process.env`, and adds a `x-request-id` for end-to-end tracing before the rewrite proxies the request.
-- **`apps/api`** — Route Handlers only (no pages). Guarded by middleware at `src/middleware.ts` that validates `X-Internal-Key` on every `/api/*` request. Uses Supabase `service_role` key — bypasses RLS.
+- **`apps/api`** — Fastify-style handlers only (no pages). Guarded by middleware at `src/middleware.ts` that validates `X-Internal-Key` on every `/api/*` request. Uses Supabase `service_role` key — bypasses RLS.
 - **`apps/web`** — static landing page stub.
 
 ### Shared Package

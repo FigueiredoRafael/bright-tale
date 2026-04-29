@@ -2,6 +2,30 @@
 
 The project pipeline orchestrates a 6-stage content workflow (**Brainstorm → Research → Draft → Review → Assets → Publish**) using **XState actors** for state management and React components for the view layer.
 
+## Pipeline Setup
+
+> Detailed design: `docs/superpowers/specs/2026-04-28-pipeline-autopilot-wizard-design.md`
+
+### Wizard
+
+`PipelineWizard` opens when a fresh project enters the `setup` XState state. The user picks an autopilot mode, configures per-stage providers and thresholds, then submits `SETUP_COMPLETE`. Legacy project snapshots skip `setup` and boot directly into their saved stage.
+
+### Modes
+
+| Mode | Behavior |
+|---|---|
+| `step-by-step` | User clicks through each stage manually; no auto-advance |
+| `supervised` | Stages auto-advance but pause at each gate for user confirmation |
+| `overview` | Dashboard-driven; user opens individual stages on demand; machine still auto-runs them |
+
+### Autopilot Templates
+
+Autopilot configs can be saved as reusable templates per channel (or globally) via `POST /api/autopilot-templates`. Each scope (channel or global) can have one default template. Setting a new default calls the `clear_autopilot_default` RPC to clear the previous one atomically.
+
+### Abort Flow
+
+`PipelineAbortProvider` polls `GET /api/projects/:id` every 3 s (10 s when paused). When `abort_requested_at` flips from `null` to a timestamp, the provider calls `controller.abort()`. All engine fetches pass `controller.signal`. Inngest jobs call `assertNotAborted()` between every `step.run`, surfacing a `JobAborted` error on trigger. `/cancel` endpoints intentionally do **not** consume the abort signal — cleanup requests must always reach the server.
+
 ## Architecture overview
 
 ```
@@ -30,7 +54,7 @@ The project pipeline orchestrates a 6-stage content workflow (**Brainstorm → R
                     │
         Accepts typed events:
         NAVIGATE, REDO_FROM,
-        TOGGLE_AUTO_PILOT, etc.
+        RESUME, PAUSE, etc.
                     │
                     ▼
     ┌───────────────────────────────────┐
@@ -63,7 +87,6 @@ The **pipelineMachine** (in `apps/app/src/lib/pipeline/machine.ts`) defines:
 ### Key Events
 - **NAVIGATE(stage, replace)** — jump to a stage, **preserving all upstream results**
 - **REDO_FROM(stage)** — confirmation modal, then **clear strictly downstream results** and re-enter the target stage
-- **TOGGLE_AUTO_PILOT** — switch between step-by-step and auto-pilot modes
 - **SUBMIT_BRAINSTORM(selected)** — advance with selected idea
 - **APPROVE_RESEARCH** — advance with research cards
 - **SUBMIT_DRAFT** — advance with canonical core + produced draft
@@ -120,10 +143,10 @@ Example: `draft` stage has `{brainstormResult, researchResult, draftResult}`. RE
 
 ## Auto-pilot
 
-Auto-pilot mode (`mode: 'auto-pilot'`) is a machine-side `mode` flag + an orchestrator-side effect:
+Auto-pilot mode (`mode: 'supervised' | 'overview'`) is a machine-side `mode` flag set via the wizard + an orchestrator-side effect:
 
-1. User toggles `TOGGLE_AUTO_PILOT` → machine updates `mode`
-2. When state reaches a boundary (e.g., `draft.idle`), orchestrator checks `if (mode === 'auto-pilot')` and automatically sends the next event (e.g., `APPROVE_REVIEW`)
+1. User completes the autopilot wizard → the orchestrator sends `GO_AUTOPILOT({ mode, autopilotConfig })` to the machine
+2. When state reaches a boundary (e.g., `draft.idle`), the orchestrator checks `if (mode === 'supervised' || mode === 'overview')` and automatically sends the next event (e.g., `APPROVE_REVIEW`)
 3. **Exception:** `publish` state **never** auto-publishes — always pauses at `publish.idle` awaiting manual `PUBLISH_COMPLETE`
 
 ## Concurrent Project Isolation
