@@ -14,6 +14,7 @@ import { buildBrainstormMessage } from '../lib/ai/prompts/brainstorm.js';
 import { buildResearchMessage } from '../lib/ai/prompts/research.js';
 import { buildCanonicalCoreMessage, buildProduceMessage } from '../lib/ai/prompts/production.js';
 import { buildReviewMessage } from '../lib/ai/prompts/review.js';
+import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
 
 interface ContentGenerateEvent {
   name: 'content/generate';
@@ -38,11 +39,16 @@ export const contentGenerate = inngest.createFunction(
     const sb = createServiceClient();
     const tier = modelTier ?? 'standard';
 
-    // Step 1: Check credits
+    try {
+      // Step 1: Check credits
     const totalCost = STAGE_COSTS.brainstorm + STAGE_COSTS.research + STAGE_COSTS.production + STAGE_COSTS.review;
     await step.run('check-credits', async () => {
       await checkCredits(orgId, userId, totalCost);
     });
+
+    // Note: content-generate does not have a projectId upfront, so we pass undefined
+    // to assertNotAborted. Projects are created after all generation is complete.
+    await assertNotAborted(undefined, undefined, sb);
 
     // Step 2: Brainstorm
     const brainstormResult = await step.run('brainstorm', async () => {
@@ -66,6 +72,8 @@ export const contentGenerate = inngest.createFunction(
       return result;
     });
 
+    await assertNotAborted(undefined, undefined, sb);
+
     // Step 3: Research
     const researchResult = await step.run('research', async () => {
       const systemPrompt = (await loadAgentPrompt('research')) ?? '';
@@ -87,6 +95,8 @@ export const contentGenerate = inngest.createFunction(
       await debitCredits(orgId, userId, 'research', 'text', STAGE_COSTS.research, { channelId, topic });
       return result;
     });
+
+    await assertNotAborted(undefined, undefined, sb);
 
     // Step 4: Production — canonical core first, then per-format output
     const canonicalCore = await step.run('canonical-core', async () => {
@@ -116,6 +126,8 @@ export const contentGenerate = inngest.createFunction(
 
     const productionResults: Record<string, unknown> = {};
     for (const format of formats) {
+      await assertNotAborted(undefined, undefined, sb);
+
       productionResults[format] = await step.run(`production-${format}`, async () => {
         const systemPrompt =
           (await loadAgentPrompt(format)) ?? (await loadAgentPrompt('production')) ?? '';
@@ -144,6 +156,8 @@ export const contentGenerate = inngest.createFunction(
     }
 
     // Step 5: Review
+    await assertNotAborted(undefined, undefined, sb);
+
     await step.run('review', async () => {
       const systemPrompt = (await loadAgentPrompt('review')) ?? '';
       const userMessage = buildReviewMessage({
@@ -170,6 +184,8 @@ export const contentGenerate = inngest.createFunction(
     });
 
     // Step 6: Save results
+    await assertNotAborted(undefined, undefined, sb);
+
     await step.run('save-results', async () => {
       // Use rpc-style insert to avoid strict type checking on new columns
       const { data: project } = await (sb.from('projects') as unknown as { insert: (row: Record<string, unknown>) => { select: () => { single: () => Promise<{ data: { id: string } | null }> } } })
@@ -195,5 +211,13 @@ export const contentGenerate = inngest.createFunction(
     });
 
     return { success: true, formats, topic };
+    } catch (err) {
+      if (err instanceof JobAborted) {
+        // content-generate doesn't have a session to mark paused yet;
+        // the job was aborted before any project was created
+        return;
+      }
+      throw err;
+    }
   },
 );

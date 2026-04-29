@@ -10,6 +10,7 @@ import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
 import { buildResearchMessage } from '../lib/ai/prompts/research.js';
+import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
 import type { ResearchInput } from '../lib/ai/prompts/research.js';
 
 const LEVEL_COSTS: Record<'surface' | 'medium' | 'deep', number> = {
@@ -80,20 +81,36 @@ export const researchGenerate = inngest.createFunction(
     const { sessionId, orgId, userId, channelId, ideaId, level, inputJson, modelTier, provider, model } = event.data;
     const sb = createServiceClient();
 
+    // Load projectId from research_sessions if available
+    const { data: session } = await sb
+      .from('research_sessions')
+      .select('project_id')
+      .eq('id', sessionId)
+      .maybeSingle();
+    const projectId = session?.project_id ?? undefined;
+
     try {
+      await assertNotAborted(projectId, undefined, sb);
+
       await step.run('emit-loading-prompt', async () => {
         await emitJobEvent(sessionId, 'research', 'loading_prompt', 'Carregando agente research…');
       });
+
+      await assertNotAborted(projectId, undefined, sb);
 
       const systemPrompt = (await step.run('load-prompt', async () => {
         const base = (await loadAgentPrompt('research')) ?? '';
         return `${base}\n\nLevel directive: ${(inputJson as { instruction?: string }).instruction ?? ''}`.trim();
       })) as string;
 
+      await assertNotAborted(projectId, undefined, sb);
+
       await step.run('emit-calling-provider', async () => {
         const label = provider ? `${provider}${model ? ` (${model})` : ''}` : modelTier;
         await emitJobEvent(sessionId, 'research', 'calling_provider', `Pesquisando com ${label}…`, { provider, model, level });
       });
+
+      await assertNotAborted(projectId, undefined, sb);
 
       const channelContext = (await step.run('load-channel', async () => {
         if (!channelId) return null;
@@ -104,6 +121,8 @@ export const researchGenerate = inngest.createFunction(
           .maybeSingle();
         return data;
       })) as Record<string, unknown> | null;
+
+      await assertNotAborted(projectId, undefined, sb);
 
       const result = (await step.run('call-provider', async () => {
         const userMessage = buildResearchMessage({
@@ -146,15 +165,21 @@ export const researchGenerate = inngest.createFunction(
         return call.result;
       })) as unknown;
 
+      await assertNotAborted(projectId, undefined, sb);
+
       await step.run('emit-parsing', async () => {
         await emitJobEvent(sessionId, 'research', 'parsing_output', 'Organizando fontes e citações…');
       });
 
       const cards = normalizeCards(result);
 
+      await assertNotAborted(projectId, undefined, sb);
+
       await step.run('emit-saving', async () => {
         await emitJobEvent(sessionId, 'research', 'saving', `Salvando ${cards.length} cards de pesquisa…`, { count: cards.length });
       });
+
+      await assertNotAborted(projectId, undefined, sb);
 
       await step.run('persist', async () => {
         await (sb.from('research_sessions') as unknown as {
@@ -183,6 +208,13 @@ export const researchGenerate = inngest.createFunction(
 
       return { success: true, cards: cards.length };
     } catch (err) {
+      if (err instanceof JobAborted) {
+        // research_sessions.status does not support 'paused' status yet,
+        // so we only emit the abort event (no database update)
+        await emitJobEvent(sessionId, 'research', 'aborted', 'Sessão cancelada pelo usuário');
+        return;
+      }
+
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       await (sb.from('research_sessions') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };

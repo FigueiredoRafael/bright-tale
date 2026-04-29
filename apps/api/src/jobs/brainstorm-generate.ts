@@ -13,6 +13,7 @@ import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
 import { buildBrainstormMessage } from '../lib/ai/prompts/brainstorm.js';
+import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
 import type { BrainstormInput } from '../lib/ai/prompts/brainstorm.js';
 
 interface BrainstormGenerateEvent {
@@ -83,19 +84,35 @@ export const brainstormGenerate = inngest.createFunction(
     const { sessionId, orgId, userId, channelId, inputJson, modelTier, provider, model, targetCount } = event.data;
     const sb = createServiceClient();
 
+    // Load projectId from brainstorm_sessions if available
+    const { data: session } = await sb
+      .from('brainstorm_sessions')
+      .select('project_id')
+      .eq('id', sessionId)
+      .maybeSingle();
+    const projectId = session?.project_id ?? undefined;
+
     try {
+      await assertNotAborted(projectId, undefined, sb);
+
       await step.run('emit-loading-prompt', async () => {
         await emitJobEvent(sessionId, 'brainstorm', 'loading_prompt', 'Carregando agente brainstorm…');
       });
+
+      await assertNotAborted(projectId, undefined, sb);
 
       const systemPrompt = (await step.run('load-prompt', async () => {
         return (await loadAgentPrompt('brainstorm')) ?? null;
       })) as string | null;
 
+      await assertNotAborted(projectId, undefined, sb);
+
       await step.run('emit-calling-provider', async () => {
         const label = provider ? `${provider}${model ? ` (${model})` : ''}` : modelTier;
         await emitJobEvent(sessionId, 'brainstorm', 'calling_provider', `Conversando com ${label}…`, { provider, model });
       });
+
+      await assertNotAborted(projectId, undefined, sb);
 
       const channelContext = (await step.run('load-channel', async () => {
         if (!channelId) return null;
@@ -106,6 +123,8 @@ export const brainstormGenerate = inngest.createFunction(
           .maybeSingle();
         return data;
       })) as Record<string, unknown> | null;
+
+      await assertNotAborted(projectId, undefined, sb);
 
       const result = (await step.run('call-provider', async () => {
         const userMessage = buildBrainstormMessage({
@@ -146,6 +165,8 @@ export const brainstormGenerate = inngest.createFunction(
         return call.result;
       })) as unknown;
 
+      await assertNotAborted(projectId, undefined, sb);
+
       await step.run('emit-parsing', async () => {
         await emitJobEvent(sessionId, 'brainstorm', 'parsing_output', 'Processando resposta da IA…');
       });
@@ -166,9 +187,13 @@ export const brainstormGenerate = inngest.createFunction(
       // case the model ignored the prompt directive.
       const capped = typeof targetCount === 'number' ? ideas.slice(0, targetCount) : ideas;
 
+      await assertNotAborted(projectId, undefined, sb);
+
       await step.run('emit-saving', async () => {
         await emitJobEvent(sessionId, 'brainstorm', 'saving', `Salvando ${capped.length} ideias em draft…`, { count: capped.length });
       });
+
+      await assertNotAborted(projectId, undefined, sb);
 
       const persisted = await step.run('persist-ideas', async () => {
         // F2-037: stage ideas in brainstorm_drafts instead of idea_archives.
@@ -238,6 +263,13 @@ export const brainstormGenerate = inngest.createFunction(
 
       return { success: true, ideas: persisted };
     } catch (err) {
+      if (err instanceof JobAborted) {
+        // brainstorm_sessions.status does not support 'paused' status yet,
+        // so we only emit the abort event (no database update)
+        await emitJobEvent(sessionId, 'brainstorm', 'aborted', 'Sessão cancelada pelo usuário');
+        return;
+      }
+
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       await (sb.from('brainstorm_sessions') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };

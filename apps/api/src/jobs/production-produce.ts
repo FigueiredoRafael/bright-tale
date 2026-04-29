@@ -14,6 +14,7 @@ import { logUsage } from '../lib/ai/usage-log.js';
 import { buildProduceMessage } from '../lib/ai/prompts/production.js';
 import { calculateDraftCost } from '../lib/calculate-draft-cost.js';
 import { loadCreditSettings } from '../lib/credit-settings.js';
+import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
 import { buildLayeredPersonaContext, loadPersonaForDraft } from '../lib/personas.js';
 
 function formatConstraintsBlock(constraints: string[]): string {
@@ -57,13 +58,25 @@ export const productionProduce = inngest.createFunction(
     const { draftId, orgId, userId, type, modelTier, provider, model, productionParams } = event.data;
     const sb = createServiceClient();
 
+    // Load projectId from content_drafts
+    const { data: draftForProject } = await sb
+      .from('content_drafts')
+      .select('project_id')
+      .eq('id', draftId)
+      .maybeSingle();
+    const projectId = draftForProject?.project_id ?? undefined;
+
     try {
+      await assertNotAborted(projectId, draftId, sb);
+
       const creditSettings = await loadCreditSettings(sb);
       const cost = applyProviderDiscount(calculateDraftCost(type, creditSettings), provider);
 
       await step.run('emit-loading-produce', async () => {
         await emitJobEvent(draftId, 'production', 'loading_prompt', `Carregando agente ${type}…`);
       });
+
+      await assertNotAborted(projectId, draftId, sb);
 
       const draft = (await step.run('load-draft', async () => {
         const { data } = await sb.from('content_drafts').select('*').eq('id', draftId).maybeSingle();
@@ -72,19 +85,27 @@ export const productionProduce = inngest.createFunction(
 
       if (!draft) throw new Error('Draft não encontrado');
 
+      await assertNotAborted(projectId, draftId, sb);
+
       const canonicalCore = draft.canonical_core_json;
       if (!canonicalCore || typeof canonicalCore !== 'object') {
         throw new Error('Canonical core ausente — gere o core antes de produzir o conteúdo');
       }
 
+      await assertNotAborted(projectId, draftId, sb);
+
       const persona = (await step.run('load-persona', async () => {
         return loadPersonaForDraft(draft, sb);
       })) as Awaited<ReturnType<typeof loadPersonaForDraft>>;
+
+      await assertNotAborted(projectId, draftId, sb);
 
       const layeredPersona = (await step.run('load-persona-constraints', async () => {
         if (!persona) return null;
         return buildLayeredPersonaContext(persona, sb);
       })) as Awaited<ReturnType<typeof buildLayeredPersonaContext>> | null;
+
+      await assertNotAborted(projectId, draftId, sb);
 
       const approvedCards = (await step.run('load-research', async () => {
         if (!draft.research_session_id) return null;
@@ -96,6 +117,8 @@ export const productionProduce = inngest.createFunction(
         return data?.approved_cards_json ?? data?.cards_json ?? null;
       })) as unknown;
 
+      await assertNotAborted(projectId, draftId, sb);
+
       const channelContext = (await step.run('load-channel', async () => {
         if (!draft.channel_id) return null;
         const { data } = await sb
@@ -106,14 +129,20 @@ export const productionProduce = inngest.createFunction(
         return data;
       })) as Record<string, unknown> | null;
 
+      await assertNotAborted(projectId, draftId, sb);
+
       const ideaContext = (await step.run('load-idea', async () => {
         if (!draft.idea_id) return null;
         return loadIdeaContext(draft.idea_id as string);
       })) as Awaited<ReturnType<typeof loadIdeaContext>> | null;
 
+      await assertNotAborted(projectId, draftId, sb);
+
       const produceSystemPrompt = (await step.run('load-produce-prompt', async () => {
         return (await loadAgentPrompt(type)) ?? (await loadAgentPrompt('production')) ?? null;
       })) as string | null;
+
+      await assertNotAborted(projectId, draftId, sb);
 
       await step.run('emit-calling-produce', async () => {
         const label = provider ? `${provider}${model ? ` (${model})` : ''}` : modelTier;
@@ -123,6 +152,8 @@ export const productionProduce = inngest.createFunction(
           model,
         });
       });
+
+      await assertNotAborted(projectId, draftId, sb);
 
       const draftJson = await step.run('generate-produce', async () => {
         const approvedCardsObj =
@@ -182,9 +213,13 @@ export const productionProduce = inngest.createFunction(
         return call.result;
       });
 
+      await assertNotAborted(projectId, draftId, sb);
+
       await step.run('emit-saving', async () => {
         await emitJobEvent(draftId, 'production', 'saving', 'Salvando rascunho…');
       });
+
+      await assertNotAborted(projectId, draftId, sb);
 
       await step.run('save-produce', async () => {
         await (sb.from('content_drafts') as unknown as {
@@ -204,6 +239,12 @@ export const productionProduce = inngest.createFunction(
       );
       return { success: true, draftId };
     } catch (err) {
+      if (err instanceof JobAborted) {
+        await sb.from('content_drafts').update({ status: 'paused' }).eq('id', draftId);
+        await emitJobEvent(draftId, 'production', 'aborted', 'Sessão cancelada pelo usuário');
+        return;
+      }
+
       const rawMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       const providerLabel = provider ? `[${provider}${model ? `/${model}` : ''}] ` : '';
       const message = `${providerLabel}${rawMessage}`;

@@ -12,6 +12,7 @@ import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
 import { buildCanonicalCoreMessage } from '../lib/ai/prompts/production.js';
 import { loadCreditSettings } from '../lib/credit-settings.js';
+import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
 import {
   buildPersonaContext,
   buildPersonaVoice,
@@ -63,7 +64,19 @@ export const productionGenerate = inngest.createFunction(
     const { draftId, orgId, userId, type, modelTier, provider, model, productionParams } = event.data;
     const sb = createServiceClient();
 
+    // Load projectId from content_drafts
+    const { data: draftForProject } = await sb
+      .from('content_drafts')
+      .select('project_id')
+      .eq('id', draftId)
+      .maybeSingle();
+    const projectId = draftForProject && typeof draftForProject === 'object' && 'project_id' in draftForProject
+      ? (draftForProject.project_id as string | undefined)
+      : undefined;
+
     try {
+      await assertNotAborted(projectId, draftId, sb);
+
       const creditSettings = await loadCreditSettings(sb);
       const coreCost = applyProviderDiscount(creditSettings.costCanonicalCore, provider);
 
@@ -72,6 +85,8 @@ export const productionGenerate = inngest.createFunction(
         await emitJobEvent(draftId, 'production', 'loading_prompt', 'Carregando agente core…');
       });
 
+      await assertNotAborted(projectId, draftId, sb);
+
       const draft = (await step.run('load-draft', async () => {
         const { data } = await sb.from('content_drafts').select('*').eq('id', draftId).maybeSingle();
         return data;
@@ -79,14 +94,20 @@ export const productionGenerate = inngest.createFunction(
 
       if (!draft) throw new Error('Draft não encontrado');
 
+      await assertNotAborted(projectId, draftId, sb);
+
       const persona = (await step.run('load-persona', async () => {
         return loadPersonaForDraft(draft as Record<string, unknown>, sb);
       })) as Awaited<ReturnType<typeof loadPersonaForDraft>>;
+
+      await assertNotAborted(projectId, draftId, sb);
 
       const layeredPersona = (await step.run('load-persona-constraints', async () => {
         if (!persona) return null
         return buildLayeredPersonaContext(persona, sb)
       })) as Awaited<ReturnType<typeof buildLayeredPersonaContext>> | null
+
+      await assertNotAborted(projectId, draftId, sb);
 
       const approvedCards = (await step.run('load-research', async () => {
         if (!draft.research_session_id) return null;
@@ -98,6 +119,8 @@ export const productionGenerate = inngest.createFunction(
         return data?.approved_cards_json ?? data?.cards_json ?? null;
       })) as unknown;
 
+      await assertNotAborted(projectId, draftId, sb);
+
       const channelContext = (await step.run('load-channel', async () => {
         if (!draft.channel_id) return null;
         const { data } = await sb
@@ -108,19 +131,27 @@ export const productionGenerate = inngest.createFunction(
         return data;
       })) as Record<string, unknown> | null;
 
+      await assertNotAborted(projectId, draftId, sb);
+
       const ideaContext = (await step.run('load-idea', async () => {
         if (!draft.idea_id) return null;
         return await loadIdeaContext(draft.idea_id as string);
       })) as Awaited<ReturnType<typeof loadIdeaContext>>;
 
+      await assertNotAborted(projectId, draftId, sb);
+
       const coreSystemPrompt = (await step.run('load-core-prompt', async () => {
         return (await loadAgentPrompt('content-core')) ?? (await loadAgentPrompt('production')) ?? null;
       })) as string | null;
+
+      await assertNotAborted(projectId, draftId, sb);
 
       await step.run('emit-calling-core', async () => {
         const label = provider ? `${provider}${model ? ` (${model})` : ''}` : modelTier;
         await emitJobEvent(draftId, 'production', 'calling_provider', `Estruturando ideia central com ${label}…`, { stage: 'canonical-core', provider, model });
       });
+
+      await assertNotAborted(projectId, draftId, sb);
 
       const canonicalCore = await step.run('generate-core', async () => {
         const userMessage = buildCanonicalCoreMessage({
@@ -166,6 +197,8 @@ export const productionGenerate = inngest.createFunction(
         return call.result;
       });
 
+      await assertNotAborted(projectId, draftId, sb);
+
       await step.run('save-core', async () => {
         const coreToSave = draft.idea_id && canonicalCore && typeof canonicalCore === 'object' && !Array.isArray(canonicalCore)
           ? { ...(canonicalCore as Record<string, unknown>), idea_id: draft.idea_id }
@@ -185,6 +218,12 @@ export const productionGenerate = inngest.createFunction(
       await emitJobEvent(draftId, 'production', 'completed', 'Canonical core gerado!', { draftId, type, stage: 'canonical-core' });
       return { success: true, draftId };
     } catch (err) {
+      if (err instanceof JobAborted) {
+        await sb.from('content_drafts').update({ status: 'paused' }).eq('id', draftId);
+        await emitJobEvent(draftId, 'production', 'aborted', 'Sessão cancelada pelo usuário');
+        return;
+      }
+
       const rawMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       // Tag the message with which provider actually failed so the user can act
       // on the right account (e.g. "Anthropic: credit balance" vs the user's
