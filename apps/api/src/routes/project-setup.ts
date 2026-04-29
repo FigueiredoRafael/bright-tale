@@ -86,9 +86,6 @@ export async function projectSetupRoutes(fastify: FastifyInstance): Promise<void
         error: null,
       });
     } catch (error) {
-      if (error instanceof ApiError) {
-        return sendError(reply, error);
-      }
       return sendError(reply, error);
     }
   });
@@ -117,9 +114,6 @@ export async function projectSetupRoutes(fastify: FastifyInstance): Promise<void
         error: null,
       });
     } catch (error) {
-      if (error instanceof ApiError) {
-        return sendError(reply, error);
-      }
       return sendError(reply, error);
     }
   });
@@ -148,9 +142,6 @@ export async function projectSetupRoutes(fastify: FastifyInstance): Promise<void
         error: null,
       });
     } catch (error) {
-      if (error instanceof ApiError) {
-        return sendError(reply, error);
-      }
       return sendError(reply, error);
     }
   });

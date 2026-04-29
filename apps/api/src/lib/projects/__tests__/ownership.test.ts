@@ -8,10 +8,10 @@ function mkSb(rows: { project: any; channel?: any; research?: any }) {
       select: () => ({
         eq: () => ({
           maybeSingle: async () => {
-            if (table === 'projects')          return { data: rows.project }
-            if (table === 'channels')          return { data: rows.channel ?? null }
-            if (table === 'research_archives') return { data: rows.research ?? null }
-            return { data: null }
+            if (table === 'projects')          return { data: rows.project, error: null }
+            if (table === 'channels')          return { data: rows.channel ?? null, error: null }
+            if (table === 'research_archives') return { data: rows.research ?? null, error: null }
+            return { data: null, error: null }
           },
         }),
       }),
