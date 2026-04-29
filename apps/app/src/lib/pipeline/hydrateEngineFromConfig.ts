@@ -48,11 +48,11 @@ export interface DraftHydration {
 export function hydrateDraftFromConfig(
   config: AutopilotConfig | null,
 ): Partial<DraftHydration> {
-  if (!config) return {}
+  if (!config?.draft) return {}
   return {
     format: config.draft.format,
     wordCount: config.draft.wordCount ?? null,
-    selectedPersonaId: config.canonicalCore.personaId,
+    selectedPersonaId: config.canonicalCore?.personaId ?? null,
   }
 }
 
@@ -65,7 +65,7 @@ export interface ReviewHydration {
 export function hydrateReviewFromConfig(
   config: AutopilotConfig | null,
 ): Partial<ReviewHydration> {
-  if (!config) return {}
+  if (!config?.review) return {}
   return {
     maxIterations: config.review.maxIterations,
     autoApproveThreshold: config.review.autoApproveThreshold,

@@ -92,4 +92,7 @@ describe('hydrateReviewFromConfig', () => {
       hardFailThreshold: 40,
     })
   })
+  it('null config → empty', () => {
+    expect(hydrateReviewFromConfig(null)).toEqual({})
+  })
 })
