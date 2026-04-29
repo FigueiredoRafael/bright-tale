@@ -76,7 +76,6 @@ readonly -a PROTECTED_PATHS=(
   '\.env\.(local|prod|production|dev|development|staging|test|preview)($|\.)'
   '\.claude/security/\.prod-auth$'
   '\.claude/security/baselines/.*\.json$'
-  'supabase/migrations/.*\.sql$'      # Claude must propose, user applies
   'apps/.*\.key$'
   '.*\.pem$'
   '.*_rsa(\.pub)?$'
@@ -129,8 +128,15 @@ case "$TOOL" in
       block "Bash blocked: rm -rf against root / repo / HOME."
     fi
 
-    # Block cat / reading known secret files.
-    if printf '%s' "$CMD" | grep -Eq '(cat|less|more|head|tail|bat)[[:space:]]+.*\.env(\.local|\.production|\.prod)?($|[[:space:]])'; then
+    # Block cat / reading known secret files. The .env reference must be a
+    # direct argument to the read command, not just elsewhere in the pipeline.
+    # `[^|;&\n]*` stops at the next command boundary so e.g.
+    #   ls -la .env.local | head -2
+    # is allowed (head's args don't include .env), while
+    #   cat .env.local
+    #   head -2 .env.local
+    # are still blocked.
+    if printf '%s' "$CMD" | grep -Eq '(^|[|;&[:space:]])(cat|less|more|head|tail|bat)[[:space:]]+[^|;&\n]*\.env(\.[a-zA-Z]+)?($|[[:space:]])'; then
       block "Bash blocked: reading .env files into tool output could leak secrets. Ask the user if they want you to read a specific variable."
     fi
 
