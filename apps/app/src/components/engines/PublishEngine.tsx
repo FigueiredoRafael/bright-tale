@@ -95,6 +95,8 @@ export function PublishEngine({ draft }: PublishEngineProps) {
     if (previewResult?.seoOverrides)    body.seoOverrides = previewResult.seoOverrides;
     if (draftResult?.personaWpAuthorId != null) body.authorId = draftResult.personaWpAuthorId;
 
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'publish', partial: { status: 'Publishing to WordPress' } });
+
     setPublishBody(body);
     setPublishing(true);
   }
