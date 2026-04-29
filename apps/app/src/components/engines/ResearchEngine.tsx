@@ -93,7 +93,7 @@ export function ResearchEngine({
   const creditSettings = useSelector(actor, (s) => s.context.creditSettings);
 
   const trackerContext: PipelineContext = {
-    channelId,
+    channelId: channelId ?? undefined,
     projectId,
     ideaId: brainstormResult?.ideaId ?? initialIdeaId,
     ideaTitle: brainstormResult?.ideaTitle,
@@ -559,7 +559,7 @@ export function ResearchEngine({
   const autoMode = useSelector(actor, (s) => s.context.mode);
   const autoPaused = useSelector(actor, (s) => s.context.paused);
   useEffect(() => {
-    if (autoMode !== 'auto' || autoPaused) return;
+    if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (researchResult?.researchSessionId) return;
     if (!findings || !sessionId) return;
     if (running || regenerating) return;
@@ -791,7 +791,7 @@ export function ResearchEngine({
 
         <ImportPicker
           entityType="research-sessions"
-          channelId={channelId}
+          channelId={channelId ?? undefined}
           searchPlaceholder="Search research sessions..."
           emptyMessage="No research sessions found"
           renderItem={(item: Record<string, unknown>): React.ReactNode => (

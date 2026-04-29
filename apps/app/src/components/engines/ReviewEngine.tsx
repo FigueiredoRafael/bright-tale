@@ -65,7 +65,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
   }, [draft]);
 
   const trackerContext: PipelineContext = {
-    channelId,
+    channelId: channelId ?? undefined,
     projectId,
     ideaId: brainstormResult?.ideaId,
     ideaTitle: brainstormResult?.ideaTitle,
@@ -300,7 +300,8 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
         // would unmount ReviewEngine immediately (orchestrator transitions
         // out of the review state on REVIEW_COMPLETE) and the user would
         // never see the modal's checkmark.
-        if (actor.getSnapshot().context.mode === 'auto') {
+        const mode = actor.getSnapshot().context.mode
+        if (mode === 'supervised' || mode === 'overview') {
           const fb = feedbackObj ?? {};
           const fmt = (fb.blog_review ?? fb.video_review ?? fb.podcast_review ?? fb.shorts_review) as Record<string, unknown> | undefined;
           const tier = deriveTier(fmt ?? fb);
@@ -809,7 +810,8 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
             pendingReviewResultRef.current = null;
             setReviewing(false);
             setReviewSince(null);
-            if (pending && actor.getSnapshot().context.mode === 'auto') {
+            const mode = actor.getSnapshot().context.mode
+            if (pending && (mode === 'supervised' || mode === 'overview')) {
               actor.send({ type: 'REVIEW_COMPLETE', result: pending });
             }
           }}

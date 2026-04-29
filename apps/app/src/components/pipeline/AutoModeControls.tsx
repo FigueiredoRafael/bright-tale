@@ -8,7 +8,7 @@ import { Pause, Play, Loader2, Hourglass } from 'lucide-react'
 import type { PauseReason } from '@/lib/pipeline/machine.types'
 
 interface AutoModeControlsProps {
-  mode: 'step' | 'auto'
+  mode: 'step-by-step' | 'supervised' | 'overview' | null
   isPaused: boolean
   isWorking: boolean
   pauseReason: PauseReason | null
@@ -33,7 +33,7 @@ export function AutoModeControls({
   onPause,
   onResume,
 }: AutoModeControlsProps) {
-  const isAuto = mode === 'auto'
+  const isAuto = mode === 'supervised' || mode === 'overview'
 
   return (
     <div className="flex items-center gap-4">

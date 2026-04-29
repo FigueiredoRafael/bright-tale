@@ -33,7 +33,7 @@ export function PublishEngine({ draft }: PublishEngineProps) {
   const draftId = draftResult?.draftId ?? draft.id;
 
   const trackerContext: PipelineContext = {
-    channelId,
+    channelId: channelId ?? undefined,
     projectId,
     ideaId: brainstormResult?.ideaId,
     ideaTitle: brainstormResult?.ideaTitle,
@@ -82,7 +82,7 @@ export function PublishEngine({ draft }: PublishEngineProps) {
 
     const body: Record<string, unknown> = {
       draftId,
-      channelId,
+    channelId: channelId ?? undefined,
       mode: params.mode,
       scheduledDate: params.scheduledDate,
       idempotencyToken: crypto.randomUUID(),
@@ -126,6 +126,16 @@ export function PublishEngine({ draft }: PublishEngineProps) {
     },
     [tracker],
   );
+
+  if (!channelId) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-800">
+          <p>Channel ID is missing. Cannot proceed with publishing.</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">

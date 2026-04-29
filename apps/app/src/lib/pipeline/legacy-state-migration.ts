@@ -2,7 +2,7 @@ import { PIPELINE_STAGES } from '@/components/engines/types'
 import type { PauseReason, PipelineMachineInput, PipelineStage, StageResultMap } from './machine.types'
 
 type LegacyMode = 'step-by-step' | 'auto'
-type NewMode = 'step' | 'auto'
+type NewMode = 'step-by-step' | 'supervised' | 'overview' | null
 
 const PAUSE_REASONS: readonly PauseReason[] = [
   'user_paused',
@@ -12,7 +12,7 @@ const PAUSE_REASONS: readonly PauseReason[] = [
 ] as const
 
 interface LegacyShape {
-  mode?: LegacyMode | NewMode | string
+  mode?: LegacyMode | string
   currentStage?: string
   stageResults?: Record<string, unknown>
   autoConfig?: Record<string, unknown>
@@ -39,8 +39,9 @@ function isPlainObject(x: unknown): x is Record<string, unknown> {
 }
 
 function normalizeMode(mode: unknown): NewMode {
-  if (mode === 'auto') return 'auto'
-  return 'step' // 'step-by-step', 'step', unknown → step
+  if (mode === 'auto') return 'supervised'
+  if (mode === 'step-by-step') return 'step-by-step'
+  return null // 'step', unknown → null (setup-driven mode)
 }
 
 function isPipelineStage(s: unknown): s is PipelineStage {
@@ -59,7 +60,7 @@ function deriveInitialStage(currentStage: unknown, results: StageResultMap): Pip
 }
 
 function looksLegacy(x: LegacyShape): boolean {
-  return x.currentStage !== undefined || x.autoConfig !== undefined || x.mode === 'step-by-step'
+  return x.currentStage !== undefined || x.autoConfig !== undefined || x.mode === 'auto' || x.mode === 'step-by-step'
 }
 
 export function mapLegacyPipelineState(raw: unknown): MigratedPipelineInput | null {

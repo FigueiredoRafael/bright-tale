@@ -46,7 +46,7 @@ export function useAutoPilotTrigger({
     typeof stateValue === 'string' ? stateValue : Object.keys(stateValue)[0]
 
   useEffect(() => {
-    if (mode !== 'auto' || paused || currentStage !== stage) {
+    if ((mode !== 'supervised' && mode !== 'overview') || paused || currentStage !== stage) {
       firedRef.current = null
       return
     }

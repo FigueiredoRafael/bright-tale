@@ -48,6 +48,16 @@ const clearStrictlyAfterEvent = assign({
   },
 })
 
+const STAGE_TARGETS: Record<PipelineStage, string> = {
+  brainstorm: 'brainstorm',
+  research: 'research',
+  draft: 'draft',
+  review: 'review',
+  assets: 'assets',
+  preview: 'preview',
+  publish: 'publish',
+}
+
 export const pipelineMachine = setup({
   types: {
     context: {} as PipelineMachineContext,
@@ -58,8 +68,15 @@ export const pipelineMachine = setup({
     isApproved: ({ context, event }: any) => isApprovedGuard({ context, event }),
     isRejected: ({ context, event }: any) => isRejectedGuard({ context, event }),
     hasReachedMaxIterations: ({ context }: any) => hasReachedMaxIterationsGuard({ context }),
-    isAutoMode: ({ context }: any) => context.mode === 'auto',
-    isStepMode: ({ context }: any) => context.mode === 'step',
+    isAutoMode: ({ context }: any) => context.mode === 'supervised' || context.mode === 'overview',
+    startsAtBrainstorm: ({ event }: any) => event.startStage === 'brainstorm',
+    startsAtResearch: ({ event }: any) => event.startStage === 'research',
+    startsAtDraft: ({ event }: any) => event.startStage === 'draft',
+    startsAtReview: ({ event }: any) => event.startStage === 'review',
+    startsAtAssets: ({ event }: any) => event.startStage === 'assets',
+    startsAtPreview: ({ event }: any) => event.startStage === 'preview',
+    startsAtPublish: ({ event }: any) => event.startStage === 'publish',
+    shouldSkipReview: ({ context }: any) => context.autopilotConfig?.review.maxIterations === 0,
   },
   actors: { reproduceActor },
   actions: {
@@ -82,8 +99,19 @@ export const pipelineMachine = setup({
       },
     }) as any,
     clearStrictlyAfter: clearStrictlyAfterEvent as any,
-    toggleMode: assign({
-      mode: ({ context }: any) => (context.mode === 'auto' ? 'step' : 'auto'),
+    applySetup: assign(({ event }: any) => ({
+      mode: event.mode,
+      autopilotConfig: event.autopilotConfig,
+      templateId: event.templateId,
+    })) as any,
+    setMode: assign({ mode: ({ event }: any) => event.mode }) as any,
+    setAutopilotConfig: assign({ autopilotConfig: ({ event }: any) => event.autopilotConfig }) as any,
+    clearAllResults: assign({
+      stageResults: () => ({}),
+      iterationCount: 0,
+      mode: () => null,
+      autopilotConfig: () => null,
+      templateId: () => null,
       paused: () => false,
       pauseReason: () => null,
     }) as any,
@@ -141,9 +169,11 @@ export const pipelineMachine = setup({
   id: 'pipeline',
   context: ({ input }) => ({
     projectId: input.projectId,
-    channelId: input.channelId,
+    channelId: input.channelId ?? null,
     projectTitle: input.projectTitle,
-    mode: input.mode ?? 'step',
+    mode: input.mode ?? null,
+    autopilotConfig: input.autopilotConfig ?? null,
+    templateId: input.templateId ?? null,
     stageResults: input.initialStageResults ?? {},
     iterationCount: input.initialIterationCount ?? 0,
     lastError: null,
@@ -152,12 +182,14 @@ export const pipelineMachine = setup({
     paused: input.initialPaused ?? false,
     pauseReason: input.initialPauseReason ?? null,
   }),
-  initial: 'brainstorm',
+  initial: 'setup',
   on: {
-    TOGGLE_AUTO_PILOT: { actions: 'toggleMode' },
     PAUSE: { actions: 'pauseAuto' },
     SET_PROJECT_TITLE: { actions: 'setProjectTitle' },
     STAGE_PROGRESS: { actions: 'mergeStageProgress' },
+    RESET_TO_SETUP: { target: '.setup', actions: 'clearAllResults' },
+    GO_AUTOPILOT: { actions: ['setMode', 'setAutopilotConfig'] },
+    REQUEST_ABORT: { actions: 'pauseAuto' },
     NAVIGATE: [
       { guard: ({ event }) => (event as Extract<PipelineEvent, { type: 'NAVIGATE' }>).toStage === 'brainstorm', target: '.brainstorm' },
       { guard: ({ event }) => (event as Extract<PipelineEvent, { type: 'NAVIGATE' }>).toStage === 'research', target: '.research' },
@@ -201,6 +233,19 @@ export const pipelineMachine = setup({
     ],
   },
   states: {
+    setup: {
+      on: {
+        SETUP_COMPLETE: [
+          { guard: 'startsAtBrainstorm', target: 'brainstorm', actions: 'applySetup' },
+          { guard: 'startsAtResearch', target: 'research', actions: 'applySetup' },
+          { guard: 'startsAtDraft', target: 'draft', actions: 'applySetup' },
+          { guard: 'startsAtReview', target: 'review', actions: 'applySetup' },
+          { guard: 'startsAtAssets', target: 'assets', actions: 'applySetup' },
+          { guard: 'startsAtPreview', target: 'preview', actions: 'applySetup' },
+          { guard: 'startsAtPublish', target: 'publish', actions: 'applySetup' },
+        ],
+      },
+    },
     brainstorm: {
       initial: 'idle',
       states: {
@@ -230,7 +275,10 @@ export const pipelineMachine = setup({
         error: { on: { RETRY: { target: 'idle', actions: 'clearError' } } },
       },
       on: {
-        DRAFT_COMPLETE: { target: 'review', actions: 'saveDraftResult' },
+        DRAFT_COMPLETE: [
+          { guard: 'shouldSkipReview', target: 'assets', actions: 'saveDraftResult' },
+          { target: 'review', actions: 'saveDraftResult' },
+        ],
         STAGE_ERROR: { target: '.error', actions: 'recordError' },
       },
     },

@@ -8,25 +8,25 @@ describe('mapLegacyPipelineState', () => {
     expect(mapLegacyPipelineState(undefined)).toBeNull()
   })
 
-  it('maps legacy step-by-step mode to step', () => {
+  it('maps legacy step-by-step mode to step-by-step', () => {
     const out = mapLegacyPipelineState({
       mode: 'step-by-step',
       currentStage: 'draft',
       stageResults: { brainstorm: { ideaId: 'i1', ideaTitle: 'x', ideaVerdict: 'v', ideaCoreTension: 't', completedAt: '2026-01-01' } },
       autoConfig: { maxReviewIterations: 5, targetScore: 90 },
     })
-    expect(out?.mode).toBe('step')
+    expect(out?.mode).toBe('step-by-step')
     expect(out?.initialStageResults?.brainstorm?.ideaId).toBe('i1')
   })
 
-  it('maps legacy auto mode to auto', () => {
+  it('maps legacy auto mode to supervised', () => {
     const out = mapLegacyPipelineState({
       mode: 'auto',
       currentStage: 'review',
       stageResults: {},
       autoConfig: { maxReviewIterations: 5, targetScore: 90 },
     })
-    expect(out?.mode).toBe('auto')
+    expect(out?.mode).toBe('supervised')
   })
 
   it('lifts review.iterationCount to top-level initialIterationCount', () => {
@@ -56,7 +56,7 @@ describe('mapLegacyPipelineState', () => {
 
   it('derives initialStage from furthest completed result when currentStage is missing (new shape)', () => {
     const out = mapLegacyPipelineState({
-      mode: 'step',
+      mode: 'step-by-step',
       iterationCount: 0,
       stageResults: {
         brainstorm: { ideaId: 'i', ideaTitle: 't', ideaVerdict: 'v', ideaCoreTension: 'c', completedAt: 'x' },
@@ -68,18 +68,18 @@ describe('mapLegacyPipelineState', () => {
   })
 
   it('defaults initialStage to brainstorm when no results exist', () => {
-    const out = mapLegacyPipelineState({ mode: 'step', iterationCount: 0, stageResults: {} })
+    const out = mapLegacyPipelineState({ mode: 'step-by-step', iterationCount: 0, stageResults: {} })
     expect(out?.initialStage).toBe('brainstorm')
   })
 
   it('passes through already-new-shape input (idempotent)', () => {
     const input = {
-      mode: 'step',
+      mode: 'step-by-step',
       stageResults: { brainstorm: { ideaId: 'i', ideaTitle: 't', ideaVerdict: 'v', ideaCoreTension: 'c', completedAt: 'x' } },
       iterationCount: 0,
     }
     const out = mapLegacyPipelineState(input)
-    expect(out?.mode).toBe('step')
+    expect(out?.mode).toBe('step-by-step')
     expect(out?.initialStageResults?.brainstorm?.ideaId).toBe('i')
     expect(out?.initialIterationCount).toBe(0)
     expect(out?.initialStage).toBe('research')

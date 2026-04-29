@@ -9,6 +9,7 @@ import type {
   PreviewResult,
   PublishResult,
 } from '@/components/engines/types'
+import type { AutopilotConfig } from '@brighttale/shared'
 
 export type { PipelineStage }
 
@@ -30,9 +31,11 @@ export type PauseReason =
 
 export interface PipelineMachineContext {
   projectId: string
-  channelId: string
+  channelId: string | null
   projectTitle: string
-  mode: 'step' | 'auto'
+  mode: 'step-by-step' | 'supervised' | 'overview' | null
+  autopilotConfig: AutopilotConfig | null
+  templateId: string | null
   stageResults: StageResultMap
   iterationCount: number
   lastError: string | null
@@ -46,9 +49,11 @@ export interface PipelineMachineContext {
 
 export interface PipelineMachineInput {
   projectId: string
-  channelId: string
+  channelId: string | null
   projectTitle: string
-  mode?: 'step' | 'auto'
+  mode?: 'step-by-step' | 'supervised' | 'overview' | null
+  autopilotConfig?: AutopilotConfig | null
+  templateId?: string | null
   pipelineSettings: PipelineSettings
   creditSettings: CreditSettings
   initialStageResults?: StageResultMap
@@ -68,9 +73,12 @@ export type PipelineEvent =
   | { type: 'STAGE_ERROR';         error: string }
   | { type: 'STAGE_PROGRESS';      stage: PipelineStage; partial: Record<string, unknown> }
   | { type: 'RETRY' }
-  | { type: 'TOGGLE_AUTO_PILOT' }
   | { type: 'PAUSE' }
   | { type: 'RESUME' }
   | { type: 'NAVIGATE';            toStage: PipelineStage }
   | { type: 'REDO_FROM';           fromStage: PipelineStage }
   | { type: 'SET_PROJECT_TITLE';   title: string }
+  | { type: 'SETUP_COMPLETE';      mode: 'step-by-step' | 'supervised' | 'overview'; autopilotConfig: AutopilotConfig | null; templateId: string | null; startStage: PipelineStage }
+  | { type: 'RESET_TO_SETUP' }
+  | { type: 'GO_AUTOPILOT';        mode: 'supervised' | 'overview'; autopilotConfig: AutopilotConfig }
+  | { type: 'REQUEST_ABORT' }

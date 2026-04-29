@@ -211,7 +211,7 @@ function OrchestratorInner({
   const [assetsConfirmed, setAssetsConfirmed] = useState(false)
 
   useEffect(() => {
-    if (ctx.mode !== 'auto') return
+    if (ctx.mode !== 'supervised' && ctx.mode !== 'overview') return
     if (ctx.paused) return
     if (currentStage === 'publish') return
     if (currentStage === 'review' && subState === 'idle') {
@@ -293,13 +293,9 @@ function OrchestratorInner({
   }
 
   function handleToggleMode() {
-    track('pipeline.mode.changed', {
-      projectId,
-      channelId,
-      from: ctx.mode,
-      to: ctx.mode === 'auto' ? 'step' : 'auto',
-    })
-    send({ type: 'TOGGLE_AUTO_PILOT' })
+    // TODO(T-8.4): wizard-driven mode change replaces inline toggle
+    // Inline mode toggle removed in favor of setup-driven wizard flow.
+    // This handler is deprecated and will be removed when AutoModeControls is refactored.
   }
 
   function pipelineStep(): PipelineStep {

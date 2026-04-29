@@ -3,6 +3,7 @@ import { createActor } from 'xstate'
 import { pipelineMachine } from '../machine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '@/components/engines/types'
 import type { PipelineMachineInput } from '../machine.types'
+import type { AutopilotConfig } from '@brighttale/shared'
 
 const input: PipelineMachineInput = {
   projectId: 'proj-1',
@@ -22,24 +23,29 @@ const draftResult = {
   draftId: 'd-1', draftTitle: 'Draft', draftContent: 'content',
 }
 
-function startActor(overrides?: Partial<PipelineMachineInput>) {
+function startActor(overrides?: Partial<PipelineMachineInput>, autoSetup = true) {
   const actor = createActor(pipelineMachine, { input: { ...input, ...overrides } })
   actor.start()
+  // Automatically transition from setup to brainstorm for tests unless autoSetup is false
+  if (autoSetup) {
+    const mode = overrides?.mode ?? 'step-by-step'
+    actor.send({ type: 'SETUP_COMPLETE', mode, autopilotConfig: null, templateId: null, startStage: 'brainstorm' })
+  }
   return actor
 }
 
 describe('initial state', () => {
-  it('starts in brainstorm.idle', () => {
-    const actor = startActor()
-    expect(actor.getSnapshot().value).toMatchObject({ brainstorm: 'idle' })
+  it('starts in setup when no input.mode is provided', () => {
+    const actor = startActor({}, false)
+    expect(actor.getSnapshot().value).toBe('setup')
   })
 
   it('seeds context from input', () => {
-    const actor = startActor()
+    const actor = startActor({}, false)
     const ctx = actor.getSnapshot().context
     expect(ctx.projectId).toBe('proj-1')
     expect(ctx.iterationCount).toBe(0)
-    expect(ctx.mode).toBe('step')
+    expect(ctx.mode).toBeNull()
   })
 })
 
@@ -101,8 +107,8 @@ describe('review loop', () => {
   })
 
   it('pauses when context.iterationCount >= maxIterations (5)', () => {
-    const actor = createActor(pipelineMachine, { input: { ...input, initialIterationCount: 4 } })
-    actor.start()
+    const actor = startActor({ initialIterationCount: 4 })
+    expect(actor.getSnapshot().context.iterationCount).toBe(4)
     actor.send({ type: 'BRAINSTORM_COMPLETE', result: brainstormResult })
     actor.send({ type: 'RESEARCH_COMPLETE', result: researchResult })
     actor.send({ type: 'DRAFT_COMPLETE', result: draftResult })
@@ -232,8 +238,9 @@ describe('auto-pilot vs step mode after reproduce', () => {
     }))
   })
 
-  function reachReproducing(mode: 'auto' | 'step') {
+  function reachReproducing(mode: 'supervised' | 'step-by-step') {
     const actor = startActor({ mode })
+    actor.send({ type: 'SETUP_COMPLETE', mode, autopilotConfig: null, templateId: null, startStage: 'brainstorm' })
     actor.send({ type: 'BRAINSTORM_COMPLETE', result: brainstormResult })
     actor.send({ type: 'RESEARCH_COMPLETE', result: researchResult })
     actor.send({ type: 'DRAFT_COMPLETE', result: draftResult })
@@ -246,14 +253,14 @@ describe('auto-pilot vs step mode after reproduce', () => {
   }
 
   it('auto mode: reproducing.onDone re-enters reviewing directly', async () => {
-    const actor = reachReproducing('auto')
+    const actor = reachReproducing('supervised')
     await vi.waitFor(() => {
       expect(actor.getSnapshot().value).toMatchObject({ review: 'reviewing' })
     })
   })
 
   it('step mode: reproducing.onDone drops to idle (waits for user RESUME)', async () => {
-    const actor = reachReproducing('step')
+    const actor = reachReproducing('step-by-step')
     await vi.waitFor(() => {
       expect(actor.getSnapshot().value).toMatchObject({ review: 'idle' })
     })
@@ -264,7 +271,8 @@ describe('auto-pilot vs step mode after reproduce', () => {
       ok: true,
       json: async () => ({ data: null, error: { message: 'Reproduce failed' } }),
     }))
-    const actor = startActor({ mode: 'auto' })
+    const actor = startActor({ mode: 'supervised' })
+    actor.send({ type: 'SETUP_COMPLETE', mode: 'supervised', autopilotConfig: null, templateId: null, startStage: 'brainstorm' })
     actor.send({ type: 'BRAINSTORM_COMPLETE', result: brainstormResult })
     actor.send({ type: 'RESEARCH_COMPLETE', result: researchResult })
     actor.send({ type: 'DRAFT_COMPLETE', result: draftResult })
@@ -277,5 +285,80 @@ describe('auto-pilot vs step mode after reproduce', () => {
       expect(actor.getSnapshot().value).toMatchObject({ review: 'paused' })
       expect(actor.getSnapshot().context.lastError).toBe('Reproduce failed')
     })
+  })
+})
+
+describe('setup state and SETUP_COMPLETE', () => {
+  const baseAutopilotConfig: AutopilotConfig = {
+    defaultProvider: 'recommended',
+    brainstorm: {
+      providerOverride: null,
+      mode: 'topic_driven',
+      topic: 'AI',
+      referenceUrl: null,
+      niche: undefined,
+      tone: undefined,
+      audience: undefined,
+      goal: undefined,
+      constraints: undefined,
+    },
+    research: { providerOverride: null, depth: 'medium' },
+    canonicalCore: { providerOverride: null, personaId: null },
+    draft: { providerOverride: null, format: 'blog', wordCount: 1000 },
+    review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
+    assets: { providerOverride: null, mode: 'auto' },
+  }
+
+  it('SETUP_COMPLETE with startStage=draft transitions to draft', () => {
+    const actor = startActor({}, false)
+    actor.send({
+      type: 'SETUP_COMPLETE',
+      mode: 'supervised',
+      autopilotConfig: baseAutopilotConfig,
+      templateId: null,
+      startStage: 'draft',
+    })
+    expect(actor.getSnapshot().value).toMatchObject({ draft: 'idle' })
+    expect(actor.getSnapshot().context.mode).toBe('supervised')
+    expect(actor.getSnapshot().context.autopilotConfig).toEqual(baseAutopilotConfig)
+  })
+
+  it('GO_AUTOPILOT updates mode + config without changing stage', () => {
+    const actor = startActor({}, false)
+    actor.send({ type: 'SETUP_COMPLETE', mode: 'step-by-step', autopilotConfig: null, templateId: null, startStage: 'draft' })
+    expect(actor.getSnapshot().value).toMatchObject({ draft: 'idle' })
+    actor.send({ type: 'GO_AUTOPILOT', mode: 'overview', autopilotConfig: baseAutopilotConfig })
+    expect(actor.getSnapshot().value).toMatchObject({ draft: 'idle' })
+    expect(actor.getSnapshot().context.mode).toBe('overview')
+    expect(actor.getSnapshot().context.autopilotConfig).toEqual(baseAutopilotConfig)
+  })
+
+  it('RESET_TO_SETUP returns to setup and wipes results AND mode/config/templateId', () => {
+    const actor = startActor({}, false)
+    actor.send({ type: 'SETUP_COMPLETE', mode: 'supervised', autopilotConfig: baseAutopilotConfig, templateId: 'tpl-1', startStage: 'brainstorm' })
+    actor.send({ type: 'BRAINSTORM_COMPLETE', result: brainstormResult })
+    expect(actor.getSnapshot().value).toMatchObject({ research: 'idle' })
+    actor.send({ type: 'RESET_TO_SETUP' })
+    const ctx = actor.getSnapshot().context
+    expect(actor.getSnapshot().value).toBe('setup')
+    expect(ctx.stageResults).toEqual({})
+    expect(ctx.iterationCount).toBe(0)
+    expect(ctx.mode).toBeNull()
+    expect(ctx.autopilotConfig).toBeNull()
+    expect(ctx.templateId).toBeNull()
+    expect(ctx.paused).toBe(false)
+  })
+
+  it('DRAFT_COMPLETE with maxIterations=0 routes to assets (skip review)', () => {
+    const skipReviewConfig: AutopilotConfig = {
+      ...baseAutopilotConfig,
+      review: { ...baseAutopilotConfig.review, maxIterations: 0 },
+    }
+    const actor = startActor({}, false)
+    actor.send({ type: 'SETUP_COMPLETE', mode: 'supervised', autopilotConfig: skipReviewConfig, templateId: null, startStage: 'brainstorm' })
+    actor.send({ type: 'BRAINSTORM_COMPLETE', result: brainstormResult })
+    actor.send({ type: 'RESEARCH_COMPLETE', result: researchResult })
+    actor.send({ type: 'DRAFT_COMPLETE', result: draftResult })
+    expect(actor.getSnapshot().value).toMatchObject({ assets: 'idle' })
   })
 })

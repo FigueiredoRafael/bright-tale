@@ -96,7 +96,7 @@ export function BrainstormEngine({
   // Build a legacy PipelineContext for usePipelineTracker and ContextBanner
   // (both still expect this shape; brainstorm ContextBanner returns null anyway).
   const trackerContext: PipelineContext = {
-    channelId,
+    channelId: channelId ?? undefined,
     projectId,
     brainstormSessionId: brainstormResult?.brainstormSessionId,
     ideaId: brainstormResult?.ideaId,
@@ -396,7 +396,7 @@ export function BrainstormEngine({
   const autoMode = useSelector(actor, (s) => s.context.mode);
   const autoPaused = useSelector(actor, (s) => s.context.paused);
   useEffect(() => {
-    if (autoMode !== 'auto' || autoPaused) return;
+    if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (brainstormResult?.ideaId) return;
     if (!ideas.length) return;
     if (running || regenerating) return;
@@ -750,7 +750,7 @@ export function BrainstormEngine({
 
         <ImportPicker
           entityType="ideas"
-          channelId={channelId}
+          channelId={channelId ?? undefined}
           searchPlaceholder="Search ideas..."
           emptyMessage="No ideas in library yet"
           renderItem={(item: Record<string, unknown>): React.ReactNode => {

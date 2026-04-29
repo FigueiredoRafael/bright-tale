@@ -76,7 +76,7 @@ export function DraftEngine({
   const creditSettings = useSelector(actor, (s) => s.context.creditSettings);
 
   const trackerContext: PipelineContext = {
-    channelId,
+    channelId: channelId ?? undefined,
     projectId,
     ideaId: brainstormResult?.ideaId,
     ideaTitle: brainstormResult?.ideaTitle,
@@ -314,7 +314,7 @@ export function DraftEngine({
   // Phase 2: auto-approve core when it lands
   const autoCoreApprovedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (autoMode !== 'auto' || autoPaused) return;
+    if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (phase !== 'core-ready') return;
     if (!canonicalCore || !draftId) return;
     if (coreApproved) return;
@@ -326,7 +326,7 @@ export function DraftEngine({
   // Phase 3: auto-fire produce when core approved
   const autoProducedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (autoMode !== 'auto' || autoPaused) return;
+    if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (phase !== 'core-ready') return;
     if (!coreApproved || !draftId) return;
     if (busy || activeDraftId || manualState) return;
@@ -340,7 +340,7 @@ export function DraftEngine({
   // Phase 4: auto-dispatch DRAFT_COMPLETE when produced content is ready
   const autoDraftDispatchedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (autoMode !== 'auto' || autoPaused) return;
+    if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (phase !== 'done') return;
     if (!draftId || !producedContent) return;
     if (draftResult?.draftId === draftId) return;
@@ -1174,7 +1174,7 @@ export function DraftEngine({
 
         <ImportPicker
           entityType="content-drafts"
-          channelId={channelId}
+          channelId={channelId ?? undefined}
           searchPlaceholder="Search drafts..."
           emptyMessage="No drafts found"
           renderItem={(item: Record<string, unknown>): React.ReactNode => (

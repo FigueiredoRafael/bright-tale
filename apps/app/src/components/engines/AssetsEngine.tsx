@@ -202,7 +202,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
   const draftStatus = draft?.status as string | undefined;
 
   const trackerContext: PipelineContext = {
-    channelId,
+    channelId: channelId ?? undefined,
     projectId,
     ideaId: brainstormResult?.ideaId,
     ideaTitle: brainstormResult?.ideaTitle,
@@ -288,7 +288,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
   });
 
   useEffect(() => {
-    if (autoMode !== 'auto' || autoPaused) return;
+    if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (assetsResult) return;
     if (phase === 'refine' && slotCards.length > 0) {
       setImagesMode('brief');
@@ -298,7 +298,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
 
   const autoGenAllRef = useRef(false);
   useEffect(() => {
-    if (autoMode !== 'auto' || autoPaused) return;
+    if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (assetsResult) return;
     if (phase !== 'images') return;
     if (slotCards.length === 0) return;
@@ -313,7 +313,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
 
   const autoFinishRef = useRef(false);
   useEffect(() => {
-    if (autoMode !== 'auto' || autoPaused) return;
+    if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (assetsResult) return;
     if (phase !== 'images') return;
     if (finishing) return;
@@ -831,7 +831,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
           </div>
           <ImportPicker
             entityType="content-assets"
-            channelId={channelId}
+            channelId={channelId ?? undefined}
             searchPlaceholder="Search assets..."
             emptyMessage="No assets in library yet"
             renderItem={(item: Record<string, unknown>): React.ReactNode => {

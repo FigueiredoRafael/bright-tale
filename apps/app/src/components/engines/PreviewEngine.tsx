@@ -246,7 +246,7 @@ export function PreviewEngine() {
   const draftId = draftResult?.draftId ?? '';
 
   const trackerContext: PipelineContext = {
-    channelId,
+    channelId: channelId ?? undefined,
     projectId,
     ideaId: brainstormResult?.ideaId,
     ideaTitle: brainstormResult?.ideaTitle,
