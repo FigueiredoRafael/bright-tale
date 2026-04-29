@@ -218,6 +218,10 @@ describe('MiniWizardSheet', () => {
       })
       renderOpen()
 
+      // Brainstorm is not done; satisfy its required topic field so only the review error fires
+      const topicInput = screen.getByTestId('brainstorm-topic-input')
+      await user.type(topicInput, 'a topic')
+
       // Set hardFailThreshold to a value >= autoApproveThreshold (e.g., 95 >= 90)
       const hardFailInput = screen.getByTestId('review-hard-fail-threshold')
       await user.clear(hardFailInput)
@@ -230,16 +234,88 @@ describe('MiniWizardSheet', () => {
       const submitBtn = screen.getByRole('button', { name: /start autopilot|activate autopilot|go autopilot/i })
       await user.click(submitBtn)
 
-      // Error message should appear inline (use role=alert to target the error p specifically)
+      // Review error should be present among any alerts shown
       await waitFor(() => {
-        expect(
-          screen.getByRole('alert'),
-        ).toBeInTheDocument()
+        const alerts = screen.getAllByRole('alert')
+        expect(alerts.some((el) => /lower than auto-approve|hard fail|infinite loop/i.test(el.textContent ?? ''))).toBe(true)
       })
-      expect(screen.getByRole('alert').textContent).toMatch(/lower than auto-approve|hard fail|infinite loop/i)
 
       // send must NOT have been called
       expect(sendSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('blocks submission when brainstorm is not done and required field is empty', () => {
+    it('shows topic-required error and does not dispatch GO_AUTOPILOT (topic_driven mode, empty topic)', async () => {
+      const user = userEvent.setup()
+      snapshotOverride = makeSnapshot({
+        value: 'draft',
+        mode: 'step-by-step',
+        autopilotConfig: null,
+        stageResults: {},
+      })
+      renderOpen()
+
+      // Brainstorm is not done; mode defaults to 'topic_driven'; topic input is empty
+      const topicInput = screen.getByTestId('brainstorm-topic-input')
+      expect(topicInput).toHaveValue('')
+
+      const submitBtn = screen.getByRole('button', { name: /start autopilot|activate autopilot|go autopilot/i })
+      await user.click(submitBtn)
+
+      await waitFor(() => {
+        const alerts = screen.getAllByRole('alert')
+        expect(alerts.some((el) => /topic required/i.test(el.textContent ?? ''))).toBe(true)
+      })
+
+      expect(sendSpy).not.toHaveBeenCalled()
+    })
+
+    it('shows url-required error when reference_guided mode is selected without a URL', async () => {
+      const user = userEvent.setup()
+      snapshotOverride = makeSnapshot({
+        value: 'draft',
+        mode: 'step-by-step',
+        autopilotConfig: null,
+        stageResults: {},
+      })
+      renderOpen()
+
+      // Switch brainstorm to reference_guided (target by id to avoid label ambiguity with "Autopilot mode")
+      const modeSelect = document.getElementById('brainstorm-mode-select') as HTMLSelectElement
+      await user.selectOptions(modeSelect, 'reference_guided')
+
+      const submitBtn = screen.getByRole('button', { name: /start autopilot|activate autopilot|go autopilot/i })
+      await user.click(submitBtn)
+
+      await waitFor(() => {
+        const alerts = screen.getAllByRole('alert')
+        expect(alerts.some((el) => /url required/i.test(el.textContent ?? ''))).toBe(true)
+      })
+
+      expect(sendSpy).not.toHaveBeenCalled()
+    })
+
+    it('dispatches GO_AUTOPILOT when topic is provided in topic_driven mode', async () => {
+      const user = userEvent.setup()
+      snapshotOverride = makeSnapshot({
+        value: 'draft',
+        mode: 'step-by-step',
+        autopilotConfig: null,
+        stageResults: {},
+      })
+      renderOpen()
+
+      const topicInput = screen.getByTestId('brainstorm-topic-input')
+      await user.type(topicInput, 'AI agents in production')
+
+      const submitBtn = screen.getByRole('button', { name: /start autopilot|activate autopilot|go autopilot/i })
+      await user.click(submitBtn)
+
+      await waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1))
+      const call = sendSpy.mock.calls[0][0] as { type: string; autopilotConfig: { brainstorm: { topic: string } | null } }
+      expect(call.type).toBe('GO_AUTOPILOT')
+      expect(call.autopilotConfig.brainstorm?.topic).toBe('AI agents in production')
     })
   })
 })

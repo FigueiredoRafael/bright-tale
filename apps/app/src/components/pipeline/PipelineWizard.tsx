@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useForm, Controller, FormProvider, useFormContext } from 'react-hook-form'
 import type { Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -472,11 +472,45 @@ export function PipelineWizard() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
+  interface TemplateRow {
+    id: string
+    name: string
+    config_json: AutopilotConfig
+    is_default: boolean
+  }
+  const [templates, setTemplates] = useState<TemplateRow[]>([])
   const [loadedTemplateId, setLoadedTemplateId] = useState<string | null>(null)
   const [loadedTemplateName, setLoadedTemplateName] = useState<string | null>(null)
+  const [templateActionError, setTemplateActionError] = useState<string | null>(null)
 
   const [showSaveAsNew, setShowSaveAsNew] = useState(false)
   const [showUpdateConfirm, setShowUpdateConfirm] = useState(false)
+
+  const refreshTemplates = async () => {
+    try {
+      const url = channelId
+        ? `/api/autopilot-templates?channelId=${encodeURIComponent(channelId)}`
+        : '/api/autopilot-templates'
+      const res = await fetch(url)
+      const json = (await res.json()) as {
+        data: { items: TemplateRow[] } | null
+        error: { message?: string } | null
+      }
+      if (json.error) {
+        setTemplateActionError(json.error.message ?? 'Failed to load templates')
+        return
+      }
+      setTemplates(json.data?.items ?? [])
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Network error'
+      setTemplateActionError(msg)
+    }
+  }
+
+  useEffect(() => {
+    void refreshTemplates()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelId])
 
   const sectionRefs = useRef<Partial<Record<WizardStage, HTMLDetailsElement | null>>>({})
 
@@ -553,26 +587,78 @@ export function PipelineWizard() {
   const handleSaveAsNew = async (name: string, isDefault: boolean) => {
     const config = getValues('autopilotConfig')
     setShowSaveAsNew(false)
-    await fetch('/api/autopilot-templates', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        channelId: channelId ?? null,
-        configJson: config,
-        isDefault,
-      }),
-    })
+    setTemplateActionError(null)
+    try {
+      const res = await fetch('/api/autopilot-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          channelId: channelId ?? null,
+          configJson: config,
+          isDefault,
+        }),
+      })
+      const json = (await res.json()) as {
+        data: TemplateRow | null
+        error: { message?: string } | null
+      }
+      if (!res.ok || json.error) {
+        setTemplateActionError(json.error?.message ?? 'Failed to save template')
+        return
+      }
+      await refreshTemplates()
+      if (json.data) {
+        setLoadedTemplateId(json.data.id)
+        setLoadedTemplateName(json.data.name)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Network error'
+      setTemplateActionError(msg)
+    }
   }
 
   const handleUpdateTemplate = async () => {
     if (!loadedTemplateId) return
     const config = getValues('autopilotConfig')
     setShowUpdateConfirm(false)
-    await fetch(`/api/autopilot-templates/${loadedTemplateId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ configJson: config }),
+    setTemplateActionError(null)
+    try {
+      const res = await fetch(`/api/autopilot-templates/${loadedTemplateId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ configJson: config }),
+      })
+      const json = (await res.json()) as {
+        data: TemplateRow | null
+        error: { message?: string } | null
+      }
+      if (!res.ok || json.error) {
+        setTemplateActionError(json.error?.message ?? 'Failed to update template')
+        return
+      }
+      await refreshTemplates()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Network error'
+      setTemplateActionError(msg)
+    }
+  }
+
+  const handleLoadTemplate = (id: string) => {
+    setTemplateActionError(null)
+    if (!id || id === 'none') {
+      setLoadedTemplateId(null)
+      setLoadedTemplateName(null)
+      return
+    }
+    const template = templates.find((t) => t.id === id)
+    if (!template) return
+    setLoadedTemplateId(template.id)
+    setLoadedTemplateName(template.name)
+    methods.reset({
+      mode: methods.getValues('mode'),
+      templateId: template.id,
+      autopilotConfig: template.config_json,
     })
   }
 
@@ -608,16 +694,19 @@ export function PipelineWizard() {
           )}
 
           <Select
-            value={loadedTemplateId ?? ''}
-            onValueChange={(id) => {
-              setLoadedTemplateId(id || null)
-            }}
+            value={loadedTemplateId ?? 'none'}
+            onValueChange={handleLoadTemplate}
           >
             <SelectTrigger className="w-48" aria-label="Load template">
               <SelectValue placeholder="Load template…" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">None</SelectItem>
+              {templates.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}{t.is_default ? ' (default)' : ''}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
@@ -639,6 +728,16 @@ export function PipelineWizard() {
             >
               Update template {loadedTemplateName}
             </Button>
+          )}
+
+          {templateActionError && (
+            <p
+              role="alert"
+              data-testid="template-action-error"
+              className="basis-full text-xs text-destructive"
+            >
+              {templateActionError}
+            </p>
           )}
         </div>
 

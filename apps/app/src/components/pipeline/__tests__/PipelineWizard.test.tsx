@@ -69,7 +69,7 @@ it('on submit, posts setup payload then sends SETUP_COMPLETE with the same shape
   const user = userEvent.setup()
   const fetchSpy = vi.fn().mockResolvedValue({
     ok: true,
-    json: async () => ({ data: { ok: true }, error: null }),
+    json: async () => ({ data: { items: [] }, error: null }),
   })
   vi.stubGlobal('fetch', fetchSpy)
   renderWizard()
@@ -79,11 +79,17 @@ it('on submit, posts setup payload then sends SETUP_COMPLETE with the same shape
 
   await user.click(screen.getByRole('button', { name: /start autopilot \(supervised\)/i }))
 
-  await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
-  const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
-  expect(url).toBe('/api/projects/p1/setup')
-  expect(init.method).toBe('POST')
-  const body = JSON.parse(init.body as string) as {
+  // Find the setup POST call (templates GET on mount may precede it)
+  let setupInit: RequestInit | undefined
+  await waitFor(() => {
+    const setupCall = (fetchSpy.mock.calls as [string, RequestInit | undefined][]).find(
+      ([url]) => url === '/api/projects/p1/setup',
+    )
+    expect(setupCall).toBeDefined()
+    setupInit = setupCall?.[1]
+  })
+  expect(setupInit?.method).toBe('POST')
+  const body = JSON.parse(setupInit?.body as string) as {
     mode: string
     startStage: string
     autopilotConfig: {
@@ -160,7 +166,7 @@ describe('scaffold tests', () => {
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ data: { ok: true }, error: null }),
+        json: async () => ({ data: { items: [] }, error: null }),
       }),
     )
     renderWizard()
@@ -192,9 +198,18 @@ describe('scaffold tests', () => {
 
   it('Save as new posts to /api/autopilot-templates with isDefault flag', async () => {
     const user = userEvent.setup()
-    const fetchSpy = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: { id: 'tpl-1' }, error: null }),
+    const fetchSpy = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      // GET on mount returns empty templates list; POST returns created template
+      if (init?.method === 'POST') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ data: { id: 'tpl-1', name: 'My Template' }, error: null }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: { items: [] }, error: null }),
+      })
     })
     vi.stubGlobal('fetch', fetchSpy)
     renderWizard()
@@ -212,48 +227,97 @@ describe('scaffold tests', () => {
     await user.click(screen.getByRole('button', { name: /^save$/i }))
 
     await waitFor(() => {
-      const templateCalls = (fetchSpy.mock.calls as [string, RequestInit][]).filter(
-        ([url]) => url === '/api/autopilot-templates',
+      const postCall = (fetchSpy.mock.calls as [string, RequestInit | undefined][]).find(
+        ([url, init]) => url === '/api/autopilot-templates' && init?.method === 'POST',
       )
-      expect(templateCalls.length).toBeGreaterThanOrEqual(1)
-      const [, init] = templateCalls[0]
-      expect(init.method).toBe('POST')
-      const body = JSON.parse(init.body as string) as { name: string }
+      expect(postCall).toBeDefined()
+      const [, init] = postCall ?? []
+      const body = JSON.parse(init?.body as string) as { name: string }
       expect(body.name).toBe('My Template')
     })
   })
 
   it('Update template shows confirm dialog then PUTs', async () => {
     const user = userEvent.setup()
-    const fetchSpy = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: { id: 'tpl-1', name: 'Existing', configJson: {} }, error: null }),
+    const existingTemplate = {
+      id: 'tpl-1',
+      name: 'Existing',
+      is_default: false,
+      config_json: {
+        defaultProvider: 'recommended' as const,
+        brainstorm: {
+          providerOverride: null,
+          mode: 'topic_driven' as const,
+          topic: 'x',
+          referenceUrl: null,
+          niche: '', tone: '', audience: '', goal: '', constraints: '',
+        },
+        research: { providerOverride: null, depth: 'medium' as const },
+        canonicalCore: { providerOverride: null, personaId: null },
+        draft: { providerOverride: null, format: 'blog' as const, wordCount: 1200 },
+        review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
+        assets: { providerOverride: null, mode: 'briefing' as const },
+      },
+    }
+    const fetchSpy = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ data: existingTemplate, error: null }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: { items: [existingTemplate] }, error: null }),
+      })
     })
     vi.stubGlobal('fetch', fetchSpy)
     renderWizard()
 
-    const templateSelect = screen.queryByRole('combobox', { name: /load template/i })
-    if (!templateSelect) {
-      return
-    }
+    // Wait for templates GET to settle and combobox to render
+    const templateSelect = await screen.findByRole('combobox', { name: /load template/i })
+    await user.click(templateSelect)
+    const option = await screen.findByRole('option', { name: /existing/i })
+    await user.click(option)
 
-    const updateButton = screen.queryByRole('button', { name: /update template/i })
-    if (!updateButton) {
-      return
-    }
-
+    // Now the "Update template" button should appear
+    const updateButton = await screen.findByRole('button', { name: /update template/i })
     await user.click(updateButton)
 
     const confirmButton = await screen.findByRole('button', { name: /confirm/i })
-    expect(confirmButton).toBeDefined()
-
     await user.click(confirmButton)
 
     await waitFor(() => {
-      const putCalls = (fetchSpy.mock.calls as [string, RequestInit][]).filter(
-        ([, init]) => init.method === 'PUT',
+      const putCalls = (fetchSpy.mock.calls as [string, RequestInit | undefined][]).filter(
+        ([, init]) => init?.method === 'PUT',
       )
       expect(putCalls.length).toBeGreaterThanOrEqual(1)
     })
+  })
+
+  it('surfaces template-action error inline when save fails', async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        return Promise.resolve({
+          ok: false,
+          json: async () => ({ data: null, error: { code: 'INVALID_BODY', message: 'name already taken' } }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: { items: [] }, error: null }),
+      })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    renderWizard()
+
+    await user.click(screen.getByRole('button', { name: /save as new/i }))
+    const nameInput = await screen.findByLabelText(/template name/i)
+    await user.type(nameInput, 'dup')
+    await user.click(screen.getByRole('button', { name: /^save$/i }))
+
+    const error = await screen.findByTestId('template-action-error')
+    expect(error.textContent).toMatch(/name already taken/i)
   })
 })

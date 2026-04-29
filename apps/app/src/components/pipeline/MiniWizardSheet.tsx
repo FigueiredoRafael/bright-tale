@@ -33,6 +33,13 @@ const formSchema = z.object({
     audience: z.string().optional(),
     goal: z.string().optional(),
     constraints: z.string().optional(),
+  }).superRefine((v, ctx) => {
+    if (v.brainstormMode === 'topic_driven' && !v.topic) {
+      ctx.addIssue({ code: 'custom', path: ['topic'], message: 'Topic required for topic-driven mode' })
+    }
+    if (v.brainstormMode === 'reference_guided' && !v.referenceUrl) {
+      ctx.addIssue({ code: 'custom', path: ['referenceUrl'], message: 'URL required for reference-guided mode' })
+    }
   }).nullable(),
   research: z.object({
     providerOverride: z.enum(['openai', 'anthropic', 'gemini', 'ollama']).nullable(),
@@ -343,6 +350,10 @@ export function MiniWizardSheet({ isOpen, onClose }: MiniWizardSheetProps) {
   })
 
   const brainstormProvider = useWatch({ control, name: 'brainstorm.providerOverride' }) as ValidProvider | null
+  const brainstormMode = useWatch({ control, name: 'brainstorm.brainstormMode' }) as
+    | 'topic_driven'
+    | 'reference_guided'
+    | undefined
   const researchProvider = useWatch({ control, name: 'research.providerOverride' }) as ValidProvider | null
   const canonicalCoreProvider = useWatch({ control, name: 'canonicalCore.providerOverride' }) as ValidProvider | null
   const draftProvider = useWatch({ control, name: 'draft.providerOverride' }) as ValidProvider | null
@@ -414,6 +425,40 @@ export function MiniWizardSheet({ isOpen, onClose }: MiniWizardSheetProps) {
                   <option value="topic_driven">Topic-driven</option>
                   <option value="reference_guided">Reference-guided</option>
                 </select>
+                {brainstormMode === 'topic_driven' && (
+                  <>
+                    <Label htmlFor="brainstorm-topic">Topic</Label>
+                    <input
+                      id="brainstorm-topic"
+                      type="text"
+                      data-testid="brainstorm-topic-input"
+                      {...register('brainstorm.topic')}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    {errors.brainstorm?.topic?.message && (
+                      <p role="alert" className="text-xs text-destructive">
+                        {errors.brainstorm.topic.message}
+                      </p>
+                    )}
+                  </>
+                )}
+                {brainstormMode === 'reference_guided' && (
+                  <>
+                    <Label htmlFor="brainstorm-reference-url">Reference URL</Label>
+                    <input
+                      id="brainstorm-reference-url"
+                      type="url"
+                      data-testid="brainstorm-reference-url-input"
+                      {...register('brainstorm.referenceUrl')}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    {errors.brainstorm?.referenceUrl?.message && (
+                      <p role="alert" className="text-xs text-destructive">
+                        {errors.brainstorm.referenceUrl.message}
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
             )}
           </section>
