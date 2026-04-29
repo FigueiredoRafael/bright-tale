@@ -5,7 +5,7 @@ import {
   DEFAULT_CREDIT_SETTINGS,
 } from '@/components/engines/types'
 import { isApprovedGuard, isRejectedGuard, hasReachedMaxIterationsGuard } from './guards'
-import { reproduceActor } from './actors'
+import { reproduceActor, abortRequester } from './actors.js'
 import type {
   PipelineMachineContext,
   PipelineMachineInput,
@@ -78,7 +78,7 @@ export const pipelineMachine = setup({
     startsAtPublish: ({ event }: any) => event.startStage === 'publish',
     shouldSkipReview: ({ context }: any) => context.autopilotConfig?.review.maxIterations === 0,
   },
-  actors: { reproduceActor },
+  actors: { reproduceActor, abortRequester },
   actions: {
     saveBrainstormResult: saveStageResult('brainstorm') as any,
     saveResearchResult: saveStageResult('research') as any,
@@ -164,6 +164,25 @@ export const pipelineMachine = setup({
         return 'Unknown error'
       },
     }) as any,
+    spawnAbortRequester: ({ context, self }: any) => {
+      // Fire-and-forget abort request via side effect in action.
+      // XState v5 doesn't support spawn() in action handlers, so we use
+      // a Promise-based approach that the actor system can observe.
+      // The consuming component should set up an effect listener to handle
+      // errors and send resumeAuto when the PATCH fails.
+      fetch(`/api/projects/${context.projectId}/abort`, { method: 'PATCH' })
+        .then((res) => {
+          if (!res.ok) {
+            // Send error event back to the machine
+            const err = new Error('Failed to request abort')
+            self.send({ type: 'xstate.error.actor.abortRequester', error: err } as any)
+          }
+        })
+        .catch((err) => {
+          // Network error
+          self.send({ type: 'xstate.error.actor.abortRequester', error: err } as any)
+        })
+    },
   },
 }).createMachine({
   id: 'pipeline',
@@ -189,7 +208,10 @@ export const pipelineMachine = setup({
     STAGE_PROGRESS: { actions: 'mergeStageProgress' },
     RESET_TO_SETUP: { target: '.setup', actions: 'clearAllResults' },
     GO_AUTOPILOT: { actions: ['setMode', 'setAutopilotConfig'] },
-    REQUEST_ABORT: { actions: 'pauseAuto' },
+    REQUEST_ABORT: { actions: ['pauseAuto', 'spawnAbortRequester'] },
+    'xstate.error.actor.abortRequester': {
+      actions: ['recordActorError', 'resumeAuto'],
+    },
     NAVIGATE: [
       { guard: ({ event }) => (event as Extract<PipelineEvent, { type: 'NAVIGATE' }>).toStage === 'brainstorm', target: '.brainstorm' },
       { guard: ({ event }) => (event as Extract<PipelineEvent, { type: 'NAVIGATE' }>).toStage === 'research', target: '.research' },

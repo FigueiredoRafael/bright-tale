@@ -14,3 +14,12 @@ export const reproduceActor = fromPromise(async ({
   const { error } = await res.json() as { data: unknown; error: { message: string } | null }
   if (error) throw new Error(error.message)
 })
+
+export const abortRequester = fromPromise(async ({
+  input,
+}: {
+  input: { projectId: string }
+}) => {
+  const res = await fetch(`/api/projects/${input.projectId}/abort`, { method: 'PATCH' })
+  if (!res.ok) throw new Error('Failed to request abort')
+})

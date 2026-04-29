@@ -362,3 +362,56 @@ describe('setup state and SETUP_COMPLETE', () => {
     expect(actor.getSnapshot().value).toMatchObject({ assets: 'idle' })
   })
 })
+
+describe('REQUEST_ABORT spawn-on-event', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const abortTestConfig: AutopilotConfig = {
+    defaultProvider: 'recommended',
+    brainstorm: {
+      providerOverride: null,
+      mode: 'topic_driven',
+      topic: 'AI',
+      referenceUrl: null,
+      niche: undefined,
+      tone: undefined,
+      audience: undefined,
+      goal: undefined,
+      constraints: undefined,
+    },
+    research: { providerOverride: null, depth: 'medium' },
+    canonicalCore: { providerOverride: null, personaId: null },
+    draft: { providerOverride: null, format: 'blog', wordCount: 1000 },
+    review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
+    assets: { providerOverride: null, mode: 'auto' },
+  }
+
+  it('optimistically sets paused=true and fires PATCH', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', fetchSpy)
+    const actor = startActor({}, false)
+    actor.send({ type: 'SETUP_COMPLETE', mode: 'supervised', autopilotConfig: abortTestConfig, templateId: null, startStage: 'draft' })
+    actor.send({ type: 'REQUEST_ABORT' })
+    expect(actor.getSnapshot().context.paused).toBe(true)
+
+    // wait for spawned actor to complete
+    await new Promise((r) => setTimeout(r, 10))
+    expect(fetchSpy).toHaveBeenCalledWith('/api/projects/proj-1/abort', { method: 'PATCH' })
+    vi.unstubAllGlobals()
+  })
+
+  it('on PATCH failure, machine reverts paused and records error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }))
+    const actor = startActor({}, false)
+    actor.send({ type: 'SETUP_COMPLETE', mode: 'supervised', autopilotConfig: abortTestConfig, templateId: null, startStage: 'draft' })
+    actor.send({ type: 'REQUEST_ABORT' })
+
+    // wait for spawned actor to error and error event to be processed
+    await new Promise((r) => setTimeout(r, 20))
+    expect(actor.getSnapshot().context.paused).toBe(false)
+    expect(actor.getSnapshot().context.lastError).toMatch(/Failed to request abort/)
+    vi.unstubAllGlobals()
+  })
+})
