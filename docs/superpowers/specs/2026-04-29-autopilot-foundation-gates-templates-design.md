@@ -62,18 +62,60 @@ All three specs commit to `feat/pipeline-autopilot-wizard-impl`. Sequential, no 
 
 ## 5. Spec 1 — Autopilot Foundation
 
-### 5.1 Engine hydration
+### 5.1 Engine hydration — wizard form ↔ engine state
 
-Per-engine fields hydrated from `autopilotConfig`:
+**Invariant:** every wizard form field has a corresponding engine local-state seed, end-to-end. Wizard writes to `autopilotConfig.<slot>.<field>` → machine stores it on `SETUP_COMPLETE` via `applySetup` → engine reads it on mount and seeds local form state. Adding a new wizard field means updating both the schema and the matching engine hydrator in the same commit.
 
-| Engine | Fields read |
-|---|---|
-| Brainstorm | `brainstorm.{mode, topic, referenceUrl, providerOverride, modelOverride}` |
-| Research | `research.{researchLevel, providerOverride}` |
-| Draft (Production) | `production.{format, wordCountTarget, providerOverride}` + `canonicalCore.{personaId, providerOverride}` |
-| Review | `review.{maxIterations, approveScore, hardFailThreshold}` — Spec 1 verifies these reach `hasReachedMaxIterationsGuard`, `isApprovedGuard`, `isRejectedGuard`. Wires up if missing. |
+The full hydration table, exhaustive against `autopilotConfigSchema` (`packages/shared/src/schemas/autopilotConfig.ts`):
 
-Engine local state seeded inside the existing "Initialize from initial values" `useEffect`, before `useAutoPilotTrigger` evaluates `canFire()`. This makes `canFire()` return `true` once required fields are present in the config.
+| Slot | Schema field | Wizard input | Engine local state seed |
+|---|---|---|---|
+| (top-level) | `defaultProvider` | Provider radio at the top of the wizard | Inherited by every slot's `providerOverride` resolution; engines read via `resolveStageProvider` server-side, not directly |
+| `brainstorm` | `providerOverride` | (per-stage advanced control) | `BrainstormEngine.provider` |
+| `brainstorm` | `mode` | Radio: topic-driven / reference-guided | `BrainstormEngine.mode` |
+| `brainstorm` | `topic` | Text input | `BrainstormEngine.topic` |
+| `brainstorm` | `referenceUrl` | URL input (when `mode='reference_guided'`) | `BrainstormEngine.referenceUrl` |
+| `brainstorm` | `niche` | Text input | `BrainstormEngine.niche` (fine-tuning) |
+| `brainstorm` | `tone` | Text input | `BrainstormEngine.tone` (fine-tuning) |
+| `brainstorm` | `audience` | Text input | `BrainstormEngine.audience` (fine-tuning) |
+| `brainstorm` | `goal` | Text input | `BrainstormEngine.goal` (fine-tuning) |
+| `brainstorm` | `constraints` | Text input | `BrainstormEngine.constraints` (fine-tuning) |
+| `research` | `providerOverride` | (per-stage advanced control) | `ResearchEngine.provider` |
+| `research` | `depth` | Select (surface/medium/deep) | `ResearchEngine.researchDepth` |
+| `canonicalCore` | `providerOverride` | (per-stage advanced control) | `DraftEngine.canonicalCoreProvider` |
+| `canonicalCore` | `personaId` | Persona Select (active personas only; "Auto-select" = null) | `DraftEngine.selectedPersonaId` |
+| `draft` | `providerOverride` | (per-stage advanced control) | `DraftEngine.draftProvider` |
+| `draft` | `format` | Select (blog/video/shorts/podcast) | `DraftEngine.format` |
+| `draft` | `wordCount` | Number input (required when `format='blog'`) | `DraftEngine.wordCount` |
+| `review` | `providerOverride` | (per-stage advanced control) | `ReviewEngine.provider` |
+| `review` | `maxIterations` | Number input | Read by machine guard `hasReachedMaxIterationsGuard` (already wired) — Spec 1 verifies |
+| `review` | `autoApproveThreshold` | Number input | Read by machine guard `isApprovedGuard` (already wired) — Spec 1 verifies |
+| `review` | `hardFailThreshold` | Number input | Read by machine guard `isRejectedGuard` (already wired) — Spec 1 verifies |
+| `assets` | `providerOverride` | (per-stage advanced control) | `AssetsEngine.provider` |
+| `assets` | `mode` | Radio (3 options: skip / briefs_only / auto_generate — see §6.1) | `AssetsEngine.assetsMode` (Spec 2; Spec 1 always skips assets) |
+| `preview` | `enabled` | Switch (Spec 2) | `PreviewEngine.previewEnabled` (Spec 2) |
+| `publish` | `status` | Radio (Spec 2) | `PublishEngine.wpStatus` (Spec 2) |
+
+Engines hydrate inside the existing "Initialize from initial values" `useEffect`, **before** `useAutoPilotTrigger` evaluates `canFire()`. This is what makes `canFire()` return true once required fields are present in the config — the missing wiring this whole spec exists to fix.
+
+**One-way flow.** Engines never write back to `autopilotConfig`. If the user drills into an engine and edits a field, the edit lives in engine local state for the duration of the run; the next reload re-hydrates from `autopilotConfig`. (Lifting drill-in edits back to config is deferred — see §3 Non-Goals.)
+
+**`hydrateEngineFromConfig.ts` shape:**
+
+```ts
+// One pure function per engine. No side effects.
+export function hydrateBrainstormFromConfig(
+  config: AutopilotConfig | null,
+): Partial<BrainstormEngineLocalState>
+
+export function hydrateResearchFromConfig(
+  config: AutopilotConfig | null,
+): Partial<ResearchEngineLocalState>
+
+// ... etc for each engine
+```
+
+Each function returns an object with the keys to seed; the engine spreads the returned object into its `useState` initializers. `null` config (legacy projects, step-by-step mode) returns an empty object — engines fall back to existing localStorage / channel-default behavior.
 
 ### 5.2 Hidden engine wrapper
 
@@ -142,34 +184,45 @@ Current-stage row gets pulsing border, status text in 14px, progress bar when `t
 
 ## 6. Spec 2 — Gates & Per-Iteration Tracking
 
-### 6.1 Schema additions (`autopilotConfigSchema`)
+### 6.1 Schema diff — `autopilotConfigSchema`
 
-```ts
-const AssetsSlot = z.object({
-  providerOverride: ProviderEnum.nullable(),
-  mode: z.enum(['auto_generate', 'briefs_only', 'skip']),  // NEW
-  imageStyle: z.string().optional().nullable(),
-})
+Working against the existing schema in `packages/shared/src/schemas/autopilotConfig.ts`. `AssetsSlot.mode` already exists with four values; the user-facing model in this spec is three (`auto_generate / briefs_only / skip`). Reconciliation: rename the four values for clarity and drop `manual` (which currently means "user does everything by hand with no AI" — a step-by-step concept that doesn't belong in autopilot). `manual` users use step-by-step mode instead.
 
-const PreviewSlot = z.object({
-  enabled: z.boolean(),  // NEW: ON = drill-in for review; OFF = auto-derive + skip UI
-})
+```diff
+ const AssetsSlot = z.object({
+   providerOverride: ProviderOrInherit,
+-  mode: z.enum(['skip', 'manual', 'briefing', 'auto']),
++  mode: z.enum(['skip', 'briefs_only', 'auto_generate']),
+ })
 
-const PublishSlot = z.object({
-  status: z.enum(['draft', 'published']),  // NEW: 'scheduled' deferred
-})
++const PreviewSlot = z.object({
++  enabled: z.boolean(),  // ON = drill-in for review; OFF = auto-derive + skip UI
++})
++
++const PublishSlot = z.object({
++  status: z.enum(['draft', 'published']),  // 'scheduled' deferred
++})
 
-export const autopilotConfigSchema = z.object({
-  // ...existing...
-  assets:  AssetsSlot,
-  preview: PreviewSlot,
-  publish: PublishSlot,
-})
+ export const autopilotConfigSchema = z.object({
+   // ...existing fields unchanged...
+   assets:  AssetsSlot,
++  preview: PreviewSlot,
++  publish: PublishSlot,
+ })
 ```
 
-**Defaults for fresh wizard:** `assets.mode='skip'`, `preview.enabled=false`, `publish.status='draft'`.
+**Mapping from legacy assets values during the migration:**
+- `'skip'` → `'skip'` (unchanged)
+- `'briefing'` → `'briefs_only'` (rename)
+- `'auto'` → `'auto_generate'` (rename)
+- `'manual'` → `'skip'` (no longer expressible in autopilot; user-effective behavior matches `skip` since manual mode never auto-progressed anyway)
 
-**Migration:** No SQL needed (JSON column). Existing `projects.autopilot_config_json` rows upgrade on read via `mapLegacyToSnapshot` shim — missing fields filled with defaults.
+**Defaults for a fresh wizard:** `assets.mode='skip'`, `preview.enabled=false`, `publish.status='draft'`.
+
+**Migration:** No SQL needed (JSON column). Existing `projects.autopilot_config_json` rows upgrade on read via `mapLegacyToSnapshot`:
+- `assets.mode` legacy values mapped per the table above.
+- Missing `preview` slot → `{ enabled: false }`.
+- Missing `publish` slot → `{ status: 'draft' }`.
 
 ### 6.2 New machine events
 
@@ -271,10 +324,10 @@ Triggered for `briefs_only` assets and `enabled=true` preview after `*_COMPLETE`
 
 Three new field groups in `PipelineWizard.tsx` and `MiniWizardSheet.tsx`:
 
-**Assets** (radio):
-- Skip — go straight to preview (no images)
-- Auto-generate — AI generates images, no manual review
-- Briefs only — AI generates briefs, you finish in the engine
+**Assets** (radio, three options matching the schema enum):
+- `skip` → "Skip" — go straight to preview (no images)
+- `auto_generate` → "Auto-generate" — AI generates images, no manual review
+- `briefs_only` → "Briefs only" — AI generates briefs, you finish in the engine
 
 **Preview** (switch with explainer):
 - "Preview before publish" toggle. Off note: "Categories and tags are auto-applied from the AI's analysis."
