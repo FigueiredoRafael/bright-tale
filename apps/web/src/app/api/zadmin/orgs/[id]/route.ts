@@ -28,6 +28,21 @@ export async function PATCH(
 
   const db = createAdminClient();
 
+  // Credits must never go below zero.
+  const validateCreditField = (key: 'credits_total' | 'credits_used' | 'credits_addon') => {
+    const val = body[key];
+    if (val === undefined) return null;
+    if (typeof val !== 'number' || !Number.isFinite(val) || !Number.isInteger(val) || val < 0) {
+      return jsonError(`${key} must be a non-negative integer`, 'INVALID_CREDIT_VALUE', 400);
+    }
+    return null;
+  };
+  const creditError =
+    validateCreditField('credits_total') ||
+    validateCreditField('credits_used') ||
+    validateCreditField('credits_addon');
+  if (creditError) return creditError;
+
   // Build update — only allow specific fields
   const update: Record<string, unknown> = {};
   if (body.plan !== undefined) update.plan = body.plan;

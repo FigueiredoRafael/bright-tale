@@ -29,6 +29,9 @@ supabase/.temp/
 
 # Testing
 coverage/
+playwright-report/
+test-results/
+.playwright/
 
 # Storybook
 storybook-static/

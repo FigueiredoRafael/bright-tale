@@ -15,6 +15,7 @@ import { PipelineStages, type PipelineStep } from '@/components/pipeline/Pipelin
 import { ReviewEngine } from '@/components/engines/ReviewEngine';
 import { AssetsEngine } from '@/components/engines/AssetsEngine';
 import { PublishEngine } from '@/components/engines/PublishEngine';
+import { StandaloneEngineHost } from '@/components/engines/StandaloneEngineHost';
 import type { ReviewResult } from '@/components/engines/types';
 import { toast } from 'sonner';
 
@@ -270,59 +271,84 @@ export default function DraftDetailPage() {
 
         {/* Review Tab */}
         <TabsContent value="review">
-          <ReviewEngine
+          <StandaloneEngineHost
+            stage="review"
             channelId={channelId}
-            context={{
-              draftId,
-              draftTitle: draft.title ?? undefined,
-              projectId,
-              projectTitle,
+            projectId={projectId}
+            initialStageResults={{
+              draft: {
+                draftId,
+                draftTitle: draft.title ?? '',
+                draftContent: '',
+                completedAt: new Date(0).toISOString(),
+              },
             }}
-            draftId={draftId}
-            draft={draft}
-            onComplete={(result) => {
-              const r = result as ReviewResult;
+            onStageComplete={(_stage, result) => {
+              const r = result as unknown as ReviewResult;
               if (r.verdict === 'approved') setActiveTab('assets');
             }}
-            onBack={(stage) => {
-              // For now, just show a toast — full back-navigation handled by orchestrator
-              toast.info(`Would go back to ${stage} (available in project pipeline)`);
-            }}
-            onDraftUpdated={(updated) => {
-              setDraft(updated as unknown as Draft);
-              if ((updated as unknown as Draft).draft_json) {
-                setEditedBody(((updated as unknown as Draft).draft_json as Record<string, unknown>)?.full_draft as string ?? '');
-              }
-            }}
-          />
+          >
+            <ReviewEngine draft={draft as unknown as Record<string, unknown>} />
+          </StandaloneEngineHost>
         </TabsContent>
 
         {/* Assets Tab */}
         <TabsContent value="assets">
-          <AssetsEngine
-            mode="generate"
+          <StandaloneEngineHost
+            stage="assets"
             channelId={channelId}
-            context={{ draftId, draftTitle: draft.title ?? undefined }}
-            draftId={draftId}
-            draftStatus={draft.status}
-            onComplete={() => setActiveTab('publish')}
-          />
+            projectId={projectId}
+            initialStageResults={{
+              draft: {
+                draftId,
+                draftTitle: draft.title ?? '',
+                draftContent: '',
+                completedAt: new Date(0).toISOString(),
+              },
+              review: {
+                score: draft.review_score ?? 0,
+                verdict: draft.review_verdict ?? '',
+                feedbackJson: draft.review_feedback_json ?? {},
+                iterationCount: 0,
+                completedAt: new Date(0).toISOString(),
+              },
+            }}
+            onStageComplete={() => setActiveTab('publish')}
+          >
+            <AssetsEngine mode="generate" draft={draft as unknown as Record<string, unknown>} />
+          </StandaloneEngineHost>
         </TabsContent>
 
         {/* Publish Tab */}
         <TabsContent value="publish">
-          <PublishEngine
+          <StandaloneEngineHost
+            stage="publish"
             channelId={channelId}
-            context={{
-              draftId,
-              draftTitle: draft.title ?? undefined,
-              reviewScore: draft.review_score ?? undefined,
+            projectId={projectId}
+            initialStageResults={{
+              draft: {
+                draftId,
+                draftTitle: draft.title ?? '',
+                draftContent: '',
+                completedAt: new Date(0).toISOString(),
+              },
+              review: {
+                score: draft.review_score ?? 0,
+                verdict: draft.review_verdict ?? '',
+                feedbackJson: draft.review_feedback_json ?? {},
+                iterationCount: 0,
+                completedAt: new Date(0).toISOString(),
+              },
+              assets: {
+                assetIds: assets.map((a) => a.id),
+                featuredImageUrl: assets.find((a) => a.role === 'featured_image')?.url ?? undefined,
+                completedAt: new Date(0).toISOString(),
+              },
             }}
-            draftId={draftId}
-            draft={draft}
-            assetCount={assets.length}
-            onComplete={() => void fetchDraft()}
-          />
+            onStageComplete={() => void fetchDraft()}
+          >
+            <PublishEngine draft={draft} />
+          </StandaloneEngineHost>
         </TabsContent>
       </Tabs>
     </div>

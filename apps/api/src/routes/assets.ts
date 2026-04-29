@@ -302,7 +302,11 @@ export async function assetsRoutes(fastify: FastifyInstance): Promise<void> {
         });
       }
 
-      const provider = await getImageProvider();
+      const requestedProvider =
+        validated.provider === 'gemini' || validated.provider === 'openai'
+          ? validated.provider
+          : undefined;
+      const provider = await getImageProvider(requestedProvider);
 
       const startedAt = Date.now();
       const results = await provider.generateImages({

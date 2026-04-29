@@ -137,6 +137,12 @@ export function PersonaForm({ initial, personaId, archetypeSlug }: PersonaFormPr
             })
             const { data, error: apiError } = await res.json()
             if (apiError) throw new Error(apiError.message)
+            const wpSync = (data as { wpSync?: { synced: boolean; error?: string } } | null)?.wpSync
+            if (wpSync && !wpSync.synced && wpSync.error) {
+                setError(`Saved, but WordPress sync failed: ${wpSync.error}`)
+                setSaving(false)
+                return
+            }
             router.push(`/${locale}/personas`)
         } catch (e) {
             setError(e instanceof Error ? e.message : "Failed to save")

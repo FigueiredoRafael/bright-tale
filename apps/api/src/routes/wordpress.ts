@@ -54,6 +54,70 @@ export function buildWpPostData(input: WpPostDataInput): Record<string, unknown>
   return postData;
 }
 
+/**
+ * Pre-flight a WP user ID against `/wp-json/wp/v2/users/{id}` to confirm it
+ * exists and the connecting account can see it. Returns true on 200.
+ *
+ * Network failures and unexpected statuses fall through to `false` so we
+ * never block a publish when the probe itself is unhealthy — caller will
+ * just omit the `author` field and let WP assign the connecting user.
+ */
+async function wpUserExists(
+  siteUrl: string,
+  headers: Record<string, string>,
+  id: number,
+): Promise<boolean> {
+  try {
+    const res = await fetch(`${siteUrl.replace(/\/$/, '')}/wp-json/wp/v2/users/${id}?context=edit`, {
+      headers,
+    });
+    return res.status === 200;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve the author ID to send to WP, validating each candidate against
+ * the live WP users endpoint. Tries body override first, then persona link.
+ *
+ * Why both, in that order:
+ *   - body.authorId may be an explicit per-publish override the user picked.
+ *   - persona.wpAuthorId is the durable link from the persona row.
+ * If body.authorId is stale (pipeline-state captured an old persona link),
+ * the pre-flight catches it and we fall back to the fresh persona ID. If
+ * neither is valid, returns null and the post publishes under the
+ * connecting user.
+ */
+async function resolveValidAuthorId(opts: {
+  siteUrl: string;
+  headers: Record<string, string>;
+  bodyAuthorId: number | null | undefined;
+  personaAuthorId: number | null | undefined;
+  log: { warn: (obj: Record<string, unknown>, msg: string) => void };
+  onWarn?: (msg: string) => void;
+}): Promise<number | null> {
+  const { siteUrl, headers, bodyAuthorId, personaAuthorId, log, onWarn } = opts;
+  const seen = new Set<number>();
+  const candidates: { id: number; source: 'body' | 'persona' }[] = [];
+  if (bodyAuthorId != null && !seen.has(bodyAuthorId)) {
+    candidates.push({ id: bodyAuthorId, source: 'body' });
+    seen.add(bodyAuthorId);
+  }
+  if (personaAuthorId != null && !seen.has(personaAuthorId)) {
+    candidates.push({ id: personaAuthorId, source: 'persona' });
+    seen.add(personaAuthorId);
+  }
+
+  for (const c of candidates) {
+    if (await wpUserExists(siteUrl, headers, c.id)) return c.id;
+    const msg = `WP author ${c.id} (from ${c.source}) not found on site — falling back.`;
+    log.warn({ authorId: c.id, source: c.source, siteUrl }, msg);
+    onWarn?.(msg);
+  }
+  return null;
+}
+
 // Helper: Upload image to WordPress Media Library
 async function uploadImageToWordPress(
   imageUrl: string,
@@ -766,8 +830,17 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
           sendEvent('composing', 'Converting markdown to HTML...');
           blogBody = markdownToHtml(blogBody);
 
+          // Translate assetId-keyed altTexts → role-keyed for stitchImagesAfterH2
+          const roleAltTexts: Record<string, string> = {};
+          if (body.imageMap && body.altTexts) {
+            for (const [role, assetId] of Object.entries(body.imageMap)) {
+              const text = body.altTexts[assetId as string];
+              if (text) roleAltTexts[role] = text;
+            }
+          }
+
           // Stitch images after H2 tags
-          blogBody = stitchImagesAfterH2(blogBody, uploadedMedia, body.altTexts ?? {});
+          blogBody = stitchImagesAfterH2(blogBody, uploadedMedia, roleAltTexts);
         } else {
           // Legacy flow: fetch all assets, upload all, replace placeholders
           const { data: assets } = await sb
@@ -839,6 +912,14 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
 
         // Step 6: Publishing
         sendEvent('publishing', 'Creating post on WordPress...');
+        const resolvedAuthorId = await resolveValidAuthorId({
+          siteUrl: site_url,
+          headers,
+          bodyAuthorId: body.authorId,
+          personaAuthorId: persona?.wpAuthorId ?? null,
+          log: request.log,
+          onWarn: (msg) => sendEvent('publishing', msg),
+        });
         const postData = buildWpPostData({
           title: body.seoOverrides?.title ?? (draft.title as string) ?? (draftJson?.title as string) ?? 'Untitled',
           slug: body.seoOverrides?.slug ?? (draftJson?.slug as string) ?? undefined,
@@ -849,7 +930,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
           categories: categoryIds.length > 0 ? categoryIds : undefined,
           tags: tagIds.length > 0 ? tagIds : undefined,
           featuredMedia: uploadedMedia['featured_image']?.wpId,
-          authorId: body.authorId ?? persona?.wpAuthorId ?? null,
+          authorId: resolvedAuthorId,
         });
 
 
@@ -1276,8 +1357,17 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         // Convert markdown to HTML first
         blogBody = markdownToHtml(blogBody);
 
+        // Translate assetId-keyed altTexts → role-keyed for stitchImagesAfterH2
+        const roleAltTexts: Record<string, string> = {};
+        if (body.imageMap && body.altTexts) {
+          for (const [role, assetId] of Object.entries(body.imageMap)) {
+            const text = body.altTexts[assetId as string];
+            if (text) roleAltTexts[role] = text;
+          }
+        }
+
         // Then stitch images after H2 tags
-        blogBody = stitchImagesAfterH2(blogBody, uploadedMedia, body.altTexts ?? {});
+        blogBody = stitchImagesAfterH2(blogBody, uploadedMedia, roleAltTexts);
       } else {
         // Legacy flow: fetch all assets, upload all, replace placeholders
         const { data: assets } = await sb
@@ -1334,6 +1424,13 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       const tagIds = await resolveTags(tagNames, site_url, headers);
 
       // Build post data — apply seoOverrides if present
+      const resolvedAuthorId = await resolveValidAuthorId({
+        siteUrl: site_url,
+        headers,
+        bodyAuthorId: body.authorId,
+        personaAuthorId: persona?.wpAuthorId ?? null,
+        log: request.log,
+      });
       const postData = buildWpPostData({
         title: body.seoOverrides?.title ?? (draft.title as string) ?? (draftJson?.title as string) ?? 'Untitled',
         slug: body.seoOverrides?.slug ?? (draftJson?.slug as string) ?? undefined,
@@ -1344,7 +1441,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         categories: categoryIds.length > 0 ? categoryIds : undefined,
         tags: tagIds.length > 0 ? tagIds : undefined,
         featuredMedia: uploadedMedia['featured_image']?.wpId,
-        authorId: body.authorId ?? persona?.wpAuthorId ?? null,
+        authorId: resolvedAuthorId,
       });
 
       // Create or update WordPress post

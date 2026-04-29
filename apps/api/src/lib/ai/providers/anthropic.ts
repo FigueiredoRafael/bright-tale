@@ -62,10 +62,12 @@ export class AnthropicProvider implements AIProvider {
       // Parse JSON from response
       const parsed = this.extractAndParseJson(content.text);
 
-      // Validate with Zod schema
-      const validated = (schema as any).parse(parsed);
-
-      return validated;
+      // Validate with Zod schema only when caller provided one — schema is
+      // optional per GenerateContentParams.
+      if (schema && typeof (schema as { parse?: unknown }).parse === 'function') {
+        return (schema as { parse: (v: unknown) => unknown }).parse(parsed);
+      }
+      return parsed;
     } catch (error: any) {
       if (error instanceof Anthropic.APIError) {
         throw new Error(`Anthropic API Error: ${error.message}`);

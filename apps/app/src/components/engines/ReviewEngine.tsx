@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Loader2, Sparkles, Check, AlertCircle, ArrowRight, ClipboardPaste, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
+import { useSelector } from '@xstate/react';
+import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ReviewFeedbackPanel } from '@/components/preview/ReviewFeedbackPanel';
@@ -15,29 +18,15 @@ import { ContentWarningBanner } from './ContentWarningBanner';
 import { friendlyAiError } from '@/lib/ai/error-message';
 import { useUpgrade } from '@/components/billing/UpgradeProvider';
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker';
-import type { PipelineContext, PipelineStage, ReviewResult, StageResult } from './types';
-import { type PipelineSettings, DEFAULT_PIPELINE_SETTINGS } from './types';
+import type { PipelineContext, PipelineStage, ReviewResult } from './types';
 import { deriveTier, isApprovedTier } from '@brighttale/shared';
 
+/**
+ * Non-null invariant — orchestrator gates render until draft is hydrated.
+ * Guard in the engine is defensive, not normal flow.
+ */
 interface ReviewEngineProps {
-  channelId: string;
-  context: PipelineContext;
-  draftId: string;
-  draft: {
-    id: string;
-    title: string | null;
-    status: string;
-    draft_json: Record<string, unknown> | null;
-    review_feedback_json: Record<string, unknown> | null;
-    review_score: number | null;
-    review_verdict: string;
-    iteration_count: number;
-  };
-  onComplete: (result: StageResult) => void;
-  onBack?: (targetStage?: PipelineStage) => void;
-  onDraftUpdated: (draft: Record<string, unknown>) => void;
-  onStageProgress?: (partial: { score?: number; verdict?: string }) => void;
-  pipelineSettings?: PipelineSettings;
+  draft: Record<string, unknown> | null;
 }
 
 const REVIEW_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
@@ -58,26 +47,48 @@ const TIER_COLOR: Record<string, string> = {
   not_requested: 'bg-gray-500/20 text-gray-700 border-gray-500/50',
 };
 
-export function ReviewEngine({
-  channelId,
-  context,
-  draftId,
-  draft,
-  onComplete,
-  onBack,
-  onDraftUpdated,
-  onStageProgress,
-  pipelineSettings = DEFAULT_PIPELINE_SETTINGS,
-}: ReviewEngineProps) {
+export function ReviewEngine({ draft }: ReviewEngineProps) {
+  const actor = usePipelineActor();
+  const channelId = useSelector(actor, (s) => s.context.channelId);
+  const projectId = useSelector(actor, (s) => s.context.projectId);
+  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
+  const researchResult = useSelector(actor, (s) => s.context.stageResults.research);
+  const draftResult = useSelector(actor, (s) => s.context.stageResults.draft);
+  const pipelineSettings = useSelector(actor, (s) => s.context.pipelineSettings);
+  const draftId = draftResult?.draftId ?? '';
+
+  // Local mutable view of the draft — initialized from the prop, kept in sync as
+  // the engine refetches after status changes (review API, manual import, override).
+  const [localDraft, setLocalDraft] = useState<Record<string, unknown> | null>(draft);
+  useEffect(() => {
+    setLocalDraft(draft);
+  }, [draft]);
+
+  const trackerContext: PipelineContext = {
+    channelId,
+    projectId,
+    ideaId: brainstormResult?.ideaId,
+    ideaTitle: brainstormResult?.ideaTitle,
+    ideaVerdict: brainstormResult?.ideaVerdict,
+    ideaCoreTension: brainstormResult?.ideaCoreTension,
+    brainstormSessionId: brainstormResult?.brainstormSessionId,
+    researchSessionId: researchResult?.researchSessionId,
+    researchPrimaryKeyword: researchResult?.primaryKeyword,
+    researchSecondaryKeywords: researchResult?.secondaryKeywords,
+    researchSearchIntent: researchResult?.searchIntent,
+    draftId: draftResult?.draftId,
+    draftTitle: draftResult?.draftTitle,
+  };
+
   const [provider, setProvider] = useState<ProviderId>('gemini');
   const [model, setModel] = useState<string>(MODELS_BY_PROVIDER.gemini[0].id);
+  const [recommendationLoaded, setRecommendationLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const { enabled: manualEnabled } = useManualMode();
   const { handleMaybeCreditsError } = useUpgrade();
   const inFlightRef = useRef(false);
-  const tracker = usePipelineTracker('review', context);
-  void channelId;
+  const tracker = usePipelineTracker('review', trackerContext);
 
   const isManual = provider === 'manual';
 
@@ -88,10 +99,168 @@ export function ReviewEngine({
 
   // Restore manual state if draft is awaiting_manual
   useEffect(() => {
-    if (draft.status === 'awaiting_manual') {
+    if (localDraft?.status === 'awaiting_manual') {
       setManualState({ draftId });
     }
-  }, [draft.status, draftId]);
+  }, [localDraft?.status, draftId]);
+
+  // Fetch recommended provider/model for the review agent.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/agents');
+        const json = await res.json();
+        if (cancelled) return;
+        const agent = (json.data?.agents as Array<Record<string, unknown>>)?.find(
+          (a) => a.slug === 'review',
+        );
+        if (agent?.recommended_provider) {
+          setProvider(agent.recommended_provider as ProviderId);
+          if (agent.recommended_model) setModel(agent.recommended_model as string);
+        }
+      } catch {
+        // silent — fall back to defaults
+      } finally {
+        if (!cancelled) setRecommendationLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Auto-pilot: submit a fresh review when the orchestrator enters this stage.
+  // Re-fires for each iteration of the review loop (rearmKey).
+  const autoFireFn = useRef<() => void | Promise<void>>(() => {});
+  useAutoPilotTrigger({
+    stage: 'review',
+    canFire: () => {
+      const status = localDraft?.status as string | undefined;
+      const iterationCount = (localDraft as { iteration_count?: number } | null)?.iteration_count ?? 0;
+      const hasFeedback = !!(localDraft as { review_feedback_json?: unknown } | null)?.review_feedback_json;
+      // Skip when the production-generate worker already saved review feedback
+      // on iteration 0 — re-running /review would burn another sync LLM call
+      // (and the apps/app proxy times out at ~30s on slow models). The
+      // separate auto-dispatch effect below picks that case up directly.
+      if (hasFeedback && iterationCount === 0) return false;
+      return (
+        recommendationLoaded &&
+        !!localDraft &&
+        !!draftId &&
+        status !== 'approved' &&
+        status !== 'awaiting_manual' &&
+        !busy &&
+        !reviewing &&
+        !inFlightRef.current
+      );
+    },
+    fire: () => autoFireFn.current(),
+    rearmKey: (localDraft as { iteration_count?: number } | null)?.iteration_count ?? 0,
+  });
+
+  // Auto-pilot fast-path: if the production worker already wrote
+  // review_feedback_json (iteration 0 from /generate), persist the derived
+  // verdict/score and dispatch REVIEW_COMPLETE without re-running the LLM.
+  const autoReviewDispatchedRef = useRef<string | null>(null);
+  const autoMode = useSelector(actor, (s) => s.context.mode);
+  const autoPaused = useSelector(actor, (s) => s.context.paused);
+  useEffect(() => {
+    if (autoMode !== 'auto' || autoPaused) return;
+    if (!localDraft || !draftId) return;
+    const status = (localDraft as { status?: string }).status;
+    if (status === 'approved' || status === 'awaiting_manual') return;
+    const iterationCount = (localDraft as { iteration_count?: number }).iteration_count ?? 0;
+    if (iterationCount !== 0) return;
+    const feedbackObj = (localDraft as { review_feedback_json?: Record<string, unknown> }).review_feedback_json;
+    if (!feedbackObj || typeof feedbackObj !== 'object') return;
+    const dispatchKey = `${draftId}:${iterationCount}`;
+    if (autoReviewDispatchedRef.current === dispatchKey) return;
+    autoReviewDispatchedRef.current = dispatchKey;
+
+    void (async () => {
+      try {
+        const draftType = (localDraft as { type?: string }).type ?? 'blog';
+        const formatReview =
+          ((feedbackObj as Record<string, unknown>)[`${draftType}_review`] as Record<string, unknown> | undefined) ??
+          ((feedbackObj as Record<string, unknown>).blog_review as Record<string, unknown> | undefined);
+        const tier = deriveTier(formatReview ?? feedbackObj);
+
+        let verdict: string;
+        if (isApprovedTier(tier)) verdict = 'approved';
+        else if (tier === 'reject') verdict = 'rejected';
+        else verdict = 'revision_required';
+
+        const legacyScoreFromTier: Record<string, number> = {
+          excellent: 95, good: 82, needs_revision: 60, reject: 20, not_requested: 0,
+        };
+        const rawScore = (formatReview?.score as number | undefined) ?? null;
+        const score = rawScore ?? legacyScoreFromTier[tier] ?? 0;
+
+        const patchBody: Record<string, unknown> = {
+          reviewFeedbackJson: feedbackObj,
+          reviewScore: score,
+          reviewVerdict: verdict,
+          status: verdict === 'approved' ? 'approved' : 'in_review',
+          iterationCount: 1,
+        };
+        const res = await fetch(`/api/content-drafts/${draftId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(patchBody),
+        });
+        const json = await res.json();
+        if (json?.error) {
+          autoReviewDispatchedRef.current = null;
+          return;
+        }
+        await refetchDraft();
+        actor.send({
+          type: 'REVIEW_COMPLETE',
+          result: {
+            score,
+            qualityTier: tier,
+            verdict,
+            feedbackJson: feedbackObj,
+            iterationCount: 1,
+          },
+        });
+      } catch {
+        autoReviewDispatchedRef.current = null;
+      }
+    })();
+  // refetchDraft is a stable function declaration in this component scope
+  // and intentionally omitted to avoid re-firing the dispatch loop.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoMode, autoPaused, localDraft, draftId, actor]);
+
+  function navigate(toStage?: PipelineStage) {
+    actor.send({ type: 'NAVIGATE', toStage: toStage ?? 'draft' });
+  }
+
+  // Defensive guard — orchestrator gates render until draft hydrates, but if a
+  // future caller bypasses that gate, fail loudly instead of crashing on
+  // null deref.
+  if (!localDraft) {
+    return (
+      <Card>
+        <CardContent className="py-6">
+          <p className="text-sm text-destructive">Draft not loaded. Please refresh.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const draftView = localDraft as {
+    id: string;
+    title: string | null;
+    status: string;
+    draft_json: Record<string, unknown> | null;
+    review_feedback_json: Record<string, unknown> | null;
+    review_score: number | null;
+    review_verdict: string;
+    iteration_count: number;
+  };
 
   // Load fresh data if needed
   async function refetchDraft() {
@@ -99,7 +268,7 @@ export function ReviewEngine({
       const res = await fetch(`/api/content-drafts/${draftId}`);
       const json = await res.json();
       if (json?.data) {
-        onDraftUpdated(json.data);
+        setLocalDraft(json.data as Record<string, unknown>);
       }
     } catch {
       // silent
@@ -121,7 +290,7 @@ export function ReviewEngine({
   async function handleSubmitForReview() {
     await withGuard(async () => {
       try {
-        tracker.trackStarted({ draftId, iterationCount: draft.iteration_count });
+        tracker.trackStarted({ draftId, iterationCount: draftView.iteration_count });
 
         // First, set status to in_review
         const patchRes = await fetch(`/api/content-drafts/${draftId}`, {
@@ -175,7 +344,7 @@ export function ReviewEngine({
         const blogReview = (feedbackObj?.blog_review ?? feedbackObj?.video_review) as Record<string, unknown> | undefined;
         const score = (typeof blogReview?.score === 'number' ? blogReview.score as number : json.data?.review_score ?? 0);
         const verdict = json.data?.review_verdict ?? 'pending';
-        const iterationCount = json.data?.iteration_count ?? draft.iteration_count + 1;
+        const iterationCount = json.data?.iteration_count ?? draftView.iteration_count + 1;
 
         tracker.trackCompleted({
           draftId,
@@ -184,6 +353,25 @@ export function ReviewEngine({
           iterationCount,
           feedbackJson: feedbackObj ?? {},
         });
+
+        // Auto-pilot: dispatch REVIEW_COMPLETE so the machine can advance
+        // (approved → assets) or iterate (needs_revision → reproduce → re-review).
+        // In step mode the user clicks "Next: Assets" / "Re-review" explicitly.
+        if (actor.getSnapshot().context.mode === 'auto') {
+          const fb = feedbackObj ?? {};
+          const fmt = (fb.blog_review ?? fb.video_review ?? fb.podcast_review ?? fb.shorts_review) as Record<string, unknown> | undefined;
+          const tier = deriveTier(fmt ?? fb);
+          actor.send({
+            type: 'REVIEW_COMPLETE',
+            result: {
+              score,
+              qualityTier: tier,
+              verdict,
+              feedbackJson: fb,
+              iterationCount,
+            },
+          });
+        }
       } catch (e) {
         tracker.trackFailed(e instanceof Error ? e.message : 'Failed to submit for review');
         setReviewing(false);
@@ -191,6 +379,9 @@ export function ReviewEngine({
       }
     });
   }
+
+  // Bind the auto-pilot trigger to the actual handler now that it's in scope.
+  autoFireFn.current = handleSubmitForReview;
 
   async function handleManualOutputSubmit(parsed: unknown) {
     if (!manualState) return;
@@ -216,7 +407,7 @@ export function ReviewEngine({
       setManualState(null);
       await refetchDraft();
       toast.success('Review submitted');
-      onStageProgress?.({ score, verdict });
+      actor.send({ type: 'STAGE_PROGRESS', stage: 'review', partial: { score, verdict } as Record<string, unknown> });
     } catch (err) {
       toast.error('Submit failed', { description: err instanceof Error ? err.message : 'Unknown error' });
     } finally {
@@ -234,7 +425,7 @@ export function ReviewEngine({
     } finally {
       setBusy(false);
       setManualState(null);
-      onStageProgress?.({ score: undefined, verdict: undefined });
+      actor.send({ type: 'STAGE_PROGRESS', stage: 'review', partial: { score: undefined, verdict: undefined } as Record<string, unknown> });
     }
   }
 
@@ -250,7 +441,7 @@ export function ReviewEngine({
 
         // Extract score and verdict from the review output
         // Try format-specific review first (blog_review, video_review, etc.)
-        const draftType = (draft.draft_json as Record<string, unknown>)?.type as string | undefined;
+        const draftType = (draftView.draft_json as Record<string, unknown>)?.type as string | undefined;
         const formatKey = draftType ? `${draftType}_review` : 'blog_review';
         const formatReview = (feedbackJson[formatKey] ?? feedbackJson.blog_review) as Record<string, unknown> | undefined;
 
@@ -291,7 +482,7 @@ export function ReviewEngine({
           reviewScore: score,
           reviewVerdict: verdict,
           status: verdict === 'approved' ? 'approved' : 'in_review',
-          iterationCount: draft.iteration_count + 1,
+          iterationCount: draftView.iteration_count + 1,
         };
 
         const res = await fetch(`/api/content-drafts/${draftId}`, {
@@ -328,7 +519,7 @@ export function ReviewEngine({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            feedback: draft.review_feedback_json,
+            feedback: draftView.review_feedback_json,
           }),
         });
         const json = await res.json();
@@ -362,7 +553,7 @@ export function ReviewEngine({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             status: 'approved',
-            reviewScore: effectiveScore ?? draft.review_score ?? 0,
+            reviewScore: effectiveScore ?? draftView.review_score ?? 0,
             reviewVerdict: 'approved',
           }),
         });
@@ -380,19 +571,19 @@ export function ReviewEngine({
   }
 
   // Derive verdict and score — check DB fields first, then extract from feedback JSON
-  const feedbackObj = draft.review_feedback_json as Record<string, unknown> | null;
+  const feedbackObj = draftView.review_feedback_json as Record<string, unknown> | null;
   const blogReview = (feedbackObj?.blog_review ?? feedbackObj?.video_review) as Record<string, unknown> | undefined;
 
-  const effectiveScore = draft.review_score
+  const effectiveScore = draftView.review_score
     ?? (typeof blogReview?.score === 'number' ? blogReview.score as number : null);
 
-  const rawVerdict = (draft.review_verdict && draft.review_verdict !== 'pending')
-    ? draft.review_verdict
+  const rawVerdict = (draftView.review_verdict && draftView.review_verdict !== 'pending')
+    ? draftView.review_verdict
     : typeof feedbackObj?.overall_verdict === 'string'
       ? (feedbackObj.overall_verdict as string).toLowerCase().replace(/\s+/g, '_')
       : typeof blogReview?.verdict === 'string'
         ? (blogReview.verdict as string).toLowerCase().replace(/\s+/g, '_')
-        : draft.review_verdict;
+        : draftView.review_verdict;
 
   // Score ≥ reviewApproveScore always means approved, regardless of text verdict
   const effectiveVerdict =
@@ -407,12 +598,12 @@ export function ReviewEngine({
   const isRejected = effectiveVerdict === 'rejected';
 
   // Has any review been done (even if DB fields are stale)
-  const hasReview = !!draft.review_feedback_json;
+  const hasReview = !!draftView.review_feedback_json;
 
   return (
     <div className="space-y-6">
-      <ContextBanner stage="review" context={context} onBack={onBack} />
-      <ContentWarningBanner warning={typeof (draft.review_feedback_json as Record<string, unknown> | null)?.content_warning === 'string' ? (draft.review_feedback_json as Record<string, unknown>).content_warning as string : undefined} />
+      <ContextBanner stage="review" context={trackerContext} onBack={navigate} />
+      <ContentWarningBanner warning={typeof (draftView.review_feedback_json as Record<string, unknown> | null)?.content_warning === 'string' ? (draftView.review_feedback_json as Record<string, unknown>).content_warning as string : undefined} />
 
       {/* No review yet — submit for review */}
       {!hasReview && (
@@ -447,7 +638,7 @@ export function ReviewEngine({
               </p>
               <Button
                 onClick={handleSubmitForReview}
-                disabled={busy || reviewing || !draft.draft_json}
+                disabled={busy || reviewing || !draftView.draft_json}
                 size="lg"
                 className="gap-2 shrink-0"
               >
@@ -483,8 +674,8 @@ export function ReviewEngine({
               <ReviewFeedbackPanel
                 reviewScore={effectiveScore}
                 reviewVerdict={effectiveVerdict}
-                iterationCount={draft.iteration_count}
-                feedbackJson={draft.review_feedback_json}
+                iterationCount={draftView.iteration_count}
+                feedbackJson={draftView.review_feedback_json}
               />
             </CardContent>
           </Card>
@@ -500,10 +691,10 @@ export function ReviewEngine({
                 <div className="flex gap-2">
                   <Button
                     onClick={async () => {
-                      const score = effectiveScore ?? draft.review_score ?? 0;
-                      const verdict = effectiveVerdict ?? draft.review_verdict;
+                      const score = effectiveScore ?? draftView.review_score ?? 0;
+                      const verdict = effectiveVerdict ?? draftView.review_verdict;
                       // Ensure DB status is 'approved' before advancing
-                      if (draft.status !== 'approved') {
+                      if (draftView.status !== 'approved') {
                         await fetch(`/api/content-drafts/${draftId}`, {
                           method: 'PATCH',
                           headers: { 'Content-Type': 'application/json' },
@@ -514,7 +705,7 @@ export function ReviewEngine({
                           }),
                         });
                       }
-                      const fb = draft.review_feedback_json as Record<string, unknown> | null ?? {};
+                      const fb = draftView.review_feedback_json as Record<string, unknown> | null ?? {};
                       const fmtReview = (fb.blog_review ?? fb.video_review ?? fb.podcast_review ?? fb.shorts_review) as Record<string, unknown> | undefined;
                       const localTier = deriveTier(fmtReview ?? fb);
                       const result: ReviewResult = {
@@ -522,9 +713,9 @@ export function ReviewEngine({
                         qualityTier: localTier,
                         verdict,
                         feedbackJson: fb,
-                        iterationCount: draft.iteration_count,
+                        iterationCount: draftView.iteration_count,
                       };
-                      onComplete(result);
+                      actor.send({ type: 'REVIEW_COMPLETE', result });
                     }}
                     className="gap-2"
                   >
@@ -603,21 +794,21 @@ export function ReviewEngine({
                       AI Revision
                     </Button>
                     <Button
-                      onClick={() => onBack?.('draft')}
+                      onClick={() => navigate('draft')}
                       variant="outline"
                       size="sm"
                     >
                       Edit Manually
                     </Button>
                     <Button
-                      onClick={() => onBack?.('research')}
+                      onClick={() => navigate('research')}
                       variant="outline"
                       size="sm"
                     >
                       Regenerate Research
                     </Button>
                     <Button
-                      onClick={() => onBack?.('brainstorm')}
+                      onClick={() => navigate('brainstorm')}
                       variant="outline"
                       size="sm"
                     >

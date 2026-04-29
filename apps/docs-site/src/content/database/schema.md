@@ -133,6 +133,22 @@ Prompts dos agentes. Editado no admin (`apps/web`), apenas leitura no `apps/app`
 | org_id | null = global, senão override por org |
 | recommended_provider / recommended_model | badges "Recommended" no ModelPicker |
 
+### credit_settings
+
+Configuração global de custos de crédito (singleton, `lock_key='global'`). Editado no admin, lido em toda geração de conteúdo.
+
+| Coluna | Descrição |
+|---|---|
+| id | uuid PK |
+| lock_key | text — sempre 'global' (singleton via unique constraint) |
+| cost_blog / cost_video / cost_shorts / cost_podcast | int — Custo em créditos por formato; usado em `calculateDraftCost(type, settings)` |
+| cost_canonical_core | int — Custo por execução do agent-3a (canonical core) |
+| cost_review | int — Custo por execução do agent-4 (review) |
+| cost_research_surface | int — Custo por pesquisa superficial |
+| cost_research_medium | int — Custo por pesquisa padrão |
+| cost_research_deep | int — Custo por pesquisa profunda |
+| created_at / updated_at | timestamptz |
+
 ## Infraestrutura & auth
 
 ### organizations
@@ -171,6 +187,7 @@ Log individual de débitos de crédito (diferente de `usage_events` que é sobre
 | status | text | active, paused, completed, archived |
 | winner | text | Formato vencedor (blog, video, etc.) |
 | research_id | uuid FK | Pesquisa vinculada |
+| pipeline_state_json | jsonb | Estado da máquina XState (v3): contexto do pipeline, modo (step-by-step/auto-pilot), resultados acumulados. Legado: `mapLegacyPipelineState()` migra forma antiga automaticamente. |
 | user_id | uuid FK | Dono do projeto |
 | created_at / updated_at | timestamptz | |
 

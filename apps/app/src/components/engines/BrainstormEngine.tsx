@@ -1,10 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSelector } from '@xstate/react';
+import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import {
   Loader2,
   Lightbulb,
   Sparkles,
+  FolderOpen,
   RefreshCw,
   Check,
   ArrowRight,
@@ -20,6 +24,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   ModelPicker,
   MODELS_BY_PROVIDER,
@@ -33,7 +38,7 @@ import { ManualOutputDialog } from './ManualOutputDialog';
 import { IdeaDetailsDialog } from './IdeaDetailsDialog';
 import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
 import { friendlyAiError } from '@/lib/ai/error-message';
-import type { BaseEngineProps, BrainstormResult } from './types';
+import type { BrainstormResult, PipelineContext } from './types';
 
 const BRAINSTORM_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
 
@@ -49,7 +54,9 @@ interface Idea {
   discovery_data?: string;
 }
 
-interface BrainstormEngineProps extends BaseEngineProps {
+interface BrainstormEngineProps {
+  mode?: 'generate' | 'import';
+  onModeChange?: (m: 'generate' | 'import') => void;
   initialSession?: Record<string, unknown>;
   initialIdeas?: Record<string, unknown>[];
   preSelectedIdeaId?: string;
@@ -75,15 +82,28 @@ const MODES: { id: Mode; label: string; description: string }[] = [
 ];
 
 export function BrainstormEngine({
-  mode: engineMode,
-  channelId,
-  context,
-  onComplete,
-  onStageProgress,
+  mode: engineMode = 'generate',
+  onModeChange,
   initialSession,
   initialIdeas,
   preSelectedIdeaId,
 }: BrainstormEngineProps) {
+  const actor = usePipelineActor();
+  const channelId = useSelector(actor, (s) => s.context.channelId);
+  const projectId = useSelector(actor, (s) => s.context.projectId);
+  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
+
+  // Build a legacy PipelineContext for usePipelineTracker and ContextBanner
+  // (both still expect this shape; brainstorm ContextBanner returns null anyway).
+  const trackerContext: PipelineContext = {
+    channelId,
+    projectId,
+    brainstormSessionId: brainstormResult?.brainstormSessionId,
+    ideaId: brainstormResult?.ideaId,
+    ideaTitle: brainstormResult?.ideaTitle,
+    ideaVerdict: brainstormResult?.ideaVerdict,
+    ideaCoreTension: brainstormResult?.ideaCoreTension,
+  };
   // Input mode
   const [mode, setMode] = useState<Mode>('blind');
   const [provider, setProvider] = useState<ProviderId>('gemini');
@@ -112,7 +132,7 @@ export function BrainstormEngine({
   const [recommendation, setRecommendation] = useState<{ pick?: string; rationale?: string; content_warning?: string } | null>(null);
   const [detailsIdeaId, setDetailsIdeaId] = useState<string | null>(null);
 
-  const tracker = usePipelineTracker('brainstorm', context);
+  const tracker = usePipelineTracker('brainstorm', trackerContext);
 
   // Regenerate state
   const [regenerating, setRegenerating] = useState(false);
@@ -211,22 +231,23 @@ export function BrainstormEngine({
     }
   }, [initialSession, initialIdeas, preSelectedIdeaId]);
 
-  // Load existing session from context when navigating back in the pipeline
+  // Load existing session when navigating back in the pipeline.
+  // Reads from actor context instead of prop — actor owns brainstorm state.
   useEffect(() => {
     if (initialSession || initialIdeas) return;
-    const ctxSessionId = context.brainstormSessionId;
+    const ctxSessionId = brainstormResult?.brainstormSessionId;
     if (!ctxSessionId) {
-      // Imported ideas have no session — hydrate from context fields
-      if (context.ideaId && context.ideaTitle && ideas.length === 0) {
+      // Imported ideas have no session — hydrate from actor stageResults
+      if (brainstormResult?.ideaId && brainstormResult?.ideaTitle && ideas.length === 0) {
         setIdeas([{
-          id: context.ideaId,
-          idea_id: context.ideaId,
-          title: context.ideaTitle,
-          core_tension: context.ideaCoreTension || undefined,
+          id: brainstormResult.ideaId,
+          idea_id: brainstormResult.ideaId,
+          title: brainstormResult.ideaTitle,
+          core_tension: brainstormResult.ideaCoreTension || undefined,
           target_audience: '',
-          verdict: (context.ideaVerdict as 'viable' | 'weak' | 'experimental') || 'experimental',
+          verdict: (brainstormResult.ideaVerdict as 'viable' | 'weak' | 'experimental') || 'experimental',
         }]);
-        setSelectedIdeaId(context.ideaId);
+        setSelectedIdeaId(brainstormResult.ideaId);
       }
       return;
     }
@@ -291,8 +312,8 @@ export function BrainstormEngine({
             };
           });
           setIdeas(mapped);
-          if (context.ideaId) {
-            setSelectedIdeaId(context.ideaId);
+          if (brainstormResult?.ideaId) {
+            setSelectedIdeaId(brainstormResult.ideaId);
           }
         }
       } catch {
@@ -300,7 +321,7 @@ export function BrainstormEngine({
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [context.brainstormSessionId]);
+  }, [brainstormResult?.brainstormSessionId]);
 
   // Reconnect to running session after page reload
   useEffect(() => {
@@ -352,6 +373,73 @@ export function BrainstormEngine({
       }
     })();
   }, []);
+
+  // Auto-pilot: trigger generation when topic is filled and we're on the
+  // brainstorm stage. Brainstorm is the entry point so the user types the
+  // topic; once it's there, auto-pilot can run without further clicks.
+  useAutoPilotTrigger({
+    stage: 'brainstorm',
+    canFire: () =>
+      recommended.provider !== null &&
+      !running &&
+      !manualSessionId &&
+      !ideas.length &&
+      !brainstormResult?.ideaId &&
+      (mode === 'reference_guided' ? !!referenceUrl.trim() : !!topic.trim()),
+    fire: handleRun,
+  });
+
+  // Auto-pilot: when ideas finish generating and the AI flagged a `pick`,
+  // select that idea and advance the machine. Falls back to the first 'viable'
+  // verdict if no explicit pick is provided.
+  const autoPickedRef = useRef<string | null>(null);
+  const autoMode = useSelector(actor, (s) => s.context.mode);
+  const autoPaused = useSelector(actor, (s) => s.context.paused);
+  useEffect(() => {
+    if (autoMode !== 'auto' || autoPaused) return;
+    if (brainstormResult?.ideaId) return;
+    if (!ideas.length) return;
+    if (running || regenerating) return;
+
+    const matchByPick = recommendation?.pick
+      ? ideas.find(
+          (i) =>
+            (i.title ?? '').trim().toLowerCase() ===
+            recommendation.pick!.trim().toLowerCase(),
+        )
+      : null;
+    const firstViable = ideas.find((i) => i.verdict === 'viable');
+    const chosen = matchByPick ?? firstViable ?? ideas[0];
+    const chosenId = chosen.id ?? chosen.idea_id;
+    if (!chosenId || autoPickedRef.current === chosenId) return;
+    autoPickedRef.current = chosenId;
+
+    const result: BrainstormResult = {
+      ideaId: chosenId,
+      ideaTitle: chosen.title,
+      ideaVerdict: chosen.verdict,
+      ideaCoreTension: chosen.core_tension || '',
+      brainstormSessionId: sessionId || undefined,
+    };
+    setSelectedIdeaId(chosenId);
+    tracker.trackAction('idea.auto_selected', {
+      ideaId: chosenId,
+      ideaTitle: result.ideaTitle,
+      reason: matchByPick ? 'ai_pick' : firstViable ? 'first_viable' : 'fallback_first',
+    });
+    actor.send({ type: 'BRAINSTORM_COMPLETE', result });
+  }, [
+    autoMode,
+    autoPaused,
+    ideas,
+    recommendation,
+    brainstormResult,
+    running,
+    regenerating,
+    sessionId,
+    actor,
+    tracker,
+  ]);
 
   async function handleRun() {
     if (mode !== 'reference_guided' && !topic.trim()) {
@@ -471,7 +559,7 @@ export function BrainstormEngine({
 
       setIdeas(mapped);
       if (sessionId && mapped.length > 0) {
-        onStageProgress?.({ brainstormSessionId: sessionId });
+        actor.send({ type: 'STAGE_PROGRESS', stage: 'brainstorm', partial: { brainstormSessionId: sessionId } });
       }
       tracker.trackCompleted({
         sessionId: sessionId || undefined,
@@ -533,7 +621,7 @@ export function BrainstormEngine({
       setRecommendation(json.data.recommendation as { pick?: string; rationale?: string });
     }
     if (newIdeas.length > 0) {
-      onStageProgress?.({ brainstormSessionId: manualSessionId });
+      actor.send({ type: 'STAGE_PROGRESS', stage: 'brainstorm', partial: { brainstormSessionId: manualSessionId } });
     }
     setManualSessionId(null);
     tracker.trackCompleted({
@@ -555,7 +643,7 @@ export function BrainstormEngine({
     setSessionId(null);
     setIdeas([]);
     setRecommendation(null);
-    onStageProgress?.({ brainstormSessionId: undefined });
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'brainstorm', partial: { brainstormSessionId: undefined } });
     toast.success('Manual session abandoned');
   }
 
@@ -626,7 +714,7 @@ export function BrainstormEngine({
       coreTension: result.ideaCoreTension,
     });
 
-    onComplete(result);
+    actor.send({ type: 'BRAINSTORM_COMPLETE', result });
   }
 
   const selectedIdea = ideas.find(
@@ -640,15 +728,24 @@ export function BrainstormEngine({
   if (engineMode === 'import' && !initialSession) {
     return (
       <div className="space-y-6">
-        <ContextBanner stage="brainstorm" context={context} />
+        <ContextBanner stage="brainstorm" context={trackerContext} />
 
-        <div>
+        <div className="flex items-start justify-between gap-4">
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Lightbulb className="h-5 w-5" /> Brainstorm
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Import an idea from your library to continue.
-          </p>
+          {onModeChange && (
+            <Tabs value="import" onValueChange={(v) => onModeChange(v as 'generate' | 'import')}>
+              <TabsList>
+                <TabsTrigger value="generate" className="gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5" /> Generate
+                </TabsTrigger>
+                <TabsTrigger value="import" className="gap-1.5">
+                  <FolderOpen className="h-3.5 w-3.5" /> Import
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
         </div>
 
         <ImportPicker
@@ -678,12 +775,15 @@ export function BrainstormEngine({
               ideaCount: 1,
               source: 'library',
             });
-            onComplete({
-              ideaId: (item.id ?? item.idea_id) as string,
-              ideaTitle: item.title as string,
-              ideaVerdict: (item.verdict as string) ?? 'experimental',
-              ideaCoreTension: (item.core_tension as string) ?? '',
-            } as BrainstormResult);
+            actor.send({
+              type: 'BRAINSTORM_COMPLETE',
+              result: {
+                ideaId: (item.id ?? item.idea_id) as string,
+                ideaTitle: item.title as string,
+                ideaVerdict: (item.verdict as string) ?? 'experimental',
+                ideaCoreTension: (item.core_tension as string) ?? '',
+              } as BrainstormResult,
+            });
           }}
         />
       </div>
@@ -692,17 +792,31 @@ export function BrainstormEngine({
 
   return (
     <div className="space-y-6">
-      <ContextBanner stage="brainstorm" context={context} />
+      <ContextBanner stage="brainstorm" context={trackerContext} />
 
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Lightbulb className="h-5 w-5" /> Brainstorm
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {isSessionDetail
-            ? `Session: ${topic_display || 'Untitled'} · ${ideas.length} ideas`
-            : 'Generate ideas for this channel using AI. Each brainstorm costs 50 credits.'}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Lightbulb className="h-5 w-5" /> Brainstorm
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {isSessionDetail
+              ? `Session: ${topic_display || 'Untitled'} · ${ideas.length} ideas`
+              : 'Generate ideas for this channel using AI. Each brainstorm costs 50 credits.'}
+          </p>
+        </div>
+        {onModeChange && !isSessionDetail && (
+          <Tabs value="generate" onValueChange={(v) => onModeChange(v as 'generate' | 'import')}>
+            <TabsList>
+              <TabsTrigger value="generate" className="gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" /> Generate
+              </TabsTrigger>
+              <TabsTrigger value="import" className="gap-1.5">
+                <FolderOpen className="h-3.5 w-3.5" /> Import
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
       </div>
 
       {/* Show form only if not in session detail mode */}

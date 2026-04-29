@@ -12,11 +12,10 @@ import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
 import { checkCredits } from '../lib/credits.js';
+import { calculateDraftCost } from '../lib/calculate-draft-cost.js';
+import { loadCreditSettings } from '../lib/credit-settings.js';
 import { inngest } from '../jobs/client.js';
 import { emitJobEvent } from '../jobs/emitter.js';
-
-const FORMAT_COSTS: Record<string, number> = { blog: 200, video: 200, shorts: 100, podcast: 150 };
-const CANONICAL_CORE_COST = 80;
 
 const bulkDraftSchema = z.object({
   channelId: z.string().uuid(),
@@ -57,9 +56,10 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
       const sb = createServiceClient();
 
       // Pre-flight cost check (skip se ollama).
+      const creditSettings = await loadCreditSettings(sb);
       const perDraft = body.provider === 'ollama'
         ? 0
-        : (FORMAT_COSTS[body.type] ?? 200) + CANONICAL_CORE_COST;
+        : calculateDraftCost(body.type, creditSettings) + creditSettings.costCanonicalCore;
       const totalCost = perDraft * body.titles.length;
       if (totalCost > 0) await checkCredits(orgId, request.userId, totalCost);
 

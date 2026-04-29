@@ -46,7 +46,14 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gera
     }, [open]);
 
     useEffect(() => {
-        if (status === "completed") onComplete?.();
+        if (status === "completed") {
+            // Hold the modal open for a moment so the user can see the green
+            // checkmark + final event log before the parent removes us. Without
+            // this delay autopilot can flash the modal open→close in <100ms
+            // and the run looks like it never happened.
+            const t = setTimeout(() => onComplete?.(), 1500);
+            return () => clearTimeout(t);
+        }
         if (status === "failed") {
             const msg = events.find((e) => e.stage === "failed")?.message ?? "Falhou";
             onFailed?.(msg);

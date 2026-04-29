@@ -59,8 +59,12 @@ INPUT_JSON="$(printf '%s' "$PAYLOAD" | jq -c '.tool_input // {}')"
 field() { printf '%s' "$INPUT_JSON" | jq -r --arg k "$1" '.[$k] // empty'; }
 
 # Combined secret regex — any one match triggers a block.
-# Patterns favor specificity to reduce false positives.
-readonly SECRET_REGEX='(sk-ant-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----|SUPABASE_SERVICE_ROLE_KEY[[:space:]]*[=:][[:space:]]*[^[:space:]"\x27\x60]{20,}|INTERNAL_API_KEY[[:space:]]*[=:][[:space:]]*[^[:space:]"\x27\x60]{12,}|ENCRYPTION_SECRET[[:space:]]*[=:][[:space:]]*[^[:space:]"\x27\x60]{32,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|ghp_[A-Za-z0-9]{36,}|glpat-[A-Za-z0-9_-]{20,})'
+# Patterns favor specificity to reduce false positives. The named-key
+# patterns (SUPABASE_SERVICE_ROLE_KEY=, INTERNAL_API_KEY=, ENCRYPTION_SECRET=)
+# require a QUOTED value so code references like `process.env.X` and
+# `import.meta.env.X` don't match. Real JWT/Supabase keys are still caught
+# by the generic eyJ... pattern regardless of whether they're quoted.
+readonly SECRET_REGEX='(sk-ant-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----|SUPABASE_SERVICE_ROLE_KEY[[:space:]]*[=:][[:space:]]*["\x27\x60][^"\x27\x60]{20,}["\x27\x60]|INTERNAL_API_KEY[[:space:]]*[=:][[:space:]]*["\x27\x60][^"\x27\x60]{12,}["\x27\x60]|ENCRYPTION_SECRET[[:space:]]*[=:][[:space:]]*["\x27\x60][^"\x27\x60]{32,}["\x27\x60]|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|ghp_[A-Za-z0-9]{36,}|glpat-[A-Za-z0-9_-]{20,})'
 
 # Paths that can never be written/edited by an agent call.
 # Note: `.env.example` and `.env.sample` are EXPLICITLY allowed (templates

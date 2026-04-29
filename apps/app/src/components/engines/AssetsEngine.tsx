@@ -9,21 +9,29 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import {
   Loader2, ArrowRight, Check, Upload, Image as ImageIcon,
-  Sparkles, Palette, Trash2, Link2, ChevronDown, ChevronUp, Copy,
+  Sparkles, FolderOpen, Palette, Trash2, Link2, ChevronDown, ChevronUp, Copy,
   ClipboardPaste, SkipForward,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ManualOutputDialog } from './ManualOutputDialog';
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
+import { useSelector } from '@xstate/react';
+import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
 import { getPersonaTheme } from './utils/personaTheme';
-import type { BaseEngineProps, AssetsResult } from './types';
+import type { AssetsResult, PipelineContext, PipelineStage } from './types';
 
 /* ── Types ── */
 
-type AssetPhase = 'briefs' | 'refine' | 'images';
+// Stepper phases. 'images' is the AI generation step (kept verbatim so
+// the autopilot wiring's `phase === 'images'` checks stay valid).
+// 'approve' is the new final step where the user reviews / overrides
+// generated images before clicking Finish & Save.
+type AssetPhase = 'briefs' | 'refine' | 'images' | 'approve';
 type ImagesMode = 'brief' | 'no-briefs';
 
 interface SlotCard {
@@ -60,9 +68,14 @@ interface ContentAsset {
   sourceType: string;
 }
 
-interface AssetsEngineProps extends BaseEngineProps {
-  draftId?: string;
-  draftStatus?: string;
+/**
+ * Non-null invariant for `draft` — orchestrator gates render until draft is hydrated.
+ * Guard in the engine is defensive, not normal flow.
+ */
+interface AssetsEngineProps {
+  mode?: 'generate' | 'import';
+  onModeChange?: (m: 'generate' | 'import') => void;
+  draft: Record<string, unknown> | null;
 }
 
 interface NoBriefSection {
@@ -75,9 +88,10 @@ interface NoBriefSection {
 /* ── Constants ── */
 
 const ASSETS_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'manual'];
-type ImageProvider = 'gemini' | 'manual';
+type ImageProvider = 'gemini' | 'openai' | 'manual';
 const IMAGE_PROVIDERS: { id: ImageProvider; label: string; hint: string }[] = [
   { id: 'gemini', label: 'Nano-banana (Gemini)', hint: 'Runs the image model directly.' },
+  { id: 'openai', label: 'GPT Image (OpenAI)', hint: 'Uses gpt-image-1 via the OpenAI API.' },
   { id: 'manual', label: 'Manual (Axiom)', hint: 'Emits the prompt to Axiom; upload the resulting image when ready.' },
 ];
 
@@ -86,6 +100,13 @@ const IMAGE_PROVIDERS: { id: ImageProvider; label: string; hint: string }[] = [
 function slotToRole(slot: string): string {
   if (slot === 'featured') return 'featured_image';
   return `body_${slot}`;
+}
+
+function roleToSlot(role: string | null): string | null {
+  if (!role) return null;
+  if (role === 'featured_image') return 'featured';
+  if (role.startsWith('body_')) return role.slice(5);
+  return null;
 }
 
 function findSlotsArray(obj: unknown): Array<Record<string, unknown>> | null {
@@ -170,19 +191,59 @@ interface PendingUpload {
 
 /* ── Component ── */
 
-export function AssetsEngine({
-  mode: engineMode,
-  channelId,
-  context,
-  draftId,
-  draftStatus,
-  onComplete,
-  onBack,
-}: AssetsEngineProps) {
-  const [phase, setPhase] = useState<AssetPhase>('briefs');
+export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEngineProps) {
+  const actor = usePipelineActor();
+  const channelId = useSelector(actor, (s) => s.context.channelId);
+  const projectId = useSelector(actor, (s) => s.context.projectId);
+  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
+  const researchResult = useSelector(actor, (s) => s.context.stageResults.research);
+  const draftResult = useSelector(actor, (s) => s.context.stageResults.draft);
+  const draftId = draftResult?.draftId;
+  const draftStatus = draft?.status as string | undefined;
+
+  const trackerContext: PipelineContext = {
+    channelId,
+    projectId,
+    ideaId: brainstormResult?.ideaId,
+    ideaTitle: brainstormResult?.ideaTitle,
+    ideaVerdict: brainstormResult?.ideaVerdict,
+    ideaCoreTension: brainstormResult?.ideaCoreTension,
+    brainstormSessionId: brainstormResult?.brainstormSessionId,
+    researchSessionId: researchResult?.researchSessionId,
+    researchPrimaryKeyword: researchResult?.primaryKeyword,
+    researchSecondaryKeywords: researchResult?.secondaryKeywords,
+    researchSearchIntent: researchResult?.searchIntent,
+    draftId: draftResult?.draftId,
+    draftTitle: draftResult?.draftTitle,
+    personaId: draftResult?.personaId,
+    personaName: draftResult?.personaName,
+    personaSlug: draftResult?.personaSlug,
+    personaWpAuthorId: draftResult?.personaWpAuthorId,
+  };
+
+  function navigate(toStage?: PipelineStage) {
+    actor.send({ type: 'NAVIGATE', toStage: toStage ?? 'review' });
+  }
+
+  // Sync-init from the draft prop so re-entry from a later stage lands
+  // immediately on the right phase instead of flashing Briefs while the
+  // async fetchAssets effect resolves. Best-effort: if draft is missing
+  // or has no asset_briefs, we fall through to Briefs and let the effect
+  // promote later.
+  const initialBriefs = (
+    (draft?.draft_json as { asset_briefs?: { visualDirection?: VisualDirection | null; slots?: SlotCard[] } } | undefined)
+      ?.asset_briefs
+  );
+  const [phase, setPhase] = useState<AssetPhase>(() =>
+    (initialBriefs?.slots && initialBriefs.slots.length > 0) ? 'approve' : 'briefs',
+  );
   const [imagesMode, setImagesMode] = useState<ImagesMode>('brief');
-  const [visualDirection, setVisualDirection] = useState<VisualDirection | null>(null);
-  const [slotCards, setSlotCards] = useState<SlotCard[]>([]);
+  const [visualDirection, setVisualDirection] = useState<VisualDirection | null>(
+    () => initialBriefs?.visualDirection ?? null,
+  );
+  const [slotCards, setSlotCards] = useState<SlotCard[]>(
+    () => initialBriefs?.slots ?? [],
+  );
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
   const [existingAssets, setExistingAssets] = useState<ContentAsset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -197,15 +258,99 @@ export function AssetsEngine({
   const [imageProvider, setImageProvider] = useState<ImageProvider>('gemini');
   const [generatingAll, setGeneratingAll] = useState(false);
   const inFlightRef = useRef(false);
-  const tracker = usePipelineTracker('assets', context);
+  const tracker = usePipelineTracker('assets', trackerContext);
 
-  // Fetch existing assets on mount → skip to done if present
+  // ── Auto-pilot wiring ────────────────────────────────────────────
+  // Drives the engine after the user confirms the assets dialog in
+  // PipelineOrchestrator (engineMode flips to 'generate' on confirm).
+  // Path A — generate fresh: briefs → auto-skip refine → generate-all →
+  //   handleFinish dispatches ASSETS_COMPLETE.
+  // Path B — existing assets already present: handleFinish dispatches
+  //   immediately with the existing IDs.
+  const autoMode = useSelector(actor, (s) => s.context.mode);
+  const autoPaused = useSelector(actor, (s) => s.context.paused);
+  const assetsResult = useSelector(actor, (s) => s.context.stageResults.assets);
+
+  useAutoPilotTrigger({
+    stage: 'assets',
+    canFire: () =>
+      !!draftId &&
+      !loading &&
+      !generatingBriefs &&
+      !generatingAll &&
+      !manualBriefsOpen &&
+      slotCards.length === 0 &&
+      existingAssets.length === 0 &&
+      phase === 'briefs' &&
+      engineMode === 'generate' &&
+      !assetsResult,
+    fire: handleGenerateBriefs,
+  });
+
+  useEffect(() => {
+    if (autoMode !== 'auto' || autoPaused) return;
+    if (assetsResult) return;
+    if (phase === 'refine' && slotCards.length > 0) {
+      setImagesMode('brief');
+      setPhase('images');
+    }
+  }, [autoMode, autoPaused, phase, slotCards.length, assetsResult]);
+
+  const autoGenAllRef = useRef(false);
+  useEffect(() => {
+    if (autoMode !== 'auto' || autoPaused) return;
+    if (assetsResult) return;
+    if (phase !== 'images') return;
+    if (slotCards.length === 0) return;
+    if (Object.keys(slotAssets).length > 0) return;
+    if (generatingAll || generatingSlot) return;
+    if (autoGenAllRef.current) return;
+    autoGenAllRef.current = true;
+    void handleGenerateAllSlots();
+  // handleGenerateAllSlots is a stable function declaration in this scope.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoMode, autoPaused, phase, slotCards.length, slotAssets, generatingAll, generatingSlot, assetsResult]);
+
+  const autoFinishRef = useRef(false);
+  useEffect(() => {
+    if (autoMode !== 'auto' || autoPaused) return;
+    if (assetsResult) return;
+    if (phase !== 'images') return;
+    if (finishing) return;
+    if (autoFinishRef.current) return;
+    const hasGeneratedAll =
+      slotCards.length > 0 && Object.keys(slotAssets).length >= slotCards.length;
+    const hasExistingOnly = slotCards.length === 0 && existingAssets.length > 0;
+    if (!hasGeneratedAll && !hasExistingOnly) return;
+    autoFinishRef.current = true;
+    void handleFinish();
+  // handleFinish is a stable function declaration in this scope.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoMode, autoPaused, phase, slotCards.length, slotAssets, existingAssets.length, finishing, assetsResult]);
+
+  // Fetch existing assets on mount. Hydration priority:
+  //   1. draft_json.asset_briefs — full briefs persisted by the engine
+  //   2. existing assets + asset-prompts section titles — best-effort rebuild
+  //      for legacy drafts that don't have asset_briefs yet
+  //   3. nothing — start fresh
+  // Either way, if assets exist we land on the Images phase but keep Refine
+  // reachable (slotCards present + imagesMode='brief').
   useEffect(() => {
     async function fetchAssets() {
       try {
-        const res = await fetch(`/api/assets?content_id=${draftId}`);
-        const { data } = await res.json();
+        const persistedBriefs = (
+          (draft?.draft_json as { asset_briefs?: { visualDirection?: VisualDirection | null; slots?: SlotCard[] } } | undefined)
+            ?.asset_briefs
+        );
+
+        const [assetsRes, promptsRes] = await Promise.all([
+          fetch(`/api/assets?content_id=${draftId}`),
+          fetch(`/api/content-drafts/${draftId}/asset-prompts`, { method: 'POST' })
+            .catch(() => null),
+        ]);
+        const { data } = await assetsRes.json();
         const items = Array.isArray(data) ? data : (data?.assets ?? data?.items ?? []);
+
         if (items.length > 0) {
           const mapped = (items as Array<Record<string, unknown>>).map((a) => ({
             id: a.id as string,
@@ -216,9 +361,60 @@ export function AssetsEngine({
             sourceType: (a.source as string) ?? 'ai_generated',
           }));
           setExistingAssets(mapped);
-          setPhase('images');
+        }
+
+        // Path 1: prefer persisted briefs.
+        if (persistedBriefs?.slots && persistedBriefs.slots.length > 0) {
+          setVisualDirection(persistedBriefs.visualDirection ?? null);
+          setSlotCards(persistedBriefs.slots);
+          setImagesMode('brief');
+          // Images already exist → land on Approve so user sees results;
+          // no images yet → land on Refine to let user re-enter generation.
+          setPhase(items.length > 0 ? 'approve' : 'refine');
+          return;
+        }
+
+        if (items.length === 0) return;
+
+        // Path 2: rebuild from assets + section titles.
+        let titlesBySlot: Record<string, string> = {};
+        if (promptsRes?.ok) {
+          try {
+            const promptsJson = await promptsRes.json();
+            const sections = (promptsJson.data?.sections ?? []) as Array<{
+              slot: string; section_title: string;
+            }>;
+            titlesBySlot = Object.fromEntries(
+              sections.map((s) => [s.slot, s.section_title]),
+            );
+          } catch {
+            // Title hydration is best-effort.
+          }
+        }
+
+        const cards: SlotCard[] = (items as Array<Record<string, unknown>>)
+          .map((a) => {
+            const slot = roleToSlot((a.role as string) ?? null);
+            if (!slot) return null;
+            return {
+              slot,
+              sectionTitle: titlesBySlot[slot] ?? slot,
+              promptBrief: (a.prompt as string) ?? '',
+              styleRationale: '',
+              aspectRatio: '16:9',
+              altText: (a.alt_text as string) ?? '',
+            } satisfies SlotCard;
+          })
+          .filter((c): c is SlotCard => c !== null);
+
+        if (cards.length > 0) {
+          setSlotCards(cards);
+          setImagesMode('brief');
+        } else {
           setImagesMode('no-briefs');
         }
+        // Items already exist → user is reviewing, land on Approve.
+        setPhase('approve');
       } catch {
         // No existing assets, start fresh
       } finally {
@@ -227,6 +423,9 @@ export function AssetsEngine({
     }
     if (draftId) void fetchAssets();
     else setLoading(false);
+    // `draft` is intentionally excluded — sync-init reads draft on first render
+    // and the network refresh below doesn't need to refire when draft mutates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftId]);
 
   useEffect(() => {
@@ -273,6 +472,23 @@ export function AssetsEngine({
     void fetchNoBriefSections();
   }, [draftId, imagesMode, noBriefSections.length]);
 
+  /* ── Persist briefs to draft_json.asset_briefs so they survive reloads ── */
+  const persistBriefs = useCallback(
+    async (visual: VisualDirection | null, slots: SlotCard[]) => {
+      if (!draftId || slots.length === 0) return;
+      try {
+        await fetch(`/api/content-drafts/${draftId}/asset-briefs`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ visualDirection: visual, slots }),
+        });
+      } catch {
+        // Persistence is best-effort; in-memory state still works for this session.
+      }
+    },
+    [draftId],
+  );
+
   /* ── Manual mode: import BC_ASSETS_OUTPUT ── */
   const handleManualImport = useCallback(async (parsed: unknown) => {
     const result = parseAssetsOutput(parsed);
@@ -285,8 +501,9 @@ export function AssetsEngine({
     setSlotCards(result.slots);
     setImagesMode('brief');
     setPhase('refine');
+    void persistBriefs(result.visual, result.slots);
     toast.success(`Imported ${result.slots.length} prompt briefs`);
-  }, []);
+  }, [persistBriefs]);
 
   /* ── Generate briefs via AI or manual ── */
   async function handleGenerateBriefs() {
@@ -318,10 +535,11 @@ export function AssetsEngine({
   }
 
   function handleSkipBriefs() {
+    // No briefs = no AI generation; go straight to upload-only Approve phase.
     setImagesMode('no-briefs');
     setSlotCards([]);
     setVisualDirection(null);
-    setPhase('images');
+    setPhase('approve');
   }
 
 
@@ -359,7 +577,7 @@ export function AssetsEngine({
       return;
     }
 
-    // AI (Gemini): replace any existing asset for this role so the new one wins.
+    // AI provider: replace any existing asset for this role so the new one wins.
     const existing = existingAssets.find((a) => a.role === role);
     if (existing) {
       await fetch(`/api/assets/${existing.id}`, { method: 'DELETE' }).catch(() => null);
@@ -375,7 +593,7 @@ export function AssetsEngine({
         role,
         aspectRatio: card.aspectRatio,
         numImages: 1,
-        provider: 'gemini',
+        provider: imageProvider,
       }),
     });
     const json = await res.json();
@@ -406,7 +624,7 @@ export function AssetsEngine({
     setGeneratingSlot(card.slot);
     try {
       await generateSlotImage(card);
-      if (imageProvider === 'gemini') toast.success(`Generated image for ${card.slot}`);
+      if (imageProvider !== 'manual') toast.success(`Generated image for ${card.slot}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Image generation failed');
     } finally {
@@ -422,7 +640,7 @@ export function AssetsEngine({
         setGeneratingSlot(card.slot);
         await generateSlotImage(card);
       }
-      if (imageProvider === 'gemini') toast.success('All images generated');
+      if (imageProvider !== 'manual') toast.success('All images generated');
       else toast.success('All prompts emitted to Axiom');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Bulk generation failed');
@@ -470,7 +688,7 @@ export function AssetsEngine({
         const assetIds = existingAssets.map((a) => a.id);
         const featuredUrl = existingAssets.find((a) => a.role === 'featured_image')?.url;
         tracker.trackCompleted({ draftId, assetCount: existingAssets.length, assetIds, featuredImageUrl: featuredUrl });
-        onComplete({ assetIds, featuredImageUrl: featuredUrl } as AssetsResult);
+        actor.send({ type: 'ASSETS_COMPLETE', result: { assetIds, featuredImageUrl: featuredUrl } as AssetsResult });
         return;
       }
 
@@ -569,7 +787,7 @@ export function AssetsEngine({
         assetIds,
         featuredImageUrl: featuredUrl,
       });
-      onComplete({ assetIds, featuredImageUrl: featuredUrl } as AssetsResult);
+      actor.send({ type: 'ASSETS_COMPLETE', result: { assetIds, featuredImageUrl: featuredUrl } as AssetsResult });
     } catch (e) {
       tracker.trackFailed(e instanceof Error ? e.message : 'Failed to save images');
       toast.error('Failed to save images');
@@ -579,17 +797,37 @@ export function AssetsEngine({
     }
   }
 
+  /* ── Defensive guard — orchestrator gates render until draft hydrates ── */
+  if (!draft) {
+    return (
+      <Card>
+        <CardContent className="py-6">
+          <p className="text-sm text-destructive">Draft not loaded. Please refresh.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   /* ── Import mode ── */
   if (engineMode === 'import' && !draftId) {
     return (
       <div className="space-y-6">
-        <ContextBanner stage="assets" context={context} onBack={onBack} />
+        <ContextBanner stage="assets" context={trackerContext} onBack={navigate} />
         <div className="space-y-4">
-          <div>
+          <div className="flex items-start justify-between gap-4">
             <h1 className="text-2xl font-bold">Assets</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Import assets from your library.
-            </p>
+            {onModeChange && (
+              <Tabs value="import" onValueChange={(v) => onModeChange(v as 'generate' | 'import')}>
+                <TabsList>
+                  <TabsTrigger value="generate" className="gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5" /> Generate
+                  </TabsTrigger>
+                  <TabsTrigger value="import" className="gap-1.5">
+                    <FolderOpen className="h-3.5 w-3.5" /> Import
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
           </div>
           <ImportPicker
             entityType="content-assets"
@@ -620,10 +858,13 @@ export function AssetsEngine({
               );
             }}
             onSelect={(item) => {
-              onComplete({
-                assetIds: [item.id as string],
-                featuredImageUrl: (item.url as string | undefined) || undefined,
-              } as AssetsResult);
+              actor.send({
+                type: 'ASSETS_COMPLETE',
+                result: {
+                  assetIds: [item.id as string],
+                  featuredImageUrl: (item.url as string | undefined) || undefined,
+                } as AssetsResult,
+              });
             }}
           />
         </div>
@@ -641,44 +882,58 @@ export function AssetsEngine({
 
   return (
     <div className="space-y-6">
-      <ContextBanner stage="assets" context={context} onBack={onBack} />
+      <ContextBanner stage="assets" context={trackerContext} onBack={navigate} />
 
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <ImageIcon className="h-5 w-5" /> Assets
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Generate prompt briefs, refine them, then upload images for each section.
-        </p>
-        {context.personaName && (() => {
-          const theme = getPersonaTheme(context.personaSlug);
-          return (
-            <div
-              className="mt-3 mb-2 inline-flex items-center gap-2.5 rounded-full border px-3 py-1.5 backdrop-blur-sm"
-              style={{
-                background: `rgba(${theme.glow}, 0.1)`,
-                borderColor: `rgba(${theme.glow}, 0.35)`,
-              }}
-              aria-label={`Authored by ${context.personaName}`}
-            >
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <ImageIcon className="h-5 w-5" /> Assets
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Generate prompt briefs, refine them, then upload images for each section.
+          </p>
+          {trackerContext.personaName && (() => {
+            const theme = getPersonaTheme(trackerContext.personaSlug);
+            return (
               <div
-                className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                className="mt-3 mb-2 inline-flex items-center gap-2.5 rounded-full border px-3 py-1.5 backdrop-blur-sm"
                 style={{
-                  background: theme.gradient,
-                  boxShadow: `0 4px 12px -2px rgba(${theme.glow}, 0.5)`,
+                  background: `rgba(${theme.glow}, 0.1)`,
+                  borderColor: `rgba(${theme.glow}, 0.35)`,
                 }}
+                aria-label={`Authored by ${trackerContext.personaName}`}
               >
-                {context.personaName[0]}
+                <div
+                  className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                  style={{
+                    background: theme.gradient,
+                    boxShadow: `0 4px 12px -2px rgba(${theme.glow}, 0.5)`,
+                  }}
+                >
+                  {trackerContext.personaName![0]}
+                </div>
+                <span
+                  className="text-xs font-semibold tracking-wide"
+                  style={{ color: theme.accent }}
+                >
+                  {trackerContext.personaName}
+                </span>
               </div>
-              <span
-                className="text-xs font-semibold tracking-wide"
-                style={{ color: theme.accent }}
-              >
-                {context.personaName}
-              </span>
-            </div>
-          );
-        })()}
+            );
+          })()}
+        </div>
+        {onModeChange && (
+          <Tabs value="generate" onValueChange={(v) => onModeChange(v as 'generate' | 'import')}>
+            <TabsList>
+              <TabsTrigger value="generate" className="gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" /> Generate
+              </TabsTrigger>
+              <TabsTrigger value="import" className="gap-1.5">
+                <FolderOpen className="h-3.5 w-3.5" /> Import
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
       </div>
 
       {/* Phase stepper */}
@@ -686,13 +941,15 @@ export function AssetsEngine({
         {([
           { key: 'briefs' as const, label: 'Briefs' },
           { key: 'refine' as const, label: 'Refine', disabled: imagesMode === 'no-briefs' || slotCards.length === 0 },
-          { key: 'images' as const, label: 'Images' },
+          { key: 'images' as const, label: 'Generate', disabled: imagesMode === 'no-briefs' || slotCards.length === 0 },
+          { key: 'approve' as const, label: 'Approve' },
         ]).map((step, i, arr) => {
           const active = phase === step.key;
           const reached =
             step.key === 'briefs' ||
             (step.key === 'refine' && slotCards.length > 0) ||
-            step.key === 'images';
+            (step.key === 'images' && slotCards.length > 0) ||
+            step.key === 'approve';
           const canClick = reached && !step.disabled;
           return (
             <div key={step.key} className="flex items-center gap-3">
@@ -934,10 +1191,14 @@ export function AssetsEngine({
           {/* Actions */}
           <div className="flex items-center gap-3">
             <Button
-              onClick={() => { setImagesMode('brief'); setPhase('images'); }}
+              onClick={() => {
+                void persistBriefs(visualDirection, slotCards);
+                setImagesMode('brief');
+                setPhase('images');
+              }}
               className="gap-2"
             >
-              Continue to Images
+              Continue to Generate
               <ArrowRight className="h-4 w-4" />
             </Button>
             <Button variant="outline" onClick={() => setPhase('briefs')}>
@@ -947,7 +1208,7 @@ export function AssetsEngine({
         </div>
       )}
 
-      {/* ═══ PHASE 3: Upload Images ═══ */}
+      {/* ═══ PHASE 3: Generate Images (AI generation only) ═══ */}
       {phase === 'images' && imagesMode === 'brief' && (
         <div className="space-y-4">
           {/* Bulk action bar */}
@@ -956,7 +1217,7 @@ export function AssetsEngine({
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Image provider
               </Label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {IMAGE_PROVIDERS.map((p) => (
                   <button
                     key={p.id}
@@ -1012,6 +1273,7 @@ export function AssetsEngine({
                 generating={isGeneratingThis}
                 generateDisabled={!!generatingSlot || generatingAll}
                 generateProvider={imageProvider}
+                showUpload={false}
                 onGenerate={() => handleGenerateSlot(card)}
                 onFileStage={(file) => handleFileStage(card.slot, file)}
                 onUrlStage={(url) => handleUrlStage(card.slot, url)}
@@ -1030,10 +1292,60 @@ export function AssetsEngine({
           {/* Actions */}
           <div className="flex items-center gap-3">
             <Button
-              onClick={handleFinish}
-              disabled={finishing}
+              onClick={() => setPhase('approve')}
+              disabled={generatingAll || !!generatingSlot}
               className="gap-2"
             >
+              Continue to Approve
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setPhase('refine')}
+              disabled={generatingAll || !!generatingSlot}
+            >
+              Back to Refine
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ PHASE 4: Approve (review + override + finalize) ═══ */}
+      {phase === 'approve' && imagesMode === 'brief' && (
+        <div className="space-y-4">
+          {slotCards.map((card, i) => {
+            const role = slotToRole(card.slot);
+            const existing = existingAssets.find((a) => a.role === role) ?? slotAssets[card.slot] ?? null;
+            const pending = pendingUploads.find((p) => p.slot === card.slot);
+            const isGeneratingThis = generatingSlot === card.slot;
+            return (
+              <BriefImageSlotCard
+                key={card.slot}
+                card={card}
+                visualDirection={visualDirection}
+                existingAsset={existing}
+                pendingPreview={pending?.preview}
+                generating={isGeneratingThis}
+                generateDisabled={!!generatingSlot || generatingAll}
+                generateProvider={imageProvider}
+                showUpload
+                onGenerate={() => handleGenerateSlot(card)}
+                onFileStage={(file) => handleFileStage(card.slot, file)}
+                onUrlStage={(url) => handleUrlStage(card.slot, url)}
+                onDeletePending={() => handleDeletePending(card.slot)}
+                onAltTextChange={(val) => {
+                  setSlotCards((prev) => {
+                    const updated = [...prev];
+                    if (updated[i]) updated[i] = { ...updated[i], altText: val };
+                    return updated;
+                  });
+                }}
+              />
+            );
+          })}
+
+          <div className="flex items-center gap-3">
+            <Button onClick={handleFinish} disabled={finishing} className="gap-2">
               {finishing ? (
                 <><Loader2 className="h-4 w-4 animate-spin" />Saving…</>
               ) : (
@@ -1042,17 +1354,17 @@ export function AssetsEngine({
             </Button>
             <Button
               variant="outline"
-              onClick={() => setPhase('refine')}
+              onClick={() => setPhase('images')}
               disabled={finishing}
             >
-              Back to Refine
+              Back to Generate
             </Button>
           </div>
         </div>
       )}
 
-      {/* ═══ PHASE 3: Upload Images (no-briefs mode) ═══ */}
-      {phase === 'images' && imagesMode === 'no-briefs' && (
+      {/* ═══ PHASE 4: Approve (no-briefs mode — upload only) ═══ */}
+      {phase === 'approve' && imagesMode === 'no-briefs' && (
         <div className="space-y-4">
           {noBriefSections.length === 0 ? (
             <Card>
@@ -1106,6 +1418,10 @@ interface BriefImageSlotCardProps {
   generating: boolean;
   generateDisabled: boolean;
   generateProvider: ImageProvider;
+  /** When false, hides the Upload File / paste-URL / drag-drop affordances.
+   *  Used by the Generate phase to keep the UI focused on AI generation;
+   *  the Approve phase passes true to allow overrides. */
+  showUpload?: boolean;
   onGenerate: () => void;
   onFileStage: (file: File) => void;
   onUrlStage: (url: string) => void;
@@ -1116,6 +1432,7 @@ interface BriefImageSlotCardProps {
 function BriefImageSlotCard({
   card, visualDirection, existingAsset, pendingPreview,
   generating, generateDisabled, generateProvider,
+  showUpload = true,
   onGenerate, onFileStage, onUrlStage, onDeletePending, onAltTextChange,
 }: BriefImageSlotCardProps) {
   const [urlInput, setUrlInput] = useState('');
@@ -1207,41 +1524,45 @@ function BriefImageSlotCard({
               : existingAsset ? 'Regenerate with AI' : 'Generate with AI'}
           </Button>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) onFileStage(file);
-            }}
-          />
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => fileInputRef.current?.click()}>
-            <Upload className="h-3.5 w-3.5" /> Upload File
-          </Button>
+          {showUpload && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) onFileStage(file);
+                }}
+              />
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => fileInputRef.current?.click()}>
+                <Upload className="h-3.5 w-3.5" /> Upload File
+              </Button>
 
-          <div className="flex items-center gap-1.5">
-            <Input
-              value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
-              placeholder="…or paste image URL"
-              className="text-xs h-8 w-56"
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 shrink-0"
-              disabled={!urlInput.trim()}
-              onClick={() => { onUrlStage(urlInput); setUrlInput(''); }}
-            >
-              <Link2 className="h-3.5 w-3.5" /> Add URL
-            </Button>
-          </div>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  placeholder="…or paste image URL"
+                  className="text-xs h-8 w-56"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 shrink-0"
+                  disabled={!urlInput.trim()}
+                  onClick={() => { onUrlStage(urlInput); setUrlInput(''); }}
+                >
+                  <Link2 className="h-3.5 w-3.5" /> Add URL
+                </Button>
+              </div>
+            </>
+          )}
         </div>
 
-        {/* Drag-drop zone when no preview yet */}
-        {!preview && (
+        {/* Drag-drop zone when no preview yet (only when uploads allowed) */}
+        {showUpload && !preview && (
           <div
             className={`rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
               dragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/20'

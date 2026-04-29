@@ -172,6 +172,13 @@ Sentry.setupFastifyErrorHandler(server);
 // in CLAUDE.md. Client never sees Postgres codes, Zod field paths, or
 // framework stack frames. Full detail stays in server logs (and Sentry).
 server.setErrorHandler((err, request, reply) => {
+  // ApiErrors are intentional, developer-controlled — pass code/message through directly.
+  if (err.name === 'ApiError') {
+    const apiErr = err as unknown as { status: number; code?: string; message: string }
+    request.log.error({ err, code: apiErr.code }, `error → ${apiErr.code}`)
+    return reply.status(apiErr.status).send({ data: null, error: { code: apiErr.code ?? 'ERROR', message: apiErr.message } })
+  }
+
   const status =
     typeof (err as { statusCode?: number }).statusCode === "number" &&
     (err as { statusCode: number }).statusCode >= 400 &&

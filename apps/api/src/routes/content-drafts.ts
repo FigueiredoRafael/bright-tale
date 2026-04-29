@@ -46,6 +46,7 @@ import {
 import { logAiUsage } from "../lib/axiom.js";
 import { deriveTier } from "@brighttale/shared/utils/reviewTierCompat";
 import { loadCreditSettings } from "../lib/credit-settings.js";
+import { calculateDraftCost } from "../lib/calculate-draft-cost.js";
 
 
 const createSchema = z.object({
@@ -488,12 +489,6 @@ export async function contentDraftsRoutes(
         const orgId = await getOrgId(request.userId);
 
         const creditSettings = await loadCreditSettings(createServiceClient());
-        const FORMAT_COSTS: Record<string, number> = {
-          blog: creditSettings.costBlog,
-          video: creditSettings.costVideo,
-          shorts: creditSettings.costShorts,
-          podcast: creditSettings.costPodcast,
-        };
         const CANONICAL_CORE_COST = creditSettings.costCanonicalCore;
 
         const type =
@@ -502,7 +497,7 @@ export async function contentDraftsRoutes(
         const totalCost =
           override.provider === "ollama"
             ? 0
-            : (FORMAT_COSTS[type] ?? 200) + CANONICAL_CORE_COST;
+            : calculateDraftCost(type, creditSettings) + CANONICAL_CORE_COST;
 
         if (totalCost > 0) await checkCredits(orgId, request.userId, totalCost);
         await emitJobEvent(id, "production", "queued", "Iniciando…");
@@ -949,15 +944,9 @@ export async function contentDraftsRoutes(
         const orgId = await getOrgId(request.userId);
 
         const creditSettings = await loadCreditSettings(sb);
-        const FORMAT_COSTS: Record<string, number> = {
-          blog: creditSettings.costBlog,
-          video: creditSettings.costVideo,
-          shorts: creditSettings.costShorts,
-          podcast: creditSettings.costPodcast,
-        };
 
         const type = (draft.type as string) ?? "blog";
-        const cost = FORMAT_COSTS[type] ?? 200;
+        const cost = calculateDraftCost(type, creditSettings);
 
         // Manual provider short-circuits the LLM call: build the prompt
         // synchronously, emit the full payload to Axiom, persist the draft in
@@ -1592,6 +1581,10 @@ export async function contentDraftsRoutes(
 
         await checkCredits(orgId, request.userId, REVIEW_COST);
 
+        // Emit progress events so the SSE-driven modal in ReviewEngine has
+        // something to render during this synchronous review run.
+        await emitJobEvent(id, "production", "queued", "Iniciando review…");
+
         // Build review input from draft context
         let ideaData: IdeaContext | null = null;
         if (draft.idea_id) {
@@ -1608,6 +1601,7 @@ export async function contentDraftsRoutes(
           researchData = rs?.approved_cards_json ?? rs?.cards_json ?? null;
         }
 
+        await emitJobEvent(id, "production", "loading_prompt", "Carregando agente de review…");
         let systemPrompt = (await loadAgentPrompt("review")) ?? undefined;
 
         // Inject channel context into system prompt
@@ -1650,6 +1644,14 @@ export async function contentDraftsRoutes(
               | undefined,
           });
 
+          await emitJobEvent(
+            id,
+            "production",
+            "calling_provider",
+            `Revisando com ${override.provider ?? "AI"}${override.model ? ` (${override.model})` : ""}…`,
+            { stage: "review", provider: override.provider, model: override.model },
+          );
+
           const response = await generateWithFallback(
             "review",
             (draft.model_tier as string) ?? "standard",
@@ -1671,6 +1673,12 @@ export async function contentDraftsRoutes(
           );
           result = response.result as Record<string, unknown>;
         } catch (agentError) {
+          await emitJobEvent(
+            id,
+            "production",
+            "failed",
+            (agentError as Error)?.message?.slice(0, 200) ?? "Review falhou",
+          );
           // On agent failure: mark failed, don't debit credits
           await (
             sb.from("content_drafts") as unknown as {
@@ -1781,6 +1789,14 @@ export async function contentDraftsRoutes(
             type: draftType,
             iteration: iterationCount,
           },
+        );
+
+        await emitJobEvent(
+          id,
+          "production",
+          "completed",
+          `Review concluída — ${tier}`,
+          { tier, score: reviewScore, verdict: newVerdict, iterationCount },
         );
 
         return reply.send({
@@ -2153,6 +2169,75 @@ export async function contentDraftsRoutes(
   );
 
   /**
+   * PUT /:id/asset-briefs — Persist the visual_direction + slot prompt briefs
+   * produced by agent-5-assets (or pasted manually) into draft_json.asset_briefs
+   * so the AssetsEngine can rehydrate them across reloads, enabling a user to
+   * return to the Refine phase after the page is closed.
+   */
+  fastify.put(
+    "/:id/asset-briefs",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        if (!request.userId)
+          throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        const { id } = request.params as { id: string };
+
+        const slotSchema = z.object({
+          slot: z.string(),
+          sectionTitle: z.string().default(""),
+          promptBrief: z.string().default(""),
+          styleRationale: z.string().default(""),
+          aspectRatio: z.string().default("16:9"),
+          altText: z.string().default(""),
+        });
+        const visualSchema = z.object({
+          style: z.string().default(""),
+          colorPalette: z.array(z.string()).default([]),
+          mood: z.string().default(""),
+          constraints: z.array(z.string()).default([]),
+        }).nullable();
+        const body = z
+          .object({
+            visualDirection: visualSchema.optional(),
+            slots: z.array(slotSchema),
+          })
+          .parse(request.body ?? {});
+
+        const draft = (await loadDraft(id)) as Record<string, unknown>;
+        const sb = createServiceClient();
+        const existing = (draft.draft_json ?? {}) as Record<string, unknown>;
+        const newDraftJson = {
+          ...existing,
+          asset_briefs: {
+            visualDirection: body.visualDirection ?? null,
+            slots: body.slots,
+            updated_at: new Date().toISOString(),
+          },
+        };
+
+        const { error: updateErr } = await (
+          sb.from("content_drafts") as unknown as {
+            update: (row: Record<string, unknown>) => {
+              eq: (c: string, v: string) => Promise<{ error: unknown }>;
+            };
+          }
+        )
+          .update({ draft_json: newDraftJson })
+          .eq("id", id);
+        if (updateErr) throw updateErr;
+
+        return reply.send({
+          data: { saved: true, slotCount: body.slots.length },
+          error: null,
+        });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  /**
    * POST /:id/images — F2-042. Generate a hero image for this draft using the
    * configured image provider. Stored as base64 in the draft's draft_json.images[].
    * Body: { prompt?: string, slot?: "hero" | "inline", aspectRatio?: string }.
@@ -2267,15 +2352,9 @@ export async function contentDraftsRoutes(
         }
 
         const creditSettings = await loadCreditSettings(sb);
-        const FORMAT_COSTS: Record<string, number> = {
-          blog: creditSettings.costBlog,
-          video: creditSettings.costVideo,
-          shorts: creditSettings.costShorts,
-          podcast: creditSettings.costPodcast,
-        };
 
         const type = (draft.type as string) ?? "blog";
-        const cost = FORMAT_COSTS[type] ?? 200;
+        const cost = calculateDraftCost(type, creditSettings);
         await checkCredits(orgId, request.userId, cost);
 
         let systemPrompt =

@@ -152,6 +152,9 @@ export interface CreditSettings {
   costPodcast: number;
   costCanonicalCore: number;
   costReview: number;
+  costResearchSurface: number;
+  costResearchMedium: number;
+  costResearchDeep: number;
 }
 
 export const DEFAULT_CREDIT_SETTINGS: CreditSettings = {
@@ -161,6 +164,9 @@ export const DEFAULT_CREDIT_SETTINGS: CreditSettings = {
   costPodcast: 150,
   costCanonicalCore: 80,
   costReview: 20,
+  costResearchSurface: 60,
+  costResearchMedium: 100,
+  costResearchDeep: 180,
 };
 
 export interface PipelineState {

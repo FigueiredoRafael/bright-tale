@@ -22,21 +22,27 @@ export const pipelineSettingsResponseSchema = z.object({
 export type PipelineSettingsResponse = z.infer<typeof pipelineSettingsResponseSchema>;
 
 export const updateCreditSettingsSchema = z.object({
-  costBlog:          z.number().int().min(0).optional(),
-  costVideo:         z.number().int().min(0).optional(),
-  costShorts:        z.number().int().min(0).optional(),
-  costPodcast:       z.number().int().min(0).optional(),
-  costCanonicalCore: z.number().int().min(0).optional(),
-  costReview:        z.number().int().min(0).optional(),
+  costBlog:             z.number().int().min(0).optional(),
+  costVideo:            z.number().int().min(0).optional(),
+  costShorts:           z.number().int().min(0).optional(),
+  costPodcast:          z.number().int().min(0).optional(),
+  costCanonicalCore:    z.number().int().min(0).optional(),
+  costReview:           z.number().int().min(0).optional(),
+  costResearchSurface:  z.number().int().min(0).optional(),
+  costResearchMedium:   z.number().int().min(0).optional(),
+  costResearchDeep:     z.number().int().min(0).optional(),
 });
 export type UpdateCreditSettingsInput = z.infer<typeof updateCreditSettingsSchema>;
 
 export const creditSettingsResponseSchema = z.object({
-  costBlog:          z.number(),
-  costVideo:         z.number(),
-  costShorts:        z.number(),
-  costPodcast:       z.number(),
-  costCanonicalCore: z.number(),
-  costReview:        z.number(),
+  costBlog:             z.number(),
+  costVideo:            z.number(),
+  costShorts:           z.number(),
+  costPodcast:          z.number(),
+  costCanonicalCore:    z.number(),
+  costReview:           z.number(),
+  costResearchSurface:  z.number(),
+  costResearchMedium:   z.number(),
+  costResearchDeep:     z.number(),
 });
 export type CreditSettingsResponse = z.infer<typeof creditSettingsResponseSchema>;

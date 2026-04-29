@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Loader2, BookOpen, FileText, Video, Zap, Mic, Check, ClipboardPaste,
-  ArrowRight, Sparkles, ChevronDown, ChevronUp, Pencil,
+  ArrowRight, Sparkles, FolderOpen, ChevronDown, ChevronUp, Pencil,
   Quote, TrendingUp, Target, MessageSquare, Megaphone, Link2,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -31,8 +31,10 @@ import { rankPersonas, type RankedPersona } from './utils/personaScoring';
 import { getPersonaTheme } from './utils/personaTheme';
 import { PersonaCarousel } from './PersonaCarousel';
 import type { Persona } from '@brighttale/shared/types/agents';
-import type { BaseEngineProps, DraftResult, CreditSettings } from './types';
-import { DEFAULT_CREDIT_SETTINGS } from './types';
+import { useSelector } from '@xstate/react';
+import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
+import type { DraftResult, PipelineContext } from './types';
 
 type DraftType = 'blog' | 'video' | 'shorts' | 'podcast';
 type DraftMode = 'ai' | 'manual';
@@ -52,22 +54,44 @@ interface ResearchOption {
   approved_cards_json?: unknown[];
 }
 
-interface DraftEngineProps extends BaseEngineProps {
+interface DraftEngineProps {
+  mode?: 'generate' | 'import';
+  onModeChange?: (m: 'generate' | 'import') => void;
   initialDraft?: Record<string, unknown>;
-  creditSettings?: CreditSettings;
 }
 
 const DRAFT_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
 
 export function DraftEngine({
   mode: engineMode,
-  channelId,
-  context,
-  onComplete,
+  onModeChange,
   initialDraft,
-  onStageProgress,
-  creditSettings = DEFAULT_CREDIT_SETTINGS,
 }: DraftEngineProps) {
+  const actor = usePipelineActor();
+  const channelId = useSelector(actor, (s) => s.context.channelId);
+  const projectId = useSelector(actor, (s) => s.context.projectId);
+  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
+  const researchResult = useSelector(actor, (s) => s.context.stageResults.research);
+  const draftResult = useSelector(actor, (s) => s.context.stageResults.draft);
+  const creditSettings = useSelector(actor, (s) => s.context.creditSettings);
+
+  const trackerContext: PipelineContext = {
+    channelId,
+    projectId,
+    ideaId: brainstormResult?.ideaId,
+    ideaTitle: brainstormResult?.ideaTitle,
+    ideaVerdict: brainstormResult?.ideaVerdict,
+    ideaCoreTension: brainstormResult?.ideaCoreTension,
+    brainstormSessionId: brainstormResult?.brainstormSessionId,
+    researchSessionId: researchResult?.researchSessionId,
+    researchPrimaryKeyword: researchResult?.primaryKeyword,
+    researchSecondaryKeywords: researchResult?.secondaryKeywords,
+    researchSearchIntent: researchResult?.searchIntent,
+    draftId: draftResult?.draftId,
+  };
+  const trackerContextRef = useRef<PipelineContext>(trackerContext);
+  trackerContextRef.current = trackerContext;
+
   const TYPES: { id: DraftType; label: string; icon: typeof FileText; cost: number }[] = [
     { id: 'blog', label: 'Blog', icon: FileText, cost: creditSettings.costBlog },
     { id: 'video', label: 'Video', icon: Video, cost: creditSettings.costVideo },
@@ -78,11 +102,9 @@ export function DraftEngine({
   const [research, setResearch] = useState<ResearchOption | null>(null);
 
   // Core settings — initialize title from pipeline context
-  const [title, setTitle] = useState(context.ideaTitle ?? '');
+  const [title, setTitle] = useState(brainstormResult?.ideaTitle ?? '');
   const titleRef = useRef(title);
   titleRef.current = title;
-  const contextRef = useRef(context);
-  contextRef.current = context;
   const [provider, setProvider] = useState<ProviderId>('ollama');
   const [model, setModel] = useState<string>('qwen2.5:7b');
 
@@ -120,15 +142,16 @@ export function DraftEngine({
   const { handleMaybeCreditsError } = useUpgrade();
 
   // Pipeline tracker
-  const tracker = usePipelineTracker('draft', context);
+  const tracker = usePipelineTracker('draft', trackerContext);
 
   // Fetch research data if researchSessionId is in context
   useEffect(() => {
-    if (!context.researchSessionId) return;
+    const rsid = researchResult?.researchSessionId;
+    if (!rsid) return;
 
     (async () => {
       try {
-        const res = await fetch(`/api/research-sessions/${context.researchSessionId}`);
+        const res = await fetch(`/api/research-sessions/${rsid}`);
         const json = await res.json();
         if (json?.data) {
           setResearch(json.data as ResearchOption);
@@ -140,7 +163,7 @@ export function DraftEngine({
         // silent
       }
     })();
-  }, [context.researchSessionId, title]);
+  }, [researchResult?.researchSessionId, title]);
 
   // Fetch personas on mount
   useEffect(() => {
@@ -159,16 +182,17 @@ export function DraftEngine({
 
   // Restore state from existing draft (when revisiting from review)
   useEffect(() => {
-    if (!context.draftId) return;
+    const ctxDraftId = draftResult?.draftId;
+    if (!ctxDraftId) return;
 
     (async () => {
       try {
-        const res = await fetch(`/api/content-drafts/${context.draftId}`);
+        const res = await fetch(`/api/content-drafts/${ctxDraftId}`);
         const json = await res.json();
         if (!json?.data) return;
         const d = json.data as Record<string, unknown>;
 
-        setDraftId(context.draftId as string);
+        setDraftId(ctxDraftId);
         if (d.title && typeof d.title === 'string' && !titleRef.current) setTitle(d.title);
         if (d.type && typeof d.type === 'string') setType(d.type as DraftType);
 
@@ -179,7 +203,7 @@ export function DraftEngine({
           const hasDraft = d.draft_json && typeof d.draft_json === 'object' && Object.keys(d.draft_json as Record<string, unknown>).length > 0;
           const phase_type = hasCore && !hasDraft ? 'core' : ((d.type as DraftType) ?? 'blog');
           setManualState({
-            draftId: context.draftId as string,
+            draftId: ctxDraftId,
             phase: phase_type,
           });
           return;
@@ -216,19 +240,19 @@ export function DraftEngine({
         // silent — will show fresh form
       }
     })();
-  }, [context.draftId]);
+  }, [draftResult?.draftId]);
 
   // Rank personas when data is ready
   useEffect(() => {
     if (personas.length === 0) return;
-    const ranked = rankPersonas(personas, contextRef.current, undefined);
+    const ranked = rankPersonas(personas, trackerContextRef.current, undefined);
     setRankedPersonas(ranked);
     // Pre-select the recommended persona
     const recommended = ranked.find((r) => r.isRecommended);
     if (recommended && !selectedPersonaId) {
       setSelectedPersonaId(recommended.persona.id);
     }
-  }, [personas, context.ideaTitle, context.researchPrimaryKeyword, selectedPersonaId]);
+  }, [personas, brainstormResult?.ideaTitle, researchResult?.primaryKeyword, selectedPersonaId]);
 
   // Derived: selected persona + its theme — drives color cascade through downstream cards
   const selectedPersona = personas.find((p) => p.id === selectedPersonaId);
@@ -241,6 +265,7 @@ export function DraftEngine({
     : undefined;
 
   // Fetch recommended model
+  const [recommendationLoaded, setRecommendationLoaded] = useState(false);
   useEffect(() => {
     (async () => {
       try {
@@ -257,9 +282,98 @@ export function DraftEngine({
         }
       } catch {
         // silent
+      } finally {
+        setRecommendationLoaded(true);
       }
     })();
   }, []);
+
+  // ── Auto-pilot wiring ─────────────────────────────────────────────
+  const autoMode = useSelector(actor, (s) => s.context.mode);
+  const autoPaused = useSelector(actor, (s) => s.context.paused);
+
+  // Phase 1: auto-fire canonical core generation when prerequisites are ready
+  useAutoPilotTrigger({
+    stage: 'draft',
+    canFire: () =>
+      phase === 'core' &&
+      !busy &&
+      !activeDraftId &&
+      !manualState &&
+      !!research &&
+      title.trim().length > 0 &&
+      !!selectedPersonaId &&
+      recommendationLoaded,
+    fire: handleGenerateCore,
+  });
+
+  // Phase 2: auto-approve core when it lands
+  const autoCoreApprovedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (autoMode !== 'auto' || autoPaused) return;
+    if (phase !== 'core-ready') return;
+    if (!canonicalCore || !draftId) return;
+    if (coreApproved) return;
+    if (autoCoreApprovedRef.current === draftId) return;
+    autoCoreApprovedRef.current = draftId;
+    setCoreApproved(true);
+  }, [autoMode, autoPaused, phase, canonicalCore, draftId, coreApproved]);
+
+  // Phase 3: auto-fire produce when core approved
+  const autoProducedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (autoMode !== 'auto' || autoPaused) return;
+    if (phase !== 'core-ready') return;
+    if (!coreApproved || !draftId) return;
+    if (busy || activeDraftId || manualState) return;
+    if (autoProducedRef.current === draftId) return;
+    autoProducedRef.current = draftId;
+    void handleProduce();
+    // handleProduce defined below — referenced by hoisting since it's a function declaration.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoMode, autoPaused, phase, coreApproved, draftId, busy, activeDraftId, manualState]);
+
+  // Phase 4: auto-dispatch DRAFT_COMPLETE when produced content is ready
+  const autoDraftDispatchedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (autoMode !== 'auto' || autoPaused) return;
+    if (phase !== 'done') return;
+    if (!draftId || !producedContent) return;
+    if (draftResult?.draftId === draftId) return;
+    if (autoDraftDispatchedRef.current === draftId) return;
+    autoDraftDispatchedRef.current = draftId;
+
+    const wordCount = producedContent.split(/\s+/).length;
+    tracker.trackCompleted({
+      draftId,
+      draftTitle: title,
+      wordCount,
+      format: type,
+    });
+    const result: DraftResult = {
+      draftId,
+      draftTitle: title,
+      draftContent: producedContent,
+      personaId: selectedPersonaId || undefined,
+      personaName: selectedPersona?.name,
+      personaSlug: selectedPersona?.slug,
+      personaWpAuthorId: selectedPersona?.wpAuthorId ?? null,
+    };
+    actor.send({ type: 'DRAFT_COMPLETE', result });
+  }, [
+    autoMode,
+    autoPaused,
+    phase,
+    draftId,
+    producedContent,
+    title,
+    type,
+    selectedPersonaId,
+    selectedPersona,
+    draftResult?.draftId,
+    actor,
+    tracker,
+  ]);
 
   async function runStep(label: string, fn: () => Promise<Response>) {
     setBusy(true);
@@ -302,7 +416,7 @@ export function DraftEngine({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(channelId ? { channelId } : {}),
-          ...(context.ideaId ? { ideaId: context.ideaId } : {}),
+          ...(trackerContext.ideaId ? { ideaId: trackerContext.ideaId } : {}),
           researchSessionId: research.id,
           type,
           title,
@@ -389,7 +503,7 @@ export function DraftEngine({
         toast.success(`${manualState.phase.charAt(0).toUpperCase() + manualState.phase.slice(1)} content submitted`);
       }
       setManualState(null);
-      onStageProgress?.({ draftId: manualState.draftId });
+      actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: manualState.draftId } });
     } catch (err) {
       toast.error('Submit failed', { description: err instanceof Error ? err.message : 'Unknown error' });
     } finally {
@@ -407,7 +521,7 @@ export function DraftEngine({
     } finally {
       setBusy(false);
       setManualState(null);
-      onStageProgress?.({ draftId: undefined });
+      actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: undefined } });
     }
   }
 
@@ -429,7 +543,7 @@ export function DraftEngine({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(channelId ? { channelId } : {}),
-          ...(context.ideaId ? { ideaId: context.ideaId } : {}),
+          ...(trackerContext.ideaId ? { ideaId: trackerContext.ideaId } : {}),
           researchSessionId: research.id,
           type,
           title,
@@ -473,20 +587,48 @@ export function DraftEngine({
       try {
         const res = await fetch(`/api/content-drafts/${draftId}`);
         const json = await res.json();
-        const coreJson = json.data?.canonical_core_json ?? json.data?.canonicalCoreJson;
+        const draftRow = json.data as Record<string, unknown> | null;
+        if (!draftRow) {
+          toast.error('Failed to load draft');
+          return;
+        }
+        const coreJson = draftRow.canonical_core_json ?? draftRow.canonicalCoreJson;
+        const draftJson = draftRow.draft_json as Record<string, unknown> | null | undefined;
+        const hasProducedContent =
+          draftJson && typeof draftJson === 'object' && Object.keys(draftJson).length > 0;
+
         if (coreJson && typeof coreJson === 'object') {
           setCanonicalCore(coreJson as Record<string, unknown>);
           tracker.trackAction('core.generated', {
             draftId,
             canonicalCoreJson: coreJson,
           });
+
+          // The /generate Inngest worker runs the full pipeline (core +
+          // produce + review). If draft_json is already populated, skip the
+          // separate /produce call — re-invoking it would burn another LLM
+          // round-trip and (worse) the sync route times out the apps/app
+          // proxy with ECONNRESET on slow models.
+          if (hasProducedContent) {
+            const content = extractProducedContent(draftRow, type);
+            if (content && content !== '{}') {
+              setProducedContent(content);
+              setCoreApproved(true);
+              setPhase('done');
+              const warning = typeof draftJson?.content_warning === 'string' ? draftJson.content_warning : null;
+              setContentWarning(warning);
+              toast.success('Canonical core + content generated');
+              return;
+            }
+          }
+
           setPhase('core-ready');
           setCoreExpanded(true);
           setCoreApproved(false);
           toast.success('Canonical core generated — review before producing');
-        } else {
-          // If the API generates full content in one step, handle that too
-          const content = extractProducedContent(json.data as Record<string, unknown>, type);
+        } else if (hasProducedContent) {
+          // No core but full content — handle one-shot generators
+          const content = extractProducedContent(draftRow, type);
           if (content && content !== '{}') {
             setProducedContent(content);
             setPhase('done');
@@ -494,6 +636,8 @@ export function DraftEngine({
           } else {
             toast.error('No canonical core found in draft');
           }
+        } else {
+          toast.error('No canonical core found in draft');
         }
       } catch {
         toast.error('Failed to load draft');
@@ -992,15 +1136,24 @@ export function DraftEngine({
   if (engineMode === 'import' && !initialDraft) {
     return (
       <div className="space-y-6">
-        <ContextBanner stage="draft" context={context} />
+        <ContextBanner stage="draft" context={trackerContext} />
 
-        <div>
+        <div className="flex items-start justify-between gap-4">
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Sparkles className="h-5 w-5" /> Draft
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Import a draft to continue.
-          </p>
+          {onModeChange && (
+            <Tabs value="import" onValueChange={(v) => onModeChange(v as 'generate' | 'import')}>
+              <TabsList>
+                <TabsTrigger value="generate" className="gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5" /> Generate
+                </TabsTrigger>
+                <TabsTrigger value="import" className="gap-1.5">
+                  <FolderOpen className="h-3.5 w-3.5" /> Import
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
         </div>
 
         <ImportPicker
@@ -1019,11 +1172,14 @@ export function DraftEngine({
           )}
           onSelect={(item) => {
             const draftJson = item.draft_json as Record<string, unknown> | null;
-            onComplete({
-              draftId: item.id as string,
-              draftTitle: (item.title as string) ?? 'Untitled',
-              draftContent: (draftJson?.full_draft as string) ?? '',
-            } as DraftResult);
+            actor.send({
+              type: 'DRAFT_COMPLETE',
+              result: {
+                draftId: item.id as string,
+                draftTitle: (item.title as string) ?? 'Untitled',
+                draftContent: (draftJson?.full_draft as string) ?? '',
+              } as DraftResult,
+            });
           }}
         />
       </div>
@@ -1033,15 +1189,29 @@ export function DraftEngine({
   // ── Main render ───────────────────────────────────────────────
   return (
     <div className="space-y-6">
-      <ContextBanner stage="draft" context={context} />
+      <ContextBanner stage="draft" context={trackerContext} />
 
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Sparkles className="h-5 w-5" /> Draft
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Two-step production: generate the canonical core narrative, then produce formatted content.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Sparkles className="h-5 w-5" /> Draft
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Two-step production: generate the canonical core narrative, then produce formatted content.
+          </p>
+        </div>
+        {onModeChange && (
+          <Tabs value="generate" onValueChange={(v) => onModeChange(v as 'generate' | 'import')}>
+            <TabsList>
+              <TabsTrigger value="generate" className="gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" /> Generate
+              </TabsTrigger>
+              <TabsTrigger value="import" className="gap-1.5">
+                <FolderOpen className="h-3.5 w-3.5" /> Import
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
       </div>
 
       {/* Phase stepper */}
@@ -1434,7 +1604,7 @@ export function DraftEngine({
                   personaSlug: selectedPersona?.slug,
                   personaWpAuthorId: selectedPersona?.wpAuthorId ?? null,
                 };
-                onComplete(result);
+                actor.send({ type: 'DRAFT_COMPLETE', result });
               }}>
                 <Check className="h-4 w-4 mr-2" /> Done <ArrowRight className="h-4 w-4 ml-2" />
               </Button>

@@ -1586,6 +1586,9 @@ export type Database = {
           cost_blog: number
           cost_canonical_core: number
           cost_podcast: number
+          cost_research_deep: number
+          cost_research_medium: number
+          cost_research_surface: number
           cost_review: number
           cost_shorts: number
           cost_video: number
@@ -1598,6 +1601,9 @@ export type Database = {
           cost_blog?: number
           cost_canonical_core?: number
           cost_podcast?: number
+          cost_research_deep?: number
+          cost_research_medium?: number
+          cost_research_surface?: number
           cost_review?: number
           cost_shorts?: number
           cost_video?: number
@@ -1610,6 +1616,9 @@ export type Database = {
           cost_blog?: number
           cost_canonical_core?: number
           cost_podcast?: number
+          cost_research_deep?: number
+          cost_research_medium?: number
+          cost_research_surface?: number
           cost_review?: number
           cost_shorts?: number
           cost_video?: number

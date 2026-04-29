@@ -45,6 +45,12 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   transpilePackages: ["@brighttale/shared"],
   serverExternalPackages: ["sharp"],
+  // OpenAI gpt-image-1 generations regularly take 30–90s; the default
+  // dev-server rewrite proxy times out before the upstream replies, surfacing
+  // as `socket hang up` / ECONNRESET. Bump to 5 minutes for image gen.
+  experimental: {
+    proxyTimeout: 300_000,
+  },
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "yt3.ggpht.com" },

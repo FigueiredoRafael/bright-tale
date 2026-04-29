@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Link2, UserPlus } from "lucide-react"
+import { Loader2, Link2, UserPlus, Unlink } from "lucide-react"
 
 interface WpIntegrationSectionProps {
     personaId: string
@@ -35,13 +35,20 @@ export function WpIntegrationSection({ personaId, currentWpAuthorId, channelId }
     const [mode, setMode] = useState<"link" | "create">("link")
     const [wpUsername, setWpUsername] = useState("")
     const [loading, setLoading] = useState(false)
+    const [unlinking, setUnlinking] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [avatarWarning, setAvatarWarning] = useState<string | null>(null)
     const [result, setResult] = useState<number | null>(currentWpAuthorId)
+
+    useEffect(() => {
+        setResult(currentWpAuthorId)
+    }, [currentWpAuthorId])
 
     async function handleSubmit() {
         if (!channelId) return
         setLoading(true)
         setError(null)
+        setAvatarWarning(null)
         try {
             const res = await fetch(`/api/personas/${personaId}/integrations/wordpress`, {
                 method: "POST",
@@ -54,8 +61,12 @@ export function WpIntegrationSection({ personaId, currentWpAuthorId, channelId }
                 setError(errorMessage)
                 return
             }
-            if (data?.wpAuthorId) setResult(data.wpAuthorId)
-            else setError("Unexpected response from server")
+            if (data?.wpAuthorId) {
+                setResult(data.wpAuthorId)
+                if (!data.avatarSynced && data.avatarSyncError) {
+                    setAvatarWarning(`Avatar not synced to WordPress: ${data.avatarSyncError}`)
+                }
+            } else setError("Unexpected response from server")
         } catch {
             setError("Failed to link WordPress author")
         } finally {
@@ -63,11 +74,34 @@ export function WpIntegrationSection({ personaId, currentWpAuthorId, channelId }
         }
     }
 
+    async function handleUnlink() {
+        setUnlinking(true)
+        setError(null)
+        try {
+            const res = await fetch(`/api/personas/${personaId}/integrations/wordpress`, { method: "DELETE" })
+            const { error: apiError } = await res.json()
+            if (apiError) { setError(apiError.message ?? "Failed to unlink"); return }
+            setResult(null)
+        } catch {
+            setError("Failed to unlink WordPress author")
+        } finally {
+            setUnlinking(false)
+        }
+    }
+
     if (result) {
         return (
-            <div className="flex items-center gap-2 text-sm text-green-600">
-                <Link2 className="h-4 w-4" />
-                WordPress author linked (ID: {result})
+            <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm text-green-600">
+                    <Link2 className="h-4 w-4" />
+                    WordPress author linked (ID: {result})
+                </div>
+                <Button type="button" size="sm" variant="outline" onClick={handleUnlink} disabled={unlinking}>
+                    {unlinking ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Unlink className="h-3 w-3 mr-1" />}
+                    Disconnect
+                </Button>
+                {avatarWarning && <p className="text-xs text-amber-600">{avatarWarning}</p>}
+                {error && <p className="text-xs text-destructive">{error}</p>}
             </div>
         )
     }

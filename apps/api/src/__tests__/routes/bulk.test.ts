@@ -51,6 +51,8 @@ beforeEach(async () => {
   process.env.INTERNAL_API_KEY = 'test-key';
   vi.clearAllMocks();
   mockChain.single.mockResolvedValue({ data: { org_id: 'org-1' }, error: null });
+  // loadCreditSettings → fall back to defaults via { data: null }
+  mockChain.maybeSingle.mockResolvedValue({ data: null, error: null });
   app = Fastify({ logger: false });
   await app.register(bulkRoutes, { prefix: '/bulk' });
   await app.ready();

@@ -10,6 +10,7 @@ import {
   ArrowRight,
   AlertTriangle,
   Sparkles,
+  FolderOpen,
   BookOpen,
   BarChart3,
   Quote,
@@ -39,7 +40,11 @@ import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
 import { friendlyAiError } from '@/lib/ai/error-message';
-import type { BaseEngineProps, ResearchResult } from './types';
+import { useSelector } from '@xstate/react';
+import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
+import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
+import type { ResearchResult, PipelineContext } from './types';
 
 type Level = 'surface' | 'medium' | 'deep';
 
@@ -54,32 +59,14 @@ interface Card {
   [k: string]: unknown;
 }
 
-interface ResearchEngineProps extends BaseEngineProps {
+interface ResearchEngineProps {
+  mode?: 'generate' | 'import';
+  onModeChange?: (m: 'generate' | 'import') => void;
   initialSession?: Record<string, unknown>;
   initialCards?: Record<string, unknown>[];
   initialApproved?: number[];
+  initialIdeaId?: string;
 }
-
-const LEVELS: { id: Level; label: string; cost: number; description: string }[] = [
-  {
-    id: 'surface',
-    label: 'Surface',
-    cost: 60,
-    description: 'Top 3 sources, basic statistics',
-  },
-  {
-    id: 'medium',
-    label: 'Medium',
-    cost: 100,
-    description: '5-8 sources, expert quotes, supporting data',
-  },
-  {
-    id: 'deep',
-    label: 'Deep',
-    cost: 180,
-    description: '10+ sources, counterarguments, cross-validation',
-  },
-];
 
 const FOCUS_OPTIONS = [
   { id: 'stats', label: 'Statistics' },
@@ -92,16 +79,35 @@ const RESEARCH_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'olla
 
 export function ResearchEngine({
   mode: engineMode,
-  channelId,
-  context,
-  onComplete,
-  onStageProgress,
+  onModeChange,
   initialSession,
   initialCards,
   initialApproved,
+  initialIdeaId,
 }: ResearchEngineProps) {
+  const actor = usePipelineActor();
+  const channelId = useSelector(actor, (s) => s.context.channelId);
+  const projectId = useSelector(actor, (s) => s.context.projectId);
+  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
+  const researchResult = useSelector(actor, (s) => s.context.stageResults.research);
+  const creditSettings = useSelector(actor, (s) => s.context.creditSettings);
+
+  const trackerContext: PipelineContext = {
+    channelId,
+    projectId,
+    ideaId: brainstormResult?.ideaId ?? initialIdeaId,
+    ideaTitle: brainstormResult?.ideaTitle,
+    researchSessionId: researchResult?.researchSessionId,
+  };
+
+  const levels = [
+    { id: 'surface' as Level, label: 'Surface', cost: creditSettings.costResearchSurface, description: 'Top 3 sources, basic statistics' },
+    { id: 'medium' as Level, label: 'Medium', cost: creditSettings.costResearchMedium, description: '5-8 sources, expert quotes, supporting data' },
+    { id: 'deep' as Level, label: 'Deep', cost: creditSettings.costResearchDeep, description: '10+ sources, counterarguments, cross-validation' },
+  ];
+
   // Input mode
-  const [topic, setTopic] = useState(context.ideaTitle ?? '');
+  const [topic, setTopic] = useState(brainstormResult?.ideaTitle ?? '');
   const [level, setLevel] = useState<Level>('medium');
   const [focusTags, setFocusTags] = useState<string[]>(['stats']);
   const [provider, setProvider] = useState<ProviderId>('gemini');
@@ -126,7 +132,10 @@ export function ResearchEngine({
   // Manual provider — open dialog when API responds with awaiting_manual
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
 
-  const tracker = usePipelineTracker('research', context);
+  // Background generation tracking (Inngest job + SSE events)
+  const [activeGenerationId, setActiveGenerationId] = useState<string | null>(null);
+
+  const tracker = usePipelineTracker('research', trackerContext);
 
   // When initialSession is provided, we're in "session detail" mode
   const isSessionDetail = !!initialSession;
@@ -194,7 +203,7 @@ export function ResearchEngine({
   // Load existing session from context when navigating back in the pipeline
   useEffect(() => {
     if (initialSession || initialCards) return;
-    const ctxSessionId = context.researchSessionId;
+    const ctxSessionId = researchResult?.researchSessionId;
     if (!ctxSessionId) return;
     if (sessionId === ctxSessionId && (cards.length > 0 || findings)) return;
 
@@ -236,7 +245,7 @@ export function ResearchEngine({
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [context.researchSessionId]);
+  }, [researchResult?.researchSessionId]);
 
   // Fetch recommended agent
   useEffect(() => {
@@ -379,9 +388,9 @@ export function ResearchEngine({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(channelId ? { channelId } : {}),
-          ...(context.projectId ? { projectId: context.projectId } : {}),
-          ...(context.ideaId ? { ideaId: context.ideaId } : {}),
-          topic: topic || context.ideaTitle || undefined,
+          ...(projectId ? { projectId } : {}),
+          ...(trackerContext.ideaId ? { ideaId: trackerContext.ideaId } : {}),
+          topic: topic || trackerContext.ideaTitle || undefined,
           level,
           cardsJson: allCards,
           ...(refinedAngleObj ? { refinedAngleJson: refinedAngleObj } : {}),
@@ -417,14 +426,15 @@ export function ResearchEngine({
 
     tracker.trackStarted({ topic: topic.trim(), level, focusTags, provider, model });
 
+    let wentAsync = false;
     try {
       const res = await fetch('/api/research-sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(channelId ? { channelId } : {}),
-          ...(context.projectId ? { projectId: context.projectId } : {}),
-          ...(context.ideaId ? { ideaId: context.ideaId } : {}),
+          ...(projectId ? { projectId } : {}),
+          ...(trackerContext.ideaId ? { ideaId: trackerContext.ideaId } : {}),
           topic: topic.trim(),
           level,
           focusTags,
@@ -458,21 +468,29 @@ export function ResearchEngine({
         return;
       }
 
+      const newSessionId = json?.data?.sessionId || null;
+      setSessionId(newSessionId);
+
+      // Async path (status='queued', 202 from API): subscribe to SSE and load
+      // findings on completion. The sync legacy path (findings/cards in body)
+      // is kept as a fallback.
       const generatedFindings = json?.data?.findings;
       const generatedCards = json?.data?.cards ?? [];
 
-      setSessionId(json?.data?.sessionId || null);
-
-      // Prefer findings if available (new format), otherwise use cards (legacy)
       if (generatedFindings && typeof generatedFindings === 'object') {
         setFindings(generatedFindings);
-        tracker.trackCompleted({ sessionId: json?.data?.sessionId || '', cardCount: generatedCards.length, approvedCount: generatedCards.length, level });
+        tracker.trackCompleted({ sessionId: newSessionId || '', cardCount: generatedCards.length, approvedCount: generatedCards.length, level });
         toast.success('Research completed');
       } else if (generatedCards.length > 0) {
         setCards(generatedCards);
         setApproved(new Set(generatedCards.map((_, i) => i)));
-        tracker.trackCompleted({ sessionId: json?.data?.sessionId || '', cardCount: generatedCards.length, approvedCount: generatedCards.length, level });
+        tracker.trackCompleted({ sessionId: newSessionId || '', cardCount: generatedCards.length, approvedCount: generatedCards.length, level });
         toast.success(`${generatedCards.length} research cards found`);
+      } else if (newSessionId) {
+        // Background job — show progress float, hydrate on complete
+        wentAsync = true;
+        setActiveGenerationId(newSessionId);
+        return;
       } else {
         toast.warning('No research data recognized in output', {
           description:
@@ -485,9 +503,108 @@ export function ResearchEngine({
       tracker.trackFailed(message);
       toast.error(friendly.title, { description: friendly.hint });
     } finally {
+      // Keep running=true while a background job is in flight; let
+      // handleGenerationComplete / handleGenerationFailed clear it.
+      if (!wentAsync) setRunning(false);
+    }
+  }
+
+  async function handleGenerationComplete() {
+    const id = activeGenerationId;
+    setActiveGenerationId(null);
+    if (!id) return;
+    try {
+      const res = await fetch(`/api/research-sessions/${id}`);
+      const json = await res.json();
+      const sess = (json.data?.session ?? json.data) as Record<string, unknown> | undefined;
+      if (!sess) {
+        toast.error('Failed to load research session');
+        return;
+      }
+      if (sess.cards_json && typeof sess.cards_json === 'object' && !Array.isArray(sess.cards_json)) {
+        setFindings(sess.cards_json as Record<string, unknown>);
+        tracker.trackCompleted({ sessionId: id, cardCount: 0, approvedCount: 0, level });
+        toast.success('Research completed');
+      } else if (Array.isArray(sess.cards_json) && sess.cards_json.length > 0) {
+        const legacy = sess.cards_json as Array<Record<string, unknown>>;
+        setFindings(synthesizeFindingsFromLegacy(legacy));
+        tracker.trackCompleted({ sessionId: id, cardCount: legacy.length, approvedCount: legacy.length, level });
+        toast.success(`${legacy.length} research cards found`);
+      } else {
+        toast.warning('Research finished but no findings were saved', {
+          description: 'Try regenerating with a different model.',
+        });
+      }
+      if (sess.refined_angle_json && typeof sess.refined_angle_json === 'object') {
+        setRefinedAngle(sess.refined_angle_json as Record<string, unknown>);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      toast.error('Failed to load research findings', { description: message });
+    } finally {
       setRunning(false);
     }
   }
+
+  function handleGenerationFailed(message: string) {
+    setActiveGenerationId(null);
+    setRunning(false);
+    tracker.trackFailed(message);
+    const friendly = friendlyAiError(message);
+    toast.error(friendly.title, { description: friendly.hint });
+  }
+
+  // Auto-pilot: when findings render, auto-approve and advance to draft.
+  const autoApprovedRef = useRef<string | null>(null);
+  const autoMode = useSelector(actor, (s) => s.context.mode);
+  const autoPaused = useSelector(actor, (s) => s.context.paused);
+  useEffect(() => {
+    if (autoMode !== 'auto' || autoPaused) return;
+    if (researchResult?.researchSessionId) return;
+    if (!findings || !sessionId) return;
+    if (running || regenerating) return;
+    if (autoApprovedRef.current === sessionId) return;
+    autoApprovedRef.current = sessionId;
+
+    const signals = extractResearchSignals(findings);
+    const result: ResearchResult = {
+      researchSessionId: sessionId,
+      approvedCardsCount: 1,
+      researchLevel: level,
+      primaryKeyword: signals.primaryKeyword,
+      secondaryKeywords: signals.secondaryKeywords,
+      searchIntent: signals.searchIntent,
+    };
+    tracker.trackAction('findings.auto_approved', { sessionId });
+    actor.send({ type: 'RESEARCH_COMPLETE', result });
+  }, [
+    autoMode,
+    autoPaused,
+    findings,
+    sessionId,
+    running,
+    regenerating,
+    researchResult?.researchSessionId,
+    level,
+    actor,
+    tracker,
+  ]);
+
+  useAutoPilotTrigger({
+    stage: 'research',
+    canFire: () =>
+      topic.trim().length > 0 &&
+      !running &&
+      !manualSessionId &&
+      !activeGenerationId &&
+      !findings &&
+      cards.length === 0 &&
+      !researchResult?.researchSessionId &&
+      // Gate on the recommended provider/model fetch so we don't auto-fire
+      // with the gemini default before /api/agents resolves.
+      recommended.provider !== null,
+    fire: handleRun,
+  });
 
   async function handleRegenerate() {
     if (!sessionId) {
@@ -573,7 +690,7 @@ export function ResearchEngine({
     }
 
     setManualSessionId(null);
-    onStageProgress?.({ researchSessionId: manualSessionId });
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'research', partial: { researchSessionId: manualSessionId } });
   }
 
   async function handleManualAbandon() {
@@ -586,7 +703,7 @@ export function ResearchEngine({
     setManualSessionId(null);
     setCards([]);
     setSessionId(null);
-    onStageProgress?.({ researchSessionId: undefined });
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'research', partial: { researchSessionId: undefined } });
   }
 
   async function handleApprove() {
@@ -604,7 +721,7 @@ export function ResearchEngine({
         secondaryKeywords: signals.secondaryKeywords,
         searchIntent: signals.searchIntent,
       };
-      onComplete(result);
+      actor.send({ type: 'RESEARCH_COMPLETE', result });
       return;
     }
 
@@ -638,7 +755,7 @@ export function ResearchEngine({
       approvedCardsCount: approvedCards.length,
       researchLevel: level,
     };
-    onComplete(result);
+    actor.send({ type: 'RESEARCH_COMPLETE', result });
   }
 
   const shouldPivot = refinedAngle && Boolean(refinedAngle.should_pivot);
@@ -652,15 +769,24 @@ export function ResearchEngine({
   if (engineMode === 'import' && !initialSession) {
     return (
       <div className="space-y-6">
-        <ContextBanner stage="research" context={context} />
+        <ContextBanner stage="research" context={trackerContext} />
 
-        <div>
+        <div className="flex items-start justify-between gap-4">
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Search className="h-5 w-5" /> Research
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Import a research session to continue.
-          </p>
+          {onModeChange && (
+            <Tabs value="import" onValueChange={(v) => onModeChange(v as 'generate' | 'import')}>
+              <TabsList>
+                <TabsTrigger value="generate" className="gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5" /> Generate
+                </TabsTrigger>
+                <TabsTrigger value="import" className="gap-1.5">
+                  <FolderOpen className="h-3.5 w-3.5" /> Import
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
         </div>
 
         <ImportPicker
@@ -681,11 +807,14 @@ export function ResearchEngine({
           )}
           onSelect={(item) => {
             const cards = (item.approved_cards_json ?? item.cards_json ?? []) as unknown[];
-            onComplete({
-              researchSessionId: item.id as string,
-              approvedCardsCount: cards.length,
-              researchLevel: (item.level as string) ?? 'medium',
-            } as ResearchResult);
+            actor.send({
+              type: 'RESEARCH_COMPLETE',
+              result: {
+                researchSessionId: item.id as string,
+                approvedCardsCount: cards.length,
+                researchLevel: (item.level as string) ?? 'medium',
+              } as ResearchResult,
+            });
           }}
         />
       </div>
@@ -694,17 +823,31 @@ export function ResearchEngine({
 
   return (
     <div className="space-y-6">
-      <ContextBanner stage="research" context={context} />
+      <ContextBanner stage="research" context={trackerContext} />
 
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Search className="h-5 w-5" /> Research
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {isSessionDetail
-            ? `Session: ${topic_display || 'Untitled'} · ${cards.length} cards · ${level} depth`
-            : 'Research your idea with AI. Gather sources, statistics, expert quotes, and counterarguments.'}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Search className="h-5 w-5" /> Research
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {isSessionDetail
+              ? `Session: ${topic_display || 'Untitled'} · ${cards.length} cards · ${level} depth`
+              : 'Research your idea with AI. Gather sources, statistics, expert quotes, and counterarguments.'}
+          </p>
+        </div>
+        {onModeChange && !isSessionDetail && (
+          <Tabs value="generate" onValueChange={(v) => onModeChange(v as 'generate' | 'import')}>
+            <TabsList>
+              <TabsTrigger value="generate" className="gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" /> Generate
+              </TabsTrigger>
+              <TabsTrigger value="import" className="gap-1.5">
+                <FolderOpen className="h-3.5 w-3.5" /> Import
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
       </div>
 
       {/* Show form only if not in session detail mode */}
@@ -717,7 +860,7 @@ export function ResearchEngine({
             <div className="space-y-2">
               <Label>
                 Topic
-                {context.ideaId && (
+                {trackerContext.ideaId && (
                   <span className="text-xs text-muted-foreground">
                     {' '}
                     (pre-filled from idea)
@@ -735,7 +878,7 @@ export function ResearchEngine({
             <div className="space-y-2">
               <Label>Research depth</Label>
               <div className="grid grid-cols-3 gap-2">
-                {LEVELS.map((l) => (
+                {levels.map((l) => (
                   <button
                     key={l.id}
                     onClick={() => setLevel(l.id)}
@@ -1282,6 +1425,17 @@ export function ResearchEngine({
         submitLabel="Import Research"
         onSubmit={handleManualOutputSubmit}
         onAbandon={handleManualAbandon}
+      />
+
+      <GenerationProgressFloat
+        open={!!activeGenerationId}
+        sessionId={activeGenerationId ?? ''}
+        sseUrl={activeGenerationId ? `/api/research-sessions/${activeGenerationId}/events` : ''}
+        cancelUrl={activeGenerationId ? `/api/research-sessions/${activeGenerationId}/cancel` : undefined}
+        title={`Generating research with ${model}`}
+        onComplete={handleGenerationComplete}
+        onFailed={handleGenerationFailed}
+        onClose={() => setActiveGenerationId(null)}
       />
     </div>
   );

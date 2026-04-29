@@ -10,8 +10,9 @@ import { debitCredits } from '../lib/credits.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
-import { buildCanonicalCoreMessage, buildProduceMessage } from '../lib/ai/prompts/production.js';
-import { buildReviewMessage } from '../lib/ai/prompts/review.js';
+import { buildCanonicalCoreMessage } from '../lib/ai/prompts/production.js';
+import { calculateDraftCost } from '../lib/calculate-draft-cost.js';
+import { loadCreditSettings } from '../lib/credit-settings.js';
 import {
   buildPersonaContext,
   buildPersonaVoice,
@@ -28,14 +29,6 @@ function formatConstraintsBlock(constraints: string[]): string {
   const lines = constraints.map(c => `- ${c}`).join('\n')
   return `## Content Constraints\nThe following rules are non-negotiable and override all other instructions:\n${lines}\n\n`
 }
-
-const FORMAT_COSTS: Record<string, number> = {
-  blog: 200,
-  video: 200,
-  shorts: 100,
-  podcast: 150,
-};
-const CANONICAL_CORE_COST = 80;
 
 /**
  * When the user runs everything locally via Ollama, our infra cost is zero —
@@ -70,8 +63,9 @@ export const productionGenerate = inngest.createFunction(
   async ({ event, step }: { event: ProductionGenerateEvent; step: { run: (name: string, fn: () => Promise<unknown>) => Promise<unknown> } }) => {
     const { draftId, orgId, userId, type, modelTier, provider, model, productionParams } = event.data;
     const sb = createServiceClient();
-    const cost = applyProviderDiscount(FORMAT_COSTS[type] ?? 200, provider);
-    const coreCost = applyProviderDiscount(CANONICAL_CORE_COST, provider);
+    const creditSettings = await loadCreditSettings(sb);
+    const cost = applyProviderDiscount(calculateDraftCost(type, creditSettings), provider);
+    const coreCost = applyProviderDiscount(creditSettings.costCanonicalCore, provider);
 
     try {
       // ─── Stage 1: Canonical Core ─────────────────────────────────────
@@ -185,157 +179,11 @@ export const productionGenerate = inngest.createFunction(
         await debitCredits(orgId, userId, 'canonical-core', 'text', coreCost, { draftId, type, provider });
       });
 
-      // ─── Stage 2: Produce final draft ────────────────────────────────
-      await step.run('emit-loading-produce', async () => {
-        await emitJobEvent(draftId, 'production', 'loading_prompt', `Carregando agente ${type}…`);
-      });
-
-      const produceSystemPrompt = (await step.run('load-produce-prompt', async () => {
-        return (await loadAgentPrompt(type)) ?? (await loadAgentPrompt('production')) ?? null;
-      })) as string | null;
-
-      await step.run('emit-calling-produce', async () => {
-        const label = provider ? `${provider}${model ? ` (${model})` : ''}` : modelTier;
-        await emitJobEvent(draftId, 'production', 'calling_provider', `Escrevendo ${type} com ${label}…`, { stage: 'produce', provider, model });
-      });
-
-      const draftJson = await step.run('generate-produce', async () => {
-        const approvedCardsObj = approvedCards && typeof approvedCards === 'object' && !Array.isArray(approvedCards)
-          ? approvedCards as Record<string, unknown>
-          : null;
-        const researchSources = type === 'blog' && approvedCardsObj?.sources
-          ? approvedCardsObj.sources as unknown[]
-          : undefined;
-
-        const userMessage = buildProduceMessage({
-          type: type as string,
-          title: draft.title as string,
-          canonicalCore,
-          idea: ideaContext,
-          productionParams,
-          sources: researchSources,
-          persona: layeredPersona?.voice ?? null,
-          channel: channelContext as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
-        });
-        const call = await generateWithFallback(
-          'production',
-          modelTier,
-          {
-            agentType: 'production',
-            systemPrompt: layeredPersona?.constraints.length
-              ? `${formatConstraintsBlock(layeredPersona.constraints)}${produceSystemPrompt ?? ''}`
-              : produceSystemPrompt ?? '',
-            userMessage,
-          },
-          {
-            provider,
-            model,
-            logContext: {
-              userId,
-              orgId,
-              projectId: undefined,
-              channelId: (draft.channel_id as string | null) ?? undefined,
-              sessionId: draftId,
-              sessionType: 'production',
-            },
-          },
-        );
-        await logUsage({
-          orgId, userId, channelId: (draft.channel_id as string | null) ?? null,
-          stage: 'production', subStage: `produce-${type}`,
-          sessionId: draftId, sessionType: 'production',
-          provider: call.providerName, model: call.model,
-          usage: call.usage,
-        });
-        return call.result;
-      });
-
-      await step.run('emit-saving', async () => {
-        await emitJobEvent(draftId, 'production', 'saving', 'Salvando rascunho…');
-      });
-
-      await step.run('save-produce', async () => {
-        await (sb.from('content_drafts') as unknown as {
-          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        })
-          .update({ draft_json: draftJson, status: 'in_review' })
-          .eq('id', draftId);
-        await debitCredits(orgId, userId, `production-${type}`, 'text', cost, { draftId, type });
-      });
-
-      // ─── Stage 3: Auto-review ────────────────────────────────────────
-      // Best-effort: if review fails we don't rollback the produced draft,
-      // we just log and let the user manually re-trigger review.
-      try {
-        await step.run('emit-calling-review', async () => {
-          const label = provider ? `${provider}${model ? ` (${model})` : ''}` : modelTier;
-          await emitJobEvent(draftId, 'production', 'calling_provider', `Revisando com ${label}…`, { stage: 'review', provider, model });
-        });
-
-        const reviewSystemPrompt = (await step.run('load-review-prompt', async () => {
-          return (await loadAgentPrompt('review')) ?? null;
-        })) as string | null;
-
-        const reviewResult = await step.run('generate-review', async () => {
-          const userMessage = buildReviewMessage({
-            type: type as string,
-            title: draft.title as string,
-            draftJson,
-            canonicalCore,
-            idea: ideaContext,
-            channel: channelContext as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
-          });
-          const call = await generateWithFallback(
-            'review',
-            modelTier,
-            {
-              agentType: 'review',
-              systemPrompt: reviewSystemPrompt ?? '',
-              userMessage,
-            },
-            {
-              provider,
-              model,
-              logContext: {
-                userId,
-                orgId,
-                projectId: undefined,
-                channelId: (draft.channel_id as string | null) ?? undefined,
-                sessionId: draftId,
-                sessionType: 'production',
-              },
-            },
-          );
-          await logUsage({
-            orgId, userId, channelId: (draft.channel_id as string | null) ?? null,
-            stage: 'review',
-            sessionId: draftId, sessionType: 'production',
-            provider: call.providerName, model: call.model,
-            usage: call.usage,
-          });
-          return call.result;
-        });
-
-        await step.run('save-review', async () => {
-          await (sb.from('content_drafts') as unknown as {
-            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-          })
-            .update({ review_feedback_json: reviewResult })
-            .eq('id', draftId);
-        });
-      } catch (reviewErr) {
-        // Surface a soft warning but treat the job as a success since the
-        // produced draft is saved.
-        await emitJobEvent(
-          draftId,
-          'production',
-          'parsing_output',
-          `Review automática falhou (rascunho está salvo): ${(reviewErr as Error).message?.slice(0, 100)}`,
-          { reviewFailed: true },
-        );
-      }
-
-      await emitJobEvent(draftId, 'production', 'completed', `${type === 'blog' ? 'Post' : type === 'video' ? 'Vídeo' : type === 'shorts' ? 'Shorts' : 'Podcast'} pronto!`, { draftId, type });
+      // Produce + Review are explicit subsequent stages so the user can
+      // approve the canonical core, choose the produce model, and view the
+      // review feedback as deliberate steps. The /produce and /review
+      // routes own those stages.
+      await emitJobEvent(draftId, 'production', 'completed', 'Canonical core gerado!', { draftId, type, stage: 'canonical-core' });
       return { success: true, draftId };
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : 'Erro desconhecido';
