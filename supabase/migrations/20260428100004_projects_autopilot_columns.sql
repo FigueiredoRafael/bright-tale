@@ -1,8 +1,15 @@
 alter table projects
+  add column channel_id              uuid references channels(id) on delete set null,
   add column mode                    text,
   add column autopilot_config_json   jsonb,
   add column autopilot_template_id   text references autopilot_templates(id) on delete set null,
   add column abort_requested_at      timestamptz;
+
+create index idx_projects_channel_id on projects(channel_id);
+
+-- Note: projects.channel_id is intentionally NOT backfilled. Legacy projects
+-- with NULL channel_id surface a one-time PickChannelModal on first reopen
+-- (Wave 6 spec).
 
 -- Mode backfill from legacy pipeline_state_json + auto_advance.
 -- 'overview' is never auto-assigned; users opt in via mid-flow toggle.
