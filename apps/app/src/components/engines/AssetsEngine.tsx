@@ -20,6 +20,7 @@ import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { useSelector } from '@xstate/react';
 import { usePipelineActor } from '@/hooks/usePipelineActor';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
+import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
 import { getPersonaTheme } from './utils/personaTheme';
@@ -193,6 +194,7 @@ interface PendingUpload {
 
 export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEngineProps) {
   const actor = usePipelineActor();
+  const abortController = usePipelineAbort();
   const channelId = useSelector(actor, (s) => s.context.channelId);
   const projectId = useSelector(actor, (s) => s.context.projectId);
   const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
@@ -344,9 +346,11 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
         );
 
         const [assetsRes, promptsRes] = await Promise.all([
-          fetch(`/api/assets?content_id=${draftId}`),
-          fetch(`/api/content-drafts/${draftId}/asset-prompts`, { method: 'POST' })
-            .catch(() => null),
+          fetch(`/api/assets?content_id=${draftId}`, { signal: abortController?.signal }),
+          fetch(`/api/content-drafts/${draftId}/asset-prompts`, {
+            method: 'POST',
+            signal: abortController?.signal,
+          }).catch(() => null),
         ]);
         const { data } = await assetsRes.json();
         const items = Array.isArray(data) ? data : (data?.assets ?? data?.items ?? []);
@@ -415,7 +419,8 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
         }
         // Items already exist → user is reviewing, land on Approve.
         setPhase('approve');
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         // No existing assets, start fresh
       } finally {
         setLoading(false);
@@ -435,8 +440,11 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
       if (noBriefSections.length > 0) return;
       try {
         const [promptsRes, draftRes] = await Promise.all([
-          fetch(`/api/content-drafts/${draftId}/asset-prompts`, { method: 'POST' }),
-          fetch(`/api/content-drafts/${draftId}`),
+          fetch(`/api/content-drafts/${draftId}/asset-prompts`, {
+            method: 'POST',
+            signal: abortController?.signal,
+          }),
+          fetch(`/api/content-drafts/${draftId}`, { signal: abortController?.signal }),
         ]);
         const promptsJson = await promptsRes.json();
         const draftJson = await draftRes.json();
@@ -465,12 +473,13 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
         }));
 
         setNoBriefSections(mapped);
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         // non-fatal
       }
     }
     void fetchNoBriefSections();
-  }, [draftId, imagesMode, noBriefSections.length]);
+  }, [draftId, imagesMode, noBriefSections.length, abortController?.signal]);
 
   /* ── Persist briefs to draft_json.asset_briefs so they survive reloads ── */
   const persistBriefs = useCallback(
@@ -481,11 +490,14 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ visualDirection: visual, slots }),
+          signal: abortController?.signal,
         });
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         // Persistence is best-effort; in-memory state still works for this session.
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [draftId],
   );
 
@@ -516,6 +528,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: abortController?.signal,
       });
       const json = await res.json();
       if (json.error) {
@@ -528,6 +541,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
       }
       await handleManualImport(json.data);
     } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') return;
       toast.error(e instanceof Error ? e.message : 'Failed to generate briefs');
     } finally {
       setGeneratingBriefs(false);
@@ -566,6 +580,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
           numImages: 1,
           provider: 'manual',
         }),
+        signal: abortController?.signal,
       });
       const json = await res.json();
       if (json?.error) {
@@ -580,7 +595,10 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
     // AI provider: replace any existing asset for this role so the new one wins.
     const existing = existingAssets.find((a) => a.role === role);
     if (existing) {
-      await fetch(`/api/assets/${existing.id}`, { method: 'DELETE' }).catch(() => null);
+      await fetch(`/api/assets/${existing.id}`, {
+        method: 'DELETE',
+        signal: abortController?.signal,
+      }).catch(() => null);
     }
 
     const res = await fetch('/api/assets/generate', {
@@ -595,6 +613,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
         numImages: 1,
         provider: imageProvider,
       }),
+      signal: abortController?.signal,
     });
     const json = await res.json();
     if (json?.error) {
@@ -698,7 +717,10 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
         const role = slotToRole(pending.slot);
         const existing = existingAssets.find((a) => a.role === role);
         if (existing) {
-          await fetch(`/api/assets/${existing.id}`, { method: 'DELETE' }).catch(() => null);
+          await fetch(`/api/assets/${existing.id}`, {
+            method: 'DELETE',
+            signal: abortController?.signal,
+          }).catch(() => null);
         }
 
         let body: Record<string, unknown>;
@@ -730,6 +752,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
+          signal: abortController?.signal,
         });
         const json = await res.json();
         if (json?.error) {
@@ -761,7 +784,9 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
         id: a.id, url: a.url, webpUrl: a.webpUrl, role: a.role, altText: a.altText, sourceType: 'manual_upload',
       }))];
       if (draftId) {
-        const res = await fetch(`/api/assets?content_id=${draftId}`);
+        const res = await fetch(`/api/assets?content_id=${draftId}`, {
+          signal: abortController?.signal,
+        });
         const { data } = await res.json();
         const items = Array.isArray(data) ? data : (data?.assets ?? data?.items ?? []);
         if (items.length > 0) {

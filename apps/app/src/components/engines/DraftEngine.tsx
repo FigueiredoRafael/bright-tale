@@ -34,6 +34,7 @@ import type { Persona } from '@brighttale/shared/types/agents';
 import { useSelector } from '@xstate/react';
 import { usePipelineActor } from '@/hooks/usePipelineActor';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
+import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import type { DraftResult, PipelineContext } from './types';
 
 type DraftType = 'blog' | 'video' | 'shorts' | 'podcast';
@@ -68,6 +69,7 @@ export function DraftEngine({
   initialDraft,
 }: DraftEngineProps) {
   const actor = usePipelineActor();
+  const abortController = usePipelineAbort();
   const channelId = useSelector(actor, (s) => s.context.channelId);
   const projectId = useSelector(actor, (s) => s.context.projectId);
   const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
@@ -155,7 +157,9 @@ export function DraftEngine({
 
     (async () => {
       try {
-        const res = await fetch(`/api/research-sessions/${rsid}`);
+        const res = await fetch(`/api/research-sessions/${rsid}`, {
+          signal: abortController?.signal,
+        });
         const json = await res.json();
         if (json?.data) {
           setResearch(json.data as ResearchOption);
@@ -163,26 +167,28 @@ export function DraftEngine({
             setTitle(json.data.input_json.topic as string);
           }
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         // silent
       }
     })();
-  }, [researchResult?.researchSessionId, title]);
+  }, [researchResult?.researchSessionId, title, abortController?.signal]);
 
   // Fetch personas on mount
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/personas');
+        const res = await fetch('/api/personas', { signal: abortController?.signal });
         const json = await res.json();
         if (json?.data) {
           setPersonas(json.data as Persona[]);
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         // silent
       }
     })();
-  }, []);
+  }, [abortController?.signal]);
 
   // Restore state from existing draft (when revisiting from review)
   useEffect(() => {
@@ -191,7 +197,9 @@ export function DraftEngine({
 
     (async () => {
       try {
-        const res = await fetch(`/api/content-drafts/${ctxDraftId}`);
+        const res = await fetch(`/api/content-drafts/${ctxDraftId}`, {
+          signal: abortController?.signal,
+        });
         const json = await res.json();
         if (!json?.data) return;
         const d = json.data as Record<string, unknown>;
@@ -240,11 +248,12 @@ export function DraftEngine({
           // produced content downstream) — at that point the core is ancient context.
           setCoreExpanded(!restoredAndDone);
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         // silent — will show fresh form
       }
     })();
-  }, [draftResult?.draftId]);
+  }, [draftResult?.draftId, abortController?.signal]);
 
   // Rank personas when data is ready
   useEffect(() => {
@@ -273,7 +282,7 @@ export function DraftEngine({
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/agents');
+        const res = await fetch('/api/agents', { signal: abortController?.signal });
         const json = await res.json();
         const agent = (json.data?.agents as Array<Record<string, unknown>>)?.find(
           (a) => a.slug === 'content-core'
@@ -284,13 +293,14 @@ export function DraftEngine({
             setModel(agent.recommended_model as string);
           }
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         // silent
       } finally {
         setRecommendationLoaded(true);
       }
     })();
-  }, []);
+  }, [abortController?.signal]);
 
   // ── Auto-pilot wiring ─────────────────────────────────────────────
   const autoMode = useSelector(actor, (s) => s.context.mode);
@@ -391,7 +401,8 @@ export function DraftEngine({
         return null;
       }
       return json.data;
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return null;
       toast.error(`${label} failed`);
       return null;
     } finally {
@@ -432,6 +443,7 @@ export function DraftEngine({
             personaId: selectedPersonaId,
             productionParams: {},
           }),
+          signal: abortController?.signal,
         })
       );
       if (!draft) return;
@@ -454,6 +466,7 @@ export function DraftEngine({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider, model }),
+        signal: abortController?.signal,
       });
       const json = await res.json();
       if (json.error) {
@@ -478,6 +491,7 @@ export function DraftEngine({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider, model }),
+        signal: abortController?.signal,
       })
     );
     if (!enqueued) return;
@@ -497,6 +511,7 @@ export function DraftEngine({
           phase: manualState.phase,
           output: parsed,
         }),
+        signal: abortController?.signal,
       });
       const json = await res.json();
       if (json.error) {
@@ -536,7 +551,10 @@ export function DraftEngine({
     if (!manualState) return;
     setBusy(true);
     try {
-      await fetch(`/api/content-drafts/${manualState.draftId}/cancel`, { method: 'POST' });
+      await fetch(`/api/content-drafts/${manualState.draftId}/cancel`, {
+        method: 'POST',
+        signal: abortController?.signal,
+      });
     } catch {
       // best-effort
     } finally {
@@ -572,6 +590,7 @@ export function DraftEngine({
           personaId: selectedPersonaId,
           productionParams: {},
         }),
+        signal: abortController?.signal,
       })
     );
     if (!draft) return;
@@ -592,6 +611,7 @@ export function DraftEngine({
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ canonicalCoreJson: core }),
+        signal: abortController?.signal,
       })
     );
     if (!updated) return;
@@ -616,7 +636,9 @@ export function DraftEngine({
     // Fetch the draft to get canonical core
     (async () => {
       try {
-        const res = await fetch(`/api/content-drafts/${draftId}`);
+        const res = await fetch(`/api/content-drafts/${draftId}`, {
+          signal: abortController?.signal,
+        });
         const json = await res.json();
         const draftRow = json.data as Record<string, unknown> | null;
         if (!draftRow) {
@@ -668,7 +690,8 @@ export function DraftEngine({
         } else {
           toast.error('No canonical core found in draft');
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         toast.error('Failed to load draft');
       }
     })();
@@ -714,6 +737,7 @@ export function DraftEngine({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ productionParams, provider, model }),
+          signal: abortController?.signal,
         });
         const json = await res.json();
         if (json.error) {
@@ -729,7 +753,8 @@ export function DraftEngine({
         }
         toast.error('Unexpected response from manual provider');
         setPhase('core-ready');
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') { setPhase('core-ready'); return; }
         toast.error('produce content failed');
         setPhase('core-ready');
       } finally {
@@ -746,6 +771,7 @@ export function DraftEngine({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productionParams, provider, model }),
+        signal: abortController?.signal,
       })
     );
     if (!enqueued) {
@@ -818,6 +844,7 @@ export function DraftEngine({
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ draftJson: obj }),
+          signal: abortController?.signal,
         })
       );
     }

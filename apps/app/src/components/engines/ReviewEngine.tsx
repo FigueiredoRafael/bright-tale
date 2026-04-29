@@ -18,6 +18,7 @@ import { ContentWarningBanner } from './ContentWarningBanner';
 import { friendlyAiError } from '@/lib/ai/error-message';
 import { useUpgrade } from '@/components/billing/UpgradeProvider';
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker';
+import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import type { PipelineContext, PipelineStage, ReviewResult } from './types';
 import { deriveTier, isApprovedTier } from '@brighttale/shared';
 
@@ -49,6 +50,7 @@ const TIER_COLOR: Record<string, string> = {
 
 export function ReviewEngine({ draft }: ReviewEngineProps) {
   const actor = usePipelineActor();
+  const abortController = usePipelineAbort();
   const channelId = useSelector(actor, (s) => s.context.channelId);
   const projectId = useSelector(actor, (s) => s.context.projectId);
   const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
@@ -125,7 +127,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/agents');
+        const res = await fetch('/api/agents', { signal: abortController?.signal });
         const json = await res.json();
         if (cancelled) return;
         const agent = (json.data?.agents as Array<Record<string, unknown>>)?.find(
@@ -135,7 +137,8 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
           setProvider(agent.recommended_provider as ProviderId);
           if (agent.recommended_model) setModel(agent.recommended_model as string);
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         // silent — fall back to defaults
       } finally {
         if (!cancelled) setRecommendationLoaded(true);
@@ -144,7 +147,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [abortController?.signal]);
 
   // Auto-pilot: submit a fresh review when the orchestrator enters this stage.
   // Re-fires for each iteration of the review loop (rearmKey).
@@ -199,12 +202,15 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
   // Load fresh data if needed
   async function refetchDraft() {
     try {
-      const res = await fetch(`/api/content-drafts/${draftId}`);
+      const res = await fetch(`/api/content-drafts/${draftId}`, {
+        signal: abortController?.signal,
+      });
       const json = await res.json();
       if (json?.data) {
         setLocalDraft(json.data as Record<string, unknown>);
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
       // silent
     }
   }
@@ -231,6 +237,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: 'in_review' }),
+          signal: abortController?.signal,
         });
         const patchJson = await patchRes.json();
         if (patchJson?.error) {
@@ -250,6 +257,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
+          signal: abortController?.signal,
         });
         const json = await res.json();
 
@@ -314,6 +322,10 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
           };
         }
       } catch (e) {
+        if (e instanceof Error && e.name === 'AbortError') {
+          setReviewing(false);
+          return;
+        }
         tracker.trackFailed(e instanceof Error ? e.message : 'Failed to submit for review');
         setReviewing(false);
         toast.error('Failed to submit for review');
@@ -332,6 +344,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(parsed),
+        signal: abortController?.signal,
       });
       const json = await res.json();
       if (json.error) {
@@ -360,7 +373,10 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
     if (!manualState) return;
     setBusy(true);
     try {
-      await fetch(`/api/content-drafts/${manualState.draftId}/cancel`, { method: 'POST' });
+      await fetch(`/api/content-drafts/${manualState.draftId}/cancel`, {
+        method: 'POST',
+        signal: abortController?.signal,
+      });
     } catch {
       // best-effort
     } finally {
@@ -430,6 +446,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(patchBody),
+          signal: abortController?.signal,
         });
         const json = await res.json();
         if (json?.error) {
@@ -463,6 +480,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
           body: JSON.stringify({
             feedback: draftView.review_feedback_json,
           }),
+          signal: abortController?.signal,
         });
         const json = await res.json();
 
@@ -480,7 +498,8 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
         await refetchDraft();
         setReviewing(false);
         toast.success('Draft revised based on feedback');
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') { setReviewing(false); return; }
         setReviewing(false);
         toast.error('Failed to revise draft');
       }
@@ -498,6 +517,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
             reviewScore: effectiveScore ?? draftView.review_score ?? 0,
             reviewVerdict: 'approved',
           }),
+          signal: abortController?.signal,
         });
         const json = await res.json();
         if (json?.error) {
@@ -506,7 +526,8 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
         }
         await refetchDraft();
         toast.success('Draft approved');
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         toast.error('Failed to approve');
       }
     });
@@ -645,6 +666,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
                             reviewScore: score,
                             reviewVerdict: verdict,
                           }),
+                          signal: abortController?.signal,
                         });
                       }
                       const fb = draftView.review_feedback_json as Record<string, unknown> | null ?? {};

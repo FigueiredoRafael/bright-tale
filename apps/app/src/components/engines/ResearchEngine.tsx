@@ -44,6 +44,7 @@ import { useSelector } from '@xstate/react';
 import { usePipelineActor } from '@/hooks/usePipelineActor';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
+import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import type { ResearchResult, PipelineContext } from './types';
 
 type Level = 'surface' | 'medium' | 'deep';
@@ -86,6 +87,7 @@ export function ResearchEngine({
   initialIdeaId,
 }: ResearchEngineProps) {
   const actor = usePipelineActor();
+  const abortController = usePipelineAbort();
   const channelId = useSelector(actor, (s) => s.context.channelId);
   const projectId = useSelector(actor, (s) => s.context.projectId);
   const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
@@ -209,7 +211,9 @@ export function ResearchEngine({
 
     (async () => {
       try {
-        const res = await fetch(`/api/research-sessions/${ctxSessionId}`);
+        const res = await fetch(`/api/research-sessions/${ctxSessionId}`, {
+          signal: abortController?.signal,
+        });
         const json = await res.json();
         const sess = json.data?.session ?? json.data;
         if (sess) {
@@ -240,7 +244,8 @@ export function ResearchEngine({
             setFindings(synthesizeFindingsFromLegacy(sess.cards_json as Array<Record<string, unknown>>));
           }
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         // silent — form stays empty, user can regenerate
       }
     })();
@@ -251,7 +256,7 @@ export function ResearchEngine({
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/agents');
+        const res = await fetch('/api/agents', { signal: abortController?.signal });
         const json = await res.json();
         const agent = (json.data?.agents as Array<Record<string, unknown>>)?.find(
           (a) => a.slug === 'research'
@@ -266,11 +271,12 @@ export function ResearchEngine({
             setModel(agent.recommended_model as string);
           }
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         // silent — keep defaults
       }
     })();
-  }, []);
+  }, [abortController?.signal]);
 
   function toggleFocus(id: string) {
     setFocusTags((prev) =>
@@ -386,6 +392,7 @@ export function ResearchEngine({
       const res = await fetch('/api/research-sessions/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortController?.signal,
         body: JSON.stringify({
           ...(channelId ? { channelId } : {}),
           ...(projectId ? { projectId } : {}),
@@ -441,6 +448,7 @@ export function ResearchEngine({
           provider,
           model,
         }),
+        signal: abortController?.signal,
       });
 
       let json: {
@@ -498,6 +506,10 @@ export function ResearchEngine({
         });
       }
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        if (!wentAsync) setRunning(false);
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       const friendly = friendlyAiError(message);
       tracker.trackFailed(message);
@@ -514,7 +526,9 @@ export function ResearchEngine({
     setActiveGenerationId(null);
     if (!id) return;
     try {
-      const res = await fetch(`/api/research-sessions/${id}`);
+      const res = await fetch(`/api/research-sessions/${id}`, {
+        signal: abortController?.signal,
+      });
       const json = await res.json();
       const sess = (json.data?.session ?? json.data) as Record<string, unknown> | undefined;
       if (!sess) {
@@ -539,6 +553,7 @@ export function ResearchEngine({
         setRefinedAngle(sess.refined_angle_json as Record<string, unknown>);
       }
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
       const message = err instanceof Error ? err.message : String(err);
       toast.error('Failed to load research findings', { description: message });
     } finally {
@@ -616,6 +631,7 @@ export function ResearchEngine({
     try {
       const res = await fetch(`/api/research-sessions/${sessionId}/regenerate`, {
         method: 'POST',
+        signal: abortController?.signal,
       });
       const json = await res.json();
       if (json.error) {
@@ -628,7 +644,9 @@ export function ResearchEngine({
         setSessionId(newId);
         // Reload session data
         try {
-          const reloadRes = await fetch(`/api/research-sessions/${newId}`);
+          const reloadRes = await fetch(`/api/research-sessions/${newId}`, {
+            signal: abortController?.signal,
+          });
           const reloadJson = await reloadRes.json();
           if (reloadJson.data) {
             const sess = reloadJson.data as Record<string, unknown>;
@@ -648,11 +666,13 @@ export function ResearchEngine({
             tracker.trackAction('regenerated', { sessionId: newId, previousCardCount: cards.length });
             toast.success('Regenerated successfully');
           }
-        } catch {
+        } catch (err) {
+          if (err instanceof Error && err.name === 'AbortError') return;
           toast.success('Regenerated but failed to reload');
         }
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
       toast.error('Regeneration failed');
     } finally {
       setRegenerating(false);
@@ -665,6 +685,7 @@ export function ResearchEngine({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ output: parsed }),
+      signal: abortController?.signal,
     });
     const json = await res.json();
     if (json.error) {
@@ -696,7 +717,10 @@ export function ResearchEngine({
   async function handleManualAbandon() {
     if (!manualSessionId) return;
     try {
-      await fetch(`/api/research-sessions/${manualSessionId}/cancel`, { method: 'POST' });
+      await fetch(`/api/research-sessions/${manualSessionId}/cancel`, {
+        method: 'POST',
+        signal: abortController?.signal,
+      });
     } catch {
       // silent — best-effort cancel
     }
@@ -737,6 +761,7 @@ export function ResearchEngine({
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ approvedCardsJson: approvedCards }),
+          signal: abortController?.signal,
         });
         const json = await res.json();
         if (json.error) {

@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { useSelector } from '@xstate/react';
 import { usePipelineActor } from '@/hooks/usePipelineActor';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
+import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { ContextBanner } from './ContextBanner';
 import { markdownToHtml } from '@/lib/utils';
 import type { PipelineContext, PipelineStage, PreviewResult } from './types';
@@ -236,6 +237,7 @@ function composedHtmlFromMarkdown(
  * require <StandaloneEngineHost stage="preview"> like ReviewEngine/AssetsEngine. */
 export function PreviewEngine() {
   const actor = usePipelineActor();
+  const abortController = usePipelineAbort();
   const channelId = useSelector(actor, (s) => s.context.channelId);
   const projectId = useSelector(actor, (s) => s.context.projectId);
   const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
@@ -310,7 +312,9 @@ export function PreviewEngine() {
         setLoadError(null);
 
         // Fetch draft
-        const draftRes = await fetch(`/api/content-drafts/${draftId}`);
+        const draftRes = await fetch(`/api/content-drafts/${draftId}`, {
+          signal: abortController?.signal,
+        });
         const draftJson = await draftRes.json();
         if (draftJson?.error) {
           setLoadError(draftJson.error.message ?? 'Failed to load draft');
@@ -376,7 +380,9 @@ export function PreviewEngine() {
         setPublishDate(pubPlan.publishDate ?? '');
 
         // Fetch assets
-        const assetsRes = await fetch(`/api/assets?content_id=${draftId}`);
+        const assetsRes = await fetch(`/api/assets?content_id=${draftId}`, {
+          signal: abortController?.signal,
+        });
         const assetsJson = await assetsRes.json();
         if (assetsJson?.error) {
           setLoadError(assetsJson.error.message ?? 'Failed to load assets');
@@ -405,11 +411,12 @@ export function PreviewEngine() {
 
         setBusy(false);
       } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         setLoadError(err instanceof Error ? err.message : 'Unknown error');
         setBusy(false);
       }
     })();
-  }, [draftId]);
+  }, [draftId, abortController?.signal]);
 
   // Build asset map for quick lookup
   const assetMap = useMemo(() => {

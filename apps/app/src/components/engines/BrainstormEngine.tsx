@@ -38,6 +38,7 @@ import { ManualOutputDialog } from './ManualOutputDialog';
 import { IdeaDetailsDialog } from './IdeaDetailsDialog';
 import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
 import { friendlyAiError } from '@/lib/ai/error-message';
+import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import type { BrainstormResult, PipelineContext } from './types';
 
 const BRAINSTORM_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
@@ -89,6 +90,7 @@ export function BrainstormEngine({
   preSelectedIdeaId,
 }: BrainstormEngineProps) {
   const actor = usePipelineActor();
+  const abortController = usePipelineAbort();
   const channelId = useSelector(actor, (s) => s.context.channelId);
   const projectId = useSelector(actor, (s) => s.context.projectId);
   const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
@@ -258,7 +260,9 @@ export function BrainstormEngine({
     (async () => {
       try {
         // Fetch session details (restores form fields)
-        const sessRes = await fetch(`/api/brainstorm/sessions/${ctxSessionId}`);
+        const sessRes = await fetch(`/api/brainstorm/sessions/${ctxSessionId}`, {
+          signal: abortController?.signal,
+        });
         const sessJson = await sessRes.json();
         const sess = sessJson.data?.session ?? sessJson.data;
         if (sess) {
@@ -292,7 +296,9 @@ export function BrainstormEngine({
         let drafts = ideasRaw;
         if (drafts.length === 0) {
           // Fallback: try staged drafts
-          const draftsRes = await fetch(`/api/brainstorm/sessions/${ctxSessionId}/drafts`);
+          const draftsRes = await fetch(`/api/brainstorm/sessions/${ctxSessionId}/drafts`, {
+            signal: abortController?.signal,
+          });
           const draftsJson = await draftsRes.json();
           drafts = (draftsJson.data?.drafts ?? []) as Array<Record<string, unknown>>;
         }
@@ -316,7 +322,8 @@ export function BrainstormEngine({
             setSelectedIdeaId(brainstormResult.ideaId);
           }
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         // silent — form stays empty, user can regenerate
       }
     })();
@@ -331,7 +338,7 @@ export function BrainstormEngine({
         const url = channelId
           ? `/api/brainstorm/sessions/running?channelId=${channelId}`
           : '/api/brainstorm/sessions/running';
-        const res = await fetch(url);
+        const res = await fetch(url, { signal: abortController?.signal });
         const json = await res.json();
         const session = json.data?.session;
         if (session?.id && session.status === 'running') {
@@ -343,17 +350,18 @@ export function BrainstormEngine({
           setIsReconnecting(true);
           setRunning(true);
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         // silent — no running session
       }
     })();
-  }, [initialSession, channelId, activeGenerationId]);
+  }, [initialSession, channelId, activeGenerationId, abortController?.signal]);
 
   // Fetch recommended agent
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/agents');
+        const res = await fetch('/api/agents', { signal: abortController?.signal });
         const json = await res.json();
         const agent = (json.data?.agents as Array<Record<string, unknown>>)?.find(
           (a) => a.slug === 'brainstorm'
@@ -368,11 +376,12 @@ export function BrainstormEngine({
             setModel(agent.recommended_model as string);
           }
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         // silent — keep defaults
       }
     })();
-  }, []);
+  }, [abortController?.signal]);
 
   // Auto-pilot: trigger generation when topic is filled and we're on the
   // brainstorm stage. Brainstorm is the entry point so the user types the
@@ -483,6 +492,7 @@ export function BrainstormEngine({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: abortController?.signal,
       });
 
       let json: {
@@ -523,6 +533,10 @@ export function BrainstormEngine({
       // Clear persisted form state after successful submission
       localStorage.removeItem(storageKey);
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        setRunning(false);
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       const friendly = friendlyAiError(message);
       toast.error(friendly.title, { description: friendly.hint });
@@ -538,7 +552,9 @@ export function BrainstormEngine({
     }
 
     try {
-      const res = await fetch(`/api/brainstorm/sessions/${sessionId}/drafts`);
+      const res = await fetch(`/api/brainstorm/sessions/${sessionId}/drafts`, {
+        signal: abortController?.signal,
+      });
       const json = await res.json();
       const drafts = (json.data?.drafts ?? []) as Array<Record<string, unknown>>;
 
@@ -573,7 +589,8 @@ export function BrainstormEngine({
       } else {
         toast.success(`${mapped.length} ideas generated`);
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
       toast.error('Failed to load generated ideas');
     } finally {
       setRunning(false);
@@ -594,6 +611,7 @@ export function BrainstormEngine({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ output: parsed }),
+      signal: abortController?.signal,
     });
     const json = await res.json();
     if (json.error) {
@@ -635,7 +653,10 @@ export function BrainstormEngine({
   async function handleManualAbandon() {
     if (!manualSessionId) return;
     try {
-      await fetch(`/api/brainstorm/sessions/${manualSessionId}/cancel`, { method: 'POST' });
+      await fetch(`/api/brainstorm/sessions/${manualSessionId}/cancel`, {
+        method: 'POST',
+        signal: abortController?.signal,
+      });
     } catch {
       // best-effort
     }
@@ -657,7 +678,7 @@ export function BrainstormEngine({
     try {
       const res = await fetch(
         `/api/brainstorm/sessions/${sessionId}/regenerate`,
-        { method: 'POST' }
+        { method: 'POST', signal: abortController?.signal }
       );
       const json = await res.json();
       if (json.error) {
@@ -671,7 +692,9 @@ export function BrainstormEngine({
         setSessionId(newId);
         // Reload ideas from new session
         try {
-          const reloadRes = await fetch(`/api/brainstorm/sessions/${newId}`);
+          const reloadRes = await fetch(`/api/brainstorm/sessions/${newId}`, {
+            signal: abortController?.signal,
+          });
           const reloadJson = await reloadRes.json();
           if (reloadJson.data) {
             setIdeas(reloadJson.data.ideas ?? []);
@@ -682,11 +705,13 @@ export function BrainstormEngine({
             });
             toast.success('Regenerated successfully');
           }
-        } catch {
+        } catch (err) {
+          if (err instanceof Error && err.name === 'AbortError') return;
           toast.success('Regenerated but failed to reload');
         }
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
       toast.error('Regeneration failed');
     } finally {
       setRegenerating(false);
