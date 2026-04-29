@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, act } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import React from 'react'
 
 // ─── Shared mocks ─────────────────────────────────────────────────────────────
@@ -124,7 +125,6 @@ describe('PipelineOverview', () => {
   })
 
   it('calls setShowEngine with stage name when Open engine button is clicked', async () => {
-    const { userEvent } = await import('@testing-library/user-event')
     const user = userEvent.setup()
     const setShowEngine = vi.fn()
 

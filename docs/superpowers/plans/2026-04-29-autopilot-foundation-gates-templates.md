@@ -823,7 +823,7 @@ export function OverviewTimeline({ setShowEngine }: OverviewTimelineProps) {
       case 'review':     return `Score ${r.score}/100 · ${r.iterationCount} iter`
       case 'assets':     return `${(r.assetIds as unknown[])?.length ?? 0} asset(s)`
       case 'preview':    return `${(r.categories as unknown[])?.length ?? 0} categories`
-      case 'publish':    return `Published: ${r.wpStatus ?? 'draft'}`
+      case 'publish':    return r.publishedUrl ? `Published → ${r.publishedUrl}` : (r.wordpressPostId ? `Published (post #${r.wordpressPostId})` : 'Published')
       default: return undefined
     }
   }
