@@ -211,37 +211,22 @@ describe('PipelineOrchestrator', () => {
     expect(screen.getByTestId('pipeline-wizard')).toBeTruthy()
   })
 
-  it("renders <PipelineOverview /> AND the current-stage engine when mode='overview'", () => {
-    // Overview mode is dual-pane: dashboard rail/cards on top, live engine below.
-    // The engine for the current stage always mounts so its effects can fire.
-    render(
-      <PipelineOrchestrator
-        projectId="p"
-        channelId="c"
-        projectTitle="Test"
-        initialPipelineState={overviewState()}
-      />,
-    )
-    expect(screen.getByTestId('pipeline-overview')).toBeTruthy()
-    // overviewState() parks the machine at 'draft', so the draft engine mounts.
-    expect(screen.getByTestId('draft-engine')).toBeTruthy()
+  it("renders <PipelineOverview /> + current-stage engine hidden in overview mode", () => {
+    render(<PipelineOrchestrator projectId="p" channelId="c" projectTitle="Test" initialPipelineState={overviewState()} />)
+    expect(screen.getByTestId('pipeline-overview')).toBeVisible()
+    const draftEngine = screen.getByTestId('draft-engine')
+    expect(draftEngine).toBeInTheDocument()
+    // Hidden via display:none on the wrapper
+    const wrapper = draftEngine.closest('[data-testid="hidden-engine-wrapper"]')
+    expect(wrapper).toHaveStyle({ display: 'none' })
   })
 
-  it("setShowEngine swaps the visible engine to the requested stage; overview stays mounted", async () => {
-    render(
-      <PipelineOrchestrator
-        projectId="p"
-        channelId="c"
-        projectTitle="Test"
-        initialPipelineState={overviewState()}
-      />,
-    )
-    // PipelineOverview stub has an "Open engine" button that calls setShowEngine('draft')
+  it("setShowEngine flips wrapper visible; overview hides", async () => {
+    render(<PipelineOrchestrator projectId="p" channelId="c" projectTitle="Test" initialPipelineState={overviewState()} />)
     fireEvent.click(screen.getByTestId('open-draft-engine'))
     await waitFor(() => {
-      expect(screen.getByTestId('draft-engine')).toBeTruthy()
-      // Overview remains visible above the engine.
-      expect(screen.getByTestId('pipeline-overview')).toBeTruthy()
+      expect(screen.getByTestId('draft-engine')).toBeVisible()
+      expect(screen.queryByTestId('pipeline-overview')).toBeNull()
     })
   })
 

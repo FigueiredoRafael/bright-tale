@@ -529,13 +529,29 @@ function OrchestratorInner({
 
         <Separator />
 
-        {ctx.mode === 'overview' && (
+        {ctx.mode === 'overview' && !showEngine ? (
           <>
             <PipelineOverview setShowEngine={(stage) => setShowEngine(stage as PipelineStage)} />
-            <Separator />
+            <div data-testid="hidden-engine-wrapper" style={{ display: 'none' }} aria-hidden="true">
+              {renderEngine(stageToRender)}
+            </div>
+          </>
+        ) : (
+          <>
+            {showEngine && ctx.mode === 'overview' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mb-2"
+                data-testid="back-to-overview"
+                onClick={() => setShowEngine(null)}
+              >
+                ← Back to overview
+              </Button>
+            )}
+            {renderEngine(stageToRender)}
           </>
         )}
-        {renderEngine(stageToRender)}
 
         <AlertDialog open={!!pendingRedo} onOpenChange={(o) => !o && setPendingRedo(null)}>
           <AlertDialogContent>
