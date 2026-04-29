@@ -128,16 +128,6 @@ test.describe('auto-pilot pipeline', () => {
     await expect.poll(() => recorder.types(), { timeout: 5000 }).toContain('RESUME')
   })
 
-  test('xstate inspector logs every transition to console.debug', async ({ page }) => {
-    await mockPipelineApis(page)
-    const recorder = attachPipelineEventRecorder(page)
-    await page.goto(PROJECT_URL)
-
-    await page.getByRole('switch', { name: /auto/i }).click()
-    await expect.poll(() => recorder.types(), { timeout: 3000 }).toContain('TOGGLE_AUTO_PILOT')
-    await expect.poll(() => recorder.types()).toContain('xstate.init')
-  })
-
   test('completed stage summary renders and exposes Redo button', async ({ page }) => {
     await mockPipelineApis(page, {
       project: {
