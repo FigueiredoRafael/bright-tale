@@ -19,6 +19,11 @@ export type DbProject = {
   status: string;
   winner: boolean;
   video_style_config: string | null;
+  channel_id: string | null;
+  mode: string | null;
+  autopilot_config_json: unknown | null;
+  autopilot_template_id: string | null;
+  abort_requested_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -33,6 +38,11 @@ export type DomainProject = {
   status: string;
   winner: boolean;
   videoStyleConfig: string | null;
+  channelId: string | null;
+  mode: 'step-by-step' | 'supervised' | 'overview' | null;
+  autopilotConfigJson: unknown | null;
+  autopilotTemplateId: string | null;
+  abortRequestedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -48,6 +58,11 @@ export function mapProjectFromDb(row: DbProject): DomainProject {
     status: row.status,
     winner: row.winner,
     videoStyleConfig: row.video_style_config,
+    channelId: row.channel_id,
+    mode: row.mode as 'step-by-step' | 'supervised' | 'overview' | null,
+    autopilotConfigJson: row.autopilot_config_json,
+    autopilotTemplateId: row.autopilot_template_id,
+    abortRequestedAt: row.abort_requested_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -65,6 +80,11 @@ export function mapProjectToDb(
   if (input.status !== undefined) out.status = input.status;
   if (input.winner !== undefined) out.winner = input.winner;
   if (input.videoStyleConfig !== undefined) out.video_style_config = input.videoStyleConfig;
+  if (input.channelId !== undefined) out.channel_id = input.channelId ?? null;
+  if (input.mode !== undefined) out.mode = input.mode ?? null;
+  if (input.autopilotConfigJson !== undefined) out.autopilot_config_json = input.autopilotConfigJson ?? null;
+  if (input.autopilotTemplateId !== undefined) out.autopilot_template_id = input.autopilotTemplateId ?? null;
+  if (input.abortRequestedAt !== undefined) out.abort_requested_at = input.abortRequestedAt ?? null;
   return out;
 }
 

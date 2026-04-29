@@ -41,6 +41,10 @@ export const updateProjectSchema = z.object({
   completed_stages: z.array(z.string()).optional(),
   pipelineStateJson: z.record(z.unknown()).optional(),
   channelId: z.string().uuid().nullable().optional(),
+  mode: z.enum(["step-by-step", "supervised", "overview"]).nullable().optional(),
+  autopilotConfigJson: z.record(z.unknown()).nullable().optional(),
+  autopilotTemplateId: z.string().nullable().optional(),
+  abortRequestedAt: z.string().datetime().nullable().optional(),
 });
 
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;

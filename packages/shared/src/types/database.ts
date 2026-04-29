@@ -869,6 +869,47 @@ export type Database = {
           },
         ]
       }
+      autopilot_templates: {
+        Row: {
+          channel_id: string | null
+          config_json: Json
+          created_at: string
+          id: string
+          is_default: boolean
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          channel_id?: string | null
+          config_json: Json
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          channel_id?: string | null
+          config_json?: Json
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "autopilot_templates_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       blog_drafts: {
         Row: {
           affiliate_copy: string | null
@@ -1673,6 +1714,27 @@ export type Database = {
           },
         ]
       }
+      currency_rates: {
+        Row: {
+          currency: string
+          fetched_at: string
+          rate_to_usd: number
+          source: string
+        }
+        Insert: {
+          currency: string
+          fetched_at?: string
+          rate_to_usd: number
+          source?: string
+        }
+        Update: {
+          currency?: string
+          fetched_at?: string
+          rate_to_usd?: number
+          source?: string
+        }
+        Relationships: []
+      }
       engine_logs: {
         Row: {
           channel_id: string | null
@@ -2449,12 +2511,16 @@ export type Database = {
       }
       projects: {
         Row: {
+          abort_requested_at: string | null
           auto_advance: boolean
+          autopilot_config_json: Json | null
+          autopilot_template_id: string | null
           channel_id: string | null
           completed_stages: string[]
           created_at: string
           current_stage: string
           id: string
+          mode: string | null
           org_id: string | null
           pipeline_state_json: Json | null
           research_id: string | null
@@ -2466,12 +2532,16 @@ export type Database = {
           winner: boolean
         }
         Insert: {
+          abort_requested_at?: string | null
           auto_advance?: boolean
+          autopilot_config_json?: Json | null
+          autopilot_template_id?: string | null
           channel_id?: string | null
           completed_stages?: string[]
           created_at?: string
           current_stage: string
           id?: string
+          mode?: string | null
           org_id?: string | null
           pipeline_state_json?: Json | null
           research_id?: string | null
@@ -2483,12 +2553,16 @@ export type Database = {
           winner?: boolean
         }
         Update: {
+          abort_requested_at?: string | null
           auto_advance?: boolean
+          autopilot_config_json?: Json | null
+          autopilot_template_id?: string | null
           channel_id?: string | null
           completed_stages?: string[]
           created_at?: string
           current_stage?: string
           id?: string
+          mode?: string | null
           org_id?: string | null
           pipeline_state_json?: Json | null
           research_id?: string | null
@@ -2500,6 +2574,13 @@ export type Database = {
           winner?: boolean
         }
         Relationships: [
+          {
+            foreignKeyName: "projects_autopilot_template_id_fkey"
+            columns: ["autopilot_template_id"]
+            isOneToOne: false
+            referencedRelation: "autopilot_templates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "projects_channel_id_fkey"
             columns: ["channel_id"]
@@ -3416,6 +3497,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      clear_autopilot_default: {
+        Args: { p_channel_id: string; p_user_id: string }
+        Returns: undefined
+      }
       increment_affiliate_clicks: {
         Args: { aff_id: string }
         Returns: undefined
