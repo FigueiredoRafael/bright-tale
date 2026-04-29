@@ -45,6 +45,7 @@ import { usePipelineActor } from '@/hooks/usePipelineActor';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
+import { hydrateResearchFromConfig } from '@/lib/pipeline/hydrateEngineFromConfig';
 import type { ResearchResult, PipelineContext } from './types';
 
 type Level = 'surface' | 'medium' | 'deep';
@@ -141,6 +142,16 @@ export function ResearchEngine({
 
   // When initialSession is provided, we're in "session detail" mode
   const isSessionDetail = !!initialSession;
+
+  // Hydrate depth from autopilotConfig once on mount (wizard inputs take precedence).
+  const autopilotConfig = useSelector(actor, (s) => s.context.autopilotConfig);
+  useEffect(() => {
+    const h = hydrateResearchFromConfig(autopilotConfig);
+    if (h.researchDepth !== undefined) {
+      setLevel(h.researchDepth);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Initialize from initial values
   useEffect(() => {
@@ -576,14 +587,17 @@ export function ResearchEngine({
   useEffect(() => {
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (researchResult?.researchSessionId) return;
-    if (!findings || !sessionId) return;
+    if (!findings) return;
     if (running || regenerating) return;
-    if (autoApprovedRef.current === sessionId) return;
-    autoApprovedRef.current = sessionId;
+    // Use sessionId when available; fall back to a stable sentinel so the ref
+    // guard works when findings come from initialCards (no server session yet).
+    const key = sessionId ?? '__initial__';
+    if (autoApprovedRef.current === key) return;
+    autoApprovedRef.current = key;
 
     const signals = extractResearchSignals(findings);
     const result: ResearchResult = {
-      researchSessionId: sessionId,
+      researchSessionId: sessionId ?? '',
       approvedCardsCount: 1,
       researchLevel: level,
       primaryKeyword: signals.primaryKeyword,
@@ -596,6 +610,37 @@ export function ResearchEngine({
     autoMode,
     autoPaused,
     findings,
+    sessionId,
+    running,
+    regenerating,
+    researchResult?.researchSessionId,
+    level,
+    actor,
+    tracker,
+  ]);
+
+  // Auto-pilot (overview mode): when legacy cards are present (no findings), auto-approve all.
+  const autoCardsApprovedRef = useRef(false);
+  useEffect(() => {
+    if (autoMode !== 'overview' || autoPaused) return;
+    if (researchResult?.researchSessionId) return;
+    if (findings) return; // handled by the findings effect above
+    if (cards.length === 0) return;
+    if (running || regenerating) return;
+    if (autoCardsApprovedRef.current) return;
+    autoCardsApprovedRef.current = true;
+    const result: ResearchResult = {
+      researchSessionId: sessionId || '',
+      approvedCardsCount: cards.length,
+      researchLevel: level,
+    };
+    tracker.trackAction('cards.auto_approved', { cardCount: cards.length });
+    actor.send({ type: 'RESEARCH_COMPLETE', result });
+  }, [
+    autoMode,
+    autoPaused,
+    findings,
+    cards,
     sessionId,
     running,
     regenerating,
@@ -903,6 +948,7 @@ export function ResearchEngine({
 
             <div className="space-y-2">
               <Label>Research depth</Label>
+              <span data-testid="research-depth" className="sr-only">{level}</span>
               <div className="grid grid-cols-3 gap-2">
                 {levels.map((l) => (
                   <button
