@@ -4,7 +4,12 @@
 
 import { z } from "zod";
 
-export const aiProviderSchema = z.enum(["openai", "anthropic", "local"]);
+export const aiProviderSchema = z.enum(["openai", "anthropic", "gemini", "ollama"]);
+
+export const aiProviderSchemaWithAlias = z.union([
+  aiProviderSchema,
+  z.literal('local').transform(() => 'ollama' as const),
+]);
 
 export const createAIConfigSchema = z.object({
   provider: aiProviderSchema,
@@ -26,6 +31,7 @@ export const testAIConfigSchema = z.object({
 });
 
 export type AIProvider = z.infer<typeof aiProviderSchema>;
+export type AiProvider = AIProvider;
 export type CreateAIConfig = z.infer<typeof createAIConfigSchema>;
 export type UpdateAIConfig = z.infer<typeof updateAIConfigSchema>;
 export type TestAIConfig = z.infer<typeof testAIConfigSchema>;
