@@ -11,7 +11,7 @@ import type {
   PipelineStage,
   StageResultMap,
 } from './machine.types'
-import { pipelineMachine } from './machine.js'
+import { pipelineMachine } from './machine'
 import type { PipelineMachineContext } from './machine.types'
 
 type LegacyMode = 'step-by-step' | 'auto'
