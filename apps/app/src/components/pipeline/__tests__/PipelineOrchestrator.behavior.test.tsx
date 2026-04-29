@@ -2,11 +2,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import React from 'react'
 
+const mockPush = vi.fn()
+
+vi.mock('@/i18n/navigation', () => ({
+  useRouter: () => ({ push: mockPush }),
+  Link: ({ children, href }: { children: React.ReactNode; href: string }) => (
+    <a href={href}>{children}</a>
+  ),
+}))
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
 
 beforeEach(() => {
+  mockPush.mockReset()
   vi.stubGlobal(
     'fetch',
     vi.fn().mockResolvedValue({
@@ -265,5 +275,97 @@ describe('PipelineOrchestrator', () => {
       expect(screen.getByTestId('pipeline-overview')).toBeTruthy()
       expect(screen.queryByTestId('draft-engine')).toBeNull()
     })
+  })
+
+  // ── T-8.3 Redo-from-start modal tests ────────────────────────────────────
+
+  it('Redo from start (wipe) dispatches RESET_TO_SETUP and returns to setup/wizard', async () => {
+    render(
+      <PipelineOrchestrator
+        projectId="p"
+        channelId="c"
+        projectTitle="Test"
+        initialPipelineState={stateAt('brainstorm', 'step-by-step')}
+      />,
+    )
+
+    // Open the redo modal
+    fireEvent.click(screen.getByTestId('redo-from-start-trigger'))
+    await waitFor(() => {
+      expect(screen.getByTestId('redo-modal')).toBeTruthy()
+    })
+
+    // Click Wipe
+    fireEvent.click(screen.getByTestId('redo-wipe-btn'))
+
+    // Machine should transition to setup → PipelineWizard renders
+    await waitFor(() => {
+      expect(screen.getByTestId('pipeline-wizard')).toBeTruthy()
+    })
+  })
+
+  it('Redo from start (clone) POSTs to /api/projects with channelId + autopilotConfig and routes to new project', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      json: async () => ({ data: { id: 'p2' }, error: null }),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    render(
+      <PipelineOrchestrator
+        projectId="p"
+        channelId="c"
+        projectTitle="Test"
+        initialPipelineState={stateAt('brainstorm', 'step-by-step')}
+      />,
+    )
+
+    // Open the redo modal
+    fireEvent.click(screen.getByTestId('redo-from-start-trigger'))
+    await waitFor(() => {
+      expect(screen.getByTestId('redo-modal')).toBeTruthy()
+    })
+
+    // Click Clone
+    fireEvent.click(screen.getByTestId('redo-clone-btn'))
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/projects',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"channelId":"c"'),
+        }),
+      )
+      expect(mockPush).toHaveBeenCalledWith('/projects/p2')
+    })
+  })
+
+  it('Redo from start (new) pushes /projects/new without touching the machine state', async () => {
+    render(
+      <PipelineOrchestrator
+        projectId="p"
+        channelId="c"
+        projectTitle="Test"
+        initialPipelineState={stateAt('brainstorm', 'step-by-step')}
+      />,
+    )
+
+    // Open the redo modal
+    fireEvent.click(screen.getByTestId('redo-from-start-trigger'))
+    await waitFor(() => {
+      expect(screen.getByTestId('redo-modal')).toBeTruthy()
+    })
+
+    // Click Start new
+    fireEvent.click(screen.getByTestId('redo-new-btn'))
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith('/projects/new')
+    })
+
+    // Machine should still be running (no wizard rendered)
+    expect(screen.queryByTestId('pipeline-wizard')).toBeNull()
+    // Engine is still present
+    expect(screen.getByTestId('brainstorm-engine')).toBeTruthy()
   })
 })

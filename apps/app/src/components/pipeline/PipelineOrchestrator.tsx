@@ -16,7 +16,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Loader2 } from 'lucide-react'
+import { useRouter } from '@/i18n/navigation'
 import { useAnalytics } from '@/hooks/use-analytics'
 import { pipelineMachine } from '@/lib/pipeline/machine'
 import { usePipelineSettings } from '@/providers/PipelineSettingsProvider'
@@ -103,6 +112,7 @@ function OrchestratorInner({
   pipelineSettings,
   creditSettings,
 }: InnerProps) {
+  const router = useRouter()
   const snapshot = useMemo(() => mapLegacyToSnapshot(initialPipelineState), [
     initialPipelineState,
   ])
@@ -206,7 +216,6 @@ function OrchestratorInner({
   const [titleDraft, setTitleDraft] = useState(ctx.projectTitle)
   useEffect(() => {
     if (!editingTitle) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTitleDraft(ctx.projectTitle)
     }
   }, [ctx.projectTitle, editingTitle])
@@ -229,6 +238,8 @@ function OrchestratorInner({
   const [assetsConfirmed, setAssetsConfirmed] = useState(false)
   const [showEngine, setShowEngine] = useState<PipelineStage | null>(null)
   const [miniWizardOpen, setMiniWizardOpen] = useState(false)
+  const [redoModalOpen, setRedoModalOpen] = useState(false)
+  const [cloning, setCloning] = useState(false)
 
   useEffect(() => {
     if (ctx.mode !== 'supervised' && ctx.mode !== 'overview') return
@@ -241,7 +252,6 @@ function OrchestratorInner({
     if (subState === 'idle' && !ctx.stageResults[currentStage]) {
       // Assets stage costs credits — gate behind explicit user confirmation.
       if (currentStage === 'assets' && !assetsConfirmed) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setPendingAssetsConfirm(true)
         return
       }
@@ -255,7 +265,6 @@ function OrchestratorInner({
   useEffect(() => {
     const draftId = ctx.stageResults.draft?.draftId
     const needsDraft = ['review', 'assets', 'preview', 'publish'].includes(currentStage) && !!draftId
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraftData(null)
     if (!needsDraft) return
     let cancelled = false
@@ -310,6 +319,42 @@ function OrchestratorInner({
     send({ type: 'REDO_FROM', fromStage: pendingRedo.fromStage })
     setEngineMode(null)
     setPendingRedo(null)
+  }
+
+  function handleRedoWipe() {
+    send({ type: 'RESET_TO_SETUP' })
+    setRedoModalOpen(false)
+    setEngineMode(null)
+  }
+
+  async function handleRedoClone() {
+    setCloning(true)
+    try {
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelId,
+          autopilotConfigJson: ctx.autopilotConfig,
+        }),
+      })
+      const { data, error } = await res.json()
+      if (error) {
+        toast.error((error as { message?: string }).message ?? 'Failed to clone project')
+        return
+      }
+      setRedoModalOpen(false)
+      router.push(`/projects/${(data as { id: string }).id}`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to clone project')
+    } finally {
+      setCloning(false)
+    }
+  }
+
+  function handleRedoNew() {
+    setRedoModalOpen(false)
+    router.push('/projects/new')
   }
 
   function handleToggleMode() {
@@ -444,6 +489,14 @@ function OrchestratorInner({
               : 'Reconfigure autopilot'}
           </Button>
           <MiniWizardSheet isOpen={miniWizardOpen} onClose={() => setMiniWizardOpen(false)} />
+          <Button
+            variant="ghost"
+            size="sm"
+            data-testid="redo-from-start-trigger"
+            onClick={() => setRedoModalOpen(true)}
+          >
+            Redo from start
+          </Button>
         </div>
 
         <Separator />
@@ -550,6 +603,72 @@ function OrchestratorInner({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <Dialog open={redoModalOpen} onOpenChange={setRedoModalOpen}>
+          <DialogContent data-testid="redo-modal">
+            <DialogHeader>
+              <DialogTitle>Redo from start</DialogTitle>
+              <DialogDescription>
+                Choose how you would like to restart this pipeline run.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="rounded-lg border p-4 space-y-1">
+                <p className="font-medium text-sm">Wipe and restart</p>
+                <p className="text-sm text-muted-foreground">
+                  Clears all stage results and returns to the setup wizard for this project. The
+                  project is preserved.
+                </p>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="mt-2"
+                  data-testid="redo-wipe-btn"
+                  onClick={handleRedoWipe}
+                >
+                  Wipe
+                </Button>
+              </div>
+              <div className="rounded-lg border p-4 space-y-1">
+                <p className="font-medium text-sm">Clone to new project</p>
+                <p className="text-sm text-muted-foreground">
+                  Creates a fresh project with the same channel and autopilot configuration,
+                  then navigates you there.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  data-testid="redo-clone-btn"
+                  disabled={cloning}
+                  onClick={() => { void handleRedoClone() }}
+                >
+                  {cloning ? <><Loader2 className="h-3 w-3 animate-spin mr-1" />Cloning…</> : 'Clone'}
+                </Button>
+              </div>
+              <div className="rounded-lg border p-4 space-y-1">
+                <p className="font-medium text-sm">Start a new project</p>
+                <p className="text-sm text-muted-foreground">
+                  Navigates to the new-project flow without changing anything here.
+                </p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-2"
+                  data-testid="redo-new-btn"
+                  onClick={handleRedoNew}
+                >
+                  Start new
+                </Button>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => setRedoModalOpen(false)}>
+                Cancel
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </PipelineActorProvider>
   )
