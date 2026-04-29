@@ -4,11 +4,16 @@ type ReviewCompleteEvent = Extract<PipelineEvent, { type: 'REVIEW_COMPLETE' }>
 type GuardArgs = { context: PipelineMachineContext; event: ReviewCompleteEvent }
 
 export function isApprovedGuard({ context, event }: GuardArgs): boolean {
-  return event.result.verdict === 'approved' || event.result.score >= context.pipelineSettings.reviewApproveScore
+  if (event.result.verdict === 'approved') return true
+  const threshold = context.autopilotConfig?.review.autoApproveThreshold
+    ?? context.pipelineSettings.reviewApproveScore
+  return event.result.score >= threshold
 }
 
 export function isRejectedGuard({ context, event }: GuardArgs): boolean {
-  return event.result.score < context.pipelineSettings.reviewRejectThreshold
+  const threshold = context.autopilotConfig?.review.hardFailThreshold
+    ?? context.pipelineSettings.reviewRejectThreshold
+  return event.result.score < threshold
 }
 
 /**
@@ -18,5 +23,7 @@ export function isRejectedGuard({ context, event }: GuardArgs): boolean {
  * signature symmetry with sibling guards and for XState's call shape.
  */
 export function hasReachedMaxIterationsGuard({ context }: { context: PipelineMachineContext; event?: ReviewCompleteEvent }): boolean {
-  return context.iterationCount >= context.pipelineSettings.reviewMaxIterations
+  const max = context.autopilotConfig?.review.maxIterations
+    ?? context.pipelineSettings.reviewMaxIterations
+  return context.iterationCount >= max
 }

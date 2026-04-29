@@ -57,6 +57,11 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
   const researchResult = useSelector(actor, (s) => s.context.stageResults.research);
   const draftResult = useSelector(actor, (s) => s.context.stageResults.draft);
   const pipelineSettings = useSelector(actor, (s) => s.context.pipelineSettings);
+  const iterationCount = useSelector(actor, (s) => s.context.iterationCount);
+  const maxIterations = useSelector(
+    actor,
+    (s) => s.context.autopilotConfig?.review.maxIterations ?? s.context.pipelineSettings.reviewMaxIterations,
+  );
   const draftId = draftResult?.draftId ?? '';
 
   // Local mutable view of the draft — initialized from the prop, kept in sync as
@@ -231,6 +236,16 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
     await withGuard(async () => {
       try {
         tracker.trackStarted({ draftId, iterationCount: draftView.iteration_count });
+
+        actor.send({
+          type: 'STAGE_PROGRESS',
+          stage: 'review',
+          partial: {
+            status: `Iteration ${iterationCount + 1}/${maxIterations}: scoring`,
+            current: iterationCount,
+            total: maxIterations,
+          },
+        });
 
         // First, set status to in_review
         const patchRes = await fetch(`/api/content-drafts/${draftId}`, {

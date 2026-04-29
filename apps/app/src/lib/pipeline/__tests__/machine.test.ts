@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createActor } from 'xstate'
 import { pipelineMachine } from '../machine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '@/components/engines/types'
-import type { PipelineMachineInput } from '../machine.types'
+import type { PipelineMachineInput, PipelineMachineContext } from '../machine.types'
+import { isApprovedGuard, isRejectedGuard, hasReachedMaxIterationsGuard } from '../guards'
 import type { AutopilotConfig } from '@brighttale/shared'
 
 const input: PipelineMachineInput = {
@@ -413,5 +414,67 @@ describe('REQUEST_ABORT spawn-on-event', () => {
     expect(actor.getSnapshot().context.paused).toBe(false)
     expect(actor.getSnapshot().context.lastError).toMatch(/Failed to request abort/)
     vi.unstubAllGlobals()
+  })
+})
+
+describe('guard reads from autopilotConfig.review', () => {
+  const reviewConfig = {
+    providerOverride: null,
+    maxIterations: 5,
+    autoApproveThreshold: 85,
+    hardFailThreshold: 40,
+  }
+
+  const baseCtx = {
+    autopilotConfig: {
+      defaultProvider: 'recommended',
+      brainstorm: { providerOverride: null, mode: 'topic_driven', topic: 'AI', referenceUrl: null },
+      research: { providerOverride: null, depth: 'medium' },
+      canonicalCore: { providerOverride: null, personaId: null },
+      draft: { providerOverride: null, format: 'blog', wordCount: 1000 },
+      review: reviewConfig,
+      assets: { providerOverride: null, mode: 'auto' },
+    },
+    // pipelineSettings has a different threshold — guards must prefer autopilotConfig
+    pipelineSettings: { reviewApproveScore: 90, reviewRejectThreshold: 50, reviewMaxIterations: 3 } as any,
+    iterationCount: 3,
+  } as unknown as PipelineMachineContext
+
+  it('isApprovedGuard reads autoApproveThreshold from autopilotConfig', () => {
+    expect(isApprovedGuard({ context: baseCtx, event: { type: 'REVIEW_COMPLETE', result: { score: 86, verdict: 'pending' } } })).toBe(true)
+    expect(isApprovedGuard({ context: baseCtx, event: { type: 'REVIEW_COMPLETE', result: { score: 84, verdict: 'pending' } } })).toBe(false)
+  })
+
+  it('isApprovedGuard returns true immediately when verdict === approved regardless of score', () => {
+    expect(isApprovedGuard({ context: baseCtx, event: { type: 'REVIEW_COMPLETE', result: { score: 10, verdict: 'approved' } } })).toBe(true)
+  })
+
+  it('isRejectedGuard reads hardFailThreshold from autopilotConfig', () => {
+    expect(isRejectedGuard({ context: baseCtx, event: { type: 'REVIEW_COMPLETE', result: { score: 39, verdict: 'reject' } } })).toBe(true)
+    expect(isRejectedGuard({ context: baseCtx, event: { type: 'REVIEW_COMPLETE', result: { score: 40, verdict: 'reject' } } })).toBe(false)
+  })
+
+  it('hasReachedMaxIterationsGuard reads maxIterations from autopilotConfig', () => {
+    // iterationCount=3 < maxIterations=5 → not yet reached
+    expect(hasReachedMaxIterationsGuard({ context: baseCtx })).toBe(false)
+    // iterationCount=5 >= maxIterations=5 → reached
+    const reachedCtx = { ...baseCtx, iterationCount: 5 } as unknown as PipelineMachineContext
+    expect(hasReachedMaxIterationsGuard({ context: reachedCtx })).toBe(true)
+  })
+
+  it('guards fall back to pipelineSettings when autopilotConfig is null', () => {
+    const noConfigCtx = {
+      ...baseCtx,
+      autopilotConfig: null,
+      iterationCount: 3,
+    } as unknown as PipelineMachineContext
+    // pipelineSettings.reviewApproveScore=90 → 89 should fail
+    expect(isApprovedGuard({ context: noConfigCtx, event: { type: 'REVIEW_COMPLETE', result: { score: 89, verdict: 'pending' } } })).toBe(false)
+    expect(isApprovedGuard({ context: noConfigCtx, event: { type: 'REVIEW_COMPLETE', result: { score: 90, verdict: 'pending' } } })).toBe(true)
+    // pipelineSettings.reviewRejectThreshold=50 → 50 should NOT be rejected
+    expect(isRejectedGuard({ context: noConfigCtx, event: { type: 'REVIEW_COMPLETE', result: { score: 50, verdict: 'pending' } } })).toBe(false)
+    expect(isRejectedGuard({ context: noConfigCtx, event: { type: 'REVIEW_COMPLETE', result: { score: 49, verdict: 'pending' } } })).toBe(true)
+    // pipelineSettings.reviewMaxIterations=3, iterationCount=3 → reached
+    expect(hasReachedMaxIterationsGuard({ context: noConfigCtx })).toBe(true)
   })
 })
