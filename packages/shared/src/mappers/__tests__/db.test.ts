@@ -7,10 +7,14 @@ const dbRow = {
   research_id: null,
   current_stage: 'brainstorm',
   completed_stages: [],
-  auto_advance: true,
   status: 'active',
   winner: false,
   video_style_config: null,
+  channel_id: null,
+  mode: 'step-by-step' as const,
+  autopilot_config_json: null,
+  autopilot_template_id: null,
+  abort_requested_at: null,
   created_at: '2026-01-01T00:00:00.000Z',
   updated_at: '2026-01-02T00:00:00.000Z',
 };
@@ -22,7 +26,7 @@ describe('mapProjectFromDb', () => {
     expect(result.title).toBe('Test Project');
     expect(result.currentStage).toBe('brainstorm');
     expect(result.completedStages).toEqual([]);
-    expect(result.autoAdvance).toBe(true);
+    expect(result.mode).toBe('step-by-step');
     expect(result.researchId).toBeNull();
     expect(result.createdAt).toBe('2026-01-01T00:00:00.000Z');
     expect(result.updatedAt).toBe('2026-01-02T00:00:00.000Z');

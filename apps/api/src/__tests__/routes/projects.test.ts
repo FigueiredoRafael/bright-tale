@@ -120,7 +120,7 @@ describe('POST /projects', () => {
   const validBody = {
     title: 'My Test Project',
     current_stage: 'brainstorm',
-    auto_advance: true,
+    mode: 'step-by-step',
     status: 'active',
     winner: false,
   };

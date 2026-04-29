@@ -15,7 +15,6 @@ export type DbProject = {
   research_id: string | null;
   current_stage: string;
   completed_stages: string[];
-  auto_advance: boolean;
   status: string;
   winner: boolean;
   video_style_config: string | null;
@@ -34,7 +33,6 @@ export type DomainProject = {
   researchId: string | null;
   currentStage: string;
   completedStages: string[];
-  autoAdvance: boolean;
   status: string;
   winner: boolean;
   videoStyleConfig: string | null;
@@ -54,7 +52,6 @@ export function mapProjectFromDb(row: DbProject): DomainProject {
     researchId: row.research_id,
     currentStage: row.current_stage,
     completedStages: row.completed_stages,
-    autoAdvance: row.auto_advance,
     status: row.status,
     winner: row.winner,
     videoStyleConfig: row.video_style_config,
@@ -76,7 +73,6 @@ export function mapProjectToDb(
   if (input.researchId !== undefined) out.research_id = input.researchId;
   if (input.currentStage !== undefined) out.current_stage = input.currentStage;
   if (input.completedStages !== undefined) out.completed_stages = input.completedStages;
-  if (input.autoAdvance !== undefined) out.auto_advance = input.autoAdvance;
   if (input.status !== undefined) out.status = input.status;
   if (input.winner !== undefined) out.winner = input.winner;
   if (input.videoStyleConfig !== undefined) out.video_style_config = input.videoStyleConfig;

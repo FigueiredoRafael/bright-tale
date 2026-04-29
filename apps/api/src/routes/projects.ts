@@ -64,7 +64,7 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
           title: data.title,
           research_id: data.research_id,
           current_stage: data.current_stage,
-          auto_advance: data.auto_advance,
+          mode: data.mode ?? 'step-by-step',
           status: data.status,
           winner: data.winner,
           user_id: request.userId ?? null,
@@ -347,7 +347,7 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       if (data.title) updateData.title = data.title;
       if (data.research_id !== undefined) updateData.research_id = data.research_id;
       if (data.current_stage) updateData.current_stage = data.current_stage;
-      if (data.auto_advance !== undefined) updateData.auto_advance = data.auto_advance;
+      if (data.mode !== undefined) updateData.mode = data.mode;
       if (data.status) updateData.status = data.status;
       if (data.winner !== undefined) updateData.winner = data.winner;
       if (data.completed_stages !== undefined)
@@ -481,7 +481,7 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       if (data.title) updateData.title = data.title;
       if (data.research_id !== undefined) updateData.research_id = data.research_id;
       if (data.current_stage) updateData.current_stage = data.current_stage;
-      if (data.auto_advance !== undefined) updateData.auto_advance = data.auto_advance;
+      if (data.mode !== undefined) updateData.mode = data.mode;
       if (data.status) updateData.status = data.status;
       if (data.winner !== undefined) updateData.winner = data.winner;
       if (data.completed_stages !== undefined)
