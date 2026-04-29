@@ -324,18 +324,58 @@ function ResearchFields() {
   )
 }
 
+type PersonaOption = { id: string; name: string; isActive: boolean }
+
 function CanonicalCoreFields() {
-  const { register } = useFormContext<WizardFormValues>()
+  const { control } = useFormContext<WizardFormValues>()
+  const [personas, setPersonas] = useState<PersonaOption[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const ac = new AbortController()
+    ;(async () => {
+      try {
+        const res = await fetch('/api/personas', { signal: ac.signal })
+        const json = await res.json()
+        if (json?.data) {
+          setPersonas(
+            (json.data as PersonaOption[]).filter((p) => p.isActive),
+          )
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return
+      } finally {
+        setLoading(false)
+      }
+    })()
+    return () => ac.abort()
+  }, [])
 
   return (
     <div>
-      <Label htmlFor="canonicalCore-personaId">Persona ID (optional)</Label>
-      <input
-        id="canonicalCore-personaId"
-        type="text"
-        className="border rounded px-3 py-1.5 text-sm w-full mt-1"
-        placeholder="Leave blank to auto-select"
-        {...register('autopilotConfig.canonicalCore.personaId')}
+      <Label htmlFor="canonicalCore-personaId">Persona (optional)</Label>
+      <Controller
+        control={control}
+        name="autopilotConfig.canonicalCore.personaId"
+        render={({ field }) => (
+          <Select
+            value={field.value ?? '__auto__'}
+            onValueChange={(v) => field.onChange(v === '__auto__' ? null : v)}
+            disabled={loading}
+          >
+            <SelectTrigger id="canonicalCore-personaId" className="w-full mt-1">
+              <SelectValue placeholder={loading ? 'Loading personas…' : 'Auto-select'} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__auto__">Auto-select</SelectItem>
+              {personas.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       />
     </div>
   )

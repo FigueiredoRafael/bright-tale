@@ -211,8 +211,9 @@ describe('PipelineOrchestrator', () => {
     expect(screen.getByTestId('pipeline-wizard')).toBeTruthy()
   })
 
-  it("renders <PipelineOverview /> when mode='overview' and showEngine is null", () => {
-    // overview mode → machine is NOT in setup, mode is overview, showEngine starts null
+  it("renders <PipelineOverview /> AND the current-stage engine when mode='overview'", () => {
+    // Overview mode is dual-pane: dashboard rail/cards on top, live engine below.
+    // The engine for the current stage always mounts so its effects can fire.
     render(
       <PipelineOrchestrator
         projectId="p"
@@ -222,9 +223,11 @@ describe('PipelineOrchestrator', () => {
       />,
     )
     expect(screen.getByTestId('pipeline-overview')).toBeTruthy()
+    // overviewState() parks the machine at 'draft', so the draft engine mounts.
+    expect(screen.getByTestId('draft-engine')).toBeTruthy()
   })
 
-  it("renders engine when mode='overview' and showEngine is set via setShowEngine", async () => {
+  it("setShowEngine swaps the visible engine to the requested stage; overview stays mounted", async () => {
     render(
       <PipelineOrchestrator
         projectId="p"
@@ -237,6 +240,8 @@ describe('PipelineOrchestrator', () => {
     fireEvent.click(screen.getByTestId('open-draft-engine'))
     await waitFor(() => {
       expect(screen.getByTestId('draft-engine')).toBeTruthy()
+      // Overview remains visible above the engine.
+      expect(screen.getByTestId('pipeline-overview')).toBeTruthy()
     })
   })
 
@@ -252,29 +257,6 @@ describe('PipelineOrchestrator', () => {
     // In step-by-step mode, engine renders directly (no overview)
     expect(screen.getByTestId('brainstorm-engine')).toBeTruthy()
     expect(screen.queryByTestId('pipeline-overview')).toBeNull()
-  })
-
-  it('"← Back to overview" button clears showEngine and restores overview', async () => {
-    render(
-      <PipelineOrchestrator
-        projectId="p"
-        channelId="c"
-        projectTitle="Test"
-        initialPipelineState={overviewState()}
-      />,
-    )
-    // Open an engine
-    fireEvent.click(screen.getByTestId('open-draft-engine'))
-    await waitFor(() => {
-      expect(screen.getByTestId('draft-engine')).toBeTruthy()
-    })
-
-    // Click the Back to overview button
-    fireEvent.click(screen.getByTestId('back-to-overview'))
-    await waitFor(() => {
-      expect(screen.getByTestId('pipeline-overview')).toBeTruthy()
-      expect(screen.queryByTestId('draft-engine')).toBeNull()
-    })
   })
 
   // ── T-8.3 Redo-from-start modal tests ────────────────────────────────────
