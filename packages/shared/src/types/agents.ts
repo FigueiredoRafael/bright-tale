@@ -538,6 +538,23 @@ export interface ReviewOutput {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// REVIEW ITERATION HISTORY
+// Added in Wave 2 for per-iteration tracking (consumed by Task 2.11).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Raw feedback payload from the review agent — untyped blob kept for forward compat */
+export type ReviewFeedbackJson = Record<string, unknown>
+
+/** Summary of a single review loop iteration stored in pipeline state */
+export interface ReviewIterationSummary {
+  iterationNum: number
+  score: number
+  verdict: 'approved' | 'rejected' | 'needs_revision'
+  oneLineSummary: string
+  timestamp: string
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL CORE
 // Intermediate narrative contract shared by all format agents.
 // Agent 3a generates this; Agents 3b-* consume it.

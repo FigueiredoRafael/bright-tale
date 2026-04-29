@@ -43,6 +43,8 @@ const FULL_AUTOPILOT_CONFIG: AutopilotConfig = {
   draft: { providerOverride: null, format: 'blog', wordCount: 1500 },
   review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
   assets: { providerOverride: null, mode: 'skip' },
+  preview: { enabled: false },
+  publish: { status: 'draft' },
 }
 
 // Default fetch mock: /api/agents resolves recommended provider,

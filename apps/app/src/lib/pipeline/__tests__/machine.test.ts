@@ -307,7 +307,9 @@ describe('setup state and SETUP_COMPLETE', () => {
     canonicalCore: { providerOverride: null, personaId: null },
     draft: { providerOverride: null, format: 'blog', wordCount: 1000 },
     review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
-    assets: { providerOverride: null, mode: 'auto' },
+    assets: { providerOverride: null, mode: 'auto_generate' },
+    preview: { enabled: false },
+    publish: { status: 'draft' },
   }
 
   it('SETUP_COMPLETE with startStage=draft transitions to draft', () => {
@@ -386,7 +388,9 @@ describe('REQUEST_ABORT spawn-on-event', () => {
     canonicalCore: { providerOverride: null, personaId: null },
     draft: { providerOverride: null, format: 'blog', wordCount: 1000 },
     review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
-    assets: { providerOverride: null, mode: 'auto' },
+    assets: { providerOverride: null, mode: 'auto_generate' },
+    preview: { enabled: false },
+    publish: { status: 'draft' },
   }
 
   it('optimistically sets paused=true and fires PATCH', async () => {
@@ -433,7 +437,9 @@ describe('guard reads from autopilotConfig.review', () => {
       canonicalCore: { providerOverride: null, personaId: null },
       draft: { providerOverride: null, format: 'blog', wordCount: 1000 },
       review: reviewConfig,
-      assets: { providerOverride: null, mode: 'auto' },
+      assets: { providerOverride: null, mode: 'auto_generate' },
+      preview: { enabled: false },
+      publish: { status: 'draft' as const },
     },
     // pipelineSettings has a different threshold — guards must prefer autopilotConfig
     pipelineSettings: { reviewApproveScore: 90, reviewRejectThreshold: 50, reviewMaxIterations: 3 } as any,

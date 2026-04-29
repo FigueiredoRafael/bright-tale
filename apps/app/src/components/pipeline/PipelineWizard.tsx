@@ -121,7 +121,13 @@ function buildDefaultAutopilotConfig(pipelineSettings: {
     },
     assets: {
       providerOverride: toProvider('assets'),
-      mode: 'briefing',
+      mode: 'briefs_only',
+    },
+    preview: {
+      enabled: false,
+    },
+    publish: {
+      status: 'draft',
     },
   }
 }
@@ -481,9 +487,8 @@ function AssetsFields() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="skip">Skip</SelectItem>
-              <SelectItem value="manual">Manual</SelectItem>
-              <SelectItem value="briefing">Briefing</SelectItem>
-              <SelectItem value="auto">Auto</SelectItem>
+              <SelectItem value="briefs_only">Briefs Only</SelectItem>
+              <SelectItem value="auto_generate">Auto Generate</SelectItem>
             </SelectContent>
           </Select>
         )}

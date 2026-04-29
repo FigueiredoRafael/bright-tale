@@ -44,6 +44,8 @@ const FULL_AUTOPILOT_CONFIG: AutopilotConfig = {
   draft: { providerOverride: null, format: 'video', wordCount: 800 },
   review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
   assets: { providerOverride: null, mode: 'skip' },
+  preview: { enabled: false },
+  publish: { status: 'draft' },
 }
 
 const defaultFetchMock = vi.fn().mockImplementation(async (url: string) => {

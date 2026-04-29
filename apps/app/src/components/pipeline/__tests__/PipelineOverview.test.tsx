@@ -65,6 +65,8 @@ const STANDARD_AUTOPILOT_CONFIG = {
     hardFailThreshold: 40,
   },
   assets: { providerOverride: null, mode: 'skip' as const },
+  preview: { enabled: false },
+  publish: { status: 'draft' as const },
 }
 
 const COMPLETED_BRAINSTORM_RESULTS = {

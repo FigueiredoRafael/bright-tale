@@ -8,7 +8,9 @@ const minimalCanonical = {
   canonicalCore: { providerOverride: null, personaId: null },
   draft:  { providerOverride: null, format: 'blog', wordCount: 1200 },
   review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
-  assets: { providerOverride: null, mode: 'briefing' },
+  assets: { providerOverride: null, mode: 'briefs_only' },
+  preview: { enabled: false },
+  publish: { status: 'draft' },
 }
 
 describe('autopilotConfigSchema', () => {
@@ -47,5 +49,25 @@ describe('autopilotConfigSchema', () => {
   it('allows review.maxIterations = 0 (skip review)', () => {
     const ok = { ...minimalCanonical, review: { providerOverride: null, maxIterations: 0, autoApproveThreshold: 90, hardFailThreshold: 40 } }
     expect(autopilotConfigSchema.parse(ok).review.maxIterations).toBe(0)
+  })
+
+  it('accepts new assets enum: skip / briefs_only / auto_generate', () => {
+    const cfg = { ...minimalCanonical, assets: { providerOverride: null, mode: 'briefs_only' } }
+    expect(autopilotConfigSchema.parse(cfg)).toMatchObject({ assets: { mode: 'briefs_only' } })
+  })
+
+  it('rejects legacy assets values', () => {
+    const cfg = { ...minimalCanonical, assets: { providerOverride: null, mode: 'briefing' } }
+    expect(() => autopilotConfigSchema.parse(cfg)).toThrow()
+  })
+
+  it('requires preview slot with enabled boolean', () => {
+    const cfg = { ...minimalCanonical, preview: { enabled: false } }
+    expect(autopilotConfigSchema.parse(cfg)).toMatchObject({ preview: { enabled: false } })
+  })
+
+  it('requires publish slot with status enum', () => {
+    const cfg = { ...minimalCanonical, publish: { status: 'draft' } }
+    expect(autopilotConfigSchema.parse(cfg)).toMatchObject({ publish: { status: 'draft' } })
   })
 })

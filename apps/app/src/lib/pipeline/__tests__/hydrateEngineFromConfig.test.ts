@@ -30,8 +30,9 @@ const fullConfig: AutopilotConfig = {
     hardFailThreshold: 40,
   },
   assets: { providerOverride: null, mode: 'skip' },
-  // preview, publish added in Wave 2 — Wave 1 omits them
-} as AutopilotConfig
+  preview: { enabled: false },
+  publish: { status: 'draft' },
+}
 
 describe('hydrateBrainstormFromConfig', () => {
   it('returns full state when config is populated', () => {

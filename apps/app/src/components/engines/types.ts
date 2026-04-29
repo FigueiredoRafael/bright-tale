@@ -86,6 +86,10 @@ export interface ReviewResult {
   verdict: string;
   feedbackJson: Record<string, unknown>;
   iterationCount: number;
+  /** Added in Wave 2 — populated by Task 2.11 iteration history */
+  iterations?: import('@brighttale/shared').ReviewIterationSummary[];
+  /** Added in Wave 2 — populated by ReviewEngine when storing iteration feedback */
+  latestFeedbackJson?: import('@brighttale/shared').ReviewFeedbackJson | null;
 }
 
 export interface AssetsResult {

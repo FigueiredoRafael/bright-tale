@@ -59,7 +59,15 @@ const ReviewSlot = z.object({
 
 const AssetsSlot = z.object({
   providerOverride: ProviderOrInherit,
-  mode: z.enum(['skip', 'manual', 'briefing', 'auto']),
+  mode: z.enum(['skip', 'briefs_only', 'auto_generate']),
+})
+
+const PreviewSlot = z.object({
+  enabled: z.boolean(),
+})
+
+const PublishSlot = z.object({
+  status: z.enum(['draft', 'published']),
 })
 
 export const autopilotConfigSchema = z.object({
@@ -70,6 +78,8 @@ export const autopilotConfigSchema = z.object({
   draft:         DraftSlot,
   review:        ReviewSlot,
   assets:        AssetsSlot,
+  preview:       PreviewSlot,
+  publish:       PublishSlot,
 })
 
 export const autopilotConfigPatchSchema = autopilotConfigSchema.deepPartial()

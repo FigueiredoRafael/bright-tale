@@ -50,6 +50,8 @@ const MINIMAL_CONFIG_STUB = {
     hardFailThreshold: 60,
   },
   assets: { providerOverride: null, mode: 'skip' },
+  preview: { enabled: false },
+  publish: { status: 'draft' },
 }
 
 interface AutopilotTemplate {
