@@ -19,7 +19,6 @@
       "Bash(git checkout .:*)",
       "Bash(git clean:*)",
       "Bash(git restore .:*)",
-      "Bash(git stash:*)",
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
       "Bash(git commit --no-verify:*)",
