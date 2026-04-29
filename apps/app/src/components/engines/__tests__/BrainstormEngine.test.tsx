@@ -7,6 +7,7 @@ import { pipelineMachine } from '@/lib/pipeline/machine'
 import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
 import { BrainstormEngine } from '../BrainstormEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
+import type { AutopilotConfig } from '@brighttale/shared'
 
 vi.mock('@/hooks/use-analytics', () => ({
   useAnalytics: () => ({ track: vi.fn() }),
@@ -136,7 +137,7 @@ describe('BrainstormEngine', () => {
         draft: { providerOverride: null, format: 'blog', wordCount: 1500 },
         review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
         assets: { providerOverride: null, mode: 'skip' },
-      } as never,
+      } as AutopilotConfig,
       templateId: null,
       startStage: 'brainstorm',
     })

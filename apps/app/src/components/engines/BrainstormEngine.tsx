@@ -177,7 +177,9 @@ export function BrainstormEngine({
   // and not for autopilot runs — autopilotConfig hydration takes precedence).
   useEffect(() => {
     if (initialSession) { setFormRestored(true); return; }
-    // Skip localStorage restore for autopilot runs; hydration above already populated fields.
+    // Skip localStorage restore when autopilot brainstorm is populated. NOTE: this
+    // effect runs once on mount; on REDO_FROM brainstorm the engine doesn't remount,
+    // so wizard values persist (no blank-slate redo). UX of redo+autopilot is open.
     if (autopilotConfig?.brainstorm) { setFormRestored(true); return; }
     try {
       const saved = localStorage.getItem(storageKey);
