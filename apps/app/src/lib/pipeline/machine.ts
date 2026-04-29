@@ -149,8 +149,8 @@ export const pipelineMachine = setup({
     lastError: null,
     pipelineSettings: input.pipelineSettings ?? DEFAULT_PIPELINE_SETTINGS,
     creditSettings: input.creditSettings ?? DEFAULT_CREDIT_SETTINGS,
-    paused: false,
-    pauseReason: null,
+    paused: input.initialPaused ?? false,
+    pauseReason: input.initialPauseReason ?? null,
   }),
   initial: 'brainstorm',
   on: {

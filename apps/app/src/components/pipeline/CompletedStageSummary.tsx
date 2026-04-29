@@ -55,7 +55,11 @@ export function CompletedStageSummary({
 
   const expanded = userToggled ?? isCurrent;
 
-  if (!result) return null;
+  // Only render once the stage has actually completed (has a `completedAt`
+  // marker). Partial entries written via STAGE_PROGRESS — e.g. the draft
+  // scaffold's draftId persisted before the produce stage finishes — would
+  // otherwise show a misleading "Done" badge.
+  if (!result || !(result as { completedAt?: string }).completedAt) return null;
 
   function getSummary(): string {
     switch (stage) {

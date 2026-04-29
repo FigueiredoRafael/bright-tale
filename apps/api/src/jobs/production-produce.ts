@@ -56,10 +56,11 @@ export const productionProduce = inngest.createFunction(
   }) => {
     const { draftId, orgId, userId, type, modelTier, provider, model, productionParams } = event.data;
     const sb = createServiceClient();
-    const creditSettings = await loadCreditSettings(sb);
-    const cost = applyProviderDiscount(calculateDraftCost(type, creditSettings), provider);
 
     try {
+      const creditSettings = await loadCreditSettings(sb);
+      const cost = applyProviderDiscount(calculateDraftCost(type, creditSettings), provider);
+
       await step.run('emit-loading-produce', async () => {
         await emitJobEvent(draftId, 'production', 'loading_prompt', `Carregando agente ${type}…`);
       });
@@ -189,7 +190,7 @@ export const productionProduce = inngest.createFunction(
         await (sb.from('content_drafts') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
-          .update({ draft_json: draftJson, status: 'in_review' })
+          .update({ draft_json: draftJson, status: 'draft' })
           .eq('id', draftId);
         await debitCredits(orgId, userId, `production-${type}`, 'text', cost, { draftId, type });
       });

@@ -85,6 +85,10 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
   const [recommendationLoaded, setRecommendationLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  // Anchor the SSE event filter to the moment the action started so the modal
+  // doesn't replay a previous stage's `completed` event (events are keyed by
+  // draftId across stages).
+  const [reviewSince, setReviewSince] = useState<string | null>(null);
   const { enabled: manualEnabled } = useManualMode();
   const { handleMaybeCreditsError } = useUpgrade();
   const inFlightRef = useRef(false);
@@ -95,6 +99,18 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
   // Manual provider state
   const [manualState, setManualState] = useState<{
     draftId: string;
+  } | null>(null);
+
+  // Pending REVIEW_COMPLETE payload — populated by handleSubmitForReview
+  // after the sync /review fetch resolves, then dispatched by the SSE
+  // modal's onComplete callback so the modal can show its success state
+  // before the orchestrator transitions away from this engine.
+  const pendingReviewResultRef = useRef<{
+    score: number;
+    qualityTier: ReturnType<typeof deriveTier>;
+    verdict: string;
+    feedbackJson: Record<string, unknown>;
+    iterationCount: number;
   } | null>(null);
 
   // Restore manual state if draft is awaiting_manual
@@ -137,13 +153,6 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
     stage: 'review',
     canFire: () => {
       const status = localDraft?.status as string | undefined;
-      const iterationCount = (localDraft as { iteration_count?: number } | null)?.iteration_count ?? 0;
-      const hasFeedback = !!(localDraft as { review_feedback_json?: unknown } | null)?.review_feedback_json;
-      // Skip when the production-generate worker already saved review feedback
-      // on iteration 0 — re-running /review would burn another sync LLM call
-      // (and the apps/app proxy times out at ~30s on slow models). The
-      // separate auto-dispatch effect below picks that case up directly.
-      if (hasFeedback && iterationCount === 0) return false;
       return (
         recommendationLoaded &&
         !!localDraft &&
@@ -158,81 +167,6 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
     fire: () => autoFireFn.current(),
     rearmKey: (localDraft as { iteration_count?: number } | null)?.iteration_count ?? 0,
   });
-
-  // Auto-pilot fast-path: if the production worker already wrote
-  // review_feedback_json (iteration 0 from /generate), persist the derived
-  // verdict/score and dispatch REVIEW_COMPLETE without re-running the LLM.
-  const autoReviewDispatchedRef = useRef<string | null>(null);
-  const autoMode = useSelector(actor, (s) => s.context.mode);
-  const autoPaused = useSelector(actor, (s) => s.context.paused);
-  useEffect(() => {
-    if (autoMode !== 'auto' || autoPaused) return;
-    if (!localDraft || !draftId) return;
-    const status = (localDraft as { status?: string }).status;
-    if (status === 'approved' || status === 'awaiting_manual') return;
-    const iterationCount = (localDraft as { iteration_count?: number }).iteration_count ?? 0;
-    if (iterationCount !== 0) return;
-    const feedbackObj = (localDraft as { review_feedback_json?: Record<string, unknown> }).review_feedback_json;
-    if (!feedbackObj || typeof feedbackObj !== 'object') return;
-    const dispatchKey = `${draftId}:${iterationCount}`;
-    if (autoReviewDispatchedRef.current === dispatchKey) return;
-    autoReviewDispatchedRef.current = dispatchKey;
-
-    void (async () => {
-      try {
-        const draftType = (localDraft as { type?: string }).type ?? 'blog';
-        const formatReview =
-          ((feedbackObj as Record<string, unknown>)[`${draftType}_review`] as Record<string, unknown> | undefined) ??
-          ((feedbackObj as Record<string, unknown>).blog_review as Record<string, unknown> | undefined);
-        const tier = deriveTier(formatReview ?? feedbackObj);
-
-        let verdict: string;
-        if (isApprovedTier(tier)) verdict = 'approved';
-        else if (tier === 'reject') verdict = 'rejected';
-        else verdict = 'revision_required';
-
-        const legacyScoreFromTier: Record<string, number> = {
-          excellent: 95, good: 82, needs_revision: 60, reject: 20, not_requested: 0,
-        };
-        const rawScore = (formatReview?.score as number | undefined) ?? null;
-        const score = rawScore ?? legacyScoreFromTier[tier] ?? 0;
-
-        const patchBody: Record<string, unknown> = {
-          reviewFeedbackJson: feedbackObj,
-          reviewScore: score,
-          reviewVerdict: verdict,
-          status: verdict === 'approved' ? 'approved' : 'in_review',
-          iterationCount: 1,
-        };
-        const res = await fetch(`/api/content-drafts/${draftId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(patchBody),
-        });
-        const json = await res.json();
-        if (json?.error) {
-          autoReviewDispatchedRef.current = null;
-          return;
-        }
-        await refetchDraft();
-        actor.send({
-          type: 'REVIEW_COMPLETE',
-          result: {
-            score,
-            qualityTier: tier,
-            verdict,
-            feedbackJson: feedbackObj,
-            iterationCount: 1,
-          },
-        });
-      } catch {
-        autoReviewDispatchedRef.current = null;
-      }
-    })();
-  // refetchDraft is a stable function declaration in this component scope
-  // and intentionally omitted to avoid re-firing the dispatch loop.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoMode, autoPaused, localDraft, draftId, actor]);
 
   function navigate(toStage?: PipelineStage) {
     actor.send({ type: 'NAVIGATE', toStage: toStage ?? 'draft' });
@@ -305,7 +239,10 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
           return;
         }
 
-        // Now run the review with the selected provider/model
+        // Now run the review with the selected provider/model. Capture the
+        // since-anchor BEFORE the fetch fires so the SSE filter excludes any
+        // `completed` event left over from the prior stage.
+        setReviewSince(new Date(Date.now() - 1_000).toISOString());
         setReviewing(true);
         const body: Record<string, unknown> = { provider };
         if (model && !isManual) body.model = model;
@@ -336,8 +273,12 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
           return;
         }
 
+        // NOTE: do NOT setReviewing(false) here. The modal's SSE stream is
+        // about to deliver the 'completed' event from the route's
+        // emitJobEvent call; its onComplete callback will flip reviewing
+        // off after the 1.5s success-state delay. Setting it here would
+        // unmount the modal before the user sees the green checkmark.
         await refetchDraft();
-        setReviewing(false);
         toast.success('Review completed');
 
         const feedbackObj = json.data?.review_feedback_json as Record<string, unknown> | null;
@@ -354,23 +295,22 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
           feedbackJson: feedbackObj ?? {},
         });
 
-        // Auto-pilot: dispatch REVIEW_COMPLETE so the machine can advance
-        // (approved → assets) or iterate (needs_revision → reproduce → re-review).
-        // In step mode the user clicks "Next: Assets" / "Re-review" explicitly.
+        // Stash the dispatch so the modal's onComplete can fire it AFTER the
+        // SSE 'completed' event surfaces the success state. Dispatching here
+        // would unmount ReviewEngine immediately (orchestrator transitions
+        // out of the review state on REVIEW_COMPLETE) and the user would
+        // never see the modal's checkmark.
         if (actor.getSnapshot().context.mode === 'auto') {
           const fb = feedbackObj ?? {};
           const fmt = (fb.blog_review ?? fb.video_review ?? fb.podcast_review ?? fb.shorts_review) as Record<string, unknown> | undefined;
           const tier = deriveTier(fmt ?? fb);
-          actor.send({
-            type: 'REVIEW_COMPLETE',
-            result: {
-              score,
-              qualityTier: tier,
-              verdict,
-              feedbackJson: fb,
-              iterationCount,
-            },
-          });
+          pendingReviewResultRef.current = {
+            score,
+            qualityTier: tier,
+            verdict,
+            feedbackJson: fb,
+            iterationCount,
+          };
         }
       } catch (e) {
         tracker.trackFailed(e instanceof Error ? e.message : 'Failed to submit for review');
@@ -514,6 +454,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
   async function handleRevise() {
     await withGuard(async () => {
       try {
+        setReviewSince(new Date(Date.now() - 1_000).toISOString());
         setReviewing(true);
         const res = await fetch(`/api/content-drafts/${draftId}/revise`, {
           method: 'POST',
@@ -857,18 +798,32 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
           open={reviewing}
           sessionId={draftId}
           sseUrl={`/api/content-drafts/${draftId}/events`}
+          since={reviewSince ?? undefined}
           title="Running AI Review"
           onComplete={async () => {
-            setReviewing(false);
             await refetchDraft();
             toast.success('Review completed');
+            // Dispatch the stashed REVIEW_COMPLETE now that the user has
+            // seen the modal's success state.
+            const pending = pendingReviewResultRef.current;
+            pendingReviewResultRef.current = null;
+            setReviewing(false);
+            setReviewSince(null);
+            if (pending && actor.getSnapshot().context.mode === 'auto') {
+              actor.send({ type: 'REVIEW_COMPLETE', result: pending });
+            }
           }}
           onFailed={(msg) => {
             setReviewing(false);
+            setReviewSince(null);
+            pendingReviewResultRef.current = null;
             const f = friendlyAiError(msg);
             toast.error(f.title, { description: f.hint });
           }}
-          onClose={() => setReviewing(false)}
+          onClose={() => {
+            setReviewing(false);
+            setReviewSince(null);
+          }}
         />
       )}
     </div>

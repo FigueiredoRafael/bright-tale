@@ -1,8 +1,15 @@
 import { PIPELINE_STAGES } from '@/components/engines/types'
-import type { PipelineMachineInput, PipelineStage, StageResultMap } from './machine.types'
+import type { PauseReason, PipelineMachineInput, PipelineStage, StageResultMap } from './machine.types'
 
 type LegacyMode = 'step-by-step' | 'auto'
 type NewMode = 'step' | 'auto'
+
+const PAUSE_REASONS: readonly PauseReason[] = [
+  'user_paused',
+  'max_iterations',
+  'rejected',
+  'reproduce_error',
+] as const
 
 interface LegacyShape {
   mode?: LegacyMode | NewMode | string
@@ -10,10 +17,15 @@ interface LegacyShape {
   stageResults?: Record<string, unknown>
   autoConfig?: Record<string, unknown>
   iterationCount?: number
+  paused?: unknown
+  pauseReason?: unknown
 }
 
 export interface MigratedPipelineInput
-  extends Pick<PipelineMachineInput, 'mode' | 'initialStageResults' | 'initialIterationCount'> {
+  extends Pick<
+    PipelineMachineInput,
+    'mode' | 'initialStageResults' | 'initialIterationCount' | 'initialPaused' | 'initialPauseReason'
+  > {
   /**
    * Stage the orchestrator should NAVIGATE to after spawning the machine.
    * Derived from legacy `currentStage` when present; otherwise from the
@@ -76,6 +88,11 @@ export function mapLegacyPipelineState(raw: unknown): MigratedPipelineInput | nu
         : 0
 
   const initialStage = deriveInitialStage(input.currentStage, stageResults)
+  const initialPaused = input.paused === true
+  const initialPauseReason: PauseReason | null =
+    typeof input.pauseReason === 'string' && (PAUSE_REASONS as readonly string[]).includes(input.pauseReason)
+      ? (input.pauseReason as PauseReason)
+      : null
 
   if (looksLegacy(input)) {
     try {
@@ -100,5 +117,7 @@ export function mapLegacyPipelineState(raw: unknown): MigratedPipelineInput | nu
     initialStageResults: stageResults,
     initialIterationCount,
     initialStage,
+    initialPaused,
+    initialPauseReason,
   }
 }

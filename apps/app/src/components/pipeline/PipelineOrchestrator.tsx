@@ -110,6 +110,8 @@ function OrchestratorInner({
       mode: legacy?.mode,
       initialStageResults: legacy?.initialStageResults,
       initialIterationCount: legacy?.initialIterationCount,
+      initialPaused: legacy?.initialPaused,
+      initialPauseReason: legacy?.initialPauseReason,
     },
     inspect:
       process.env.NODE_ENV === 'development'
@@ -152,6 +154,8 @@ function OrchestratorInner({
       stageResults: ctx.stageResults,
       iterationCount: ctx.iterationCount,
       currentStage,
+      paused: ctx.paused,
+      pauseReason: ctx.pauseReason,
     })
     if (snapshot === lastPersistedRef.current) return
     const t = setTimeout(() => {
@@ -165,6 +169,8 @@ function OrchestratorInner({
             stageResults: ctx.stageResults,
             iterationCount: ctx.iterationCount,
             currentStage,
+            paused: ctx.paused,
+            pauseReason: ctx.pauseReason,
           },
         }),
       }).catch(() => {
@@ -172,7 +178,7 @@ function OrchestratorInner({
       })
     }, 150)
     return () => clearTimeout(t)
-  }, [ctx.mode, ctx.stageResults, ctx.iterationCount, currentStage, projectId])
+  }, [ctx.mode, ctx.stageResults, ctx.iterationCount, currentStage, ctx.paused, ctx.pauseReason, projectId])
 
   useEffect(() => {
     if (ctx.lastError) toast.error(ctx.lastError)

@@ -53,6 +53,8 @@ export interface PipelineMachineInput {
   creditSettings: CreditSettings
   initialStageResults?: StageResultMap
   initialIterationCount?: number
+  initialPaused?: boolean
+  initialPauseReason?: PauseReason | null
 }
 
 export type PipelineEvent =

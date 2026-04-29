@@ -47,18 +47,27 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
         return () => clearInterval(t);
     }, [open]);
 
+    // Stash latest callbacks in refs so the completion timer effect doesn't
+    // re-run on every parent render and reset itself perpetually.
+    const onCompleteRef = useRef(onComplete);
+    const onFailedRef = useRef(onFailed);
+    useEffect(() => {
+        onCompleteRef.current = onComplete;
+        onFailedRef.current = onFailed;
+    }, [onComplete, onFailed]);
+
     useEffect(() => {
         if (status === "completed") {
             // Hold the float open briefly so users see the success state
             // before the parent unmounts us (autopilot otherwise flashes it).
-            const t = setTimeout(() => onComplete?.(), 1500);
+            const t = setTimeout(() => onCompleteRef.current?.(), 1500);
             return () => clearTimeout(t);
         }
         if (status === "failed") {
             const msg = events.find((e) => e.stage === "failed")?.message ?? "Failed";
-            onFailed?.(msg);
+            onFailedRef.current?.(msg);
         }
-    }, [status, events, onComplete, onFailed]);
+    }, [status, events]);
 
     const currentMessage = events[events.length - 1]?.message ?? "Starting…";
     const dedupedEvents = events.reduce<typeof events>((acc, ev) => {

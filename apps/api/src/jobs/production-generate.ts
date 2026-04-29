@@ -11,7 +11,6 @@ import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
 import { buildCanonicalCoreMessage } from '../lib/ai/prompts/production.js';
-import { calculateDraftCost } from '../lib/calculate-draft-cost.js';
 import { loadCreditSettings } from '../lib/credit-settings.js';
 import {
   buildPersonaContext,
@@ -63,11 +62,11 @@ export const productionGenerate = inngest.createFunction(
   async ({ event, step }: { event: ProductionGenerateEvent; step: { run: (name: string, fn: () => Promise<unknown>) => Promise<unknown> } }) => {
     const { draftId, orgId, userId, type, modelTier, provider, model, productionParams } = event.data;
     const sb = createServiceClient();
-    const creditSettings = await loadCreditSettings(sb);
-    const cost = applyProviderDiscount(calculateDraftCost(type, creditSettings), provider);
-    const coreCost = applyProviderDiscount(creditSettings.costCanonicalCore, provider);
 
     try {
+      const creditSettings = await loadCreditSettings(sb);
+      const coreCost = applyProviderDiscount(creditSettings.costCanonicalCore, provider);
+
       // ─── Stage 1: Canonical Core ─────────────────────────────────────
       await step.run('emit-loading-core', async () => {
         await emitJobEvent(draftId, 'production', 'loading_prompt', 'Carregando agente core…');

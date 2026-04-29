@@ -12,23 +12,37 @@ interface Props {
     title?: string;
     /** When true, fetch all events from the beginning (reconnecting to existing session). */
     reconnecting?: boolean;
+    /**
+     * ISO timestamp anchor for the SSE `since` filter. The job_events stream
+     * is keyed by draftId, so successive stages (canonical-core → produce →
+     * review) share a session — without an anchor scoped to *this* run, the
+     * modal would pick up the previous stage's `completed` event and fire
+     * onComplete immediately. Parents should capture this BEFORE dispatching
+     * the action that emits the events.
+     */
+    since?: string;
     onComplete?: () => void;
     onFailed?: (message: string) => void;
     onClose: () => void;
 }
 
-export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gerando ideias", reconnecting, onComplete, onFailed, onClose }: Props) {
+export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gerando ideias", reconnecting, since, onComplete, onFailed, onClose }: Props) {
     const [openedAt, setOpenedAt] = useState<string | null>(null);
     useEffect(() => {
-        if (open) {
-            setOpenedAt(reconnecting // eslint-disable-line react-hooks/set-state-in-effect -- intentional: compute once on open
-                ? '1970-01-01T00:00:00Z'
-                : new Date(Date.now() - 30_000).toISOString()
-            );
-        } else {
-            setOpenedAt(null);  
+        if (!open) {
+            setOpenedAt(null); // eslint-disable-line react-hooks/set-state-in-effect -- reset on close
+            return;
         }
-    }, [open, reconnecting]);
+        if (reconnecting) {
+            setOpenedAt('1970-01-01T00:00:00Z');
+            return;
+        }
+        // Prefer the parent-supplied anchor (captured at action-start time).
+        // Fall back to a tight 1s lookback only when the parent didn't pass
+        // one — wide enough for clock skew, narrow enough not to swallow the
+        // prior stage's terminal event.
+        setOpenedAt(since ?? new Date(Date.now() - 1_000).toISOString());
+    }, [open, reconnecting, since]);
 
     const effectiveUrl = open && openedAt && sseUrl
         ? `${sseUrl}${sseUrl.includes("?") ? "&" : "?"}since=${encodeURIComponent(openedAt)}`
@@ -45,20 +59,31 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gera
         return () => clearInterval(t);
     }, [open]);
 
+    // Stash the latest callbacks in refs so the completion timer effect can
+    // depend only on `status` (not on the inline arrow callbacks the parent
+    // recreates every render — those would otherwise re-run the effect and
+    // perpetually reset the 1.5s timer, never letting it fire).
+    const onCompleteRef = useRef(onComplete);
+    const onFailedRef = useRef(onFailed);
+    useEffect(() => {
+        onCompleteRef.current = onComplete;
+        onFailedRef.current = onFailed;
+    }, [onComplete, onFailed]);
+
     useEffect(() => {
         if (status === "completed") {
             // Hold the modal open for a moment so the user can see the green
             // checkmark + final event log before the parent removes us. Without
             // this delay autopilot can flash the modal open→close in <100ms
             // and the run looks like it never happened.
-            const t = setTimeout(() => onComplete?.(), 1500);
+            const t = setTimeout(() => onCompleteRef.current?.(), 1500);
             return () => clearTimeout(t);
         }
         if (status === "failed") {
             const msg = events.find((e) => e.stage === "failed")?.message ?? "Falhou";
-            onFailed?.(msg);
+            onFailedRef.current?.(msg);
         }
-    }, [status, events, onComplete, onFailed]);
+    }, [status, events]);
 
     const currentMessage = events[events.length - 1]?.message ?? "Iniciando…";
     const dedupedEvents = events.reduce<typeof events>((acc, ev) => {

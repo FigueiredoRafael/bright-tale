@@ -125,6 +125,10 @@ export function DraftEngine({
 
   // Generation state
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  // SSE `since` anchor — captured at the moment a stage starts so the modal's
+  // event filter excludes any `completed` event left over from a previous
+  // stage on the same draftId.
+  const [activeSince, setActiveSince] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Manual provider — open dialog when API responds with awaiting_manual
@@ -409,25 +413,40 @@ export function DraftEngine({
       model,
     });
 
-    // Create draft scaffold
-    const draft = await runStep('create draft', () =>
-      fetch('/api/content-drafts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...(channelId ? { channelId } : {}),
-          ...(trackerContext.ideaId ? { ideaId: trackerContext.ideaId } : {}),
-          researchSessionId: research.id,
-          type,
-          title,
-          personaId: selectedPersonaId,
-          productionParams: {},
-        }),
-      })
-    );
-    if (!draft) return;
-    const newDraftId = (draft as { id: string }).id;
-    setDraftId(newDraftId);
+    // Reuse the existing scaffold when one is already pinned to the project
+    // (e.g. user reloaded mid-generation in auto mode). Creating a fresh
+    // scaffold here would orphan the prior canonical_core_json in the DB.
+    let newDraftId = draftId;
+    if (!newDraftId) {
+      const draft = await runStep('create draft', () =>
+        fetch('/api/content-drafts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...(channelId ? { channelId } : {}),
+            ...(projectId ? { projectId } : {}),
+            ...(trackerContext.ideaId ? { ideaId: trackerContext.ideaId } : {}),
+            researchSessionId: research.id,
+            type,
+            title,
+            personaId: selectedPersonaId,
+            productionParams: {},
+          }),
+        })
+      );
+      if (!draft) return;
+      newDraftId = (draft as { id: string }).id;
+      setDraftId(newDraftId);
+
+      // Persist the draftId on the project's pipeline state so a reload before
+      // produce finishes can still rehydrate the canonical core. DraftEngine's
+      // restore effect keys off draftResult.draftId.
+      actor.send({
+        type: 'STAGE_PROGRESS',
+        stage: 'draft',
+        partial: { draftId: newDraftId, draftTitle: title },
+      });
+    }
 
     // For manual provider, call canonical-core endpoint which will return awaiting_manual status
     if (provider === 'manual') {
@@ -453,6 +472,7 @@ export function DraftEngine({
     }
 
     // Start canonical core generation (SSE) for non-manual providers
+    const sinceAnchor = new Date(Date.now() - 1_000).toISOString();
     const enqueued = await runStep('start canonical core', () =>
       fetch(`/api/content-drafts/${newDraftId}/generate`, {
         method: 'POST',
@@ -461,6 +481,7 @@ export function DraftEngine({
       })
     );
     if (!enqueued) return;
+    setActiveSince(sinceAnchor);
     setActiveDraftId(newDraftId);
   }
 
@@ -543,6 +564,7 @@ export function DraftEngine({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(channelId ? { channelId } : {}),
+          ...(projectId ? { projectId } : {}),
           ...(trackerContext.ideaId ? { ideaId: trackerContext.ideaId } : {}),
           researchSessionId: research.id,
           type,
@@ -555,6 +577,14 @@ export function DraftEngine({
     if (!draft) return;
     const newDraftId = (draft as { id: string }).id;
     setDraftId(newDraftId);
+
+    // Persist the draftId on the project's pipeline state so a reload before
+    // produce finishes can still rehydrate the imported canonical core.
+    actor.send({
+      type: 'STAGE_PROGRESS',
+      stage: 'draft',
+      partial: { draftId: newDraftId, draftTitle: title },
+    });
 
     // Save canonical core to draft
     const updated = await runStep('save canonical core', () =>
@@ -581,6 +611,7 @@ export function DraftEngine({
   function onCoreJobComplete() {
     if (!draftId) return;
     setActiveDraftId(null);
+    setActiveSince(null);
 
     // Fetch the draft to get canonical core
     (async () => {
@@ -604,11 +635,9 @@ export function DraftEngine({
             canonicalCoreJson: coreJson,
           });
 
-          // The /generate Inngest worker runs the full pipeline (core +
-          // produce + review). If draft_json is already populated, skip the
-          // separate /produce call — re-invoking it would burn another LLM
-          // round-trip and (worse) the sync route times out the apps/app
-          // proxy with ECONNRESET on slow models.
+          // If a prior run already populated draft_json (e.g. resumed draft),
+          // skip the separate /produce call — re-invoking it would burn
+          // another LLM round-trip.
           if (hasProducedContent) {
             const content = extractProducedContent(draftRow, type);
             if (content && content !== '{}') {
@@ -654,6 +683,7 @@ export function DraftEngine({
       model,
     });
     setActiveDraftId(null);
+    setActiveSince(null);
   }
 
   // ── Phase 2: Produce formatted content from canonical core ────
@@ -708,36 +738,22 @@ export function DraftEngine({
       return;
     }
 
-    const produced = await runStep('produce content', () =>
+    // Async path: /produce now returns 202 + dispatches an Inngest worker.
+    // Open the SSE modal again to surface live progress for the produce stage.
+    const sinceAnchor = new Date(Date.now() - 1_000).toISOString();
+    const enqueued = await runStep('start produce', () =>
       fetch(`/api/content-drafts/${draftId}/produce`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productionParams, provider, model }),
       })
     );
-
-    if (!produced) {
+    if (!enqueued) {
       setPhase('core-ready');
       return;
     }
-
-    // The produce endpoint returns the full draft row; extract content from draft_json
-    const content = extractProducedContent(produced as Record<string, unknown>, type);
-    const draftJsonRaw = (produced as Record<string, unknown>).draft_json as Record<string, unknown> | undefined;
-    const warning = typeof draftJsonRaw?.content_warning === 'string' ? draftJsonRaw.content_warning : null;
-    setContentWarning(warning);
-    if (content) {
-      setProducedContent(content);
-      const wordCount = content.split(/\s+/).length;
-      tracker.trackAction('content.produced', {
-        draftId,
-        format: type,
-        wordCount,
-        draftJson: (produced as Record<string, unknown>).draft_json ?? (produced as Record<string, unknown>).draftJson,
-      });
-    }
-    setPhase('done');
-    toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} content produced`);
+    setActiveSince(sinceAnchor);
+    setActiveDraftId(draftId);
   }
 
   // ── Phase 2: Import produced content manually ──────────────────
@@ -1353,17 +1369,21 @@ export function DraftEngine({
         </Card>
       )}
 
-      {/* SSE generation modal for canonical core */}
+      {/* SSE generation modal — shows for both canonical-core and produce
+          phases since the orchestrator opens a single per-draft event stream
+          and we re-set activeDraftId on both transitions. */}
       {activeDraftId && (
         <GenerationProgressModal
           open={!!activeDraftId}
           sessionId={activeDraftId}
           sseUrl={`/api/content-drafts/${activeDraftId}/events`}
-          title="Generating canonical core"
+          since={activeSince ?? undefined}
+          title={phase === 'produce' ? `Producing ${type}` : 'Generating canonical core'}
           onComplete={onCoreJobComplete}
           onFailed={onJobFailed}
           onClose={() => {
             setActiveDraftId(null);
+            setActiveSince(null);
           }}
         />
       )}
