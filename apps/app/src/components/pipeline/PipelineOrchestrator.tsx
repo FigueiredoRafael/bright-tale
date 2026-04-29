@@ -21,7 +21,10 @@ import { useAnalytics } from '@/hooks/use-analytics'
 import { pipelineMachine } from '@/lib/pipeline/machine'
 import { usePipelineSettings } from '@/providers/PipelineSettingsProvider'
 import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
-import { mapLegacyPipelineState } from '@/lib/pipeline/legacy-state-migration'
+import {
+  mapLegacyPipelineState,
+  mapLegacyToSnapshot,
+} from '@/lib/pipeline/legacy-state-migration'
 import { PipelineStages, type PipelineStep } from './PipelineStages'
 import { AutoModeControls } from './AutoModeControls'
 import { CompletedStageSummary } from './CompletedStageSummary'
@@ -97,31 +100,43 @@ function OrchestratorInner({
   pipelineSettings,
   creditSettings,
 }: InnerProps) {
-  const legacy = useMemo(() => mapLegacyPipelineState(initialPipelineState), [initialPipelineState])
+  const snapshot = useMemo(() => mapLegacyToSnapshot(initialPipelineState), [
+    initialPipelineState,
+  ])
+  const legacy = useMemo(
+    () => (snapshot ? null : mapLegacyPipelineState(initialPipelineState)),
+    [initialPipelineState, snapshot]
+  )
   const { track } = useAnalytics()
 
-  const [state, send, actorRef] = useMachine(pipelineMachine, {
-    input: {
-      projectId,
-      channelId,
-      projectTitle,
-      pipelineSettings,
-      creditSettings,
-      mode: legacy?.mode,
-      initialStageResults: legacy?.initialStageResults,
-      initialIterationCount: legacy?.initialIterationCount,
-      initialPaused: legacy?.initialPaused,
-      initialPauseReason: legacy?.initialPauseReason,
-    },
-    inspect:
-      process.env.NODE_ENV === 'development'
-        ? (ev) => {
-            if (ev.type === '@xstate.event') {
-              console.debug('[pipeline]', (ev as any).event?.type, (ev as any).event)
-            }
+  const inspectFn =
+    process.env.NODE_ENV === 'development'
+      ? (ev: any) => {
+          if (ev.type === '@xstate.event') {
+            console.debug('[pipeline]', (ev as any).event?.type, (ev as any).event)
           }
-        : undefined,
-  })
+        }
+      : undefined
+
+  const options = snapshot
+    ? { snapshot, inspect: inspectFn }
+    : {
+        input: {
+          projectId,
+          channelId,
+          projectTitle,
+          pipelineSettings,
+          creditSettings,
+          mode: legacy?.mode,
+          initialStageResults: legacy?.initialStageResults,
+          initialIterationCount: legacy?.initialIterationCount,
+          initialPaused: legacy?.initialPaused,
+          initialPauseReason: legacy?.initialPauseReason,
+        },
+        inspect: inspectFn,
+      }
+
+  const [state, send, actorRef] = useMachine(pipelineMachine, options as any)
 
   const didRestoreRef = useRef(false)
   const restoredRef = useRef(false)

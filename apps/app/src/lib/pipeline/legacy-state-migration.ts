@@ -1,5 +1,18 @@
-import { PIPELINE_STAGES } from '@/components/engines/types'
-import type { PauseReason, PipelineMachineInput, PipelineStage, StageResultMap } from './machine.types'
+import type { Snapshot } from 'xstate'
+import { createActor } from 'xstate'
+import {
+  PIPELINE_STAGES,
+  DEFAULT_PIPELINE_SETTINGS,
+  DEFAULT_CREDIT_SETTINGS,
+} from '@/components/engines/types'
+import type {
+  PauseReason,
+  PipelineMachineInput,
+  PipelineStage,
+  StageResultMap,
+} from './machine.types'
+import { pipelineMachine } from './machine.js'
+import type { PipelineMachineContext } from './machine.types'
 
 type LegacyMode = 'step-by-step' | 'auto'
 type NewMode = 'step-by-step' | 'supervised' | 'overview' | null
@@ -12,6 +25,9 @@ const PAUSE_REASONS: readonly PauseReason[] = [
 ] as const
 
 interface LegacyShape {
+  projectId?: unknown
+  channelId?: unknown
+  projectTitle?: unknown
   mode?: LegacyMode | string
   currentStage?: string
   stageResults?: Record<string, unknown>
@@ -41,6 +57,7 @@ function isPlainObject(x: unknown): x is Record<string, unknown> {
 function normalizeMode(mode: unknown): NewMode {
   if (mode === 'auto') return 'supervised'
   if (mode === 'step-by-step') return 'step-by-step'
+  if (mode === 'overview') return 'overview'
   return null // 'step', unknown → null (setup-driven mode)
 }
 
@@ -60,7 +77,13 @@ function deriveInitialStage(currentStage: unknown, results: StageResultMap): Pip
 }
 
 function looksLegacy(x: LegacyShape): boolean {
-  return x.currentStage !== undefined || x.autoConfig !== undefined || x.mode === 'auto' || x.mode === 'step-by-step'
+  return (
+    x.currentStage !== undefined ||
+    x.autoConfig !== undefined ||
+    x.mode === 'auto' ||
+    x.mode === 'step' ||
+    (x.stageResults !== undefined && Object.keys(x.stageResults as object).length > 0)
+  )
 }
 
 export function mapLegacyPipelineState(raw: unknown): MigratedPipelineInput | null {
@@ -79,8 +102,9 @@ export function mapLegacyPipelineState(raw: unknown): MigratedPipelineInput | nu
   const stageResults = (input.stageResults ?? {}) as StageResultMap
 
   // Prefer explicit top-level iterationCount (new shape); fall back to review stage's embedded count (legacy shape).
-  const iterationFromReview =
-    (input.stageResults?.review as Record<string, unknown> | undefined)?.iterationCount
+  const iterationFromReview = (
+    input.stageResults?.review as Record<string, unknown> | undefined
+  )?.iterationCount
   const initialIterationCount =
     typeof input.iterationCount === 'number'
       ? input.iterationCount
@@ -91,15 +115,22 @@ export function mapLegacyPipelineState(raw: unknown): MigratedPipelineInput | nu
   const initialStage = deriveInitialStage(input.currentStage, stageResults)
   const initialPaused = input.paused === true
   const initialPauseReason: PauseReason | null =
-    typeof input.pauseReason === 'string' && (PAUSE_REASONS as readonly string[]).includes(input.pauseReason)
+    typeof input.pauseReason === 'string' &&
+    (PAUSE_REASONS as readonly string[]).includes(input.pauseReason)
       ? (input.pauseReason as PauseReason)
       : null
 
   if (looksLegacy(input)) {
     try {
-      if (typeof window !== 'undefined' && typeof (window as unknown as Record<string, unknown>).Sentry === 'object') {
-        const sentry = (window as unknown as Record<string, unknown>).Sentry as Record<string, unknown>
-        const addBreadcrumb = sentry.addBreadcrumb as ((opts: unknown) => void) | undefined
+      if (
+        typeof window !== 'undefined' &&
+        typeof (window as unknown as Record<string, unknown>).Sentry === 'object'
+      ) {
+        const sentry = (window as unknown as Record<string, unknown>)
+          .Sentry as Record<string, unknown>
+        const addBreadcrumb = sentry.addBreadcrumb as
+          | ((opts: unknown) => void)
+          | undefined
         if (addBreadcrumb) {
           addBreadcrumb({
             category: 'pipeline.legacy_state',
@@ -121,4 +152,62 @@ export function mapLegacyPipelineState(raw: unknown): MigratedPipelineInput | nu
     initialPaused,
     initialPauseReason,
   }
+}
+
+/**
+ * Convert legacy pipeline state to an XState v5 snapshot for direct hydration.
+ * When a project is restored with existing state, this snapshot boots the actor
+ * at the saved stage without needing a setup transition.
+ *
+ * Returns null for empty or non-legacy inputs (caller uses input path instead).
+ */
+export function mapLegacyToSnapshot(
+  raw: unknown
+): (Snapshot<typeof pipelineMachine> & { context: PipelineMachineContext }) | null {
+  if (!raw || !isPlainObject(raw)) return null
+
+  const input = raw as LegacyShape
+
+  // If it doesn't look legacy, let the input path handle it (caller will create fresh actor)
+  if (!looksLegacy(input)) return null
+
+  // Run the existing migration logic to normalize fields
+  const migrated = mapLegacyPipelineState(raw)
+  if (!migrated) return null
+
+  // Extract context values from the raw input, with sensible defaults
+  const projectId = typeof input.projectId === 'string' ? input.projectId : ''
+  const channelId = typeof input.channelId === 'string' ? input.channelId : null
+  const projectTitle = typeof input.projectTitle === 'string' ? input.projectTitle : ''
+
+  // Build a machine input that represents the restored state.
+  const machineInput: PipelineMachineInput = {
+    projectId,
+    channelId,
+    projectTitle,
+    pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+    creditSettings: DEFAULT_CREDIT_SETTINGS,
+    mode: migrated.mode,
+    autopilotConfig: null,
+    templateId: null,
+    initialStageResults: migrated.initialStageResults,
+    initialIterationCount: migrated.initialIterationCount,
+    initialPaused: migrated.initialPaused,
+    initialPauseReason: migrated.initialPauseReason,
+  }
+
+  // Create a temporary actor to get a valid XState snapshot structure
+  const tempActor = createActor(pipelineMachine, { input: machineInput })
+  const baseSnapshot = tempActor.getSnapshot()
+
+  // Reconstruct the snapshot with the restored stage value.
+  const snapshotWithValue = {
+    ...baseSnapshot,
+    value: migrated.initialStage,
+  }
+  const snapshot = snapshotWithValue as unknown as Snapshot<typeof pipelineMachine> & {
+    context: PipelineMachineContext
+  }
+
+  return snapshot
 }
