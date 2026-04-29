@@ -16,6 +16,7 @@ function deriveStageStatus(
   stageResults: StageResultMap,
   autopilotConfig: AutopilotConfig | null,
   isPaused: boolean,
+  currentStage: PipelineStage | null,
 ): StageStatus {
   const result = stageResults[stage]
   const completed = Boolean(result && (result as { completedAt?: string }).completedAt)
@@ -27,9 +28,23 @@ function deriveStageStatus(
     return 'skipped'
   }
 
-  if (isPaused) return 'paused'
+  if (stage === currentStage) {
+    return isPaused ? 'paused' : 'running'
+  }
 
   return 'pending'
+}
+
+function extractStageFromMachineValue(value: unknown): PipelineStage | null {
+  // XState v5 snapshot.value is `string | { [key: string]: StateValue }`.
+  // Top-level pipeline states match PipelineStage names directly.
+  const raw = typeof value === 'string'
+    ? value
+    : value && typeof value === 'object'
+      ? Object.keys(value as Record<string, unknown>)[0]
+      : null
+  if (raw === null) return null
+  return (PIPELINE_STAGES as readonly string[]).includes(raw) ? (raw as PipelineStage) : null
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -48,9 +63,11 @@ export function PipelineOverview({ setShowEngine }: PipelineOverviewProps) {
     paused: boolean
   }
 
+  const currentStage = extractStageFromMachineValue(snapshot.value)
+
   const railStages: RailStage[] = PIPELINE_STAGES.map((stage) => ({
     name: stage,
-    status: deriveStageStatus(stage, stageResults, autopilotConfig, Boolean(paused)),
+    status: deriveStageStatus(stage, stageResults, autopilotConfig, Boolean(paused), currentStage),
   }))
 
   return (

@@ -717,9 +717,10 @@ export function ResearchEngine({
   async function handleManualAbandon() {
     if (!manualSessionId) return;
     try {
+      // Intentionally NOT passing abortController.signal: cancel is fire-and-forget
+      // cleanup that must reach the server even after the pipeline has been aborted.
       await fetch(`/api/research-sessions/${manualSessionId}/cancel`, {
         method: 'POST',
-        signal: abortController?.signal,
       });
     } catch {
       // silent — best-effort cancel

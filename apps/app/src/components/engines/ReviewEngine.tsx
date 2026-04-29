@@ -373,9 +373,10 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
     if (!manualState) return;
     setBusy(true);
     try {
+      // Intentionally NOT passing abortController.signal: cancel is fire-and-forget
+      // cleanup that must reach the server even after the pipeline has been aborted.
       await fetch(`/api/content-drafts/${manualState.draftId}/cancel`, {
         method: 'POST',
-        signal: abortController?.signal,
       });
     } catch {
       // best-effort

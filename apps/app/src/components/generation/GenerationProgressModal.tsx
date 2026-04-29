@@ -23,10 +23,11 @@ interface Props {
     since?: string;
     onComplete?: () => void;
     onFailed?: (message: string) => void;
+    onAborted?: () => void;
     onClose: () => void;
 }
 
-export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gerando ideias", reconnecting, since, onComplete, onFailed, onClose }: Props) {
+export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gerando ideias", reconnecting, since, onComplete, onFailed, onAborted, onClose }: Props) {
     const [openedAt, setOpenedAt] = useState<string | null>(null);
     useEffect(() => {
         if (!open) {
@@ -65,10 +66,12 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gera
     // perpetually reset the 1.5s timer, never letting it fire).
     const onCompleteRef = useRef(onComplete);
     const onFailedRef = useRef(onFailed);
+    const onAbortedRef = useRef(onAborted);
     useEffect(() => {
         onCompleteRef.current = onComplete;
         onFailedRef.current = onFailed;
-    }, [onComplete, onFailed]);
+        onAbortedRef.current = onAborted;
+    }, [onComplete, onFailed, onAborted]);
 
     useEffect(() => {
         if (status === "completed") {
@@ -82,6 +85,9 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gera
         if (status === "failed") {
             const msg = events.find((e) => e.stage === "failed")?.message ?? "Falhou";
             onFailedRef.current?.(msg);
+        }
+        if (status === "aborted") {
+            onAbortedRef.current?.();
         }
     }, [status, events]);
 

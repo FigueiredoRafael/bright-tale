@@ -13,10 +13,11 @@ interface Props {
     reconnecting?: boolean;
     onComplete?: () => void;
     onFailed?: (message: string) => void;
+    onAborted?: () => void;
     onClose: () => void;
 }
 
-export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, title = "Generating…", reconnecting, onComplete, onFailed, onClose }: Props) {
+export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, title = "Generating…", reconnecting, onComplete, onFailed, onAborted, onClose }: Props) {
     const [collapsed, setCollapsed] = useState(false);
     const [cancelling, setCancelling] = useState(false);
 
@@ -51,10 +52,12 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
     // re-run on every parent render and reset itself perpetually.
     const onCompleteRef = useRef(onComplete);
     const onFailedRef = useRef(onFailed);
+    const onAbortedRef = useRef(onAborted);
     useEffect(() => {
         onCompleteRef.current = onComplete;
         onFailedRef.current = onFailed;
-    }, [onComplete, onFailed]);
+        onAbortedRef.current = onAborted;
+    }, [onComplete, onFailed, onAborted]);
 
     useEffect(() => {
         if (status === "completed") {
@@ -66,6 +69,9 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
         if (status === "failed") {
             const msg = events.find((e) => e.stage === "failed")?.message ?? "Failed";
             onFailedRef.current?.(msg);
+        }
+        if (status === "aborted") {
+            onAbortedRef.current?.();
         }
     }, [status, events]);
 

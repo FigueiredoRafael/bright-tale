@@ -653,9 +653,10 @@ export function BrainstormEngine({
   async function handleManualAbandon() {
     if (!manualSessionId) return;
     try {
+      // Intentionally NOT passing abortController.signal: cancel is fire-and-forget
+      // cleanup that must reach the server even after the pipeline has been aborted.
       await fetch(`/api/brainstorm/sessions/${manualSessionId}/cancel`, {
         method: 'POST',
-        signal: abortController?.signal,
       });
     } catch {
       // best-effort

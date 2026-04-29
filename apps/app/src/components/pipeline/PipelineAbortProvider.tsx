@@ -1,5 +1,5 @@
 'use client'
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 
 const Ctx = createContext<AbortController | null>(null)
 
@@ -22,6 +22,10 @@ export function PipelineAbortProvider({
 }: PipelineAbortProviderProps) {
   const [controller, setController] = useState<AbortController>(() => new AbortController())
   const [prevStage, setPrevStage] = useState(currentStage)
+  // Tracks the last seen abortRequestedAt across the component's lifetime so a
+  // re-mounted polling effect (triggered by stage change) does not re-fire abort
+  // on a still-pending pause already observed by the previous controller.
+  const lastAbortAtRef = useRef<string | null>(null)
 
   if (prevStage !== currentStage) {
     setPrevStage(currentStage)
@@ -32,7 +36,6 @@ export function PipelineAbortProvider({
     if (machineState === 'setup' || machineState === 'done') return
 
     const interval = isPaused ? 10_000 : 3_000
-    let lastAbortAt: string | null = null
 
     const tick = async () => {
       let res: Response
@@ -49,8 +52,8 @@ export function PipelineAbortProvider({
       if (body.error !== null || body.data === null) return
 
       const next = body.data.abortRequestedAt ?? null
-      if (next !== lastAbortAt) {
-        lastAbortAt = next
+      if (next !== lastAbortAtRef.current) {
+        lastAbortAtRef.current = next
         if (next !== null) {
           controller.abort()
         }
