@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { CheckCircle2, Loader2, Pause, XCircle } from "lucide-react";
 import { useJobEvents } from "@/hooks/useJobEvents";
 
 interface Props {
@@ -125,6 +125,8 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gera
                             <CheckCircle2 className="h-5 w-5 text-green-500" />
                         ) : status === "failed" ? (
                             <XCircle className="h-5 w-5 text-red-500" />
+                        ) : status === "aborted" ? (
+                            <Pause className="h-5 w-5 text-amber-600" />
                         ) : (
                             <Loader2 className="h-5 w-5 animate-spin text-primary" />
                         )}
@@ -145,10 +147,13 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gera
                         const isLast = i === dedupedEvents.length - 1;
                         const isLive = isLast && status === "streaming";
                         const isFailed = ev.stage === "failed";
+                        const isAborted = ev.stage === "aborted";
                         return (
                             <li key={ev.id} className="flex items-start gap-3 text-sm">
                                 {isFailed ? (
                                     <XCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                                ) : isAborted ? (
+                                    <Pause className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
                                 ) : isLive ? (
                                     <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0 mt-0.5" />
                                 ) : (
@@ -157,9 +162,11 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gera
                                 <span className={`flex-1 ${
                                     isFailed
                                         ? "text-red-600 dark:text-red-400"
-                                        : isLive
-                                            ? "text-foreground font-medium"
-                                            : "text-muted-foreground"
+                                        : isAborted
+                                            ? "text-amber-700 dark:text-amber-400"
+                                            : isLive
+                                                ? "text-foreground font-medium"
+                                                : "text-muted-foreground"
                                 }`}>
                                     {ev.message}
                                 </span>

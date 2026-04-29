@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 export interface JobEvent {
     id: string;
-    stage: "queued" | "loading_prompt" | "calling_provider" | "parsing_output" | "saving" | "completed" | "failed";
+    stage: "queued" | "loading_prompt" | "calling_provider" | "parsing_output" | "saving" | "completed" | "failed" | "aborted";
     message: string;
     metadata: Record<string, unknown> | null;
     created_at: string;
@@ -12,7 +12,7 @@ export interface JobEvent {
 
 export interface UseJobEventsState {
     events: JobEvent[];
-    status: "idle" | "streaming" | "completed" | "failed" | "error";
+    status: "idle" | "streaming" | "completed" | "failed" | "aborted" | "error";
     error: string | null;
 }
 
@@ -22,19 +22,20 @@ export interface UseJobEventsState {
  */
 export function useJobEvents(sseUrl: string): UseJobEventsState {
     const [events, setEvents] = useState<JobEvent[]>([]);
-    const [status, setStatus] = useState<UseJobEventsState["status"]>("idle");
+    const [status, setStatus] = useState<UseJobEventsState["status"]>(sseUrl ? "streaming" : "idle");
     const [error, setError] = useState<string | null>(null);
+    const [prevSseUrl, setPrevSseUrl] = useState(sseUrl);
+
+    if (prevSseUrl !== sseUrl) {
+        setPrevSseUrl(sseUrl);
+        setEvents([]);
+        setStatus(sseUrl ? "streaming" : "idle");
+        setError(null);
+    }
 
     useEffect(() => {
-        if (!sseUrl) {
-            setEvents([]);
-            setStatus("idle");
-            setError(null);
-            return;
-        }
+        if (!sseUrl) return;
 
-        setStatus("streaming");
-        setError(null);
         const source = new EventSource(sseUrl);
 
         source.onmessage = (e) => {
@@ -46,6 +47,9 @@ export function useJobEvents(sseUrl: string): UseJobEventsState {
                     source.close();
                 } else if (ev.stage === "failed") {
                     setStatus("failed");
+                    source.close();
+                } else if (ev.stage === "aborted") {
+                    setStatus("aborted");
                     source.close();
                 }
             } catch {

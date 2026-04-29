@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, ChevronDown, ChevronUp, Loader2, Square, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronUp, Loader2, Pause, Square, XCircle } from "lucide-react";
 import { useJobEvents } from "@/hooks/useJobEvents";
 
 interface Props {
@@ -105,6 +105,7 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
 
     const isDone = status === "completed";
     const isFailed = status === "failed";
+    const isAborted = status === "aborted";
 
     return (
         <div className="fixed bottom-4 right-4 z-50 w-80 rounded-lg border bg-background shadow-lg overflow-hidden transition-all">
@@ -117,6 +118,8 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
                     <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
                 ) : isFailed ? (
                     <XCircle className="h-4 w-4 text-red-500 shrink-0" />
+                ) : isAborted ? (
+                    <Pause className="h-4 w-4 text-amber-600 shrink-0" />
                 ) : (
                     <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
                 )}
@@ -142,10 +145,13 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
                             const isLast = i === dedupedEvents.length - 1;
                             const isLive = isLast && status === "streaming";
                             const evFailed = ev.stage === "failed";
+                            const evAborted = ev.stage === "aborted";
                             return (
                                 <li key={ev.id} className="flex items-start gap-2 text-xs">
                                     {evFailed ? (
                                         <XCircle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" />
+                                    ) : evAborted ? (
+                                        <Pause className="h-3 w-3 text-amber-600 shrink-0 mt-0.5" />
                                     ) : isLive ? (
                                         <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0 mt-0.5" />
                                     ) : (
@@ -154,9 +160,11 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
                                     <span className={`flex-1 ${
                                         evFailed
                                             ? "text-red-600 dark:text-red-400"
-                                            : isLive
-                                                ? "text-foreground font-medium"
-                                                : "text-muted-foreground"
+                                            : evAborted
+                                                ? "text-amber-700 dark:text-amber-400"
+                                                : isLive
+                                                    ? "text-foreground font-medium"
+                                                    : "text-muted-foreground"
                                     }`}>
                                         {ev.message}
                                     </span>
@@ -193,7 +201,7 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
                             {sessionId.slice(0, 8)}…
                         </span>
                         <div className="flex items-center gap-2">
-                            {!isDone && !isFailed && cancelUrl && (
+                            {!isDone && !isFailed && !isAborted && cancelUrl && (
                                 <button
                                     onClick={async () => {
                                         setCancelling(true);
@@ -211,7 +219,7 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
                                     {cancelling ? 'Cancelling…' : 'Cancel'}
                                 </button>
                             )}
-                            {(isDone || isFailed) && (
+                            {(isDone || isFailed || isAborted) && (
                                 <button
                                     onClick={onClose}
                                     className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
