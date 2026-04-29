@@ -28,6 +28,9 @@ import {
 import { PipelineStages, type PipelineStep } from './PipelineStages'
 import { AutoModeControls } from './AutoModeControls'
 import { CompletedStageSummary } from './CompletedStageSummary'
+import { PipelineWizard } from './PipelineWizard'
+import { PipelineOverview } from './PipelineOverview'
+import { MiniWizardSheet } from './MiniWizardSheet'
 import { BrainstormEngine } from '@/components/engines/BrainstormEngine'
 import { ResearchEngine } from '@/components/engines/ResearchEngine'
 import { DraftEngine } from '@/components/engines/DraftEngine'
@@ -224,6 +227,8 @@ function OrchestratorInner({
   const [engineMode, setEngineMode] = useState<'generate' | 'import' | null>(null)
   const [pendingAssetsConfirm, setPendingAssetsConfirm] = useState(false)
   const [assetsConfirmed, setAssetsConfirmed] = useState(false)
+  const [showEngine, setShowEngine] = useState<PipelineStage | null>(null)
+  const [miniWizardOpen, setMiniWizardOpen] = useState(false)
 
   useEffect(() => {
     if (ctx.mode !== 'supervised' && ctx.mode !== 'overview') return
@@ -317,8 +322,8 @@ function OrchestratorInner({
     return currentStage === 'publish' ? 'published' : currentStage
   }
 
-  function renderEngine() {
-    const needsDraftPrefetch = ['review', 'assets', 'preview', 'publish'].includes(currentStage)
+  function renderEngine(stage: PipelineStage = currentStage) {
+    const needsDraftPrefetch = ['review', 'assets', 'preview', 'publish'].includes(stage)
     if (needsDraftPrefetch && ctx.stageResults.draft?.draftId && !draftData) {
       return (
         <Card>
@@ -331,13 +336,13 @@ function OrchestratorInner({
       )
     }
 
-    const canImport = IMPORTABLE_STAGES.includes(currentStage)
+    const canImport = IMPORTABLE_STAGES.includes(stage)
     const mode: 'generate' | 'import' = engineMode ?? 'generate'
-    const onModeChange = (canImport && !ctx.stageResults[currentStage])
+    const onModeChange = (canImport && !ctx.stageResults[stage])
       ? setEngineMode
       : undefined
 
-    switch (currentStage) {
+    switch (stage) {
       case 'brainstorm':
         return <BrainstormEngine mode={mode} onModeChange={onModeChange} />
       case 'research':
@@ -356,6 +361,23 @@ function OrchestratorInner({
         return null
     }
   }
+
+  // ── Render branch: setup state ────────────────────────────────────────────
+  if (state.matches('setup')) {
+    return (
+      <PipelineActorProvider value={actorRef}>
+        <PipelineWizard />
+      </PipelineActorProvider>
+    )
+  }
+
+  // ── Render branch: overview mode (no engine drilled into) ─────────────────
+  // Derived top stage for the engine selection when showEngine is set
+  const topStage: PipelineStage =
+    typeof stateValue === 'string'
+      ? (stateValue as PipelineStage)
+      : (Object.keys(stateValue as Record<string, unknown>)[0] as PipelineStage)
+  const stageToRender: PipelineStage = showEngine ?? topStage
 
   return (
     <PipelineActorProvider value={actorRef}>
@@ -398,18 +420,31 @@ function OrchestratorInner({
           </p>
         </div>
 
-        <AutoModeControls
-          mode={ctx.mode}
-          isPaused={ctx.paused || subState === 'paused'}
-          isWorking={isWorking}
-          pauseReason={ctx.pauseReason}
-          onToggle={handleToggleMode}
-          onPause={() => send({ type: 'PAUSE' })}
-          onResume={() => {
-            setPendingAssetsConfirm(false)
-            send({ type: 'RESUME' })
-          }}
-        />
+        <div className="flex items-center gap-3 flex-wrap">
+          <AutoModeControls
+            mode={ctx.mode}
+            isPaused={ctx.paused || subState === 'paused'}
+            isWorking={isWorking}
+            pauseReason={ctx.pauseReason}
+            onToggle={handleToggleMode}
+            onPause={() => send({ type: 'PAUSE' })}
+            onResume={() => {
+              setPendingAssetsConfirm(false)
+              send({ type: 'RESUME' })
+            }}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="mini-wizard-trigger"
+            onClick={() => setMiniWizardOpen(true)}
+          >
+            {ctx.mode === 'step-by-step' || ctx.mode === null
+              ? 'Go autopilot'
+              : 'Reconfigure autopilot'}
+          </Button>
+          <MiniWizardSheet isOpen={miniWizardOpen} onClose={() => setMiniWizardOpen(false)} />
+        </div>
 
         <Separator />
 
@@ -444,7 +479,24 @@ function OrchestratorInner({
 
         <Separator />
 
-        {renderEngine()}
+        {ctx.mode === 'overview' && !showEngine ? (
+          <PipelineOverview setShowEngine={(stage) => setShowEngine(stage as PipelineStage)} />
+        ) : (
+          <>
+            {showEngine && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mb-2"
+                data-testid="back-to-overview"
+                onClick={() => setShowEngine(null)}
+              >
+                ← Back to overview
+              </Button>
+            )}
+            {renderEngine(stageToRender)}
+          </>
+        )}
 
         <AlertDialog open={!!pendingRedo} onOpenChange={(o) => !o && setPendingRedo(null)}>
           <AlertDialogContent>

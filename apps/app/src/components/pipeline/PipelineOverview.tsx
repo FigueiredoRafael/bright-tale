@@ -71,7 +71,7 @@ export function PipelineOverview({ setShowEngine }: PipelineOverviewProps) {
   }))
 
   return (
-    <div className="flex gap-6 items-start">
+    <div data-testid="pipeline-overview" className="flex gap-6 items-start">
       {/* Left column — vertical progress rail */}
       <aside className="shrink-0 pt-1">
         <OverviewProgressRail stages={railStages} />

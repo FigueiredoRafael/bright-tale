@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import React from 'react'
 
 afterEach(() => {
@@ -77,7 +77,59 @@ vi.mock('@/components/engines/PublishEngine', () => ({
   PublishEngine: () => <div data-testid="publish-engine">PublishEngine</div>,
 }))
 
+// Stub pipeline sub-components so render tests don't need a real actor context
+vi.mock('../PipelineWizard', () => ({
+  PipelineWizard: () => <div data-testid="pipeline-wizard">PipelineWizard</div>,
+}))
+
+vi.mock('../PipelineOverview', () => ({
+  PipelineOverview: ({ setShowEngine }: { setShowEngine: (s: string) => void }) => (
+    <div data-testid="pipeline-overview">
+      PipelineOverview
+      <button data-testid="open-draft-engine" onClick={() => setShowEngine('draft')}>
+        Open engine
+      </button>
+    </div>
+  ),
+}))
+
+vi.mock('../MiniWizardSheet', () => ({
+  MiniWizardSheet: ({ isOpen }: { isOpen: boolean; onClose: () => void }) =>
+    isOpen ? <div data-testid="mini-wizard-sheet">MiniWizardSheet</div> : null,
+}))
+
 import { PipelineOrchestrator } from '../PipelineOrchestrator'
+
+// Helper: a pipeline state that routes to a known non-setup stage.
+// The legacy migration recognises 'currentStage' as a legacy shape and navigates to it.
+function stateAt(stage: string, mode: string = 'step-by-step') {
+  return {
+    mode,
+    currentStage: stage,
+    stageResults: {},
+    autoConfig: {},
+  }
+}
+
+// Helper: a pipeline state for overview mode with brainstorm completed.
+function overviewState() {
+  return {
+    mode: 'overview',
+    currentStage: 'draft',
+    stageResults: {
+      brainstorm: {
+        ideaId: 'i',
+        ideaTitle: 't',
+        ideaVerdict: 'v',
+        ideaCoreTension: 'c',
+        completedAt: '2026-01-01',
+      },
+    },
+    autoConfig: {},
+    // XState v5 snapshot marker: include __xstate to trigger mapLegacyToSnapshot as null
+    // (there is no __xstate field, so this is just a legacy state — correct behaviour)
+  }
+}
 
 describe('PipelineOrchestrator', () => {
   it('renders without crashing when isLoaded=true', () => {
@@ -137,5 +189,81 @@ describe('PipelineOrchestrator', () => {
     )
     // Verify "Redo" button is in the rendered HTML (CompletedStageSummary renders with onRedoFrom prop)
     expect(container.innerHTML).toContain('Redo')
+  })
+
+  // ── T-8.1 render branch tests ─────────────────────────────────────────────
+
+  it('renders <PipelineWizard /> when state.matches("setup")', () => {
+    // No initialPipelineState → machine starts fresh at "setup"
+    render(
+      <PipelineOrchestrator projectId="p" channelId="c" projectTitle="Test" />,
+    )
+    expect(screen.getByTestId('pipeline-wizard')).toBeTruthy()
+  })
+
+  it("renders <PipelineOverview /> when mode='overview' and showEngine is null", () => {
+    // overview mode → machine is NOT in setup, mode is overview, showEngine starts null
+    render(
+      <PipelineOrchestrator
+        projectId="p"
+        channelId="c"
+        projectTitle="Test"
+        initialPipelineState={overviewState()}
+      />,
+    )
+    expect(screen.getByTestId('pipeline-overview')).toBeTruthy()
+  })
+
+  it("renders engine when mode='overview' and showEngine is set via setShowEngine", async () => {
+    render(
+      <PipelineOrchestrator
+        projectId="p"
+        channelId="c"
+        projectTitle="Test"
+        initialPipelineState={overviewState()}
+      />,
+    )
+    // PipelineOverview stub has an "Open engine" button that calls setShowEngine('draft')
+    fireEvent.click(screen.getByTestId('open-draft-engine'))
+    await waitFor(() => {
+      expect(screen.getByTestId('draft-engine')).toBeTruthy()
+    })
+  })
+
+  it("renders engine for step-by-step mode (no overview)", () => {
+    render(
+      <PipelineOrchestrator
+        projectId="p"
+        channelId="c"
+        projectTitle="Test"
+        initialPipelineState={stateAt('brainstorm', 'step-by-step')}
+      />,
+    )
+    // In step-by-step mode, engine renders directly (no overview)
+    expect(screen.getByTestId('brainstorm-engine')).toBeTruthy()
+    expect(screen.queryByTestId('pipeline-overview')).toBeNull()
+  })
+
+  it('"← Back to overview" button clears showEngine and restores overview', async () => {
+    render(
+      <PipelineOrchestrator
+        projectId="p"
+        channelId="c"
+        projectTitle="Test"
+        initialPipelineState={overviewState()}
+      />,
+    )
+    // Open an engine
+    fireEvent.click(screen.getByTestId('open-draft-engine'))
+    await waitFor(() => {
+      expect(screen.getByTestId('draft-engine')).toBeTruthy()
+    })
+
+    // Click the Back to overview button
+    fireEvent.click(screen.getByTestId('back-to-overview'))
+    await waitFor(() => {
+      expect(screen.getByTestId('pipeline-overview')).toBeTruthy()
+      expect(screen.queryByTestId('draft-engine')).toBeNull()
+    })
   })
 })

@@ -6,6 +6,7 @@ import { useRouter } from '@/i18n/navigation';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { PipelineOrchestrator } from '@/components/pipeline/PipelineOrchestrator';
 import { PipelineSettingsProvider } from '@/providers/PipelineSettingsProvider';
+import { PipelineAbortProvider } from '@/components/pipeline/PipelineAbortProvider';
 import { ConnectChannelEmptyState } from '@/components/projects/ConnectChannelEmptyState';
 
 interface Channel {
@@ -86,6 +87,23 @@ export default function ProjectPipelinePage() {
     );
   }
 
+  // Derive abort-provider props from persisted pipeline state JSON.
+  // The orchestrator persists { mode, currentStage, paused, ... } via PATCH on every change.
+  const pipelineStateJson = project.pipeline_state_json as Record<string, unknown> | undefined
+  const persistedMode = pipelineStateJson?.mode as string | undefined
+  const persistedStage = (pipelineStateJson?.currentStage as string | undefined) ?? 'brainstorm'
+  const persistedPaused = Boolean(pipelineStateJson?.paused)
+
+  // machineState is 'setup' when there is no mode set yet, 'done' when published, else 'running'
+  const machineState: 'setup' | 'running' | 'done' = !persistedMode
+    ? 'setup'
+    : persistedStage === 'publish' && pipelineStateJson?.stageResults
+        ? (() => {
+            const sr = pipelineStateJson.stageResults as Record<string, unknown>
+            return sr.publish ? 'done' : 'running'
+          })()
+        : 'running'
+
   return (
     <div>
       <div className="px-6 pt-4">
@@ -96,14 +114,21 @@ export default function ProjectPipelinePage() {
           <ArrowLeft className="h-3 w-3" /> Back to projects
         </button>
       </div>
-      <PipelineSettingsProvider>
-        <PipelineOrchestrator
-          projectId={projectId}
-          channelId={channelId}
-          projectTitle={(project.title as string) ?? 'Untitled Project'}
-          initialPipelineState={project.pipeline_state_json as Record<string, unknown> | undefined}
-        />
-      </PipelineSettingsProvider>
+      <PipelineAbortProvider
+        projectId={projectId}
+        machineState={machineState}
+        currentStage={persistedStage}
+        isPaused={persistedPaused}
+      >
+        <PipelineSettingsProvider>
+          <PipelineOrchestrator
+            projectId={projectId}
+            channelId={channelId}
+            projectTitle={(project.title as string) ?? 'Untitled Project'}
+            initialPipelineState={pipelineStateJson}
+          />
+        </PipelineSettingsProvider>
+      </PipelineAbortProvider>
     </div>
   );
 }

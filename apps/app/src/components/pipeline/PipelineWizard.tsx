@@ -685,7 +685,7 @@ export function PipelineWizard() {
 
   return (
     <FormProvider {...methods}>
-      <div className="relative flex flex-col min-h-0 h-full">
+      <div data-testid="pipeline-wizard" className="relative flex flex-col min-h-0 h-full">
         {showSaveAsNew && (
           <SaveAsNewDialog
             onSave={handleSaveAsNew}
