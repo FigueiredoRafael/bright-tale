@@ -28,12 +28,18 @@ export class OpenAIProvider implements AIProvider {
     schema,
     systemPrompt,
     userMessage,
+    signal,
   }: GenerateContentParams): Promise<any> {
     try {
+      // Pre-call fail-fast guard: check if already aborted
+      if (signal?.aborted) {
+        throw new DOMException('Aborted', 'AbortError');
+      }
+
       // Use provided user message
       const userPrompt = userMessage;
 
-      // Call OpenAI with JSON mode
+      // Call OpenAI with JSON mode and signal support (SDK >= 4.0)
       const response = await this.client.chat.completions.create({
         model: this.model,
         messages: [
@@ -44,7 +50,7 @@ export class OpenAIProvider implements AIProvider {
         ],
         response_format: { type: "json_object" },
         temperature: this.temperature,
-      });
+      }, { signal });
 
       this.lastUsage = {
         inputTokens: response.usage?.prompt_tokens,

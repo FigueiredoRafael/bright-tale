@@ -30,12 +30,18 @@ export class AnthropicProvider implements AIProvider {
     schema,
     systemPrompt,
     userMessage,
+    signal,
   }: GenerateContentParams): Promise<any> {
     try {
+      // Pre-call fail-fast guard: check if already aborted
+      if (signal?.aborted) {
+        throw new DOMException('Aborted', 'AbortError');
+      }
+
       // Use provided user message
       const userPrompt = userMessage;
 
-      // Call Anthropic API
+      // Call Anthropic API with signal support (SDK >= 0.20)
       const response = await this.client.messages.create({
         model: this.model,
         max_tokens: this.maxTokens,
@@ -47,7 +53,7 @@ export class AnthropicProvider implements AIProvider {
             content: userPrompt,
           },
         ],
-      });
+      }, { signal });
 
       this.lastUsage = {
         inputTokens: response.usage?.input_tokens,

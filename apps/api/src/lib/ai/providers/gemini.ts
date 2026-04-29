@@ -23,9 +23,17 @@ export class GeminiProvider implements AIProvider {
     schema,
     systemPrompt,
     userMessage,
+    signal,
   }: GenerateContentParams): Promise<unknown> {
+    // Pre-call fail-fast guard: check if already aborted
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+
     const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${userMessage}` : userMessage;
 
+    // TODO: signal not threaded — GoogleGenAI SDK does not expose per-request signal in generateContent.
+    // In-flight requests will not be cancelled until completion or SDK-level timeout.
     const response = await this.client.models.generateContent({
       model: this.model,
       contents: fullPrompt,

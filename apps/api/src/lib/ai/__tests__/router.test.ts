@@ -100,4 +100,33 @@ describe('generateWithFallback', () => {
     openaiImpl.mockRejectedValue(new Error('429 final'));
     await expect(generateWithFallback('brainstorm', 'standard', params)).rejects.toThrow(/429 final/);
   });
+
+  it('exits retry loop promptly on signal abort', async () => {
+    // Set retry base to non-zero so the backoff sleep is actually used
+    const prevRetryMs = process.env.AI_RETRY_BASE_MS;
+    process.env.AI_RETRY_BASE_MS = '100';
+
+    try {
+      const ac = new AbortController();
+      // Trigger abort after a short delay to hit the retry backoff
+      setTimeout(() => ac.abort(), 50);
+
+      // Make all providers fail with retryable error to stay in retry loop
+      geminiImpl.mockRejectedValue(new Error('503 overloaded'));
+      anthropicImpl.mockRejectedValue(new Error('503 overloaded'));
+      openaiImpl.mockRejectedValue(new Error('503 overloaded'));
+
+      const start = Date.now();
+      await expect(
+        generateWithFallback('brainstorm', 'standard', { ...params, signal: ac.signal }),
+      ).rejects.toThrow(/AbortError|Aborted/);
+
+      const elapsed = Date.now() - start;
+      // Should abort well before natural retry-backoff window (which is baseDelayMs * 2^attempt = 100 * 2 = 200ms)
+      // With signal abort at 50ms, should complete in <150ms
+      expect(elapsed).toBeLessThan(150);
+    } finally {
+      process.env.AI_RETRY_BASE_MS = prevRetryMs;
+    }
+  });
 });

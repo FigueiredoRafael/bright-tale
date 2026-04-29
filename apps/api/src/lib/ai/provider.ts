@@ -12,6 +12,7 @@ export interface GenerateContentParams {
   systemPrompt: string;
   userMessage: string;
   schema?: unknown;
+  signal?: AbortSignal;
 }
 
 export interface TokenUsage {

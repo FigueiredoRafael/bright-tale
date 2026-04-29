@@ -22,121 +22,135 @@ export class OllamaProvider implements AIProvider {
     schema,
     systemPrompt,
     userMessage,
+    signal,
   }: GenerateContentParams): Promise<unknown> {
+    // Pre-call fail-fast guard: check if already aborted
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+
     const messages: Array<{ role: string; content: string }> = [];
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
     messages.push({ role: 'user', content: userMessage });
 
+    // Merge external signal with internal timeout controller
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 1_200_000); // 20 min
 
-    const res = await fetch(`${this.baseUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: this.model,
-        messages,
-        stream: true,
-        format: 'json',
-        options: {
-          temperature: this.model.includes('tinyllama') ? 0.3 : this.temperature,
-          num_predict: 8192,
-        },
-      }),
-    });
+    // If external signal aborts, abort our controller too
+    const onExternalAbort = () => controller.abort();
+    signal?.addEventListener('abort', onExternalAbort, { once: true });
 
-    clearTimeout(timeout);
+    try {
+      const res = await fetch(`${this.baseUrl}/api/chat`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: this.model,
+          messages,
+          stream: true,
+          format: 'json',
+          options: {
+            temperature: this.model.includes('tinyllama') ? 0.3 : this.temperature,
+            num_predict: 8192,
+          },
+        }),
+      });
 
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`Ollama ${res.status}: ${body || res.statusText}`);
-    }
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new Error(`Ollama ${res.status}: ${body || res.statusText}`);
+      }
 
-    // Stream response — accumulate content and detect degenerate output
-    let text = '';
-    let inputTokens: number | undefined;
-    let outputTokens: number | undefined;
-    let degenerateCount = 0;
-    const MAX_DEGENERATE = 20; // abort after 20 consecutive repeated tokens
+      // Stream response — accumulate content and detect degenerate output
+      let text = '';
+      let inputTokens: number | undefined;
+      let outputTokens: number | undefined;
+      let degenerateCount = 0;
+      const MAX_DEGENERATE = 20; // abort after 20 consecutive repeated tokens
 
-    const reader = res.body?.getReader();
-    if (!reader) throw new Error('No response body from Ollama');
-    const decoder = new TextDecoder();
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No response body from Ollama');
+      const decoder = new TextDecoder();
 
-    let lastChunk = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+      let lastChunk = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split('\n').filter(Boolean);
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n').filter(Boolean);
 
-      for (const line of lines) {
-        try {
-          const data = JSON.parse(line) as {
-            message?: { content?: string };
-            done?: boolean;
-            prompt_eval_count?: number;
-            eval_count?: number;
-          };
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line) as {
+              message?: { content?: string };
+              done?: boolean;
+              prompt_eval_count?: number;
+              eval_count?: number;
+            };
 
-          const content = data.message?.content ?? '';
-          text += content;
+            const content = data.message?.content ?? '';
+            text += content;
 
-          // Detect degenerate output (repeated commas, spaces, etc.)
-          if (content.trim() === lastChunk.trim() && content.trim().length <= 2) {
-            degenerateCount++;
-            if (degenerateCount >= MAX_DEGENERATE) {
-              console.warn(`[Ollama] Degenerate output detected after ${text.length} chars — aborting stream`);
-              reader.cancel();
-              // Strip trailing degenerate tokens
-              text = text.replace(/[,\s]+$/, '');
-              break;
+            // Detect degenerate output (repeated commas, spaces, etc.)
+            if (content.trim() === lastChunk.trim() && content.trim().length <= 2) {
+              degenerateCount++;
+              if (degenerateCount >= MAX_DEGENERATE) {
+                console.warn(`[Ollama] Degenerate output detected after ${text.length} chars — aborting stream`);
+                reader.cancel();
+                // Strip trailing degenerate tokens
+                text = text.replace(/[,\s]+$/, '');
+                break;
+              }
+            } else {
+              degenerateCount = 0;
             }
-          } else {
-            degenerateCount = 0;
-          }
-          lastChunk = content;
+            lastChunk = content;
 
-          if (data.done) {
-            inputTokens = data.prompt_eval_count;
-            outputTokens = data.eval_count;
+            if (data.done) {
+              inputTokens = data.prompt_eval_count;
+              outputTokens = data.eval_count;
+            }
+          } catch {
+            // ignore malformed stream chunks
           }
-        } catch {
-          // ignore malformed stream chunks
+        }
+
+        if (degenerateCount >= MAX_DEGENERATE) break;
+      }
+
+      this.lastUsage = { inputTokens, outputTokens };
+
+      if (!text) throw new Error('No content generated from Ollama');
+
+      console.log(`[Ollama] Raw response (${this.model}, ${text.length} chars):\n${text.slice(0, 1000)}`);
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        // Attempt to repair truncated JSON (small models run out of tokens mid-output)
+        console.warn(`[Ollama] JSON parse failed, attempting repair for ${this.model}...`);
+        const repaired = repairTruncatedJson(text);
+        if (repaired) {
+          console.log(`[Ollama] JSON repaired successfully`);
+          parsed = repaired;
+        } else {
+          console.error(`[Ollama] JSON repair failed. Raw text:\n${text.slice(0, 2000)}`);
+          throw new Error(`Ollama returned invalid JSON from ${this.model}. Model may be too small for structured output.`);
         }
       }
 
-      if (degenerateCount >= MAX_DEGENERATE) break;
-    }
-
-    this.lastUsage = { inputTokens, outputTokens };
-
-    if (!text) throw new Error('No content generated from Ollama');
-
-    console.log(`[Ollama] Raw response (${this.model}, ${text.length} chars):\n${text.slice(0, 1000)}`);
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      // Attempt to repair truncated JSON (small models run out of tokens mid-output)
-      console.warn(`[Ollama] JSON parse failed, attempting repair for ${this.model}...`);
-      const repaired = repairTruncatedJson(text);
-      if (repaired) {
-        console.log(`[Ollama] JSON repaired successfully`);
-        parsed = repaired;
-      } else {
-        console.error(`[Ollama] JSON repair failed. Raw text:\n${text.slice(0, 2000)}`);
-        throw new Error(`Ollama returned invalid JSON from ${this.model}. Model may be too small for structured output.`);
+      if (schema && typeof (schema as { parse?: unknown }).parse === 'function') {
+        return (schema as { parse: (v: unknown) => unknown }).parse(parsed);
       }
+      return parsed;
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener('abort', onExternalAbort);
     }
-
-    if (schema && typeof (schema as { parse?: unknown }).parse === 'function') {
-      return (schema as { parse: (v: unknown) => unknown }).parse(parsed);
-    }
-    return parsed;
   }
 
 }

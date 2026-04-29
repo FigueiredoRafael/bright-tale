@@ -16,6 +16,7 @@ import { GeminiProvider } from './providers/gemini.js';
 import { OllamaProvider } from './providers/ollama.js';
 import { logEngineCall } from './engine-log.js';
 import { logAiUsage } from '../axiom.js';
+import { sleepCancellable } from './abortable.js';
 
 interface ModelConfig {
   provider: string;
@@ -269,7 +270,6 @@ export async function generateWithFallback(
   const SAME_PROVIDER_RETRIES = 2;
   // 0 in tests, 800ms in prod. Tests can also set AI_RETRY_BASE_MS=0.
   const baseDelayMs = Number(process.env.AI_RETRY_BASE_MS ?? (process.env.NODE_ENV === 'test' ? 0 : 800));
-  const sleep = (ms: number) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve());
   const startTime = Date.now();
 
   let lastErr: unknown;
@@ -326,6 +326,10 @@ export async function generateWithFallback(
           usage,
         };
       } catch (err) {
+        // Abort errors (from signal) rethrow immediately — do not retry
+        if (err instanceof Error && err.name === 'AbortError') throw err;
+        if (err && typeof err === 'object' && 'noRetry' in err) throw err;
+
         lastErr = err;
         const message = String((err as { message?: string })?.message ?? err);
         const retrySame = shouldRetrySameProvider(err);
@@ -336,7 +340,7 @@ export async function generateWithFallback(
         // retrying just burns more tokens against the same hard limit.
         if (!retrySame) break;
         if (attempt < SAME_PROVIDER_RETRIES) {
-          await sleep(baseDelayMs * Math.pow(2, attempt));
+          await sleepCancellable(baseDelayMs * Math.pow(2, attempt), params.signal);
           attempt++;
           continue;
         }
