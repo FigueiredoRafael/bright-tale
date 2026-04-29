@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { aiProviderSchema, aiProviderSchemaWithAlias } from '../ai'
+import { aiProviderSchema } from '../ai'
 
 describe('aiProviderSchema', () => {
   it('accepts the four canonical providers', () => {
@@ -9,14 +9,5 @@ describe('aiProviderSchema', () => {
   })
   it("rejects 'local' on strict schema", () => {
     expect(() => aiProviderSchema.parse('local')).toThrow()
-  })
-})
-
-describe('aiProviderSchemaWithAlias', () => {
-  it("accepts 'local' and coerces to 'ollama'", () => {
-    expect(aiProviderSchemaWithAlias.parse('local')).toBe('ollama')
-  })
-  it('passes canonical providers through unchanged', () => {
-    expect(aiProviderSchemaWithAlias.parse('openai')).toBe('openai')
   })
 })
