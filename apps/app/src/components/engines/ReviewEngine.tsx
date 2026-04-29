@@ -57,10 +57,14 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
   const researchResult = useSelector(actor, (s) => s.context.stageResults.research);
   const draftResult = useSelector(actor, (s) => s.context.stageResults.draft);
   const pipelineSettings = useSelector(actor, (s) => s.context.pipelineSettings);
-  const iterationCount = useSelector(actor, (s) => s.context.iterationCount);
+  const machineIterationCount = useSelector(actor, (s) => s.context.iterationCount);
   const maxIterations = useSelector(
     actor,
     (s) => s.context.autopilotConfig?.review.maxIterations ?? s.context.pipelineSettings.reviewMaxIterations,
+  );
+  const autoApproveThreshold = useSelector(
+    actor,
+    (s) => s.context.autopilotConfig?.review.autoApproveThreshold ?? s.context.pipelineSettings.reviewApproveScore,
   );
   const draftId = draftResult?.draftId ?? '';
 
@@ -241,8 +245,8 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
           type: 'STAGE_PROGRESS',
           stage: 'review',
           partial: {
-            status: `Iteration ${iterationCount + 1}/${maxIterations}: scoring`,
-            current: iterationCount,
+            status: `Iteration ${machineIterationCount + 1}/${maxIterations}: scoring`,
+            current: machineIterationCount,
             total: maxIterations,
           },
         });
@@ -564,9 +568,11 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
         ? (blogReview.verdict as string).toLowerCase().replace(/\s+/g, '_')
         : draftView.review_verdict;
 
-  // Score ≥ reviewApproveScore always means approved, regardless of text verdict
+  // Score ≥ autoApproveThreshold always means approved, regardless of text verdict
+  // autoApproveThreshold prefers autopilotConfig.review.autoApproveThreshold over
+  // pipelineSettings.reviewApproveScore so the UI verdict matches the machine guard.
   const effectiveVerdict =
-    (effectiveScore !== null && effectiveScore >= pipelineSettings.reviewApproveScore) ? 'approved'
+    (effectiveScore !== null && effectiveScore >= autoApproveThreshold) ? 'approved'
     : (rawVerdict && rawVerdict.includes('approved')) ? 'approved'
     : (rawVerdict && rawVerdict.includes('rejected')) ? 'rejected'
     : (rawVerdict && rawVerdict !== 'pending') ? 'revision_required'
