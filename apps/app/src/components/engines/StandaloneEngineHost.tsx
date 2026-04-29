@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMachine } from '@xstate/react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Loader2 } from 'lucide-react'
@@ -90,16 +90,15 @@ function ActorScope({
     },
   })
 
-  // Park the actor at the requested stage once after spawn. Brainstorm is the
-  // machine default, so no NAVIGATE needed.
-  const navigatedRef = useRef(false)
-  useEffect(() => {
-    if (navigatedRef.current) return
-    navigatedRef.current = true
-    if (stage !== 'brainstorm') {
-      actorRef.send({ type: 'NAVIGATE', toStage: stage })
-    }
-  }, [stage, actorRef])
+  // Park the actor at the requested stage before children render. Machine
+  // default is `setup`, so NAVIGATE is required even for brainstorm. Sent via
+  // a useState lazy initializer so it fires exactly once, before child engines
+  // mount — child useEffects fire before parent useEffects, so an effect-based
+  // NAVIGATE would run too late for engines that dispatch on mount.
+  useState(() => {
+    actorRef.send({ type: 'NAVIGATE', toStage: stage })
+    return null
+  })
 
   // Fire onStageComplete the first time the requested stage's result lands in
   // context, then unsubscribe. Subscribe first, then check the current snapshot

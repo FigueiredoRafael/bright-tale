@@ -31,6 +31,14 @@ function mountWithActor(mode: 'generate' | 'import' = 'generate') {
       creditSettings: DEFAULT_CREDIT_SETTINGS,
     },
   }).start()
+  // Machine spawns in `setup`. Park it at `brainstorm` before mounting the engine.
+  actor.send({
+    type: 'SETUP_COMPLETE',
+    mode: 'step-by-step',
+    autopilotConfig: null,
+    templateId: null,
+    startStage: 'brainstorm',
+  })
   const utils = render(
     <PipelineActorProvider value={actor}>
       <BrainstormEngine
