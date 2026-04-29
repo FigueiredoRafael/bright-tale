@@ -95,6 +95,8 @@ export interface ReviewResult {
 export interface AssetsResult {
   assetIds: string[];
   featuredImageUrl?: string;
+  /** True when assets stage was auto-skipped by the machine (mode='skip'). */
+  skipped?: boolean;
 }
 
 export interface PreviewResult {

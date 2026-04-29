@@ -4,7 +4,7 @@ import {
   DEFAULT_PIPELINE_SETTINGS,
   DEFAULT_CREDIT_SETTINGS,
 } from '@/components/engines/types'
-import { isApprovedGuard, isRejectedGuard, hasReachedMaxIterationsGuard } from './guards'
+import { isApprovedGuard, isRejectedGuard, hasReachedMaxIterationsGuard, shouldSkipAssetsGuard } from './guards'
 import { reproduceActor, abortRequester } from './actors'
 import type {
   PipelineMachineContext,
@@ -77,6 +77,7 @@ export const pipelineMachine = setup({
     startsAtPreview: ({ event }: any) => event.startStage === 'preview',
     startsAtPublish: ({ event }: any) => event.startStage === 'publish',
     shouldSkipReview: ({ context }: any) => context.autopilotConfig?.review.maxIterations === 0,
+    shouldSkipAssets: ({ context }: any) => shouldSkipAssetsGuard({ context }),
   },
   actors: { reproduceActor, abortRequester },
   actions: {
@@ -167,6 +168,16 @@ export const pipelineMachine = setup({
       mode: () => 'step-by-step' as const,
       pendingDrillIn: () => null as null,
       returnPromptOpen: () => false,
+    }) as any,
+    autoCompleteAssets: assign({
+      stageResults: ({ context }: { context: PipelineMachineContext; event: unknown }) => ({
+        ...context.stageResults,
+        assets: {
+          assetIds: [],
+          skipped: true,
+          completedAt: new Date().toISOString(),
+        },
+      }),
     }) as any,
     recordActorError: assign({
       lastError: ({ event }: any) => {
@@ -372,7 +383,15 @@ export const pipelineMachine = setup({
     assets: {
       initial: 'idle',
       states: {
-        idle: {},
+        idle: {
+          always: [
+            {
+              guard: 'shouldSkipAssets',
+              target: '#pipeline.preview',
+              actions: 'autoCompleteAssets',
+            },
+          ],
+        },
         error: { on: { RETRY: { target: 'idle', actions: 'clearError' } } },
       },
       on: {

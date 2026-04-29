@@ -1,5 +1,9 @@
 import type { PipelineMachineContext, PipelineEvent } from './machine.types'
 
+export function shouldSkipAssetsGuard({ context }: { context: PipelineMachineContext }): boolean {
+  return context.autopilotConfig?.assets.mode === 'skip'
+}
+
 type ReviewCompleteEvent = Extract<PipelineEvent, { type: 'REVIEW_COMPLETE' }>
 type GuardArgs = { context: PipelineMachineContext; event: ReviewCompleteEvent }
 

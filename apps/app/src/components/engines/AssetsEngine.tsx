@@ -272,6 +272,25 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
   const autoMode = useSelector(actor, (s) => s.context.mode);
   const autoPaused = useSelector(actor, (s) => s.context.paused);
   const assetsResult = useSelector(actor, (s) => s.context.stageResults.assets);
+  const assetsConfig = useSelector(actor, (s) => s.context.autopilotConfig?.assets);
+  const overviewMode = useSelector(actor, (s) => s.context.mode === 'overview');
+
+  // ── 3-mode gate ─────────────────────────────────────────────────
+  // On mount, react to autopilotConfig.assets.mode:
+  //   'briefs_only'  → emit ASSETS_GATE_TRIGGERED; orchestrator drills user in
+  //   'auto_generate' → falls through to useAutoPilotTrigger below (no gate needed)
+  //   'skip'          → machine never mounts this engine (assets.idle always-guard fires)
+  const gateRef = useRef(false);
+  useEffect(() => {
+    if (gateRef.current) return;
+    if (!overviewMode || !assetsConfig) return;
+    gateRef.current = true;
+    if (assetsConfig.mode === 'briefs_only') {
+      actor.send({ type: 'ASSETS_GATE_TRIGGERED' });
+    }
+    // 'auto_generate' falls through to useAutoPilotTrigger which fires handleGenerateBriefs()
+    // 'skip' is handled by the machine (shouldSkipAssets guard on assets.idle entry)
+  }, [overviewMode, assetsConfig, actor]);
 
   useAutoPilotTrigger({
     stage: 'assets',
