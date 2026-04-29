@@ -619,7 +619,11 @@ export function ResearchEngine({
     tracker,
   ]);
 
-  // Auto-pilot (overview mode): when legacy cards are present (no findings), auto-approve all.
+  // Auto-pilot (overview mode, legacy-cards path): handles sessions where the API returned a
+  // synchronous cards array instead of SSE findings. Runs only in `overview` mode per Task 1.3
+  // spec ("Step 5: auto-approve-all in overview mode"); `supervised` users review cards manually.
+  // The findings effect above intentionally retains supervised+overview because findings are stable
+  // streaming objects with explicit IDs that the user already gated through the session-create API.
   const autoCardsApprovedRef = useRef(false);
   useEffect(() => {
     if (autoMode !== 'overview' || autoPaused) return;
@@ -921,6 +925,9 @@ export function ResearchEngine({
         )}
       </div>
 
+      {/* Always-rendered sr-only span for test queries (must live outside the isSessionDetail guard). */}
+      <span data-testid="research-depth" className="sr-only">{level}</span>
+
       {/* Show form only if not in session detail mode */}
       {!isSessionDetail && (
         <Card>
@@ -948,7 +955,6 @@ export function ResearchEngine({
 
             <div className="space-y-2">
               <Label>Research depth</Label>
-              <span data-testid="research-depth" className="sr-only">{level}</span>
               <div className="grid grid-cols-3 gap-2">
                 {levels.map((l) => (
                   <button

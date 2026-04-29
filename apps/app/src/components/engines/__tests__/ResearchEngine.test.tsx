@@ -45,54 +45,6 @@ const FULL_AUTOPILOT_CONFIG: AutopilotConfig = {
   assets: { providerOverride: null, mode: 'skip' },
 }
 
-function mountAtResearch(opts: {
-  mode?: 'step-by-step' | 'overview' | 'supervised'
-  autopilotConfig?: AutopilotConfig | null
-  fetchImpl?: (url: string) => Promise<Response>
-} = {}) {
-  const actor = createActor(pipelineMachine, {
-    input: {
-      projectId: 'proj-1',
-      channelId: 'ch-1',
-      projectTitle: 'T',
-      pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-      creditSettings: DEFAULT_CREDIT_SETTINGS,
-    },
-  }).start()
-
-  actor.send({
-    type: 'SETUP_COMPLETE',
-    mode: opts.mode ?? 'step-by-step',
-    autopilotConfig: opts.autopilotConfig ?? null,
-    templateId: null,
-    startStage: 'research',
-  })
-
-  // Inject a topic into machine context so useAutoPilotTrigger fires in overview mode.
-  // We achieve this by pre-populating brainstorm result so brainstormResult.ideaTitle
-  // seeds the topic input.
-  actor.send({
-    type: 'BRAINSTORM_COMPLETE',
-    result: {
-      ideaId: 'idea-1',
-      ideaTitle: 'AI agents in 2026',
-      ideaVerdict: 'viable',
-      ideaCoreTension: 'tension',
-      completedAt: new Date().toISOString(),
-    },
-  } as Parameters<typeof actor.send>[0])
-
-  // Reset back to research state (BRAINSTORM_COMPLETE moved it; NAVIGATE back)
-  actor.send({ type: 'NAVIGATE', toStage: 'research' } as Parameters<typeof actor.send>[0])
-
-  const utils = render(
-    <PipelineActorProvider value={actor}>
-      <ResearchEngine mode="generate" />
-    </PipelineActorProvider>,
-  )
-  return { actor, ...utils }
-}
-
 // Default fetch mock: /api/agents resolves recommended provider,
 // /api/research-sessions returns 5 legacy cards (sync path, no findings).
 const defaultFetchMock = vi.fn().mockImplementation(async (url: string) => {
@@ -105,7 +57,7 @@ const defaultFetchMock = vi.fn().mockImplementation(async (url: string) => {
       }),
     } as Response
   }
-  if (String(url).includes('/api/research-sessions') && !String(url).includes('/')) {
+  if (String(url).includes('/api/research-sessions')) {
     // POST /api/research-sessions — return legacy cards only (no findings key)
     return {
       ok: true,
