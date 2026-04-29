@@ -161,7 +161,9 @@ export function DraftEngine({
     const h = hydrateDraftFromConfig(autopilotConfig);
     if (h.format !== undefined) setType(h.format);
     if (h.wordCount !== undefined && h.wordCount !== null) setTargetWords(h.wordCount);
-    if (h.selectedPersonaId !== undefined) setSelectedPersonaId(h.selectedPersonaId);
+    if (h.selectedPersonaId !== undefined && h.selectedPersonaId !== null) {
+      setSelectedPersonaId(h.selectedPersonaId);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1191,10 +1193,21 @@ export function DraftEngine({
     );
   }
 
+  // ── Test hooks: state-wiring assertions only. UI render verification of
+  // persona display name happens in the Wave 1.9 happy-path test. ──────────
+  const srOnlyHooks = (
+    <>
+      <span data-testid="draft-type" className="sr-only">{type}</span>
+      <span data-testid="draft-word-count" className="sr-only">{targetWords}</span>
+      <span data-testid="persona-select" className="sr-only">{selectedPersonaId ?? ''}</span>
+    </>
+  );
+
   // ── Import mode ───────────────────────────────────────────────
   if (engineMode === 'import' && !initialDraft) {
     return (
       <div className="space-y-6">
+        {srOnlyHooks}
         <ContextBanner stage="draft" context={trackerContext} />
 
         <div className="flex items-start justify-between gap-4">
@@ -1248,10 +1261,7 @@ export function DraftEngine({
   // ── Main render ───────────────────────────────────────────────
   return (
     <div className="space-y-6">
-      {/* Always-rendered sr-only spans for test queries. */}
-      <span data-testid="draft-type" className="sr-only">{type}</span>
-      <span data-testid="draft-word-count" className="sr-only">{targetWords}</span>
-      <span data-testid="persona-select" className="sr-only">{selectedPersonaId ?? ''}</span>
+      {srOnlyHooks}
 
       <ContextBanner stage="draft" context={trackerContext} />
 
