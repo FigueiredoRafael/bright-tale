@@ -50,3 +50,6 @@ reports/
 .claude/security/baselines/
 .claude/security/findings/
 .claude/security/run-*/
+
+# QA exploration screenshots (Playwright as eyes — throwaway artifacts)
+apps/app/qa-artifacts/
