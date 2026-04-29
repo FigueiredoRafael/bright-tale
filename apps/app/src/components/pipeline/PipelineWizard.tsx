@@ -139,13 +139,20 @@ function SaveAsNewDialog({ onSave, onCancel }: SaveAsNewDialogProps) {
   const [name, setName] = useState('')
   const [isDefault, setIsDefault] = useState(false)
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onCancel])
+
   return (
     <div
       role="dialog"
       aria-label="Save as new template"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onCancel}
     >
-      <div className="bg-background rounded-lg p-6 shadow-xl w-80 space-y-4">
+      <div className="bg-background rounded-lg p-6 shadow-xl w-80 space-y-4" onClick={(e) => e.stopPropagation()}>
         <h2 className="font-semibold text-lg">Save as new template</h2>
         <div className="space-y-2">
           <Label htmlFor="template-name-input">Template name</Label>
@@ -189,13 +196,20 @@ interface UpdateConfirmDialogProps {
 }
 
 function UpdateConfirmDialog({ templateName, onConfirm, onCancel }: UpdateConfirmDialogProps) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onCancel])
+
   return (
     <div
       role="dialog"
       aria-label="Confirm update template"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onCancel}
     >
-      <div className="bg-background rounded-lg p-6 shadow-xl w-80 space-y-4">
+      <div className="bg-background rounded-lg p-6 shadow-xl w-80 space-y-4" onClick={(e) => e.stopPropagation()}>
         <h2 className="font-semibold text-lg">Update template?</h2>
         <p className="text-sm text-muted-foreground">
           This will overwrite &ldquo;{templateName}&rdquo; with the current settings.
@@ -607,11 +621,12 @@ export function PipelineWizard() {
         setTemplateActionError(json.error?.message ?? 'Failed to save template')
         return
       }
-      await refreshTemplates()
       if (json.data) {
+        setTemplates((prev) => [...prev, json.data!])
         setLoadedTemplateId(json.data.id)
         setLoadedTemplateName(json.data.name)
       }
+      await refreshTemplates()
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Network error'
       setTemplateActionError(msg)
