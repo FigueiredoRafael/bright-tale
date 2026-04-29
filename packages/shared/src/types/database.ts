@@ -2512,7 +2512,6 @@ export type Database = {
       projects: {
         Row: {
           abort_requested_at: string | null
-          auto_advance: boolean
           autopilot_config_json: Json | null
           autopilot_template_id: string | null
           channel_id: string | null
@@ -2533,7 +2532,6 @@ export type Database = {
         }
         Insert: {
           abort_requested_at?: string | null
-          auto_advance?: boolean
           autopilot_config_json?: Json | null
           autopilot_template_id?: string | null
           channel_id?: string | null
@@ -2554,7 +2552,6 @@ export type Database = {
         }
         Update: {
           abort_requested_at?: string | null
-          auto_advance?: boolean
           autopilot_config_json?: Json | null
           autopilot_template_id?: string | null
           channel_id?: string | null
