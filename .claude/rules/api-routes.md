@@ -74,3 +74,10 @@ Return pagination metadata:
 - Never trust client-supplied `user_id` headers
 - Encrypt sensitive data (API keys) with AES-256-GCM before storing
 - Use idempotency tokens for non-idempotent mutations
+
+## Ownership Guard
+
+Routes scoped to a `:projectId` MUST call `assertProjectOwner(projectId, userId, sb)` from
+`apps/api/src/lib/projects/ownership.ts` before any read/write. Resolves ownership via
+`channels.user_id`; falls back to `research_archives.user_id` for legacy projects with
+`channel_id IS NULL` (see Wave 1 backfill rules in pipeline-autopilot-wizard plan).
