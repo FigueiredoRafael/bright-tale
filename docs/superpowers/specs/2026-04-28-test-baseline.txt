@@ -1,0 +1,11 @@
+ FAIL  src/__tests__/routes/content-drafts.test.ts > POST /content-drafts/:id/produce > runs agent-3b-{type} and stores draft_json
+ FAIL  src/__tests__/routes/content-drafts.test.ts > POST /content-drafts/:id/generate-asset-prompts > returns BC_ASSETS_OUTPUT on AI path
+ FAIL  src/__tests__/routes/content-drafts.test.ts > POST /content-drafts/:id/generate-asset-prompts > surfaces LLM errors via the response envelope
+ FAIL  src/__tests__/routes/research-sessions.test.ts > POST /research-sessions > enqueues research and returns 202 with session id
+ FAIL  src/routes/__tests__/personas.test.ts > personas routes > POST /personas/:id/integrations/wordpress > link action > returns 200 with wpAuthorId when link succeeds
+ FAIL  src/routes/__tests__/personas.test.ts > personas routes > POST /personas/:id/integrations/wordpress > link action > uploads avatar to WP media and sets profile picture when file exists
+ FAIL  src/routes/__tests__/personas.test.ts > personas routes > POST /personas/:id/integrations/wordpress > link action > returns 200 even when avatar sync throws (non-fatal)
+ FAIL  src/routes/__tests__/personas.test.ts > personas routes > POST /personas/:id/integrations/wordpress > create action > creates WP author with bio description and author role
+ FAIL  src/lib/auth/__tests__/admin-actions.test.ts > admin-actions wrappers > signInWithGoogle injects appUrl from env
+ FAIL  src/lib/auth/__tests__/admin-actions.test.ts > admin-actions wrappers > signInWithGoogle respects caller-provided redirectTo
+ FAIL  src/lib/auth/__tests__/admin-actions.test.ts > admin-actions wrappers > signInWithGoogle throws if NEXT_PUBLIC_APP_URL missing
