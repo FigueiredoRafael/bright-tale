@@ -18,6 +18,8 @@ const baseContext: PipelineMachineContext = {
   creditSettings: DEFAULT_CREDIT_SETTINGS,
   paused: false,
   pauseReason: null,
+  pendingDrillIn: null,
+  returnPromptOpen: false,
 }
 
 function reviewEvent(score: number, iterationCount = 1): Extract<PipelineEvent, { type: 'REVIEW_COMPLETE' }> {

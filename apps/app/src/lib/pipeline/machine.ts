@@ -156,6 +156,18 @@ export const pipelineMachine = setup({
       },
     }) as any,
     clearError: assign({ lastError: () => null }) as any,
+    setAssetsDrillIn: assign({ pendingDrillIn: () => 'assets' as const }) as any,
+    setPreviewDrillIn: assign({ pendingDrillIn: () => 'preview' as const }) as any,
+    clearDrillIn: assign({
+      pendingDrillIn: () => null as null,
+      returnPromptOpen: () => false,
+    }) as any,
+    openReturnPrompt: assign({ returnPromptOpen: () => true }) as any,
+    flipToStepByStep: assign({
+      mode: () => 'step-by-step' as const,
+      pendingDrillIn: () => null as null,
+      returnPromptOpen: () => false,
+    }) as any,
     recordActorError: assign({
       lastError: ({ event }: any) => {
         const err = (event as { error?: unknown }).error
@@ -200,6 +212,8 @@ export const pipelineMachine = setup({
     creditSettings: input.creditSettings ?? DEFAULT_CREDIT_SETTINGS,
     paused: input.initialPaused ?? false,
     pauseReason: input.initialPauseReason ?? null,
+    pendingDrillIn: null,
+    returnPromptOpen: false,
   }),
   initial: 'setup',
   on: {
@@ -212,6 +226,10 @@ export const pipelineMachine = setup({
     'xstate.error.actor.abortRequester': {
       actions: ['recordActorError', 'resumeAuto'],
     },
+    ASSETS_GATE_TRIGGERED: { actions: 'setAssetsDrillIn' },
+    PREVIEW_GATE_TRIGGERED: { actions: 'setPreviewDrillIn' },
+    CONTINUE_AUTOPILOT: { actions: 'clearDrillIn' },
+    STOP_AUTOPILOT: { actions: 'flipToStepByStep' },
     NAVIGATE: [
       { guard: ({ event }) => (event as Extract<PipelineEvent, { type: 'NAVIGATE' }>).toStage === 'brainstorm', target: '.brainstorm' },
       { guard: ({ event }) => (event as Extract<PipelineEvent, { type: 'NAVIGATE' }>).toStage === 'research', target: '.research' },
@@ -358,7 +376,14 @@ export const pipelineMachine = setup({
         error: { on: { RETRY: { target: 'idle', actions: 'clearError' } } },
       },
       on: {
-        ASSETS_COMPLETE: { target: 'preview', actions: 'saveAssetsResult' },
+        ASSETS_COMPLETE: [
+          {
+            guard: ({ context }: any) => context.pendingDrillIn === 'assets',
+            target: 'preview',
+            actions: ['saveAssetsResult', 'openReturnPrompt'],
+          },
+          { target: 'preview', actions: 'saveAssetsResult' },
+        ],
         STAGE_ERROR: { target: '.error', actions: 'recordError' },
       },
     },
@@ -369,7 +394,14 @@ export const pipelineMachine = setup({
         error: { on: { RETRY: { target: 'idle', actions: 'clearError' } } },
       },
       on: {
-        PREVIEW_COMPLETE: { target: 'publish', actions: 'savePreviewResult' },
+        PREVIEW_COMPLETE: [
+          {
+            guard: ({ context }: any) => context.pendingDrillIn === 'preview',
+            target: 'publish',
+            actions: ['savePreviewResult', 'openReturnPrompt'],
+          },
+          { target: 'publish', actions: 'savePreviewResult' },
+        ],
         STAGE_ERROR: { target: '.error', actions: 'recordError' },
       },
     },

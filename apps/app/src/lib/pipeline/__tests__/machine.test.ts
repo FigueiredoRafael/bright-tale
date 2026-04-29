@@ -421,6 +421,164 @@ describe('REQUEST_ABORT spawn-on-event', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Drill-in / return-to-overview events (Task 2.3)
+// ---------------------------------------------------------------------------
+
+describe('drill-in context fields — initial values', () => {
+  it('pendingDrillIn starts as null', () => {
+    const actor = startActor({}, false)
+    expect(actor.getSnapshot().context.pendingDrillIn).toBeNull()
+  })
+
+  it('returnPromptOpen starts as false', () => {
+    const actor = startActor({}, false)
+    expect(actor.getSnapshot().context.returnPromptOpen).toBe(false)
+  })
+})
+
+describe('ASSETS_GATE_TRIGGERED', () => {
+  it('sets pendingDrillIn = "assets"', () => {
+    const actor = startActor()
+    actor.send({ type: 'ASSETS_GATE_TRIGGERED' })
+    expect(actor.getSnapshot().context.pendingDrillIn).toBe('assets')
+  })
+
+  it('does not change the machine state node', () => {
+    const actor = startActor()
+    actor.send({ type: 'ASSETS_GATE_TRIGGERED' })
+    expect(actor.getSnapshot().value).toMatchObject({ brainstorm: 'idle' })
+  })
+})
+
+describe('PREVIEW_GATE_TRIGGERED', () => {
+  it('sets pendingDrillIn = "preview"', () => {
+    const actor = startActor()
+    actor.send({ type: 'PREVIEW_GATE_TRIGGERED' })
+    expect(actor.getSnapshot().context.pendingDrillIn).toBe('preview')
+  })
+})
+
+describe('CONTINUE_AUTOPILOT', () => {
+  it('clears pendingDrillIn back to null', () => {
+    const actor = startActor()
+    actor.send({ type: 'ASSETS_GATE_TRIGGERED' })
+    expect(actor.getSnapshot().context.pendingDrillIn).toBe('assets')
+    actor.send({ type: 'CONTINUE_AUTOPILOT' })
+    expect(actor.getSnapshot().context.pendingDrillIn).toBeNull()
+  })
+
+  it('clears returnPromptOpen back to false', () => {
+    const actor = startActor()
+    actor.send({ type: 'ASSETS_GATE_TRIGGERED' })
+    actor.send({ type: 'CONTINUE_AUTOPILOT' })
+    expect(actor.getSnapshot().context.returnPromptOpen).toBe(false)
+  })
+})
+
+describe('STOP_AUTOPILOT', () => {
+  it('flips mode to step-by-step', () => {
+    const actor = startActor({ mode: 'overview' })
+    actor.send({ type: 'SETUP_COMPLETE', mode: 'overview', autopilotConfig: null, templateId: null, startStage: 'brainstorm' })
+    actor.send({ type: 'STOP_AUTOPILOT' })
+    expect(actor.getSnapshot().context.mode).toBe('step-by-step')
+  })
+
+  it('clears pendingDrillIn', () => {
+    const actor = startActor()
+    actor.send({ type: 'ASSETS_GATE_TRIGGERED' })
+    actor.send({ type: 'STOP_AUTOPILOT' })
+    expect(actor.getSnapshot().context.pendingDrillIn).toBeNull()
+  })
+
+  it('clears returnPromptOpen', () => {
+    const actor = startActor()
+    actor.send({ type: 'ASSETS_GATE_TRIGGERED' })
+    actor.send({ type: 'STOP_AUTOPILOT' })
+    expect(actor.getSnapshot().context.returnPromptOpen).toBe(false)
+  })
+})
+
+describe('ASSETS_COMPLETE with pendingDrillIn=assets opens return prompt', () => {
+  function reachAssets() {
+    const actor = startActor()
+    actor.send({ type: 'BRAINSTORM_COMPLETE', result: brainstormResult })
+    actor.send({ type: 'RESEARCH_COMPLETE', result: researchResult })
+    actor.send({ type: 'DRAFT_COMPLETE', result: draftResult })
+    actor.send({ type: 'RESUME' })
+    actor.send({
+      type: 'REVIEW_COMPLETE',
+      result: { score: 92, verdict: 'approved', feedbackJson: {}, iterationCount: 1 },
+    })
+    // machine is now in assets.idle
+    return actor
+  }
+
+  it('sets returnPromptOpen=true when pendingDrillIn=assets on ASSETS_COMPLETE', () => {
+    const actor = reachAssets()
+    expect(actor.getSnapshot().value).toMatchObject({ assets: 'idle' })
+    actor.send({ type: 'ASSETS_GATE_TRIGGERED' })
+    actor.send({
+      type: 'ASSETS_COMPLETE',
+      result: { assetIds: ['a-1', 'a-2', 'a-3'] },
+    })
+    expect(actor.getSnapshot().context.returnPromptOpen).toBe(true)
+    expect(actor.getSnapshot().value).toMatchObject({ preview: 'idle' })
+  })
+
+  it('does NOT set returnPromptOpen when pendingDrillIn is null on ASSETS_COMPLETE', () => {
+    const actor = reachAssets()
+    actor.send({
+      type: 'ASSETS_COMPLETE',
+      result: { assetIds: ['a-1', 'a-2', 'a-3'] },
+    })
+    expect(actor.getSnapshot().context.returnPromptOpen).toBe(false)
+    expect(actor.getSnapshot().value).toMatchObject({ preview: 'idle' })
+  })
+})
+
+describe('PREVIEW_COMPLETE with pendingDrillIn=preview opens return prompt', () => {
+  function reachPreview() {
+    const actor = startActor()
+    actor.send({ type: 'BRAINSTORM_COMPLETE', result: brainstormResult })
+    actor.send({ type: 'RESEARCH_COMPLETE', result: researchResult })
+    actor.send({ type: 'DRAFT_COMPLETE', result: draftResult })
+    actor.send({ type: 'RESUME' })
+    actor.send({
+      type: 'REVIEW_COMPLETE',
+      result: { score: 92, verdict: 'approved', feedbackJson: {}, iterationCount: 1 },
+    })
+    actor.send({
+      type: 'ASSETS_COMPLETE',
+      result: { assetIds: ['a-1', 'a-2', 'a-3'] },
+    })
+    // machine is now in preview.idle
+    return actor
+  }
+
+  it('sets returnPromptOpen=true when pendingDrillIn=preview on PREVIEW_COMPLETE', () => {
+    const actor = reachPreview()
+    expect(actor.getSnapshot().value).toMatchObject({ preview: 'idle' })
+    actor.send({ type: 'PREVIEW_GATE_TRIGGERED' })
+    actor.send({
+      type: 'PREVIEW_COMPLETE',
+      result: { imageMap: {}, altTexts: {}, categories: [], tags: [], seoOverrides: { title: 'T', slug: 's', metaDescription: 'm' }, composedHtml: '<p/>' },
+    })
+    expect(actor.getSnapshot().context.returnPromptOpen).toBe(true)
+    expect(actor.getSnapshot().value).toMatchObject({ publish: 'idle' })
+  })
+
+  it('does NOT set returnPromptOpen when pendingDrillIn is null on PREVIEW_COMPLETE', () => {
+    const actor = reachPreview()
+    actor.send({
+      type: 'PREVIEW_COMPLETE',
+      result: { imageMap: {}, altTexts: {}, categories: [], tags: [], seoOverrides: { title: 'T', slug: 's', metaDescription: 'm' }, composedHtml: '<p/>' },
+    })
+    expect(actor.getSnapshot().context.returnPromptOpen).toBe(false)
+    expect(actor.getSnapshot().value).toMatchObject({ publish: 'idle' })
+  })
+})
+
 describe('guard reads from autopilotConfig.review', () => {
   const reviewConfig = {
     providerOverride: null,

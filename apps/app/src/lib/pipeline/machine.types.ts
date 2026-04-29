@@ -45,6 +45,12 @@ export interface PipelineMachineContext {
   paused: boolean
   /** Human-readable cause; null when not paused. */
   pauseReason: PauseReason | null
+  /** Non-null when the user has drilled into a gate stage and the machine is
+   *  waiting for that engine to complete before prompting the return-to-overview
+   *  dialog. */
+  pendingDrillIn: 'assets' | 'preview' | null
+  /** True after a drill-in COMPLETE fires; triggers the ConfirmReturnDialog. */
+  returnPromptOpen: boolean
 }
 
 export interface PipelineMachineInput {
@@ -82,3 +88,7 @@ export type PipelineEvent =
   | { type: 'RESET_TO_SETUP' }
   | { type: 'GO_AUTOPILOT';        mode: 'supervised' | 'overview'; autopilotConfig: AutopilotConfig }
   | { type: 'REQUEST_ABORT' }
+  | { type: 'ASSETS_GATE_TRIGGERED' }
+  | { type: 'PREVIEW_GATE_TRIGGERED' }
+  | { type: 'CONTINUE_AUTOPILOT' }
+  | { type: 'STOP_AUTOPILOT' }

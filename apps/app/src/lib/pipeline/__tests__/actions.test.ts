@@ -24,6 +24,8 @@ const baseContext: PipelineMachineContext = {
   creditSettings: DEFAULT_CREDIT_SETTINGS,
   paused: false,
   pauseReason: null,
+  pendingDrillIn: null,
+  returnPromptOpen: false,
 }
 
 const brainstormResult = {
