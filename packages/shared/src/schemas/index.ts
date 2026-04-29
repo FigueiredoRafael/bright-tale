@@ -222,3 +222,6 @@ export {
   type UpdateCreditSettingsInput,
   type CreditSettingsResponse,
 } from "./pipeline-settings";
+
+// Autopilot Config schemas
+export * from "./autopilotConfig";
