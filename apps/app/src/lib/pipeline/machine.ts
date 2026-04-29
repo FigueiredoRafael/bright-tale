@@ -5,7 +5,7 @@ import {
   DEFAULT_CREDIT_SETTINGS,
 } from '@/components/engines/types'
 import { isApprovedGuard, isRejectedGuard, hasReachedMaxIterationsGuard } from './guards'
-import { reproduceActor, abortRequester } from './actors.js'
+import { reproduceActor, abortRequester } from './actors'
 import type {
   PipelineMachineContext,
   PipelineMachineInput,
