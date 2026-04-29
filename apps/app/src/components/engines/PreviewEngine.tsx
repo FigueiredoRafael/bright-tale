@@ -24,6 +24,7 @@ import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { ContextBanner } from './ContextBanner';
 import { markdownToHtml } from '@/lib/utils';
+import { derivePreview } from '@/lib/pipeline/derivePreview';
 import type { PipelineContext, PipelineStage, PreviewResult } from './types';
 
 interface ContentAsset {
@@ -116,60 +117,7 @@ function extractFullDraft(draftJson: Record<string, unknown> | null): string {
   return '';
 }
 
-function extractPublicationPlan(
-  feedbackJson: Record<string, unknown> | null,
-): { categories: string[]; tags: string[]; seo: Record<string, string>; publishDate?: string } {
-  const empty = { categories: [] as string[], tags: [] as string[], seo: {} as Record<string, string> };
-  if (!feedbackJson || typeof feedbackJson !== 'object') return empty;
-
-  // Unwrap BC_REVIEW_OUTPUT wrapper if present
-  const root = (feedbackJson.BC_REVIEW_OUTPUT as Record<string, unknown>) ?? feedbackJson;
-
-  // publication_plan lives at root level or inside blog_review (AI varies)
-  const blogReview = (root.blog_review ?? root.blog) as Record<string, unknown> | undefined;
-  const pubPlan = (root.publication_plan ?? blogReview?.publication_plan) as Record<string, unknown> | undefined;
-
-  // blog object may be inside publication_plan, or fields may be directly on publication_plan
-  const blog = (pubPlan?.blog ?? pubPlan) as Record<string, unknown> | undefined;
-
-  const categories = (
-    (blog?.categories as string[]) ??
-    (pubPlan?.categories as string[]) ??
-    []
-  );
-  const tags = (
-    (blog?.tags as string[]) ??
-    (pubPlan?.tags as string[]) ??
-    []
-  );
-
-  // SEO can be under final_seo, seo, or directly on blog/pubPlan
-  const seo = (
-    (blog?.final_seo as Record<string, string>) ??
-    (blog?.seo as Record<string, string>) ??
-    (pubPlan?.final_seo as Record<string, string>) ??
-    {}
-  );
-
-  // If seo object is empty but individual fields exist at blog level, collect them
-  if (!seo.title && !seo.slug && !seo.meta_description) {
-    const src = blog ?? pubPlan;
-    if (src) {
-      if (src.title && typeof src.title === 'string') seo.title = src.title;
-      if (src.slug && typeof src.slug === 'string') seo.slug = src.slug;
-      const metaDesc = (src.meta_description ?? src.metaDescription) as string | undefined;
-      if (metaDesc) seo.meta_description = metaDesc;
-    }
-  }
-
-  const publishDate = (
-    (blog?.recommended_publish_date as string) ??
-    (pubPlan?.recommended_publish_date as string) ??
-    undefined
-  );
-
-  return { categories, tags, seo, publishDate };
-}
+// extractPublicationPlan has been extracted to @/lib/pipeline/derivePreview as derivePreview().
 
 function buildImageSlots(outlineHeadings: string[]): ImageSlot[] {
   const slots: ImageSlot[] = [
@@ -349,7 +297,7 @@ export function PreviewEngine() {
           setSeoSlug(resolvedSeo.slug);
           setSeoMetaDesc(resolvedSeo.meta_description);
         } else {
-          const pubPlan = extractPublicationPlan(draftData.review_feedback_json);
+          const pubPlan = derivePreview(draftData.review_feedback_json, []);
           const dj = draftData.draft_json as Record<string, unknown> | null;
           const djBlog = (dj?.blog ?? dj) as Record<string, unknown> | undefined;
 
@@ -376,7 +324,7 @@ export function PreviewEngine() {
           );
         }
 
-        const pubPlan = extractPublicationPlan(draftData.review_feedback_json);
+        const pubPlan = derivePreview(draftData.review_feedback_json, []);
         setPublishDate(pubPlan.publishDate ?? '');
 
         // Fetch assets
