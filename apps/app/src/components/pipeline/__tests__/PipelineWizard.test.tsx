@@ -77,7 +77,7 @@ it('on submit, posts setup payload then sends SETUP_COMPLETE with the same shape
   await user.click(screen.getByLabelText(/supervised/i))
   await user.type(screen.getByLabelText(/topic/i), 'AI agents')
 
-  await user.click(screen.getByRole('button', { name: /start autopilot \(supervised\)/i }))
+  await user.click(screen.getByRole('button', { name: /start brainstorm \(supervised\)/i }))
 
   // Find the setup POST call (templates GET on mount may precede it)
   let setupInit: RequestInit | undefined
@@ -151,13 +151,13 @@ describe('scaffold tests', () => {
     const user = userEvent.setup()
     renderWizard()
 
-    expect(screen.getByRole('button', { name: /start step-by-step/i })).toBeDefined()
+    expect(screen.getByRole('button', { name: /start brainstorm →/i })).toBeDefined()
 
     await user.click(screen.getByLabelText(/supervised/i))
-    expect(screen.getByRole('button', { name: /start autopilot \(supervised\)/i })).toBeDefined()
+    expect(screen.getByRole('button', { name: /start brainstorm \(supervised\)/i })).toBeDefined()
 
     await user.click(screen.getByLabelText(/overview/i))
-    expect(screen.getByRole('button', { name: /start autopilot \(overview\)/i })).toBeDefined()
+    expect(screen.getByRole('button', { name: /start brainstorm \(overview\)/i })).toBeDefined()
   })
 
   it('expands <details> containing errors on submit', async () => {
@@ -188,7 +188,7 @@ describe('scaffold tests', () => {
       await user.type(autoApproveInput, '90')
     }
 
-    await user.click(screen.getByRole('button', { name: /start autopilot \(supervised\)/i }))
+    await user.click(screen.getByRole('button', { name: /start brainstorm \(supervised\)/i }))
 
     await waitFor(() => {
       const section = screen.getByTestId('stage-section-review')
@@ -319,5 +319,116 @@ describe('scaffold tests', () => {
 
     const error = await screen.findByTestId('template-action-error')
     expect(error.textContent).toMatch(/name already taken/i)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────
+// Entry-point startStage tests (T-8.2)
+// ────────────────────────────────────────────────────────────────────
+
+describe('entry-point startStage derivation', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { items: [] }, error: null }),
+      }),
+    )
+  })
+
+  it('fresh entry: enables all stages, CTA is "Start brainstorm →", POSTs startStage="brainstorm"', async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (typeof url === 'string' && url.includes('/setup')) {
+        return Promise.resolve({ ok: true, json: async () => ({ data: {}, error: null }) })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ data: { items: [] }, error: null }) })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    renderWizard({ stageResults: {} })
+
+    // All stage sections should be active (not disabled)
+    const brainstorm = screen.getByTestId('stage-section-brainstorm')
+    const research = screen.getByTestId('stage-section-research')
+    expect(brainstorm.getAttribute('aria-disabled')).toBeNull()
+    expect(research.getAttribute('aria-disabled')).toBeNull()
+
+    // CTA reflects fresh entry (brainstorm)
+    expect(screen.getByRole('button', { name: /start brainstorm →/i })).toBeDefined()
+
+    // The form requires a topic for brainstorm topic_driven mode — type one so form submits
+    await user.type(screen.getByLabelText(/topic/i), 'AI trends')
+
+    // On submit, startStage="brainstorm" is POSTed
+    await user.click(screen.getByRole('button', { name: /start brainstorm →/i }))
+
+    await waitFor(() => {
+      const setupCall = (fetchSpy.mock.calls as [string, RequestInit | undefined][]).find(
+        ([url]) => typeof url === 'string' && url.includes('/setup'),
+      )
+      expect(setupCall).toBeDefined()
+      const body = JSON.parse(setupCall?.[1]?.body as string) as { startStage: string }
+      expect(body.startStage).toBe('brainstorm')
+    })
+  })
+
+  it('from-idea entry: brainstorm card disabled, CTA is "Start research →", POSTs startStage="research"', async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (typeof url === 'string' && url.includes('/setup')) {
+        return Promise.resolve({ ok: true, json: async () => ({ data: {}, error: null }) })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ data: { items: [] }, error: null }) })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    renderWizard({
+      stageResults: {
+        brainstorm: {
+          ideaId: 'idea-1',
+          ideaTitle: 'Test Idea',
+          ideaVerdict: 'viable',
+          ideaCoreTension: 'some tension',
+          completedAt: '2026-01-01T00:00:00Z',
+        },
+      },
+    })
+
+    // Brainstorm should be disabled (already completed), research should be active
+    const brainstormSection = screen.getByTestId('stage-section-brainstorm')
+    const researchSection = screen.getByTestId('stage-section-research')
+    expect(brainstormSection.getAttribute('aria-disabled')).toBe('true')
+    expect(researchSection.getAttribute('aria-disabled')).toBeNull()
+
+    // CTA reflects research entry point (step-by-step mode, brainstorm null-ed out so form validates)
+    expect(screen.getByRole('button', { name: /start research →/i })).toBeDefined()
+
+    // On submit, startStage="research" is POSTed.
+    // The wizard nulls out the brainstorm autopilot slot when brainstorm is already completed,
+    // so form validation passes without a topic input (the section is collapsed and not rendered).
+    await user.click(screen.getByRole('button', { name: /start research →/i }))
+
+    await waitFor(() => {
+      const setupCall = (fetchSpy.mock.calls as [string, RequestInit | undefined][]).find(
+        ([url]) => typeof url === 'string' && url.includes('/setup'),
+      )
+      expect(setupCall).toBeDefined()
+      const body = JSON.parse(setupCall?.[1]?.body as string) as { startStage: string }
+      expect(body.startStage).toBe('research')
+    })
+  })
+
+  // NOTE: POST /from-research route does not exist yet (T-8.2 scope: existing paths only).
+  // The test below is skipped until /from-research is implemented.
+  it.skip('from-research entry: brainstorm + research disabled, CTA is "Start draft →", POSTs startStage="draft"', () => {
+    // Will be enabled when POST /api/projects/from-research is added.
+  })
+
+  // NOTE: POST /from-blog route does not exist yet (T-8.2 scope: existing paths only).
+  // The test below is skipped until /from-blog is implemented.
+  it.skip('from-blog entry: all upstream disabled, CTA is "Start review →", POSTs startStage="review"', () => {
+    // Will be enabled when POST /api/projects/from-blog is added.
   })
 })

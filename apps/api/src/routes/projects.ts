@@ -835,6 +835,11 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * POST /from-idea — Create project from a selected idea.
    * Called when user clicks "Next: Research" after brainstorm.
+   *
+   * Entry-point: startStage = 'research'.
+   * Pre-fills pipeline_state_json.stageResults.brainstorm so the wizard and
+   * orchestrator know brainstorm is already completed and jump straight to
+   * the research stage.
    */
   fastify.post('/from-idea', { preHandler: [authenticate] }, async (request, reply) => {
     try {
@@ -846,7 +851,7 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       // Fetch idea
       const { data: idea, error: ideaErr } = await sb
         .from('idea_archives')
-        .select('*')
+        .select('id, title, verdict, core_tension, brainstorm_session_id, channel_id, org_id')
         .eq('id', body.ideaId)
         .maybeSingle();
       if (ideaErr) throw ideaErr;
@@ -854,15 +859,39 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
 
       const ideaData = idea as Record<string, unknown>;
       const title = body.title ?? (ideaData.title as string) ?? 'Untitled Project';
+      const completedAt = new Date().toISOString();
 
-      // Create project
+      // Pre-fill stageResults so the orchestrator and wizard treat brainstorm
+      // as already completed and open at the research stage.
+      const pipelineStateJson = {
+        mode: 'step-by-step',
+        currentStage: 'research',
+        stageResults: {
+          brainstorm: {
+            ideaId: body.ideaId,
+            ideaTitle: ideaData.title as string ?? title,
+            ideaVerdict: (ideaData.verdict as string) ?? 'viable',
+            ideaCoreTension: (ideaData.core_tension as string) ?? '',
+            brainstormSessionId: (ideaData.brainstorm_session_id as string) ?? undefined,
+            completedAt,
+          },
+        },
+        autoConfig: {
+          maxReviewIterations: 5,
+          targetReviewScore: 90,
+          pauseBeforePublish: true,
+        },
+      };
+
+      // Create project at research stage with brainstorm pre-completed
       const { data: project, error: projErr } = await sb
         .from('projects')
         .insert({
           title,
           channel_id: body.channelId ?? (ideaData.channel_id as string) ?? null,
           status: 'active',
-          current_stage: 'brainstorm',
+          current_stage: 'research',
+          pipeline_state_json: pipelineStateJson,
           user_id: request.userId,
           org_id: (ideaData.org_id as string) ?? null,
         })

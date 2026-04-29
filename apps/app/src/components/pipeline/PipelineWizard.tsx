@@ -467,10 +467,17 @@ export function PipelineWizard() {
     stageResults: StageResultMap
   }
 
+  const baseConfig = buildDefaultAutopilotConfig(pipelineSettings)
   const defaultValues: WizardFormValues = {
     mode: 'step-by-step',
     templateId: null,
-    autopilotConfig: buildDefaultAutopilotConfig(pipelineSettings),
+    autopilotConfig: {
+      ...baseConfig,
+      // Null out slots for already-completed stages so form validation doesn't
+      // require filling in fields the user can't see (their sections are collapsed).
+      brainstorm: stageResults.brainstorm ? null : baseConfig.brainstorm,
+      research: stageResults.research ? null : baseConfig.research,
+    },
   }
 
   const methods = useForm<WizardFormValues>({
@@ -677,10 +684,23 @@ export function PipelineWizard() {
     })
   }
 
+  const startStage = deriveStartStage(stageResults)
+
+  const startStageLabel: Record<string, string> = {
+    brainstorm: 'brainstorm',
+    research: 'research',
+    draft: 'draft',
+    review: 'review',
+    assets: 'assets',
+    preview: 'preview',
+    publish: 'publish',
+  }
+
   const submitLabel = (() => {
-    if (mode === 'supervised') return 'Start autopilot (supervised) →'
-    if (mode === 'overview') return 'Start autopilot (overview) →'
-    return 'Start step-by-step →'
+    const stageName = startStageLabel[startStage] ?? startStage
+    if (mode === 'supervised') return `Start ${stageName} (supervised) →`
+    if (mode === 'overview') return `Start ${stageName} (overview) →`
+    return `Start ${stageName} →`
   })()
 
   return (
