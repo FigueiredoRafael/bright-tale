@@ -31,6 +31,27 @@ export async function autopilotTemplatesRoutes(
       const userId = request.userId ?? '';
       const { channelId } = request.query as { channelId?: string };
 
+      // Validate channel ownership if channelId is provided
+      if (channelId) {
+        const { data: channel } = await sb
+          .from('channels')
+          .select('user_id')
+          .eq('id', channelId)
+          .maybeSingle();
+        if (!channel) {
+          return reply.status(404).send({
+            data: null,
+            error: { code: 'NOT_FOUND', message: 'Channel not found' },
+          });
+        }
+        if (channel.user_id !== userId) {
+          return reply.status(403).send({
+            data: null,
+            error: { code: 'FORBIDDEN', message: 'Forbidden' },
+          });
+        }
+      }
+
       let query = sb
         .from('autopilot_templates')
         .select('*')
@@ -58,9 +79,6 @@ export async function autopilotTemplatesRoutes(
         error: null,
       });
     } catch (error) {
-      if (error instanceof ApiError) {
-        return sendError(reply, error);
-      }
       return sendError(reply, error);
     }
   });
@@ -87,19 +105,42 @@ export async function autopilotTemplatesRoutes(
       }
       const body = parsed.data;
 
+      // Validate channel ownership if channelId is provided
+      if (body.channelId) {
+        const { data: channel } = await sb
+          .from('channels')
+          .select('user_id')
+          .eq('id', body.channelId)
+          .maybeSingle();
+        if (!channel) {
+          return reply.status(404).send({
+            data: null,
+            error: { code: 'NOT_FOUND', message: 'Channel not found' },
+          });
+        }
+        if (channel.user_id !== userId) {
+          return reply.status(403).send({
+            data: null,
+            error: { code: 'FORBIDDEN', message: 'Forbidden' },
+          });
+        }
+      }
+
       // If setting as default, clear other defaults first
       if (body.isDefault) {
+        // Type cast: Supabase-generated RPC type incorrectly marks p_channel_id as non-null,
+        // but the function handles NULL via `is not distinct from`
         const { error: rpcError } = await sb.rpc('clear_autopilot_default', {
-          p_user_id: userId as unknown as string,
-          p_channel_id: body.channelId as unknown as string,
-        });
+          p_user_id: userId,
+          p_channel_id: body.channelId,
+        } as any);
         if (rpcError) throw rpcError;
       }
 
       // Insert the new template
       const newTemplate: Database['public']['Tables']['autopilot_templates']['Insert'] =
         {
-          user_id: userId as unknown as string,
+          user_id: userId,
           channel_id: body.channelId,
           name: body.name,
           config_json: body.configJson,
@@ -118,9 +159,6 @@ export async function autopilotTemplatesRoutes(
         error: null,
       });
     } catch (error) {
-      if (error instanceof ApiError) {
-        return sendError(reply, error);
-      }
       return sendError(reply, error);
     }
   });
@@ -176,12 +214,35 @@ export async function autopilotTemplatesRoutes(
         });
       }
 
+      // Validate channel ownership if channelId is being updated
+      if (body.channelId !== undefined && body.channelId !== null) {
+        const { data: channel } = await sb
+          .from('channels')
+          .select('user_id')
+          .eq('id', body.channelId)
+          .maybeSingle();
+        if (!channel) {
+          return reply.status(404).send({
+            data: null,
+            error: { code: 'NOT_FOUND', message: 'Channel not found' },
+          });
+        }
+        if (channel.user_id !== userId) {
+          return reply.status(403).send({
+            data: null,
+            error: { code: 'FORBIDDEN', message: 'Forbidden' },
+          });
+        }
+      }
+
       // If setting isDefault to true, clear other defaults first
       if (body.isDefault === true) {
+        // Type cast: Supabase-generated RPC type incorrectly marks p_channel_id as non-null,
+        // but the function handles NULL via `is not distinct from`
         const { error: rpcError } = await sb.rpc('clear_autopilot_default', {
-          p_user_id: userId as unknown as string,
-          p_channel_id: template.channel_id as unknown as string,
-        });
+          p_user_id: userId,
+          p_channel_id: template.channel_id,
+        } as any);
         if (rpcError) throw rpcError;
       }
 
@@ -206,9 +267,6 @@ export async function autopilotTemplatesRoutes(
         error: null,
       });
     } catch (error) {
-      if (error instanceof ApiError) {
-        return sendError(reply, error);
-      }
       return sendError(reply, error);
     }
   });
@@ -266,9 +324,6 @@ export async function autopilotTemplatesRoutes(
           error: null,
         });
       } catch (error) {
-        if (error instanceof ApiError) {
-          return sendError(reply, error);
-        }
         return sendError(reply, error);
       }
     }

@@ -148,6 +148,46 @@ describe('GET /autopilot-templates', () => {
     expect(body.data.items).toHaveLength(1);
     expect(body.error).toBeNull();
   });
+
+  it('returns 404 when channelId query param references missing channel', async () => {
+    // Setup chain: from('channels').select().eq().maybeSingle() -> { data: null }
+    const channelChain = {
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+      }),
+    };
+    mockSb.select.mockReturnValue(channelChain);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/autopilot-templates/?channelId=00000000-0000-0000-0000-000000000001',
+      headers: AUTH_USER,
+    });
+
+    expect(res.statusCode).toBe(404);
+    const body = JSON.parse(res.body);
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('returns 403 when channelId query param is owned by different user', async () => {
+    // Setup chain: from('channels').select().eq().maybeSingle() -> { data: { user_id: 'other-user' } }
+    const channelChain = {
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({ data: { user_id: 'other-user' }, error: null }),
+      }),
+    };
+    mockSb.select.mockReturnValue(channelChain);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/autopilot-templates/?channelId=00000000-0000-0000-0000-000000000002',
+      headers: AUTH_USER,
+    });
+
+    expect(res.statusCode).toBe(403);
+    const body = JSON.parse(res.body);
+    expect(body.error.code).toBe('FORBIDDEN');
+  });
 });
 
 describe('POST /autopilot-templates', () => {
@@ -236,6 +276,56 @@ describe('POST /autopilot-templates', () => {
       expect.any(Object)
     );
   });
+
+  it('returns 404 when channelId in body references missing channel', async () => {
+    // Reset mocks before this test
+    Object.values(mockSb).forEach((fn: any) => {
+      if (typeof fn === 'function' && fn.mockClear) fn.mockClear();
+    });
+    // Setup chain for channel ownership check: from('channels').select().eq().maybeSingle() -> null
+    const channelChain = {
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+      }),
+    };
+    mockSb.from.mockReturnValue({ select: vi.fn().mockReturnValue(channelChain) });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/autopilot-templates/',
+      headers: AUTH_USER,
+      payload: { ...validBody, channelId: '00000000-0000-0000-0000-000000000001' },
+    });
+
+    expect(res.statusCode).toBe(404);
+    const body = JSON.parse(res.body);
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('returns 403 when channelId in body is owned by different user', async () => {
+    // Reset mocks before this test
+    Object.values(mockSb).forEach((fn: any) => {
+      if (typeof fn === 'function' && fn.mockClear) fn.mockClear();
+    });
+    // Setup chain for channel ownership check: from('channels').select().eq().maybeSingle() -> { user_id: 'other' }
+    const channelChain = {
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({ data: { user_id: 'other-user' }, error: null }),
+      }),
+    };
+    mockSb.from.mockReturnValue({ select: vi.fn().mockReturnValue(channelChain) });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/autopilot-templates/',
+      headers: AUTH_USER,
+      payload: { ...validBody, channelId: '00000000-0000-0000-0000-000000000002' },
+    });
+
+    expect(res.statusCode).toBe(403);
+    const body = JSON.parse(res.body);
+    expect(body.error.code).toBe('FORBIDDEN');
+  });
 });
 
 describe('PUT /autopilot-templates/:id', () => {
@@ -314,6 +404,132 @@ describe('PUT /autopilot-templates/:id', () => {
 
     expect(res.statusCode).toBe(200);
     expect(mockSb.rpc).not.toHaveBeenCalled();
+  });
+
+  it('calls RPC when isDefault is set to true, then performs update', async () => {
+    mockSb.maybeSingle.mockResolvedValue({
+      data: {
+        id: 't-1',
+        user_id: 'user-123',
+        channel_id: 'ch-1',
+      },
+      error: null,
+    });
+    // RPC for clearing defaults returns success
+    mockSb.rpc.mockResolvedValue({ data: null, error: null });
+    // Update chain for the template update
+    const updateChain = {
+      eq: vi.fn().mockReturnValue({
+        select: vi.fn().mockResolvedValue({
+          data: [{ id: 't-1', is_default: true }],
+          error: null,
+        }),
+      }),
+    };
+    mockSb.update.mockReturnValue(updateChain);
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/autopilot-templates/t-1',
+      headers: AUTH_USER,
+      payload: { isDefault: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // Verify RPC was called BEFORE update with correct params
+    expect(mockSb.rpc).toHaveBeenCalledWith('clear_autopilot_default', {
+      p_user_id: 'user-123',
+      p_channel_id: 'ch-1',
+    });
+    // Verify update was called after RPC
+    expect(mockSb.update).toHaveBeenCalled();
+  });
+
+  it('returns 404 when channel not found during update', async () => {
+    // Reset and setup mocks for this specific flow:
+    // First call: from('autopilot_templates').select().eq().maybeSingle() returns the template
+    // Second call: from('channels').select().eq().maybeSingle() returns null
+    Object.values(mockSb).forEach((fn: any) => {
+      if (typeof fn === 'function' && fn.mockClear) fn.mockClear();
+    });
+
+    // Mock chain for template lookup
+    const templateChain = {
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({
+          data: { id: 't-1', user_id: 'user-123', channel_id: null },
+          error: null,
+        }),
+      }),
+    };
+
+    // Mock chain for channel lookup (missing)
+    const channelChain = {
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+      }),
+    };
+
+    // Create from() that returns different chains based on table
+    mockSb.from.mockImplementation((table: string) => {
+      if (table === 'autopilot_templates') {
+        return { select: vi.fn().mockReturnValue(templateChain) };
+      } else if (table === 'channels') {
+        return { select: vi.fn().mockReturnValue(channelChain) };
+      }
+      return mockSb;
+    });
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/autopilot-templates/t-1',
+      headers: AUTH_USER,
+      payload: { channelId: '00000000-0000-0000-0000-000000000001' },
+    });
+
+    expect(res.statusCode).toBe(404);
+    const body = JSON.parse(res.body);
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('returns 403 when channel is not owned by user during update', async () => {
+    // Mock chain for template lookup
+    const templateChain = {
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({
+          data: { id: 't-1', user_id: 'user-123', channel_id: null },
+          error: null,
+        }),
+      }),
+    };
+
+    // Mock chain for channel lookup (different owner)
+    const channelChain = {
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({ data: { user_id: 'other-user' }, error: null }),
+      }),
+    };
+
+    // Create from() that returns different chains based on table
+    mockSb.from.mockImplementation((table: string) => {
+      if (table === 'autopilot_templates') {
+        return { select: vi.fn().mockReturnValue(templateChain) };
+      } else if (table === 'channels') {
+        return { select: vi.fn().mockReturnValue(channelChain) };
+      }
+      return mockSb;
+    });
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/autopilot-templates/t-1',
+      headers: AUTH_USER,
+      payload: { channelId: '00000000-0000-0000-0000-000000000002' },
+    });
+
+    expect(res.statusCode).toBe(403);
+    const body = JSON.parse(res.body);
+    expect(body.error.code).toBe('FORBIDDEN');
   });
 });
 
