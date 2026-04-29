@@ -225,3 +225,6 @@ export {
 
 // Autopilot Config schemas
 export * from "./autopilotConfig";
+
+// Project Setup schemas
+export * from "./projectSetup";
