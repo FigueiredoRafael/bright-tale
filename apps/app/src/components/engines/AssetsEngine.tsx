@@ -272,6 +272,9 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
   const autoMode = useSelector(actor, (s) => s.context.mode);
   const autoPaused = useSelector(actor, (s) => s.context.paused);
   const assetsResult = useSelector(actor, (s) => s.context.stageResults.assets);
+  // STAGE_PROGRESS partial updates also populate stageResults.assets (e.g. { status: 'Generating images' }).
+  // Only treat the stage as complete when the real AssetsResult with `assetIds` has been dispatched.
+  const assetsComplete = assetsResult != null && 'assetIds' in Object(assetsResult);
   const assetsConfig = useSelector(actor, (s) => s.context.autopilotConfig?.assets);
   const overviewMode = useSelector(actor, (s) => s.context.mode === 'overview');
 
@@ -304,23 +307,23 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
       existingAssets.length === 0 &&
       phase === 'briefs' &&
       engineMode === 'generate' &&
-      !assetsResult,
+      !assetsComplete,
     fire: handleGenerateBriefs,
   });
 
   useEffect(() => {
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
-    if (assetsResult) return;
+    if (assetsComplete) return;
     if (phase === 'refine' && slotCards.length > 0) {
       setImagesMode('brief');
       setPhase('images');
     }
-  }, [autoMode, autoPaused, phase, slotCards.length, assetsResult]);
+  }, [autoMode, autoPaused, phase, slotCards.length, assetsComplete]);
 
   const autoGenAllRef = useRef(false);
   useEffect(() => {
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
-    if (assetsResult) return;
+    if (assetsComplete) return;
     if (phase !== 'images') return;
     if (slotCards.length === 0) return;
     if (Object.keys(slotAssets).length > 0) return;
@@ -330,12 +333,12 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
     void handleGenerateAllSlots();
   // handleGenerateAllSlots is a stable function declaration in this scope.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoMode, autoPaused, phase, slotCards.length, slotAssets, generatingAll, generatingSlot, assetsResult]);
+  }, [autoMode, autoPaused, phase, slotCards.length, slotAssets, generatingAll, generatingSlot, assetsComplete]);
 
   const autoFinishRef = useRef(false);
   useEffect(() => {
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
-    if (assetsResult) return;
+    if (assetsComplete) return;
     if (phase !== 'images') return;
     if (finishing) return;
     if (autoFinishRef.current) return;
@@ -347,7 +350,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
     void handleFinish();
   // handleFinish is a stable function declaration in this scope.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoMode, autoPaused, phase, slotCards.length, slotAssets, existingAssets.length, finishing, assetsResult]);
+  }, [autoMode, autoPaused, phase, slotCards.length, slotAssets, existingAssets.length, finishing, assetsComplete]);
 
   // Fetch existing assets on mount. Hydration priority:
   //   1. draft_json.asset_briefs — full briefs persisted by the engine
