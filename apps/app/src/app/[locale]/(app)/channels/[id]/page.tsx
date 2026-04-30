@@ -53,6 +53,7 @@ import { LogoUpload } from '@/components/channels/LogoUpload';
 import { VoiceConfigSection } from '@/components/channels/VoiceConfigSection';
 import { ReferenceNotifications } from '@/components/channels/ReferenceNotifications';
 import { invalidateChannelCache } from '@/hooks/use-active-channel';
+import { recordChannelVisit } from '@/hooks/usePinnedChannels';
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -206,6 +207,8 @@ export default function ChannelDetailPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => { recordChannelVisit(id) }, [id]);
 
   // Fetch YouTube metrics when channel loads and has youtube_url
   const fetchYtMetrics = useCallback(async (url: string) => {
