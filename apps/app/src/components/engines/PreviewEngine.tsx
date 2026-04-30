@@ -197,7 +197,7 @@ export function PreviewEngine() {
 
   // Overview-mode / autopilot selectors
   const overviewMode = useSelector(actor, (s) => s.context.mode === 'overview');
-  const previewEnabled = useSelector(actor, (s) => s.context.autopilotConfig?.preview.enabled);
+  const previewEnabled = useSelector(actor, (s) => s.context.autopilotConfig?.preview?.enabled);
 
   const trackerContext: PipelineContext = {
     channelId: channelId ?? undefined,
@@ -378,12 +378,11 @@ export function PreviewEngine() {
   useEffect(() => {
     if (initialBehaviorRef.current) return;
     if (!overviewMode) return;
-    if (previewEnabled === undefined) return;
     if (busy || draft === null) return;
 
     initialBehaviorRef.current = true;
 
-    if (previewEnabled) {
+    if (previewEnabled === true) {
       actor.send({ type: 'STAGE_PROGRESS', stage: 'preview', partial: { status: 'Awaiting your review' } });
       actor.send({ type: 'PREVIEW_GATE_TRIGGERED' });
       return;

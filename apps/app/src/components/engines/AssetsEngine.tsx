@@ -77,6 +77,10 @@ interface AssetsEngineProps {
   mode?: 'generate' | 'import';
   onModeChange?: (m: 'generate' | 'import') => void;
   draft: Record<string, unknown> | null;
+  /** Override the provider selected in assetsConfig — set by orchestrator on "Switch provider". */
+  imageProviderOverride?: ImageProvider;
+  /** Bumped by orchestrator to re-arm autopilot after a quota error recovery. */
+  retrySignal?: number;
 }
 
 interface NoBriefSection {
@@ -192,7 +196,7 @@ interface PendingUpload {
 
 /* ── Component ── */
 
-export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEngineProps) {
+export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProviderOverride, retrySignal = 0 }: AssetsEngineProps) {
   const actor = usePipelineActor();
   const abortController = usePipelineAbort();
   const channelId = useSelector(actor, (s) => s.context.channelId);
@@ -275,6 +279,10 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
   // STAGE_PROGRESS partial updates also populate stageResults.assets (e.g. { status: 'Generating images' }).
   // Only treat the stage as complete when the real AssetsResult with `assetIds` has been dispatched.
   const assetsComplete = assetsResult != null && 'assetIds' in Object(assetsResult);
+  // A persisted errorCode (e.g. 'QUOTA_EXCEEDED') also blocks autopilot — prevents re-dispatch on reload.
+  // The user must explicitly choose to skip or retry with a different provider.
+  const assetsErrored = assetsResult != null && !assetsComplete && !!(assetsResult as { errorCode?: string }).errorCode;
+  const assetsBlocked = assetsComplete || assetsErrored;
   const assetsConfig = useSelector(actor, (s) => s.context.autopilotConfig?.assets);
   const overviewMode = useSelector(actor, (s) => s.context.mode === 'overview');
 
@@ -307,23 +315,23 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
       existingAssets.length === 0 &&
       phase === 'briefs' &&
       engineMode === 'generate' &&
-      !assetsComplete,
+      !assetsBlocked,
     fire: handleGenerateBriefs,
   });
 
   useEffect(() => {
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
-    if (assetsComplete) return;
+    if (assetsBlocked) return;
     if (phase === 'refine' && slotCards.length > 0) {
       setImagesMode('brief');
       setPhase('images');
     }
-  }, [autoMode, autoPaused, phase, slotCards.length, assetsComplete]);
+  }, [autoMode, autoPaused, phase, slotCards.length, assetsBlocked]);
 
   const autoGenAllRef = useRef(false);
   useEffect(() => {
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
-    if (assetsComplete) return;
+    if (assetsBlocked) return;
     if (phase !== 'images') return;
     if (slotCards.length === 0) return;
     if (Object.keys(slotAssets).length > 0) return;
@@ -333,12 +341,12 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
     void handleGenerateAllSlots();
   // handleGenerateAllSlots is a stable function declaration in this scope.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoMode, autoPaused, phase, slotCards.length, slotAssets, generatingAll, generatingSlot, assetsComplete]);
+  }, [autoMode, autoPaused, phase, slotCards.length, slotAssets, generatingAll, generatingSlot, assetsBlocked]);
 
   const autoFinishRef = useRef(false);
   useEffect(() => {
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
-    if (assetsComplete) return;
+    if (assetsBlocked) return;
     if (phase !== 'images') return;
     if (finishing) return;
     if (autoFinishRef.current) return;
@@ -350,7 +358,20 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
     void handleFinish();
   // handleFinish is a stable function declaration in this scope.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoMode, autoPaused, phase, slotCards.length, slotAssets, existingAssets.length, finishing, assetsComplete]);
+  }, [autoMode, autoPaused, phase, slotCards.length, slotAssets, existingAssets.length, finishing, assetsBlocked]);
+
+  // When retrySignal is bumped by the orchestrator (user picked a new provider),
+  // reset autopilot refs and clear generated images so the full flow re-runs.
+  // The orchestrator also dispatches STAGE_PROGRESS to clear the errorCode before bumping,
+  // which unblocks assetsBlocked on the next render cycle.
+  useEffect(() => {
+    if (retrySignal === 0) return;
+    autoGenAllRef.current = false;
+    autoFinishRef.current = false;
+    setSlotAssets({});
+    setSlotCards([]);
+    setPhase('briefs');
+  }, [retrySignal]);
 
   // Fetch existing assets on mount. Hydration priority:
   //   1. draft_json.asset_briefs — full briefs persisted by the engine
@@ -581,16 +602,19 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
 
 
   /* ── AI generate a single slot image ── */
-  async function generateSlotImage(card: SlotCard): Promise<void> {
+  // Returns errorCode when the API rejects (e.g. 'QUOTA_EXCEEDED') so the caller
+  // can persist the error state without re-dispatching on reload.
+  async function generateSlotImage(card: SlotCard): Promise<{ errorCode?: string }> {
     const prompt = buildFullPrompt(card, visualDirection);
     if (prompt.trim().length < 10) {
       toast.error(`Prompt too short for ${card.slot}`);
-      return;
+      return {};
     }
     const role = slotToRole(card.slot);
+    const activeProvider = imageProviderOverride ?? imageProvider;
 
     // Manual provider: emit prompt to Axiom, prompt the user to upload the result.
-    if (imageProvider === 'manual') {
+    if (activeProvider === 'manual') {
       const res = await fetch('/api/assets/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -608,11 +632,11 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
       const json = await res.json();
       if (json?.error) {
         toast.error(json.error.message ?? 'Manual emit failed');
-        return;
+        return { errorCode: json.error.code as string | undefined };
       }
       tracker.trackAction('manual.awaiting', { draftId, role, slot: card.slot });
       if (!overviewMode) toast.success(`Prompt for ${card.slot} emitted to Axiom. Upload the image when ready.`);
-      return;
+      return {};
     }
 
     // AI provider: replace any existing asset for this role so the new one wins.
@@ -634,19 +658,19 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
         role,
         aspectRatio: card.aspectRatio,
         numImages: 1,
-        provider: imageProvider,
+        provider: activeProvider,
       }),
       signal: abortController?.signal,
     });
     const json = await res.json();
     if (json?.error) {
       toast.error(json.error.message ?? `Image generation failed for ${card.slot}`);
-      return;
+      return { errorCode: json.error.code as string | undefined };
     }
     const asset = Array.isArray(json.data) ? json.data[0] : json.data;
     if (!asset || !asset.id) {
       toast.error(`No image returned for ${card.slot}`);
-      return;
+      return {};
     }
     const mapped: ContentAsset = {
       id: asset.id as string,
@@ -659,6 +683,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
     setSlotAssets((prev) => ({ ...prev, [card.slot]: mapped }));
     setExistingAssets((prev) => [...prev.filter((a) => a.role !== role), mapped]);
     tracker.trackAction('generated', { draftId, role, slot: card.slot });
+    return {};
   }
 
   async function handleGenerateSlot(card: SlotCard) {
@@ -666,7 +691,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
     setGeneratingSlot(card.slot);
     try {
       await generateSlotImage(card);
-      if (imageProvider !== 'manual' && !overviewMode) toast.success(`Generated image for ${card.slot}`);
+      if ((imageProviderOverride ?? imageProvider) !== 'manual' && !overviewMode) toast.success(`Generated image for ${card.slot}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Image generation failed');
     } finally {
@@ -677,13 +702,23 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
   async function handleGenerateAllSlots() {
     if (generatingSlot || generatingAll || slotCards.length === 0) return;
     setGeneratingAll(true);
+    let quotaErrorCode: string | null = null;
     try {
       for (const card of slotCards) {
         setGeneratingSlot(card.slot);
-        await generateSlotImage(card);
+        const result = await generateSlotImage(card);
+        if (result.errorCode === 'QUOTA_EXCEEDED' && !quotaErrorCode) {
+          quotaErrorCode = result.errorCode;
+        }
       }
-      if (imageProvider !== 'manual') toast.success('All images generated');
-      else toast.success('All prompts emitted to Axiom');
+      if (quotaErrorCode) {
+        // Persist error state so autopilot does not re-dispatch on reload.
+        actor.send({ type: 'STAGE_PROGRESS', stage: 'assets', partial: { errorCode: quotaErrorCode, status: 'Quota exceeded' } });
+      } else if ((imageProviderOverride ?? imageProvider) !== 'manual') {
+        toast.success('All images generated');
+      } else {
+        toast.success('All prompts emitted to Axiom');
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Bulk generation failed');
     } finally {

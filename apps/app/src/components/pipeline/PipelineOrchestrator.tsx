@@ -262,6 +262,8 @@ function OrchestratorInner({
   const [pendingAssetsConfirm, setPendingAssetsConfirm] = useState(false)
   const [assetsConfirmed, setAssetsConfirmed] = useState(false)
   const [showEngine, setShowEngine] = useState<PipelineStage | null>(null)
+  const [imageProviderOverride, setImageProviderOverride] = useState<'openai' | 'gemini' | undefined>(undefined)
+  const [retrySignal, setRetrySignal] = useState(0)
   const [miniWizardOpen, setMiniWizardOpen] = useState(false)
   const [redoModalOpen, setRedoModalOpen] = useState(false)
   const [cloning, setCloning] = useState(false)
@@ -290,6 +292,18 @@ function OrchestratorInner({
   }, [ctx.mode, ctx.paused, currentStage, subState, ctx.stageResults, assetsConfirmed, send])
 
   const isWorking = subState === 'reviewing' || subState === 'reproducing'
+
+  function handleSkipAssets() {
+    send({ type: 'ASSETS_COMPLETE', result: { assetIds: [], skipped: true } })
+  }
+
+  function handleSwitchImageProvider(provider: 'openai' | 'gemini') {
+    // Clear the persisted error so assetsBlocked becomes false in the engine,
+    // then reset autopilot refs via retrySignal so it fires exactly once more.
+    send({ type: 'STAGE_PROGRESS', stage: 'assets', partial: { errorCode: null, status: 'Retrying...' } })
+    setImageProviderOverride(provider)
+    setRetrySignal((n) => n + 1)
+  }
 
   const [draftData, setDraftData] = useState<Record<string, unknown> | null>(null)
   useEffect(() => {
@@ -425,7 +439,7 @@ function OrchestratorInner({
       case 'review':
         return <ReviewEngine draft={draftData} />
       case 'assets':
-        return <AssetsEngine mode={mode} onModeChange={onModeChange} draft={draftData} />
+        return <AssetsEngine mode={mode} onModeChange={onModeChange} draft={draftData} imageProviderOverride={imageProviderOverride} retrySignal={retrySignal} />
       case 'preview':
         return <PreviewEngine />
       case 'publish':
@@ -567,6 +581,8 @@ function OrchestratorInner({
               onRedoFrom={handleRedoFrom}
               activityLog={activityLog}
               onActivityLogChange={handleActivityLogChange}
+              onSkipAssets={handleSkipAssets}
+              onSwitchImageProvider={handleSwitchImageProvider}
             />
             <div data-testid="hidden-engine-wrapper" style={{ display: 'none' }} aria-hidden="true">
               {renderEngine(stageToRender)}

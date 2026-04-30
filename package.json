@@ -43,6 +43,8 @@
     "db:seed:personas": "tsx scripts/seed-personas.ts",
     "db:seed": "npm run db:seed:agents && npm run db:seed:personas",
     "db:which": "bash scripts/db-which.sh",
+    "db:inspect": "tsx scripts/db-inspect.ts",
+    "db:list": "tsx scripts/db-list.ts",
     "email:start": "docker compose -f apps/api/docker-compose.dev.yml up -d",
     "email:stop": "docker compose -f apps/api/docker-compose.dev.yml down",
     "email:ui": "open http://localhost:8025",

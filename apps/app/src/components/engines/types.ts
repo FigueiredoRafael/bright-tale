@@ -97,6 +97,9 @@ export interface AssetsResult {
   featuredImageUrl?: string;
   /** True when assets stage was auto-skipped by the machine (mode='skip'). */
   skipped?: boolean;
+  /** Set via STAGE_PROGRESS when generation fails — e.g. 'QUOTA_EXCEEDED'. No assetIds present. */
+  errorCode?: string;
+  errorMessage?: string;
 }
 
 export interface PreviewResult {

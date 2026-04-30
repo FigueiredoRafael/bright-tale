@@ -5,7 +5,7 @@ import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import {
   Lightbulb, Search, FileText, CheckCircle, Image, Eye, Globe,
-  ArrowRight, ExternalLink, RotateCcw,
+  ArrowRight, ExternalLink, RotateCcw, AlertCircle, SkipForward,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { deriveTier } from '@brighttale/shared'
@@ -55,6 +55,8 @@ interface DetailBodyProps {
   stage: PipelineStage
   stageResults: StageResultMap
   status: RailStageStatus
+  onSkipAssets?: () => void
+  onSwitchImageProvider?: (provider: 'openai' | 'gemini') => void
 }
 
 /**
@@ -98,7 +100,7 @@ function EmptyState({ status }: { status: RailStageStatus }) {
   )
 }
 
-function DetailBody({ stage, stageResults, status }: DetailBodyProps) {
+function DetailBody({ stage, stageResults, status, onSkipAssets, onSwitchImageProvider }: DetailBodyProps) {
   switch (stage) {
     case 'brainstorm': {
       const r = stageResults.brainstorm
@@ -250,6 +252,41 @@ function DetailBody({ stage, stageResults, status }: DetailBodyProps) {
     case 'assets': {
       const r = stageResults.assets
       if (!r) return <EmptyState status={status} />
+
+      // Persisted error state — autopilot is blocked; user must act.
+      if (!('assetIds' in r) && (r as { errorCode?: string }).errorCode) {
+        const errorCode = (r as { errorCode: string }).errorCode
+        const isQuota = errorCode === 'QUOTA_EXCEEDED'
+        return (
+          <div className="flex flex-col items-center justify-center py-12 gap-6 text-center">
+            <AlertCircle className="h-8 w-8 text-destructive" />
+            <div className="space-y-1.5">
+              <p className="font-semibold text-sm">
+                {isQuota ? 'Image generation quota exceeded' : 'Image generation failed'}
+              </p>
+              <p className="text-xs text-muted-foreground max-w-xs">
+                {isQuota
+                  ? 'The free-tier daily limit has been reached. Switch to another provider or skip this stage.'
+                  : 'An error occurred during image generation. You can retry with a different provider or skip.'}
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 w-full max-w-[200px]">
+              {onSwitchImageProvider && (
+                <Button size="sm" onClick={() => onSwitchImageProvider('openai')}>
+                  Retry with OpenAI
+                </Button>
+              )}
+              {onSkipAssets && (
+                <Button variant="outline" size="sm" onClick={onSkipAssets}>
+                  <SkipForward className="h-3.5 w-3.5 mr-1.5" />
+                  Skip images
+                </Button>
+              )}
+            </div>
+          </div>
+        )
+      }
+
       const assetIds = r.assetIds ?? []
       return (
         <div className="space-y-8">
@@ -388,6 +425,8 @@ interface StagePanelDetailProps {
   onRedoFrom?: (stage: PipelineStage) => void
   /** Jump back to the live stage. */
   onBackToLive: () => void
+  onSkipAssets?: () => void
+  onSwitchImageProvider?: (provider: 'openai' | 'gemini') => void
 }
 
 export function StagePanelDetail({
@@ -400,6 +439,8 @@ export function StagePanelDetail({
   onOpenEngine,
   onRedoFrom,
   onBackToLive,
+  onSkipAssets,
+  onSwitchImageProvider,
 }: StagePanelDetailProps) {
   const Icon = STAGE_ICON[selectedStage]
   const status = deriveRailStatus(
@@ -458,6 +499,8 @@ export function StagePanelDetail({
           stage={selectedStage}
           stageResults={stageResults}
           status={status}
+          onSkipAssets={onSkipAssets}
+          onSwitchImageProvider={onSwitchImageProvider}
         />
       </div>
 

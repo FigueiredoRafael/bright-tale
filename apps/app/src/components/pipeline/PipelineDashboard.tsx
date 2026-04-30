@@ -23,6 +23,8 @@ interface PipelineDashboardProps {
   /** Persisted activity log — lifted from orchestrator so it survives reloads. */
   activityLog: ActivityEntry[]
   onActivityLogChange: (entries: ActivityEntry[]) => void
+  onSkipAssets?: () => void
+  onSwitchImageProvider?: (provider: 'openai' | 'gemini') => void
 }
 
 export function PipelineDashboard({
@@ -30,6 +32,8 @@ export function PipelineDashboard({
   onRedoFrom,
   activityLog,
   onActivityLogChange,
+  onSkipAssets,
+  onSwitchImageProvider,
 }: PipelineDashboardProps) {
   const actor = usePipelineActor()
 
@@ -132,6 +136,8 @@ export function PipelineDashboard({
       }}
       onRedoFrom={onRedoFrom}
       onBackToLive={handleBackToLive}
+      onSkipAssets={onSkipAssets}
+      onSwitchImageProvider={onSwitchImageProvider}
     />
   )
 

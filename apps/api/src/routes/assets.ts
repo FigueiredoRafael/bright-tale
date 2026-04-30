@@ -413,6 +413,16 @@ export async function assetsRoutes(fastify: FastifyInstance): Promise<void> {
         .send({ data: assets.length === 1 ? assets[0] : assets, error: null });
     } catch (error) {
       request.log.error({ err: error }, 'Image generation error');
+      const e = error as { status?: string; message?: string } | null;
+      if (e?.status === 'RESOURCE_EXHAUSTED' || e?.message?.includes('exceeded your current quota')) {
+        return reply.status(429).send({
+          data: null,
+          error: {
+            code: 'QUOTA_EXCEEDED',
+            message: 'Image generation quota exceeded. The free-tier daily limit has been reached — please try again tomorrow or add billing to your Google AI project.',
+          },
+        });
+      }
       return sendError(reply, error);
     }
   });
