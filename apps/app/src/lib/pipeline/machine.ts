@@ -6,6 +6,7 @@ import {
 } from '@/components/engines/types'
 import { isApprovedGuard, isRejectedGuard, hasReachedMaxIterationsGuard, shouldSkipAssetsGuard } from './guards'
 import { reproduceActor, abortRequester } from './actors'
+import type { ReviewIterationSummary } from '@brighttale/shared'
 import type {
   PipelineMachineContext,
   PipelineMachineInput,
@@ -84,7 +85,34 @@ export const pipelineMachine = setup({
     saveBrainstormResult: saveStageResult('brainstorm') as any,
     saveResearchResult: saveStageResult('research') as any,
     saveDraftResult: saveStageResult('draft') as any,
-    saveReviewResult: saveStageResult('review') as any,
+    saveReviewResult: assign(({ context, event }: { context: PipelineMachineContext; event: unknown }) => {
+      const e = event as Extract<PipelineEvent, { type: 'REVIEW_COMPLETE' }>
+      const result = e.result as { score: number; verdict: 'approved' | 'rejected' | 'needs_revision'; feedbackJson?: Record<string, unknown> }
+      const completedAt = new Date().toISOString()
+      const oneLineSummary = (result.feedbackJson?.summary as string | undefined)?.slice(0, 120)
+        ?? `Score ${result.score}, ${result.verdict}`
+      const prevIterations = (context.stageResults.review?.iterations as ReviewIterationSummary[] | undefined) ?? []
+      const newIteration: ReviewIterationSummary = {
+        iterationNum: context.iterationCount,
+        score: result.score,
+        verdict: result.verdict,
+        oneLineSummary,
+        timestamp: completedAt,
+      }
+      const stageResults: StageResultMap = {
+        ...context.stageResults,
+        review: {
+          score: result.score,
+          verdict: result.verdict,
+          feedbackJson: result.feedbackJson ?? {},
+          iterationCount: context.iterationCount,
+          iterations: [...prevIterations, newIteration],
+          latestFeedbackJson: result.feedbackJson ?? null,
+          completedAt,
+        },
+      }
+      return { stageResults, lastError: null }
+    }) as any,
     saveAssetsResult: saveStageResult('assets') as any,
     savePreviewResult: saveStageResult('preview') as any,
     savePublishResult: saveStageResult('publish') as any,

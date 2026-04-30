@@ -76,6 +76,7 @@ You must follow the BC_REVIEW_INPUT → BC_REVIEW_OUTPUT contract exactly.
 {
   "BC_REVIEW_OUTPUT": {
     "idea_id": "",
+    "summary": "",
     "overall_verdict": "",
     "overall_notes": "",
     "blog_review": {
@@ -261,6 +262,7 @@ You must follow the BC_REVIEW_INPUT → BC_REVIEW_OUTPUT contract exactly.
 
 ### General Rules
 
+- ALWAYS include a top-level `summary` field with a one-sentence (≤120 chars) explanation of the verdict (e.g. "Score 87, blog passes but intro needs tightening before publish.").
 - Do not add, remove, or rename keys in the output schema.
 - Output JSON only. No commentary outside JSON blocks.
 - Be specific with feedback — cite exact locations and provide suggested fixes.

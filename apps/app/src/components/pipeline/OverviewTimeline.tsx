@@ -5,7 +5,7 @@ import { useSelector } from '@xstate/react'
 import { PIPELINE_STAGES } from '@/components/engines/types'
 import { StageRow, type StageRowState } from './StageRow'
 import type { PipelineStage } from '@/components/engines/types'
-import type { AutopilotConfig } from '@brighttale/shared'
+import type { AutopilotConfig, ReviewIterationSummary } from '@brighttale/shared'
 
 export const STAGE_LABEL: Record<PipelineStage, string> = {
   brainstorm: 'Brainstorm',
@@ -61,6 +61,9 @@ export function OverviewTimeline({ setShowEngine }: OverviewTimelineProps) {
         {PIPELINE_STAGES.map((stage) => {
           const state = deriveState(stage)
           const r = stageResults[stage] as Record<string, unknown> | undefined
+          const reviewIterations = stage === 'review'
+            ? (r?.iterations as ReviewIterationSummary[] | undefined)
+            : undefined
           return (
             <StageRow
               key={stage}
@@ -72,6 +75,7 @@ export function OverviewTimeline({ setShowEngine }: OverviewTimelineProps) {
               total={state === 'running' ? (r?.total as number | undefined) : undefined}
               detail={state === 'running' ? (r?.detail as string | undefined) : undefined}
               summary={deriveSummary(stage)}
+              iterations={reviewIterations}
               onOpenEngine={state === 'completed' ? () => setShowEngine(stage) : undefined}
             />
           )
