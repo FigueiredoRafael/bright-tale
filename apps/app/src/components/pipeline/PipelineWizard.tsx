@@ -582,6 +582,7 @@ function PublishFields() {
 
 function getStageSummary(stage: WizardStage, values: WizardFormValues): string {
   const cfg = values.autopilotConfig
+  if (!cfg) return ''
   switch (stage) {
     case 'brainstorm': {
       const b = cfg.brainstorm
@@ -594,18 +595,23 @@ function getStageSummary(stage: WizardStage, values: WizardFormValues): string {
       return `Depth: ${r.depth}`
     }
     case 'canonicalCore':
-      return cfg.canonicalCore.personaId ? `Persona: ${cfg.canonicalCore.personaId}` : 'Auto-select'
+      return cfg.canonicalCore?.personaId ? `Persona: ${cfg.canonicalCore.personaId}` : 'Auto-select'
     case 'draft':
+      if (!cfg.draft) return ''
       return `${cfg.draft.format} · ${cfg.draft.wordCount} words`
     case 'review':
+      if (!cfg.review) return ''
       return `${cfg.review.maxIterations} iterations · threshold ${cfg.review.autoApproveThreshold}`
     case 'assets': {
+      if (!cfg.assets) return ''
       const map: Record<string, string> = { skip: 'Skip', auto_generate: 'Auto-generate', briefs_only: 'Briefs only' }
       return map[cfg.assets.mode] ?? cfg.assets.mode
     }
     case 'preview':
+      if (!cfg.preview) return ''
       return cfg.preview.enabled ? 'Enabled' : 'Disabled'
     case 'publish':
+      if (!cfg.publish) return ''
       return cfg.publish.status === 'published' ? 'Published' : 'Draft'
     default:
       return ''
@@ -892,10 +898,18 @@ export function PipelineWizard() {
     if (!template) return
     setLoadedTemplateId(template.id)
     setLoadedTemplateName(template.name)
+    // Merge template config over current defaults so legacy templates (saved
+    // before preview/publish slots existed) still produce a valid form state.
+    const merged: AutopilotConfig = {
+      ...baseConfig,
+      ...(template.config_json as Partial<AutopilotConfig>),
+      preview: (template.config_json as Partial<AutopilotConfig>).preview ?? baseConfig.preview,
+      publish: (template.config_json as Partial<AutopilotConfig>).publish ?? baseConfig.publish,
+    }
     methods.reset({
       mode: methods.getValues('mode'),
       templateId: template.id,
-      autopilotConfig: template.config_json,
+      autopilotConfig: merged,
     })
   }
 
