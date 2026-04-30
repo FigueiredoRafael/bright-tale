@@ -20,6 +20,10 @@ export default defineConfig({
       'src/**/__tests__/**/*.ts',
       'src/**/__tests__/**/*.tsx',
     ],
+    exclude: [
+      'src/**/__tests__/**/_*.ts',
+      'src/**/__tests__/**/_*.tsx',
+    ],
     pool: 'forks',
   },
 });
