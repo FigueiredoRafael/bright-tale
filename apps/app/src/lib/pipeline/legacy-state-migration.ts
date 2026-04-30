@@ -193,8 +193,15 @@ function migrateAutopilotConfig(raw: Record<string, unknown> | undefined): Autop
  *
  * Returns null for empty or non-legacy inputs (caller uses input path instead).
  */
+export interface LegacySnapshotMeta {
+  projectId?: string
+  channelId?: string | null
+  projectTitle?: string
+}
+
 export function mapLegacyToSnapshot(
-  raw: unknown
+  raw: unknown,
+  meta: LegacySnapshotMeta = {}
 ): (Snapshot<typeof pipelineMachine> & { context: PipelineMachineContext }) | null {
   if (!raw || !isPlainObject(raw)) return null
 
@@ -207,10 +214,22 @@ export function mapLegacyToSnapshot(
   const migrated = mapLegacyPipelineState(raw)
   if (!migrated) return null
 
-  // Extract context values from the raw input, with sensible defaults
-  const projectId = typeof input.projectId === 'string' ? input.projectId : ''
-  const channelId = typeof input.channelId === 'string' ? input.channelId : null
-  const projectTitle = typeof input.projectTitle === 'string' ? input.projectTitle : ''
+  // Prefer caller-supplied meta over raw input fields. Persisted
+  // pipeline_state_json does NOT contain projectId/channelId/projectTitle —
+  // those live on the projects row. The caller (orchestrator) sources them
+  // from props and passes them via meta.
+  const projectId =
+    typeof meta.projectId === 'string' && meta.projectId.length > 0
+      ? meta.projectId
+      : typeof input.projectId === 'string' ? input.projectId : ''
+  const channelId =
+    meta.channelId !== undefined
+      ? meta.channelId
+      : typeof input.channelId === 'string' ? input.channelId : null
+  const projectTitle =
+    typeof meta.projectTitle === 'string' && meta.projectTitle.length > 0
+      ? meta.projectTitle
+      : typeof input.projectTitle === 'string' ? input.projectTitle : ''
 
   // Migrate legacy autopilotConfig if present, filling in new required slots.
   const autopilotConfig = migrateAutopilotConfig(input.autopilotConfig)

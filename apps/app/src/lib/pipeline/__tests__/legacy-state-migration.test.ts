@@ -112,6 +112,35 @@ describe('mapLegacyToSnapshot', () => {
     expect((snap as any)?.context.channelId).toBe('chan-456')
     expect((snap as any)?.context.projectTitle).toBe('My Project')
   })
+
+  it('uses meta projectId/channelId/projectTitle when raw JSON omits them', () => {
+    // Persisted pipeline_state_json does NOT contain projectId — those live
+    // on the projects row. The orchestrator passes them via meta. Without
+    // this, /api/projects/${projectId}/setup becomes /api/projects//setup.
+    const snap = mapLegacyToSnapshot(
+      { mode: 'step-by-step', stageResults: { brainstorm: {} } },
+      { projectId: 'proj-from-meta', channelId: 'chan-from-meta', projectTitle: 'Meta Title' },
+    )
+    expect((snap as any)?.context.projectId).toBe('proj-from-meta')
+    expect((snap as any)?.context.channelId).toBe('chan-from-meta')
+    expect((snap as any)?.context.projectTitle).toBe('Meta Title')
+  })
+
+  it('meta overrides raw input when both present', () => {
+    const snap = mapLegacyToSnapshot(
+      {
+        projectId: 'stale-from-json',
+        channelId: 'stale-from-json',
+        projectTitle: 'Stale',
+        mode: 'step-by-step',
+        stageResults: { brainstorm: {} },
+      },
+      { projectId: 'fresh-from-meta', channelId: 'fresh-from-meta', projectTitle: 'Fresh' },
+    )
+    expect((snap as any)?.context.projectId).toBe('fresh-from-meta')
+    expect((snap as any)?.context.channelId).toBe('fresh-from-meta')
+    expect((snap as any)?.context.projectTitle).toBe('Fresh')
+  })
 })
 
 // ─── Fixtures for autopilotConfig migration tests ───────────────────────────

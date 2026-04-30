@@ -114,9 +114,10 @@ function OrchestratorInner({
   creditSettings,
 }: InnerProps) {
   const router = useRouter()
-  const snapshot = useMemo(() => mapLegacyToSnapshot(initialPipelineState), [
-    initialPipelineState,
-  ])
+  const snapshot = useMemo(
+    () => mapLegacyToSnapshot(initialPipelineState, { projectId, channelId, projectTitle }),
+    [initialPipelineState, projectId, channelId, projectTitle]
+  )
   const legacy = useMemo(
     () => (snapshot ? null : mapLegacyPipelineState(initialPipelineState)),
     [initialPipelineState, snapshot]
