@@ -202,6 +202,7 @@ function OrchestratorInner({
     if (!restoredRef.current) return
     const snapshot = JSON.stringify({
       mode: ctx.mode,
+      autopilotConfig: ctx.autopilotConfig,
       stageResults: ctx.stageResults,
       iterationCount: ctx.iterationCount,
       currentStage,
@@ -218,6 +219,7 @@ function OrchestratorInner({
         body: JSON.stringify({
           pipelineStateJson: {
             mode: ctx.mode,
+            autopilotConfig: ctx.autopilotConfig,
             stageResults: ctx.stageResults,
             iterationCount: ctx.iterationCount,
             currentStage,
@@ -231,7 +233,7 @@ function OrchestratorInner({
       })
     }, 150)
     return () => clearTimeout(t)
-  }, [ctx.mode, ctx.stageResults, ctx.iterationCount, currentStage, ctx.paused, ctx.pauseReason, activityLog, projectId])
+  }, [ctx.mode, ctx.autopilotConfig, ctx.stageResults, ctx.iterationCount, currentStage, ctx.paused, ctx.pauseReason, activityLog, projectId])
 
   useEffect(() => {
     if (ctx.lastError) toast.error(ctx.lastError)
