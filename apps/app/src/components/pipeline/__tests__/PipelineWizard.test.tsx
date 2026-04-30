@@ -400,6 +400,140 @@ describe('assets / preview / publish fields (T-2.10)', () => {
 })
 
 // ────────────────────────────────────────────────────────────────────
+// Task 3.5: Save-as-template full round-trip (Spec 2 fields)
+// ────────────────────────────────────────────────────────────────────
+
+describe('save-as-template round-trip (T-3.5)', () => {
+  const spec2Template = {
+    id: 'tpl-spec2',
+    name: 'Spec 2 Template',
+    is_default: false,
+    config_json: {
+      defaultProvider: 'recommended' as const,
+      brainstorm: {
+        providerOverride: null,
+        mode: 'topic_driven' as const,
+        topic: 'AI agents',
+        referenceUrl: null,
+        niche: '',
+        tone: '',
+        audience: '',
+        goal: '',
+        constraints: '',
+      },
+      research: { providerOverride: null, depth: 'medium' as const },
+      canonicalCore: { providerOverride: null, personaId: null },
+      draft: { providerOverride: null, format: 'blog' as const, wordCount: 1500 },
+      review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
+      assets: { providerOverride: null, mode: 'briefs_only' as const },
+      preview: { enabled: true },
+      publish: { status: 'published' as const },
+    },
+  }
+
+  it('POST /api/autopilot-templates body includes all Spec 2 fields (assets.mode, preview.enabled, publish.status)', async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST' && typeof url === 'string' && url === '/api/autopilot-templates') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ data: spec2Template, error: null }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: { items: [] }, error: null }),
+      })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    renderWizard()
+
+    // 1. Set assets to briefs_only (it's the default, but interact to confirm the field is live)
+    const assetsBriefs = document.getElementById('assets-briefs')
+    if (assetsBriefs) await user.click(assetsBriefs)
+
+    // 2. Enable preview (default is false — toggle the switch on)
+    const previewSwitch = document.getElementById('preview-enabled')
+    if (previewSwitch) await user.click(previewSwitch)
+
+    // 3. Set publish status to published (default is draft)
+    const publishPublished = document.getElementById('publish-published')
+    if (publishPublished) await user.click(publishPublished)
+
+    // 4. Open Save-as-new dialog
+    await user.click(screen.getByRole('button', { name: /save as new/i }))
+
+    // 5. Enter template name
+    const nameInput = await screen.findByLabelText(/template name/i)
+    await user.type(nameInput, 'Spec 2 Template')
+
+    // 6. Submit the dialog
+    await user.click(screen.getByRole('button', { name: /^save$/i }))
+
+    // 7. Assert POST body includes all 3 Spec 2 fields
+    await waitFor(() => {
+      const postCall = (fetchSpy.mock.calls as [string, RequestInit | undefined][]).find(
+        ([url, init]) => url === '/api/autopilot-templates' && init?.method === 'POST',
+      )
+      expect(postCall).toBeDefined()
+      const [, init] = postCall ?? []
+      const body = JSON.parse(init?.body as string) as {
+        name: string
+        configJson: {
+          assets: { mode: string }
+          preview: { enabled: boolean }
+          publish: { status: string }
+        }
+      }
+      expect(body.name).toBe('Spec 2 Template')
+      expect(body.configJson.assets.mode).toBe('briefs_only')
+      expect(body.configJson.preview.enabled).toBe(true)
+      expect(body.configJson.publish.status).toBe('published')
+    })
+  })
+
+  it('loading a saved template pre-fills all Spec 2 fields (assets.mode, preview.enabled, publish.status)', async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      // GET /api/autopilot-templates returns the spec2 template in the list
+      if ((!init?.method || init.method === 'GET') && typeof url === 'string' && url.includes('/api/autopilot-templates')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ data: { items: [spec2Template] }, error: null }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: { items: [] }, error: null }),
+      })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    renderWizard()
+
+    // Wait for templates list to load and select the spec2 template
+    const templateSelect = await screen.findByRole('combobox', { name: /load template/i })
+    await user.click(templateSelect)
+    const option = await screen.findByRole('option', { name: /spec 2 template/i })
+    await user.click(option)
+
+    // Assert the form pre-fills the 3 Spec 2 fields from the loaded template
+    await waitFor(() => {
+      // assets: briefs_only radio should be checked
+      const assetsBriefs = document.getElementById('assets-briefs') as HTMLInputElement | null
+      expect(assetsBriefs?.getAttribute('data-state') ?? assetsBriefs?.checked).toBeTruthy()
+
+      // preview: enabled switch should be on
+      const previewSwitch = document.getElementById('preview-enabled') as HTMLButtonElement | null
+      expect(previewSwitch?.getAttribute('data-state')).toBe('checked')
+
+      // publish: published radio should be checked
+      const publishPublished = document.getElementById('publish-published') as HTMLInputElement | null
+      expect(publishPublished?.getAttribute('data-state') ?? publishPublished?.checked).toBeTruthy()
+    })
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────
 // Entry-point startStage tests (T-8.2)
 // ────────────────────────────────────────────────────────────────────
 
