@@ -12,7 +12,7 @@ import { ReviewFeedbackPanel } from '@/components/preview/ReviewFeedbackPanel';
 import { ManualOutputDialog } from './ManualOutputDialog';
 import { useManualMode } from '@/hooks/use-manual-mode';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
-import { GenerationProgressModal } from '@/components/generation/GenerationProgressModal';
+import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
 import { ContextBanner } from './ContextBanner';
 import { ContentWarningBanner } from './ContentWarningBanner';
 import { friendlyAiError } from '@/lib/ai/error-message';
@@ -846,7 +846,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
           runs behind display:none; the portal would leak onto the dashboard). SSE
           runs regardless of `open` so that onComplete fires in overview mode. */}
       {reviewing && !isManual && (
-        <GenerationProgressModal
+        <GenerationProgressFloat
           open={!overviewMode && reviewing}
           sessionId={draftId}
           sseUrl={`/api/content-drafts/${draftId}/events`}

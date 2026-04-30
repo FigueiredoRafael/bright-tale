@@ -11,13 +11,16 @@ interface Props {
     cancelUrl?: string;
     title?: string;
     reconnecting?: boolean;
+    /** ISO timestamp anchor for the SSE `since` filter — prevents picking up
+     *  events from a previous stage sharing the same session ID. */
+    since?: string;
     onComplete?: () => void;
     onFailed?: (message: string) => void;
     onAborted?: () => void;
     onClose: () => void;
 }
 
-export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, title = "Generating…", reconnecting, onComplete, onFailed, onAborted, onClose }: Props) {
+export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, title = "Generating…", reconnecting, since, onComplete, onFailed, onAborted, onClose }: Props) {
     const [collapsed, setCollapsed] = useState(false);
     const [cancelling, setCancelling] = useState(false);
 
@@ -30,12 +33,14 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
         if (sseUrl) {
             setActiveAt(reconnecting // eslint-disable-line react-hooks/set-state-in-effect -- compute timestamp once on session start
                 ? '1970-01-01T00:00:00Z'
-                : new Date(Date.now() - 30_000).toISOString()
+                // `since` anchors multi-stage sessions (e.g. canonical-core → produce)
+                // sharing one draftId so we don't replay the previous stage's completion.
+                : since ?? new Date(Date.now() - 30_000).toISOString()
             );
         } else {
             setActiveAt(null);
         }
-    }, [sseUrl, reconnecting]);
+    }, [sseUrl, reconnecting, since]);
 
     // SSE connects whenever there's an active session URL — NOT gated on `open`.
     // The float UI visibility is gated on `open` separately (see early return below).

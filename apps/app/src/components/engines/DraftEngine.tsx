@@ -20,7 +20,7 @@ import {
 } from '@/components/ai/ModelPicker';
 import { ManualOutputDialog } from './ManualOutputDialog';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
-import { GenerationProgressModal } from '@/components/generation/GenerationProgressModal';
+import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
 import { MarkdownPreview } from '@/components/preview/MarkdownPreview';
 import { ContextBanner } from './ContextBanner';
 import { ContentWarningBanner } from './ContentWarningBanner';
@@ -1444,7 +1444,7 @@ export function DraftEngine({
           the portal would leak onto the dashboard). SSE runs regardless of `open`
           so that onComplete fires even when the Dialog is hidden in overview mode. */}
       {activeDraftId && (
-        <GenerationProgressModal
+        <GenerationProgressFloat
           open={!overviewMode && !!activeDraftId}
           sessionId={activeDraftId}
           sseUrl={`/api/content-drafts/${activeDraftId}/events`}
