@@ -10,8 +10,26 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Lock, Settings2 } from "lucide-react";
 import type { PipelineSettings } from "@/components/engines/types";
 import { DEFAULT_PIPELINE_SETTINGS } from "@/components/engines/types";
+import { MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
 
-const PROVIDERS = ["gemini", "openai", "anthropic", "ollama", "manual"];
+const PROVIDERS = ["gemini", "openai", "anthropic", "ollama"] as const;
+type ProviderValue = typeof PROVIDERS[number];
+
+const STAGES = [
+  { key: "brainstorm",    label: "Brainstorm" },
+  { key: "research",      label: "Research" },
+  { key: "canonicalCore", label: "Canonical Core" },
+  { key: "draft",         label: "Draft" },
+  { key: "review",        label: "Review" },
+  { key: "assets",        label: "Assets" },
+] as const;
+
+function modelsForProvider(p: string): string[] {
+  if (p in MODELS_BY_PROVIDER) {
+    return MODELS_BY_PROVIDER[p as ProviderId].map((m) => m.id);
+  }
+  return [];
+}
 
 export default function PipelineSettingsPage() {
   const { toast } = useToast();
@@ -57,6 +75,22 @@ export default function PipelineSettingsPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function setProvider(stage: string, value: string) {
+    setSettings((s) => ({
+      ...s,
+      defaultProviders: { ...s.defaultProviders, [stage]: value },
+      // Reset model when provider changes — old model ID won't be valid for new provider.
+      defaultModels: { ...s.defaultModels, [stage]: "" },
+    }));
+  }
+
+  function setModel(stage: string, value: string) {
+    setSettings((s) => ({
+      ...s,
+      defaultModels: { ...s.defaultModels, [stage]: value },
+    }));
   }
 
   if (loading) {
@@ -142,36 +176,64 @@ export default function PipelineSettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Default providers per stage</CardTitle>
-          <CardDescription>Used when the user has not overridden explicitly.</CardDescription>
+          <CardTitle className="text-base">Default provider &amp; model per stage</CardTitle>
+          <CardDescription>
+            Applied when a project uses &ldquo;Recommended&rdquo; and has no per-stage override. Leave model blank to use the router default for the selected provider.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {(["brainstorm", "research", "draft", "review"] as const).map((stage) => (
-            <div key={stage} className="flex items-center justify-between">
-              <Label className="capitalize">{stage}</Label>
-              <Select
-                value={settings.defaultProviders[stage] ?? "gemini"}
-                disabled={!isAdmin}
-                onValueChange={(v) =>
-                  setSettings((s) => ({
-                    ...s,
-                    defaultProviders: { ...s.defaultProviders, [stage]: v },
-                  }))
-                }
-              >
-                <SelectTrigger className="w-44">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PROVIDERS.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {p}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ))}
+        <CardContent className="space-y-4">
+          {STAGES.map(({ key, label }) => {
+            const currentProvider = (settings.defaultProviders[key] ?? "gemini") as ProviderValue;
+            const currentModel = settings.defaultModels[key] ?? "";
+            const modelOptions = modelsForProvider(currentProvider);
+
+            return (
+              <div key={key} className="space-y-2">
+                <p className="text-sm font-medium">{label}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Provider</Label>
+                    <Select
+                      value={currentProvider}
+                      disabled={!isAdmin}
+                      onValueChange={(v) => setProvider(key, v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PROVIDERS.map((p) => (
+                          <SelectItem key={p} value={p}>
+                            {p.charAt(0).toUpperCase() + p.slice(1)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Model</Label>
+                    <Select
+                      value={currentModel || "__default__"}
+                      disabled={!isAdmin}
+                      onValueChange={(v) => setModel(key, v === "__default__" ? "" : v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Router default" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__default__">Router default</SelectItem>
+                        {modelOptions.map((m) => (
+                          <SelectItem key={m} value={m}>
+                            {m}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </CardContent>
       </Card>
 

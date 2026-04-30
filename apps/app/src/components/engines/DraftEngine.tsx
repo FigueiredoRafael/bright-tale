@@ -164,6 +164,8 @@ export function DraftEngine({
     if (h.selectedPersonaId !== undefined && h.selectedPersonaId !== null) {
       setSelectedPersonaId(h.selectedPersonaId);
     }
+    if (h.provider) setProvider(h.provider as Parameters<typeof setProvider>[0]);
+    if (h.model) setModel(h.model);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -305,9 +307,11 @@ export function DraftEngine({
           (a) => a.slug === 'content-core'
         );
         if (agent?.recommended_provider) {
-          setProvider(agent.recommended_provider as ProviderId);
-          if (agent.recommended_model) {
-            setModel(agent.recommended_model as string);
+          if (!autopilotConfig?.draft?.providerOverride) {
+            setProvider(agent.recommended_provider as ProviderId);
+            if (agent.recommended_model && !autopilotConfig?.draft?.modelOverride) {
+              setModel(agent.recommended_model as string);
+            }
           }
         }
       } catch (err) {
@@ -317,7 +321,7 @@ export function DraftEngine({
         setRecommendationLoaded(true);
       }
     })();
-  }, [abortController?.signal]);
+  }, [abortController?.signal, autopilotConfig?.draft?.providerOverride, autopilotConfig?.draft?.modelOverride]);
 
   // ── Auto-pilot wiring ─────────────────────────────────────────────
   const autoMode = useSelector(actor, (s) => s.context.mode);

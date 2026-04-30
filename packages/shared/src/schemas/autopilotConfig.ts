@@ -6,6 +6,7 @@ const DefaultProvider = z.union([z.literal('recommended'), aiProviderSchema])
 
 const BrainstormSlot = z.object({
   providerOverride: ProviderOrInherit,
+  modelOverride: z.string().nullable().optional(),
   mode: z.enum(['topic_driven', 'reference_guided']),
   topic: z.string().trim().optional().nullable(),
   referenceUrl: z.preprocess(
@@ -28,16 +29,19 @@ const BrainstormSlot = z.object({
 
 const ResearchSlot = z.object({
   providerOverride: ProviderOrInherit,
+  modelOverride: z.string().nullable().optional(),
   depth: z.enum(['surface', 'medium', 'deep']),
 })
 
 const CanonicalCoreSlot = z.object({
   providerOverride: ProviderOrInherit,
+  modelOverride: z.string().nullable().optional(),
   personaId: z.string().nullable(),
 })
 
 const DraftSlot = z.object({
   providerOverride: ProviderOrInherit,
+  modelOverride: z.string().nullable().optional(),
   format: z.enum(['blog', 'video', 'shorts', 'podcast']),
   wordCount: z.number().int().positive().optional(),
 }).superRefine((v, ctx) => {
@@ -48,6 +52,7 @@ const DraftSlot = z.object({
 
 const ReviewSlot = z.object({
   providerOverride: ProviderOrInherit,
+  modelOverride: z.string().nullable().optional(),
   maxIterations: z.number().int().min(0).max(20),
   autoApproveThreshold: z.number().int().min(0).max(100),
   hardFailThreshold: z.number().int().min(0).max(100),
@@ -59,6 +64,7 @@ const ReviewSlot = z.object({
 
 const AssetsSlot = z.object({
   providerOverride: ProviderOrInherit,
+  modelOverride: z.string().nullable().optional(),
   mode: z.enum(['skip', 'briefs_only', 'auto_generate']),
 })
 

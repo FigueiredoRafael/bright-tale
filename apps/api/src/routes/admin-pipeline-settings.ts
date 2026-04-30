@@ -24,7 +24,8 @@ const DEFAULTS = {
   review_reject_threshold: 40,
   review_approve_score: 90,
   review_max_iterations: 5,
-  default_providers_json: { brainstorm: 'gemini', research: 'gemini', draft: 'gemini', review: 'gemini' },
+  default_providers_json: { brainstorm: 'gemini', research: 'gemini', canonicalCore: 'gemini', draft: 'gemini', review: 'gemini', assets: 'gemini' },
+  default_models_json: {} as Record<string, string>,
 }
 
 function mapRow(row: Record<string, unknown>) {
@@ -33,6 +34,7 @@ function mapRow(row: Record<string, unknown>) {
     reviewApproveScore: row.review_approve_score ?? DEFAULTS.review_approve_score,
     reviewMaxIterations: row.review_max_iterations ?? DEFAULTS.review_max_iterations,
     defaultProviders: row.default_providers_json ?? DEFAULTS.default_providers_json,
+    defaultModels: (row.default_models_json ?? DEFAULTS.default_models_json) as Record<string, string>,
   }
 }
 
@@ -61,6 +63,7 @@ export async function adminPipelineSettingsRoutes(app: FastifyInstance) {
     if (body.reviewApproveScore !== undefined) update.review_approve_score = body.reviewApproveScore
     if (body.reviewMaxIterations !== undefined) update.review_max_iterations = body.reviewMaxIterations
     if (body.defaultProviders !== undefined) update.default_providers_json = body.defaultProviders
+    if (body.defaultModels !== undefined) update.default_models_json = body.defaultModels
 
     const { data, error } = await sb
       .from('pipeline_settings')

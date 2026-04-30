@@ -170,6 +170,8 @@ export function BrainstormEngine({
     if (hydration.goal !== undefined) setGoal(hydration.goal);
     if (hydration.constraints !== undefined) setConstraints(hydration.constraints);
     if (hydration.referenceUrl !== undefined) setReferenceUrl(hydration.referenceUrl);
+    if (hydration.provider) setProvider(hydration.provider as Parameters<typeof setProvider>[0]);
+    if (hydration.model) setModel(hydration.model);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -396,9 +398,12 @@ export function BrainstormEngine({
             provider: agent.recommended_provider as string,
             model: (agent.recommended_model as string) || null,
           });
-          setProvider(agent.recommended_provider as ProviderId);
-          if (agent.recommended_model) {
-            setModel(agent.recommended_model as string);
+          // Only apply agent defaults when autopilotConfig has no per-slot override.
+          if (!autopilotConfig?.brainstorm?.providerOverride) {
+            setProvider(agent.recommended_provider as ProviderId);
+            if (agent.recommended_model && !autopilotConfig?.brainstorm?.modelOverride) {
+              setModel(agent.recommended_model as string);
+            }
           }
         }
       } catch (err) {
@@ -406,7 +411,7 @@ export function BrainstormEngine({
         // silent — keep defaults
       }
     })();
-  }, [abortController?.signal]);
+  }, [abortController?.signal, autopilotConfig?.brainstorm?.providerOverride, autopilotConfig?.brainstorm?.modelOverride]);
 
   // Auto-pilot: trigger generation when topic is filled and we're on the
   // brainstorm stage. Brainstorm is the entry point so the user types the

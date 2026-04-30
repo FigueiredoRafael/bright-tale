@@ -15,6 +15,8 @@ const updateAgentSchema = z.object({
   input_schema: z.string().optional(),
   output_schema: z.string().optional(),
   sections_json: z.any().optional(),
+  recommended_provider: z.string().nullable().optional(),
+  recommended_model: z.string().nullable().optional(),
 });
 
 export async function agentsRoutes(fastify: FastifyInstance): Promise<void> {

@@ -33,6 +33,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { usePipelineActor } from '@/hooks/usePipelineActor'
 import { usePipelineSettings } from '@/providers/PipelineSettingsProvider'
+import { MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker'
 import type { AutopilotConfig } from '@brighttale/shared'
 import { autopilotConfigSchema, setupProjectSchema } from '@brighttale/shared'
 import type { StartStage } from '@brighttale/shared'
@@ -112,17 +113,21 @@ function buildDefaultAutopilotConfig(pipelineSettings: {
   reviewApproveScore: number
   reviewMaxIterations: number
   defaultProviders: Record<string, string>
+  defaultModels: Record<string, string>
 }): AutopilotConfig {
   const dp = pipelineSettings.defaultProviders
+  const dm = pipelineSettings.defaultModels
   const toProvider = (key: string) => {
     const val = dp[key]
     if (val === 'openai' || val === 'anthropic' || val === 'gemini' || val === 'ollama') return val
     return null
   }
+  const toModel = (key: string) => dm[key] || null
   return {
     defaultProvider: 'recommended',
     brainstorm: {
       providerOverride: toProvider('brainstorm'),
+      modelOverride: toModel('brainstorm'),
       mode: 'topic_driven',
       topic: '',
       referenceUrl: null,
@@ -134,25 +139,30 @@ function buildDefaultAutopilotConfig(pipelineSettings: {
     },
     research: {
       providerOverride: toProvider('research'),
+      modelOverride: toModel('research'),
       depth: 'medium',
     },
     canonicalCore: {
       providerOverride: toProvider('canonicalCore') ?? toProvider('draft'),
+      modelOverride: toModel('canonicalCore') || toModel('draft'),
       personaId: null,
     },
     draft: {
       providerOverride: toProvider('draft'),
+      modelOverride: toModel('draft'),
       format: 'blog',
       wordCount: 1500,
     },
     review: {
       providerOverride: toProvider('review'),
+      modelOverride: toModel('review'),
       maxIterations: pipelineSettings.reviewMaxIterations,
       autoApproveThreshold: pipelineSettings.reviewApproveScore,
       hardFailThreshold: pipelineSettings.reviewRejectThreshold,
     },
     assets: {
       providerOverride: toProvider('assets'),
+      modelOverride: toModel('assets'),
       mode: 'briefs_only',
     },
     preview: {
@@ -265,6 +275,87 @@ function UpdateConfirmDialog({ templateName, onConfirm, onCancel }: UpdateConfir
 
 // ─── Field groups ─────────────────────────────────────────────────────────────
 
+type ProviderModelStage =
+  | 'brainstorm'
+  | 'research'
+  | 'canonicalCore'
+  | 'draft'
+  | 'review'
+  | 'assets'
+
+function ProviderModelFields({ stage }: { stage: ProviderModelStage }) {
+  const { control, watch, setValue } = useFormContext<WizardFormValues>()
+  const providerPath = `autopilotConfig.${stage}.providerOverride` as const
+  const modelPath = `autopilotConfig.${stage}.modelOverride` as const
+  const selectedProvider = watch(providerPath) as string | null | undefined
+  const selectedModel = watch(modelPath) as string | null | undefined
+
+  const modelOptions =
+    selectedProvider && selectedProvider in MODELS_BY_PROVIDER
+      ? MODELS_BY_PROVIDER[selectedProvider as ProviderId].map((m) => m.id)
+      : []
+
+  return (
+    <div className="grid grid-cols-2 gap-3 pt-2 border-t mt-3">
+      <div className="space-y-1">
+        <Label className="text-xs text-muted-foreground">Provider</Label>
+        <Controller
+          control={control}
+          name={providerPath}
+          render={({ field }) => (
+            <Select
+              value={field.value ?? '__recommended__'}
+              onValueChange={(v) => {
+                field.onChange(v === '__recommended__' ? null : v)
+                setValue(modelPath, null)
+              }}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__recommended__">Recommended</SelectItem>
+                {(['openai', 'anthropic', 'gemini', 'ollama'] as const).map((p) => (
+                  <SelectItem key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs text-muted-foreground">Model</Label>
+        <Controller
+          control={control}
+          name={modelPath}
+          render={({ field }) => (
+            <Select
+              value={field.value ?? '__default__'}
+              disabled={!selectedProvider || selectedProvider === '__recommended__'}
+              onValueChange={(v) => field.onChange(v === '__default__' ? null : v)}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Provider default" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__default__">Provider default</SelectItem>
+                {modelOptions.map((m) => (
+                  <SelectItem key={m} value={m}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
+      </div>
+      {selectedProvider && selectedProvider !== '__recommended__' && selectedModel && (
+        <p className="col-span-2 text-[10px] text-muted-foreground">
+          {selectedProvider} / {selectedModel}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function BrainstormFields({ brainstormMode }: { brainstormMode: 'topic_driven' | 'reference_guided' }) {
   const { register, control, formState: { errors } } = useFormContext<WizardFormValues>()
 
@@ -329,6 +420,7 @@ function BrainstormFields({ brainstormMode }: { brainstormMode: 'topic_driven' |
           {...register('autopilotConfig.brainstorm.niche')}
         />
       </div>
+      <ProviderModelFields stage="brainstorm" />
     </div>
   )
 }
@@ -337,24 +429,27 @@ function ResearchFields() {
   const { control } = useFormContext<WizardFormValues>()
 
   return (
-    <div>
-      <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Research depth</Label>
-      <Controller
-        control={control}
-        name="autopilotConfig.research.depth"
-        render={({ field }) => (
-          <Select value={field.value} onValueChange={field.onChange}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="surface">Surface</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
-              <SelectItem value="deep">Deep</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-      />
+    <div className="space-y-3">
+      <div>
+        <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Research depth</Label>
+        <Controller
+          control={control}
+          name="autopilotConfig.research.depth"
+          render={({ field }) => (
+            <Select value={field.value} onValueChange={field.onChange}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="surface">Surface</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="deep">Deep</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+        />
+      </div>
+      <ProviderModelFields stage="research" />
     </div>
   )
 }
@@ -387,7 +482,8 @@ function CanonicalCoreFields() {
   }, [])
 
   return (
-    <div>
+    <div className="space-y-3">
+      <div>
       <Label htmlFor="canonicalCore-personaId" className="text-xs font-medium text-muted-foreground mb-1.5 block">Persona (optional)</Label>
       <Controller
         control={control}
@@ -412,6 +508,8 @@ function CanonicalCoreFields() {
           </Select>
         )}
       />
+      </div>
+      <ProviderModelFields stage="canonicalCore" />
     </div>
   )
 }
@@ -455,6 +553,7 @@ function DraftFields() {
           </p>
         )}
       </div>
+      <ProviderModelFields stage="draft" />
     </div>
   )
 }
@@ -496,6 +595,7 @@ function ReviewFields() {
           </p>
         )}
       </div>
+      <ProviderModelFields stage="review" />
     </div>
   )
 }
@@ -526,6 +626,7 @@ function AssetsFields() {
           </RadioGroup>
         )}
       />
+      <ProviderModelFields stage="assets" />
     </div>
   )
 }

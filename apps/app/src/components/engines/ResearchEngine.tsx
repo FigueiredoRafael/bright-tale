@@ -147,9 +147,9 @@ export function ResearchEngine({
   const autopilotConfig = useSelector(actor, (s) => s.context.autopilotConfig);
   useEffect(() => {
     const h = hydrateResearchFromConfig(autopilotConfig);
-    if (h.researchDepth !== undefined) {
-      setLevel(h.researchDepth);
-    }
+    if (h.researchDepth !== undefined) setLevel(h.researchDepth);
+    if (h.provider) setProvider(h.provider as Parameters<typeof setProvider>[0]);
+    if (h.model) setModel(h.model);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -277,9 +277,11 @@ export function ResearchEngine({
             provider: agent.recommended_provider as string,
             model: (agent.recommended_model as string) || null,
           });
-          setProvider(agent.recommended_provider as ProviderId);
-          if (agent.recommended_model) {
-            setModel(agent.recommended_model as string);
+          if (!autopilotConfig?.research?.providerOverride) {
+            setProvider(agent.recommended_provider as ProviderId);
+            if (agent.recommended_model && !autopilotConfig?.research?.modelOverride) {
+              setModel(agent.recommended_model as string);
+            }
           }
         }
       } catch (err) {
@@ -287,7 +289,7 @@ export function ResearchEngine({
         // silent — keep defaults
       }
     })();
-  }, [abortController?.signal]);
+  }, [abortController?.signal, autopilotConfig?.research?.providerOverride, autopilotConfig?.research?.modelOverride]);
 
   function toggleFocus(id: string) {
     setFocusTags((prev) =>

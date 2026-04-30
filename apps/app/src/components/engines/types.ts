@@ -141,6 +141,7 @@ export interface PipelineSettings {
   reviewApproveScore: number;
   reviewMaxIterations: number;
   defaultProviders: Record<string, string>;
+  defaultModels: Record<string, string>;
 }
 
 export const DEFAULT_PIPELINE_SETTINGS: PipelineSettings = {
@@ -150,9 +151,12 @@ export const DEFAULT_PIPELINE_SETTINGS: PipelineSettings = {
   defaultProviders: {
     brainstorm: 'gemini',
     research: 'gemini',
+    canonicalCore: 'gemini',
     draft: 'gemini',
     review: 'gemini',
+    assets: 'gemini',
   },
+  defaultModels: {},
 };
 
 export interface CreditSettings {
