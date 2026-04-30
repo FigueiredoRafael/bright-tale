@@ -1,3 +1,9 @@
+/**
+ * PipelineOverview tests (updated for new 2-column dashboard design)
+ *
+ * PipelineOverview is now a thin wrapper around PipelineDashboard.
+ * Tests verify that it renders the dashboard and forwards props correctly.
+ */
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -47,7 +53,6 @@ afterEach(() => {
   snapshotOverride = makeSnapshot()
 })
 
-// Import AFTER mocks
 import { PipelineOverview } from '../PipelineOverview'
 
 // ─── Test data ────────────────────────────────────────────────────────────────
@@ -81,79 +86,99 @@ const COMPLETED_BRAINSTORM_RESULTS = {
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-describe('PipelineOverview', () => {
-  it('renders OverviewTimeline with all 7 stage rows', () => {
+describe('PipelineOverview (2-column dashboard)', () => {
+  it('renders the pipeline dashboard', () => {
     snapshotOverride = makeSnapshot({
       stageResults: COMPLETED_BRAINSTORM_RESULTS,
       autopilotConfig: STANDARD_AUTOPILOT_CONFIG,
     })
 
-    render(<PipelineOverview setShowEngine={vi.fn()} />)
+    render(
+      <PipelineOverview
+        setShowEngine={vi.fn()}
+        activityLog={[]}
+        onActivityLogChange={vi.fn()}
+      />,
+    )
 
-    // The OverviewTimeline wrapper card
-    expect(screen.getByTestId('pipeline-overview')).toBeInTheDocument()
-    // All 7 stage rows present
-    const stageNames = ['brainstorm', 'research', 'draft', 'review', 'assets', 'preview', 'publish']
-    for (const stage of stageNames) {
-      expect(screen.getByTestId(`stage-row-${stage}`)).toBeInTheDocument()
+    expect(screen.getByTestId('pipeline-dashboard')).toBeInTheDocument()
+  })
+
+  it('renders all 7 stage rail buttons', () => {
+    snapshotOverride = makeSnapshot({
+      stageResults: COMPLETED_BRAINSTORM_RESULTS,
+      autopilotConfig: STANDARD_AUTOPILOT_CONFIG,
+    })
+
+    render(
+      <PipelineOverview
+        setShowEngine={vi.fn()}
+        activityLog={[]}
+        onActivityLogChange={vi.fn()}
+      />,
+    )
+
+    const stages = ['brainstorm', 'research', 'draft', 'review', 'assets', 'preview', 'publish']
+    for (const stage of stages) {
+      expect(screen.getByTestId(`rail-stage-${stage}`)).toBeInTheDocument()
     }
   })
 
-  it('does NOT render LiveActivityLog when no stage transitions have occurred', () => {
-    snapshotOverride = makeSnapshot()
-    render(<PipelineOverview setShowEngine={vi.fn()} />)
-    expect(screen.queryByTestId('live-activity-log')).toBeNull()
-  })
-
-  it('renders brainstorm row running when at brainstorm with empty stageResults', () => {
+  it('shows brainstorm panel as live when at brainstorm with empty stageResults', () => {
     snapshotOverride = makeSnapshot({ stateValue: 'brainstorm' })
-    render(<PipelineOverview setShowEngine={vi.fn()} />)
 
-    const brainstormRow = screen.getByTestId('stage-row-brainstorm')
-    expect(brainstormRow.className).toContain('border-l-2')
+    render(
+      <PipelineOverview
+        setShowEngine={vi.fn()}
+        activityLog={[]}
+        onActivityLogChange={vi.fn()}
+      />,
+    )
+
+    // Desktop + mobile both render the panel
+    expect(screen.getAllByTestId('stage-panel-brainstorm').length).toBeGreaterThan(0)
   })
 
-  it('renders completed brainstorm with Open engine button and summary', () => {
+  it('shows activity log count badge when log entries exist', () => {
     snapshotOverride = makeSnapshot({
       stateValue: 'research',
       stageResults: COMPLETED_BRAINSTORM_RESULTS,
-      autopilotConfig: STANDARD_AUTOPILOT_CONFIG,
     })
 
-    render(<PipelineOverview setShowEngine={vi.fn()} />)
+    const log = [{ timestamp: new Date().toISOString(), text: 'Brainstorm completed' }]
+    render(
+      <PipelineOverview
+        setShowEngine={vi.fn()}
+        activityLog={log}
+        onActivityLogChange={vi.fn()}
+      />,
+    )
 
-    expect(screen.getByRole('button', { name: /open engine/i })).toBeInTheDocument()
-    expect(screen.getByText('My Great Idea (strong)')).toBeInTheDocument()
+    expect(screen.getByTestId('activity-log-count').textContent).toBe('1')
   })
 
-  it('calls setShowEngine with stage name when Open engine button is clicked', async () => {
+  it('calls setShowEngine when Open engine is clicked', async () => {
     const user = userEvent.setup()
     const setShowEngine = vi.fn()
-
     snapshotOverride = makeSnapshot({
       stateValue: 'research',
       stageResults: COMPLETED_BRAINSTORM_RESULTS,
       autopilotConfig: STANDARD_AUTOPILOT_CONFIG,
     })
 
-    render(<PipelineOverview setShowEngine={setShowEngine} />)
+    render(
+      <PipelineOverview
+        setShowEngine={setShowEngine}
+        activityLog={[]}
+        onActivityLogChange={vi.fn()}
+      />,
+    )
 
-    const btn = screen.getByRole('button', { name: /open engine/i })
-    await user.click(btn)
-
+    // Switch to brainstorm (completed)
+    await user.click(screen.getByTestId('rail-stage-brainstorm'))
+    // Desktop + mobile both render the button; click the first one
+    const openBtns = screen.getAllByTestId('open-engine-brainstorm')
+    await user.click(openBtns[0])
     expect(setShowEngine).toHaveBeenCalledWith('brainstorm')
-  })
-
-  it('shows assets row as skipped when assets.mode is skip', () => {
-    snapshotOverride = makeSnapshot({
-      stateValue: 'brainstorm',
-      autopilotConfig: STANDARD_AUTOPILOT_CONFIG, // assets.mode === 'skip'
-    })
-
-    render(<PipelineOverview setShowEngine={vi.fn()} />)
-
-    const assetsRow = screen.getByTestId('stage-row-assets')
-    expect(assetsRow.className).not.toContain('border-l-2')
-    expect(assetsRow.querySelector('.bg-primary')).toBeNull()
   })
 })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useMachine } from '@xstate/react'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
@@ -39,6 +39,7 @@ import { AutoModeControls } from './AutoModeControls'
 import { CompletedStageSummary } from './CompletedStageSummary'
 import { PipelineWizard } from './PipelineWizard'
 import { PipelineOverview } from './PipelineOverview'
+import type { ActivityEntry } from './LiveActivityLog'
 import { MiniWizardSheet } from './MiniWizardSheet'
 import { ConfirmReturnDialog } from './ConfirmReturnDialog'
 import { BrainstormEngine } from '@/components/engines/BrainstormEngine'
@@ -178,6 +179,24 @@ function OrchestratorInner({
       ? 'idle'
       : ((stateValue as Record<string, string>)[currentStage] ?? 'idle')
 
+  // ── Activity log — lifted here so it persists across reloads via pipeline_state_json ──
+  const [activityLog, setActivityLog] = useState<ActivityEntry[]>(() => {
+    if (!initialPipelineState || typeof initialPipelineState !== 'object') return []
+    const raw = (initialPipelineState as Record<string, unknown>).activityLog
+    if (!Array.isArray(raw)) return []
+    return raw.filter(
+      (e): e is ActivityEntry =>
+        typeof e === 'object' &&
+        e !== null &&
+        typeof (e as Record<string, unknown>).timestamp === 'string' &&
+        typeof (e as Record<string, unknown>).text === 'string',
+    )
+  })
+
+  const handleActivityLogChange = useCallback((entries: ActivityEntry[]) => {
+    setActivityLog(entries)
+  }, [])
+
   const lastPersistedRef = useRef<string>('')
   useEffect(() => {
     if (!restoredRef.current) return
@@ -188,6 +207,7 @@ function OrchestratorInner({
       currentStage,
       paused: ctx.paused,
       pauseReason: ctx.pauseReason,
+      activityLog,
     })
     if (snapshot === lastPersistedRef.current) return
     const t = setTimeout(() => {
@@ -203,6 +223,7 @@ function OrchestratorInner({
             currentStage,
             paused: ctx.paused,
             pauseReason: ctx.pauseReason,
+            activityLog,
           },
         }),
       }).catch(() => {
@@ -210,7 +231,7 @@ function OrchestratorInner({
       })
     }, 150)
     return () => clearTimeout(t)
-  }, [ctx.mode, ctx.stageResults, ctx.iterationCount, currentStage, ctx.paused, ctx.pauseReason, projectId])
+  }, [ctx.mode, ctx.stageResults, ctx.iterationCount, currentStage, ctx.paused, ctx.pauseReason, activityLog, projectId])
 
   useEffect(() => {
     if (ctx.lastError) toast.error(ctx.lastError)
@@ -541,7 +562,12 @@ function OrchestratorInner({
 
         {ctx.mode === 'overview' && !showEngine ? (
           <>
-            <PipelineOverview setShowEngine={(stage) => setShowEngine(stage as PipelineStage)} />
+            <PipelineOverview
+              setShowEngine={(stage) => setShowEngine(stage as PipelineStage)}
+              onRedoFrom={handleRedoFrom}
+              activityLog={activityLog}
+              onActivityLogChange={handleActivityLogChange}
+            />
             <div data-testid="hidden-engine-wrapper" style={{ display: 'none' }} aria-hidden="true">
               {renderEngine(stageToRender)}
             </div>

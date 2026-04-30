@@ -1,0 +1,489 @@
+'use client'
+
+import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
+import { Badge } from '@/components/ui/badge'
+import {
+  Lightbulb, Search, FileText, CheckCircle, Image, Eye, Globe,
+  ArrowRight, ExternalLink, RotateCcw,
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { deriveTier } from '@brighttale/shared'
+import type { PipelineStage } from '@/components/engines/types'
+import type { StageResultMap } from '@/lib/pipeline/machine.types'
+import type { AutopilotConfig } from '@brighttale/shared'
+import {
+  STAGE_ICON, STAGE_LABEL, StatusPill, deriveRailStatus,
+  type RailStageStatus,
+} from './StageRail'
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+interface KpiProps {
+  label: string
+  value: string | number
+  highlight?: boolean
+}
+
+function Kpi({ label, value, highlight }: KpiProps) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{label}</span>
+      <span className={cn('text-xl font-bold tabular-nums', highlight && 'text-primary')}>{value}</span>
+    </div>
+  )
+}
+
+interface HighlightItemProps {
+  label: string
+  value: string
+  mono?: boolean
+}
+
+function HighlightItem({ label, value, mono }: HighlightItemProps) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{label}</span>
+      <span className={cn('text-sm text-foreground break-words', mono && 'font-mono text-xs')}>{value}</span>
+    </div>
+  )
+}
+
+// ── Render the details panel body for a given stage/result ────────────────────
+
+interface DetailBodyProps {
+  stage: PipelineStage
+  stageResults: StageResultMap
+  status: RailStageStatus
+}
+
+/**
+ * Filters feedbackJson and latestFeedbackJson keys and summarises object/array values.
+ * Ported from CompletedStageSummary.
+ */
+function renderResultFields(result: Record<string, unknown>, skip: string[] = []) {
+  const SKIP_KEYS = new Set(['completedAt', 'feedbackJson', 'latestFeedbackJson', ...skip])
+  return Object.entries(result)
+    .filter(([k]) => !SKIP_KEYS.has(k))
+    .map(([key, value]) => {
+      let display: string
+      if (Array.isArray(value)) {
+        display = value.length === 0 ? '—' : `${value.length} item(s)`
+      } else if (value !== null && typeof value === 'object') {
+        display = `${Object.keys(value as object).length} field(s)`
+      } else {
+        display = String(value ?? '—')
+      }
+      return (
+        <div key={key} className="flex gap-2">
+          <span className="font-medium text-muted-foreground/70 shrink-0 text-[11px]">{key}:</span>
+          <span className="text-[11px] break-all">{display}</span>
+        </div>
+      )
+    })
+}
+
+function EmptyState({ status }: { status: RailStageStatus }) {
+  const msg =
+    status === 'queued'  ? 'Waiting for previous stage…'
+    : status === 'paused'  ? 'Pipeline paused'
+    : status === 'failed'  ? 'This stage encountered an error'
+    : status === 'skipped' ? 'Stage skipped per autopilot config'
+    :                        'Stage in progress…'
+
+  return (
+    <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+      <p className="text-muted-foreground/60 text-sm">{msg}</p>
+    </div>
+  )
+}
+
+function DetailBody({ stage, stageResults, status }: DetailBodyProps) {
+  switch (stage) {
+    case 'brainstorm': {
+      const r = stageResults.brainstorm
+      if (!r) return <EmptyState status={status} />
+      return (
+        <div className="space-y-8">
+          <div className="grid grid-cols-2 gap-6">
+            <Kpi label="Verdict" value={r.ideaVerdict} highlight />
+            {r.brainstormSessionId && (
+              <Kpi label="Session" value={r.brainstormSessionId.slice(0, 8) + '…'} />
+            )}
+          </div>
+          <Separator />
+          <div className="space-y-4">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Selected Idea</p>
+            <p className="text-lg font-semibold leading-snug">{r.ideaTitle}</p>
+            {r.ideaCoreTension && (
+              <p className="text-sm text-muted-foreground italic">&ldquo;{r.ideaCoreTension}&rdquo;</p>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    case 'research': {
+      const r = stageResults.research
+      if (!r) return <EmptyState status={status} />
+      return (
+        <div className="space-y-8">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
+            <Kpi label="Cards approved" value={r.approvedCardsCount} highlight />
+            <Kpi label="Depth" value={r.researchLevel} />
+            {r.primaryKeyword && <Kpi label="Primary keyword" value={r.primaryKeyword} />}
+          </div>
+          <Separator />
+          <div className="space-y-4">
+            {r.primaryKeyword && <HighlightItem label="Primary keyword" value={r.primaryKeyword} />}
+            {r.secondaryKeywords && r.secondaryKeywords.length > 0 && (
+              <HighlightItem
+                label={`Secondary keywords (${r.secondaryKeywords.length})`}
+                value={r.secondaryKeywords.slice(0, 5).join(' · ')}
+              />
+            )}
+            {r.searchIntent && <HighlightItem label="Search intent" value={r.searchIntent} />}
+          </div>
+        </div>
+      )
+    }
+
+    case 'draft': {
+      const r = stageResults.draft
+      if (!r) return <EmptyState status={status} />
+      // Rough word count from content
+      const wordCount = r.draftContent
+        ? r.draftContent.trim().split(/\s+/).filter(Boolean).length
+        : 0
+      return (
+        <div className="space-y-8">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
+            {wordCount > 0 && <Kpi label="Words" value={wordCount.toLocaleString()} highlight />}
+            {r.personaName && <Kpi label="Persona" value={r.personaName} />}
+            <Kpi label="Draft ID" value={r.draftId.slice(0, 8) + '…'} />
+          </div>
+          <Separator />
+          <div className="space-y-4">
+            <HighlightItem label="Title" value={r.draftTitle} />
+            {/* Extract H2 headings from draftContent as outline */}
+            {r.draftContent && (() => {
+              const h2s = r.draftContent.match(/^## .+$/mg) ?? []
+              if (h2s.length === 0) return null
+              return (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    Outline ({h2s.length} sections)
+                  </p>
+                  <ul className="space-y-1">
+                    {h2s.slice(0, 6).map((h, i) => (
+                      <li key={i} className="text-sm text-muted-foreground flex gap-2">
+                        <span className="text-primary/60 tabular-nums text-[10px] pt-0.5">{i + 1}.</span>
+                        <span>{h.replace(/^## /, '')}</span>
+                      </li>
+                    ))}
+                    {h2s.length > 6 && (
+                      <li className="text-xs text-muted-foreground/50">+{h2s.length - 6} more sections</li>
+                    )}
+                  </ul>
+                </div>
+              )
+            })()}
+          </div>
+        </div>
+      )
+    }
+
+    case 'review': {
+      const r = stageResults.review
+      if (!r) return <EmptyState status={status} />
+      const tier = deriveTier({ quality_tier: r.qualityTier, score: r.score })
+      const tierLabel: Record<string, string> = {
+        excellent:     'Excellent',
+        good:          'Good',
+        needs_revision:'Needs Revision',
+        reject:        'Rejected',
+        not_requested: 'Not Reviewed',
+      }
+      const tierColor: Record<string, string> = {
+        excellent:     'text-green-600 dark:text-green-400',
+        good:          'text-blue-600 dark:text-blue-400',
+        needs_revision:'text-amber-600 dark:text-amber-400',
+        reject:        'text-destructive',
+        not_requested: 'text-muted-foreground',
+      }
+      return (
+        <div className="space-y-8">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
+            <Kpi label="Score" value={`${r.score}/100`} highlight />
+            <Kpi label="Iterations" value={r.iterationCount} />
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Tier</span>
+              <span className={cn('text-xl font-bold', tierColor[tier] ?? 'text-foreground')}>
+                {tierLabel[tier] ?? 'Unknown'}
+              </span>
+            </div>
+          </div>
+          <Separator />
+          {r.iterations && r.iterations.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Iteration history
+              </p>
+              <ul className="space-y-2">
+                {r.iterations.map((it) => (
+                  <li key={it.iterationNum} className="text-sm flex gap-2 items-baseline">
+                    <span className="font-medium text-muted-foreground/70 shrink-0 tabular-nums text-[11px]">#{it.iterationNum}</span>
+                    <span className="font-semibold tabular-nums">{it.score}/100</span>
+                    <span className="text-muted-foreground/70 text-[11px]">{it.verdict}</span>
+                    {it.oneLineSummary && (
+                      <span className="text-muted-foreground text-[11px] italic truncate">&ldquo;{it.oneLineSummary}&rdquo;</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    case 'assets': {
+      const r = stageResults.assets
+      if (!r) return <EmptyState status={status} />
+      return (
+        <div className="space-y-8">
+          <div className="grid grid-cols-2 gap-6">
+            <Kpi label="Assets" value={r.skipped ? 'Skipped' : r.assetIds.length} highlight={!r.skipped} />
+            {r.featuredImageUrl && <Kpi label="Featured image" value="Set" />}
+          </div>
+          {!r.skipped && r.featuredImageUrl && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Featured image</p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={r.featuredImageUrl}
+                  alt="Featured"
+                  className="rounded-lg max-h-40 object-cover"
+                />
+              </div>
+            </>
+          )}
+          {r.assetIds.length > 0 && (
+            <>
+              <Separator />
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Asset IDs</p>
+                <ul className="space-y-0.5">
+                  {r.assetIds.slice(0, 5).map((id) => (
+                    <li key={id} className="text-[11px] font-mono text-muted-foreground">{id}</li>
+                  ))}
+                  {r.assetIds.length > 5 && (
+                    <li className="text-[11px] text-muted-foreground/50">+{r.assetIds.length - 5} more</li>
+                  )}
+                </ul>
+              </div>
+            </>
+          )}
+        </div>
+      )
+    }
+
+    case 'preview': {
+      const r = stageResults.preview
+      if (!r) return <EmptyState status={status} />
+      return (
+        <div className="space-y-8">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
+            <Kpi label="Categories" value={r.categories.length} />
+            <Kpi label="Tags" value={r.tags.length} />
+            {r.suggestedPublishDate && <Kpi label="Publish date" value={new Date(r.suggestedPublishDate).toLocaleDateString()} />}
+          </div>
+          <Separator />
+          <div className="space-y-4">
+            {r.seoOverrides.title && <HighlightItem label="SEO title" value={r.seoOverrides.title} />}
+            {r.seoOverrides.slug && <HighlightItem label="Slug" value={r.seoOverrides.slug} mono />}
+            {r.seoOverrides.metaDescription && (
+              <HighlightItem label="Meta description" value={r.seoOverrides.metaDescription} />
+            )}
+            {r.categories.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Categories</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {r.categories.map((c) => (
+                    <Badge key={c} variant="secondary" className="text-[11px]">{c}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {r.tags.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Tags</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {r.tags.slice(0, 10).map((t) => (
+                    <Badge key={t} variant="outline" className="text-[11px]">{t}</Badge>
+                  ))}
+                  {r.tags.length > 10 && (
+                    <Badge variant="ghost" className="text-[11px]">+{r.tags.length - 10}</Badge>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    case 'publish': {
+      const r = stageResults.publish
+      if (!r) return <EmptyState status={status} />
+      return (
+        <div className="space-y-8">
+          <div className="grid grid-cols-2 gap-6">
+            <Kpi label="Post ID" value={r.wordpressPostId} highlight />
+          </div>
+          <Separator />
+          <div className="space-y-4">
+            {r.publishedUrl && (
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Published URL</p>
+                <a
+                  href={r.publishedUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-primary hover:underline flex items-center gap-1.5 break-all"
+                >
+                  {r.publishedUrl}
+                  <ExternalLink className="h-3 w-3 shrink-0" />
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    default:
+      return <EmptyState status={status} />
+  }
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
+
+interface StagePanelDetailProps {
+  /** The stage being displayed in the panel. */
+  selectedStage: PipelineStage
+  /** The live/running stage (may differ from selectedStage). */
+  currentStage: PipelineStage
+  stageResults: StageResultMap
+  paused: boolean
+  subState: string
+  autopilotConfig: AutopilotConfig | null
+  onOpenEngine: (stage: PipelineStage) => void
+  onRedoFrom?: (stage: PipelineStage) => void
+  /** Jump back to the live stage. */
+  onBackToLive: () => void
+}
+
+export function StagePanelDetail({
+  selectedStage,
+  currentStage,
+  stageResults,
+  paused,
+  subState,
+  autopilotConfig,
+  onOpenEngine,
+  onRedoFrom,
+  onBackToLive,
+}: StagePanelDetailProps) {
+  const Icon = STAGE_ICON[selectedStage]
+  const status = deriveRailStatus(
+    selectedStage, currentStage, stageResults, paused, subState, autopilotConfig,
+  )
+  const isLive = selectedStage === currentStage
+  const hasResult = !!(stageResults[selectedStage] as { completedAt?: string } | undefined)?.completedAt
+
+  return (
+    <div
+      data-testid={`stage-panel-${selectedStage}`}
+      className="flex flex-col h-full min-h-0"
+    >
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center shrink-0">
+            <Icon className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-semibold">{STAGE_LABEL[selectedStage]}</h3>
+              <StatusPill status={status} />
+            </div>
+            {hasResult && stageResults[selectedStage] && (() => {
+              const r = stageResults[selectedStage] as unknown as Record<string, unknown>
+              const completedAt = r.completedAt as string | undefined
+              if (!completedAt) return null
+              return (
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Completed {new Date(completedAt).toLocaleString()}
+                </p>
+              )
+            })()}
+          </div>
+        </div>
+
+        {/* Back-to-live pill */}
+        {!isLive && (
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="back-to-live-btn"
+            onClick={onBackToLive}
+            className="shrink-0 text-xs gap-1.5 h-7"
+          >
+            <ArrowRight className="h-3 w-3" />
+            Back to live
+          </Button>
+        )}
+      </div>
+
+      {/* Detail body — scrollable */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <DetailBody
+          stage={selectedStage}
+          stageResults={stageResults}
+          status={status}
+        />
+      </div>
+
+      {/* Footer escape-hatch */}
+      {(hasResult || status === 'running') && (
+        <div className="mt-6 pt-4 border-t border-border/50 flex items-center gap-3 flex-wrap">
+          <Button
+            variant="ghost"
+            size="sm"
+            data-testid={`open-engine-${selectedStage}`}
+            className="text-xs gap-1.5"
+            onClick={() => onOpenEngine(selectedStage)}
+          >
+            Open engine
+            <ArrowRight className="h-3 w-3" />
+          </Button>
+          {hasResult && onRedoFrom && (
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid={`redo-from-${selectedStage}`}
+              className="text-xs gap-1.5 text-muted-foreground"
+              onClick={() => onRedoFrom(selectedStage)}
+            >
+              <RotateCcw className="h-3 w-3" />
+              Redo from here
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}

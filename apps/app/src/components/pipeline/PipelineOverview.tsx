@@ -1,40 +1,27 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
-import { useSelector } from '@xstate/react'
-import { usePipelineActor } from '@/hooks/usePipelineActor'
-import { OverviewTimeline, STAGE_LABEL } from './OverviewTimeline'
-import { LiveActivityLog, type ActivityEntry } from './LiveActivityLog'
+import { PipelineDashboard } from './PipelineDashboard'
 import type { PipelineStage } from '@/components/engines/types'
+import type { ActivityEntry } from './LiveActivityLog'
 
-interface PipelineOverviewProps { setShowEngine: (stage: string) => void }
+interface PipelineOverviewProps {
+  setShowEngine: (stage: string) => void
+  onRedoFrom?: (stage: PipelineStage) => void
+  activityLog: ActivityEntry[]
+  onActivityLogChange: (entries: ActivityEntry[]) => void
+}
 
-export function PipelineOverview({ setShowEngine }: PipelineOverviewProps) {
-  const actor = usePipelineActor()
-  const stateValue = useSelector(actor, (s) => s.value)
-  const stageResults = useSelector(actor, (s) => s.context.stageResults as Record<string, unknown>)
-  const lastStageRef = useRef<PipelineStage | null>(null)
-  const [activity, setActivity] = useState<ActivityEntry[]>([])
-
-  const currentStage = (typeof stateValue === 'string' ? stateValue : Object.keys(stateValue as Record<string, unknown>)[0]) as PipelineStage
-
-  useEffect(() => {
-    if (lastStageRef.current !== null && lastStageRef.current !== currentStage) {
-      const completed = lastStageRef.current
-      const r = stageResults[completed]
-      if (r) {
-        setActivity((a) => [...a, {
-          timestamp: new Date().toISOString(),
-          text: `${STAGE_LABEL[completed]} completed`,
-        }])
-      }
-    }
-    lastStageRef.current = currentStage
-  }, [currentStage, stageResults])
-
+export function PipelineOverview({
+  setShowEngine,
+  onRedoFrom,
+  activityLog,
+  onActivityLogChange,
+}: PipelineOverviewProps) {
   return (
-    <div className="space-y-2">
-      <OverviewTimeline setShowEngine={setShowEngine} />
-      <LiveActivityLog entries={activity} />
-    </div>
+    <PipelineDashboard
+      setShowEngine={setShowEngine}
+      onRedoFrom={onRedoFrom}
+      activityLog={activityLog}
+      onActivityLogChange={onActivityLogChange}
+    />
   )
 }
