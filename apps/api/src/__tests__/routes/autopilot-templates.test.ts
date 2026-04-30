@@ -169,6 +169,44 @@ describe('GET /autopilot-templates', () => {
     expect(body.error.code).toBe('NOT_FOUND');
   });
 
+  it('applies OR filter on base table (no referencedTable) when channelId provided', async () => {
+    // Regression: passing { referencedTable: 'autopilot_templates' } made
+    // PostgREST reject the OR with "is not an embedded resource."
+    // Reset select to default chainable behaviour (prior tests override it).
+    mockSb.select.mockReturnValue(mockSb);
+    let fromCall = 0;
+    mockSb.from.mockImplementation((table: string) => {
+      fromCall++;
+      if (fromCall === 1 && table === 'channels') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: { user_id: 'user-123' },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      return mockSb;
+    });
+    mockSb.order.mockResolvedValue({ data: [], error: null });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/autopilot-templates/?channelId=00000000-0000-0000-0000-000000000003',
+      headers: AUTH_USER,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockSb.or).toHaveBeenCalledTimes(1);
+    expect(mockSb.or.mock.calls[0]).toHaveLength(1);
+    expect(mockSb.or.mock.calls[0][0]).toBe(
+      'channel_id.is.null,channel_id.eq.00000000-0000-0000-0000-000000000003'
+    );
+  });
+
   it('returns 403 when channelId query param is owned by different user', async () => {
     // Setup chain: from('channels').select().eq().maybeSingle() -> { data: { user_id: 'other-user' } }
     const channelChain = {

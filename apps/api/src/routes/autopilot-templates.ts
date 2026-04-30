@@ -59,10 +59,7 @@ export async function autopilotTemplatesRoutes(
 
       if (channelId) {
         // Return both globals (channel_id IS NULL) and channel-scoped
-        query = query.or(
-          `channel_id.is.null,channel_id.eq.${channelId}`,
-          { referencedTable: 'autopilot_templates' }
-        );
+        query = query.or(`channel_id.is.null,channel_id.eq.${channelId}`);
       } else {
         // Return only globals
         query = query.is('channel_id', null);
