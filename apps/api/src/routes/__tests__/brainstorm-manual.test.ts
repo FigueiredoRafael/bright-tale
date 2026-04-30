@@ -226,3 +226,41 @@ describe('POST /api/brainstorm/sessions/:id/manual-output', () => {
     expect(body.error?.message).toMatch(/no ideas/i);
   });
 });
+
+describe('POST /api/brainstorm/sessions — project_id persistence', () => {
+  it('persists project_id on the session row when provided', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/brainstorm/sessions',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+      payload: {
+        inputMode: 'blind',
+        topic: 'side projects for engineers',
+        ideasRequested: 3,
+        projectId: 'proj-abc-123',
+        provider: 'manual',
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    // project_id must be written through to the INSERT row
+    expect(insertedSessions[0].project_id).toBe('proj-abc-123');
+  });
+
+  it('persists project_id=null when projectId is omitted', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/brainstorm/sessions',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+      payload: {
+        inputMode: 'blind',
+        topic: 'no project',
+        ideasRequested: 3,
+        provider: 'manual',
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    expect(insertedSessions[0].project_id).toBeNull();
+  });
+});

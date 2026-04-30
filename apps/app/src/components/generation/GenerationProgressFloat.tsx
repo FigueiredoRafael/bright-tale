@@ -21,32 +21,39 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
     const [collapsed, setCollapsed] = useState(false);
     const [cancelling, setCancelling] = useState(false);
 
-    const [openedAt, setOpenedAt] = useState<string | null>(null);
+    // Track when the session became active (i.e. when sseUrl was first set).
+    // This is intentionally decoupled from `open` so that SSE keeps running
+    // even when the float is hidden in overview mode — otherwise onComplete
+    // would never fire and the pipeline would stall.
+    const [activeAt, setActiveAt] = useState<string | null>(null);
     useEffect(() => {
-        if (open) {
-            setOpenedAt(reconnecting // eslint-disable-line react-hooks/set-state-in-effect -- compute timestamp once on open
+        if (sseUrl) {
+            setActiveAt(reconnecting // eslint-disable-line react-hooks/set-state-in-effect -- compute timestamp once on session start
                 ? '1970-01-01T00:00:00Z'
                 : new Date(Date.now() - 30_000).toISOString()
             );
         } else {
-            setOpenedAt(null);  
+            setActiveAt(null);
         }
-    }, [open, reconnecting]);
+    }, [sseUrl, reconnecting]);
 
-    const effectiveUrl = open && openedAt && sseUrl
-        ? `${sseUrl}${sseUrl.includes("?") ? "&" : "?"}since=${encodeURIComponent(openedAt)}`
+    // SSE connects whenever there's an active session URL — NOT gated on `open`.
+    // The float UI visibility is gated on `open` separately (see early return below).
+    const effectiveUrl = activeAt && sseUrl
+        ? `${sseUrl}${sseUrl.includes("?") ? "&" : "?"}since=${encodeURIComponent(activeAt)}`
         : "";
     const { events, status } = useJobEvents(effectiveUrl);
 
+    // Elapsed timer runs whenever there's an active SSE session, not just when visible.
     const startRef = useRef(0);
     const [elapsed, setElapsed] = useState(0);
     useEffect(() => {
-        if (!open) return;
+        if (!sseUrl) return;
         startRef.current = Date.now();
-        setElapsed(0); // eslint-disable-line react-hooks/set-state-in-effect -- reset on open
+        setElapsed(0); // eslint-disable-line react-hooks/set-state-in-effect -- reset on session start
         const t = setInterval(() => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)), 1000);
         return () => clearInterval(t);
-    }, [open]);
+    }, [sseUrl]);
 
     // Stash latest callbacks in refs so the completion timer effect doesn't
     // re-run on every parent render and reset itself perpetually.
@@ -86,11 +93,11 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
     useEffect(() => { lastEventTimeRef.current = Date.now(); }, [events.length]);
     const [secondsSinceLastEvent, setSecondsSinceLastEvent] = useState(0);
     useEffect(() => {
-        if (!open) return;
+        if (!sseUrl) return;
         lastEventTimeRef.current = Date.now();
         const t = setInterval(() => setSecondsSinceLastEvent(Math.floor((Date.now() - lastEventTimeRef.current) / 1000)), 1000);
         return () => clearInterval(t);
-    }, [open]);
+    }, [sseUrl]);
     const stalled = status === "streaming" && secondsSinceLastEvent > 60;
 
     function fmtElapsed(s: number) {

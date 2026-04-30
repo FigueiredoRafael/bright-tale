@@ -842,9 +842,9 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
         loading={busy}
       />
 
-      {/* SSE generation modal. Suppressed in overview mode — engine runs behind
-          display:none; the Dialog portal would leak onto the dashboard. The SSE
-          connection is also idle when open=false (modal gates effectiveUrl on open). */}
+      {/* SSE generation modal. Dialog UI is suppressed in overview mode (engine
+          runs behind display:none; the portal would leak onto the dashboard). SSE
+          runs regardless of `open` so that onComplete fires in overview mode. */}
       {reviewing && !isManual && (
         <GenerationProgressModal
           open={!overviewMode && reviewing}

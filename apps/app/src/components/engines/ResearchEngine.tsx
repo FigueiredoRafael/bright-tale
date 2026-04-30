@@ -1508,8 +1508,9 @@ export function ResearchEngine({
         onAbandon={handleManualAbandon}
       />
 
-      {/* Floating progress indicator — suppressed in overview mode (engine runs
-          behind display:none; fixed-position float would leak onto the dashboard). */}
+      {/* Floating progress indicator. Float UI is suppressed in overview mode
+          (engine runs behind display:none; fixed portal would leak onto dashboard).
+          SSE runs regardless so onComplete fires and the pipeline advances. */}
       <GenerationProgressFloat
         open={!overviewMode && !!activeGenerationId}
         sessionId={activeGenerationId ?? ''}

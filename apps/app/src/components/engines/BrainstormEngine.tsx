@@ -495,6 +495,7 @@ export function BrainstormEngine({
     try {
       const body: Record<string, unknown> = {
         ...(channelId ? { channelId } : {}),
+        ...(projectId ? { projectId } : {}),
         inputMode: mode,
         provider,
         model,
@@ -1038,9 +1039,10 @@ export function BrainstormEngine({
       />
 
 
-      {/* Floating progress indicator — non-blocking, bottom-right. Suppressed in
-          overview mode: the engine runs hidden behind display:none and the float
-          would leak onto the dashboard via its fixed-position portal. */}
+      {/* Floating progress indicator — non-blocking, bottom-right. Float UI is
+          suppressed in overview mode (engine runs behind display:none; the fixed
+          portal would leak onto the dashboard). SSE runs regardless so that
+          onComplete fires and the pipeline advances in auto-pilot. */}
       <GenerationProgressFloat
         open={!overviewMode && !!activeGenerationId}
         sessionId={activeGenerationId ?? ''}

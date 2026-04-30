@@ -1436,9 +1436,9 @@ export function DraftEngine({
       )}
 
       {/* SSE generation modal — shows for both canonical-core and produce phases.
-          Suppressed in overview mode: engine runs behind display:none and the
-          Dialog portal would leak onto the dashboard. SSE stays inactive when
-          open=false (GenerationProgressModal only connects when open && openedAt). */}
+          Dialog UI is suppressed in overview mode (engine runs behind display:none;
+          the portal would leak onto the dashboard). SSE runs regardless of `open`
+          so that onComplete fires even when the Dialog is hidden in overview mode. */}
       {activeDraftId && (
         <GenerationProgressModal
           open={!overviewMode && !!activeDraftId}

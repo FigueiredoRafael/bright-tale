@@ -28,37 +28,43 @@ interface Props {
 }
 
 export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gerando ideias", reconnecting, since, onComplete, onFailed, onAborted, onClose }: Props) {
-    const [openedAt, setOpenedAt] = useState<string | null>(null);
+    // `activeAt` tracks the SSE anchor for the current session. It is keyed on
+    // `sseUrl` (not `open`) so the SSE stream stays connected even when the
+    // Dialog is hidden in overview mode — otherwise onComplete never fires and
+    // the pipeline stalls with the brainstorm/research/draft stuck forever.
+    const [activeAt, setActiveAt] = useState<string | null>(null);
     useEffect(() => {
-        if (!open) {
-            setOpenedAt(null); // eslint-disable-line react-hooks/set-state-in-effect -- reset on close
+        if (!sseUrl) {
+            setActiveAt(null); // eslint-disable-line react-hooks/set-state-in-effect -- clear when no session
             return;
         }
         if (reconnecting) {
-            setOpenedAt('1970-01-01T00:00:00Z');
+            setActiveAt('1970-01-01T00:00:00Z');
             return;
         }
         // Prefer the parent-supplied anchor (captured at action-start time).
         // Fall back to a tight 1s lookback only when the parent didn't pass
         // one — wide enough for clock skew, narrow enough not to swallow the
         // prior stage's terminal event.
-        setOpenedAt(since ?? new Date(Date.now() - 1_000).toISOString());
-    }, [open, reconnecting, since]);
+        setActiveAt(since ?? new Date(Date.now() - 1_000).toISOString());
+    }, [sseUrl, reconnecting, since]);
 
-    const effectiveUrl = open && openedAt && sseUrl
-        ? `${sseUrl}${sseUrl.includes("?") ? "&" : "?"}since=${encodeURIComponent(openedAt)}`
+    // SSE connects whenever there is an active session URL — NOT gated on `open`.
+    // The Dialog visibility is gated on `open` separately in the JSX below.
+    const effectiveUrl = activeAt && sseUrl
+        ? `${sseUrl}${sseUrl.includes("?") ? "&" : "?"}since=${encodeURIComponent(activeAt)}`
         : "";
     const { events, status } = useJobEvents(effectiveUrl);
 
     const startRef = useRef(0);
     const [elapsed, setElapsed] = useState(0);
     useEffect(() => {
-        if (!open) return;
+        if (!sseUrl) return;
         startRef.current = Date.now();
-        setElapsed(0); // eslint-disable-line react-hooks/set-state-in-effect -- reset on open
+        setElapsed(0); // eslint-disable-line react-hooks/set-state-in-effect -- reset on session start
         const t = setInterval(() => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)), 1000);
         return () => clearInterval(t);
-    }, [open]);
+    }, [sseUrl]);
 
     // Stash the latest callbacks in refs so the completion timer effect can
     // depend only on `status` (not on the inline arrow callbacks the parent
@@ -99,14 +105,14 @@ export function GenerationProgressModal({ open, sessionId, sseUrl, title = "Gera
     }, []);
 
     const lastEventTimeRef = useRef(0);
-    useEffect(() => { lastEventTimeRef.current = Date.now(); }, [events.length]);  
+    useEffect(() => { lastEventTimeRef.current = Date.now(); }, [events.length]);
     const [secondsSinceLastEvent, setSecondsSinceLastEvent] = useState(0);
     useEffect(() => {
-        if (!open) return;
+        if (!sseUrl) return;
         lastEventTimeRef.current = Date.now();
         const t = setInterval(() => setSecondsSinceLastEvent(Math.floor((Date.now() - lastEventTimeRef.current) / 1000)), 1000);
         return () => clearInterval(t);
-    }, [open]);
+    }, [sseUrl]);
     const stalled = status === "streaming" && secondsSinceLastEvent > 60;
 
     function fmtElapsed(s: number) {
