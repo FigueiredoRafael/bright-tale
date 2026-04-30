@@ -153,4 +153,31 @@ describe('BrainstormEngine', () => {
     expect((screen.getByLabelText(/niche/i) as HTMLInputElement).value)
       .toBe('enterprise')
   })
+
+  it('machine accepts STAGE_PROGRESS with status=Generating ideas for brainstorm stage', () => {
+    // Verifies the actor wiring for the STAGE_PROGRESS dispatch that handleRun fires.
+    // Full UI click is skipped because clicking "Generate ideas" triggers EventSource
+    // (SSE) which is not available in jsdom. We test the machine contract directly.
+    const actor = createActor(pipelineMachine, {
+      input: {
+        projectId: 'proj-1',
+        channelId: 'ch-1',
+        projectTitle: 'T',
+        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+        creditSettings: DEFAULT_CREDIT_SETTINGS,
+      },
+    }).start()
+    actor.send({
+      type: 'SETUP_COMPLETE',
+      mode: 'step-by-step',
+      autopilotConfig: null,
+      templateId: null,
+      startStage: 'brainstorm',
+    })
+
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'brainstorm', partial: { status: 'Generating ideas' } })
+
+    const partial = actor.getSnapshot().context.stageResults.brainstorm as { status?: string } | undefined
+    expect(partial?.status).toBe('Generating ideas')
+  })
 })

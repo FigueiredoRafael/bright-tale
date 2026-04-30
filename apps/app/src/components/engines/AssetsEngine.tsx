@@ -539,6 +539,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
   /* ── Generate briefs via AI or manual ── */
   async function handleGenerateBriefs() {
     if (!draftId || generatingBriefs) return;
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'assets', partial: { status: 'Generating images' } });
     setGeneratingBriefs(true);
     try {
       const body: Record<string, unknown> = { provider };

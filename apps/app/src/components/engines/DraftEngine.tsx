@@ -370,7 +370,11 @@ export function DraftEngine({
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (phase !== 'done') return;
     if (!draftId || !producedContent) return;
-    if (draftResult?.draftId === draftId) return;
+    // Skip only if the machine already has the COMPLETION (not just progress).
+    // STAGE_PROGRESS during canonical-core writes draftId to stageResults, so a
+    // draftId match alone doesn't mean DRAFT_COMPLETE was sent — the user may
+    // have closed the browser mid-stream and the engine restored on next load.
+    if (draftResult?.draftId === draftId && draftResult?.draftContent) return;
     if (autoDraftDispatchedRef.current === draftId) return;
     autoDraftDispatchedRef.current = draftId;
 
@@ -402,6 +406,7 @@ export function DraftEngine({
     selectedPersonaId,
     selectedPersona,
     draftResult?.draftId,
+    draftResult?.draftContent,
     actor,
     tracker,
   ]);
@@ -434,6 +439,7 @@ export function DraftEngine({
     if (!title.trim()) { toast.error('Enter a title'); return; }
     if (!selectedPersonaId) { toast.error('Select a persona'); return; }
 
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { status: 'Building outline' } });
     tracker.trackStarted({
       draftId: draftId || '',
       phase: 'core',
@@ -731,6 +737,7 @@ export function DraftEngine({
   async function handleProduce() {
     if (busy || !draftId) return;
 
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { status: 'Writing draft' } });
     const productionParams: Record<string, unknown> = {};
     if (type === 'blog') productionParams.target_word_count = targetWords;
     if (type === 'video' || type === 'podcast') productionParams.target_duration_minutes = targetMinutes;

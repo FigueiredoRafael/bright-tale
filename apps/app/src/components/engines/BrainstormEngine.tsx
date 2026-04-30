@@ -435,6 +435,7 @@ export function BrainstormEngine({
     if (!ideas.length) return;
     if (running || regenerating) return;
 
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'brainstorm', partial: { status: 'Selecting idea' } });
     const matchByPick = recommendation?.pick
       ? ideas.find(
           (i) =>
@@ -485,6 +486,7 @@ export function BrainstormEngine({
       return;
     }
 
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'brainstorm', partial: { status: 'Generating ideas' } });
     setRunning(true);
     setIdeas([]);
     setSelectedIdeaId(null);

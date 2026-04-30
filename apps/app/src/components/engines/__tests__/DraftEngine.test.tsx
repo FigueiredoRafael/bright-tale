@@ -21,6 +21,9 @@ const STUB_PERSONA = {
   name: 'Tech Analyst',
   slug: 'tech-analyst',
   primaryDomain: 'Technology',
+  domainLens: 'enterprise-tech',
+  approvedCategories: ['Technology'],
+  approvedTags: ['AI', 'enterprise'],
   wpAuthorId: null,
   writingVoiceJson: { signaturePhrases: ['data drives decisions'] },
   soulJson: { humorStyle: 'dry', strongOpinions: ['AI is overrated'] },
@@ -135,5 +138,35 @@ describe('DraftEngine', () => {
 
     expect(screen.getByTestId('draft-type')).toHaveTextContent('blog')
     expect(screen.getByTestId('persona-select')).toBeEmptyDOMElement()
+  })
+
+  it('machine accepts STAGE_PROGRESS with status=Building outline for draft stage', () => {
+    // This test verifies the machine wiring for the STAGE_PROGRESS dispatch that
+    // handleGenerateCore fires at its entry point. Full UI interaction is skipped
+    // because the Generate Core button requires a research session + persona loaded
+    // (async prerequisites). We test the actor contract directly.
+    const actor = createActor(pipelineMachine, {
+      input: {
+        projectId: 'proj-1',
+        channelId: 'ch-1',
+        projectTitle: 'T',
+        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+        creditSettings: DEFAULT_CREDIT_SETTINGS,
+      },
+    }).start()
+    actor.send({
+      type: 'SETUP_COMPLETE',
+      mode: 'step-by-step',
+      autopilotConfig: null,
+      templateId: null,
+      startStage: 'draft',
+    })
+
+    // STAGE_PROGRESS for draft with { status } merges into stageResults.draft
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { status: 'Building outline' } })
+
+    // The status field is merged — stageResults.draft should have it
+    const draftPartial = actor.getSnapshot().context.stageResults.draft as { status?: string } | undefined
+    expect(draftPartial?.status).toBe('Building outline')
   })
 })

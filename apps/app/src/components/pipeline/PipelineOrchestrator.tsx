@@ -167,6 +167,8 @@ function OrchestratorInner({
   }, [legacy?.initialStage, send])
 
   const ctx = state.context
+  // Display the idea title once brainstorm picks one; fall back to the project title.
+  const displayTitle = ctx.stageResults.brainstorm?.ideaTitle ?? ctx.projectTitle ?? 'New Project'
   const stateValue = state.value
   const currentStage = (
     typeof stateValue === 'string' ? stateValue : Object.keys(stateValue)[0]
@@ -457,12 +459,13 @@ function OrchestratorInner({
             <h2
               className="text-2xl font-bold cursor-pointer hover:text-primary/80 transition-colors"
               title="Click to edit"
+              data-testid="project-display-title"
               onClick={() => {
                 setTitleDraft(ctx.projectTitle)
                 setEditingTitle(true)
               }}
             >
-              {ctx.projectTitle}
+              {displayTitle}
             </h2>
           )}
           <p className="text-sm text-muted-foreground mt-1">

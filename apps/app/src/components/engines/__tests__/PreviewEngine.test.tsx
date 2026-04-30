@@ -180,8 +180,48 @@ describe('PreviewEngine', () => {
       expect(actor.getSnapshot().context.pendingDrillIn).toBe('preview')
     })
 
-    // Machine stays in preview state — no auto-complete
+    // Machine stays in preview state — no auto-complete (PREVIEW_COMPLETE not fired)
     expect(actor.getSnapshot().value).toMatchObject({ preview: expect.anything() })
-    expect(actor.getSnapshot().context.stageResults.preview).toBeUndefined()
+    // STAGE_PROGRESS may set a partial { status } into stageResults.preview,
+    // but PREVIEW_COMPLETE (which sets autoDerived or imageMap) must NOT have fired.
+    expect(actor.getSnapshot().context.stageResults.preview?.imageMap).toBeUndefined()
+  })
+
+  it('machine accepts STAGE_PROGRESS with status=Composing preview for preview stage', () => {
+    // Verifies the machine wiring for the STAGE_PROGRESS dispatch that
+    // PreviewEngine fires on the auto-derive path (preview.enabled=false).
+    const actor = createActor(pipelineMachine, {
+      input: {
+        projectId: 'proj-1',
+        channelId: 'ch-1',
+        projectTitle: 'T',
+        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+        creditSettings: DEFAULT_CREDIT_SETTINGS,
+      },
+    }).start()
+    actor.send({ type: 'NAVIGATE', toStage: 'preview' })
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'preview', partial: { status: 'Composing preview' } })
+
+    const partial = actor.getSnapshot().context.stageResults.preview as { status?: string } | undefined
+    expect(partial?.status).toBe('Composing preview')
+  })
+
+  it('machine accepts STAGE_PROGRESS with status=Awaiting your review for preview stage', () => {
+    // Verifies the machine wiring for the STAGE_PROGRESS dispatch that
+    // PreviewEngine fires on the gate path (preview.enabled=true).
+    const actor = createActor(pipelineMachine, {
+      input: {
+        projectId: 'proj-1',
+        channelId: 'ch-1',
+        projectTitle: 'T',
+        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+        creditSettings: DEFAULT_CREDIT_SETTINGS,
+      },
+    }).start()
+    actor.send({ type: 'NAVIGATE', toStage: 'preview' })
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'preview', partial: { status: 'Awaiting your review' } })
+
+    const partial = actor.getSnapshot().context.stageResults.preview as { status?: string } | undefined
+    expect(partial?.status).toBe('Awaiting your review')
   })
 })

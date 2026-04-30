@@ -438,6 +438,7 @@ export function ResearchEngine({
       return;
     }
 
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'research', partial: { status: 'Researching topic' } });
     setRunning(true);
     setCards([]);
     setApproved(new Set());
@@ -595,6 +596,7 @@ export function ResearchEngine({
     if (autoApprovedRef.current === key) return;
     autoApprovedRef.current = key;
 
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'research', partial: { status: 'Approving cards' } });
     const signals = extractResearchSignals(findings);
     const result: ResearchResult = {
       researchSessionId: sessionId ?? '',

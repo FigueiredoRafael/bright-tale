@@ -88,19 +88,16 @@ export function PipelineStages({
 
   return (
     <div className="border-b bg-muted/20 px-4 py-2">
-      {/* Project/idea context */}
+      {/* Project/idea context — show idea title in the leading pill once an idea is picked */}
       {(projectTitle || ideaTitle) && (
         <div className="flex items-center gap-2 mb-1.5 text-xs text-muted-foreground">
-          {projectTitle && (
-            <Badge
-              variant="outline"
-              className="text-[10px] cursor-pointer hover:bg-muted"
-              onClick={() => projectId && router.push(`/projects/${projectId}`)}
-            >
-              {projectTitle}
-            </Badge>
-          )}
-          {ideaTitle && <span className="truncate">{ideaTitle}</span>}
+          <Badge
+            variant="outline"
+            className="text-[10px] cursor-pointer hover:bg-muted max-w-[240px] truncate"
+            onClick={() => projectId && router.push(`/projects/${projectId}`)}
+          >
+            {ideaTitle ?? projectTitle}
+          </Badge>
         </div>
       )}
 

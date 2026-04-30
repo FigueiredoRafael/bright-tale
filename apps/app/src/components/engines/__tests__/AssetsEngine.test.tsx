@@ -190,3 +190,54 @@ describe("assets mode='skip' handled by machine", () => {
     expect(actor.getSnapshot().context.stageResults.assets?.skipped).toBe(true)
   })
 })
+
+describe('AssetsEngine STAGE_PROGRESS', () => {
+  it('dispatches STAGE_PROGRESS with status=Generating images when handleGenerateBriefs fires', async () => {
+    const actor = makeActor('auto_generate')
+
+    const sentEvents: Array<{ type: string; stage?: string; partial?: { status?: string } }> = []
+    const originalSend = actor.send.bind(actor)
+    vi.spyOn(actor, 'send').mockImplementation((event: unknown) => {
+      const e = event as { type: string; stage?: string; partial?: { status?: string } }
+      sentEvents.push(e)
+      return originalSend(event as Parameters<typeof actor.send>[0])
+    })
+
+    // Feed a draftId so the guard passes
+    actor.send({
+      type: 'STAGE_PROGRESS',
+      stage: 'draft' as const,
+      partial: { draftId: 'd-1', draftTitle: 'D' },
+    })
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        if (String(url).includes('/api/assets?content_id')) {
+          return { ok: true, json: async () => ({ data: { assets: [] }, error: null }) } as Response
+        }
+        if (String(url).includes('/generate-asset-prompts')) {
+          return {
+            ok: true,
+            json: async () => ({
+              data: { slots: [{ slot: 'featured', section_title: 'Featured', prompt_brief: 'A photo', style_rationale: '', aspect_ratio: '16:9', alt_text: '' }] },
+              error: null,
+            }),
+          } as Response
+        }
+        return { ok: true, json: async () => ({ data: null, error: null }) } as Response
+      }),
+    )
+
+    render(
+      <PipelineActorProvider value={actor}>
+        <AssetsEngine mode="generate" draft={STUB_DRAFT} />
+      </PipelineActorProvider>,
+    )
+
+    // Wait for useAutoPilotTrigger to fire handleGenerateBriefs (loading=false triggers it)
+    await new Promise((r) => setTimeout(r, 100))
+
+    expect(sentEvents.some((e) => e.type === 'STAGE_PROGRESS' && e.partial?.status === 'Generating images')).toBe(true)
+  })
+})

@@ -536,4 +536,47 @@ describe('PipelineOrchestrator', () => {
       expect(screen.getByTestId('mini-wizard-trigger')).toHaveTextContent('Go autopilot')
     })
   })
+
+  // ── Enhancement 1: idea title swap in heading ─────────────────────────────
+
+  it('shows project title in heading when no idea is selected yet', () => {
+    render(
+      <PipelineOrchestrator
+        projectId="p"
+        channelId="c"
+        projectTitle="My Project"
+        initialPipelineState={stateAt('brainstorm', 'step-by-step')}
+      />,
+    )
+    const heading = screen.getByTestId('project-display-title')
+    expect(heading).toHaveTextContent('My Project')
+  })
+
+  it('shows idea title in heading once brainstorm stageResult has ideaTitle', () => {
+    render(
+      <PipelineOrchestrator
+        projectId="p"
+        channelId="c"
+        projectTitle="My Project"
+        initialPipelineState={{
+          mode: 'step-by-step',
+          currentStage: 'research',
+          stageResults: {
+            brainstorm: {
+              ideaId: 'idea-42',
+              ideaTitle: 'How AI will change everything',
+              ideaVerdict: 'viable',
+              ideaCoreTension: 'tension',
+              completedAt: '2026-01-01',
+            },
+          },
+          autoConfig: {},
+        }}
+      />,
+    )
+    const heading = screen.getByTestId('project-display-title')
+    expect(heading).toHaveTextContent('How AI will change everything')
+    // Must NOT show project title once idea title is set
+    expect(heading).not.toHaveTextContent('My Project')
+  })
 })

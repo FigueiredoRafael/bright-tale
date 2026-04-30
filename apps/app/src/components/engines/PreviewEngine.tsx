@@ -384,10 +384,12 @@ export function PreviewEngine() {
     initialBehaviorRef.current = true;
 
     if (previewEnabled) {
+      actor.send({ type: 'STAGE_PROGRESS', stage: 'preview', partial: { status: 'Awaiting your review' } });
       actor.send({ type: 'PREVIEW_GATE_TRIGGERED' });
       return;
     }
 
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'preview', partial: { status: 'Composing preview' } });
     // Auto-derive path: build a full PreviewResult from feedback + loaded assets.
     const feedbackJson = reviewResult?.feedbackJson ?? null;
     const derivedMeta = derivePreview(feedbackJson, assets);

@@ -237,4 +237,31 @@ describe('ResearchEngine', () => {
     await new Promise((r) => setTimeout(r, 100))
     expect(actor.getSnapshot().context.stageResults.research).toBeUndefined()
   })
+
+  it('machine accepts STAGE_PROGRESS with status=Researching topic for research stage', () => {
+    // Verifies the actor wiring for the STAGE_PROGRESS dispatch that handleRun fires.
+    // Full UI click is skipped because clicking "Research" triggers EventSource (SSE)
+    // which is not available in jsdom. We test the machine contract directly.
+    const actor = createActor(pipelineMachine, {
+      input: {
+        projectId: 'proj-1',
+        channelId: 'ch-1',
+        projectTitle: 'T',
+        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+        creditSettings: DEFAULT_CREDIT_SETTINGS,
+      },
+    }).start()
+    actor.send({
+      type: 'SETUP_COMPLETE',
+      mode: 'step-by-step',
+      autopilotConfig: null,
+      templateId: null,
+      startStage: 'research',
+    })
+
+    actor.send({ type: 'STAGE_PROGRESS', stage: 'research', partial: { status: 'Researching topic' } })
+
+    const partial = actor.getSnapshot().context.stageResults.research as { status?: string } | undefined
+    expect(partial?.status).toBe('Researching topic')
+  })
 })
