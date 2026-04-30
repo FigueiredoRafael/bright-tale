@@ -28,6 +28,10 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      // live-autopilot.spec.ts is gated to manual / pre-merge runs.
+      // Real Supabase dev DB + real AI providers — costs apply.
+      // Run manually: npx playwright test e2e/live-autopilot.spec.ts --ignore-snapshots=false
+      testIgnore: /live-autopilot/,
     },
   ],
 

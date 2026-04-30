@@ -137,10 +137,19 @@ test.describe('live auto-pilot pipeline', () => {
 
     // Pre-load pipeline state so the orchestrator skips brainstorm + research
     // and lands at draft in auto mode.
+    // autopilotConfig (Spec 2 fields) — defaults that keep the test fast:
+    //   assets.mode='skip'      → no image generation cost
+    //   preview.enabled=false   → no preview stage
+    //   publish.status='draft'  → safe WP publish status
     const pipelineStateJson = {
       mode: 'auto',
       currentStage: 'draft',
       iterationCount: 0,
+      autopilotConfig: {
+        assets: { mode: 'skip' as const },
+        preview: { enabled: false },
+        publish: { status: 'draft' as const },
+      },
       stageResults: {
         brainstorm: {
           ideaId,
