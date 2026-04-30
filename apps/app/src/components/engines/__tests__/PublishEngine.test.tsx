@@ -7,6 +7,7 @@ import { pipelineMachine } from '@/lib/pipeline/machine'
 import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
 import { PublishEngine } from '../PublishEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
+import type { AutopilotConfig } from '@brighttale/shared'
 
 vi.mock('@/hooks/use-analytics', () => ({
   useAnalytics: () => ({ track: vi.fn() }),
@@ -55,6 +56,28 @@ const STUB_DRAFT = {
   published_url: null,
 }
 
+const BASE_AUTOPILOT: AutopilotConfig = {
+  defaultProvider: 'recommended',
+  brainstorm: {
+    providerOverride: null,
+    mode: 'topic_driven',
+    topic: 'AI in 2026',
+    referenceUrl: null,
+    niche: '',
+    tone: '',
+    audience: '',
+    goal: '',
+    constraints: '',
+  },
+  research: { providerOverride: null, depth: 'medium' },
+  canonicalCore: { providerOverride: null, personaId: null },
+  draft: { providerOverride: null, format: 'blog', wordCount: 1000 },
+  review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
+  assets: { providerOverride: null, mode: 'briefs_only' },
+  preview: { enabled: false },
+  publish: { status: 'draft' },
+}
+
 function mountAtPublishStage(opts: { withPreviewResult?: boolean } = { withPreviewResult: true }) {
   capturedBodies.length = 0
   lastOnComplete = null
@@ -87,6 +110,46 @@ function mountAtPublishStage(opts: { withPreviewResult?: boolean } = { withPrevi
   }).start()
 
   // Navigate to publish state
+  actor.send({ type: 'NAVIGATE', toStage: 'publish' })
+
+  const utils = render(
+    <PipelineActorProvider value={actor}>
+      <PublishEngine draft={STUB_DRAFT} />
+    </PipelineActorProvider>,
+  )
+  return { actor, ...utils }
+}
+
+function mountAtPublishStageWithConfig(publishStatus: 'draft' | 'published') {
+  capturedBodies.length = 0
+  lastOnComplete = null
+
+  const config: AutopilotConfig = {
+    ...BASE_AUTOPILOT,
+    publish: { status: publishStatus },
+  }
+
+  const actor = createActor(pipelineMachine, {
+    input: {
+      projectId: 'proj-1',
+      channelId: 'ch-1',
+      projectTitle: 'T',
+      pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+      creditSettings: DEFAULT_CREDIT_SETTINGS,
+      initialStageResults: {
+        draft: { draftId: 'draft-1', draftTitle: 'Stub Draft', draftContent: '', completedAt: new Date().toISOString() },
+      },
+    },
+  }).start()
+
+  actor.send({
+    type: 'SETUP_COMPLETE',
+    mode: 'overview',
+    autopilotConfig: config,
+    templateId: null,
+    startStage: 'publish',
+  })
+
   actor.send({ type: 'NAVIGATE', toStage: 'publish' })
 
   const utils = render(
@@ -170,5 +233,25 @@ describe('PublishEngine', () => {
       </PipelineActorProvider>,
     )
     expect(screen.getByTestId('has-assets').textContent).toBe('false')
+  })
+
+  it("publish.status='draft' → POST body has wpStatus='draft'", async () => {
+    const user = userEvent.setup()
+    mountAtPublishStageWithConfig('draft')
+
+    await user.click(screen.getByRole('button', { name: /publish now/i }))
+
+    expect(capturedBodies.length).toBe(1)
+    expect(capturedBodies[0]!.wpStatus).toBe('draft')
+  })
+
+  it("publish.status='published' → POST body has wpStatus='publish'", async () => {
+    const user = userEvent.setup()
+    mountAtPublishStageWithConfig('published')
+
+    await user.click(screen.getByRole('button', { name: /publish now/i }))
+
+    expect(capturedBodies.length).toBe(1)
+    expect(capturedBodies[0]!.wpStatus).toBe('publish')
   })
 })

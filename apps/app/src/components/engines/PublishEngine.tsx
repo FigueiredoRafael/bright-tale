@@ -24,6 +24,7 @@ export function PublishEngine({ draft }: PublishEngineProps) {
   const actor = usePipelineActor();
   const channelId = useSelector(actor, (s) => s.context.channelId);
   const projectId = useSelector(actor, (s) => s.context.projectId);
+  const publishConfigStatus = useSelector(actor, (s) => s.context.autopilotConfig?.publish.status ?? 'draft');
   const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
   const researchResult  = useSelector(actor, (s) => s.context.stageResults.research);
   const draftResult     = useSelector(actor, (s) => s.context.stageResults.draft);
@@ -82,10 +83,11 @@ export function PublishEngine({ draft }: PublishEngineProps) {
 
     const body: Record<string, unknown> = {
       draftId,
-    channelId: channelId ?? undefined,
+      channelId: channelId ?? undefined,
       mode: params.mode,
       scheduledDate: params.scheduledDate,
       idempotencyToken: crypto.randomUUID(),
+      wpStatus: publishConfigStatus === 'published' ? 'publish' : 'draft',
     };
 
     if (previewResult?.imageMap)        body.imageMap     = previewResult.imageMap;
