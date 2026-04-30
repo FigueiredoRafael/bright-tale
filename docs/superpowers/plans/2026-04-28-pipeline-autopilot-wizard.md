@@ -2895,3 +2895,13 @@ git tag -a pipeline-autopilot-wizard-accepted -m "Pipeline autopilot wizard acce
 - **`channel_id` NULL on legacy.** `assertProjectOwner` legacy fallback is the only thing keeping pre-channel projects accessible — do not drop it before all rows are backfilled (no migration plan exists for that yet).
 - **Inngest jobs deployed mid-flight.** Wave 4 deploys backend abort plumbing. Existing in-flight jobs keep running because `assertNotAborted` is conditional on `projectId` — if the column already exists from Wave 1 and is `NULL`, the check no-ops. Confirm Wave 1 deployed before Wave 4.
 - **`Update template "X"` is destructive across projects.** The confirm dialog must explicitly say "Future projects using this template will use these settings."
+
+---
+
+## Postmortem (2026-04-29)
+
+The original plan did not specify engine→`autopilotConfig` hydration. This omission caused overview mode to never advance during T-9.5 manual smoke — engines mounted but ignored the wizard's saved config, so no autopilot inputs reached them.
+
+Resolved in the follow-up plan `2026-04-29-autopilot-foundation-gates-templates.md` (Wave 1 Tasks 1.1–1.6). Future autopilot-extending plans must include an explicit "wire wizard fields to engine inputs" task before the first happy-path acceptance gate.
+
+The follow-up also added gates configurability (assets 3-mode, preview switch, publish status), per-iteration review history, and the `/projects/new` channel picker — all originally bundled into a single "templates polish" expectation that was actually three independent specs.
