@@ -256,7 +256,9 @@ describe('scaffold tests', () => {
         canonicalCore: { providerOverride: null, personaId: null },
         draft: { providerOverride: null, format: 'blog' as const, wordCount: 1200 },
         review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
-        assets: { providerOverride: null, mode: 'briefing' as const },
+        assets: { providerOverride: null, mode: 'briefs_only' as const },
+        preview: { enabled: false },
+        publish: { status: 'draft' as const },
       },
     }
     const fetchSpy = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
