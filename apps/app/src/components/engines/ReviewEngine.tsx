@@ -208,8 +208,9 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
     iteration_count: number;
   };
 
-  // Load fresh data if needed
-  async function refetchDraft() {
+  // Load fresh data if needed — returns the fresh row so callers can read
+  // review_score / review_verdict without depending on React state flush timing.
+  async function refetchDraft(): Promise<Record<string, unknown> | undefined> {
     try {
       const res = await fetch(`/api/content-drafts/${draftId}`, {
         signal: abortController?.signal,
@@ -217,11 +218,13 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
       const json = await res.json();
       if (json?.data) {
         setLocalDraft(json.data as Record<string, unknown>);
+        return json.data as Record<string, unknown>;
       }
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return;
+      if (err instanceof Error && err.name === 'AbortError') return undefined;
       // silent
     }
+    return undefined;
   }
 
   async function withGuard<T>(fn: () => Promise<T>): Promise<T | undefined> {
@@ -846,17 +849,26 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
           since={reviewSince ?? undefined}
           title="Running AI Review"
           onComplete={async () => {
-            await refetchDraft();
+            // Fetch fresh values — the /review POST returned 202 and ran async,
+            // so json.data at POST-time had NULL score/verdict. Reading them now
+            // from the DB gives the real results.
+            const fresh = await refetchDraft();
             toast.success('Review completed');
-            // Dispatch the stashed REVIEW_COMPLETE now that the user has
-            // seen the modal's success state.
-            const pending = pendingReviewResultRef.current;
-            pendingReviewResultRef.current = null;
+            pendingReviewResultRef.current = null; // no longer needed
             setReviewing(false);
             setReviewSince(null);
-            const mode = actor.getSnapshot().context.mode
-            if (pending && (mode === 'supervised' || mode === 'overview')) {
-              actor.send({ type: 'REVIEW_COMPLETE', result: pending });
+            const mode = actor.getSnapshot().context.mode;
+            if (fresh && (mode === 'supervised' || mode === 'overview')) {
+              const fb = (fresh.review_feedback_json as Record<string, unknown> | null) ?? {};
+              const fmt = (fb.blog_review ?? fb.video_review ?? fb.podcast_review ?? fb.shorts_review) as Record<string, unknown> | undefined;
+              const score = typeof fmt?.score === 'number' ? fmt.score as number : (fresh.review_score as number | null) ?? 0;
+              const verdict = (fresh.review_verdict as string | null) ?? 'pending';
+              const tier = deriveTier(fmt ?? fb);
+              const iterationCount = (fresh.iteration_count as number | null) ?? 1;
+              actor.send({
+                type: 'REVIEW_COMPLETE',
+                result: { score, qualityTier: tier, verdict, feedbackJson: fb, iterationCount },
+              });
             }
           }}
           onFailed={(msg) => {
@@ -866,9 +878,32 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
             const f = friendlyAiError(msg);
             toast.error(f.title, { description: f.hint });
           }}
-          onClose={() => {
-            setReviewing(false);
-            setReviewSince(null);
+          onClose={async () => {
+            // If the user dismisses the modal while autopilot is in flight,
+            // still attempt to dispatch REVIEW_COMPLETE with fresh values so
+            // the machine doesn't stall in the reviewing state.
+            const mode = actor.getSnapshot().context.mode;
+            if (mode === 'supervised' || mode === 'overview') {
+              const fresh = await refetchDraft();
+              pendingReviewResultRef.current = null;
+              setReviewing(false);
+              setReviewSince(null);
+              if (fresh) {
+                const fb = (fresh.review_feedback_json as Record<string, unknown> | null) ?? {};
+                const fmt = (fb.blog_review ?? fb.video_review ?? fb.podcast_review ?? fb.shorts_review) as Record<string, unknown> | undefined;
+                const score = typeof fmt?.score === 'number' ? fmt.score as number : (fresh.review_score as number | null) ?? 0;
+                const verdict = (fresh.review_verdict as string | null) ?? 'pending';
+                const tier = deriveTier(fmt ?? fb);
+                const iterationCount = (fresh.iteration_count as number | null) ?? 1;
+                actor.send({
+                  type: 'REVIEW_COMPLETE',
+                  result: { score, qualityTier: tier, verdict, feedbackJson: fb, iterationCount },
+                });
+              }
+            } else {
+              setReviewing(false);
+              setReviewSince(null);
+            }
           }}
         />
       )}

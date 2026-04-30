@@ -140,15 +140,23 @@ export function CompletedStageSummary({
         {expanded && (
           <div className="mt-3 pt-3 border-t text-xs text-muted-foreground space-y-1">
             {Object.entries(result)
-              .filter(([k]) => k !== 'completedAt')
-              .map(([key, value]) => (
-                <div key={key} className="flex gap-2">
-                  <span className="font-medium text-muted-foreground/70 shrink-0">{key}:</span>
-                  <span className="break-all">
-                    {Array.isArray(value) ? value.join(', ') : String(value ?? '—')}
-                  </span>
-                </div>
-              ))}
+              .filter(([k]) => k !== 'completedAt' && k !== 'feedbackJson' && k !== 'latestFeedbackJson')
+              .map(([key, value]) => {
+                let display: string;
+                if (Array.isArray(value)) {
+                  display = value.length === 0 ? '—' : `${value.length} item(s)`;
+                } else if (value !== null && typeof value === 'object') {
+                  display = `${Object.keys(value).length} field(s)`;
+                } else {
+                  display = String(value ?? '—');
+                }
+                return (
+                  <div key={key} className="flex gap-2">
+                    <span className="font-medium text-muted-foreground/70 shrink-0">{key}:</span>
+                    <span className="break-all">{display}</span>
+                  </div>
+                );
+              })}
             {result.completedAt && (
               <div className="flex gap-2 pt-1 border-t border-border/50 mt-1">
                 <span className="font-medium text-muted-foreground/70 shrink-0">completed:</span>
