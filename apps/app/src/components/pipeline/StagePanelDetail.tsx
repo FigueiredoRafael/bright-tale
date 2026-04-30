@@ -160,7 +160,7 @@ function DetailBody({ stage, stageResults, status }: DetailBodyProps) {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
             {wordCount > 0 && <Kpi label="Words" value={wordCount.toLocaleString()} highlight />}
             {r.personaName && <Kpi label="Persona" value={r.personaName} />}
-            <Kpi label="Draft ID" value={r.draftId.slice(0, 8) + '…'} />
+            {r.draftId && <Kpi label="Draft ID" value={r.draftId.slice(0, 8) + '…'} />}
           </div>
           <Separator />
           <div className="space-y-4">
@@ -250,10 +250,11 @@ function DetailBody({ stage, stageResults, status }: DetailBodyProps) {
     case 'assets': {
       const r = stageResults.assets
       if (!r) return <EmptyState status={status} />
+      const assetIds = r.assetIds ?? []
       return (
         <div className="space-y-8">
           <div className="grid grid-cols-2 gap-6">
-            <Kpi label="Assets" value={r.skipped ? 'Skipped' : r.assetIds.length} highlight={!r.skipped} />
+            <Kpi label="Assets" value={r.skipped ? 'Skipped' : assetIds.length} highlight={!r.skipped} />
             {r.featuredImageUrl && <Kpi label="Featured image" value="Set" />}
           </div>
           {!r.skipped && r.featuredImageUrl && (
@@ -270,17 +271,17 @@ function DetailBody({ stage, stageResults, status }: DetailBodyProps) {
               </div>
             </>
           )}
-          {r.assetIds.length > 0 && (
+          {assetIds.length > 0 && (
             <>
               <Separator />
               <div className="space-y-1.5">
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Asset IDs</p>
                 <ul className="space-y-0.5">
-                  {r.assetIds.slice(0, 5).map((id) => (
+                  {assetIds.slice(0, 5).map((id) => (
                     <li key={id} className="text-[11px] font-mono text-muted-foreground">{id}</li>
                   ))}
-                  {r.assetIds.length > 5 && (
-                    <li className="text-[11px] text-muted-foreground/50">+{r.assetIds.length - 5} more</li>
+                  {assetIds.length > 5 && (
+                    <li className="text-[11px] text-muted-foreground/50">+{assetIds.length - 5} more</li>
                   )}
                 </ul>
               </div>
@@ -293,39 +294,42 @@ function DetailBody({ stage, stageResults, status }: DetailBodyProps) {
     case 'preview': {
       const r = stageResults.preview
       if (!r) return <EmptyState status={status} />
+      const categories = r.categories ?? []
+      const tags = r.tags ?? []
+      const seo = r.seoOverrides ?? {}
       return (
         <div className="space-y-8">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
-            <Kpi label="Categories" value={r.categories.length} />
-            <Kpi label="Tags" value={r.tags.length} />
+            <Kpi label="Categories" value={categories.length} />
+            <Kpi label="Tags" value={tags.length} />
             {r.suggestedPublishDate && <Kpi label="Publish date" value={new Date(r.suggestedPublishDate).toLocaleDateString()} />}
           </div>
           <Separator />
           <div className="space-y-4">
-            {r.seoOverrides.title && <HighlightItem label="SEO title" value={r.seoOverrides.title} />}
-            {r.seoOverrides.slug && <HighlightItem label="Slug" value={r.seoOverrides.slug} mono />}
-            {r.seoOverrides.metaDescription && (
-              <HighlightItem label="Meta description" value={r.seoOverrides.metaDescription} />
+            {seo.title && <HighlightItem label="SEO title" value={seo.title} />}
+            {seo.slug && <HighlightItem label="Slug" value={seo.slug} mono />}
+            {seo.metaDescription && (
+              <HighlightItem label="Meta description" value={seo.metaDescription} />
             )}
-            {r.categories.length > 0 && (
+            {categories.length > 0 && (
               <div className="space-y-1.5">
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Categories</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {r.categories.map((c) => (
+                  {categories.map((c) => (
                     <Badge key={c} variant="secondary" className="text-[11px]">{c}</Badge>
                   ))}
                 </div>
               </div>
             )}
-            {r.tags.length > 0 && (
+            {tags.length > 0 && (
               <div className="space-y-1.5">
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Tags</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {r.tags.slice(0, 10).map((t) => (
+                  {tags.slice(0, 10).map((t) => (
                     <Badge key={t} variant="outline" className="text-[11px]">{t}</Badge>
                   ))}
-                  {r.tags.length > 10 && (
-                    <Badge variant="ghost" className="text-[11px]">+{r.tags.length - 10}</Badge>
+                  {tags.length > 10 && (
+                    <Badge variant="ghost" className="text-[11px]">+{tags.length - 10}</Badge>
                   )}
                 </div>
               </div>
