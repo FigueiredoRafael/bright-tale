@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Switch } from '@/components/ui/switch'
 import {
   Select,
   SelectContent,
@@ -44,6 +45,8 @@ const STAGE_ORDER = [
   'draft',
   'review',
   'assets',
+  'preview',
+  'publish',
 ] as const
 
 type WizardStage = (typeof STAGE_ORDER)[number]
@@ -55,6 +58,8 @@ const STAGE_LABELS: Record<WizardStage, string> = {
   draft: 'Draft',
   review: 'Review',
   assets: 'Assets',
+  preview: 'Preview',
+  publish: 'Publish',
 }
 
 function deriveStartStage(stageResults: StageResultMap): StartStage {
@@ -476,21 +481,73 @@ function AssetsFields() {
 
   return (
     <div>
-      <Label>Assets mode</Label>
+      <Label>Assets</Label>
       <Controller
         control={control}
         name="autopilotConfig.assets.mode"
         render={({ field }) => (
-          <Select value={field.value} onValueChange={field.onChange}>
-            <SelectTrigger className="w-40 mt-1">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="skip">Skip</SelectItem>
-              <SelectItem value="briefs_only">Briefs Only</SelectItem>
-              <SelectItem value="auto_generate">Auto Generate</SelectItem>
-            </SelectContent>
-          </Select>
+          <RadioGroup value={field.value} onValueChange={field.onChange} className="mt-1">
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="skip" id="assets-skip" />
+              <Label htmlFor="assets-skip" className="text-sm font-normal">Skip — go straight to preview (no images)</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="auto_generate" id="assets-auto" />
+              <Label htmlFor="assets-auto" className="text-sm font-normal">Auto-generate — AI generates images, no manual review</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="briefs_only" id="assets-briefs" />
+              <Label htmlFor="assets-briefs" className="text-sm font-normal">Briefs only — AI generates briefs, you finish in the engine</Label>
+            </div>
+          </RadioGroup>
+        )}
+      />
+    </div>
+  )
+}
+
+function PreviewFields() {
+  const { control } = useFormContext<WizardFormValues>()
+
+  return (
+    <div>
+      <Label htmlFor="preview-enabled" className="flex items-center gap-3">
+        <Controller
+          control={control}
+          name="autopilotConfig.preview.enabled"
+          render={({ field }) => (
+            <Switch id="preview-enabled" checked={field.value} onCheckedChange={field.onChange} />
+          )}
+        />
+        <span className="text-sm">Preview before publish</span>
+      </Label>
+      <p className="text-xs text-muted-foreground mt-1 ml-12">
+        When off, categories and tags are auto-applied from the AI&apos;s analysis.
+      </p>
+    </div>
+  )
+}
+
+function PublishFields() {
+  const { control } = useFormContext<WizardFormValues>()
+
+  return (
+    <div>
+      <Label>Publish status</Label>
+      <Controller
+        control={control}
+        name="autopilotConfig.publish.status"
+        render={({ field }) => (
+          <RadioGroup value={field.value} onValueChange={field.onChange} className="mt-1">
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="draft" id="publish-draft" />
+              <Label htmlFor="publish-draft" className="text-sm font-normal">Draft — review on WordPress before going live</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="published" id="publish-published" />
+              <Label htmlFor="publish-published" className="text-sm font-normal">Published — go live immediately</Label>
+            </div>
+          </RadioGroup>
         )}
       />
     </div>
@@ -581,6 +638,8 @@ export function PipelineWizard() {
   const sectionRefs = useRef<Partial<Record<WizardStage, HTMLDetailsElement | null>>>({})
 
   const isStageCompleted = (stage: WizardStage): boolean => {
+    // preview and publish are config-only stages — they're never "already done"
+    if (stage === 'preview' || stage === 'publish') return false
     const key = stage === 'canonicalCore' ? 'draft' : stage
     return Boolean(stageResults[key as keyof StageResultMap])
   }
@@ -917,6 +976,8 @@ export function PipelineWizard() {
                     {stage === 'draft' && <DraftFields />}
                     {stage === 'review' && <ReviewFields />}
                     {stage === 'assets' && <AssetsFields />}
+                    {stage === 'preview' && <PreviewFields />}
+                    {stage === 'publish' && <PublishFields />}
                   </div>
                 )}
               </details>

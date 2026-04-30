@@ -1,6 +1,7 @@
 'use client'
 
 import { useForm, useWatch } from 'react-hook-form'
+import { Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { autopilotConfigSchema } from '@brighttale/shared'
@@ -17,6 +18,8 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Switch } from '@/components/ui/switch'
 
 // ─── Inline form schema ──────────────────────────────────────────────────────
 // Mirrors autopilotConfigSchema with string-coerced numbers for HTML inputs.
@@ -71,6 +74,12 @@ const formSchema = z.object({
   assets: z.object({
     providerOverride: z.enum(['openai', 'anthropic', 'gemini', 'ollama']).nullable(),
     assetMode: z.enum(['skip', 'briefs_only', 'auto_generate']),
+  }),
+  preview: z.object({
+    enabled: z.boolean(),
+  }),
+  publish: z.object({
+    status: z.enum(['draft', 'published']),
   }),
 })
 
@@ -149,6 +158,12 @@ function buildDefaultValues(
         providerOverride: existing.assets.providerOverride,
         assetMode: existing.assets.mode,
       },
+      preview: {
+        enabled: existing.preview.enabled,
+      },
+      publish: {
+        status: existing.publish.status,
+      },
     }
   }
 
@@ -194,6 +209,12 @@ function buildDefaultValues(
       providerOverride: null,
       assetMode: 'skip',
     },
+    preview: {
+      enabled: false,
+    },
+    publish: {
+      status: 'draft',
+    },
   }
 }
 
@@ -238,8 +259,12 @@ function formValuesToAutopilotConfig(values: FormValues): AutopilotConfig {
       providerOverride: values.assets.providerOverride,
       mode: values.assets.assetMode,
     },
-    preview: { enabled: false },
-    publish: { status: 'draft' },
+    preview: {
+      enabled: values.preview.enabled,
+    },
+    publish: {
+      status: values.publish.status,
+    },
   }
 }
 
@@ -580,16 +605,66 @@ export function MiniWizardSheet({ isOpen, onClose }: MiniWizardSheetProps) {
               value={assetsProvider}
               onChange={(v) => setValue('assets.providerOverride', v)}
             />
-            <Label htmlFor="assets-mode">Mode</Label>
-            <select
-              id="assets-mode"
-              {...register('assets.assetMode')}
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-            >
-              <option value="skip">Skip</option>
-              <option value="briefs_only">Briefs Only</option>
-              <option value="auto_generate">Auto Generate</option>
-            </select>
+            <Label>Mode</Label>
+            <Controller
+              control={control}
+              name="assets.assetMode"
+              render={({ field }) => (
+                <RadioGroup value={field.value} onValueChange={field.onChange} className="mt-1">
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="skip" id="mini-assets-skip" />
+                    <Label htmlFor="mini-assets-skip" className="text-sm font-normal">Skip — go straight to preview (no images)</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="auto_generate" id="mini-assets-auto" />
+                    <Label htmlFor="mini-assets-auto" className="text-sm font-normal">Auto-generate — AI generates images, no manual review</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="briefs_only" id="mini-assets-briefs" />
+                    <Label htmlFor="mini-assets-briefs" className="text-sm font-normal">Briefs only — AI generates briefs, you finish in the engine</Label>
+                  </div>
+                </RadioGroup>
+              )}
+            />
+          </section>
+
+          {/* ── Preview slot ───────────────────────────────── */}
+          <section className="space-y-1.5">
+            <h3 className="text-sm font-semibold">Preview</h3>
+            <Label htmlFor="mini-preview-enabled" className="flex items-center gap-3">
+              <Controller
+                control={control}
+                name="preview.enabled"
+                render={({ field }) => (
+                  <Switch id="mini-preview-enabled" checked={field.value} onCheckedChange={field.onChange} />
+                )}
+              />
+              <span className="text-sm">Preview before publish</span>
+            </Label>
+            <p className="text-xs text-muted-foreground mt-1 ml-12">
+              When off, categories and tags are auto-applied from the AI&apos;s analysis.
+            </p>
+          </section>
+
+          {/* ── Publish slot ───────────────────────────────── */}
+          <section className="space-y-1.5">
+            <h3 className="text-sm font-semibold">Publish status</h3>
+            <Controller
+              control={control}
+              name="publish.status"
+              render={({ field }) => (
+                <RadioGroup value={field.value} onValueChange={field.onChange} className="mt-1">
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="draft" id="mini-publish-draft" />
+                    <Label htmlFor="mini-publish-draft" className="text-sm font-normal">Draft — review on WordPress before going live</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="published" id="mini-publish-published" />
+                    <Label htmlFor="mini-publish-published" className="text-sm font-normal">Published — go live immediately</Label>
+                  </div>
+                </RadioGroup>
+              )}
+            />
           </section>
 
           <DialogFooter>
