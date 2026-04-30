@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import React from 'react'
+import { createActor } from 'xstate'
 
 const mockPush = vi.fn()
 
@@ -108,7 +109,105 @@ vi.mock('../MiniWizardSheet', () => ({
     isOpen ? <div data-testid="mini-wizard-sheet">MiniWizardSheet</div> : null,
 }))
 
+vi.mock('../ConfirmReturnDialog', () => ({
+  ConfirmReturnDialog: ({
+    open,
+    onContinue,
+    onStop,
+  }: {
+    open: boolean
+    onContinue: () => void
+    onStop: () => void
+  }) =>
+    open ? (
+      <div data-testid="confirm-return-dialog">
+        <button data-testid="continue-autopilot-btn" onClick={onContinue}>
+          Continue autopilot →
+        </button>
+        <button data-testid="finish-manually-btn" onClick={onStop}>
+          Finish manually
+        </button>
+      </div>
+    ) : null,
+}))
+
+// Mock the legacy migration so we can inject XState snapshots with specific context
+// (e.g. pendingDrillIn, returnPromptOpen) in the drill-in tests.
+const mockMapLegacyToSnapshot = vi.fn()
+vi.mock('@/lib/pipeline/legacy-state-migration', async () => {
+  const real = await vi.importActual<typeof import('@/lib/pipeline/legacy-state-migration')>(
+    '@/lib/pipeline/legacy-state-migration'
+  )
+  return {
+    ...real,
+    mapLegacyToSnapshot: (...args: Parameters<typeof real.mapLegacyToSnapshot>) =>
+      mockMapLegacyToSnapshot(...args) ?? real.mapLegacyToSnapshot(...args),
+  }
+})
+
 import { PipelineOrchestrator } from '../PipelineOrchestrator'
+import { pipelineMachine } from '@/lib/pipeline/machine'
+import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '@/components/engines/types'
+
+// Build an XState snapshot with specific context fields set by driving the real machine.
+function buildSnapshotWith(overrides: {
+  pendingDrillIn?: 'assets' | 'preview' | null
+  returnPromptOpen?: boolean
+  mode?: 'overview' | 'step-by-step' | 'supervised'
+}) {
+  const autopilotConfig = {
+    brainstorm: { providerOverride: null },
+    research: { depth: 'medium', providerOverride: null },
+    draft: { providerOverride: null },
+    review: { providerOverride: null },
+    assets: { mode: 'briefs_only', providerOverride: null },
+    preview: { enabled: false },
+    publish: { status: 'draft' },
+  }
+  const actor = createActor(pipelineMachine, {
+    input: {
+      projectId: 'p',
+      channelId: 'c',
+      projectTitle: 'Test',
+      pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+      creditSettings: DEFAULT_CREDIT_SETTINGS,
+      mode: overrides.mode ?? 'overview',
+      autopilotConfig: autopilotConfig as any,
+      templateId: null,
+    },
+  })
+  actor.start()
+  // Move machine out of setup state
+  actor.send({
+    type: 'SETUP_COMPLETE',
+    mode: overrides.mode ?? 'overview',
+    autopilotConfig: autopilotConfig as any,
+    templateId: null,
+    startStage: 'brainstorm',
+  })
+  // Trigger drill-in
+  if (overrides.pendingDrillIn === 'assets') {
+    actor.send({ type: 'ASSETS_GATE_TRIGGERED' })
+  } else if (overrides.pendingDrillIn === 'preview') {
+    actor.send({ type: 'PREVIEW_GATE_TRIGGERED' })
+  }
+  // Trigger returnPromptOpen via ASSETS_COMPLETE in drill-in mode.
+  // The ASSETS_COMPLETE guard checks pendingDrillIn AND machine must be in assets state.
+  if (overrides.returnPromptOpen) {
+    if (!overrides.pendingDrillIn) {
+      actor.send({ type: 'ASSETS_GATE_TRIGGERED' })
+    }
+    // Navigate to assets state so ASSETS_COMPLETE is handled
+    actor.send({ type: 'NAVIGATE', toStage: 'assets' })
+    actor.send({
+      type: 'ASSETS_COMPLETE',
+      result: { assetIds: [], skipped: false, completedAt: new Date().toISOString() },
+    } as any)
+  }
+  const snap = actor.getSnapshot()
+  actor.stop()
+  return snap
+}
 
 // Helper: a pipeline state that routes to a known non-setup stage.
 // The legacy migration recognises 'currentStage' as a legacy shape and navigates to it.
@@ -334,5 +433,107 @@ describe('PipelineOrchestrator', () => {
     expect(screen.queryByTestId('pipeline-wizard')).toBeNull()
     // Engine is still present
     expect(screen.getByTestId('brainstorm-engine')).toBeTruthy()
+  })
+
+  // ── T-2.9 Drill-in + ConfirmReturnDialog wiring ───────────────────────────
+
+  it("pendingDrillIn='assets' triggers setShowEngine('assets')", async () => {
+    // Build a snapshot with pendingDrillIn='assets' and inject it via the migration mock.
+    const snap = buildSnapshotWith({ pendingDrillIn: 'assets', mode: 'overview' })
+    mockMapLegacyToSnapshot.mockReturnValueOnce(snap)
+
+    render(
+      <PipelineOrchestrator
+        projectId="p"
+        channelId="c"
+        projectTitle="Test"
+        initialPipelineState={{ currentStage: 'brainstorm', mode: 'overview', stageResults: {}, autoConfig: {} }}
+      />,
+    )
+
+    // The useEffect on pendingDrillIn should call setShowEngine('assets'),
+    // making the assets engine visible (not in the hidden wrapper).
+    await waitFor(() => {
+      const engine = screen.getByTestId('assets-engine')
+      expect(engine).toBeInTheDocument()
+      // Should NOT be inside the hidden wrapper — it should be visible
+      const hiddenWrapper = engine.closest('[data-testid="hidden-engine-wrapper"]')
+      expect(hiddenWrapper).toBeNull()
+    })
+  })
+
+  it('returnPromptOpen=true opens ConfirmReturnDialog', async () => {
+    const snap = buildSnapshotWith({ returnPromptOpen: true, mode: 'overview' })
+    mockMapLegacyToSnapshot.mockReturnValueOnce(snap)
+
+    render(
+      <PipelineOrchestrator
+        projectId="p"
+        channelId="c"
+        projectTitle="Test"
+        initialPipelineState={{ currentStage: 'brainstorm', mode: 'overview', stageResults: {}, autoConfig: {} }}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-return-dialog')).toBeInTheDocument()
+    })
+  })
+
+  it("clicking 'Continue autopilot →' sends CONTINUE_AUTOPILOT and closes dialog", async () => {
+    const snap = buildSnapshotWith({ returnPromptOpen: true, mode: 'overview' })
+    mockMapLegacyToSnapshot.mockReturnValueOnce(snap)
+
+    render(
+      <PipelineOrchestrator
+        projectId="p"
+        channelId="c"
+        projectTitle="Test"
+        initialPipelineState={{ currentStage: 'brainstorm', mode: 'overview', stageResults: {}, autoConfig: {} }}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-return-dialog')).toBeInTheDocument()
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('continue-autopilot-btn'))
+    })
+
+    // CONTINUE_AUTOPILOT clears returnPromptOpen → dialog closes
+    await waitFor(() => {
+      expect(screen.queryByTestId('confirm-return-dialog')).toBeNull()
+    })
+  })
+
+  it("clicking 'Finish manually' sends STOP_AUTOPILOT, mode becomes step-by-step", async () => {
+    const snap = buildSnapshotWith({ returnPromptOpen: true, mode: 'overview' })
+    mockMapLegacyToSnapshot.mockReturnValueOnce(snap)
+
+    render(
+      <PipelineOrchestrator
+        projectId="p"
+        channelId="c"
+        projectTitle="Test"
+        initialPipelineState={{ currentStage: 'brainstorm', mode: 'overview', stageResults: {}, autoConfig: {} }}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-return-dialog')).toBeInTheDocument()
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('finish-manually-btn'))
+    })
+
+    // STOP_AUTOPILOT flips mode to step-by-step and clears returnPromptOpen → dialog closes.
+    // In step-by-step mode, 'Go autopilot' button text appears (from AutoModeControls).
+    await waitFor(() => {
+      expect(screen.queryByTestId('confirm-return-dialog')).toBeNull()
+      // The AutoModeControls button label switches when mode transitions to step-by-step
+      expect(screen.getByTestId('mini-wizard-trigger')).toHaveTextContent('Go autopilot')
+    })
   })
 })

@@ -40,6 +40,7 @@ import { CompletedStageSummary } from './CompletedStageSummary'
 import { PipelineWizard } from './PipelineWizard'
 import { PipelineOverview } from './PipelineOverview'
 import { MiniWizardSheet } from './MiniWizardSheet'
+import { ConfirmReturnDialog } from './ConfirmReturnDialog'
 import { BrainstormEngine } from '@/components/engines/BrainstormEngine'
 import { ResearchEngine } from '@/components/engines/ResearchEngine'
 import { DraftEngine } from '@/components/engines/DraftEngine'
@@ -240,6 +241,11 @@ function OrchestratorInner({
   const [miniWizardOpen, setMiniWizardOpen] = useState(false)
   const [redoModalOpen, setRedoModalOpen] = useState(false)
   const [cloning, setCloning] = useState(false)
+
+  // Drill-in: when the machine sets pendingDrillIn, open that engine in the UI.
+  useEffect(() => {
+    if (ctx.pendingDrillIn) setShowEngine(ctx.pendingDrillIn as PipelineStage)
+  }, [ctx.pendingDrillIn])
 
   useEffect(() => {
     if (ctx.mode !== 'supervised' && ctx.mode !== 'overview') return
@@ -671,6 +677,18 @@ function OrchestratorInner({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <ConfirmReturnDialog
+          open={ctx.returnPromptOpen}
+          onContinue={() => {
+            send({ type: 'CONTINUE_AUTOPILOT' })
+            setShowEngine(null)
+          }}
+          onStop={() => {
+            send({ type: 'STOP_AUTOPILOT' })
+            // showEngine stays set — engine remains visible, now in step-by-step mode
+          }}
+        />
       </div>
     </PipelineActorProvider>
   )
