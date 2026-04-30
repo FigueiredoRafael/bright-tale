@@ -100,31 +100,65 @@ function ActorScope({
     return null
   })
 
+  // Persist stageResults to the project's pipeline_state_json so the overview
+  // can restore them if the user navigates away before clicking Continue.
+  async function persistStageResult(stageResults: Record<string, unknown>) {
+    if (!projectId || projectId.startsWith('standalone-')) return
+    try {
+      const res = await fetch(`/api/projects/${projectId}`)
+      const json = await res.json()
+      const existing = (json.data?.pipeline_state_json ?? {}) as Record<string, unknown>
+      const existingResults = (existing.stageResults ?? {}) as Record<string, unknown>
+      await fetch(`/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pipelineStateJson: {
+            ...existing,
+            stageResults: { ...existingResults, ...stageResults },
+            currentStage: stage,
+          },
+        }),
+      })
+    } catch {
+      // Non-fatal — the user can still continue; state just won't be in the overview.
+    }
+  }
+
   // Fire onStageComplete the first time the requested stage's result lands in
   // context, then unsubscribe. Subscribe first, then check the current snapshot
   // to avoid a race where the child engine's effect fires before this effect
   // (child effects run before parent effects in React).
   const firedRef = useRef(false)
+  const onStageCompleteRef = useRef(onStageComplete)
+  useEffect(() => { onStageCompleteRef.current = onStageComplete }, [onStageComplete])
+
   useEffect(() => {
     const sub = actorRef.subscribe((snap) => {
       if (firedRef.current) return
       const result = snap.context.stageResults[stage]
       if (result) {
         firedRef.current = true
-        onStageComplete(stage, result as unknown as Record<string, unknown>)
+        void persistStageResult(snap.context.stageResults as unknown as Record<string, unknown>).then(() => {
+          onStageCompleteRef.current(stage, result as unknown as Record<string, unknown>)
+        })
       }
     })
     // Check current snapshot after subscribing — handles the case where the
     // child engine already dispatched the completion event before this effect ran.
     if (!firedRef.current) {
-      const result = actorRef.getSnapshot().context.stageResults[stage]
+      const snap = actorRef.getSnapshot()
+      const result = snap.context.stageResults[stage]
       if (result) {
         firedRef.current = true
-        onStageComplete(stage, result as unknown as Record<string, unknown>)
+        void persistStageResult(snap.context.stageResults as unknown as Record<string, unknown>).then(() => {
+          onStageCompleteRef.current(stage, result as unknown as Record<string, unknown>)
+        })
       }
     }
     return () => sub.unsubscribe()
-  }, [actorRef, stage, onStageComplete])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actorRef, stage, projectId])
 
   return <PipelineActorProvider value={actorRef}>{children}</PipelineActorProvider>
 }

@@ -71,11 +71,20 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
         onAbortedRef.current = onAborted;
     }, [onComplete, onFailed, onAborted]);
 
+    // Guard against firing onComplete twice (timer path vs. dismiss-while-done path).
+    const completionFiredRef = useRef(false);
+    useEffect(() => {
+        completionFiredRef.current = false;
+    }, [sseUrl]);
+
     useEffect(() => {
         if (status === "completed") {
             // Hold the float open briefly so users see the success state
             // before the parent unmounts us (autopilot otherwise flashes it).
-            const t = setTimeout(() => onCompleteRef.current?.(), 1500);
+            const t = setTimeout(() => {
+                completionFiredRef.current = true;
+                onCompleteRef.current?.();
+            }, 1500);
             return () => clearTimeout(t);
         }
         if (status === "failed") {
@@ -239,7 +248,16 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
                             )}
                             {(isDone || isFailed || isAborted) && (
                                 <button
-                                    onClick={onClose}
+                                    onClick={() => {
+                                        // If dismissed before the 1500ms timer fires, fire onComplete
+                                        // immediately so the parent can process the result. Without
+                                        // this, clearing sseUrl cancels the timer and the pipeline stalls.
+                                        if (isDone && !completionFiredRef.current) {
+                                            completionFiredRef.current = true;
+                                            onCompleteRef.current?.();
+                                        }
+                                        onClose();
+                                    }}
                                     className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
                                 >
                                     Dismiss
