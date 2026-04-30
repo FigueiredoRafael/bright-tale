@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createActor } from 'xstate'
 import React from 'react'
@@ -236,22 +236,156 @@ describe('PublishEngine', () => {
   })
 
   it("publish.status='draft' → POST body has wpStatus='draft'", async () => {
-    const user = userEvent.setup()
     mountAtPublishStageWithConfig('draft')
 
-    await user.click(screen.getByRole('button', { name: /publish now/i }))
-
-    expect(capturedBodies.length).toBe(1)
+    await waitFor(() => {
+      expect(capturedBodies.length).toBe(1)
+    })
     expect(capturedBodies[0]!.wpStatus).toBe('draft')
   })
 
   it("publish.status='published' → POST body has wpStatus='publish'", async () => {
-    const user = userEvent.setup()
     mountAtPublishStageWithConfig('published')
 
-    await user.click(screen.getByRole('button', { name: /publish now/i }))
-
-    expect(capturedBodies.length).toBe(1)
+    await waitFor(() => {
+      expect(capturedBodies.length).toBe(1)
+    })
     expect(capturedBodies[0]!.wpStatus).toBe('publish')
+  })
+
+  it('auto-fires publish in overview mode without manual click', async () => {
+    mountAtPublishStageWithConfig('draft')
+
+    await waitFor(() => {
+      expect(capturedBodies.length).toBe(1)
+    })
+    expect(capturedBodies[0]!.wpStatus).toBe('draft')
+  })
+
+  it('auto-fires publish in supervised mode using configured wpStatus', async () => {
+    capturedBodies.length = 0
+    lastOnComplete = null
+
+    const config: AutopilotConfig = { ...BASE_AUTOPILOT, publish: { status: 'published' } }
+    const actor = createActor(pipelineMachine, {
+      input: {
+        projectId: 'p',
+        channelId: 'c',
+        projectTitle: 'T',
+        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+        creditSettings: DEFAULT_CREDIT_SETTINGS,
+        initialStageResults: {
+          draft: { draftId: 'draft-1', draftTitle: 'Stub', draftContent: '', completedAt: new Date().toISOString() },
+        },
+      },
+    }).start()
+
+    actor.send({ type: 'SETUP_COMPLETE', mode: 'supervised', autopilotConfig: config, templateId: null, startStage: 'publish' })
+    actor.send({ type: 'NAVIGATE', toStage: 'publish' })
+
+    render(
+      <PipelineActorProvider value={actor}>
+        <PublishEngine draft={STUB_DRAFT} />
+      </PipelineActorProvider>,
+    )
+
+    await waitFor(() => {
+      expect(capturedBodies.length).toBe(1)
+    })
+    expect(capturedBodies[0]!.wpStatus).toBe('publish')
+  })
+
+  it('does NOT auto-fire in step-by-step mode', async () => {
+    capturedBodies.length = 0
+    lastOnComplete = null
+
+    const actor = createActor(pipelineMachine, {
+      input: {
+        projectId: 'p',
+        channelId: 'c',
+        projectTitle: 'T',
+        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+        creditSettings: DEFAULT_CREDIT_SETTINGS,
+        initialStageResults: {
+          draft: { draftId: 'draft-1', draftTitle: 'Stub', draftContent: '', completedAt: new Date().toISOString() },
+        },
+      },
+    }).start()
+
+    actor.send({ type: 'SETUP_COMPLETE', mode: 'step-by-step', autopilotConfig: null, templateId: null, startStage: 'publish' })
+    actor.send({ type: 'NAVIGATE', toStage: 'publish' })
+
+    render(
+      <PipelineActorProvider value={actor}>
+        <PublishEngine draft={STUB_DRAFT} />
+      </PipelineActorProvider>,
+    )
+
+    await new Promise(r => setTimeout(r, 50))
+    expect(capturedBodies.length).toBe(0)
+  })
+
+  it('does NOT auto-fire when already published', async () => {
+    capturedBodies.length = 0
+    lastOnComplete = null
+
+    const config: AutopilotConfig = { ...BASE_AUTOPILOT, publish: { status: 'draft' } }
+    const actor = createActor(pipelineMachine, {
+      input: {
+        projectId: 'p',
+        channelId: 'c',
+        projectTitle: 'T',
+        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+        creditSettings: DEFAULT_CREDIT_SETTINGS,
+        initialStageResults: {
+          draft: { draftId: 'draft-1', draftTitle: 'Stub', draftContent: '', completedAt: new Date().toISOString() },
+        },
+      },
+    }).start()
+
+    actor.send({ type: 'SETUP_COMPLETE', mode: 'overview', autopilotConfig: config, templateId: null, startStage: 'publish' })
+    actor.send({ type: 'NAVIGATE', toStage: 'publish' })
+
+    const publishedDraft = { ...STUB_DRAFT, published_url: 'https://wp.example/post-1', wordpress_post_id: 42 }
+    render(
+      <PipelineActorProvider value={actor}>
+        <PublishEngine draft={publishedDraft} />
+      </PipelineActorProvider>,
+    )
+
+    await new Promise(r => setTimeout(r, 50))
+    expect(capturedBodies.length).toBe(0)
+  })
+
+  it('does NOT auto-fire when paused', async () => {
+    capturedBodies.length = 0
+    lastOnComplete = null
+
+    const config: AutopilotConfig = { ...BASE_AUTOPILOT, publish: { status: 'draft' } }
+    const actor = createActor(pipelineMachine, {
+      input: {
+        projectId: 'p',
+        channelId: 'c',
+        projectTitle: 'T',
+        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+        creditSettings: DEFAULT_CREDIT_SETTINGS,
+        initialStageResults: {
+          draft: { draftId: 'draft-1', draftTitle: 'Stub', draftContent: '', completedAt: new Date().toISOString() },
+        },
+      },
+    }).start()
+
+    actor.send({ type: 'SETUP_COMPLETE', mode: 'overview', autopilotConfig: config, templateId: null, startStage: 'publish' })
+    actor.send({ type: 'NAVIGATE', toStage: 'publish' })
+    actor.send({ type: 'PAUSE' })
+
+    render(
+      <PipelineActorProvider value={actor}>
+        <PublishEngine draft={STUB_DRAFT} />
+      </PipelineActorProvider>,
+    )
+
+    await new Promise(r => setTimeout(r, 50))
+    expect(capturedBodies.length).toBe(0)
   })
 })

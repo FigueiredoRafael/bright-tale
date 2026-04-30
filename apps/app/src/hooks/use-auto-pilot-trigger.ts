@@ -7,7 +7,7 @@ import type { PipelineStage } from '@/components/engines/types'
 
 interface AutoPilotTriggerOptions {
   /** Stage this engine represents — auto-fire only when it's the active stage. */
-  stage: Exclude<PipelineStage, 'publish'>
+  stage: PipelineStage
   /**
    * Returns true when the engine has everything it needs to auto-fire (e.g.
    * topic filled, draft hydrated). When false, auto-pilot stays awaiting input.

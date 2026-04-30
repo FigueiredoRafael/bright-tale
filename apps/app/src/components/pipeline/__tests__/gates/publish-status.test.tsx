@@ -17,8 +17,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { render, waitFor } from '@testing-library/react'
 import { createActor } from 'xstate'
 import React from 'react'
 import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
@@ -121,23 +120,21 @@ afterEach(() => {
 })
 
 describe('Gate: publish.status', () => {
-  it("publish.status='published' → POST body contains wpStatus='publish'", async () => {
-    const user = userEvent.setup()
+  it("publish.status='published' → auto-fired POST body contains wpStatus='publish'", async () => {
     mountWithPublishStatus('published')
 
-    await user.click(screen.getByRole('button', { name: /publish now/i }))
-
-    expect(capturedBodies.length).toBe(1)
+    await waitFor(() => {
+      expect(capturedBodies.length).toBe(1)
+    })
     expect(capturedBodies[0]!.wpStatus).toBe('publish')
   })
 
-  it("publish.status='draft' → POST body contains wpStatus='draft'", async () => {
-    const user = userEvent.setup()
+  it("publish.status='draft' → auto-fired POST body contains wpStatus='draft'", async () => {
     mountWithPublishStatus('draft')
 
-    await user.click(screen.getByRole('button', { name: /publish now/i }))
-
-    expect(capturedBodies.length).toBe(1)
+    await waitFor(() => {
+      expect(capturedBodies.length).toBe(1)
+    })
     expect(capturedBodies[0]!.wpStatus).toBe('draft')
   })
 })

@@ -4,6 +4,7 @@ import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { useSelector } from '@xstate/react';
 import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { PublishPanel } from '@/components/preview/PublishPanel';
 import { PublishProgress } from '@/components/publish/PublishProgress';
@@ -102,6 +103,21 @@ export function PublishEngine({ draft }: PublishEngineProps) {
     setPublishBody(body);
     setPublishing(true);
   }
+
+  // Auto-pilot: in supervised/overview mode, fire publish using the
+  // wpStatus the user pre-selected in the autopilot wizard. Step-by-step
+  // mode skips this — user clicks publish manually.
+  useAutoPilotTrigger({
+    stage: 'publish',
+    canFire: () =>
+      !publishing &&
+      !publishBody &&
+      !!channelId &&
+      !!draftId &&
+      draft.published_url == null,
+    fire: () => handlePublish({ mode: 'publish' }),
+    rearmKey: draftId,
+  });
 
   const handleStreamComplete = useCallback(
     (result: { wordpressPostId: number; publishedUrl: string }) => {
