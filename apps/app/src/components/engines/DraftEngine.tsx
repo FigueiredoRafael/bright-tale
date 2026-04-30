@@ -277,8 +277,8 @@ export function DraftEngine({
     if (personas.length === 0) return;
     const ranked = rankPersonas(personas, trackerContextRef.current, undefined);
     setRankedPersonas(ranked);
-    // Pre-select the recommended persona
-    const recommended = ranked.find((r) => r.isRecommended);
+    // Pre-select the top-ranked persona; fall back to first when all scores are 0.
+    const recommended = ranked.find((r) => r.isRecommended) ?? ranked[0];
     if (recommended && !selectedPersonaId) {
       setSelectedPersonaId(recommended.persona.id);
     }
