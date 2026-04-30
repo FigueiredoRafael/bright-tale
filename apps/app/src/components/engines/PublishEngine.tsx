@@ -26,6 +26,7 @@ export function PublishEngine({ draft }: PublishEngineProps) {
   const channelId = useSelector(actor, (s) => s.context.channelId);
   const projectId = useSelector(actor, (s) => s.context.projectId);
   const publishConfigStatus = useSelector(actor, (s) => s.context.autopilotConfig?.publish.status ?? 'draft');
+  const overviewMode = useSelector(actor, (s) => s.context.mode === 'overview');
   const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
   const researchResult  = useSelector(actor, (s) => s.context.stageResults.research);
   const draftResult     = useSelector(actor, (s) => s.context.stageResults.draft);
@@ -121,7 +122,7 @@ export function PublishEngine({ draft }: PublishEngineProps) {
 
   const handleStreamComplete = useCallback(
     (result: { wordpressPostId: number; publishedUrl: string }) => {
-      toast.success('Published successfully!');
+      if (!overviewMode) toast.success('Published successfully!');
       const publishResult: PublishResult = {
         wordpressPostId: result.wordpressPostId,
         publishedUrl: result.publishedUrl,
@@ -134,7 +135,7 @@ export function PublishEngine({ draft }: PublishEngineProps) {
       });
       actor.send({ type: 'PUBLISH_COMPLETE', result: publishResult });
     },
-    [draftId, tracker, actor],
+    [draftId, tracker, actor, overviewMode],
   );
 
   const handleStreamError = useCallback(

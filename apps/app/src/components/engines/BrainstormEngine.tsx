@@ -428,6 +428,7 @@ export function BrainstormEngine({
   // verdict if no explicit pick is provided.
   const autoPickedRef = useRef<string | null>(null);
   const autoMode = useSelector(actor, (s) => s.context.mode);
+  const overviewMode = autoMode === 'overview';
   const autoPaused = useSelector(actor, (s) => s.context.paused);
   useEffect(() => {
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
@@ -610,11 +611,11 @@ export function BrainstormEngine({
         ideas: mapped,
       });
       if (mapped.length === 0) {
-        toast.warning('No ideas recognized in output', {
+        if (!overviewMode) toast.warning('No ideas recognized in output', {
           description: "AI responded but format didn't match. Try a different model or re-run.",
         });
       } else {
-        toast.success(`${mapped.length} ideas generated`);
+        if (!overviewMode) toast.success(`${mapped.length} ideas generated`);
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return;
@@ -674,7 +675,7 @@ export function BrainstormEngine({
       ideaCount: newIdeas.length,
       ideas: newIdeas,
     });
-    toast.success(`${newIdeas.length} ideas saved`);
+    if (!overviewMode) toast.success(`${newIdeas.length} ideas saved`);
   }
 
   async function handleManualAbandon() {
@@ -693,7 +694,7 @@ export function BrainstormEngine({
     setIdeas([]);
     setRecommendation(null);
     actor.send({ type: 'STAGE_PROGRESS', stage: 'brainstorm', partial: { brainstormSessionId: undefined } });
-    toast.success('Manual session abandoned');
+    if (!overviewMode) toast.success('Manual session abandoned');
   }
 
   async function handleRegenerate() {
@@ -731,11 +732,11 @@ export function BrainstormEngine({
               sessionId: newId,
               previousIdeaCount: ideas.length,
             });
-            toast.success('Regenerated successfully');
+            if (!overviewMode) toast.success('Regenerated successfully');
           }
         } catch (err) {
           if (err instanceof Error && err.name === 'AbortError') return;
-          toast.success('Regenerated but failed to reload');
+          if (!overviewMode) toast.success('Regenerated but failed to reload');
         }
       }
     } catch (err) {
@@ -1003,7 +1004,7 @@ export function BrainstormEngine({
       )}
 
       <ManualOutputDialog
-        open={!!manualSessionId}
+        open={!overviewMode && !!manualSessionId}
         onOpenChange={(open) => { if (!open) setManualSessionId(null); }}
         onSubmit={handleManualOutputSubmit}
         onAbandon={handleManualAbandon}
@@ -1037,9 +1038,11 @@ export function BrainstormEngine({
       />
 
 
-      {/* Floating progress indicator — non-blocking, bottom-right */}
+      {/* Floating progress indicator — non-blocking, bottom-right. Suppressed in
+          overview mode: the engine runs hidden behind display:none and the float
+          would leak onto the dashboard via its fixed-position portal. */}
       <GenerationProgressFloat
-        open={!!activeGenerationId}
+        open={!overviewMode && !!activeGenerationId}
         sessionId={activeGenerationId ?? ''}
         sseUrl={activeGenerationId ? `/api/brainstorm/sessions/${activeGenerationId}/events` : ''}
         cancelUrl={activeGenerationId ? `/api/brainstorm/sessions/${activeGenerationId}/cancel` : undefined}

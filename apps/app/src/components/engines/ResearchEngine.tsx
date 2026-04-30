@@ -421,13 +421,13 @@ export function ResearchEngine({
       }
     } catch {
       // Cards are still in state; just won't have a session ID for downstream
-      toast.warning('Cards imported locally but failed to save session to database');
+      if (!overviewMode) toast.warning('Cards imported locally but failed to save session to database');
     }
 
     setCards(allCards);
     setApproved(new Set(allCards.map((_, i) => i)));
     tracker.trackAction('imported', { cardCount: allCards.length, source: 'manual' });
-    toast.success(
+    if (!overviewMode) toast.success(
       `${allCards.length} research cards imported (${sources.length} sources, ${stats.length} stats, ${quotes.length} quotes, ${counters.length} counterarguments)`
     );
   }
@@ -484,7 +484,7 @@ export function ResearchEngine({
       // Check for manual provider awaiting output
       if (json?.data?.status === 'awaiting_manual') {
         setManualSessionId(json?.data?.sessionId || null);
-        toast.success('Prompt copied to Axiom. Paste the output when ready.');
+        if (!overviewMode) toast.success('Prompt copied to Axiom. Paste the output when ready.');
         return;
       }
 
@@ -500,19 +500,19 @@ export function ResearchEngine({
       if (generatedFindings && typeof generatedFindings === 'object') {
         setFindings(generatedFindings);
         tracker.trackCompleted({ sessionId: newSessionId || '', cardCount: generatedCards.length, approvedCount: generatedCards.length, level });
-        toast.success('Research completed');
+        if (!overviewMode) toast.success('Research completed');
       } else if (generatedCards.length > 0) {
         setCards(generatedCards);
         setApproved(new Set(generatedCards.map((_, i) => i)));
         tracker.trackCompleted({ sessionId: newSessionId || '', cardCount: generatedCards.length, approvedCount: generatedCards.length, level });
-        toast.success(`${generatedCards.length} research cards found`);
+        if (!overviewMode) toast.success(`${generatedCards.length} research cards found`);
       } else if (newSessionId) {
         // Background job — show progress float, hydrate on complete
         wentAsync = true;
         setActiveGenerationId(newSessionId);
         return;
       } else {
-        toast.warning('No research data recognized in output', {
+        if (!overviewMode) toast.warning('No research data recognized in output', {
           description:
             "AI responded but format didn't match. Try a different model or re-run.",
         });
@@ -550,14 +550,14 @@ export function ResearchEngine({
       if (sess.cards_json && typeof sess.cards_json === 'object' && !Array.isArray(sess.cards_json)) {
         setFindings(sess.cards_json as Record<string, unknown>);
         tracker.trackCompleted({ sessionId: id, cardCount: 0, approvedCount: 0, level });
-        toast.success('Research completed');
+        if (!overviewMode) toast.success('Research completed');
       } else if (Array.isArray(sess.cards_json) && sess.cards_json.length > 0) {
         const legacy = sess.cards_json as Array<Record<string, unknown>>;
         setFindings(synthesizeFindingsFromLegacy(legacy));
         tracker.trackCompleted({ sessionId: id, cardCount: legacy.length, approvedCount: legacy.length, level });
-        toast.success(`${legacy.length} research cards found`);
+        if (!overviewMode) toast.success(`${legacy.length} research cards found`);
       } else {
-        toast.warning('Research finished but no findings were saved', {
+        if (!overviewMode) toast.warning('Research finished but no findings were saved', {
           description: 'Try regenerating with a different model.',
         });
       }
@@ -584,6 +584,7 @@ export function ResearchEngine({
   // Auto-pilot: when findings render, auto-approve and advance to draft.
   const autoApprovedRef = useRef<string | null>(null);
   const autoMode = useSelector(actor, (s) => s.context.mode);
+  const overviewMode = autoMode === 'overview';
   const autoPaused = useSelector(actor, (s) => s.context.paused);
   useEffect(() => {
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
@@ -715,11 +716,11 @@ export function ResearchEngine({
               setRefinedAngle(sess.refined_angle_json as Record<string, unknown>);
             }
             tracker.trackAction('regenerated', { sessionId: newId, previousCardCount: cards.length });
-            toast.success('Regenerated successfully');
+            if (!overviewMode) toast.success('Regenerated successfully');
           }
         } catch (err) {
           if (err instanceof Error && err.name === 'AbortError') return;
-          toast.success('Regenerated but failed to reload');
+          if (!overviewMode) toast.success('Regenerated but failed to reload');
         }
       }
     } catch (err) {
@@ -753,12 +754,12 @@ export function ResearchEngine({
     if (newFindings && typeof newFindings === 'object') {
       setFindings(newFindings);
       tracker.trackCompleted({ sessionId: manualSessionId, cardCount: 1, approvedCount: 1, level });
-      toast.success('Research imported');
+      if (!overviewMode) toast.success('Research imported');
     } else if (newCards.length > 0) {
       setCards(newCards);
       setApproved(new Set(newCards.map((_: Card, i: number) => i)));
       tracker.trackCompleted({ sessionId: manualSessionId, cardCount: newCards.length, approvedCount: newCards.length, level });
-      toast.success(`${newCards.length} research cards imported`);
+      if (!overviewMode) toast.success(`${newCards.length} research cards imported`);
     }
 
     setManualSessionId(null);
@@ -826,7 +827,7 @@ export function ResearchEngine({
       }
     }
 
-    toast.success(`${approvedCards.length} cards approved`);
+    if (!overviewMode) toast.success(`${approvedCards.length} cards approved`);
     const result: ResearchResult = {
       researchSessionId: sessionId || '',
       approvedCardsCount: approvedCards.length,
@@ -1494,7 +1495,7 @@ export function ResearchEngine({
       )}
 
       <ManualOutputDialog
-        open={!!manualSessionId}
+        open={!overviewMode && !!manualSessionId}
         onOpenChange={(open) => {
           if (!open) {
             setManualSessionId(null);
@@ -1507,8 +1508,10 @@ export function ResearchEngine({
         onAbandon={handleManualAbandon}
       />
 
+      {/* Floating progress indicator — suppressed in overview mode (engine runs
+          behind display:none; fixed-position float would leak onto the dashboard). */}
       <GenerationProgressFloat
-        open={!!activeGenerationId}
+        open={!overviewMode && !!activeGenerationId}
         sessionId={activeGenerationId ?? ''}
         sseUrl={activeGenerationId ? `/api/research-sessions/${activeGenerationId}/events` : ''}
         cancelUrl={activeGenerationId ? `/api/research-sessions/${activeGenerationId}/cancel` : undefined}

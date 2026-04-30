@@ -533,8 +533,8 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
     setImagesMode('brief');
     setPhase('refine');
     void persistBriefs(result.visual, result.slots);
-    toast.success(`Imported ${result.slots.length} prompt briefs`);
-  }, [persistBriefs]);
+    if (!overviewMode) toast.success(`Imported ${result.slots.length} prompt briefs`);
+  }, [persistBriefs, overviewMode]);
 
   /* ── Generate briefs via AI or manual ── */
   async function handleGenerateBriefs() {
@@ -608,7 +608,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
         return;
       }
       tracker.trackAction('manual.awaiting', { draftId, role, slot: card.slot });
-      toast.success(`Prompt for ${card.slot} emitted to Axiom. Upload the image when ready.`);
+      if (!overviewMode) toast.success(`Prompt for ${card.slot} emitted to Axiom. Upload the image when ready.`);
       return;
     }
 
@@ -663,7 +663,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
     setGeneratingSlot(card.slot);
     try {
       await generateSlotImage(card);
-      if (imageProvider !== 'manual') toast.success(`Generated image for ${card.slot}`);
+      if (imageProvider !== 'manual' && !overviewMode) toast.success(`Generated image for ${card.slot}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Image generation failed');
     } finally {
@@ -1092,9 +1092,9 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft }: AssetsEn
         </Card>
       )}
 
-      {/* Manual paste dialog for briefs */}
+      {/* Manual paste dialog for briefs. Suppressed in overview mode. */}
       <ManualOutputDialog
-        open={manualBriefsOpen}
+        open={!overviewMode && manualBriefsOpen}
         onOpenChange={(open) => setManualBriefsOpen(open)}
         title="Paste Asset Prompt Briefs"
         description="Retrieve the prompt from Axiom, run it in your AI tool, then paste the BC_ASSETS_OUTPUT JSON here."

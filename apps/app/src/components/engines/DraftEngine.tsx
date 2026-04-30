@@ -321,6 +321,7 @@ export function DraftEngine({
 
   // ── Auto-pilot wiring ─────────────────────────────────────────────
   const autoMode = useSelector(actor, (s) => s.context.mode);
+  const overviewMode = autoMode === 'overview';
   const autoPaused = useSelector(actor, (s) => s.context.paused);
 
   // Phase 1: auto-fire canonical core generation when prerequisites are ready
@@ -548,7 +549,7 @@ export function DraftEngine({
         setPhase('core-ready');
         setCoreApproved(false);
         setCoreExpanded(true);
-        toast.success('Canonical core submitted — review before producing');
+        if (!overviewMode) toast.success('Canonical core submitted — review before producing');
       } else {
         const fmt = manualState.phase as DraftType;
         const parsedObj = (parsed && typeof parsed === 'object') ? parsed as Record<string, unknown> : {};
@@ -559,7 +560,7 @@ export function DraftEngine({
           '';
         setProducedContent(content);
         setPhase('done');
-        toast.success(`${manualState.phase.charAt(0).toUpperCase() + manualState.phase.slice(1)} content submitted`);
+        if (!overviewMode) toast.success(`${manualState.phase.charAt(0).toUpperCase() + manualState.phase.slice(1)} content submitted`);
       }
       setManualState(null);
       actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: manualState.draftId } });
@@ -648,7 +649,7 @@ export function DraftEngine({
     setPhase('core-ready');
     setCoreExpanded(true);
     setCoreApproved(false);
-    toast.success('Canonical core imported — review before producing');
+    if (!overviewMode) toast.success('Canonical core imported — review before producing');
   }
 
   // ── SSE completion: canonical core generated ──────────────────
@@ -692,7 +693,7 @@ export function DraftEngine({
               setPhase('done');
               const warning = typeof draftJson?.content_warning === 'string' ? draftJson.content_warning : null;
               setContentWarning(warning);
-              toast.success('Canonical core + content generated');
+              if (!overviewMode) toast.success('Canonical core + content generated');
               return;
             }
           }
@@ -700,14 +701,14 @@ export function DraftEngine({
           setPhase('core-ready');
           setCoreExpanded(true);
           setCoreApproved(false);
-          toast.success('Canonical core generated — review before producing');
+          if (!overviewMode) toast.success('Canonical core generated — review before producing');
         } else if (hasProducedContent) {
           // No core but full content — handle one-shot generators
           const content = extractProducedContent(draftRow, type);
           if (content && content !== '{}') {
             setProducedContent(content);
             setPhase('done');
-            toast.success('Content generated');
+            if (!overviewMode) toast.success('Content generated');
           } else {
             toast.error('No canonical core found in draft');
           }
@@ -880,7 +881,7 @@ export function DraftEngine({
       source: 'manual',
     });
     setPhase('done');
-    toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} content imported`);
+    if (!overviewMode) toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} content imported`);
   }
 
   // ── Helpers ───────────────────────────────────────────────────
@@ -1434,12 +1435,13 @@ export function DraftEngine({
         </Card>
       )}
 
-      {/* SSE generation modal — shows for both canonical-core and produce
-          phases since the orchestrator opens a single per-draft event stream
-          and we re-set activeDraftId on both transitions. */}
+      {/* SSE generation modal — shows for both canonical-core and produce phases.
+          Suppressed in overview mode: engine runs behind display:none and the
+          Dialog portal would leak onto the dashboard. SSE stays inactive when
+          open=false (GenerationProgressModal only connects when open && openedAt). */}
       {activeDraftId && (
         <GenerationProgressModal
-          open={!!activeDraftId}
+          open={!overviewMode && !!activeDraftId}
           sessionId={activeDraftId}
           sseUrl={`/api/content-drafts/${activeDraftId}/events`}
           since={activeSince ?? undefined}
@@ -1698,9 +1700,9 @@ export function DraftEngine({
         </Card>
       )}
 
-      {/* Manual output dialog for provider='manual' */}
+      {/* Manual output dialog for provider='manual'. Suppressed in overview mode. */}
       <ManualOutputDialog
-        open={!!manualState}
+        open={!overviewMode && !!manualState}
         onOpenChange={(open) => {
           if (!open) setManualState(null);
         }}

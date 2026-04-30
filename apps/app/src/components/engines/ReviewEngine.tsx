@@ -66,6 +66,8 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
     actor,
     (s) => s.context.autopilotConfig?.review.autoApproveThreshold ?? s.context.pipelineSettings.reviewApproveScore,
   );
+  const autoMode = useSelector(actor, (s) => s.context.mode);
+  const overviewMode = autoMode === 'overview';
   const draftId = draftResult?.draftId ?? '';
 
   // Local mutable view of the draft — initialized from the prop, kept in sync as
@@ -299,7 +301,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
         if (isManual && json.data?.status === 'awaiting_manual') {
           setManualState({ draftId });
           setReviewing(false);
-          toast.info('Review prompt copied to Axiom. Paste output when ready.');
+          if (!overviewMode) toast.info('Review prompt copied to Axiom. Paste output when ready.');
           return;
         }
 
@@ -309,7 +311,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
         // off after the 1.5s success-state delay. Setting it here would
         // unmount the modal before the user sees the green checkmark.
         await refetchDraft();
-        toast.success('Review completed');
+        if (!overviewMode) toast.success('Review completed');
 
         const feedbackObj = json.data?.review_feedback_json as Record<string, unknown> | null;
         const blogReview = (feedbackObj?.blog_review ?? feedbackObj?.video_review) as Record<string, unknown> | undefined;
@@ -382,7 +384,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
 
       setManualState(null);
       await refetchDraft();
-      toast.success('Review submitted');
+      if (!overviewMode) toast.success('Review submitted');
       actor.send({ type: 'STAGE_PROGRESS', stage: 'review', partial: { score, verdict } as Record<string, unknown> });
     } catch (err) {
       toast.error('Submit failed', { description: err instanceof Error ? err.message : 'Unknown error' });
@@ -480,11 +482,11 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
 
         const tierText = TIER_LABEL[tier] ?? 'Unknown';
         if (verdict === 'approved') {
-          toast.success(`Review imported — ${tierText} — Approved!`);
+          if (!overviewMode) toast.success(`Review imported — ${tierText} — Approved!`);
         } else if (verdict === 'rejected') {
           toast.error(`Review imported — ${tierText} — Rejected`);
         } else {
-          toast.warning(`Review imported — ${tierText} — Revision required`);
+          if (!overviewMode) toast.warning(`Review imported — ${tierText} — Revision required`);
         }
       } catch {
         toast.error('Failed to import review');
@@ -520,7 +522,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
 
         await refetchDraft();
         setReviewing(false);
-        toast.success('Draft revised based on feedback');
+        if (!overviewMode) toast.success('Draft revised based on feedback');
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') { setReviewing(false); return; }
         setReviewing(false);
@@ -548,7 +550,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
           return;
         }
         await refetchDraft();
-        toast.success('Draft approved');
+        if (!overviewMode) toast.success('Draft approved');
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
         toast.error('Failed to approve');
@@ -824,9 +826,9 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
         </>
       )}
 
-      {/* Manual review output dialog */}
+      {/* Manual review output dialog. Suppressed in overview mode. */}
       <ManualOutputDialog
-        open={!!manualState}
+        open={!overviewMode && !!manualState}
         onOpenChange={(open) => {
           if (!open) {
             setManualState(null);
@@ -840,10 +842,12 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
         loading={busy}
       />
 
-      {/* SSE generation modal */}
+      {/* SSE generation modal. Suppressed in overview mode — engine runs behind
+          display:none; the Dialog portal would leak onto the dashboard. The SSE
+          connection is also idle when open=false (modal gates effectiveUrl on open). */}
       {reviewing && !isManual && (
         <GenerationProgressModal
-          open={reviewing}
+          open={!overviewMode && reviewing}
           sessionId={draftId}
           sseUrl={`/api/content-drafts/${draftId}/events`}
           since={reviewSince ?? undefined}
@@ -853,7 +857,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
             // so json.data at POST-time had NULL score/verdict. Reading them now
             // from the DB gives the real results.
             const fresh = await refetchDraft();
-            toast.success('Review completed');
+            if (actor.getSnapshot().context.mode !== 'overview') toast.success('Review completed');
             pendingReviewResultRef.current = null; // no longer needed
             setReviewing(false);
             setReviewSince(null);
