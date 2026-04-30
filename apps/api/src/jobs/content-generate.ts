@@ -7,7 +7,8 @@
 
 import { inngest } from './client.js';
 import { STAGE_COSTS, generateWithFallback } from '../lib/ai/router.js';
-import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
+import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
+import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
 import { checkCredits, debitCredits } from '../lib/credits.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { buildBrainstormMessage } from '../lib/ai/prompts/brainstorm.js';
@@ -52,14 +53,20 @@ export const contentGenerate = inngest.createFunction(
 
     // Step 2: Brainstorm
     const brainstormResult = await step.run('brainstorm', async () => {
-      const systemPrompt = (await loadAgentPrompt('brainstorm')) ?? '';
+      const agentConfig = await loadAgentConfig('brainstorm');
+      const { provider: rp, model: rm } = resolveProviderOverride(undefined, undefined, agentConfig);
+      const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
       const userMessage = buildBrainstormMessage({ topic });
       const { result } = await generateWithFallback('brainstorm', tier, {
         agentType: 'brainstorm',
-        systemPrompt,
+        systemPrompt: agentConfig.instructions,
         userMessage,
         schema: null,
+        tools: enabledTools.length > 0 ? enabledTools : undefined,
+        toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
       }, {
+        provider: rp,
+        model: rm,
         logContext: {
           userId,
           orgId,
@@ -76,14 +83,20 @@ export const contentGenerate = inngest.createFunction(
 
     // Step 3: Research
     const researchResult = await step.run('research', async () => {
-      const systemPrompt = (await loadAgentPrompt('research')) ?? '';
+      const agentConfig = await loadAgentConfig('research');
+      const { provider: rp, model: rm } = resolveProviderOverride(undefined, undefined, agentConfig);
+      const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
       const userMessage = buildResearchMessage({ ideaTitle: topic });
       const { result } = await generateWithFallback('research', tier, {
         agentType: 'research',
-        systemPrompt,
+        systemPrompt: agentConfig.instructions,
         userMessage,
         schema: null,
+        tools: enabledTools.length > 0 ? enabledTools : undefined,
+        toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
       }, {
+        provider: rp,
+        model: rm,
         logContext: {
           userId,
           orgId,
@@ -100,8 +113,10 @@ export const contentGenerate = inngest.createFunction(
 
     // Step 4: Production — canonical core first, then per-format output
     const canonicalCore = await step.run('canonical-core', async () => {
-      const systemPrompt =
-        (await loadAgentPrompt('content-core')) ?? (await loadAgentPrompt('production')) ?? '';
+      const coreConfig = await loadAgentConfig('content-core');
+      const agentConfig = coreConfig.instructions ? coreConfig : await loadAgentConfig('production');
+      const { provider: rp, model: rm } = resolveProviderOverride(undefined, undefined, agentConfig);
+      const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
       const userMessage = buildCanonicalCoreMessage({
         type: 'blog',
         title: topic ?? 'Untitled',
@@ -109,10 +124,14 @@ export const contentGenerate = inngest.createFunction(
       });
       const { result } = await generateWithFallback('production', tier, {
         agentType: 'production',
-        systemPrompt,
+        systemPrompt: agentConfig.instructions,
         userMessage,
         schema: null,
+        tools: enabledTools.length > 0 ? enabledTools : undefined,
+        toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
       }, {
+        provider: rp,
+        model: rm,
         logContext: {
           userId,
           orgId,
@@ -129,8 +148,10 @@ export const contentGenerate = inngest.createFunction(
       await assertNotAborted(undefined, undefined, sb);
 
       productionResults[format] = await step.run(`production-${format}`, async () => {
-        const systemPrompt =
-          (await loadAgentPrompt(format)) ?? (await loadAgentPrompt('production')) ?? '';
+        const fmtConfig = await loadAgentConfig(format);
+        const agentConfig = fmtConfig.instructions ? fmtConfig : await loadAgentConfig('production');
+        const { provider: rp, model: rm } = resolveProviderOverride(undefined, undefined, agentConfig);
+        const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
         const userMessage = buildProduceMessage({
           type: format,
           title: topic ?? 'Untitled',
@@ -138,10 +159,14 @@ export const contentGenerate = inngest.createFunction(
         });
         const { result } = await generateWithFallback('production', tier, {
           agentType: 'production',
-          systemPrompt,
+          systemPrompt: agentConfig.instructions,
           userMessage,
           schema: null,
+          tools: enabledTools.length > 0 ? enabledTools : undefined,
+          toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
         }, {
+          provider: rp,
+          model: rm,
           logContext: {
             userId,
             orgId,
@@ -159,7 +184,9 @@ export const contentGenerate = inngest.createFunction(
     await assertNotAborted(undefined, undefined, sb);
 
     await step.run('review', async () => {
-      const systemPrompt = (await loadAgentPrompt('review')) ?? '';
+      const agentConfig = await loadAgentConfig('review');
+      const { provider: rp, model: rm } = resolveProviderOverride(undefined, undefined, agentConfig);
+      const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
       const userMessage = buildReviewMessage({
         type: 'blog',
         title: topic ?? 'Untitled',
@@ -167,10 +194,14 @@ export const contentGenerate = inngest.createFunction(
       });
       const { result } = await generateWithFallback('review', tier, {
         agentType: 'review',
-        systemPrompt,
+        systemPrompt: agentConfig.instructions,
         userMessage,
         schema: null,
+        tools: enabledTools.length > 0 ? enabledTools : undefined,
+        toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
       }, {
+        provider: rp,
+        model: rm,
         logContext: {
           userId,
           orgId,

@@ -9,8 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Layers, Loader2, Lock, Shield, SlidersHorizontal, Users } from "lucide-react";
+import { Layers, Loader2, Lock, Shield, SlidersHorizontal, Users, Wrench } from "lucide-react";
 import { MODELS_BY_PROVIDER, type ProviderId } from "@/components/ai/ModelPicker";
+import { Checkbox } from "@/components/ui/checkbox";
+import { TOOL_META, toolsForProvider } from "@brighttale/shared";
 
 const PROVIDERS = ["gemini", "openai", "anthropic", "ollama"] as const;
 
@@ -22,6 +24,7 @@ interface AgentPrompt {
     instructions: string;
     recommended_provider: string | null;
     recommended_model: string | null;
+    tools: string[];
     updated_at: string;
 }
 
@@ -54,8 +57,12 @@ export default function AgentsSettingsPage() {
                 const agentsJson = await agentsRes.json();
                 const meJson = await meRes.json();
                 if (agentsJson.data?.agents) {
-                    setAgents(agentsJson.data.agents);
-                    if (agentsJson.data.agents.length > 0) setSelected(agentsJson.data.agents[0]);
+                    const normalized = agentsJson.data.agents.map((a: AgentPrompt) => ({
+                        ...a,
+                        tools: Array.isArray(a.tools) ? a.tools : [],
+                    }));
+                    setAgents(normalized);
+                    if (normalized.length > 0) setSelected(normalized[0]);
                 }
                 if (meJson?.data?.role === "admin") setIsAdmin(true);
             } finally {
@@ -74,6 +81,7 @@ export default function AgentsSettingsPage() {
                 body: JSON.stringify({
                     recommended_provider: selected.recommended_provider || null,
                     recommended_model: selected.recommended_model || null,
+                    tools: selected.tools,
                 }),
             });
             const json = await res.json();
@@ -237,6 +245,83 @@ export default function AgentsSettingsPage() {
                                 </div>
                                 {isAdmin && (
                                     <div className="flex justify-end">
+                                        <Button size="sm" onClick={handleSaveRoute} disabled={saving}>
+                                            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save"}
+                                        </Button>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+
+                        {/* Tools */}
+                        <Card>
+                            <CardHeader className="pb-3">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <CardTitle className="text-base flex items-center gap-2">
+                                            <Wrench className="h-4 w-4" />
+                                            Tools
+                                        </CardTitle>
+                                        <CardDescription className="mt-0.5">
+                                            Tools this agent can call during generation. Availability depends on the configured provider.
+                                        </CardDescription>
+                                    </div>
+                                    {!isAdmin && (
+                                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                            <Lock className="h-3 w-3" />
+                                            Read only
+                                        </div>
+                                    )}
+                                </div>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                {(() => {
+                                    const provider = selected.recommended_provider ?? "";
+                                    const available = toolsForProvider(provider);
+                                    if (provider === "ollama") {
+                                        return <p className="text-xs text-muted-foreground">Tool calling is not supported for Ollama.</p>;
+                                    }
+                                    if (!provider) {
+                                        return <p className="text-xs text-muted-foreground">No provider configured — tools will follow pipeline defaults.</p>;
+                                    }
+                                    if (available.length === 0) {
+                                        return <p className="text-xs text-muted-foreground">No tools registered yet.</p>;
+                                    }
+                                    return available.map((tool) => {
+                                        const enabled = selected.tools.includes(tool.name);
+                                        return (
+                                            <div key={tool.name} className="flex items-start gap-3">
+                                                <Checkbox
+                                                    id={`tool-${tool.name}`}
+                                                    checked={enabled}
+                                                    disabled={!isAdmin}
+                                                    onCheckedChange={(checked) =>
+                                                        setSelected((s) => s ? {
+                                                            ...s,
+                                                            tools: checked
+                                                                ? [...s.tools, tool.name]
+                                                                : s.tools.filter((t) => t !== tool.name),
+                                                        } : s)
+                                                    }
+                                                />
+                                                <label
+                                                    htmlFor={`tool-${tool.name}`}
+                                                    className={`cursor-pointer ${!isAdmin ? "cursor-default" : ""}`}
+                                                >
+                                                    <p className="text-sm font-medium leading-none">{tool.label}</p>
+                                                    <p className="text-xs text-muted-foreground mt-1">{tool.description}</p>
+                                                    {tool.requiresEnv && (
+                                                        <p className="text-[11px] font-mono text-muted-foreground/60 mt-0.5">
+                                                            requires <span className="text-amber-500">{tool.requiresEnv}</span>
+                                                        </p>
+                                                    )}
+                                                </label>
+                                            </div>
+                                        );
+                                    });
+                                })()}
+                                {isAdmin && TOOL_META.length > 0 && (
+                                    <div className="flex justify-end pt-1">
                                         <Button size="sm" onClick={handleSaveRoute} disabled={saving}>
                                             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save"}
                                         </Button>

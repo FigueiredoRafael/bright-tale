@@ -1,10 +1,6 @@
-/**
- * Gemini text provider.
- * Uses @google/genai SDK. Free tier covers gemini-2.5-flash with generous
- * limits, ideal for brainstorm/research stages.
- */
 import { GoogleGenAI } from '@google/genai';
-import type { AIProvider, GenerateContentParams, TokenUsage } from '../provider.js';
+import type { Content, Part, Tool } from '@google/genai';
+import type { AIProvider, GenerateContentParams, TokenUsage, ToolCall } from '../provider.js';
 
 export class GeminiProvider implements AIProvider {
   readonly name = 'gemini';
@@ -24,39 +20,86 @@ export class GeminiProvider implements AIProvider {
     systemPrompt,
     userMessage,
     signal,
+    tools,
+    toolExecutor,
   }: GenerateContentParams): Promise<unknown> {
-    // Pre-call fail-fast guard: check if already aborted
     if (signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError');
     }
 
-    const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${userMessage}` : userMessage;
+    const hasTools = tools && tools.length > 0 && toolExecutor;
 
-    // TODO: signal not threaded — GoogleGenAI SDK does not expose per-request signal in generateContent.
-    // In-flight requests will not be cancelled until completion or SDK-level timeout.
-    const response = await this.client.models.generateContent({
-      model: this.model,
-      contents: fullPrompt,
-      config: {
-        temperature: this.temperature,
-        responseMimeType: 'application/json',
-      },
-    });
+    const geminiTools: Tool[] | undefined = hasTools
+      ? [{
+          functionDeclarations: tools.map(t => ({
+            name: t.name,
+            description: t.description,
+            parametersJsonSchema: t.parameters,
+          })),
+        }]
+      : undefined;
 
-    const meta = (response as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } }).usageMetadata;
-    this.lastUsage = {
-      inputTokens: meta?.promptTokenCount,
-      outputTokens: meta?.candidatesTokenCount,
-    };
+    const contents: Content[] = [
+      { role: 'user', parts: [{ text: userMessage }] },
+    ];
 
-    const text = response.text;
-    if (!text) throw new Error('No content generated from Gemini');
+    const MAX_TOOL_TURNS = 10;
+    for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
+      const response = await this.client.models.generateContent({
+        model: this.model,
+        contents,
+        config: {
+          temperature: this.temperature,
+          systemInstruction: systemPrompt || undefined,
+          ...(geminiTools
+            ? { tools: geminiTools }
+            : { responseMimeType: 'application/json' }),
+        },
+      });
 
-    const parsed = JSON.parse(text);
-    if (schema && typeof (schema as { parse?: unknown }).parse === 'function') {
-      return (schema as { parse: (v: unknown) => unknown }).parse(parsed);
+      const meta = (response as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } }).usageMetadata;
+      this.lastUsage = {
+        inputTokens: meta?.promptTokenCount,
+        outputTokens: meta?.candidatesTokenCount,
+      };
+
+      const functionCalls = response.functionCalls;
+
+      if (functionCalls && functionCalls.length > 0 && hasTools) {
+        const modelContent = response.candidates?.[0]?.content;
+        if (modelContent) contents.push(modelContent);
+
+        const calls: ToolCall[] = functionCalls.map(fc => ({
+          id: fc.id ?? '',
+          name: fc.name ?? '',
+          arguments: (fc.args ?? {}) as Record<string, unknown>,
+        }));
+
+        const results = await toolExecutor(calls);
+        const resultById = new Map(results.map(r => [r.toolCallId, r.content]));
+
+        const responseParts: Part[] = functionCalls.map(fc => ({
+          functionResponse: {
+            name: fc.name ?? '',
+            id: fc.id,
+            response: { result: resultById.get(fc.id ?? '') ?? '{}' },
+          },
+        }));
+
+        contents.push({ role: 'user', parts: responseParts });
+        continue;
+      }
+
+      const text = response.text;
+      if (!text) throw new Error('No content generated from Gemini');
+
+      const parsed = JSON.parse(text);
+      if (schema && typeof (schema as { parse?: unknown }).parse === 'function') {
+        return (schema as { parse: (v: unknown) => unknown }).parse(parsed);
+      }
+      return parsed;
     }
-    return parsed;
-  }
 
+    throw new Error('Gemini tool call loop exceeded maximum turns');
+  }
 }

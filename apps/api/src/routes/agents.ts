@@ -17,6 +17,7 @@ const updateAgentSchema = z.object({
   sections_json: z.any().optional(),
   recommended_provider: z.string().nullable().optional(),
   recommended_model: z.string().nullable().optional(),
+  tools: z.array(z.string()).optional(),
 });
 
 export async function agentsRoutes(fastify: FastifyInstance): Promise<void> {
@@ -32,12 +33,17 @@ export async function agentsRoutes(fastify: FastifyInstance): Promise<void> {
 
       const { data: agents, error } = await sb
         .from('agent_prompts')
-        .select('id, name, slug, stage, instructions, input_schema, output_schema, sections_json, recommended_provider, recommended_model, created_at, updated_at')
+        .select('id, name, slug, stage, instructions, input_schema, output_schema, sections_json, recommended_provider, recommended_model, tools_json, created_at, updated_at')
         .order('stage', { ascending: true });
 
       if (error) throw error;
 
-      return reply.send({ data: { agents }, error: null });
+      const mapped = (agents ?? []).map(a => ({
+        ...a,
+        tools: Array.isArray(a.tools_json) ? a.tools_json : [],
+      }));
+
+      return reply.send({ data: { agents: mapped }, error: null });
     } catch (error) {
       return sendError(reply, error);
     }
@@ -96,7 +102,11 @@ export async function agentsRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.status(403).send({ data: null, error: { code: 'FORBIDDEN', message: 'Admin role required' } });
       }
 
-      const data = updateAgentSchema.parse(request.body);
+      const { tools, ...rest } = updateAgentSchema.parse(request.body);
+      const data = {
+        ...rest,
+        ...(tools !== undefined ? { tools_json: tools } : {}),
+      };
 
       // Check if agent exists
       const { data: existing, error: findErr } = await sb

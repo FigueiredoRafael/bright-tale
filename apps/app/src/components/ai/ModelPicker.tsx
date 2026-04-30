@@ -61,7 +61,15 @@ interface Props {
 
 export function ModelPicker({ provider, model, recommended, onProviderChange, onModelChange, providers }: Props) {
     const visibleProviders = providers ?? DEFAULT_PROVIDERS;
-    const models = MODELS_BY_PROVIDER[provider];
+    const baseModels = MODELS_BY_PROVIDER[provider];
+
+    // If the admin-recommended model for this provider isn't in the hardcoded list,
+    // inject it at the top so it's always visible and selectable.
+    const adminModel = recommended?.provider === provider ? recommended?.model : null;
+    const adminModelInList = adminModel ? baseModels.some((m) => m.id === adminModel) : true;
+    const models: ModelOption[] = adminModel && !adminModelInList
+        ? [{ id: adminModel, label: adminModel, note: "admin default" }, ...baseModels]
+        : baseModels;
 
     return (
         <div className="space-y-3 pt-3 border-t">
@@ -109,7 +117,7 @@ export function ModelPicker({ provider, model, recommended, onProviderChange, on
                                 {m.note && <div className="text-[10px] text-muted-foreground mt-0.5">{m.note}</div>}
                                 {isRecommended && (
                                     <Badge variant="secondary" className="absolute top-1.5 right-1.5 text-[9px] gap-0.5 px-1">
-                                        <Sparkles className="h-2 w-2" /> recommended
+                                        <Sparkles className="h-2 w-2" /> rec
                                     </Badge>
                                 )}
                             </button>

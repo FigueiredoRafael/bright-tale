@@ -7,7 +7,8 @@
  */
 import { inngest } from './client.js';
 import { STAGE_COSTS, generateWithFallback } from '../lib/ai/router.js';
-import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
+import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
+import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
 import { debitCredits } from '../lib/credits.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
@@ -101,15 +102,17 @@ export const brainstormGenerate = inngest.createFunction(
 
       await assertNotAborted(projectId, undefined, sb);
 
-      const systemPrompt = (await step.run('load-prompt', async () => {
-        return (await loadAgentPrompt('brainstorm')) ?? null;
-      })) as string | null;
+      const agentConfig = (await step.run('load-prompt', async () => {
+        return loadAgentConfig('brainstorm');
+      })) as Awaited<ReturnType<typeof loadAgentConfig>>;
+      const systemPrompt = agentConfig.instructions || null;
+      const { provider: resolvedProvider, model: resolvedModel } = resolveProviderOverride(provider, model, agentConfig);
 
       await assertNotAborted(projectId, undefined, sb);
 
       await step.run('emit-calling-provider', async () => {
-        const label = provider ? `${provider}${model ? ` (${model})` : ''}` : modelTier;
-        await emitJobEvent(sessionId, 'brainstorm', 'calling_provider', `Conversando com ${label}…`, { provider, model });
+        const label = resolvedProvider ? `${resolvedProvider}${resolvedModel ? ` (${resolvedModel})` : ''}` : modelTier;
+        await emitJobEvent(sessionId, 'brainstorm', 'calling_provider', `Conversando com ${label}…`, { provider: resolvedProvider, model: resolvedModel });
       });
 
       await assertNotAborted(projectId, undefined, sb);
@@ -135,6 +138,9 @@ export const brainstormGenerate = inngest.createFunction(
           channel: channelContext as BrainstormInput['channel'],
         });
 
+        const enabledTools = resolveTools(agentConfig.tools).filter(
+          () => resolvedProvider !== 'ollama',
+        );
         const call = await generateWithFallback(
           'brainstorm',
           modelTier,
@@ -142,10 +148,12 @@ export const brainstormGenerate = inngest.createFunction(
             agentType: 'brainstorm',
             systemPrompt: systemPrompt ?? '',
             userMessage,
+            tools: enabledTools.length > 0 ? enabledTools : undefined,
+            toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
           },
           {
-            provider,
-            model,
+            provider: resolvedProvider,
+            model: resolvedModel,
             logContext: {
               userId,
               orgId,

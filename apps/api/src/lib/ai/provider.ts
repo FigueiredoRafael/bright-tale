@@ -7,12 +7,39 @@
 
 export type AgentType = "brainstorm" | "research" | "production" | "review" | "assets";
 
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  parameters: {
+    type: 'object';
+    properties: Record<string, unknown>;
+    required?: string[];
+    additionalProperties?: boolean;
+  };
+  strict?: boolean;
+}
+
+export interface ToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+export interface ToolResult {
+  toolCallId: string;
+  content: string;
+}
+
+export type ToolExecutor = (calls: ToolCall[]) => Promise<ToolResult[]>;
+
 export interface GenerateContentParams {
   agentType: AgentType;
   systemPrompt: string;
   userMessage: string;
   schema?: unknown;
   signal?: AbortSignal;
+  tools?: ToolDefinition[];
+  toolExecutor?: ToolExecutor;
 }
 
 export interface TokenUsage {

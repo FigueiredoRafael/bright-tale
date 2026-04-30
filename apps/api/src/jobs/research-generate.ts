@@ -4,13 +4,15 @@
  */
 import { inngest } from './client.js';
 import { generateWithFallback } from '../lib/ai/router.js';
-import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
+
 import { debitCredits } from '../lib/credits.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
 import { buildResearchMessage } from '../lib/ai/prompts/research.js';
 import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
+import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
+import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import type { ResearchInput } from '../lib/ai/prompts/research.js';
 
 const LEVEL_COSTS: Record<'surface' | 'medium' | 'deep', number> = {
@@ -36,39 +38,27 @@ interface ResearchGenerateEvent {
 }
 
 /**
- * Recursive search for the cards array. Agents nest output in arbitrary keys
- * (BC_RESEARCH_OUTPUT.cards, output.cards, sources, citations, etc.) — small
- * local models in particular love to invent wrappers. Find the first array
- * whose items look like research cards (have title/quote/claim/url/source).
+ * Extract the full BC_RESEARCH_OUTPUT findings object so all sections
+ * (sources, statistics, expert_quotes, counterarguments) are preserved.
+ * Unwraps the BC_RESEARCH_OUTPUT wrapper key if present.
+ * Falls back to a legacy flat-array normalizer for old-style model output.
  */
-function normalizeCards(raw: unknown): Array<Record<string, unknown>> {
-  function looksLikeCard(item: unknown): boolean {
-    if (!item || typeof item !== 'object') return false;
-    const o = item as Record<string, unknown>;
-    return (
-      typeof o.title === 'string' ||
-      typeof o.quote === 'string' ||
-      typeof o.claim === 'string' ||
-      typeof o.url === 'string' ||
-      typeof o.source === 'string' ||
-      typeof o.author === 'string'
-    );
+function extractFindings(raw: unknown): { findings: Record<string, unknown>; cardCount: number } {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const top = raw as Record<string, unknown>;
+    // Unwrap wrapper key if model returned { BC_RESEARCH_OUTPUT: { ... } }
+    const inner = (top.BC_RESEARCH_OUTPUT && typeof top.BC_RESEARCH_OUTPUT === 'object' && !Array.isArray(top.BC_RESEARCH_OUTPUT))
+      ? top.BC_RESEARCH_OUTPUT as Record<string, unknown>
+      : top;
+    const count = (['sources', 'statistics', 'expert_quotes', 'counterarguments'] as const)
+      .reduce((n, k) => n + (Array.isArray(inner[k]) ? (inner[k] as unknown[]).length : 0), 0);
+    return { findings: inner, cardCount: count };
   }
-  function find(node: unknown, depth = 0): Array<Record<string, unknown>> | null {
-    if (depth > 6) return null;
-    if (Array.isArray(node)) {
-      if (node.length > 0 && node.some(looksLikeCard)) return node as Array<Record<string, unknown>>;
-      return null;
-    }
-    if (node && typeof node === 'object') {
-      for (const v of Object.values(node as Record<string, unknown>)) {
-        const found = find(v, depth + 1);
-        if (found) return found;
-      }
-    }
-    return null;
+  // Legacy: flat array output (small local models)
+  if (Array.isArray(raw)) {
+    return { findings: { sources: raw }, cardCount: (raw as unknown[]).length };
   }
-  return find(raw) ?? [];
+  return { findings: {}, cardCount: 0 };
 }
 
 export const researchGenerate = inngest.createFunction(
@@ -98,16 +88,23 @@ export const researchGenerate = inngest.createFunction(
 
       await assertNotAborted(projectId, undefined, sb);
 
-      const systemPrompt = (await step.run('load-prompt', async () => {
-        const base = (await loadAgentPrompt('research')) ?? '';
-        return `${base}\n\nLevel directive: ${(inputJson as { instruction?: string }).instruction ?? ''}`.trim();
-      })) as string;
+      const agentConfig = (await step.run('load-prompt', async () => {
+        const config = await loadAgentConfig('research');
+        return {
+          instructions: `${config.instructions}\n\nLevel directive: ${(inputJson as { instruction?: string }).instruction ?? ''}`.trim(),
+          tools: config.tools,
+          recommended_provider: config.recommended_provider,
+          recommended_model: config.recommended_model,
+        };
+      })) as Awaited<ReturnType<typeof loadAgentConfig>>;
+      const systemPrompt = agentConfig.instructions;
+      const { provider: resolvedProvider, model: resolvedModel } = resolveProviderOverride(provider, model, agentConfig);
 
       await assertNotAborted(projectId, undefined, sb);
 
       await step.run('emit-calling-provider', async () => {
-        const label = provider ? `${provider}${model ? ` (${model})` : ''}` : modelTier;
-        await emitJobEvent(sessionId, 'research', 'calling_provider', `Pesquisando com ${label}…`, { provider, model, level });
+        const label = resolvedProvider ? `${resolvedProvider}${resolvedModel ? ` (${resolvedModel})` : ''}` : modelTier;
+        await emitJobEvent(sessionId, 'research', 'calling_provider', `Pesquisando com ${label}…`, { provider: resolvedProvider, model: resolvedModel, level });
       });
 
       await assertNotAborted(projectId, undefined, sb);
@@ -135,6 +132,9 @@ export const researchGenerate = inngest.createFunction(
           channel: channelContext as ResearchInput['channel'],
         });
 
+        const enabledTools = resolveTools(agentConfig.tools).filter(
+          () => resolvedProvider !== 'ollama',
+        );
         const call = await generateWithFallback(
           'research',
           modelTier,
@@ -142,10 +142,12 @@ export const researchGenerate = inngest.createFunction(
             agentType: 'research',
             systemPrompt: systemPrompt ?? '',
             userMessage,
+            tools: enabledTools.length > 0 ? enabledTools : undefined,
+            toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
           },
           {
-            provider,
-            model,
+            provider: resolvedProvider,
+            model: resolvedModel,
             logContext: {
               userId,
               orgId,
@@ -171,12 +173,12 @@ export const researchGenerate = inngest.createFunction(
         await emitJobEvent(sessionId, 'research', 'parsing_output', 'Organizando fontes e citações…');
       });
 
-      const cards = normalizeCards(result);
+      const { findings, cardCount } = extractFindings(result);
 
       await assertNotAborted(projectId, undefined, sb);
 
       await step.run('emit-saving', async () => {
-        await emitJobEvent(sessionId, 'research', 'saving', `Salvando ${cards.length} cards de pesquisa…`, { count: cards.length });
+        await emitJobEvent(sessionId, 'research', 'saving', `Salvando ${cardCount} cards de pesquisa…`, { count: cardCount });
       });
 
       await assertNotAborted(projectId, undefined, sb);
@@ -185,7 +187,7 @@ export const researchGenerate = inngest.createFunction(
         await (sb.from('research_sessions') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
-          .update({ status: 'completed', cards_json: cards })
+          .update({ status: 'completed', cards_json: findings })
           .eq('id', sessionId);
 
         const charge = provider === 'ollama' ? 0 : LEVEL_COSTS[level];
@@ -202,11 +204,11 @@ export const researchGenerate = inngest.createFunction(
         sessionId,
         'research',
         'completed',
-        `${cards.length} cards de pesquisa gerados!`,
-        { cardCount: cards.length },
+        `${cardCount} cards de pesquisa gerados!`,
+        { cardCount },
       );
 
-      return { success: true, cards: cards.length };
+      return { success: true, cards: cardCount };
     } catch (err) {
       if (err instanceof JobAborted) {
         // research_sessions.status does not support 'paused' status yet,

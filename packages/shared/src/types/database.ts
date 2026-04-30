@@ -712,6 +712,7 @@ export type Database = {
           sections_json: Json | null
           slug: string
           stage: string
+          tools_json: Json
           updated_at: string
         }
         Insert: {
@@ -727,6 +728,7 @@ export type Database = {
           sections_json?: Json | null
           slug: string
           stage: string
+          tools_json?: Json
           updated_at?: string
         }
         Update: {
@@ -742,6 +744,7 @@ export type Database = {
           sections_json?: Json | null
           slug?: string
           stage?: string
+          tools_json?: Json
           updated_at?: string
         }
         Relationships: [

@@ -5,7 +5,7 @@ export interface CanonicalCoreInput {
   title: string;
   ideaId?: string;
   idea?: IdeaContext | null;
-  researchCards?: unknown[];
+  researchCards?: unknown;
   productionParams?: unknown;
   personaContext?: {
     name: string;

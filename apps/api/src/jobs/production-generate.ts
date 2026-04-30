@@ -4,7 +4,8 @@
  */
 import { inngest } from './client.js';
 import { generateWithFallback } from '../lib/ai/router.js';
-import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
+import { loadAgentConfig, loadAgentPrompt, resolveProviderOverride } from '../lib/ai/promptLoader.js';
+import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
 import { loadIdeaContext } from '../lib/ai/loadIdeaContext.js';
 import { debitCredits } from '../lib/credits.js';
 import { createServiceClient } from '../lib/supabase/index.js';
@@ -140,15 +141,20 @@ export const productionGenerate = inngest.createFunction(
 
       await assertNotAborted(projectId, draftId, sb);
 
-      const coreSystemPrompt = (await step.run('load-core-prompt', async () => {
-        return (await loadAgentPrompt('content-core')) ?? (await loadAgentPrompt('production')) ?? null;
-      })) as string | null;
+      const coreAgentConfig = (await step.run('load-core-prompt', async () => {
+        const primary = await loadAgentConfig('content-core');
+        if (primary.instructions) return primary;
+        const fallback = await loadAgentConfig('production');
+        return fallback;
+      })) as Awaited<ReturnType<typeof loadAgentConfig>>;
+      const coreSystemPrompt = coreAgentConfig.instructions || null;
+      const { provider: resolvedProvider, model: resolvedModel } = resolveProviderOverride(provider, model, coreAgentConfig);
 
       await assertNotAborted(projectId, draftId, sb);
 
       await step.run('emit-calling-core', async () => {
-        const label = provider ? `${provider}${model ? ` (${model})` : ''}` : modelTier;
-        await emitJobEvent(draftId, 'production', 'calling_provider', `Estruturando ideia central com ${label}…`, { stage: 'canonical-core', provider, model });
+        const label = resolvedProvider ? `${resolvedProvider}${resolvedModel ? ` (${resolvedModel})` : ''}` : modelTier;
+        await emitJobEvent(draftId, 'production', 'calling_provider', `Estruturando ideia central com ${label}…`, { stage: 'canonical-core', provider: resolvedProvider, model: resolvedModel });
       });
 
       await assertNotAborted(projectId, draftId, sb);
@@ -159,11 +165,14 @@ export const productionGenerate = inngest.createFunction(
           title: draft.title as string,
           ideaId: draft.idea_id as string | undefined,
           idea: ideaContext,
-          researchCards: approvedCards as unknown[] | undefined,
+          researchCards: approvedCards ?? undefined,
           productionParams,
           personaContext: layeredPersona?.context ?? null,
           channel: channelContext as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
         });
+        const enabledTools = resolveTools(coreAgentConfig.tools).filter(
+          () => resolvedProvider !== 'ollama',
+        );
         const call = await generateWithFallback(
           'production',
           modelTier,
@@ -173,10 +182,12 @@ export const productionGenerate = inngest.createFunction(
               ? `${formatConstraintsBlock(layeredPersona.constraints)}${coreSystemPrompt ?? ''}`
               : coreSystemPrompt ?? '',
             userMessage,
+            tools: enabledTools.length > 0 ? enabledTools : undefined,
+            toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
           },
           {
-            provider,
-            model,
+            provider: resolvedProvider,
+            model: resolvedModel,
             logContext: {
               userId,
               orgId,

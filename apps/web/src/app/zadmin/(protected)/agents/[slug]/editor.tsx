@@ -11,6 +11,8 @@ import { updateAgentAction } from './actions';
 import {
   assembleInstructions,
   RULE_LIBRARY,
+  TOOL_META,
+  toolsForProvider,
   type SectionsJson,
 } from '@brighttale/shared';
 import { SchemaBuilder } from '@/components/agents/SchemaBuilder';
@@ -27,6 +29,7 @@ interface Agent {
   sections_json: SectionsJson | null;
   recommended_provider: string | null;
   recommended_model: string | null;
+  tools_json: string[] | null;
   updated_at: string;
 }
 
@@ -80,6 +83,7 @@ export function AgentEditor({ agent }: { agent: Agent }) {
       sections: agent.sections_json ?? emptySections(),
       provider: agent.recommended_provider ?? '',
       model: agent.recommended_model ?? '',
+      tools: Array.isArray(agent.tools_json) ? agent.tools_json : [],
     }),
     [agent],
   );
@@ -89,6 +93,7 @@ export function AgentEditor({ agent }: { agent: Agent }) {
   const [sections, setSections] = useState<SectionsJson>(initial.sections);
   const [provider, setProvider] = useState(initial.provider);
   const [model, setModel] = useState(initial.model);
+  const [tools, setTools] = useState<string[]>(initial.tools);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -99,9 +104,10 @@ export function AgentEditor({ agent }: { agent: Agent }) {
       name !== initial.name ||
       provider !== initial.provider ||
       model !== initial.model ||
-      JSON.stringify(sections) !== JSON.stringify(initial.sections)
+      JSON.stringify(sections) !== JSON.stringify(initial.sections) ||
+      JSON.stringify(tools) !== JSON.stringify(initial.tools)
     );
-  }, [name, sections, provider, model, initial]);
+  }, [name, sections, provider, model, tools, initial]);
 
   const errors = useMemo(() => validateAgent(sections, name), [sections, name]);
   const errorsByTab = useMemo(() => errorsByScope(errors), [errors]);
@@ -132,6 +138,7 @@ export function AgentEditor({ agent }: { agent: Agent }) {
         recommended_provider: provider || null,
         recommended_model: model || null,
         sections_json: sections as unknown as Record<string, unknown>,
+        tools_json: tools,
       });
       if (res.ok) {
         setMessage({ kind: 'ok', text: 'Saved. Changes reflect on next generation (5min cache).' });
@@ -139,7 +146,7 @@ export function AgentEditor({ agent }: { agent: Agent }) {
         setMessage({ kind: 'err', text: res.message });
       }
     });
-  }, [agent.id, errors.length, model, name, provider, sections]);
+  }, [agent.id, errors.length, model, name, provider, sections, tools]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -319,8 +326,10 @@ export function AgentEditor({ agent }: { agent: Agent }) {
               stage={agent.stage}
               provider={provider}
               model={model}
+              tools={tools}
               onProviderChange={setProvider}
               onModelChange={setModel}
+              onToolsChange={setTools}
               updatedAt={agent.updated_at}
             />
           )}
@@ -640,16 +649,20 @@ function SettingsTab({
   stage,
   provider,
   model,
+  tools,
   onProviderChange,
   onModelChange,
+  onToolsChange,
   updatedAt,
 }: {
   slug: string;
   stage: string;
   provider: string;
   model: string;
+  tools: string[];
   onProviderChange: (v: string) => void;
   onModelChange: (v: string) => void;
+  onToolsChange: (t: string[]) => void;
   updatedAt: string;
 }) {
   return (
@@ -696,10 +709,69 @@ function SettingsTab({
           </Field>
         </div>
       </Card>
+      <ToolsCard provider={provider} tools={tools} onToolsChange={onToolsChange} />
       <div className="text-xs text-muted-foreground text-right">
         Last updated: {new Date(updatedAt).toLocaleString()}
       </div>
     </div>
+  );
+}
+
+function ToolsCard({
+  provider,
+  tools,
+  onToolsChange,
+}: {
+  provider: string;
+  tools: string[];
+  onToolsChange: (t: string[]) => void;
+}) {
+  const available = toolsForProvider(provider);
+
+  function toggle(name: string, checked: boolean) {
+    onToolsChange(checked ? [...tools, name] : tools.filter(t => t !== name));
+  }
+
+  return (
+    <Card
+      title="Tools"
+      hint="Tools this agent can call during generation. Available tools depend on the selected provider — Ollama does not support tool calling."
+    >
+      {provider === 'ollama' ? (
+        <p className="text-xs text-muted-foreground">Tool calling is not supported for Ollama.</p>
+      ) : !provider ? (
+        <p className="text-xs text-muted-foreground">Select a provider above to see available tools.</p>
+      ) : available.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No tools registered yet. Add entries to <code className="font-mono">TOOL_META</code> in <code className="font-mono">@brighttale/shared</code>.</p>
+      ) : (
+        <div className="space-y-3">
+          {available.map(tool => {
+            const enabled = tools.includes(tool.name);
+            return (
+              <label key={tool.name} className="flex items-start gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={e => toggle(tool.name, e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-border accent-[#2DD4A8] cursor-pointer shrink-0"
+                />
+                <div>
+                  <p className="text-sm font-medium leading-none group-hover:text-foreground transition-colors">
+                    {tool.label}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">{tool.description}</p>
+                  {tool.requiresEnv && (
+                    <p className="text-[11px] font-mono text-muted-foreground/60 mt-0.5">
+                      requires <span className="text-amber-400/80">{tool.requiresEnv}</span>
+                    </p>
+                  )}
+                </div>
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </Card>
   );
 }
 

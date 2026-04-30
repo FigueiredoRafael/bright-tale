@@ -5,7 +5,8 @@
  */
 import { inngest } from './client.js';
 import { generateWithFallback } from '../lib/ai/router.js';
-import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
+import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
+import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
 import { loadIdeaContext } from '../lib/ai/loadIdeaContext.js';
 import { debitCredits } from '../lib/credits.js';
 import { createServiceClient } from '../lib/supabase/index.js';
@@ -138,18 +139,21 @@ export const productionProduce = inngest.createFunction(
 
       await assertNotAborted(projectId, draftId, sb);
 
-      const produceSystemPrompt = (await step.run('load-produce-prompt', async () => {
-        return (await loadAgentPrompt(type)) ?? (await loadAgentPrompt('production')) ?? null;
-      })) as string | null;
+      const produceAgentConfig = (await step.run('load-produce-prompt', async () => {
+        const primary = await loadAgentConfig(type);
+        if (primary.instructions) return primary;
+        return loadAgentConfig('production');
+      })) as Awaited<ReturnType<typeof loadAgentConfig>>;
+      const { provider: resolvedProvider, model: resolvedModel } = resolveProviderOverride(provider, model, produceAgentConfig);
 
       await assertNotAborted(projectId, draftId, sb);
 
       await step.run('emit-calling-produce', async () => {
-        const label = provider ? `${provider}${model ? ` (${model})` : ''}` : modelTier;
+        const label = resolvedProvider ? `${resolvedProvider}${resolvedModel ? ` (${resolvedModel})` : ''}` : modelTier;
         await emitJobEvent(draftId, 'production', 'calling_provider', `Escrevendo ${type} com ${label}…`, {
           stage: 'produce',
-          provider,
-          model,
+          provider: resolvedProvider,
+          model: resolvedModel,
         });
       });
 
@@ -175,19 +179,24 @@ export const productionProduce = inngest.createFunction(
             | { name?: string; niche?: string; language?: string; tone?: string }
             | undefined,
         });
+        const enabledTools = resolveTools(produceAgentConfig.tools).filter(
+          () => resolvedProvider !== 'ollama',
+        );
         const call = await generateWithFallback(
           'production',
           modelTier,
           {
             agentType: 'production',
             systemPrompt: layeredPersona?.constraints.length
-              ? `${formatConstraintsBlock(layeredPersona.constraints)}${produceSystemPrompt ?? ''}`
-              : produceSystemPrompt ?? '',
+              ? `${formatConstraintsBlock(layeredPersona.constraints)}${produceAgentConfig.instructions}`
+              : produceAgentConfig.instructions,
             userMessage,
+            tools: enabledTools.length > 0 ? enabledTools : undefined,
+            toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
           },
           {
-            provider,
-            model,
+            provider: resolvedProvider,
+            model: resolvedModel,
             logContext: {
               userId,
               orgId,

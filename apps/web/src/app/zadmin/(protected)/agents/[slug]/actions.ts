@@ -13,6 +13,7 @@ interface UpdatePayload {
   recommended_provider: string | null;
   recommended_model: string | null;
   sections_json: Record<string, unknown> | null;
+  tools_json: string[];
 }
 
 export async function updateAgentAction(payload: UpdatePayload) {
@@ -27,6 +28,7 @@ export async function updateAgentAction(payload: UpdatePayload) {
       recommended_provider: payload.recommended_provider,
       recommended_model: payload.recommended_model,
       sections_json: payload.sections_json,
+      tools_json: payload.tools_json,
     })
     .eq('id', payload.id);
 
