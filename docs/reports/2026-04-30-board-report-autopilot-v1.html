@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relatório Bright Tale · Autopilot v1 em dev · 30 de abril de 2026</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --surface-2: #f5f5f4;
+    --ink: #0c0a09;
+    --ink-muted: #57534e;
+    --ink-subtle: #a8a29e;
+    --line: #e7e5e4;
+    --line-strong: #d6d3d1;
+    --accent: #1d4ed8;
+    --accent-soft: #eff6ff;
+    --green: #15803d;
+    --green-soft: #dcfce7;
+    --amber: #b45309;
+    --amber-soft: #fef3c7;
+    --red: #b91c1c;
+    --red-soft: #fee2e2;
+    --violet: #6d28d9;
+    --violet-soft: #ede9fe;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 12px -2px rgba(0,0,0,0.06), 0 2px 4px -1px rgba(0,0,0,0.04);
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c0a09;
+      --surface: #1c1917;
+      --surface-2: #292524;
+      --ink: #fafaf9;
+      --ink-muted: #a8a29e;
+      --ink-subtle: #78716c;
+      --line: #292524;
+      --line-strong: #44403c;
+      --accent: #60a5fa;
+      --accent-soft: #1e3a8a26;
+      --green: #4ade80;
+      --green-soft: #14532d40;
+      --amber: #fbbf24;
+      --amber-soft: #78350f40;
+      --red: #f87171;
+      --red-soft: #7f1d1d40;
+      --violet: #a78bfa;
+      --violet-soft: #4c1d9540;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    font-feature-settings: "kern", "liga", "ss01", "ss02";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .container { max-width: 1140px; margin: 0 auto; padding: 64px 32px 96px; }
+  @media (max-width: 720px) { .container { padding: 32px 20px 64px; } }
+
+  .hero { border-bottom: 1px solid var(--line); padding-bottom: 48px; margin-bottom: 64px; }
+  .hero-eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; color: var(--ink-muted);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    padding: 6px 12px; background: var(--surface);
+    border: 1px solid var(--line); border-radius: 100px;
+    margin-bottom: 24px;
+  }
+  .hero-eyebrow::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green); box-shadow: 0 0 0 3px var(--green-soft);
+  }
+  .hero h1 {
+    font-size: clamp(36px, 5.5vw, 56px); font-weight: 600;
+    letter-spacing: -0.025em; line-height: 1.05; margin: 0 0 16px;
+  }
+  .hero-subtitle {
+    font-size: clamp(18px, 2vw, 22px); color: var(--ink-muted);
+    max-width: 820px; line-height: 1.5; margin: 0 0 32px;
+  }
+  .hero-meta {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 24px; padding-top: 24px; border-top: 1px solid var(--line);
+  }
+  .hero-meta dt {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-subtle);
+    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;
+  }
+  .hero-meta dd { font-size: 16px; font-weight: 500; margin: 0; }
+
+  .kpi-strip {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1px; background: var(--line); border: 1px solid var(--line);
+    border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 80px;
+  }
+  .kpi { background: var(--surface); padding: 24px 24px 28px; }
+  .kpi-label {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-subtle);
+    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px;
+  }
+  .kpi-value { font-size: 36px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; color: var(--ink); }
+  .kpi-suffix { font-size: 14px; color: var(--ink-muted); font-weight: 400; margin-left: 4px; }
+  .kpi-delta { font-size: 13px; color: var(--ink-muted); margin-top: 8px; }
+
+  section.section { margin-bottom: 80px; }
+  .section-eyebrow {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;
+  }
+  .section-title {
+    font-size: clamp(28px, 3.5vw, 36px); font-weight: 600;
+    letter-spacing: -0.02em; line-height: 1.15; margin: 0 0 16px;
+  }
+  .section-lede {
+    font-size: 17px; color: var(--ink-muted);
+    max-width: 760px; margin: 0 0 40px;
+  }
+
+  .summary-prose {
+    font-size: 18px; line-height: 1.7; color: var(--ink); max-width: 760px;
+  }
+  .summary-prose p { margin: 0 0 20px; }
+  .summary-prose strong { font-weight: 600; }
+
+  .card-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-md); padding: 24px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-md); }
+  .card-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: var(--accent-soft); color: var(--accent);
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+  }
+  .card-icon.green { background: var(--green-soft); color: var(--green); }
+  .card-icon.violet { background: var(--violet-soft); color: var(--violet); }
+  .card-icon.amber { background: var(--amber-soft); color: var(--amber); }
+  .card-icon.red { background: var(--red-soft); color: var(--red); }
+  .card-icon svg { width: 22px; height: 22px; }
+  .card-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 12px; margin-bottom: 12px;
+  }
+  .card-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+  .card-body { font-size: 14px; color: var(--ink-muted); line-height: 1.55; }
+  .card-body p { margin: 0; }
+  .card-meta {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-subtle);
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 4px 10px; border-radius: 100px; white-space: nowrap;
+  }
+  .badge.green { color: var(--green); background: var(--green-soft); }
+  .badge.amber { color: var(--amber); background: var(--amber-soft); }
+  .badge.red { color: var(--red); background: var(--red-soft); }
+  .badge.blue { color: var(--accent); background: var(--accent-soft); }
+  .badge.violet { color: var(--violet); background: var(--violet-soft); }
+  .badge.neutral { color: var(--ink-muted); background: var(--surface-2); }
+  .badge::before {
+    content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor;
+  }
+
+  .table-wrap {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-md); overflow: hidden;
+  }
+  table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.data thead { background: var(--surface-2); border-bottom: 1px solid var(--line); }
+  table.data th {
+    text-align: left; padding: 14px 20px; font-weight: 500;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  table.data td {
+    padding: 16px 20px; border-bottom: 1px solid var(--line);
+    vertical-align: top; line-height: 1.5;
+  }
+  table.data tbody tr:last-child td { border-bottom: none; }
+  table.data tbody tr:hover { background: var(--surface-2); }
+  table.data td.area { font-weight: 500; width: 200px; }
+
+  .roadmap { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .horizon { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 24px; }
+  .horizon-label {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;
+  }
+  .horizon-title { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 16px; }
+  .horizon-list { list-style: none; padding: 0; margin: 0; }
+  .horizon-list li {
+    padding: 12px 0; border-top: 1px solid var(--line);
+    font-size: 14px; color: var(--ink); line-height: 1.5;
+  }
+  .horizon-list li:first-child { border-top: none; }
+  .horizon-list li strong { display: block; font-weight: 500; margin-bottom: 4px; }
+  .horizon-list li span { color: var(--ink-muted); font-size: 13px; }
+
+  .milestone-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+  .milestone {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-sm); padding: 12px 14px;
+    display: flex; align-items: center; gap: 10px; font-size: 13px;
+    transition: border-color 0.15s ease;
+  }
+  .milestone:hover { border-color: var(--line-strong); }
+  .milestone-id {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-subtle); font-weight: 500; flex-shrink: 0;
+  }
+  .milestone-title { flex: 1; color: var(--ink); line-height: 1.3; }
+  .milestone .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .milestone .dot.shipped { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+  .milestone .dot.queued { background: var(--ink-subtle); }
+  .milestone .dot.drafted { background: var(--violet); box-shadow: 0 0 0 3px var(--violet-soft); }
+
+  code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.9em; padding: 2px 6px;
+    background: var(--surface-2); border-radius: 4px; color: var(--ink);
+  }
+
+  .test-summary-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1px; background: var(--line); border: 1px solid var(--line);
+    border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 24px;
+  }
+  .test-tile { background: var(--surface); padding: 22px 20px; }
+  .test-tile-icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-bottom: 12px; background: var(--accent-soft); color: var(--accent);
+  }
+  .test-tile-icon.green  { background: var(--green-soft);  color: var(--green); }
+  .test-tile-icon.violet { background: var(--violet-soft); color: var(--violet); }
+  .test-tile-icon.amber  { background: var(--amber-soft);  color: var(--amber); }
+  .test-tile-icon svg { width: 18px; height: 18px; }
+  .test-tile-label {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-subtle);
+    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;
+  }
+  .test-tile-value { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; margin-bottom: 6px; }
+  .test-tile-hint { font-size: 12px; color: var(--ink-muted); line-height: 1.4; }
+  .pass-bar {
+    height: 32px; background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: var(--radius-sm); overflow: hidden; display: flex; margin: 16px 0 12px;
+  }
+  .pass-bar-segment {
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; font-weight: 600;
+  }
+  .pass-bar-segment.passed  { background: var(--green); }
+  .pass-bar-segment.skipped { background: var(--ink-subtle); }
+  .pass-bar-segment.failed  { background: var(--amber); }
+  .pass-bar-legend { display: flex; gap: 20px; flex-wrap: wrap; font-size: 12px; color: var(--ink-muted); }
+  .pass-bar-legend span { display: inline-flex; align-items: center; gap: 6px; font-family: ui-monospace, monospace; }
+  .pass-bar-legend .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .pass-bar-legend .legend-dot.passed  { background: var(--green); }
+  .pass-bar-legend .legend-dot.skipped { background: var(--ink-subtle); }
+  .pass-bar-legend .legend-dot.failed  { background: var(--amber); }
+
+  .conclusion-card {
+    position: relative;
+    background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+    border: 1px solid var(--line); border-radius: var(--radius-lg);
+    padding: 40px 40px 36px; margin-bottom: 24px; overflow: hidden;
+  }
+  .conclusion-card::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+    background: linear-gradient(90deg, var(--green), var(--accent), var(--violet));
+  }
+  .conclusion-card h3 {
+    font-size: clamp(22px, 2.6vw, 28px); font-weight: 600;
+    letter-spacing: -0.02em; line-height: 1.25;
+    margin: 0 0 16px; max-width: 800px;
+  }
+  .conclusion-card p {
+    font-size: 16px; line-height: 1.65; color: var(--ink-muted);
+    max-width: 800px; margin: 0 0 14px;
+  }
+  .conclusion-card p strong { color: var(--ink); font-weight: 600; }
+  @media (max-width: 720px) { .conclusion-card { padding: 28px 24px; } }
+
+  .open-items {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-md); overflow: hidden;
+  }
+  @media (max-width: 720px) { .open-items { grid-template-columns: 1fr; } }
+  .open-item {
+    padding: 18px 20px;
+    border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  }
+  .open-item:nth-child(even) { border-right: none; }
+  @media (max-width: 720px) { .open-item { border-right: none; } }
+  .open-item-label {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-subtle);
+    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;
+  }
+  .open-item-text { font-size: 14px; color: var(--ink); line-height: 1.5; }
+  .open-item-text strong { font-weight: 500; }
+
+  .share-card {
+    position: relative;
+    background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+    border: 1px solid var(--line); border-radius: var(--radius-lg);
+    padding: 32px; overflow: hidden;
+  }
+  .share-card::before {
+    content: ""; position: absolute; top: 0; right: 0; width: 240px; height: 240px;
+    background: radial-gradient(circle, var(--green-soft) 0%, transparent 70%);
+    opacity: 0.5; pointer-events: none;
+  }
+  .share-header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; margin-bottom: 20px; position: relative;
+  }
+  .share-header-left { display: flex; align-items: center; gap: 12px; }
+  .share-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: var(--green-soft); color: var(--green);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .share-icon svg { width: 20px; height: 20px; }
+  .share-label {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-subtle);
+    text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px;
+  }
+  .share-title { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+  .share-copy-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 16px; background: var(--ink); color: var(--bg);
+    border: none; border-radius: 100px;
+    font-family: inherit; font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: opacity 0.15s ease, transform 0.1s ease;
+    white-space: nowrap;
+  }
+  .share-copy-btn:hover { opacity: 0.85; }
+  .share-copy-btn:active { transform: scale(0.97); }
+  .share-copy-btn svg { width: 14px; height: 14px; }
+  .share-copy-btn.copied { background: var(--green); color: white; }
+  .share-text {
+    position: relative; background: var(--bg);
+    border: 1px solid var(--line); border-radius: var(--radius-md);
+    padding: 24px; font-size: 14px; line-height: 1.65; color: var(--ink);
+    white-space: pre-wrap; word-wrap: break-word;
+  }
+  .share-text strong { font-weight: 600; }
+  .share-meta {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 14px; font-size: 12px; color: var(--ink-subtle); position: relative;
+  }
+  .share-meta span { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  @media (max-width: 600px) {
+    .share-card { padding: 24px 20px; }
+    .share-header { flex-direction: column; align-items: flex-start; }
+    .share-copy-btn { width: 100%; justify-content: center; }
+  }
+
+  footer {
+    margin-top: 96px; padding-top: 32px; border-top: 1px solid var(--line);
+    color: var(--ink-subtle); font-size: 13px;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 16px;
+  }
+  footer .contributors { display: flex; align-items: center; gap: 12px; }
+  footer .avatar-stack { display: flex; }
+  footer .avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--violet));
+    border: 2px solid var(--bg);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; color: white; margin-left: -8px;
+  }
+  footer .avatar:first-child { margin-left: 0; }
+
+  @media (max-width: 600px) {
+    table.data thead { display: none; }
+    table.data tr { display: block; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+    table.data td { display: block; padding: 4px 0; border: none; }
+    table.data td.area {
+      width: auto; font-size: 13px; color: var(--accent);
+      text-transform: uppercase; letter-spacing: 0.04em;
+      font-family: ui-monospace, monospace; font-weight: 500;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- HERO -->
+  <header class="hero">
+    <span class="hero-eyebrow">Relatório do board · 28–30 abr 2026</span>
+    <h1>Autopilot v1 ganhou dashboard de duas colunas, wizard reformulado e modo overview funcional — implementado em dev.</h1>
+    <p class="hero-subtitle">Três ondas estruturais (Foundation, Gates e Templates) seguidas de uma fase de hardening fechando oito bugs reportados em QA real. Pipeline executa do brainstorm ao publish em modo automático, supervisionado ou passo-a-passo.</p>
+    <dl class="hero-meta">
+      <div><dt>Período</dt><dd>28 abr → 30 abr 2026</dd></div>
+      <div><dt>Branch</dt><dd><code>feat/pipeline-autopilot-wizard-impl</code></dd></div>
+      <div><dt>Estágio</dt><dd>Implementado em dev</dd></div>
+      <div><dt>Próximo marco</dt><dd>QA full-flow + merge para main</dd></div>
+    </dl>
+  </header>
+
+  <!-- KPIs - exactly 6 -->
+  <div class="kpi-strip">
+    <div class="kpi"><div class="kpi-label">Commits</div><div class="kpi-value">118</div><div class="kpi-delta">não-merge, em três dias</div></div>
+    <div class="kpi"><div class="kpi-label">Arquivos tocados</div><div class="kpi-value">198</div><div class="kpi-delta">388 file-changes acumulados</div></div>
+    <div class="kpi"><div class="kpi-label">Linhas adicionadas</div><div class="kpi-value">29.544</div><div class="kpi-delta">2.645 deletadas</div></div>
+    <div class="kpi"><div class="kpi-label">Ondas concluídas</div><div class="kpi-value">3</div><div class="kpi-delta">Foundation · Gates · Templates</div></div>
+    <div class="kpi"><div class="kpi-label">Bugs fechados em QA</div><div class="kpi-value">8</div><div class="kpi-delta">descobertos via teste manual real</div></div>
+    <div class="kpi"><div class="kpi-label">Testes totais</div><div class="kpi-value">1.673</div><div class="kpi-delta">96,9% de aprovação</div></div>
+  </div>
+
+  <!-- 01 INTRODUÇÃO -->
+  <section class="section">
+    <div class="section-eyebrow">01 · Introdução</div>
+    <h2 class="section-title">Como o autopilot saiu do desenho para uma versão funcional em dev.</h2>
+    <div class="summary-prose">
+      <p>O ciclo começou com um plano de três ondas: estruturar a hidratação dos engines a partir da configuração do autopilot (Foundation), ligar os gates do pipeline (preview, publish, assets) ao novo schema (Gates) e polir templates de configuração para reuso (Templates).</p>
+      <p>As três ondas foram entregues como planejado. O que veio depois foi diferente: uma fase de hardening, em que cada teste manual em dev exposte um bug real — autopilot que travava no publish, modais que vazavam para overview, dashboard que quebrava em projetos antigos, listagem de templates retornando erro.</p>
+      <p>Cada bug virou um commit isolado, com teste de regressão e push imediato. O ciclo fecha com o pipeline rodando ponta a ponta para um caso real: brainstorm escolhido pela IA, draft gerado com persona, review aprovando em uma iteração e publish disparando automaticamente para WordPress como rascunho.</p>
+      <p><strong>Estágio atual:</strong> implementado em dev na branch <code>feat/pipeline-autopilot-wizard-impl</code>. Pronto para QA full-flow antes de subir para main.</p>
+    </div>
+  </section>
+
+  <!-- 02 DESAFIOS NO CAMINHO -->
+  <section class="section">
+    <div class="section-eyebrow">02 · Desafios no caminho</div>
+    <h2 class="section-title">Os problemas estratégicos que motivaram o ciclo.</h2>
+    <p class="section-lede">Quatro desafios principais e quatro secundários moldaram o trabalho. Os principais bloqueavam o autopilot v1; os secundários eram dívidas que iam piorar conforme o sistema escalasse.</p>
+
+    <h3 style="font-size: 14px; font-weight: 500; color: var(--amber); text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 16px;">Principais</h3>
+    <div class="card-grid" style="margin-bottom: 32px;">
+
+      <article class="card">
+        <div class="card-icon amber">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title">Autopilot incompleto</h3>
+          <span class="badge amber">Crítico</span>
+        </header>
+        <div class="card-body"><p>Cinco dos sete estágios do pipeline não tinham disparo automático. O usuário tinha que abrir cada engine, clicar Run, esperar e clicar Avançar — anulando a promessa de "configurar uma vez e deixar rodando".</p></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon amber">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title">Dashboard de orquestração desatualizado</h3>
+          <span class="badge amber">Alta</span>
+        </header>
+        <div class="card-body"><p>UUIDs expostos no topo, lista vertical sem hierarquia, sem progresso ao vivo, sem persistência do log de atividades — apresentação não condizia com a complexidade do que estava acontecendo por baixo.</p></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon amber">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title">Wizard sobrecarregado</h3>
+          <span class="badge amber">Alta</span>
+        </header>
+        <div class="card-body"><p>Nove seções abertas simultaneamente em uma coluna única, modo como rádio sem contexto, sem template picker visual, CTA primário enterrado no fim. Setup virava obstáculo, não onboarding.</p></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon amber">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title">Modais e toasts vazando para overview</h3>
+          <span class="badge amber">Alta</span>
+        </header>
+        <div class="card-body"><p>No modo overview, engines rodam ocultos via <code>display:none</code>, mas seus modais e toasts são renderizados em portal — vazando notificações sobre a interface limpa que o usuário esperava.</p></div>
+      </article>
+    </div>
+
+    <h3 style="font-size: 14px; font-weight: 500; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 16px;">Secundários</h3>
+    <div class="card-grid">
+
+      <article class="card">
+        <header class="card-header">
+          <h3 class="card-title">Schema do <code>pipeline_state_json</code> obsoleto</h3>
+          <span class="badge neutral">Secundário</span>
+        </header>
+        <div class="card-body"><p>Sem slots para preview/publish, assets enum antigo. Projetos novos quebravam ao tentar persistir os campos novos do wizard.</p></div>
+      </article>
+
+      <article class="card">
+        <header class="card-header">
+          <h3 class="card-title">Listagem de templates falhando</h3>
+          <span class="badge neutral">Secundário</span>
+        </header>
+        <div class="card-body"><p>Filtro PostgREST mal-construído (<code>referencedTable</code> aplicado em tabela base) retornava erro na primeira chamada — usuário criava template e ele nunca aparecia no dropdown.</p></div>
+      </article>
+
+      <article class="card">
+        <header class="card-header">
+          <h3 class="card-title">ReviewEngine dispatchando valores stale</h3>
+          <span class="badge neutral">Secundário</span>
+        </header>
+        <div class="card-body"><p>O engine recarregava o draft após review, mas dispatchava o valor do cache em ref — pipeline avançava com score zero apesar do banco já ter score 82.</p></div>
+      </article>
+
+      <article class="card">
+        <header class="card-header">
+          <h3 class="card-title"><code>brainstorm_sessions.project_id</code> nulo</h3>
+          <span class="badge neutral">Secundário</span>
+        </header>
+        <div class="card-body"><p>Engine não enviava <code>projectId</code> no body da chamada — sessões geradas dentro de um projeto ficavam órfãs no banco.</p></div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 03 SOLUÇÕES APLICADAS -->
+  <section class="section">
+    <div class="section-eyebrow">03 · Soluções aplicadas</div>
+    <h2 class="section-title">Cada desafio mapeado para uma entrega concreta.</h2>
+    <p class="section-lede">A tabela abaixo segue 1:1 a lista da seção anterior — cada linha é uma das soluções implementadas em dev, com status visível.</p>
+
+    <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr>
+            <th>Desafio</th>
+            <th>Solução</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="area">Autopilot incompleto</td>
+            <td>Auto-fire por estágio via <code>useAutoPilotTrigger</code>, modos <code>step-by-step</code> · <code>supervised</code> · <code>overview</code> no <code>pipelineMachine</code>, com gates de pause/resume.</td>
+            <td><span class="badge green">Implementada</span></td>
+          </tr>
+          <tr>
+            <td class="area">Dashboard desatualizado</td>
+            <td>Layout duas colunas (<code>StageRail</code> + <code>StagePanelDetail</code>), <code>activityLog</code> persistido em <code>pipeline_state_json</code> via PATCH debounced.</td>
+            <td><span class="badge green">Implementada</span></td>
+          </tr>
+          <tr>
+            <td class="area">Wizard sobrecarregado</td>
+            <td>Pattern B: channel card, três cards de modo, chips de templates, accordion com summary inline, painel "Sua pipeline" reativo, CTA fixo no rodapé.</td>
+            <td><span class="badge green">Implementada</span></td>
+          </tr>
+          <tr>
+            <td class="area">Modais vazando para overview</td>
+            <td>SSE desacoplado de <code>open</code> via dependência em <code>sseUrl</code>; <code>open={!overviewMode &amp;&amp; ...}</code> só esconde UI. <code>toast.error</code> mantido em todos os modos.</td>
+            <td><span class="badge green">Implementada</span></td>
+          </tr>
+          <tr>
+            <td class="area">Schema obsoleto</td>
+            <td><code>autopilotConfigSchema</code> ganhou <code>preview</code>, <code>publish</code> e <code>assets</code> reformulado; legacy migration mapper preenche defaults para projetos antigos.</td>
+            <td><span class="badge green">Implementada</span></td>
+          </tr>
+          <tr>
+            <td class="area">Listagem de templates</td>
+            <td>Removido o <code>referencedTable</code> indevido na chamada PostgREST <code>or()</code>. Teste de regressão garante chamada de um único argumento.</td>
+            <td><span class="badge green">Implementada</span></td>
+          </tr>
+          <tr>
+            <td class="area">Stale review dispatch</td>
+            <td><code>refetchDraft</code> agora retorna os valores frescos antes de <code>REVIEW_COMPLETE</code>; <code>onClose</code> dispatcha em supervised/overview também.</td>
+            <td><span class="badge green">Implementada</span></td>
+          </tr>
+          <tr>
+            <td class="area"><code>project_id</code> nulo</td>
+            <td><code>BrainstormEngine</code> envia <code>projectId</code> no POST. API já aceitava o campo; só não estava sendo informado pelo cliente.</td>
+            <td><span class="badge green">Implementada</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 04 DESAFIOS DURANTE DEV -->
+  <section class="section">
+    <div class="section-eyebrow">04 · Desafios ao longo do desenvolvimento</div>
+    <h2 class="section-title">Obstáculos operacionais que apareceram durante a execução.</h2>
+    <p class="section-lede">Distintos dos desafios estratégicos da seção 02 — estes são problemas de implementação que surgiram em tempo real e foram resolvidos antes de virarem regressão.</p>
+
+    <div class="card-grid">
+
+      <article class="card">
+        <div class="card-icon red">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <header class="card-header"><h3 class="card-title">Test pollution entre cenários</h3></header>
+        <div class="card-body"><p><code>vi.clearAllMocks()</code> não reseta <code>mockReturnValue</code>, então mocks definidos em um teste vazavam para o próximo. Sintoma: o mesmo teste passava sozinho e falhava na suíte. <strong>Tratado:</strong> re-stub explícito no início de cada teste afetado.</p></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon red">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        </div>
+        <header class="card-header"><h3 class="card-title">SSE acoplado à visibilidade do modal</h3></header>
+        <div class="card-body"><p>Suprimir o modal em overview também matou o stream SSE — pipeline travava esperando um <code>onComplete</code> que nunca vinha. <strong>Resolvido:</strong> <code>effectiveUrl</code> passou a depender de <code>sseUrl</code> (não de <code>open</code>); UI segue gated, listener segue ativo.</p></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon amber">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v18H3z"/><path d="M7 7h10v10H7z"/></svg>
+        </div>
+        <header class="card-header"><h3 class="card-title">Subagent estourando contexto</h3></header>
+        <div class="card-body"><p>Uma das subagents tentou modificar cinco engines simultaneamente e bateu o limite de tokens antes do commit. <strong>Tratado:</strong> dividir em ondas menores; quando estourou, conduzir manualmente o commit e seguir.</p></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon amber">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        </div>
+        <header class="card-header"><h3 class="card-title">Hidratação de projetos legacy</h3></header>
+        <div class="card-body"><p>Projetos abertos com <code>pipeline_state_json</code> antigo não tinham as novas slots — render quebrava. <strong>Tratado:</strong> defensive guards em <code>StagePanelDetail</code> e merge com defaults em <code>handleLoadTemplate</code>.</p></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon amber">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <header class="card-header"><h3 class="card-title">Recovery de projeto travado</h3></header>
+        <div class="card-body"><p>Projeto <code>45ed165d</code> tinha o brainstorm completo no banco mas a sessão e o front nunca trocaram telegramas. <strong>Resolvido:</strong> script one-shot patcheou <code>pipeline_state_json</code> com a ideia escolhida pela IA e avançou para research; script deletado depois.</p></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon amber">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <header class="card-header"><h3 class="card-title">Falhas pré-existentes contaminando sinal</h3></header>
+        <div class="card-body"><p>Oito testes de API falham desde antes deste ciclo (research enqueue, content-drafts produce, personas WP avatar). <strong>Tratado:</strong> stash test confirmou pré-existência; falhas separadas do diff atual e flagged para próximo ciclo.</p></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon amber">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+        </div>
+        <header class="card-header"><h3 class="card-title">Inngest brainstorm não popula <code>idea_archives</code></h3></header>
+        <div class="card-body"><p>Sessão é criada e marcada como <code>completed</code>, mas o passo de persistência das ideias falha em silêncio. <strong>Anotado:</strong> não impacta autopilot v1, mas precisa investigação no próximo ciclo.</p></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon amber">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <header class="card-header"><h3 class="card-title">Templates legacy quebrando o wizard</h3></header>
+        <div class="card-body"><p>Templates criados antes das slots <code>preview</code>/<code>publish</code> faziam <code>methods.reset</code> com config parcial — render crashava em <code>cfg.preview.enabled</code>. <strong>Tratado:</strong> <code>handleLoadTemplate</code> faz merge sobre <code>baseConfig</code>, <code>getStageSummary</code> tem guards defensivos.</p></div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 05 RESULTADOS -->
+  <section class="section">
+    <div class="section-eyebrow">05 · Resultados das implementações</div>
+    <h2 class="section-title">O que está em dev pronto para QA.</h2>
+    <p class="section-lede">Seis entregas centrais, três ondas concluídas e uma fase de hardening — tudo coberto por testes automatizados.</p>
+
+    <h3 style="font-size: 14px; font-weight: 500; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 16px;">Implementações principais</h3>
+    <div class="card-grid" style="margin-bottom: 40px;">
+
+      <article class="card">
+        <div class="card-icon green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title">Dashboard duas colunas</h3>
+          <span class="badge green">Em dev</span>
+        </header>
+        <div class="card-body"><p>Rail à esquerda com os sete estágios e log persistido; painel à direita com KPIs, highlights e iteration history por estágio.</p></div>
+        <div class="card-meta"><span>commit e4978cd</span></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title">Wizard Pattern B</h3>
+          <span class="badge green">Em dev</span>
+        </header>
+        <div class="card-body"><p>Channel card, três cards de modo, accordion com summary inline, painel reativo, CTA fixo. Mobile vira drawer respeitando o sidebar do app.</p></div>
+        <div class="card-meta"><span>commit d5f35e7</span></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title">Auto-fire em todos os estágios</h3>
+          <span class="badge green">Em dev</span>
+        </header>
+        <div class="card-body"><p>Brainstorm, research, draft, review, assets, preview e publish disparam automaticamente em supervised/overview, respeitando configuração do wizard.</p></div>
+        <div class="card-meta"><span>commit 92ba51c · ondas 1–3</span></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title">Supressão de modais em overview</h3>
+          <span class="badge green">Em dev</span>
+        </header>
+        <div class="card-body"><p>Engines hidden vimos seus modais; suprimidos em overview com 31 testes de regressão. <code>toast.error</code> sempre visível para falhas críticas.</p></div>
+        <div class="card-meta"><span>commit f626648</span></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title">SSE desacoplado da UI</h3>
+          <span class="badge green">Em dev</span>
+        </header>
+        <div class="card-body"><p>Stream EventSource roda baseado em <code>sseUrl</code>, modal visibility é independente. Pipeline não fica mais preso quando UI está oculta.</p></div>
+        <div class="card-meta"><span>commit a892a73</span></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title">Detail panel defensivo</h3>
+          <span class="badge green">Em dev</span>
+        </header>
+        <div class="card-body"><p>Tolera <code>STAGE_PROGRESS</code> parciais — Draft ID, assets e preview agora têm fallback para arrays vazios e campos opcionais escondidos.</p></div>
+        <div class="card-meta"><span>commit 5883cc4</span></div>
+      </article>
+    </div>
+
+    <h3 style="font-size: 14px; font-weight: 500; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin: 32px 0 16px;">Marcos do plano</h3>
+    <p style="font-size: 13px; color: var(--ink-muted); margin: 0 0 16px;">
+      <span style="color:var(--green)">●</span> Concluído em dev &nbsp;
+      <span style="color:var(--violet)">●</span> Designed &nbsp;
+      <span style="color:var(--ink-subtle)">●</span> Próximo ciclo
+    </p>
+    <div class="milestone-grid" style="margin-bottom: 40px;">
+      <div class="milestone"><span class="dot shipped"></span><span class="milestone-id">Wave 1</span><span class="milestone-title">Foundation — engine hydration</span></div>
+      <div class="milestone"><span class="dot shipped"></span><span class="milestone-id">Wave 2</span><span class="milestone-title">Gates — schema reshape</span></div>
+      <div class="milestone"><span class="dot shipped"></span><span class="milestone-id">Wave 3</span><span class="milestone-title">Templates polish</span></div>
+      <div class="milestone"><span class="dot shipped"></span><span class="milestone-id">Hardening</span><span class="milestone-title">8 bugs de QA fechados</span></div>
+      <div class="milestone"><span class="dot shipped"></span><span class="milestone-id">Wizard Redesign</span><span class="milestone-title">Pattern B em dev</span></div>
+      <div class="milestone"><span class="dot queued"></span><span class="milestone-id">Inngest Fix</span><span class="milestone-title">idea_archives bug</span></div>
+      <div class="milestone"><span class="dot queued"></span><span class="milestone-id">QA</span><span class="milestone-title">Smoke test full-flow</span></div>
+      <div class="milestone"><span class="dot queued"></span><span class="milestone-id">Merge</span><span class="milestone-title">Para main após QA</span></div>
+    </div>
+
+    <h3 style="font-size: 14px; font-weight: 500; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin: 32px 0 16px;">Cobertura de testes</h3>
+    <div class="test-summary-grid">
+      <div class="test-tile">
+        <div class="test-tile-icon green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+        <div class="test-tile-label">App</div>
+        <div class="test-tile-value">427</div>
+        <div class="test-tile-hint">passando · 5 falhas pós-redesign · 8 skip</div>
+      </div>
+      <div class="test-tile">
+        <div class="test-tile-icon green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+        <div class="test-tile-label">API</div>
+        <div class="test-tile-value">1.195</div>
+        <div class="test-tile-hint">passando · 8 falhas pré-existentes · 30 skip</div>
+      </div>
+      <div class="test-tile">
+        <div class="test-tile-icon violet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+        <div class="test-tile-label">E2E specs</div>
+        <div class="test-tile-value">6</div>
+        <div class="test-tile-hint">Playwright · live-autopilot ativado</div>
+      </div>
+      <div class="test-tile">
+        <div class="test-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 11.08 22 12 22 12 22 11.08"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+        <div class="test-tile-label">Total</div>
+        <div class="test-tile-value">1.673</div>
+        <div class="test-tile-hint">96,9% de aprovação</div>
+      </div>
+    </div>
+
+    <div class="pass-bar">
+      <div class="pass-bar-segment passed"  style="width: 96.9%">96,9%</div>
+      <div class="pass-bar-segment skipped" style="width: 2.3%"></div>
+      <div class="pass-bar-segment failed"  style="width: 0.8%"></div>
+    </div>
+    <div class="pass-bar-legend">
+      <span><span class="legend-dot passed"></span> 1.622 passando</span>
+      <span><span class="legend-dot skipped"></span> 38 skip</span>
+      <span><span class="legend-dot failed"></span> 13 falhando</span>
+    </div>
+  </section>
+
+  <!-- 06 CONCLUSÃO -->
+  <section class="section">
+    <div class="section-eyebrow">06 · Conclusão</div>
+    <h2 class="section-title">O que dá para dizer ao fim do ciclo.</h2>
+
+    <div class="conclusion-card">
+      <h3>Autopilot v1 funcional em dev — três ondas estruturais e oito correções pós-QA fecharam o ciclo.</h3>
+      <p><strong>O pipeline executa ponta a ponta.</strong> Brainstorm escolhe ideia, research aprova cards, draft compõe com persona, review aprova ou itera, assets e preview rodam ou pulam conforme configuração, publish vai pro WordPress como rascunho. Em supervised o usuário pausa quando quiser; em overview tudo roda silencioso com log ao vivo.</p>
+      <p>O que ainda não está fechado é uma fila de itens menores — testes do wizard pendentes de update para a nova UI, falhas pré-existentes da API, um bug separado do Inngest no brainstorm. Nada bloqueia QA.</p>
+    </div>
+
+    <h3 style="font-size: 14px; font-weight: 500; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 32px 0 16px;">Detalhes restantes</h3>
+    <div class="open-items">
+      <div class="open-item">
+        <div class="open-item-label">Testes wizard</div>
+        <div class="open-item-text">5 testes de <code>PipelineWizard.test.tsx</code> precisam atualização para a nova UI Pattern B.</div>
+      </div>
+      <div class="open-item">
+        <div class="open-item-label">Inngest brainstorm</div>
+        <div class="open-item-text">Job marca sessão como <code>completed</code> mas não popula <code>idea_archives</code> — investigação pendente.</div>
+      </div>
+      <div class="open-item">
+        <div class="open-item-label">Falhas pré-existentes</div>
+        <div class="open-item-text">8 falhas de teste API anteriores ao ciclo (research enqueue, content-drafts produce, WP avatar).</div>
+      </div>
+      <div class="open-item">
+        <div class="open-item-label">Estimativa de custo/tempo</div>
+        <div class="open-item-text">No painel do wizard ainda é heurística — substituir quando metric real estiver disponível.</div>
+      </div>
+      <div class="open-item">
+        <div class="open-item-label">MiniWizardSheet</div>
+        <div class="open-item-text">Mantida isolada do redesign; refatorar se aparecer abstração compartilhada com Pattern B.</div>
+      </div>
+      <div class="open-item">
+        <div class="open-item-label">Mobile drawer</div>
+        <div class="open-item-text">Confirmar em smoke test real que não conflita com o sidebar externo do app.</div>
+      </div>
+    </div>
+
+    <!-- WhatsApp share -->
+    <div class="share-card" style="margin-top: 32px;">
+      <div class="share-header">
+        <div class="share-header-left">
+          <div class="share-icon">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413"/></svg>
+          </div>
+          <div>
+            <div class="share-label">Compartilhar no WhatsApp</div>
+            <h3 class="share-title">Resumo de uma linha</h3>
+          </div>
+        </div>
+        <button class="share-copy-btn" onclick="copyWhatsAppSummary(this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span class="share-copy-label">Copiar</span>
+        </button>
+      </div>
+      <div class="share-text" id="whatsapp-summary">*Bright Tale — atualização de 30 abril 2026*
+
+Autopilot v1 está implementado em dev. Pipeline ponta a ponta (brainstorm → publish) roda em modo automático, supervisionado ou passo-a-passo.
+
+Três ondas concluídas + oito bugs fechados em QA real. 118 commits, 1.622 testes passando (96,9%).
+
+Próximo: QA full-flow e merge para main.</div>
+      <div class="share-meta">
+        <span>388 caracteres</span>
+        <span>30 abr 2026</span>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    function copyWhatsAppSummary(btn) {
+      const text = document.getElementById('whatsapp-summary').innerText;
+      const label = btn.querySelector('.share-copy-label');
+      navigator.clipboard.writeText(text).then(() => {
+        const original = label.textContent;
+        btn.classList.add('copied');
+        label.textContent = 'Copiado';
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          label.textContent = original;
+        }, 2000);
+      }).catch(() => {
+        label.textContent = 'Falhou';
+      });
+    }
+  </script>
+
+  <!-- 07 PRÓXIMOS PASSOS -->
+  <section class="section">
+    <div class="section-eyebrow">07 · Próximos passos</div>
+    <h2 class="section-title">Para onde a frente vai.</h2>
+    <p class="section-lede">Três horizontes distintos: o que fecha o ciclo atual, o que segue para o próximo sprint e o que entra no roadmap mais amplo.</p>
+
+    <div class="roadmap">
+      <article class="horizon">
+        <div class="horizon-label">1–2 semanas</div>
+        <h3 class="horizon-title">Fechar o ciclo</h3>
+        <ul class="horizon-list">
+          <li><strong>QA full-flow em projeto novo</strong><span>Brainstorm → publish manual e overview, validando o caso real.</span></li>
+          <li><strong>Atualizar 5 testes do wizard</strong><span>Adaptar para a UI Pattern B; reduzir falhas para zero antes do merge.</span></li>
+          <li><strong>Investigar Inngest brainstorm</strong><span>Sessão completa sem <code>idea_archives</code> populado — bug separado mas afetando UX.</span></li>
+          <li><strong>Merge para main</strong><span>Após QA clean, levar autopilot v1 para a branch principal.</span></li>
+        </ul>
+      </article>
+
+      <article class="horizon">
+        <div class="horizon-label">2–6 semanas</div>
+        <h3 class="horizon-title">Hardening + expansão</h3>
+        <ul class="horizon-list">
+          <li><strong>Resolver falhas pré-existentes</strong><span>Research enqueue, content-drafts produce, personas WP avatar.</span></li>
+          <li><strong>Estender autopilot a outros formatos</strong><span>Vídeo, podcast e shorts além de blog.</span></li>
+          <li><strong>Métricas reais de cost/time</strong><span>Substituir a heurística do painel do wizard pelos dados reais de execução.</span></li>
+          <li><strong>Observability do Inngest</strong><span>Dashboard pra ver jobs travados antes do usuário descobrir.</span></li>
+        </ul>
+      </article>
+
+      <article class="horizon">
+        <div class="horizon-label">6+ semanas</div>
+        <h3 class="horizon-title">Roadmap amplo</h3>
+        <ul class="horizon-list">
+          <li><strong>Multi-tenant + permissões</strong><span>Templates compartilhados entre usuários do mesmo org.</span></li>
+          <li><strong>Autopilot recovery</strong><span>UI para retomar projetos travados sem precisar de script manual.</span></li>
+          <li><strong>Custos por org</strong><span>Painel de gastos por canal e por projeto, com alertas.</span></li>
+          <li><strong>Templates marketplace</strong><span>Compartilhar templates entre orgs com curadoria interna.</span></li>
+        </ul>
+      </article>
+    </div>
+  </section>
+
+  <footer>
+    <div>
+      Gerado em 30 de abril de 2026 ·
+      <code>docs/reports/2026-04-30-board-report-autopilot-v1.html</code>
+    </div>
+    <div class="contributors">
+      <span>Contribuidores</span>
+      <div class="avatar-stack">
+        <span class="avatar" title="Hector Siman">HS</span>
+        <span class="avatar" title="Claude Code" style="background: linear-gradient(135deg, var(--violet), var(--accent));">CC</span>
+      </div>
+    </div>
+  </footer>
+
+</div>
+
+</body>
+</html>

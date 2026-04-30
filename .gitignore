@@ -46,7 +46,7 @@ apps/api/public/generated-images/
 .worktrees/
 
 # Security testing artifacts — pentest reports and assessment data
-reports/
+/reports/
 .claude/security/baselines/
 .claude/security/findings/
 .claude/security/run-*/
