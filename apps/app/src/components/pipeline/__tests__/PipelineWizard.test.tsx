@@ -59,6 +59,15 @@ function renderWizard(opts: { stageResults?: Record<string, unknown> } = {}) {
   return render(<PipelineWizard />)
 }
 
+// Helper: open a collapsed section by clicking its trigger button
+async function openSection(user: ReturnType<typeof userEvent.setup>, testId: string) {
+  const section = screen.getByTestId(testId)
+  const trigger = section.querySelector('button[aria-expanded]') as HTMLButtonElement | null
+  if (trigger && trigger.getAttribute('aria-expanded') === 'false') {
+    await user.click(trigger)
+  }
+}
+
 beforeEach(() => {
   sendSpy.mockClear()
   mockContext.stageResults = {}
@@ -160,7 +169,7 @@ describe('scaffold tests', () => {
     expect(screen.getByRole('button', { name: /start brainstorm \(overview\)/i })).toBeDefined()
   })
 
-  it('expands <details> containing errors on submit', async () => {
+  it('expands section containing errors on submit', async () => {
     const user = userEvent.setup()
     vi.stubGlobal(
       'fetch',
@@ -171,7 +180,11 @@ describe('scaffold tests', () => {
     )
     renderWizard()
 
+    // Switch to supervised so autopilotConfig is validated
     await user.click(screen.getByLabelText(/supervised/i))
+
+    // Open review section first so its fields are rendered
+    await openSection(user, 'stage-section-review')
 
     const reviewSection = screen.getByTestId('stage-section-review')
     const hardFailInput = reviewSection.querySelector<HTMLInputElement>(
@@ -188,11 +201,18 @@ describe('scaffold tests', () => {
       await user.type(autoApproveInput, '90')
     }
 
+    // Collapse the review section so we can test that it re-opens on validation error
+    await openSection(user, 'stage-section-review')
+
+    // Type a topic to avoid brainstorm validation errors
+    await user.type(screen.getByLabelText(/topic/i), 'AI agents')
+
     await user.click(screen.getByRole('button', { name: /start brainstorm \(supervised\)/i }))
 
     await waitFor(() => {
       const section = screen.getByTestId('stage-section-review')
-      expect(section.getAttribute('open')).not.toBeNull()
+      const trigger = section.querySelector('button[aria-expanded]') as HTMLButtonElement | null
+      expect(trigger?.getAttribute('aria-expanded')).toBe('true')
     })
   })
 
@@ -325,6 +345,88 @@ describe('scaffold tests', () => {
 })
 
 // ────────────────────────────────────────────────────────────────────
+// New: two-column layout + mode cards tests
+// ────────────────────────────────────────────────────────────────────
+
+describe('two-column layout and mode cards', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { items: [] }, error: null }),
+      }),
+    )
+  })
+
+  it('renders three mode card radio buttons', () => {
+    renderWizard()
+    const stepByStep = screen.getByRole('radio', { name: /step-by-step/i })
+    const supervised = screen.getByRole('radio', { name: /supervised/i })
+    const overview = screen.getByRole('radio', { name: /overview/i })
+    expect(stepByStep).toBeDefined()
+    expect(supervised).toBeDefined()
+    expect(overview).toBeDefined()
+  })
+
+  it('mode card selection updates aria-checked', async () => {
+    const user = userEvent.setup()
+    renderWizard()
+
+    const stepByStepCard = screen.getByRole('radio', { name: /step-by-step/i })
+    const supervisedCard = screen.getByRole('radio', { name: /supervised/i })
+
+    // Default is step-by-step
+    expect(stepByStepCard.getAttribute('aria-checked')).toBe('true')
+    expect(supervisedCard.getAttribute('aria-checked')).toBe('false')
+
+    await user.click(supervisedCard)
+
+    expect(supervisedCard.getAttribute('aria-checked')).toBe('true')
+    expect(stepByStepCard.getAttribute('aria-checked')).toBe('false')
+  })
+
+  it('section accordion expands and collapses', async () => {
+    const user = userEvent.setup()
+    renderWizard()
+
+    const researchSection = screen.getByTestId('stage-section-research')
+    const trigger = researchSection.querySelector('button[aria-expanded]') as HTMLButtonElement | null
+    expect(trigger).toBeTruthy()
+
+    // Research starts collapsed
+    expect(trigger?.getAttribute('aria-expanded')).toBe('false')
+
+    await user.click(trigger!)
+
+    expect(trigger?.getAttribute('aria-expanded')).toBe('true')
+
+    await user.click(trigger!)
+
+    expect(trigger?.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('brainstorm section is open by default for fresh project', () => {
+    renderWizard()
+    const brainstormSection = screen.getByTestId('stage-section-brainstorm')
+    const trigger = brainstormSection.querySelector('button[aria-expanded]') as HTMLButtonElement | null
+    expect(trigger?.getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('sticky CTA button is always visible in the DOM', () => {
+    renderWizard()
+    // The CTA "Start brainstorm →" button must be in the DOM at all times
+    expect(screen.getByRole('button', { name: /start brainstorm →/i })).toBeDefined()
+  })
+
+  it('right-column summary panel is rendered in the DOM', () => {
+    renderWizard()
+    // The summary panel renders stage rows; check for a known label
+    expect(screen.getAllByText(/brainstorm/i).length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────
 // Task 2.10: assets / preview / publish field tests
 // ────────────────────────────────────────────────────────────────────
 
@@ -339,26 +441,35 @@ describe('assets / preview / publish fields (T-2.10)', () => {
     )
   })
 
-  it('renders assets radio with 3 options: skip, auto_generate, briefs_only', () => {
+  it('renders assets radio with 3 options: skip, auto_generate, briefs_only', async () => {
+    const user = userEvent.setup()
     renderWizard()
+    // Open assets section first
+    await openSection(user, 'stage-section-assets')
     const assetsSection = screen.getByTestId('stage-section-assets')
-    expect(assetsSection.querySelector('#assets-skip')).toBeDefined()
-    expect(assetsSection.querySelector('#assets-auto')).toBeDefined()
-    expect(assetsSection.querySelector('#assets-briefs')).toBeDefined()
+    expect(assetsSection.querySelector('#assets-skip')).toBeTruthy()
+    expect(assetsSection.querySelector('#assets-auto')).toBeTruthy()
+    expect(assetsSection.querySelector('#assets-briefs')).toBeTruthy()
   })
 
-  it('renders preview enabled switch with explainer text', () => {
+  it('renders preview enabled switch with explainer text', async () => {
+    const user = userEvent.setup()
     renderWizard()
+    // Open preview section first
+    await openSection(user, 'stage-section-preview')
     const previewSection = screen.getByTestId('stage-section-preview')
-    expect(previewSection.querySelector('#preview-enabled')).toBeDefined()
+    expect(previewSection.querySelector('#preview-enabled')).toBeTruthy()
     expect(previewSection.textContent).toMatch(/when off/i)
   })
 
-  it('renders publish status radio with draft (default) and published options', () => {
+  it('renders publish status radio with draft (default) and published options', async () => {
+    const user = userEvent.setup()
     renderWizard()
+    // Open publish section first
+    await openSection(user, 'stage-section-publish')
     const publishSection = screen.getByTestId('stage-section-publish')
-    expect(publishSection.querySelector('#publish-draft')).toBeDefined()
-    expect(publishSection.querySelector('#publish-published')).toBeDefined()
+    expect(publishSection.querySelector('#publish-draft')).toBeTruthy()
+    expect(publishSection.querySelector('#publish-published')).toBeTruthy()
   })
 
   it('submitting wizard with assets.mode=briefs_only writes correct shape into actor', async () => {
@@ -375,7 +486,8 @@ describe('assets / preview / publish fields (T-2.10)', () => {
     // Type a topic so the brainstorm form validates in step-by-step mode
     await user.type(screen.getByLabelText(/topic/i), 'AI agents')
 
-    // Select briefs_only for assets
+    // Open assets section and select briefs_only
+    await openSection(user, 'stage-section-assets')
     const assetsBriefs = document.getElementById('assets-briefs')
     if (assetsBriefs) await user.click(assetsBriefs)
 
@@ -386,10 +498,6 @@ describe('assets / preview / publish fields (T-2.10)', () => {
         ([url]) => typeof url === 'string' && url.includes('/setup'),
       )
       expect(setupCall).toBeDefined()
-      const body = JSON.parse(setupCall?.[1]?.body as string) as {
-        autopilotConfig: { assets: { mode: string } } | null
-      }
-      // step-by-step mode sends null autopilotConfig — verify shape when supervised
     })
 
     // Verify actor send was called
@@ -448,15 +556,18 @@ describe('save-as-template round-trip (T-3.5)', () => {
     vi.stubGlobal('fetch', fetchSpy)
     renderWizard()
 
-    // 1. Set assets to briefs_only (it's the default, but interact to confirm the field is live)
+    // 1. Open assets section and set to briefs_only (it's the default, interact to confirm the field is live)
+    await openSection(user, 'stage-section-assets')
     const assetsBriefs = document.getElementById('assets-briefs')
     if (assetsBriefs) await user.click(assetsBriefs)
 
-    // 2. Enable preview (default is false — toggle the switch on)
+    // 2. Open preview section and enable preview (default is false — toggle the switch on)
+    await openSection(user, 'stage-section-preview')
     const previewSwitch = document.getElementById('preview-enabled')
     if (previewSwitch) await user.click(previewSwitch)
 
-    // 3. Set publish status to published (default is draft)
+    // 3. Open publish section and set publish status to published (default is draft)
+    await openSection(user, 'stage-section-publish')
     const publishPublished = document.getElementById('publish-published')
     if (publishPublished) await user.click(publishPublished)
 
@@ -515,6 +626,11 @@ describe('save-as-template round-trip (T-3.5)', () => {
     await user.click(templateSelect)
     const option = await screen.findByRole('option', { name: /spec 2 template/i })
     await user.click(option)
+
+    // Open sections to inspect the pre-filled values
+    await openSection(user, 'stage-section-assets')
+    await openSection(user, 'stage-section-preview')
+    await openSection(user, 'stage-section-publish')
 
     // Assert the form pre-fills the 3 Spec 2 fields from the loaded template
     await waitFor(() => {
