@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -21,13 +22,28 @@ import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
 
-// ─── Inline form schema ──────────────────────────────────────────────────────
-// Mirrors autopilotConfigSchema with string-coerced numbers for HTML inputs.
+// ─── Provider data ────────────────────────────────────────────────────────────
+
+interface ProviderOption {
+  provider: string
+  models: string[]
+}
+
+const PROVIDER_LABELS: Record<string, string> = {
+  gemini:    'Gemini (Google)',
+  openai:    'OpenAI',
+  anthropic: 'Anthropic (Claude)',
+  ollama:    'Ollama (local)',
+}
+
+// ─── Form schema ─────────────────────────────────────────────────────────────
+
 const formSchema = z.object({
   mode: z.enum(['supervised', 'overview']),
   defaultProvider: z.union([z.literal('recommended'), z.enum(['openai', 'anthropic', 'gemini', 'ollama'])]),
   brainstorm: z.object({
     providerOverride: z.enum(['openai', 'anthropic', 'gemini', 'ollama']).nullable(),
+    modelOverride: z.string().nullable().optional(),
     brainstormMode: z.enum(['topic_driven', 'reference_guided']),
     topic: z.string().optional().nullable(),
     referenceUrl: z.string().optional().nullable(),
@@ -46,19 +62,23 @@ const formSchema = z.object({
   }).nullable(),
   research: z.object({
     providerOverride: z.enum(['openai', 'anthropic', 'gemini', 'ollama']).nullable(),
+    modelOverride: z.string().nullable().optional(),
     depth: z.enum(['surface', 'medium', 'deep']),
   }).nullable(),
   canonicalCore: z.object({
     providerOverride: z.enum(['openai', 'anthropic', 'gemini', 'ollama']).nullable(),
+    modelOverride: z.string().nullable().optional(),
     personaId: z.string().nullable(),
   }),
   draft: z.object({
     providerOverride: z.enum(['openai', 'anthropic', 'gemini', 'ollama']).nullable(),
+    modelOverride: z.string().nullable().optional(),
     format: z.enum(['blog', 'video', 'shorts', 'podcast']),
     wordCount: z.coerce.number().int().positive().optional(),
   }),
   review: z.object({
     providerOverride: z.enum(['openai', 'anthropic', 'gemini', 'ollama']).nullable(),
+    modelOverride: z.string().nullable().optional(),
     maxIterations: z.coerce.number().int().min(0).max(20),
     autoApproveThreshold: z.coerce.number().int().min(0).max(100),
     hardFailThreshold: z.coerce.number().int().min(0).max(100),
@@ -73,6 +93,7 @@ const formSchema = z.object({
   }),
   assets: z.object({
     providerOverride: z.enum(['openai', 'anthropic', 'gemini', 'ollama']).nullable(),
+    modelOverride: z.string().nullable().optional(),
     assetMode: z.enum(['skip', 'briefs_only', 'auto_generate']),
   }),
   preview: z.object({
@@ -84,22 +105,21 @@ const formSchema = z.object({
 })
 
 type FormValues = z.infer<typeof formSchema>
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 type ValidProvider = 'openai' | 'anthropic' | 'gemini' | 'ollama'
-const VALID_PROVIDERS: ValidProvider[] = ['openai', 'anthropic', 'gemini', 'ollama']
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function toProviderOrNull(raw: string | undefined | null): ValidProvider | null {
+  const valid: ValidProvider[] = ['openai', 'anthropic', 'gemini', 'ollama']
   if (!raw) return null
-  return (VALID_PROVIDERS.includes(raw as ValidProvider) ? raw : null) as ValidProvider | null
+  return valid.includes(raw as ValidProvider) ? (raw as ValidProvider) : null
 }
 
-function defaultProviderFor(
-  key: string,
-  defaultProviders: Record<string, string>,
-): ValidProvider | null {
-  return toProviderOrNull(defaultProviders[key] ?? defaultProviders['draft'] ?? null)
+interface AgentRecs {
+  brainstorm?:    { recommended_provider: string | null; recommended_model: string | null }
+  research?:      { recommended_provider: string | null; recommended_model: string | null }
+  production?:    { recommended_provider: string | null; recommended_model: string | null }
+  review?:        { recommended_provider: string | null; recommended_model: string | null }
 }
 
 function buildDefaultValues(
@@ -110,17 +130,26 @@ function buildDefaultValues(
   reviewMaxIterations: number,
   brainstormDone: boolean,
   researchDone: boolean,
+  agentRecs: AgentRecs = {},
 ): FormValues {
+  // Helper: pick provider from agent rec → pipeline defaults → null
+  function recProvider(stage: keyof AgentRecs): ValidProvider | null {
+    return toProviderOrNull(agentRecs[stage]?.recommended_provider ?? defaultProviders[stage] ?? null)
+  }
+  function recModel(stage: keyof AgentRecs): string | null {
+    return agentRecs[stage]?.recommended_model ?? null
+  }
+
   if (existing !== null) {
     return {
       mode: 'supervised',
       defaultProvider: existing.defaultProvider ?? 'recommended',
-      // If stage is already done in stageResults, keep slot null regardless
       brainstorm: brainstormDone
         ? null
         : existing.brainstorm
           ? {
               providerOverride: existing.brainstorm.providerOverride,
+              modelOverride: existing.brainstorm.modelOverride ?? null,
               brainstormMode: existing.brainstorm.mode,
               topic: existing.brainstorm.topic ?? null,
               referenceUrl: existing.brainstorm.referenceUrl ?? null,
@@ -136,45 +165,47 @@ function buildDefaultValues(
         : existing.research
           ? {
               providerOverride: existing.research.providerOverride,
+              modelOverride: existing.research.modelOverride ?? null,
               depth: existing.research.depth,
             }
           : null,
       canonicalCore: {
         providerOverride: existing.canonicalCore.providerOverride,
+        modelOverride: existing.canonicalCore.modelOverride ?? null,
         personaId: existing.canonicalCore.personaId,
       },
       draft: {
         providerOverride: existing.draft.providerOverride,
+        modelOverride: existing.draft.modelOverride ?? null,
         format: existing.draft.format,
         wordCount: existing.draft.wordCount,
       },
       review: {
         providerOverride: existing.review.providerOverride,
+        modelOverride: existing.review.modelOverride ?? null,
         maxIterations: existing.review.maxIterations,
         autoApproveThreshold: existing.review.autoApproveThreshold,
         hardFailThreshold: existing.review.hardFailThreshold,
       },
       assets: {
         providerOverride: existing.assets.providerOverride,
+        modelOverride: existing.assets.modelOverride ?? null,
         assetMode: existing.assets.mode,
       },
-      preview: {
-        enabled: existing.preview.enabled,
-      },
-      publish: {
-        status: existing.publish.status,
-      },
+      preview: { enabled: existing.preview.enabled },
+      publish: { status: existing.publish.status },
     }
   }
 
+  // Fresh open — pre-fill from agent recommendations
   return {
     mode: 'supervised',
     defaultProvider: 'recommended',
-    // If stage is already done, use null so we don't re-run it
     brainstorm: brainstormDone
       ? null
       : {
-          providerOverride: defaultProviderFor('brainstorm', defaultProviders),
+          providerOverride: recProvider('brainstorm'),
+          modelOverride: recModel('brainstorm'),
           brainstormMode: 'topic_driven',
           topic: null,
           referenceUrl: null,
@@ -187,34 +218,35 @@ function buildDefaultValues(
     research: researchDone
       ? null
       : {
-          providerOverride: defaultProviderFor('research', defaultProviders),
+          providerOverride: recProvider('research'),
+          modelOverride: recModel('research'),
           depth: 'medium',
         },
     canonicalCore: {
-      providerOverride: defaultProviderFor('draft', defaultProviders),
+      providerOverride: recProvider('production'),
+      modelOverride: recModel('production'),
       personaId: null,
     },
     draft: {
-      providerOverride: defaultProviderFor('draft', defaultProviders),
+      providerOverride: recProvider('production'),
+      modelOverride: recModel('production'),
       format: 'blog',
       wordCount: 1500,
     },
     review: {
-      providerOverride: defaultProviderFor('review', defaultProviders),
+      providerOverride: recProvider('review'),
+      modelOverride: recModel('review'),
       maxIterations: reviewMaxIterations,
       autoApproveThreshold: reviewApproveScore,
       hardFailThreshold: reviewRejectThreshold,
     },
     assets: {
       providerOverride: null,
+      modelOverride: null,
       assetMode: 'skip',
     },
-    preview: {
-      enabled: false,
-    },
-    publish: {
-      status: 'draft',
-    },
+    preview: { enabled: false },
+    publish: { status: 'draft' },
   }
 }
 
@@ -224,6 +256,7 @@ function formValuesToAutopilotConfig(values: FormValues): AutopilotConfig {
     brainstorm: values.brainstorm
       ? {
           providerOverride: values.brainstorm.providerOverride,
+          modelOverride: values.brainstorm.modelOverride ?? null,
           mode: values.brainstorm.brainstormMode,
           topic: values.brainstorm.topic ?? undefined,
           referenceUrl: values.brainstorm.referenceUrl ?? undefined,
@@ -237,34 +270,35 @@ function formValuesToAutopilotConfig(values: FormValues): AutopilotConfig {
     research: values.research
       ? {
           providerOverride: values.research.providerOverride,
+          modelOverride: values.research.modelOverride ?? null,
           depth: values.research.depth,
         }
       : null,
     canonicalCore: {
       providerOverride: values.canonicalCore.providerOverride,
+      modelOverride: values.canonicalCore.modelOverride ?? null,
       personaId: values.canonicalCore.personaId,
     },
     draft: {
       providerOverride: values.draft.providerOverride,
+      modelOverride: values.draft.modelOverride ?? null,
       format: values.draft.format,
       wordCount: values.draft.wordCount,
     },
     review: {
       providerOverride: values.review.providerOverride,
+      modelOverride: values.review.modelOverride ?? null,
       maxIterations: values.review.maxIterations,
       autoApproveThreshold: values.review.autoApproveThreshold,
       hardFailThreshold: values.review.hardFailThreshold,
     },
     assets: {
       providerOverride: values.assets.providerOverride,
+      modelOverride: values.assets.modelOverride ?? null,
       mode: values.assets.assetMode,
     },
-    preview: {
-      enabled: values.preview.enabled,
-    },
-    publish: {
-      status: values.publish.status,
-    },
+    preview: { enabled: values.preview.enabled },
+    publish: { status: values.publish.status },
   }
 }
 
@@ -306,29 +340,81 @@ function CompletedCard({ stage, stageResults }: CompletedCardProps) {
   )
 }
 
-interface ProviderSelectProps {
+// ─── ProviderModelPicker ─────────────────────────────────────────────────────
+
+interface ProviderModelPickerProps {
   testId: string
-  value: ValidProvider | null
-  onChange: (v: ValidProvider | null) => void
+  providerValue: ValidProvider | null
+  modelValue: string | null | undefined
+  onProviderChange: (v: ValidProvider | null) => void
+  onModelChange: (v: string | null) => void
+  providers: ProviderOption[]
   disabled?: boolean
 }
 
-function ProviderSelect({ testId, value, onChange, disabled = false }: ProviderSelectProps) {
+function ProviderModelPicker({
+  testId,
+  providerValue,
+  modelValue,
+  onProviderChange,
+  onModelChange,
+  providers,
+  disabled = false,
+}: ProviderModelPickerProps) {
+  const selectedProvider = providers.find(p => p.provider === providerValue)
+  const models = selectedProvider?.models ?? []
+
+  const selectClass = "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+
   return (
-    <select
-      data-testid={testId}
-      disabled={disabled}
-      value={value ?? ''}
-      onChange={(e) => onChange(toProviderOrNull(e.target.value))}
-      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      <option value="">Auto (default)</option>
-      {VALID_PROVIDERS.map((p) => (
-        <option key={p} value={p}>
-          {p.charAt(0).toUpperCase() + p.slice(1)}
-        </option>
-      ))}
-    </select>
+    <div className="space-y-1.5">
+      {/* Provider dropdown */}
+      <select
+        data-testid={testId}
+        disabled={disabled}
+        value={providerValue ?? ''}
+        onChange={(e) => {
+          onProviderChange(toProviderOrNull(e.target.value))
+          onModelChange(null)
+        }}
+        className={selectClass}
+      >
+        <option value="">Auto (use agent default)</option>
+        {providers.map(p => (
+          <option key={p.provider} value={p.provider}>
+            {PROVIDER_LABELS[p.provider] ?? p.provider}
+          </option>
+        ))}
+      </select>
+
+      {/* Model picker — only shown when a provider is selected */}
+      {providerValue && (
+        models.length > 0 ? (
+          <select
+            data-testid={`${testId}-model`}
+            disabled={disabled}
+            value={modelValue ?? ''}
+            onChange={(e) => onModelChange(e.target.value || null)}
+            className={selectClass}
+          >
+            <option value="">Default model</option>
+            {models.map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            data-testid={`${testId}-model`}
+            type="text"
+            disabled={disabled}
+            value={modelValue ?? ''}
+            onChange={(e) => onModelChange(e.target.value || null)}
+            placeholder="Model name (optional)"
+            className={selectClass}
+          />
+        )
+      )}
+    </div>
   )
 }
 
@@ -357,11 +443,15 @@ export function MiniWizardSheet({ isOpen, onClose }: MiniWizardSheetProps) {
       (stageResults.research as { completedAt?: string }).completedAt,
   )
 
+  const [activeProviders, setActiveProviders] = useState<ProviderOption[]>([])
+  const [loadingProviders, setLoadingProviders] = useState(false)
+
   const {
     register,
     handleSubmit,
     setValue,
     control,
+    reset,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -376,35 +466,85 @@ export function MiniWizardSheet({ isOpen, onClose }: MiniWizardSheetProps) {
     ),
   })
 
-  const brainstormProvider = useWatch({ control, name: 'brainstorm.providerOverride' }) as ValidProvider | null
-  const brainstormMode = useWatch({ control, name: 'brainstorm.brainstormMode' }) as
-    | 'topic_driven'
-    | 'reference_guided'
-    | undefined
-  const researchProvider = useWatch({ control, name: 'research.providerOverride' }) as ValidProvider | null
+  // Fetch active providers + agent recommendations when wizard opens
+  useEffect(() => {
+    if (!isOpen) return
+    let cancelled = false
+    setLoadingProviders(true)
+
+    async function load() {
+      try {
+        const [provRes, agentRes] = await Promise.all([
+          fetch('/api/ai-providers'),
+          fetch('/api/agents'),
+        ])
+        if (cancelled) return
+
+        const provJson = await provRes.json()
+        const agentJson = await agentRes.json()
+
+        const providers: ProviderOption[] = (provJson.data ?? [])
+          .filter((p: { isActive: boolean; provider: string }) => p.isActive && p.provider !== 'manual')
+          .map((p: { provider: string; modelsJson: string[] }) => ({
+            provider: p.provider,
+            models: p.modelsJson ?? [],
+          }))
+
+        if (cancelled) return
+        setActiveProviders(providers)
+
+        // Pre-fill agent recommendations only when opening fresh (no saved config)
+        if (!autopilotConfig) {
+          const agents: Array<{ stage: string; recommended_provider: string | null; recommended_model: string | null }> =
+            agentJson.data?.agents ?? []
+          const agentRecs: AgentRecs = Object.fromEntries(
+            agents.map(a => [a.stage, { recommended_provider: a.recommended_provider, recommended_model: a.recommended_model }])
+          )
+          reset(buildDefaultValues(
+            null,
+            defaultProviders,
+            reviewApproveScore,
+            reviewRejectThreshold,
+            reviewMaxIterations,
+            brainstormDone,
+            researchDone,
+            agentRecs,
+          ))
+        }
+      } catch {
+        // Non-fatal — wizard still works with empty provider list
+      } finally {
+        if (!cancelled) setLoadingProviders(false)
+      }
+    }
+
+    void load()
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen])
+
+  // Watch all provider + model values
+  const brainstormProvider   = useWatch({ control, name: 'brainstorm.providerOverride' }) as ValidProvider | null
+  const brainstormModel      = useWatch({ control, name: 'brainstorm.modelOverride' }) as string | null
+  const brainstormMode       = useWatch({ control, name: 'brainstorm.brainstormMode' }) as 'topic_driven' | 'reference_guided' | undefined
+  const researchProvider     = useWatch({ control, name: 'research.providerOverride' }) as ValidProvider | null
+  const researchModel        = useWatch({ control, name: 'research.modelOverride' }) as string | null
   const canonicalCoreProvider = useWatch({ control, name: 'canonicalCore.providerOverride' }) as ValidProvider | null
-  const draftProvider = useWatch({ control, name: 'draft.providerOverride' }) as ValidProvider | null
-  const reviewProvider = useWatch({ control, name: 'review.providerOverride' }) as ValidProvider | null
-  const assetsProvider = useWatch({ control, name: 'assets.providerOverride' }) as ValidProvider | null
+  const canonicalCoreModel   = useWatch({ control, name: 'canonicalCore.modelOverride' }) as string | null
+  const draftProvider        = useWatch({ control, name: 'draft.providerOverride' }) as ValidProvider | null
+  const draftModel           = useWatch({ control, name: 'draft.modelOverride' }) as string | null
+  const reviewProvider       = useWatch({ control, name: 'review.providerOverride' }) as ValidProvider | null
+  const reviewModel          = useWatch({ control, name: 'review.modelOverride' }) as string | null
+  const assetsProvider       = useWatch({ control, name: 'assets.providerOverride' }) as ValidProvider | null
+  const assetsModel          = useWatch({ control, name: 'assets.modelOverride' }) as string | null
 
   function onSubmit(values: FormValues) {
     const config = formValuesToAutopilotConfig(values)
-
-    // Full parse to ensure validity before dispatch — will throw on invalid config
-    // and react-hook-form's zodResolver should have caught it first, but we
-    // double-check here as the plan's contract test requires parse() to succeed.
     const parsed = autopilotConfigSchema.parse(config)
-
-    actor.send({
-      type: 'GO_AUTOPILOT',
-      mode: values.mode,
-      autopilotConfig: parsed,
-    })
+    actor.send({ type: 'GO_AUTOPILOT', mode: values.mode, autopilotConfig: parsed })
     onClose()
   }
 
-  // Extra inline check for the hardFail/autoApprove cross-field validation
-  // (zodResolver handles it, but we read the error for display)
   const hardFailError =
     errors.review?.hardFailThreshold?.message ??
     (errors.review as { root?: { message?: string } } | undefined)?.root?.message
@@ -415,6 +555,10 @@ export function MiniWizardSheet({ isOpen, onClose }: MiniWizardSheetProps) {
         <DialogHeader>
           <DialogTitle>Switch to Autopilot</DialogTitle>
         </DialogHeader>
+
+        {loadingProviders && (
+          <p className="text-xs text-muted-foreground pb-1">Loading AI settings…</p>
+        )}
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 py-2">
           {/* ── Autopilot mode ─────────────────────────────── */}
@@ -437,11 +581,14 @@ export function MiniWizardSheet({ isOpen, onClose }: MiniWizardSheetProps) {
               <CompletedCard stage="brainstorm" stageResults={stageResults} />
             ) : (
               <div className="space-y-1.5">
-                <Label>Provider</Label>
-                <ProviderSelect
+                <Label>AI</Label>
+                <ProviderModelPicker
                   testId="brainstorm-provider-select"
-                  value={brainstormProvider}
-                  onChange={(v) => setValue('brainstorm.providerOverride', v)}
+                  providerValue={brainstormProvider}
+                  modelValue={brainstormModel}
+                  onProviderChange={(v) => setValue('brainstorm.providerOverride', v)}
+                  onModelChange={(v) => setValue('brainstorm.modelOverride', v)}
+                  providers={activeProviders}
                 />
                 <Label htmlFor="brainstorm-mode-select">Mode</Label>
                 <select
@@ -497,11 +644,14 @@ export function MiniWizardSheet({ isOpen, onClose }: MiniWizardSheetProps) {
               <CompletedCard stage="research" stageResults={stageResults} />
             ) : (
               <div className="space-y-1.5">
-                <Label>Provider</Label>
-                <ProviderSelect
+                <Label>AI</Label>
+                <ProviderModelPicker
                   testId="research-provider-select"
-                  value={researchProvider}
-                  onChange={(v) => setValue('research.providerOverride', v)}
+                  providerValue={researchProvider}
+                  modelValue={researchModel}
+                  onProviderChange={(v) => setValue('research.providerOverride', v)}
+                  onModelChange={(v) => setValue('research.modelOverride', v)}
+                  providers={activeProviders}
                 />
                 <Label htmlFor="research-depth">Depth</Label>
                 <select
@@ -520,22 +670,28 @@ export function MiniWizardSheet({ isOpen, onClose }: MiniWizardSheetProps) {
           {/* ── Canonical core slot ────────────────────────── */}
           <section className="space-y-1.5">
             <h3 className="text-sm font-semibold">Canonical Core</h3>
-            <Label>Provider</Label>
-            <ProviderSelect
+            <Label>AI</Label>
+            <ProviderModelPicker
               testId="canonical-core-provider-select"
-              value={canonicalCoreProvider}
-              onChange={(v) => setValue('canonicalCore.providerOverride', v)}
+              providerValue={canonicalCoreProvider}
+              modelValue={canonicalCoreModel}
+              onProviderChange={(v) => setValue('canonicalCore.providerOverride', v)}
+              onModelChange={(v) => setValue('canonicalCore.modelOverride', v)}
+              providers={activeProviders}
             />
           </section>
 
           {/* ── Draft slot ─────────────────────────────────── */}
           <section className="space-y-1.5">
             <h3 className="text-sm font-semibold">Draft</h3>
-            <Label>Provider</Label>
-            <ProviderSelect
+            <Label>AI</Label>
+            <ProviderModelPicker
               testId="draft-provider-select"
-              value={draftProvider}
-              onChange={(v) => setValue('draft.providerOverride', v)}
+              providerValue={draftProvider}
+              modelValue={draftModel}
+              onProviderChange={(v) => setValue('draft.providerOverride', v)}
+              onModelChange={(v) => setValue('draft.modelOverride', v)}
+              providers={activeProviders}
             />
             <Label htmlFor="draft-format">Format</Label>
             <select
@@ -560,11 +716,14 @@ export function MiniWizardSheet({ isOpen, onClose }: MiniWizardSheetProps) {
           {/* ── Review slot ────────────────────────────────── */}
           <section className="space-y-1.5">
             <h3 className="text-sm font-semibold">Review</h3>
-            <Label>Provider</Label>
-            <ProviderSelect
+            <Label>AI</Label>
+            <ProviderModelPicker
               testId="review-provider-select"
-              value={reviewProvider}
-              onChange={(v) => setValue('review.providerOverride', v)}
+              providerValue={reviewProvider}
+              modelValue={reviewModel}
+              onProviderChange={(v) => setValue('review.providerOverride', v)}
+              onModelChange={(v) => setValue('review.modelOverride', v)}
+              providers={activeProviders}
             />
             <Label htmlFor="review-max-iterations">Max iterations</Label>
             <input
@@ -599,11 +758,14 @@ export function MiniWizardSheet({ isOpen, onClose }: MiniWizardSheetProps) {
           {/* ── Assets slot ────────────────────────────────── */}
           <section className="space-y-1.5">
             <h3 className="text-sm font-semibold">Assets</h3>
-            <Label>Provider</Label>
-            <ProviderSelect
+            <Label>AI</Label>
+            <ProviderModelPicker
               testId="assets-provider-select"
-              value={assetsProvider}
-              onChange={(v) => setValue('assets.providerOverride', v)}
+              providerValue={assetsProvider}
+              modelValue={assetsModel}
+              onProviderChange={(v) => setValue('assets.providerOverride', v)}
+              onModelChange={(v) => setValue('assets.modelOverride', v)}
+              providers={activeProviders}
             />
             <Label>Mode</Label>
             <Controller
@@ -668,9 +830,7 @@ export function MiniWizardSheet({ isOpen, onClose }: MiniWizardSheetProps) {
           </section>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
             <Button type="submit">Activate Autopilot</Button>
           </DialogFooter>
         </form>

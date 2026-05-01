@@ -764,6 +764,7 @@ export type Database = {
           created_at: string
           id: string
           is_active: boolean
+          models_json: Json
           org_id: string | null
           provider: string
           updated_at: string
@@ -775,6 +776,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          models_json?: Json
           org_id?: string | null
           provider: string
           updated_at?: string
@@ -786,6 +788,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          models_json?: Json
           org_id?: string | null
           provider?: string
           updated_at?: string
@@ -2414,6 +2417,7 @@ export type Database = {
       pipeline_settings: {
         Row: {
           created_at: string
+          default_models_json: Json
           default_providers_json: Json
           id: string
           lock_key: string
@@ -2424,6 +2428,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          default_models_json?: Json
           default_providers_json?: Json
           id?: string
           lock_key?: string
@@ -2434,6 +2439,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          default_models_json?: Json
           default_providers_json?: Json
           id?: string
           lock_key?: string

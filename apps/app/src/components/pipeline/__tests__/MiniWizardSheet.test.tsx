@@ -39,6 +39,25 @@ vi.mock('@/providers/PipelineSettingsProvider', () => ({
   }),
 }))
 
+// Stub fetch so the async provider+agent load in MiniWizardSheet resolves
+// with a minimal set of providers (gemini + anthropic) and no agent-level recs.
+// Without this, the provider <select> has no options, and select.value is always ''.
+const MOCK_PROVIDERS_RESPONSE = {
+  data: [
+    { provider: 'gemini',    isActive: true, modelsJson: [] },
+    { provider: 'anthropic', isActive: true, modelsJson: [] },
+    { provider: 'openai',    isActive: true, modelsJson: [] },
+  ],
+}
+const MOCK_AGENTS_RESPONSE = { data: { agents: [] } }
+
+beforeEach(() => {
+  global.fetch = vi.fn().mockImplementation((url: string) => {
+    const body = url.includes('/api/agents') ? MOCK_AGENTS_RESPONSE : MOCK_PROVIDERS_RESPONSE
+    return Promise.resolve({ json: () => Promise.resolve(body) })
+  })
+})
+
 // sendSpy is shared across tests; each test that inspects it should reset it.
 const sendSpy = vi.fn()
 
@@ -90,21 +109,25 @@ function renderOpen() {
 
 describe('MiniWizardSheet', () => {
   describe('pre-fills upstream slots from admin defaults when no autopilotConfig exists', () => {
-    it('brainstorm provider field defaults to pipelineSettings.defaultProviders.brainstorm', () => {
+    it('brainstorm provider field defaults to pipelineSettings.defaultProviders.brainstorm', async () => {
       snapshotOverride = makeSnapshot({ mode: 'step-by-step', autopilotConfig: null })
       renderOpen()
 
-      // The brainstorm provider select should show the admin default ('gemini')
+      // Wait for async provider load so the 'gemini' <option> exists in the DOM
       const brainstormSelect = screen.getByTestId('brainstorm-provider-select')
-      expect(brainstormSelect).toHaveValue(DEFAULT_PIPELINE_SETTINGS.defaultProviders.brainstorm)
+      await waitFor(() => {
+        expect(brainstormSelect).toHaveValue(DEFAULT_PIPELINE_SETTINGS.defaultProviders.brainstorm)
+      })
     })
 
-    it('research provider field defaults to pipelineSettings.defaultProviders.research', () => {
+    it('research provider field defaults to pipelineSettings.defaultProviders.research', async () => {
       snapshotOverride = makeSnapshot({ mode: 'step-by-step', autopilotConfig: null })
       renderOpen()
 
       const researchSelect = screen.getByTestId('research-provider-select')
-      expect(researchSelect).toHaveValue(DEFAULT_PIPELINE_SETTINGS.defaultProviders.research)
+      await waitFor(() => {
+        expect(researchSelect).toHaveValue(DEFAULT_PIPELINE_SETTINGS.defaultProviders.research)
+      })
     })
   })
 

@@ -33,6 +33,12 @@ interface Agent {
   updated_at: string;
 }
 
+interface ProviderRow {
+  provider: string;
+  isActive: boolean;
+  models: string[];
+}
+
 const TABS = ['Header', 'Input Schema', 'Output Schema', 'Rules', 'Custom Sections', 'Settings'] as const;
 type Tab = typeof TABS[number];
 
@@ -53,17 +59,12 @@ const STAGE_COLORS: Record<string, string> = {
   assets: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
 };
 
-const PROVIDER_OPTIONS = [
-  { value: '', label: '-- no recommendation --' },
-  { value: 'gemini', label: 'Gemini (Google)' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'anthropic', label: 'Anthropic (Claude)' },
-];
-
-const MODEL_SUGGESTIONS: Record<string, string[]> = {
-  gemini: ['gemini-2.5-flash', 'gemini-2.5-pro'],
-  openai: ['gpt-4o-mini', 'gpt-4o', 'o1-mini'],
-  anthropic: ['claude-sonnet-4-5-20250514', 'claude-opus-4-5-20250514', 'claude-haiku-4-5-20251001'],
+const PROVIDER_LABELS: Record<string, string> = {
+  gemini:    'Gemini (Google)',
+  openai:    'OpenAI',
+  anthropic: 'Anthropic (Claude)',
+  ollama:    'Ollama (local)',
+  manual:    'Manual',
 };
 
 function emptySections(): SectionsJson {
@@ -76,7 +77,7 @@ function emptySections(): SectionsJson {
   };
 }
 
-export function AgentEditor({ agent }: { agent: Agent }) {
+export function AgentEditor({ agent, providers = [] }: { agent: Agent; providers?: ProviderRow[] }) {
   const initial = useMemo(
     () => ({
       name: agent.name,
@@ -327,6 +328,7 @@ export function AgentEditor({ agent }: { agent: Agent }) {
               provider={provider}
               model={model}
               tools={tools}
+              providers={providers}
               onProviderChange={setProvider}
               onModelChange={setModel}
               onToolsChange={setTools}
@@ -650,6 +652,7 @@ function SettingsTab({
   provider,
   model,
   tools,
+  providers,
   onProviderChange,
   onModelChange,
   onToolsChange,
@@ -660,11 +663,22 @@ function SettingsTab({
   provider: string;
   model: string;
   tools: string[];
+  providers: ProviderRow[];
   onProviderChange: (v: string) => void;
   onModelChange: (v: string) => void;
   onToolsChange: (t: string[]) => void;
   updatedAt: string;
 }) {
+  // Active providers only, excluding manual (no real model to recommend)
+  const activeProviders = providers.filter(p => p.isActive && p.provider !== 'manual');
+
+  // If the saved provider is now inactive, keep it visible so it doesn't
+  // silently disappear — show it marked as unavailable.
+  const savedProviderInactive =
+    provider && !activeProviders.find(p => p.provider === provider);
+
+  const modelSuggestions = activeProviders.find(p => p.provider === provider)?.models ?? [];
+
   return (
     <div className="space-y-5">
       <Card title="Identity" hint="Slug and stage are locked — they define how this agent wires into the pipeline.">
@@ -677,7 +691,15 @@ function SettingsTab({
           </Field>
         </div>
       </Card>
-      <Card title="Recommended Model" hint="Suggestion only. Admins can override at runtime.">
+
+      <Card title="Recommended Model" hint="Suggestion only. Engines use this as a starting point — users can override at generation time.">
+        {activeProviders.length === 0 && (
+          <p className="text-xs text-amber-400">
+            No active providers. Go to{' '}
+            <a href="/zadmin/providers" className="underline hover:text-amber-300">Providers</a>
+            {' '}and enable at least one.
+          </p>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Provider">
             <select
@@ -685,9 +707,17 @@ function SettingsTab({
               onChange={(e) => { onProviderChange(e.target.value); onModelChange(''); }}
               className={inputClass(false)}
             >
-              {PROVIDER_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              <option value="">-- no recommendation --</option>
+              {activeProviders.map(p => (
+                <option key={p.provider} value={p.provider}>
+                  {PROVIDER_LABELS[p.provider] ?? p.provider}
+                </option>
               ))}
+              {savedProviderInactive && (
+                <option value={provider} disabled>
+                  {PROVIDER_LABELS[provider] ?? provider} (disabled — enable on Providers page)
+                </option>
+              )}
             </select>
           </Field>
           <Field label="Model">
@@ -696,12 +726,12 @@ function SettingsTab({
               onChange={(e) => onModelChange(e.target.value)}
               disabled={!provider}
               list={`models-${provider}`}
-              placeholder={provider ? 'e.g. gemini-2.5-flash' : 'choose provider first'}
+              placeholder={provider ? 'type or pick from list' : 'choose provider first'}
               className={inputClass(false) + (!provider ? ' opacity-50' : '')}
             />
-            {provider && MODEL_SUGGESTIONS[provider] && (
+            {provider && modelSuggestions.length > 0 && (
               <datalist id={`models-${provider}`}>
-                {MODEL_SUGGESTIONS[provider].map((m) => (
+                {modelSuggestions.map(m => (
                   <option key={m} value={m} />
                 ))}
               </datalist>
@@ -709,6 +739,7 @@ function SettingsTab({
           </Field>
         </div>
       </Card>
+
       <ToolsCard provider={provider} tools={tools} onToolsChange={onToolsChange} />
       <div className="text-xs text-muted-foreground text-right">
         Last updated: {new Date(updatedAt).toLocaleString()}

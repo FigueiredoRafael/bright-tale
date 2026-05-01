@@ -19,22 +19,23 @@ export const ADMIN_LAYOUT_CONFIG: AdminLayoutConfig = {
         { label: 'Organizations', path: adminPath('/orgs'), icon: 'Building2' },
         { label: 'Agentes', path: adminPath('/agents'), icon: 'Bot' },
         { label: 'Tools', path: adminPath('/agents/tools'), icon: 'Wrench' },
-        { label: 'Afiliados', path: adminPath('/affiliates'), icon: 'Users2' },
+        { label: 'Providers', path: adminPath('/providers'), icon: 'Cpu' },
+        { label: 'Afiliados', path: adminPath('/affiliates'), icon: 'Handshake' },
       ],
     },
     {
       group: 'Monetização',
       items: [
-        { label: 'Planos', path: adminPath('/plans'), icon: 'Package' },
+        { label: 'Planos', path: adminPath('/plans'), icon: 'CreditCard' },
         { label: 'Cupons', path: adminPath('/coupons'), icon: 'Ticket' },
-        { label: 'Doações', path: adminPath('/donations'), icon: 'Gift' },
+        { label: 'Doações', path: adminPath('/donations'), icon: 'HeartHandshake' },
       ],
     },
     {
       group: 'Operações',
       items: [
-        { label: 'Suporte', path: adminPath('/support'), icon: 'LifeBuoy' },
-        { label: 'Refunds', path: adminPath('/refunds'), icon: 'RotateCcw' },
+        { label: 'Suporte', path: adminPath('/support'), icon: 'Headphones' },
+        { label: 'Refunds', path: adminPath('/refunds'), icon: 'Undo2' },
         { label: 'Finance', path: adminPath('/finance'), icon: 'DollarSign' },
       ],
     },
@@ -42,7 +43,7 @@ export const ADMIN_LAYOUT_CONFIG: AdminLayoutConfig = {
       group: 'Sistema',
       items: [
         { label: 'Analytics', path: adminPath('/analytics'), icon: 'BarChart3' },
-        { label: 'Settings', path: adminPath('/settings'), icon: 'Settings' },
+        { label: 'Settings', path: adminPath('/settings'), icon: 'SlidersHorizontal' },
       ],
     },
   ],

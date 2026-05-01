@@ -41,6 +41,7 @@
     "db:types": "bash scripts/db-with-token.sh gen types typescript --project-id fxwykfyiicalcgbxslng > packages/shared/src/types/database.ts",
     "db:seed:agents": "tsx scripts/seed-agents.ts",
     "db:seed:personas": "tsx scripts/seed-personas.ts",
+    "db:seed:provider-keys": "tsx scripts/seed-provider-keys.ts",
     "db:seed": "npm run db:seed:agents && npm run db:seed:personas",
     "db:which": "bash scripts/db-which.sh",
     "db:inspect": "tsx scripts/db-inspect.ts",
