@@ -46,19 +46,19 @@ beforeEach(() => {
 });
 
 describe('getProviderChain', () => {
-  it('returns the standard tier brainstorm chain (gemini first, then anthropic + openai)', () => {
-    const chain = getProviderChain('brainstorm', 'standard');
+  it('returns the standard tier brainstorm chain (gemini first, then anthropic + openai)', async () => {
+    const chain = await getProviderChain('brainstorm', 'standard');
     expect(chain.map((c) => c.providerName)).toEqual(['gemini', 'anthropic', 'openai']);
   });
 
-  it('skips providers with no API key', () => {
+  it('skips providers with no API key', async () => {
     delete process.env.GOOGLE_AI_KEY;
-    const chain = getProviderChain('brainstorm', 'standard');
+    const chain = await getProviderChain('brainstorm', 'standard');
     expect(chain[0].providerName).not.toBe('gemini');
   });
 
-  it('free tier uses Gemini for all stages', () => {
-    expect(getProviderChain('production', 'free')[0].providerName).toBe('gemini');
+  it('free tier uses Gemini for all stages', async () => {
+    expect((await getProviderChain('production', 'free'))[0].providerName).toBe('gemini');
   });
 });
 

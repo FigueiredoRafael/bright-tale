@@ -284,7 +284,22 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   const assetsErrored = assetsResult != null && !assetsComplete && !!(assetsResult as { errorCode?: string }).errorCode;
   const assetsBlocked = assetsComplete || assetsErrored;
   const assetsConfig = useSelector(actor, (s) => s.context.autopilotConfig?.assets);
+  const autopilotConfig = useSelector(actor, (s) => s.context.autopilotConfig);
   const overviewMode = useSelector(actor, (s) => s.context.mode === 'overview');
+
+  // Seed provider/model from autopilot wizard config when an override is present.
+  // Only fires when providerOverride is non-null to avoid clobbering the user's
+  // manual selection on subsequent renders.
+  const assetsProviderOverride = autopilotConfig?.assets?.providerOverride ?? null;
+  useEffect(() => {
+    if (!assetsProviderOverride) return;
+    setProvider(assetsProviderOverride as ProviderId);
+    const modelOverride = autopilotConfig?.assets?.modelOverride ?? null;
+    if (modelOverride) {
+      setModel(modelOverride);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assetsProviderOverride]);
 
   // ── 3-mode gate ─────────────────────────────────────────────────
   // On mount, react to autopilotConfig.assets.mode:

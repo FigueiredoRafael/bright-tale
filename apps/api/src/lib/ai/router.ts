@@ -4,7 +4,7 @@
  * Routes AI calls to the best provider/model based on:
  * - Stage (brainstorm/research → cheap+fast, production → high quality)
  * - Tier (free, standard, premium, ultra)
- * - Provider availability (skip if API key missing)
+ * - Provider availability (skip if API key missing OR disabled in DB)
  * - Runtime fallback: getProviderChain returns an ordered list so callers can
  *   retry on 429/5xx without losing context.
  */
@@ -17,6 +17,87 @@ import { OllamaProvider } from './providers/ollama.js';
 import { logEngineCall } from './engine-log.js';
 import { logAiUsage } from '../axiom.js';
 import { sleepCancellable } from './abortable.js';
+import { createServiceClient } from '../supabase/index.js';
+import { decrypt } from '../crypto.js';
+import { captureError } from '../logger.js';
+
+// ---------------------------------------------------------------------------
+// Active-provider cache
+// ---------------------------------------------------------------------------
+// Cached DB rows for providers where is_active = true.
+// TTL: 60 seconds. Module-level to avoid N+1 queries across requests.
+
+interface ActiveProviderEntry {
+  provider: string;
+  /** Decrypted API key from DB, or null if placeholder / decryption failed. */
+  apiKey: string | null;
+}
+
+interface ActiveProviderCache {
+  entries: ActiveProviderEntry[];
+  fetchedAt: number;
+}
+
+let activeProviderCache: ActiveProviderCache | null = null;
+const CACHE_TTL_MS = 60_000;
+
+// Sentinels stored in the DB when the admin has not supplied a real key.
+const PLACEHOLDER_VALUES = new Set(['__placeholder__', '__manual__']);
+
+/**
+ * Fetch (or return cached) active provider entries from `ai_provider_configs`.
+ * Falls back to `null` on any DB/decryption error so callers degrade gracefully
+ * to env-var logic.
+ */
+async function getActiveProviders(): Promise<ActiveProviderEntry[] | null> {
+  const now = Date.now();
+  if (activeProviderCache !== null && now - activeProviderCache.fetchedAt < CACHE_TTL_MS) {
+    return activeProviderCache.entries;
+  }
+
+  try {
+    const sb = createServiceClient();
+    const { data, error } = await sb
+      .from('ai_provider_configs')
+      .select('id, provider, api_key, is_active')
+      .eq('is_active', true);
+
+    if (error) {
+      captureError(new Error(`ai-router: failed to fetch ai_provider_configs: ${error.message}`), {
+        code: error.code,
+      });
+      return null;
+    }
+
+    const rows = (data ?? []) as { id: string; provider: string; api_key: string; is_active: boolean }[];
+
+    const entries: ActiveProviderEntry[] = rows.map((row) => {
+      if (PLACEHOLDER_VALUES.has(row.api_key)) {
+        return { provider: row.provider, apiKey: null };
+      }
+      try {
+        const aad = `ai_provider_configs:api_key:${row.id}:admin`;
+        const decrypted = decrypt(row.api_key, { aad });
+        return { provider: row.provider, apiKey: decrypted };
+      } catch (decryptErr) {
+        captureError(
+          decryptErr instanceof Error ? decryptErr : new Error(String(decryptErr)),
+          { rowId: row.id, provider: row.provider },
+        );
+        return { provider: row.provider, apiKey: null };
+      }
+    });
+
+    activeProviderCache = { entries, fetchedAt: now };
+    return entries;
+  } catch (err) {
+    captureError(
+      err instanceof Error ? err : new Error(String(err)),
+      { context: 'getActiveProviders' },
+    );
+    return null;
+  }
+}
 
 interface ModelConfig {
   provider: string;
@@ -89,30 +170,80 @@ export const STAGE_COSTS: Record<AgentType, number> = {
   assets: 30,
 };
 
-function createProvider(providerName: string, model: string): AIProvider | null {
+/**
+ * Resolve the API key for a given provider name.
+ *
+ * Priority:
+ *  1. If the DB cache is available AND the provider row does NOT appear in the
+ *     active set → return null (admin toggled it off; do not fall back to env).
+ *  2. If the DB cache has a real decrypted key for this provider → use it.
+ *  3. Otherwise fall through to the env-var key (graceful degradation when the
+ *     DB is unreachable, or when no DB row exists yet).
+ *
+ * `activeEntries` is pre-fetched once per `getProviderChain` call so we avoid
+ * re-querying the cache inside each loop iteration.
+ */
+function resolveApiKey(
+  providerName: string,
+  activeEntries: ActiveProviderEntry[] | null,
+): { key: string; fromDb: boolean } | null {
+  if (activeEntries !== null) {
+    const dbRow = activeEntries.find((e) => e.provider === providerName);
+    if (dbRow === undefined) {
+      // Provider not in active set — admin has disabled it (or it was never
+      // added). Skip entirely; do NOT fall through to env var.
+      return null;
+    }
+    if (dbRow.apiKey !== null) {
+      // DB row has a real (decrypted) key — use it with priority.
+      return { key: dbRow.apiKey, fromDb: true };
+    }
+    // Row is active but has a placeholder key → fall through to env var.
+  }
+
+  // Env-var fallback (DB unavailable, or active row uses __manual__ key).
   switch (providerName) {
     case 'openai': {
       const key = process.env.OPENAI_API_KEY;
-      if (!key) return null;
-      return new OpenAIProvider(key, { model });
+      return key ? { key, fromDb: false } : null;
     }
     case 'anthropic': {
       const key = process.env.ANTHROPIC_API_KEY;
-      if (!key) return null;
-      return new AnthropicProvider(key, { model });
+      return key ? { key, fromDb: false } : null;
     }
     case 'gemini': {
       const key = process.env.GOOGLE_AI_KEY ?? process.env.GEMINI_API_KEY;
-      if (!key) return null;
-      return new GeminiProvider(key, { model });
+      return key ? { key, fromDb: false } : null;
     }
-    case 'ollama': {
-      // No API key required — assumes a local Ollama server. We can't probe it
-      // here without a network call, so we always return a provider; if the
-      // server isn't running, generateContent will surface a network error
-      // (which is retryable in the fallback chain).
-      return new OllamaProvider({ model });
-    }
+    default:
+      return null;
+  }
+}
+
+function createProvider(
+  providerName: string,
+  model: string,
+  activeEntries: ActiveProviderEntry[] | null,
+): AIProvider | null {
+  // Ollama is local — no API key and no DB toggle (infra-level concern).
+  if (providerName === 'ollama') {
+    // No API key required — assumes a local Ollama server. We can't probe it
+    // here without a network call, so we always return a provider; if the
+    // server isn't running, generateContent will surface a network error
+    // (which is retryable in the fallback chain).
+    return new OllamaProvider({ model });
+  }
+
+  const resolved = resolveApiKey(providerName, activeEntries);
+  if (resolved === null) return null;
+
+  switch (providerName) {
+    case 'openai':
+      return new OpenAIProvider(resolved.key, { model });
+    case 'anthropic':
+      return new AnthropicProvider(resolved.key, { model });
+    case 'gemini':
+      return new GeminiProvider(resolved.key, { model });
     default:
       return null;
   }
@@ -146,19 +277,23 @@ interface ChainOptions {
 
 /**
  * Returns the ordered list of provider routes to try for a (stage, tier).
- * Filters out providers without an API key configured.
+ * Filters out providers that are disabled in `ai_provider_configs` or that
+ * have no API key configured.
  *
  * If `options.provider` is set, that becomes the primary route (with model
  * override or DEFAULT_MODELS lookup), and the rest of the tier's chain is
  * appended as fallbacks.
  */
-export function getProviderChain(
+export async function getProviderChain(
   stage: AgentType,
   tier: string = 'standard',
   options: ChainOptions = {},
-): ProviderRoute[] {
+): Promise<ProviderRoute[]> {
   const routeTable = ROUTE_TABLE[tier] ?? ROUTE_TABLE.standard;
   const tierPrimary = routeTable[stage];
+
+  // Fetch active-provider list once for this chain build (result is cached).
+  const activeEntries = await getActiveProviders();
 
   // Build the provider order:
   // - If user picked a provider WITHOUT allowFallback: chain is just that one.
@@ -186,7 +321,7 @@ export function getProviderChain(
           ? tierPrimary.model
           : DEFAULT_MODELS[name];
     if (!model) continue;
-    const provider = createProvider(name, model);
+    const provider = createProvider(name, model, activeEntries);
     if (provider) chain.push({ provider, model, providerName: name });
   }
 
@@ -197,8 +332,8 @@ export function getProviderChain(
  * Backwards-compatible single-provider getter. Returns the FIRST configured
  * route in the chain; throws if none.
  */
-export function getRouteForStage(stage: AgentType, tier: string = 'standard'): ProviderRoute {
-  const chain = getProviderChain(stage, tier);
+export async function getRouteForStage(stage: AgentType, tier: string = 'standard'): Promise<ProviderRoute> {
+  const chain = await getProviderChain(stage, tier);
   if (chain.length === 0) {
     throw new Error(
       `No AI provider available for stage=${stage}, tier=${tier}. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_AI_KEY.`,
@@ -257,7 +392,7 @@ export async function generateWithFallback(
   params: GenerateContentParams,
   options: ChainOptions = {},
 ): Promise<{ result: unknown; providerName: string; model: string; attempts: number; usage?: TokenUsage }> {
-  const chain = getProviderChain(stage, tier, options);
+  const chain = await getProviderChain(stage, tier, options);
   if (chain.length === 0) {
     throw new Error(
       `No AI provider available for stage=${stage}, tier=${tier}. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_AI_KEY.`,
