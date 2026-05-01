@@ -93,9 +93,24 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
     draftTitle: draftResult?.draftTitle,
   };
 
+  const autopilotConfig = useSelector(actor, (s) => s.context.autopilotConfig);
+
   const [provider, setProvider] = useState<ProviderId>('gemini');
   const [model, setModel] = useState<string>(MODELS_BY_PROVIDER.gemini[0].id);
   const [recommendationLoaded, setRecommendationLoaded] = useState(false);
+
+  // Seed provider/model from the autopilot wizard's review slot override.
+  // Only fires when a non-null override is present; never resets to null.
+  const providerOverride = autopilotConfig?.review?.providerOverride ?? null;
+  const modelOverride = autopilotConfig?.review?.modelOverride ?? null;
+  useEffect(() => {
+    if (providerOverride) {
+      setProvider(providerOverride as ProviderId);
+      if (modelOverride) {
+        setModel(modelOverride);
+      }
+    }
+  }, [providerOverride, modelOverride]);
   const [busy, setBusy] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   // Anchor the SSE event filter to the moment the action started so the modal
@@ -145,8 +160,13 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
           (a) => a.slug === 'review',
         );
         if (agent?.recommended_provider) {
-          setProvider(agent.recommended_provider as ProviderId);
-          if (agent.recommended_model) setModel(agent.recommended_model as string);
+          // Only apply agent defaults when autopilotConfig has no per-slot override.
+          if (!autopilotConfig?.review?.providerOverride) {
+            setProvider(agent.recommended_provider as ProviderId);
+            if (agent.recommended_model && !autopilotConfig?.review?.modelOverride) {
+              setModel(agent.recommended_model as string);
+            }
+          }
         }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
@@ -158,7 +178,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
     return () => {
       cancelled = true;
     };
-  }, [abortController?.signal]);
+  }, [abortController?.signal, autopilotConfig?.review?.providerOverride, autopilotConfig?.review?.modelOverride]);
 
   // Auto-pilot: submit a fresh review when the orchestrator enters this stage.
   // Re-fires for each iteration of the review loop (rearmKey).

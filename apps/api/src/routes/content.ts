@@ -5,11 +5,30 @@
  */
 
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { authenticate } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
 import { inngest } from '../jobs/client.js';
+
+const stageProviderOverrideSchema = z.object({
+  provider: z.string().optional(),
+  model: z.string().optional(),
+}).optional();
+
+const generateBodySchema = z.object({
+  channelId: z.string(),
+  topic: z.string(),
+  formats: z.array(z.string()).min(1),
+  modelTier: z.string().optional(),
+  providerOverrides: z.object({
+    brainstorm: stageProviderOverrideSchema,
+    research: stageProviderOverrideSchema,
+    production: stageProviderOverrideSchema,
+    review: stageProviderOverrideSchema,
+  }).optional(),
+});
 
 /** Helper: get user's org_id */
 async function getOrgId(userId: string): Promise<string> {
@@ -33,16 +52,11 @@ export async function contentRoutes(fastify: FastifyInstance): Promise<void> {
     try {
       if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
 
-      const { channelId, topic, formats, modelTier } = request.body as {
-        channelId: string;
-        topic: string;
-        formats: string[];
-        modelTier?: string;
-      };
-
-      if (!channelId || !topic || !formats?.length) {
-        throw new ApiError(400, 'channelId, topic, and formats are required', 'VALIDATION_ERROR');
+      const parsed = generateBodySchema.safeParse(request.body);
+      if (!parsed.success) {
+        throw new ApiError(400, parsed.error.issues[0]?.message ?? 'Invalid request body', 'VALIDATION_ERROR');
       }
+      const { channelId, topic, formats, modelTier, providerOverrides } = parsed.data;
 
       const orgId = await getOrgId(request.userId);
 
@@ -56,6 +70,7 @@ export async function contentRoutes(fastify: FastifyInstance): Promise<void> {
           topic,
           formats,
           modelTier,
+          providerOverrides,
         },
       });
 
@@ -75,17 +90,14 @@ export async function contentRoutes(fastify: FastifyInstance): Promise<void> {
     try {
       if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
 
-      const { channelId, topic, formats, quantity, modelTier } = request.body as {
-        channelId: string;
-        topic: string;
-        formats: string[];
-        quantity: number;
-        modelTier?: string;
-      };
-
-      if (!channelId || !topic || !formats?.length || !quantity) {
-        throw new ApiError(400, 'channelId, topic, formats, and quantity are required', 'VALIDATION_ERROR');
+      const bulkBodySchema = generateBodySchema.extend({
+        quantity: z.number().int().min(1),
+      });
+      const bulkParsed = bulkBodySchema.safeParse(request.body);
+      if (!bulkParsed.success) {
+        throw new ApiError(400, bulkParsed.error.issues[0]?.message ?? 'Invalid request body', 'VALIDATION_ERROR');
       }
+      const { channelId, topic, formats, quantity, modelTier, providerOverrides } = bulkParsed.data;
 
       const orgId = await getOrgId(request.userId);
 
@@ -114,11 +126,12 @@ export async function contentRoutes(fastify: FastifyInstance): Promise<void> {
         name: 'content/generate' as const,
         data: {
           orgId,
-          userId: request.userId!,
+          userId: request.userId as string,
           channelId,
           topic: `${topic} (variation ${i + 1})`,
           formats,
           modelTier,
+          providerOverrides,
         },
       }));
 

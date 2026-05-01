@@ -55,7 +55,7 @@ export async function aiProvidersRoutes(app: FastifyInstance) {
     const sb = createServiceClient()
     const { data, error } = await sb
       .from('ai_provider_configs')
-      .select('id, provider, api_key, is_active, updated_at')
+      .select('id, provider, api_key, is_active, models_json, updated_at')
       .order('provider')
     if (error) throw new ApiError(500, error.message, 'AI_PROVIDERS_FETCH_ERROR')
     // models_json not yet in generated types — cast through unknown until db:types reruns
@@ -93,7 +93,7 @@ export async function aiProvidersRoutes(app: FastifyInstance) {
       .from('ai_provider_configs')
       .update(update as any)
       .eq('id', id)
-      .select('id, provider, api_key, is_active, updated_at')
+      .select('id, provider, api_key, is_active, models_json, updated_at')
       .single()
 
     if (error) throw new ApiError(500, error.message, 'AI_PROVIDERS_UPDATE_ERROR')

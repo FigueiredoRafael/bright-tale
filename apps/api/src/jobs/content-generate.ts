@@ -17,6 +17,11 @@ import { buildCanonicalCoreMessage, buildProduceMessage } from '../lib/ai/prompt
 import { buildReviewMessage } from '../lib/ai/prompts/review.js';
 import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
 
+interface StageProviderOverride {
+  provider?: string;
+  model?: string;
+}
+
 interface ContentGenerateEvent {
   name: 'content/generate';
   data: {
@@ -26,6 +31,12 @@ interface ContentGenerateEvent {
     topic: string;
     formats: string[];
     modelTier?: string;
+    providerOverrides?: {
+      brainstorm?: StageProviderOverride;
+      research?: StageProviderOverride;
+      production?: StageProviderOverride;
+      review?: StageProviderOverride;
+    };
   };
 }
 
@@ -36,7 +47,7 @@ export const contentGenerate = inngest.createFunction(
     triggers: [{ event: 'content/generate' }],
   },
   async ({ event, step }: { event: ContentGenerateEvent; step: { run: (name: string, fn: () => Promise<unknown>) => Promise<unknown> } }) => {
-    const { orgId, userId, channelId, topic, formats, modelTier } = event.data;
+    const { orgId, userId, channelId, topic, formats, modelTier, providerOverrides } = event.data;
     const sb = createServiceClient();
     const tier = modelTier ?? 'standard';
 
@@ -54,7 +65,11 @@ export const contentGenerate = inngest.createFunction(
     // Step 2: Brainstorm
     const brainstormResult = await step.run('brainstorm', async () => {
       const agentConfig = await loadAgentConfig('brainstorm');
-      const { provider: rp, model: rm } = resolveProviderOverride(undefined, undefined, agentConfig);
+      const { provider: rp, model: rm } = resolveProviderOverride(
+        providerOverrides?.brainstorm?.provider,
+        providerOverrides?.brainstorm?.model,
+        agentConfig,
+      );
       const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
       const userMessage = buildBrainstormMessage({ topic });
       const { result } = await generateWithFallback('brainstorm', tier, {
@@ -84,7 +99,11 @@ export const contentGenerate = inngest.createFunction(
     // Step 3: Research
     const researchResult = await step.run('research', async () => {
       const agentConfig = await loadAgentConfig('research');
-      const { provider: rp, model: rm } = resolveProviderOverride(undefined, undefined, agentConfig);
+      const { provider: rp, model: rm } = resolveProviderOverride(
+        providerOverrides?.research?.provider,
+        providerOverrides?.research?.model,
+        agentConfig,
+      );
       const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
       const userMessage = buildResearchMessage({ ideaTitle: topic });
       const { result } = await generateWithFallback('research', tier, {
@@ -115,7 +134,11 @@ export const contentGenerate = inngest.createFunction(
     const canonicalCore = await step.run('canonical-core', async () => {
       const coreConfig = await loadAgentConfig('content-core');
       const agentConfig = coreConfig.instructions ? coreConfig : await loadAgentConfig('production');
-      const { provider: rp, model: rm } = resolveProviderOverride(undefined, undefined, agentConfig);
+      const { provider: rp, model: rm } = resolveProviderOverride(
+        providerOverrides?.production?.provider,
+        providerOverrides?.production?.model,
+        agentConfig,
+      );
       const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
       const userMessage = buildCanonicalCoreMessage({
         type: 'blog',
@@ -150,7 +173,11 @@ export const contentGenerate = inngest.createFunction(
       productionResults[format] = await step.run(`production-${format}`, async () => {
         const fmtConfig = await loadAgentConfig(format);
         const agentConfig = fmtConfig.instructions ? fmtConfig : await loadAgentConfig('production');
-        const { provider: rp, model: rm } = resolveProviderOverride(undefined, undefined, agentConfig);
+        const { provider: rp, model: rm } = resolveProviderOverride(
+          providerOverrides?.production?.provider,
+          providerOverrides?.production?.model,
+          agentConfig,
+        );
         const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
         const userMessage = buildProduceMessage({
           type: format,
@@ -185,7 +212,11 @@ export const contentGenerate = inngest.createFunction(
 
     await step.run('review', async () => {
       const agentConfig = await loadAgentConfig('review');
-      const { provider: rp, model: rm } = resolveProviderOverride(undefined, undefined, agentConfig);
+      const { provider: rp, model: rm } = resolveProviderOverride(
+        providerOverrides?.review?.provider,
+        providerOverrides?.review?.model,
+        agentConfig,
+      );
       const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
       const userMessage = buildReviewMessage({
         type: 'blog',
