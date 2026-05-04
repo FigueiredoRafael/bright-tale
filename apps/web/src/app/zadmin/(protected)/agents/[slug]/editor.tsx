@@ -721,20 +721,25 @@ function SettingsTab({
             </select>
           </Field>
           <Field label="Model">
-            <input
-              value={model}
-              onChange={(e) => onModelChange(e.target.value)}
-              disabled={!provider}
-              list={`models-${provider}`}
-              placeholder={provider ? 'type or pick from list' : 'choose provider first'}
-              className={inputClass(false) + (!provider ? ' opacity-50' : '')}
-            />
-            {provider && modelSuggestions.length > 0 && (
-              <datalist id={`models-${provider}`}>
+            {modelSuggestions.length > 0 ? (
+              <select
+                value={model}
+                onChange={(e) => onModelChange(e.target.value)}
+                className={inputClass(false)}
+              >
+                <option value="">-- select model --</option>
                 {modelSuggestions.map(m => (
-                  <option key={m} value={m} />
+                  <option key={m} value={m}>{m}</option>
                 ))}
-              </datalist>
+              </select>
+            ) : (
+              <input
+                value={model}
+                onChange={(e) => onModelChange(e.target.value)}
+                disabled={!provider}
+                placeholder={provider ? 'enter model name' : 'choose provider first'}
+                className={inputClass(false) + (!provider ? ' opacity-50' : '')}
+              />
             )}
           </Field>
         </div>
