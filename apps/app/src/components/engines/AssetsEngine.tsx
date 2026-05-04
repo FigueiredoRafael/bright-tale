@@ -216,6 +216,8 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     ideaCoreTension: brainstormResult?.ideaCoreTension,
     brainstormSessionId: brainstormResult?.brainstormSessionId,
     researchSessionId: researchResult?.researchSessionId,
+    approvedCardsCount: researchResult?.approvedCardsCount,
+    researchLevel: researchResult?.researchLevel,
     researchPrimaryKeyword: researchResult?.primaryKeyword,
     researchSecondaryKeywords: researchResult?.secondaryKeywords,
     researchSearchIntent: researchResult?.searchIntent,
