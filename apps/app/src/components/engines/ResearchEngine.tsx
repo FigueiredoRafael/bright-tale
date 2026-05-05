@@ -792,6 +792,12 @@ export function ResearchEngine({
   }
 
   async function handleApprove() {
+    // Research already completed and machine advanced — just navigate forward.
+    if (researchResult?.researchSessionId) {
+      actor.send({ type: 'NAVIGATE', toStage: 'draft' });
+      return;
+    }
+
     // For new findings format, approve the whole research
     if (findings) {
       tracker.trackAction('findings.approved', { sessionId: sessionId || '' });
