@@ -327,7 +327,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     canFire: () =>
       !!draftId &&
       !loading &&
-      !generatingBriefs &&
+      !(isGeneratingBriefs || generatingBriefs) &&
       !generatingAll &&
       !manualBriefsOpen &&
       slotCards.length === 0 &&
@@ -341,6 +341,11 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   useEffect(() => {
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (assetsBlocked) return;
+    // Defense-in-depth: the machine guard already rejects ASSETS_IMAGES_STARTED
+    // for briefs_only, but we ALSO short-circuit here to skip setPhase('images').
+    // Without this, local `phase` would advance even though the machine refuses,
+    // and the auto-finish effect would later see phase === 'images' with no
+    // generation actually scheduled — desynchronized state.
     if (assetsConfig?.mode === 'briefs_only') return;
     if (isRefining && slotCards.length > 0) {
       setImagesMode('brief');
@@ -368,7 +373,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   useEffect(() => {
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (assetsBlocked) return;
-    if (phase !== 'images') return;
+    if (!isGeneratingImages) return;
     if (finishing) return;
     if (autoFinishRef.current) return;
     const hasGeneratedAll =
@@ -379,7 +384,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     void handleFinish();
   // handleFinish is a stable function declaration in this scope.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoMode, autoPaused, phase, slotCards.length, slotAssets, existingAssets.length, finishing, assetsBlocked]);
+  }, [autoMode, autoPaused, isGeneratingImages, slotCards.length, slotAssets, existingAssets.length, finishing, assetsBlocked]);
 
   // When retrySignal is bumped by the orchestrator (user picked a new provider),
   // reset autopilot refs and clear generated images so the full flow re-runs.
@@ -599,7 +604,9 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
       });
       const json = await res.json();
       if (json.error) {
-        toast.error(json.error.message ?? 'Failed to generate briefs');
+        const msg = json.error.message ?? 'Failed to generate briefs';
+        toast.error(msg);
+        actor.send({ type: 'STAGE_ERROR', error: msg });
         return;
       }
       if (json.data?.status === 'awaiting_manual') {
@@ -609,7 +616,9 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
       await handleManualImport(json.data);
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') return;
-      toast.error(e instanceof Error ? e.message : 'Failed to generate briefs');
+      const msg = e instanceof Error ? e.message : 'Failed to generate briefs';
+      toast.error(msg);
+      actor.send({ type: 'STAGE_ERROR', error: msg });
     } finally {
       setGeneratingBriefs(false);
     }
@@ -1118,10 +1127,10 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
                 </p>
                 <Button
                   onClick={handleGenerateBriefs}
-                  disabled={generatingBriefs || !draftId}
+                  disabled={(isGeneratingBriefs || generatingBriefs) || !draftId}
                   className="gap-2 shrink-0"
                 >
-                  {generatingBriefs ? (
+                  {(isGeneratingBriefs || generatingBriefs) ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : provider === 'manual' ? (
                     <ClipboardPaste className="h-4 w-4" />
