@@ -268,7 +268,12 @@ export function ResearchEngine({
   }, [researchResult?.researchSessionId]);
 
   // Restore in-flight generation state when re-mounting after back-navigation.
-  // stageStatus.research persists in the machine across component remounts.
+  // stageStatus.research lives in XState's in-memory snapshot only — it is NOT
+  // serialized into pipeline_state_json, so this effect's restoration path runs
+  // exclusively on in-session remounts, not after page reloads. `isGenerating`
+  // is read at mount-time from the same actor snapshot as researchStatus, so
+  // the two values are temporally consistent. Do not add `isGenerating` to the
+  // dep array — the effect must stay mount-only.
   useEffect(() => {
     if (!researchStatus?.isGenerating) return;
     const activeId = researchStatus.activeSessionId as string | undefined;
@@ -696,7 +701,7 @@ export function ResearchEngine({
     stage: 'research',
     canFire: () =>
       topic.trim().length > 0 &&
-      !running &&
+      !(isGenerating || running) &&
       !manualSessionId &&
       !activeGenerationId &&
       !findings &&
