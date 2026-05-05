@@ -456,7 +456,24 @@ export const pipelineMachine = setup({
               actions: 'autoCompleteAssets',
             },
           ],
+          on: {
+            ASSETS_BRIEFS_STARTED: { target: 'generatingBriefs' },
+          },
         },
+        generatingBriefs: {
+          on: {
+            ASSETS_BRIEFS_COMPLETE: { target: 'refining' },
+          },
+        },
+        refining: {
+          on: {
+            ASSETS_IMAGES_STARTED: {
+              guard: ({ context }: any) => context.autopilotConfig?.assets?.mode !== 'briefs_only',
+              target: 'generatingImages',
+            },
+          },
+        },
+        generatingImages: {},
         error: { on: { RETRY: { target: 'idle', actions: 'clearError' } } },
       },
       on: {
