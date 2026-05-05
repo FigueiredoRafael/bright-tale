@@ -366,7 +366,17 @@ export const pipelineMachine = setup({
     research: {
       initial: 'idle',
       states: {
-        idle: { on: { RESUME: { actions: 'resumeAuto' } } },
+        idle: {
+          on: {
+            RESUME: { actions: 'resumeAuto' },
+            RESEARCH_STARTED: { target: 'generating' },
+          },
+        },
+        generating: {
+          on: {
+            RESUME: { actions: 'resumeAuto' },
+          },
+        },
         error: { on: { RETRY: { target: 'idle', actions: 'clearError' } } },
       },
       on: {
