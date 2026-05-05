@@ -83,6 +83,10 @@ export type PipelineEvent =
   | { type: 'STAGE_ERROR';         error: string }
   | { type: 'STAGE_PROGRESS';      stage: PipelineStage; partial: Record<string, unknown> }
   | { type: 'STAGE_STATUS';        stage: PipelineStage; status: Record<string, unknown> }
+  | { type: 'RESEARCH_STARTED' }
+  | { type: 'ASSETS_BRIEFS_STARTED' }
+  | { type: 'ASSETS_BRIEFS_COMPLETE' }
+  | { type: 'ASSETS_IMAGES_STARTED' }
   | { type: 'RETRY' }
   | { type: 'PAUSE' }
   | { type: 'RESUME' }
