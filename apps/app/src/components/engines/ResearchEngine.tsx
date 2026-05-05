@@ -792,18 +792,19 @@ export function ResearchEngine({
   }
 
   async function handleApprove() {
-    // Research already completed and machine advanced — just navigate forward.
-    if (researchResult?.researchSessionId) {
-      actor.send({ type: 'NAVIGATE', toStage: 'draft' });
-      return;
-    }
-
-    // For new findings format, approve the whole research
+    // New findings present — always process them.
     if (findings) {
+      const isNewSession = sessionId !== null && sessionId !== researchResult?.researchSessionId;
+
+      // New research session with old result still in machine context: clear
+      // downstream stages so the pipeline reflects the fresh research.
+      if (isNewSession && researchResult?.researchSessionId) {
+        actor.send({ type: 'REDO_FROM', fromStage: 'research' });
+      }
+
       tracker.trackAction('findings.approved', { sessionId: sessionId || '' });
 
       const signals = extractResearchSignals(findings);
-
       const result: ResearchResult = {
         researchSessionId: sessionId || '',
         approvedCardsCount: 1,
@@ -819,6 +820,12 @@ export function ResearchEngine({
         pivotRecommendation: signals.pivotRecommendation,
       };
       actor.send({ type: 'RESEARCH_COMPLETE', result });
+      return;
+    }
+
+    // No new findings but old research is already done — just navigate forward.
+    if (researchResult?.researchSessionId) {
+      actor.send({ type: 'NAVIGATE', toStage: 'draft' });
       return;
     }
 

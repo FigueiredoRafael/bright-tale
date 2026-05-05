@@ -125,36 +125,37 @@ function ActorScope({
     }
   }
 
-  // Fire onStageComplete the first time the requested stage's result lands in
-  // context, then unsubscribe. Subscribe first, then check the current snapshot
-  // to avoid a race where the child engine's effect fires before this effect
-  // (child effects run before parent effects in React).
-  const firedRef = useRef(false)
+  // Fire onStageComplete each time a NEW result lands for the requested stage.
+  // Tracks the last result by reference so REDO_FROM (which clears the result)
+  // resets the gate, allowing a second research run to also fire onStageComplete.
+  const lastResultRef = useRef<unknown>(undefined)
   const onStageCompleteRef = useRef(onStageComplete)
   useEffect(() => { onStageCompleteRef.current = onStageComplete }, [onStageComplete])
 
+  function handleResult(stageResults: Record<string, unknown>, result: unknown) {
+    lastResultRef.current = result
+    void persistStageResult(stageResults).then(() => {
+      onStageCompleteRef.current(stage, result as Record<string, unknown>)
+    })
+  }
+
   useEffect(() => {
     const sub = actorRef.subscribe((snap) => {
-      if (firedRef.current) return
       const result = snap.context.stageResults[stage]
-      if (result) {
-        firedRef.current = true
-        void persistStageResult(snap.context.stageResults as unknown as Record<string, unknown>).then(() => {
-          onStageCompleteRef.current(stage, result as unknown as Record<string, unknown>)
-        })
+      if (!result) {
+        // Result cleared (REDO_FROM) — reset so next completion fires again.
+        lastResultRef.current = undefined
+        return
       }
+      if (result === lastResultRef.current) return
+      handleResult(snap.context.stageResults as unknown as Record<string, unknown>, result)
     })
-    // Check current snapshot after subscribing — handles the case where the
-    // child engine already dispatched the completion event before this effect ran.
-    if (!firedRef.current) {
-      const snap = actorRef.getSnapshot()
-      const result = snap.context.stageResults[stage]
-      if (result) {
-        firedRef.current = true
-        void persistStageResult(snap.context.stageResults as unknown as Record<string, unknown>).then(() => {
-          onStageCompleteRef.current(stage, result as unknown as Record<string, unknown>)
-        })
-      }
+    // Check current snapshot after subscribing to avoid a race where the child
+    // engine dispatched completion before this effect ran.
+    const snap = actorRef.getSnapshot()
+    const result = snap.context.stageResults[stage]
+    if (result && result !== lastResultRef.current) {
+      handleResult(snap.context.stageResults as unknown as Record<string, unknown>, result)
     }
     return () => sub.unsubscribe()
   // eslint-disable-next-line react-hooks/exhaustive-deps
