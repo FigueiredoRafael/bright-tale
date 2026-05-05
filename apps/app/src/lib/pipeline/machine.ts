@@ -91,6 +91,7 @@ export const pipelineMachine = setup({
     startsAtPublish: ({ event }: any) => event.startStage === 'publish',
     shouldSkipReview: ({ context }: any) => context.autopilotConfig?.review.maxIterations === 0,
     shouldSkipAssets: ({ context }: any) => shouldSkipAssetsGuard({ context }),
+    briefsOnly: ({ context }: any) => context.autopilotConfig?.assets?.mode === 'briefs_only',
   },
   actors: { reproduceActor, abortRequester },
   actions: {
