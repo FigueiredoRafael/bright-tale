@@ -474,12 +474,6 @@ export function PreviewEngine() {
   };
 
   const handleApprove = () => {
-    // Validate featured_image is assigned
-    if (!imageMap.featured_image) {
-      toast.error('Featured image is required');
-      return;
-    }
-
     // Build result
     const result: PreviewResult = {
       imageMap,

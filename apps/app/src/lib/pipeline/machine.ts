@@ -455,7 +455,7 @@ export const pipelineMachine = setup({
     publish: {
       initial: 'idle',
       states: {
-        idle: {},
+        idle: { on: { RESUME: { actions: 'resumeAuto' } } },
         done: { type: 'final' },
         error: { on: { RETRY: { target: 'idle', actions: 'clearError' } } },
       },
