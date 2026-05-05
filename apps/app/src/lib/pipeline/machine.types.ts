@@ -83,6 +83,8 @@ export type PipelineEvent =
   | { type: 'STAGE_ERROR';         error: string }
   | { type: 'STAGE_PROGRESS';      stage: PipelineStage; partial: Record<string, unknown> }
   | { type: 'STAGE_STATUS';        stage: PipelineStage; status: Record<string, unknown> }
+  // Substate lifecycle signals — fired by engines to drive compound-state transitions.
+  // Add a `<STAGE>_STARTED` (and any phase signals) here when introducing substates for a stage.
   | { type: 'RESEARCH_STARTED' }
   | { type: 'ASSETS_BRIEFS_STARTED' }
   | { type: 'ASSETS_BRIEFS_COMPLETE' }
