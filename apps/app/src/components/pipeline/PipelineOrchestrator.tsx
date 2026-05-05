@@ -293,7 +293,12 @@ function OrchestratorInner({
     }
   }, [ctx.mode, ctx.paused, currentStage, subState, ctx.stageResults, assetsConfirmed, send])
 
-  const isWorking = subState === 'reviewing' || subState === 'reproducing'
+  const isWorking =
+    subState === 'reviewing' ||
+    subState === 'reproducing' ||
+    subState === 'generating' ||
+    subState === 'generatingBriefs' ||
+    subState === 'generatingImages'
 
   function handleSkipAssets() {
     send({ type: 'ASSETS_COMPLETE', result: { assetIds: [], skipped: true } })
