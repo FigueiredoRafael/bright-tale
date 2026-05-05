@@ -46,9 +46,35 @@ export async function loadAgentConfig(slug: string): Promise<AgentConfig> {
   return { instructions: entry.instructions, tools: entry.tools, recommended_provider: entry.recommended_provider, recommended_model: entry.recommended_model };
 }
 
+// ---------------------------------------------------------------------------
+// Cross-provider model validation
+// ---------------------------------------------------------------------------
+// Known model name prefixes per provider. Ollama accepts any model name (empty
+// array = skip validation). Unknown providers are also treated as permissive so
+// we never block future provider additions.
+
+const PROVIDER_MODEL_PREFIXES: Record<string, string[]> = {
+  openai:    ['gpt-', 'o1', 'o3', 'o4', 'chatgpt-'],
+  anthropic: ['claude-'],
+  gemini:    ['gemini-'],
+  ollama:    [], // ollama accepts any model name — skip validation
+};
+
+function isModelCompatibleWithProvider(provider: string, model: string): boolean {
+  const prefixes = PROVIDER_MODEL_PREFIXES[provider];
+  if (!prefixes) return true;          // unknown provider → don't block
+  if (prefixes.length === 0) return true; // ollama → accept all
+  return prefixes.some((p) => model.startsWith(p));
+}
+
 /**
  * Resolve the provider/model to use for a call.
  * Priority: event (user explicit) → admin recommended → undefined (router falls to ROUTE_TABLE).
+ *
+ * Cross-provider guard: if the resolved model does not match the resolved
+ * provider's known prefixes (e.g. gemini-2.5-flash sent to openai), it is
+ * silently replaced with the admin recommended_model so the request does not
+ * reach the wrong provider's API with an incompatible model name.
  */
 export function resolveProviderOverride(
   eventProvider: string | undefined,
@@ -58,7 +84,16 @@ export function resolveProviderOverride(
   const provider = eventProvider ?? config.recommended_provider ?? undefined;
   // Only carry the admin model when we're actually using the admin provider;
   // if the user picked their own provider, let the router pick the default model for it.
-  const model = eventModel ?? (!eventProvider ? config.recommended_model ?? undefined : undefined);
+  let model = eventModel ?? (!eventProvider ? config.recommended_model ?? undefined : undefined);
+
+  // Discard model if it doesn't belong to the resolved provider.
+  if (provider && model && !isModelCompatibleWithProvider(provider, model)) {
+    console.warn(
+      `[resolveProviderOverride] model ${model} is incompatible with provider ${provider}, falling back to recommended`,
+    );
+    model = config.recommended_model ?? undefined;
+  }
+
   return { provider, model };
 }
 

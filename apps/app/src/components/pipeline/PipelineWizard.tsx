@@ -90,6 +90,15 @@ const STAGE_ICONS: Record<WizardStage, React.ReactNode> = {
   publish: <Send className="h-3.5 w-3.5" />,
 }
 
+function sanitizeProviderModel(
+  provider: string | null | undefined,
+  model: string | null | undefined,
+): string | null {
+  if (!provider || !model) return model ?? null
+  const validIds = (MODELS_BY_PROVIDER[provider as ProviderId] ?? []).map((m) => m.id)
+  return validIds.includes(model) ? model : null
+}
+
 function deriveStartStage(stageResults: StageResultMap): StartStage {
   const ordered: Array<keyof StageResultMap> = [
     'brainstorm',
@@ -1001,12 +1010,26 @@ export function PipelineWizard() {
     setLoadedTemplateName(template.name)
     // Merge template config over current defaults so legacy templates (saved
     // before preview/publish slots existed) still produce a valid form state.
+    const raw = template.config_json as Partial<AutopilotConfig>
     const merged: AutopilotConfig = {
       ...baseConfig,
-      ...(template.config_json as Partial<AutopilotConfig>),
-      preview: (template.config_json as Partial<AutopilotConfig>).preview ?? baseConfig.preview,
-      publish: (template.config_json as Partial<AutopilotConfig>).publish ?? baseConfig.publish,
+      ...raw,
+      preview: raw.preview ?? baseConfig.preview,
+      publish: raw.publish ?? baseConfig.publish,
     }
+    // Sanitize every stage: nullify modelOverride when it doesn't belong to the
+    // current providerOverride (prevents stale cross-provider pairs like
+    // { provider: 'openai', model: 'gemini-2.5-flash' } from surviving a re-config).
+    if (merged.brainstorm) {
+      merged.brainstorm = { ...merged.brainstorm, modelOverride: sanitizeProviderModel(merged.brainstorm.providerOverride, merged.brainstorm.modelOverride) }
+    }
+    if (merged.research) {
+      merged.research = { ...merged.research, modelOverride: sanitizeProviderModel(merged.research.providerOverride, merged.research.modelOverride) }
+    }
+    merged.canonicalCore = { ...merged.canonicalCore, modelOverride: sanitizeProviderModel(merged.canonicalCore.providerOverride, merged.canonicalCore.modelOverride) }
+    merged.draft = { ...merged.draft, modelOverride: sanitizeProviderModel(merged.draft.providerOverride, merged.draft.modelOverride) }
+    merged.review = { ...merged.review, modelOverride: sanitizeProviderModel(merged.review.providerOverride, merged.review.modelOverride) }
+    merged.assets = { ...merged.assets, modelOverride: sanitizeProviderModel(merged.assets.providerOverride, merged.assets.modelOverride) }
     methods.reset({
       mode: methods.getValues('mode'),
       templateId: template.id,

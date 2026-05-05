@@ -297,9 +297,8 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     if (!assetsProviderOverride) return;
     setProvider(assetsProviderOverride as ProviderId);
     const modelOverride = autopilotConfig?.assets?.modelOverride ?? null;
-    if (modelOverride) {
-      setModel(modelOverride);
-    }
+    const resolvedModel = modelOverride ?? MODELS_BY_PROVIDER[assetsProviderOverride as ProviderId]?.[0]?.id;
+    if (resolvedModel) setModel(resolvedModel);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assetsProviderOverride]);
 

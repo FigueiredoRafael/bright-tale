@@ -1,4 +1,11 @@
 import type { AutopilotConfig } from '@brighttale/shared'
+import { MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker'
+
+function resolveModel(provider: string | null, modelOverride: string | null): string | null {
+  if (modelOverride) return modelOverride
+  if (provider) return MODELS_BY_PROVIDER[provider as ProviderId]?.[0]?.id ?? null
+  return null
+}
 
 export interface BrainstormHydration {
   mode: 'topic_driven' | 'reference_guided'
@@ -18,6 +25,8 @@ export function hydrateBrainstormFromConfig(
 ): Partial<BrainstormHydration> {
   if (!config?.brainstorm) return {}
   const b = config.brainstorm
+  const provider = b.providerOverride ?? null
+  const model = resolveModel(provider, b.modelOverride ?? null)
   return {
     mode: b.mode,
     topic: b.topic ?? '',
@@ -27,8 +36,8 @@ export function hydrateBrainstormFromConfig(
     audience: b.audience ?? '',
     goal: b.goal ?? '',
     constraints: b.constraints ?? '',
-    provider: b.providerOverride ?? null,
-    model: b.modelOverride ?? null,
+    provider,
+    model,
   }
 }
 
@@ -42,10 +51,12 @@ export function hydrateResearchFromConfig(
   config: AutopilotConfig | null,
 ): Partial<ResearchHydration> {
   if (!config?.research) return {}
+  const provider = config.research.providerOverride ?? null
+  const model = resolveModel(provider, config.research.modelOverride ?? null)
   return {
     researchDepth: config.research.depth,
-    provider: config.research.providerOverride ?? null,
-    model: config.research.modelOverride ?? null,
+    provider,
+    model,
   }
 }
 
@@ -63,14 +74,18 @@ export function hydrateDraftFromConfig(
   config: AutopilotConfig | null,
 ): Partial<DraftHydration> {
   if (!config?.draft) return {}
+  const provider = config.draft.providerOverride ?? null
+  const model = resolveModel(provider, config.draft.modelOverride ?? null)
+  const canonicalCoreProvider = config.canonicalCore?.providerOverride ?? null
+  const canonicalCoreModel = resolveModel(canonicalCoreProvider, config.canonicalCore?.modelOverride ?? null)
   return {
     format: config.draft.format,
     wordCount: config.draft.wordCount ?? null,
     selectedPersonaId: config.canonicalCore?.personaId ?? null,
-    provider: config.draft.providerOverride ?? null,
-    model: config.draft.modelOverride ?? null,
-    canonicalCoreProvider: config.canonicalCore?.providerOverride ?? null,
-    canonicalCoreModel: config.canonicalCore?.modelOverride ?? null,
+    provider,
+    model,
+    canonicalCoreProvider,
+    canonicalCoreModel,
   }
 }
 
@@ -86,11 +101,13 @@ export function hydrateReviewFromConfig(
   config: AutopilotConfig | null,
 ): Partial<ReviewHydration> {
   if (!config?.review) return {}
+  const provider = config.review.providerOverride ?? null
+  const model = resolveModel(provider, config.review.modelOverride ?? null)
   return {
     maxIterations: config.review.maxIterations,
     autoApproveThreshold: config.review.autoApproveThreshold,
     hardFailThreshold: config.review.hardFailThreshold,
-    provider: config.review.providerOverride ?? null,
-    model: config.review.modelOverride ?? null,
+    provider,
+    model,
   }
 }

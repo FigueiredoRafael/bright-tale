@@ -9,6 +9,7 @@ import { autopilotConfigSchema } from '@brighttale/shared'
 import type { AutopilotConfig } from '@brighttale/shared'
 import { usePipelineActor } from '@/hooks/usePipelineActor'
 import { usePipelineSettings } from '@/providers/PipelineSettingsProvider'
+import { MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker'
 import type { StageResultMap } from '@/lib/pipeline/machine.types'
 import {
   Dialog,
@@ -113,6 +114,15 @@ function toProviderOrNull(raw: string | undefined | null): ValidProvider | null 
   const valid: ValidProvider[] = ['openai', 'anthropic', 'gemini', 'ollama']
   if (!raw) return null
   return valid.includes(raw as ValidProvider) ? (raw as ValidProvider) : null
+}
+
+function sanitizeProviderModel(
+  provider: string | null | undefined,
+  model: string | null | undefined,
+): string | null {
+  if (!provider || !model) return model ?? null
+  const validIds = (MODELS_BY_PROVIDER[provider as ProviderId] ?? []).map((m) => m.id)
+  return validIds.includes(model) ? model : null
 }
 
 interface AgentRecs {
@@ -256,7 +266,7 @@ function formValuesToAutopilotConfig(values: FormValues): AutopilotConfig {
     brainstorm: values.brainstorm
       ? {
           providerOverride: values.brainstorm.providerOverride,
-          modelOverride: values.brainstorm.modelOverride ?? null,
+          modelOverride: sanitizeProviderModel(values.brainstorm.providerOverride, values.brainstorm.modelOverride),
           mode: values.brainstorm.brainstormMode,
           topic: values.brainstorm.topic ?? undefined,
           referenceUrl: values.brainstorm.referenceUrl ?? undefined,
@@ -270,31 +280,31 @@ function formValuesToAutopilotConfig(values: FormValues): AutopilotConfig {
     research: values.research
       ? {
           providerOverride: values.research.providerOverride,
-          modelOverride: values.research.modelOverride ?? null,
+          modelOverride: sanitizeProviderModel(values.research.providerOverride, values.research.modelOverride),
           depth: values.research.depth,
         }
       : null,
     canonicalCore: {
       providerOverride: values.canonicalCore.providerOverride,
-      modelOverride: values.canonicalCore.modelOverride ?? null,
+      modelOverride: sanitizeProviderModel(values.canonicalCore.providerOverride, values.canonicalCore.modelOverride),
       personaId: values.canonicalCore.personaId,
     },
     draft: {
       providerOverride: values.draft.providerOverride,
-      modelOverride: values.draft.modelOverride ?? null,
+      modelOverride: sanitizeProviderModel(values.draft.providerOverride, values.draft.modelOverride),
       format: values.draft.format,
       wordCount: values.draft.wordCount,
     },
     review: {
       providerOverride: values.review.providerOverride,
-      modelOverride: values.review.modelOverride ?? null,
+      modelOverride: sanitizeProviderModel(values.review.providerOverride, values.review.modelOverride),
       maxIterations: values.review.maxIterations,
       autoApproveThreshold: values.review.autoApproveThreshold,
       hardFailThreshold: values.review.hardFailThreshold,
     },
     assets: {
       providerOverride: values.assets.providerOverride,
-      modelOverride: values.assets.modelOverride ?? null,
+      modelOverride: sanitizeProviderModel(values.assets.providerOverride, values.assets.modelOverride),
       mode: values.assets.assetMode,
     },
     preview: { enabled: values.preview.enabled },

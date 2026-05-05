@@ -108,11 +108,10 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
   useEffect(() => {
     if (providerOverride) {
       setProvider(providerOverride as ProviderId);
-      if (modelOverride) {
-        setModel(modelOverride);
-      }
+      const resolvedModel = modelOverride ?? MODELS_BY_PROVIDER[providerOverride as ProviderId]?.[0]?.id ?? model;
+      setModel(resolvedModel);
     }
-  }, [providerOverride, modelOverride]);
+  }, [providerOverride, modelOverride]); // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   // Anchor the SSE event filter to the moment the action started so the modal
