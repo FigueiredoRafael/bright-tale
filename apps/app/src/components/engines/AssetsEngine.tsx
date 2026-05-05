@@ -288,6 +288,9 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   const assetsConfig = useSelector(actor, (s) => s.context.autopilotConfig?.assets);
   const autopilotConfig = useSelector(actor, (s) => s.context.autopilotConfig);
   const overviewMode = useSelector(actor, (s) => s.context.mode === 'overview');
+  const isGeneratingBriefs = useSelector(actor, (s) => s.matches({ assets: 'generatingBriefs' }));
+  const isRefining = useSelector(actor, (s) => s.matches({ assets: 'refining' }));
+  const isGeneratingImages = useSelector(actor, (s) => s.matches({ assets: 'generatingImages' }));
 
   // Seed provider/model from autopilot wizard config when an override is present.
   // Only fires when providerOverride is non-null to avoid clobbering the user's
@@ -339,18 +342,18 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (assetsBlocked) return;
     if (assetsConfig?.mode === 'briefs_only') return;
-    if (phase === 'refine' && slotCards.length > 0) {
+    if (isRefining && slotCards.length > 0) {
       setImagesMode('brief');
       setPhase('images');
+      actor.send({ type: 'ASSETS_IMAGES_STARTED' });
     }
-  }, [autoMode, autoPaused, phase, slotCards.length, assetsBlocked, assetsConfig?.mode]);
+  }, [autoMode, autoPaused, isRefining, slotCards.length, assetsBlocked, assetsConfig?.mode, actor]);
 
   const autoGenAllRef = useRef(false);
   useEffect(() => {
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (assetsBlocked) return;
-    if (assetsConfig?.mode === 'briefs_only') return;
-    if (phase !== 'images') return;
+    if (!isGeneratingImages) return;
     if (slotCards.length === 0) return;
     if (Object.keys(slotAssets).length > 0) return;
     if (generatingAll || generatingSlot) return;
@@ -359,7 +362,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     void handleGenerateAllSlots();
   // handleGenerateAllSlots is a stable function declaration in this scope.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoMode, autoPaused, phase, slotCards.length, slotAssets, generatingAll, generatingSlot, assetsBlocked, assetsConfig?.mode]);
+  }, [autoMode, autoPaused, isGeneratingImages, slotCards.length, slotAssets, generatingAll, generatingSlot, assetsBlocked]);
 
   const autoFinishRef = useRef(false);
   useEffect(() => {
@@ -572,15 +575,17 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     }
     setVisualDirection(result.visual);
     setSlotCards(result.slots);
+    actor.send({ type: 'ASSETS_BRIEFS_COMPLETE' });
     setImagesMode('brief');
     setPhase('refine');
     void persistBriefs(result.visual, result.slots);
     if (!overviewMode) toast.success(`Imported ${result.slots.length} prompt briefs`);
-  }, [persistBriefs, overviewMode]);
+  }, [persistBriefs, overviewMode, actor]);
 
   /* ── Generate briefs via AI or manual ── */
   async function handleGenerateBriefs() {
     if (!draftId || generatingBriefs) return;
+    actor.send({ type: 'ASSETS_BRIEFS_STARTED' });
     actor.send({ type: 'STAGE_PROGRESS', stage: 'assets', partial: { status: 'Generating images' } });
     setGeneratingBriefs(true);
     try {
