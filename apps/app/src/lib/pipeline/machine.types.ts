@@ -37,6 +37,10 @@ export interface PipelineMachineContext {
   autopilotConfig: AutopilotConfig | null
   templateId: string | null
   stageResults: StageResultMap
+  /** Transient per-stage in-flight metadata (isGenerating, activeSessionId, phase, …).
+   *  Lives in the machine so it survives component remounts within the same session.
+   *  Cleared automatically when a stage completes (saveStageResult) or is redone. */
+  stageStatus: Partial<Record<PipelineStage, Record<string, unknown>>>
   iterationCount: number
   lastError: string | null
   pipelineSettings: PipelineSettings
@@ -78,6 +82,7 @@ export type PipelineEvent =
   | { type: 'PUBLISH_COMPLETE';    result: PublishResult }
   | { type: 'STAGE_ERROR';         error: string }
   | { type: 'STAGE_PROGRESS';      stage: PipelineStage; partial: Record<string, unknown> }
+  | { type: 'STAGE_STATUS';        stage: PipelineStage; status: Record<string, unknown> }
   | { type: 'RETRY' }
   | { type: 'PAUSE' }
   | { type: 'RESUME' }

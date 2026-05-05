@@ -28,7 +28,9 @@ const saveStageResult = (stage: PipelineStage) =>
       ...context.stageResults,
       [stage]: stageResult,
     }
-    return { stageResults, lastError: null }
+    // Clear transient in-flight status for this stage now that it's complete.
+    const stageStatus = { ...(context.stageStatus ?? {}), [stage]: undefined }
+    return { stageResults, stageStatus, lastError: null }
   })
 
 const clearStrictlyAfterEvent = assign({
@@ -39,6 +41,16 @@ const clearStrictlyAfterEvent = assign({
     const next: StageResultMap = { ...context.stageResults }
     PIPELINE_STAGES.slice(fromIndex + 1).forEach((s) => {
       delete next[s]
+    })
+    return next
+  },
+  stageStatus: ({ context, event }: { context: PipelineMachineContext; event: unknown }) => {
+    const e = event as Extract<PipelineEvent, { type: 'REDO_FROM' }>
+    const fromIndex = PIPELINE_STAGES.indexOf(e.fromStage)
+    if (fromIndex === -1) return context.stageStatus ?? {}
+    const next = { ...(context.stageStatus ?? {}) }
+    PIPELINE_STAGES.slice(fromIndex + 1).forEach((s) => {
+      delete next[s as PipelineStage]
     })
     return next
   },
@@ -127,6 +139,17 @@ export const pipelineMachine = setup({
         }
       },
     }) as any,
+    mergeStageStatus: assign({
+      stageStatus: ({ context, event }: { context: PipelineMachineContext; event: unknown }) => {
+        const e = event as Extract<PipelineEvent, { type: 'STAGE_STATUS' }>
+        if (!PIPELINE_STAGES.includes(e.stage)) return context.stageStatus ?? {}
+        const existing = (context.stageStatus ?? {})[e.stage] ?? {}
+        return {
+          ...(context.stageStatus ?? {}),
+          [e.stage]: { ...existing, ...e.status },
+        }
+      },
+    }) as any,
     clearStrictlyAfter: clearStrictlyAfterEvent as any,
     applySetup: assign(({ event }: any) => ({
       mode: event.mode,
@@ -137,6 +160,7 @@ export const pipelineMachine = setup({
     setAutopilotConfig: assign({ autopilotConfig: ({ event }: any) => event.autopilotConfig }) as any,
     clearAllResults: assign({
       stageResults: () => ({}),
+      stageStatus: () => ({}),
       iterationCount: 0,
       mode: () => null,
       autopilotConfig: () => null,
@@ -245,6 +269,7 @@ export const pipelineMachine = setup({
     autopilotConfig: input.autopilotConfig ?? null,
     templateId: input.templateId ?? null,
     stageResults: input.initialStageResults ?? {},
+    stageStatus: {},
     iterationCount: input.initialIterationCount ?? 0,
     lastError: null,
     pipelineSettings: input.pipelineSettings ?? DEFAULT_PIPELINE_SETTINGS,
@@ -259,6 +284,7 @@ export const pipelineMachine = setup({
     PAUSE: { actions: 'pauseAuto' },
     SET_PROJECT_TITLE: { actions: 'setProjectTitle' },
     STAGE_PROGRESS: { actions: 'mergeStageProgress' },
+    STAGE_STATUS: { actions: 'mergeStageStatus' },
     RESET_TO_SETUP: { target: '.setup', actions: 'clearAllResults' },
     GO_AUTOPILOT: { actions: ['setMode', 'setAutopilotConfig'] },
     REQUEST_ABORT: { actions: ['pauseAuto', 'spawnAbortRequester'] },

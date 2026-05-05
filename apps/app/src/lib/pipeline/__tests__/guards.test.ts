@@ -12,6 +12,7 @@ const baseContext: PipelineMachineContext = {
   autopilotConfig: null,
   templateId: null,
   stageResults: {},
+  stageStatus: {},
   iterationCount: 0,
   lastError: null,
   pipelineSettings: DEFAULT_PIPELINE_SETTINGS,

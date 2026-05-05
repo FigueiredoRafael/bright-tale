@@ -95,6 +95,7 @@ export function ResearchEngine({
   const projectId = useSelector(actor, (s) => s.context.projectId);
   const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
   const researchResult = useSelector(actor, (s) => s.context.stageResults.research);
+  const researchStatus = useSelector(actor, (s) => s.context.stageStatus?.research);
   const creditSettings = useSelector(actor, (s) => s.context.creditSettings);
 
   const trackerContext: PipelineContext = {
@@ -264,6 +265,18 @@ export function ResearchEngine({
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [researchResult?.researchSessionId]);
+
+  // Restore in-flight generation state when re-mounting after back-navigation.
+  // stageStatus.research persists in the machine across component remounts.
+  useEffect(() => {
+    if (!researchStatus?.isGenerating) return;
+    const activeId = researchStatus.activeSessionId as string | undefined;
+    if (!activeId) return;
+    if (researchResult?.researchSessionId) return; // already completed
+    setActiveGenerationId(activeId);
+    setRunning(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally mount-only — restoring snapshot from machine
 
   // Fetch recommended agent
   useEffect(() => {
@@ -443,6 +456,7 @@ export function ResearchEngine({
     }
 
     actor.send({ type: 'STAGE_PROGRESS', stage: 'research', partial: { status: 'Researching topic' } });
+    actor.send({ type: 'STAGE_STATUS', stage: 'research', status: { isGenerating: true } });
     setRunning(true);
     setCards([]);
     setApproved(new Set());
@@ -514,6 +528,8 @@ export function ResearchEngine({
         // Background job — show progress float, hydrate on complete
         wentAsync = true;
         setActiveGenerationId(newSessionId);
+        // Persist session ID to machine so it survives component remounts.
+        actor.send({ type: 'STAGE_STATUS', stage: 'research', status: { isGenerating: true, activeSessionId: newSessionId } });
         return;
       } else {
         if (!overviewMode) toast.warning('No research data recognized in output', {
@@ -533,7 +549,10 @@ export function ResearchEngine({
     } finally {
       // Keep running=true while a background job is in flight; let
       // handleGenerationComplete / handleGenerationFailed clear it.
-      if (!wentAsync) setRunning(false);
+      if (!wentAsync) {
+        setRunning(false);
+        actor.send({ type: 'STAGE_STATUS', stage: 'research', status: { isGenerating: false } });
+      }
     }
   }
 
@@ -574,12 +593,14 @@ export function ResearchEngine({
       toast.error('Failed to load research findings', { description: message });
     } finally {
       setRunning(false);
+      actor.send({ type: 'STAGE_STATUS', stage: 'research', status: { isGenerating: false } });
     }
   }
 
   function handleGenerationFailed(message: string) {
     setActiveGenerationId(null);
     setRunning(false);
+    actor.send({ type: 'STAGE_STATUS', stage: 'research', status: { isGenerating: false } });
     tracker.trackFailed(message);
     const friendly = friendlyAiError(message);
     toast.error(friendly.title, { description: friendly.hint });

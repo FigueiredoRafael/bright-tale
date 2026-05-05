@@ -338,16 +338,18 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   useEffect(() => {
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (assetsBlocked) return;
+    if (assetsConfig?.mode === 'briefs_only') return;
     if (phase === 'refine' && slotCards.length > 0) {
       setImagesMode('brief');
       setPhase('images');
     }
-  }, [autoMode, autoPaused, phase, slotCards.length, assetsBlocked]);
+  }, [autoMode, autoPaused, phase, slotCards.length, assetsBlocked, assetsConfig?.mode]);
 
   const autoGenAllRef = useRef(false);
   useEffect(() => {
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (assetsBlocked) return;
+    if (assetsConfig?.mode === 'briefs_only') return;
     if (phase !== 'images') return;
     if (slotCards.length === 0) return;
     if (Object.keys(slotAssets).length > 0) return;
@@ -357,7 +359,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     void handleGenerateAllSlots();
   // handleGenerateAllSlots is a stable function declaration in this scope.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoMode, autoPaused, phase, slotCards.length, slotAssets, generatingAll, generatingSlot, assetsBlocked]);
+  }, [autoMode, autoPaused, phase, slotCards.length, slotAssets, generatingAll, generatingSlot, assetsBlocked, assetsConfig?.mode]);
 
   const autoFinishRef = useRef(false);
   useEffect(() => {

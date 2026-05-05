@@ -104,7 +104,7 @@ function DetailBody({ stage, stageResults, status, onSkipAssets, onSwitchImagePr
   switch (stage) {
     case 'brainstorm': {
       const r = stageResults.brainstorm
-      if (!r) return <EmptyState status={status} />
+      if (!r || !r.completedAt) return <EmptyState status={status} />
       return (
         <div className="space-y-8">
           <div className="grid grid-cols-2 gap-6">
@@ -127,7 +127,7 @@ function DetailBody({ stage, stageResults, status, onSkipAssets, onSwitchImagePr
 
     case 'research': {
       const r = stageResults.research
-      if (!r) return <EmptyState status={status} />
+      if (!r || !r.completedAt) return <EmptyState status={status} />
       const confidencePct = r.confidenceScore != null ? `${Math.round(r.confidenceScore * 100)}%` : null
       const evidenceColor =
         r.evidenceStrength === 'strong' ? 'text-green-600' :
@@ -181,7 +181,7 @@ function DetailBody({ stage, stageResults, status, onSkipAssets, onSwitchImagePr
 
     case 'draft': {
       const r = stageResults.draft
-      if (!r) return <EmptyState status={status} />
+      if (!r || !r.completedAt) return <EmptyState status={status} />
       // Rough word count from content
       const wordCount = r.draftContent
         ? r.draftContent.trim().split(/\s+/).filter(Boolean).length
@@ -226,7 +226,7 @@ function DetailBody({ stage, stageResults, status, onSkipAssets, onSwitchImagePr
 
     case 'review': {
       const r = stageResults.review
-      if (!r) return <EmptyState status={status} />
+      if (!r || !r.completedAt) return <EmptyState status={status} />
       const tier = deriveTier({ quality_tier: r.qualityTier, score: r.score })
       const tierLabel: Record<string, string> = {
         excellent:     'Excellent',
@@ -280,7 +280,7 @@ function DetailBody({ stage, stageResults, status, onSkipAssets, onSwitchImagePr
 
     case 'assets': {
       const r = stageResults.assets
-      if (!r) return <EmptyState status={status} />
+      if (!r || !r.completedAt) return <EmptyState status={status} />
 
       // Persisted error state — autopilot is blocked; user must act.
       if (!('assetIds' in r) && (r as { errorCode?: string }).errorCode) {
@@ -359,7 +359,7 @@ function DetailBody({ stage, stageResults, status, onSkipAssets, onSwitchImagePr
 
     case 'preview': {
       const r = stageResults.preview
-      if (!r) return <EmptyState status={status} />
+      if (!r || !r.completedAt) return <EmptyState status={status} />
       const categories = r.categories ?? []
       const tags = r.tags ?? []
       const seo = r.seoOverrides ?? {}
@@ -407,7 +407,7 @@ function DetailBody({ stage, stageResults, status, onSkipAssets, onSwitchImagePr
 
     case 'publish': {
       const r = stageResults.publish
-      if (!r) return <EmptyState status={status} />
+      if (!r || !r.completedAt) return <EmptyState status={status} />
       return (
         <div className="space-y-8">
           <div className="grid grid-cols-2 gap-6">
