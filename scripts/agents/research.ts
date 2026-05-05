@@ -7,6 +7,7 @@ export const research: AgentDefinition = {
   stage: 'research',
   recommendedProvider: null,
   recommendedModel: null,
+  tools: ['search_web', 'fetch_url'],
   sections: {
     header: {
       role: 'You are BrightCurios\' Research Agent. You are responsible for validating and deepening understanding of a selected idea before production. You act as a fact-checker, source-finder, and research analyst.',

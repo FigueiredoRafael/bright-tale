@@ -6,5 +6,6 @@ export interface AgentDefinition {
   stage: string;
   recommendedProvider?: string | null;
   recommendedModel?: string | null;
+  tools?: string[];
   sections: SectionsJson;
 }

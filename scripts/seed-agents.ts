@@ -37,7 +37,7 @@ function generateUpsertSQL(): string {
     const instructions = assembleInstructions(agent.sections);
     const id = `agent-${agent.slug}`;
     return [
-      `insert into public.agent_prompts (id, name, slug, stage, instructions, sections_json, recommended_provider, recommended_model, created_at, updated_at)`,
+      `insert into public.agent_prompts (id, name, slug, stage, instructions, sections_json, recommended_provider, recommended_model, tools_json, created_at, updated_at)`,
       `values (`,
       `  ${dollarQuote(id)},`,
       `  ${dollarQuote(agent.name)},`,
@@ -47,6 +47,7 @@ function generateUpsertSQL(): string {
       `  ${jsonQuote(agent.sections)},`,
       agent.recommendedProvider ? `  ${dollarQuote(agent.recommendedProvider)},` : `  null,`,
       agent.recommendedModel ? `  ${dollarQuote(agent.recommendedModel)},` : `  null,`,
+      agent.tools && agent.tools.length > 0 ? `  ${jsonQuote(agent.tools)},` : `  null,`,
       `  now(),`,
       `  now()`,
       `)`,
@@ -56,6 +57,7 @@ function generateUpsertSQL(): string {
       `  sections_json = excluded.sections_json,`,
       `  recommended_provider = excluded.recommended_provider,`,
       `  recommended_model = excluded.recommended_model,`,
+      `  tools_json = excluded.tools_json,`,
       `  updated_at = now();`,
     ].join('\n');
   });
