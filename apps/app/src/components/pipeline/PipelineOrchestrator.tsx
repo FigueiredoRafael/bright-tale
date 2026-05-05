@@ -435,7 +435,7 @@ function OrchestratorInner({
       case 'brainstorm':
         return <BrainstormEngine mode={mode} onModeChange={onModeChange} />
       case 'research':
-        return <ResearchEngine mode={mode} onModeChange={onModeChange} />
+        return <ResearchEngine mode={mode} onModeChange={onModeChange} onComplete={() => setShowEngine(null)} />
       case 'draft':
         return <DraftEngine mode={mode} onModeChange={onModeChange} />
       case 'review':

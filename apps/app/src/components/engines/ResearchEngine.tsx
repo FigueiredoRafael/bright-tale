@@ -64,6 +64,7 @@ interface Card {
 interface ResearchEngineProps {
   mode?: 'generate' | 'import';
   onModeChange?: (m: 'generate' | 'import') => void;
+  onComplete?: () => void;
   initialSession?: Record<string, unknown>;
   initialCards?: Record<string, unknown>[];
   initialApproved?: number[];
@@ -82,6 +83,7 @@ const RESEARCH_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'olla
 export function ResearchEngine({
   mode: engineMode,
   onModeChange,
+  onComplete,
   initialSession,
   initialCards,
   initialApproved,
@@ -820,12 +822,14 @@ export function ResearchEngine({
         pivotRecommendation: signals.pivotRecommendation,
       };
       actor.send({ type: 'RESEARCH_COMPLETE', result });
+      onComplete?.();
       return;
     }
 
     // No new findings but old research is already done — just navigate forward.
     if (researchResult?.researchSessionId) {
       actor.send({ type: 'NAVIGATE', toStage: 'draft' });
+      onComplete?.();
       return;
     }
 
@@ -861,6 +865,7 @@ export function ResearchEngine({
       researchLevel: level,
     };
     actor.send({ type: 'RESEARCH_COMPLETE', result });
+    onComplete?.();
   }
 
   const shouldPivot = refinedAngle && Boolean(refinedAngle.should_pivot);
