@@ -134,7 +134,7 @@ interface AgentRecs {
 
 function buildDefaultValues(
   existing: AutopilotConfig | null,
-  defaultProviders: Record<string, string>,
+  defaultProviders: Record<string, string | null>,
   reviewApproveScore: number,
   reviewRejectThreshold: number,
   reviewMaxIterations: number,

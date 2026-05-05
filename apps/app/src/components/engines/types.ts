@@ -146,7 +146,7 @@ export interface PipelineSettings {
   reviewRejectThreshold: number;
   reviewApproveScore: number;
   reviewMaxIterations: number;
-  defaultProviders: Record<string, string>;
+  defaultProviders: Record<string, string | null>;
   defaultModels: Record<string, string>;
 }
 
@@ -155,12 +155,12 @@ export const DEFAULT_PIPELINE_SETTINGS: PipelineSettings = {
   reviewApproveScore: 90,
   reviewMaxIterations: 5,
   defaultProviders: {
-    brainstorm: 'gemini',
-    research: 'gemini',
-    canonicalCore: 'gemini',
-    draft: 'gemini',
-    review: 'gemini',
-    assets: 'gemini',
+    brainstorm:    null,
+    research:      null,
+    canonicalCore: null,
+    draft:         null,
+    review:        null,
+    assets:        null,
   },
   defaultModels: {},
 };

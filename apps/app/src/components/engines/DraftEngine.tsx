@@ -110,8 +110,8 @@ export function DraftEngine({
   const [title, setTitle] = useState(brainstormResult?.ideaTitle ?? '');
   const titleRef = useRef(title);
   titleRef.current = title;
-  const [provider, setProvider] = useState<ProviderId>('ollama');
-  const [model, setModel] = useState<string>('qwen2.5:7b');
+  const [provider, setProvider] = useState<ProviderId>('gemini');
+  const [model, setModel] = useState<string>('gemini-2.5-flash');
 
   // Phase state
   const [phase, setPhase] = useState<Phase>('core');

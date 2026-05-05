@@ -121,7 +121,7 @@ function buildDefaultAutopilotConfig(pipelineSettings: {
   reviewRejectThreshold: number
   reviewApproveScore: number
   reviewMaxIterations: number
-  defaultProviders: Record<string, string>
+  defaultProviders: Record<string, string | null>
   defaultModels: Record<string, string>
 }): AutopilotConfig {
   const dp = pipelineSettings.defaultProviders
