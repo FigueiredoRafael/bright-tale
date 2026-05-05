@@ -89,7 +89,6 @@ export function PublishEngine({ draft }: PublishEngineProps) {
       mode: params.mode,
       scheduledDate: params.scheduledDate,
       idempotencyToken: crypto.randomUUID(),
-      wpStatus: publishConfigStatus === 'published' ? 'publish' : 'draft',
     };
 
     if (previewResult?.imageMap)        body.imageMap     = previewResult.imageMap;
@@ -116,7 +115,7 @@ export function PublishEngine({ draft }: PublishEngineProps) {
       !!channelId &&
       !!draftId &&
       draft.published_url == null,
-    fire: () => handlePublish({ mode: 'publish' }),
+    fire: () => handlePublish({ mode: publishConfigStatus === 'published' ? 'publish' : 'draft' }),
     rearmKey: draftId,
   });
 
