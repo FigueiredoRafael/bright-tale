@@ -96,6 +96,7 @@ export function ResearchEngine({
   const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
   const researchResult = useSelector(actor, (s) => s.context.stageResults.research);
   const researchStatus = useSelector(actor, (s) => s.context.stageStatus?.research);
+  const isGenerating = useSelector(actor, (s) => s.matches({ research: 'generating' }));
   const creditSettings = useSelector(actor, (s) => s.context.creditSettings);
 
   const trackerContext: PipelineContext = {
@@ -275,6 +276,8 @@ export function ResearchEngine({
     if (researchResult?.researchSessionId) return; // already completed
     setActiveGenerationId(activeId);
     setRunning(true);
+    // Ensure machine substate matches data state.
+    if (!isGenerating) actor.send({ type: 'RESEARCH_STARTED' });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // intentionally mount-only — restoring snapshot from machine
 
@@ -457,6 +460,7 @@ export function ResearchEngine({
 
     actor.send({ type: 'STAGE_PROGRESS', stage: 'research', partial: { status: 'Researching topic' } });
     actor.send({ type: 'STAGE_STATUS', stage: 'research', status: { isGenerating: true } });
+    actor.send({ type: 'RESEARCH_STARTED' });
     setRunning(true);
     setCards([]);
     setApproved(new Set());
@@ -1066,8 +1070,8 @@ export function ResearchEngine({
                 }}
                 onModelChange={setModel}
               />
-              <Button onClick={handleRun} disabled={running}>
-                {running ? (
+              <Button onClick={handleRun} disabled={(isGenerating || running)}>
+                {(isGenerating || running) ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />{' '}
                     Researching...
