@@ -128,15 +128,44 @@ function DetailBody({ stage, stageResults, status, onSkipAssets, onSwitchImagePr
     case 'research': {
       const r = stageResults.research
       if (!r) return <EmptyState status={status} />
+      const confidencePct = r.confidenceScore != null ? `${Math.round(r.confidenceScore * 100)}%` : null
+      const evidenceColor =
+        r.evidenceStrength === 'strong' ? 'text-green-600' :
+        r.evidenceStrength === 'moderate' ? 'text-yellow-600' :
+        r.evidenceStrength === 'weak' ? 'text-red-500' : ''
       return (
         <div className="space-y-8">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
             <Kpi label="Cards approved" value={r.approvedCardsCount} highlight />
             <Kpi label="Depth" value={r.researchLevel} />
-            {r.primaryKeyword && <Kpi label="Primary keyword" value={r.primaryKeyword} />}
+            {confidencePct && <Kpi label="Confidence" value={confidencePct} />}
           </div>
+          {(r.sourceCount != null || r.expertQuoteCount != null || r.evidenceStrength) && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
+              {r.sourceCount != null && <Kpi label="Sources" value={r.sourceCount} />}
+              {r.expertQuoteCount != null && <Kpi label="Expert quotes" value={r.expertQuoteCount} />}
+              {r.evidenceStrength && (
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Evidence</span>
+                  <span className={cn('text-sm font-semibold capitalize', evidenceColor)}>{r.evidenceStrength}</span>
+                </div>
+              )}
+            </div>
+          )}
           <Separator />
           <div className="space-y-4">
+            {r.researchSummary && (
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Summary</p>
+                <p className="text-sm text-muted-foreground leading-relaxed line-clamp-4">{r.researchSummary}</p>
+              </div>
+            )}
+            {r.pivotRecommendation && r.pivotRecommendation !== 'proceed' && (
+              <div className="flex items-center gap-2 rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2">
+                <AlertCircle className="h-3.5 w-3.5 text-yellow-600 shrink-0" />
+                <span className="text-xs text-yellow-800 capitalize">Angle recommendation: {r.pivotRecommendation}</span>
+              </div>
+            )}
             {r.primaryKeyword && <HighlightItem label="Primary keyword" value={r.primaryKeyword} />}
             {r.secondaryKeywords && r.secondaryKeywords.length > 0 && (
               <HighlightItem

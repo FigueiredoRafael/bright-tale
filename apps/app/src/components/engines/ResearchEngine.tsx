@@ -608,6 +608,12 @@ export function ResearchEngine({
       primaryKeyword: signals.primaryKeyword,
       secondaryKeywords: signals.secondaryKeywords,
       searchIntent: signals.searchIntent,
+      confidenceScore: signals.confidenceScore,
+      evidenceStrength: signals.evidenceStrength,
+      sourceCount: signals.sourceCount,
+      expertQuoteCount: signals.expertQuoteCount,
+      researchSummary: signals.researchSummary,
+      pivotRecommendation: signals.pivotRecommendation,
     };
     tracker.trackAction('findings.auto_approved', { sessionId });
     actor.send({ type: 'RESEARCH_COMPLETE', result });
@@ -799,6 +805,12 @@ export function ResearchEngine({
         primaryKeyword: signals.primaryKeyword,
         secondaryKeywords: signals.secondaryKeywords,
         searchIntent: signals.searchIntent,
+        confidenceScore: signals.confidenceScore,
+        evidenceStrength: signals.evidenceStrength,
+        sourceCount: signals.sourceCount,
+        expertQuoteCount: signals.expertQuoteCount,
+        researchSummary: signals.researchSummary,
+        pivotRecommendation: signals.pivotRecommendation,
       };
       actor.send({ type: 'RESEARCH_COMPLETE', result });
       return;

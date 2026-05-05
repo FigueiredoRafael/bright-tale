@@ -68,6 +68,12 @@ export interface ResearchResult {
   primaryKeyword?: string;
   secondaryKeywords?: string[];
   searchIntent?: string;
+  confidenceScore?: number;
+  evidenceStrength?: string;
+  sourceCount?: number;
+  expertQuoteCount?: number;
+  researchSummary?: string;
+  pivotRecommendation?: string;
 }
 
 export interface DraftResult {
