@@ -328,7 +328,7 @@ export const pipelineMachine = setup({
     brainstorm: {
       initial: 'idle',
       states: {
-        idle: {},
+        idle: { on: { RESUME: { actions: 'resumeAuto' } } },
         error: { on: { RETRY: { target: 'idle', actions: 'clearError' } } },
       },
       on: {
@@ -339,7 +339,7 @@ export const pipelineMachine = setup({
     research: {
       initial: 'idle',
       states: {
-        idle: {},
+        idle: { on: { RESUME: { actions: 'resumeAuto' } } },
         error: { on: { RETRY: { target: 'idle', actions: 'clearError' } } },
       },
       on: {
@@ -350,7 +350,7 @@ export const pipelineMachine = setup({
     draft: {
       initial: 'idle',
       states: {
-        idle: {},
+        idle: { on: { RESUME: { actions: 'resumeAuto' } } },
         error: { on: { RETRY: { target: 'idle', actions: 'clearError' } } },
       },
       on: {
@@ -423,6 +423,7 @@ export const pipelineMachine = setup({
         error: { on: { RETRY: { target: 'idle', actions: 'clearError' } } },
       },
       on: {
+        RESUME: { actions: 'resumeAuto' },
         ASSETS_COMPLETE: [
           {
             guard: ({ context }: any) => context.pendingDrillIn === 'assets',
@@ -437,7 +438,7 @@ export const pipelineMachine = setup({
     preview: {
       initial: 'idle',
       states: {
-        idle: {},
+        idle: { on: { RESUME: { actions: 'resumeAuto' } } },
         error: { on: { RETRY: { target: 'idle', actions: 'clearError' } } },
       },
       on: {
