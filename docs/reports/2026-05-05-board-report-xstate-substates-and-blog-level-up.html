@@ -1,0 +1,1746 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bright Tale · XState Substates + Blog Level Up · 5 de maio de 2026</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/panzoom@9/dist/panzoom.min.js"></script>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --surface-2: #f5f5f4;
+    --ink: #0c0a09;
+    --ink-muted: #57534e;
+    --ink-subtle: #a8a29e;
+    --line: #e7e5e4;
+    --line-strong: #d6d3d1;
+    --accent: #1d4ed8;
+    --accent-soft: #eff6ff;
+    --green: #15803d;
+    --green-soft: #dcfce7;
+    --amber: #b45309;
+    --amber-soft: #fef3c7;
+    --red: #b91c1c;
+    --red-soft: #fee2e2;
+    --violet: #6d28d9;
+    --violet-soft: #ede9fe;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 12px -2px rgba(0,0,0,0.06), 0 2px 4px -1px rgba(0,0,0,0.04);
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c0a09;
+      --surface: #1c1917;
+      --surface-2: #292524;
+      --ink: #fafaf9;
+      --ink-muted: #a8a29e;
+      --ink-subtle: #78716c;
+      --line: #292524;
+      --line-strong: #44403c;
+      --accent: #60a5fa;
+      --accent-soft: #1e3a8a26;
+      --green: #4ade80;
+      --green-soft: #14532d40;
+      --amber: #fbbf24;
+      --amber-soft: #78350f40;
+      --red: #f87171;
+      --red-soft: #7f1d1d40;
+      --violet: #a78bfa;
+      --violet-soft: #4c1d9540;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    font-feature-settings: "kern", "liga", "ss01", "ss02";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .container { max-width: 1140px; margin: 0 auto; padding: 64px 32px 96px; }
+  @media (max-width: 720px) { .container { padding: 32px 20px 64px; } }
+
+  /* ── Bilingual toggle ─────────────────────────────────────────────────── */
+  html[lang="pt"] [lang="en"] { display: none !important; }
+  html[lang="en"] [lang="pt"] { display: none !important; }
+
+  .lang-bar {
+    position: fixed; top: 16px; right: 20px; z-index: 100;
+    display: inline-flex; gap: 1px; background: var(--line);
+    border: 1px solid var(--line); border-radius: 100px; overflow: hidden;
+    box-shadow: var(--shadow-sm);
+  }
+  .lang-bar button {
+    background: var(--surface); color: var(--ink-muted);
+    border: none; padding: 6px 14px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    cursor: pointer; transition: background 0.15s ease, color 0.15s ease;
+  }
+  .lang-bar button:hover { background: var(--surface-2); }
+  .lang-bar button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+
+  /* ── Hero ─────────────────────────────────────────────────────────────── */
+  .hero { border-bottom: 1px solid var(--line); padding-bottom: 48px; margin-bottom: 64px; }
+  .hero-eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; color: var(--ink-muted);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    padding: 6px 12px; background: var(--surface);
+    border: 1px solid var(--line); border-radius: 100px;
+    margin-bottom: 24px;
+  }
+  .hero-eyebrow::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green); box-shadow: 0 0 0 3px var(--green-soft);
+  }
+  .hero h1 {
+    font-size: clamp(34px, 5vw, 52px); font-weight: 600;
+    letter-spacing: -0.025em; line-height: 1.05; margin: 0 0 16px;
+  }
+  .hero-subtitle {
+    font-size: clamp(17px, 1.9vw, 21px); color: var(--ink-muted);
+    max-width: 820px; line-height: 1.5; margin: 0 0 32px;
+  }
+  .hero-meta {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 24px; padding-top: 24px; border-top: 1px solid var(--line);
+  }
+  .hero-meta dt {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-subtle);
+    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;
+  }
+  .hero-meta dd { font-size: 16px; font-weight: 500; margin: 0; }
+
+  /* ── KPIs ─────────────────────────────────────────────────────────────── */
+  .kpi-strip {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1px; background: var(--line); border: 1px solid var(--line);
+    border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 80px;
+  }
+  .kpi { background: var(--surface); padding: 24px 24px 28px; }
+  .kpi-label {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-subtle);
+    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px;
+  }
+  .kpi-value { font-size: 36px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; color: var(--ink); }
+  .kpi-suffix { font-size: 14px; color: var(--ink-muted); font-weight: 400; margin-left: 4px; }
+  .kpi-delta { font-size: 13px; color: var(--ink-muted); margin-top: 8px; }
+
+  /* ── Sections ─────────────────────────────────────────────────────────── */
+  section.section { margin-bottom: 80px; }
+  .section-eyebrow {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;
+  }
+  .section-title {
+    font-size: clamp(26px, 3.2vw, 34px); font-weight: 600;
+    letter-spacing: -0.02em; line-height: 1.15; margin: 0 0 16px;
+  }
+  .section-lede {
+    font-size: 17px; color: var(--ink-muted);
+    max-width: 760px; margin: 0 0 40px;
+  }
+
+  .summary-prose {
+    font-size: 17px; line-height: 1.7; color: var(--ink); max-width: 760px;
+  }
+  .summary-prose p { margin: 0 0 18px; }
+  .summary-prose strong { font-weight: 600; }
+
+  h3.subsection {
+    font-size: 14px; font-weight: 500; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin: 32px 0 16px;
+  }
+
+  /* ── Cards ────────────────────────────────────────────────────────────── */
+  .card-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-md); padding: 24px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-md); }
+  .card-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: var(--accent-soft); color: var(--accent);
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+  }
+  .card-icon.green { background: var(--green-soft); color: var(--green); }
+  .card-icon.violet { background: var(--violet-soft); color: var(--violet); }
+  .card-icon.amber { background: var(--amber-soft); color: var(--amber); }
+  .card-icon.red { background: var(--red-soft); color: var(--red); }
+  .card-icon svg { width: 22px; height: 22px; }
+  .card-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 12px; margin-bottom: 12px;
+  }
+  .card-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+  .card-body { font-size: 14px; color: var(--ink-muted); line-height: 1.55; }
+  .card-body p { margin: 0 0 8px; }
+  .card-body p:last-child { margin-bottom: 0; }
+  .card-meta {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-subtle);
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 4px 10px; border-radius: 100px; white-space: nowrap;
+  }
+  .badge.green { color: var(--green); background: var(--green-soft); }
+  .badge.amber { color: var(--amber); background: var(--amber-soft); }
+  .badge.red { color: var(--red); background: var(--red-soft); }
+  .badge.blue { color: var(--accent); background: var(--accent-soft); }
+  .badge.violet { color: var(--violet); background: var(--violet-soft); }
+  .badge.neutral { color: var(--ink-muted); background: var(--surface-2); }
+  .badge::before {
+    content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor;
+  }
+
+  /* ── Table ────────────────────────────────────────────────────────────── */
+  .table-wrap {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-md); overflow: hidden;
+  }
+  table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.data thead { background: var(--surface-2); border-bottom: 1px solid var(--line); }
+  table.data th {
+    text-align: left; padding: 14px 20px; font-weight: 500;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  table.data td {
+    padding: 16px 20px; border-bottom: 1px solid var(--line);
+    vertical-align: top; line-height: 1.5;
+  }
+  table.data tbody tr:last-child td { border-bottom: none; }
+  table.data tbody tr:hover { background: var(--surface-2); }
+  table.data td.area { font-weight: 500; width: 200px; }
+
+  /* ── Roadmap ──────────────────────────────────────────────────────────── */
+  .roadmap { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .horizon { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 24px; }
+  .horizon-label {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;
+  }
+  .horizon-title { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 16px; }
+  .horizon-list { list-style: none; padding: 0; margin: 0; }
+  .horizon-list li {
+    padding: 12px 0; border-top: 1px solid var(--line);
+    font-size: 14px; color: var(--ink); line-height: 1.5;
+  }
+  .horizon-list li:first-child { border-top: none; }
+  .horizon-list li strong { display: block; font-weight: 500; margin-bottom: 4px; }
+  .horizon-list li span { color: var(--ink-muted); font-size: 13px; }
+
+  /* ── Inline code ──────────────────────────────────────────────────────── */
+  code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.9em; padding: 2px 6px;
+    background: var(--surface-2); border-radius: 4px; color: var(--ink);
+  }
+
+  /* ── Conclusion + share ──────────────────────────────────────────────── */
+  .conclusion-card {
+    position: relative;
+    background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+    border: 1px solid var(--line); border-radius: var(--radius-lg);
+    padding: 40px 40px 36px; margin-bottom: 24px; overflow: hidden;
+  }
+  .conclusion-card::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+    background: linear-gradient(90deg, var(--green), var(--accent), var(--violet));
+  }
+  .conclusion-card h3 {
+    font-size: clamp(22px, 2.6vw, 28px); font-weight: 600;
+    letter-spacing: -0.02em; line-height: 1.25;
+    margin: 0 0 16px; max-width: 800px;
+  }
+  .conclusion-card p {
+    font-size: 16px; line-height: 1.65; color: var(--ink-muted);
+    max-width: 800px; margin: 0 0 14px;
+  }
+  .conclusion-card p strong { color: var(--ink); font-weight: 600; }
+
+  .open-items {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-md); overflow: hidden;
+  }
+  @media (max-width: 720px) { .open-items { grid-template-columns: 1fr; } }
+  .open-item {
+    padding: 18px 20px;
+    border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  }
+  .open-item:nth-child(even) { border-right: none; }
+  @media (max-width: 720px) { .open-item { border-right: none; } }
+  .open-item-label {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-subtle);
+    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;
+  }
+  .open-item-text { font-size: 14px; color: var(--ink); line-height: 1.5; }
+
+  .share-card {
+    position: relative;
+    background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+    border: 1px solid var(--line); border-radius: var(--radius-lg);
+    padding: 32px; overflow: hidden;
+  }
+  .share-card::before {
+    content: ""; position: absolute; top: 0; right: 0; width: 240px; height: 240px;
+    background: radial-gradient(circle, var(--green-soft) 0%, transparent 70%);
+    opacity: 0.5; pointer-events: none;
+  }
+  .share-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; position: relative; }
+  .share-header-left { display: flex; align-items: center; gap: 12px; }
+  .share-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: var(--green-soft); color: var(--green);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .share-icon svg { width: 20px; height: 20px; }
+  .share-label {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-subtle);
+    text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px;
+  }
+  .share-title { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+  .share-copy-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 16px; background: var(--ink); color: var(--bg);
+    border: none; border-radius: 100px;
+    font-family: inherit; font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: opacity 0.15s ease, transform 0.1s ease;
+    white-space: nowrap;
+  }
+  .share-copy-btn:hover { opacity: 0.85; }
+  .share-copy-btn:active { transform: scale(0.97); }
+  .share-copy-btn svg { width: 14px; height: 14px; }
+  .share-copy-btn.copied { background: var(--green); color: white; }
+  .share-text {
+    position: relative; background: var(--bg);
+    border: 1px solid var(--line); border-radius: var(--radius-md);
+    padding: 24px; font-size: 14px; line-height: 1.65; color: var(--ink);
+    white-space: pre-wrap; word-wrap: break-word;
+  }
+  .share-meta {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 14px; font-size: 12px; color: var(--ink-subtle); position: relative;
+  }
+  .share-meta span { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+
+  /* ── Diagram viewport (mermaid) ───────────────────────────────────────── */
+  .diagram-card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-md); overflow: hidden; margin: 24px 0;
+  }
+  .toolbar {
+    display: flex; align-items: center; gap: 4px;
+    padding: 8px 12px; border-bottom: 1px solid var(--line);
+    background: var(--surface-2);
+  }
+  .toolbar button {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 500; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 6px; padding: 4px 10px; cursor: pointer;
+    transition: background 0.1s, border-color 0.1s; line-height: 1;
+    font-family: inherit;
+  }
+  .toolbar button:hover { background: var(--surface-2); border-color: var(--line-strong); }
+  .toolbar button svg { flex-shrink: 0; }
+  .toolbar .sep { width: 1px; height: 16px; background: var(--line); margin: 0 4px; }
+  .toolbar .zoom-label {
+    font-size: 11px; color: var(--ink-subtle);
+    min-width: 38px; text-align: center;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  .diagram-viewport {
+    overflow: hidden; cursor: grab; position: relative;
+    height: 560px; background: var(--bg);
+  }
+  .diagram-viewport:active { cursor: grabbing; }
+  .diagram-viewport.is-fullscreen {
+    position: fixed; inset: 0; z-index: 9999;
+    background: var(--bg); height: 100dvh;
+  }
+  .diagram-viewport .mermaid {
+    display: inline-block; position: absolute; top: 0; left: 0;
+  }
+  .diagram-viewport svg { display: block; }
+  .fs-toolbar {
+    display: none; position: fixed; top: 12px; right: 16px;
+    z-index: 10000; gap: 4px;
+  }
+  .fs-toolbar.visible { display: flex; }
+  .fs-toolbar button {
+    font-size: 12px; font-weight: 500; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 12px; cursor: pointer;
+    box-shadow: var(--shadow-sm); font-family: inherit;
+  }
+  .fs-toolbar button:hover { background: var(--surface-2); }
+
+  .diagram-caption {
+    padding: 12px 16px; border-top: 1px solid var(--line);
+    background: var(--surface-2); font-size: 12px; color: var(--ink-muted);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  /* ── Details / disclosure ────────────────────────────────────────────── */
+  details.disclose {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-md); margin: 16px 0; overflow: hidden;
+  }
+  details.disclose[open] { box-shadow: var(--shadow-sm); }
+  details.disclose > summary {
+    padding: 18px 24px; cursor: pointer; user-select: none;
+    display: flex; align-items: center; gap: 12px;
+    font-weight: 500; font-size: 15px;
+    list-style: none;
+  }
+  details.disclose > summary::-webkit-details-marker { display: none; }
+  details.disclose > summary::before {
+    content: "+"; display: inline-flex;
+    width: 22px; height: 22px; border-radius: 6px;
+    background: var(--surface-2); color: var(--ink-muted);
+    align-items: center; justify-content: center;
+    font-family: ui-monospace, "SF Mono", monospace; font-size: 14px;
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  details.disclose[open] > summary::before {
+    content: "−"; background: var(--accent-soft); color: var(--accent);
+  }
+  details.disclose > .disclose-body {
+    padding: 0 24px 24px; border-top: 1px solid var(--line); margin-top: 8px;
+    padding-top: 20px;
+    color: var(--ink-muted); font-size: 14px; line-height: 1.65;
+  }
+  details.disclose > .disclose-body p { margin: 0 0 12px; }
+  details.disclose > .disclose-body strong { color: var(--ink); font-weight: 600; }
+  details.disclose > .disclose-body ul { margin: 0 0 12px; padding-left: 20px; }
+  details.disclose > .disclose-body li { margin: 4px 0; }
+
+  /* ── Decision callout ────────────────────────────────────────────────── */
+  .callout {
+    border-left: 3px solid var(--accent); background: var(--accent-soft);
+    padding: 16px 20px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    margin: 24px 0; font-size: 14px; line-height: 1.6;
+  }
+  .callout strong { color: var(--ink); font-weight: 600; }
+  .callout.amber { border-color: var(--amber); background: var(--amber-soft); }
+  .callout.green { border-color: var(--green); background: var(--green-soft); }
+  .callout.violet { border-color: var(--violet); background: var(--violet-soft); }
+
+  /* ── Footer ───────────────────────────────────────────────────────────── */
+  footer {
+    margin-top: 96px; padding-top: 32px; border-top: 1px solid var(--line);
+    color: var(--ink-subtle); font-size: 13px;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 16px;
+  }
+  footer .contributors { display: flex; align-items: center; gap: 12px; }
+  footer .avatar-stack { display: flex; }
+  footer .avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--violet));
+    border: 2px solid var(--bg);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; color: white; margin-left: -8px;
+  }
+  footer .avatar:first-child { margin-left: 0; }
+
+  @media (max-width: 600px) {
+    table.data thead { display: none; }
+    table.data tr { display: block; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+    table.data td { display: block; padding: 4px 0; border: none; }
+    table.data td.area {
+      width: auto; font-size: 13px; color: var(--accent);
+      text-transform: uppercase; letter-spacing: 0.04em;
+      font-family: ui-monospace, monospace; font-weight: 500;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Bilingual toggle ────────────────────────────────────────────────── -->
+<div class="lang-bar" role="group" aria-label="Language switch">
+  <button data-lang="pt" aria-pressed="true">PT</button>
+  <button data-lang="en" aria-pressed="false">EN</button>
+</div>
+
+<div class="container">
+
+  <!-- ── HERO ──────────────────────────────────────────────────────────── -->
+  <header class="hero">
+    <span class="hero-eyebrow">
+      <span lang="pt">Relatório do board · 30 abr → 5 mai 2026</span>
+      <span lang="en">Board report · Apr 30 → May 5, 2026</span>
+    </span>
+    <h1 lang="pt">Pipeline ganhou substates XState e abre caminho para o Blog Level Up — o motor entendendo seus próprios estados, antes do SEO real.</h1>
+    <h1 lang="en">Pipeline gained XState substates and opened the path to Blog Level Up — the engine now understands its own states before real SEO begins.</h1>
+    <p class="hero-subtitle" lang="pt">Cinco dias intensos: infraestrutura de provedores/modelos finalizada, busca real do agente de research via Serper, hardening do autopilot, e duas ondas de refator XState (state map e compound substates) que tornam o pipeline projeto-resiliente. A próxima etapa é o Blog Level Up — checagens SEO/EEAT pré e pós-publicação com awareness do WordPress conectado.</p>
+    <p class="hero-subtitle" lang="en">Five intense days: provider/model infrastructure completed, real Serper-backed search for the research agent, autopilot hardening, and two waves of XState refactoring (state map then compound substates) that make the pipeline project-resilient. Next: Blog Level Up — pre and post-publish SEO/EEAT checks aware of the connected WordPress.</p>
+    <dl class="hero-meta">
+      <div>
+        <dt lang="pt">Período</dt><dt lang="en">Period</dt>
+        <dd lang="pt">30 abr → 5 mai 2026</dd><dd lang="en">Apr 30 → May 5, 2026</dd>
+      </div>
+      <div>
+        <dt>Branch</dt>
+        <dd><code>feat/pipeline-autopilot-wizard-impl</code> → <code>staging</code></dd>
+      </div>
+      <div>
+        <dt lang="pt">Estágio</dt><dt lang="en">Stage</dt>
+        <dd lang="pt">Implementado em dev e staging</dd><dd lang="en">Implemented in dev and staging</dd>
+      </div>
+      <div>
+        <dt lang="pt">Próximo marco</dt><dt lang="en">Next milestone</dt>
+        <dd lang="pt">Blog Level Up Plan — fase 1</dd><dd lang="en">Blog Level Up Plan — phase 1</dd>
+      </div>
+    </dl>
+  </header>
+
+  <!-- ── KPIs ──────────────────────────────────────────────────────────── -->
+  <div class="kpi-strip">
+    <div class="kpi">
+      <div class="kpi-label">Commits</div>
+      <div class="kpi-value">40</div>
+      <div class="kpi-delta" lang="pt">não-merge, em 5 dias úteis</div>
+      <div class="kpi-delta" lang="en">non-merge, over 5 working days</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label" lang="pt">Arquivos tocados</div>
+      <div class="kpi-label" lang="en">Files touched</div>
+      <div class="kpi-value">179</div>
+      <div class="kpi-delta">+9.558 / −1.320</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label" lang="pt">Substates novos</div>
+      <div class="kpi-label" lang="en">New substates</div>
+      <div class="kpi-value">5</div>
+      <div class="kpi-delta" lang="pt">research + assets compound</div>
+      <div class="kpi-delta" lang="en">research + assets compound</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label" lang="pt">Bugs fechados</div>
+      <div class="kpi-label" lang="en">Bugs closed</div>
+      <div class="kpi-value">22</div>
+      <div class="kpi-delta" lang="pt">commits <code>fix(*)</code> no período</div>
+      <div class="kpi-delta" lang="en"><code>fix(*)</code> commits in period</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label" lang="pt">Provedores ativos</div>
+      <div class="kpi-label" lang="en">Active providers</div>
+      <div class="kpi-value">5</div>
+      <div class="kpi-delta" lang="pt">Gemini, OpenAI, Anthropic, Ollama, Manual</div>
+      <div class="kpi-delta" lang="en">Gemini, OpenAI, Anthropic, Ollama, Manual</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label" lang="pt">Substate tests</div>
+      <div class="kpi-label" lang="en">Substate tests</div>
+      <div class="kpi-value">9/9</div>
+      <div class="kpi-delta" lang="pt">cobrindo research + assets</div>
+      <div class="kpi-delta" lang="en">covering research + assets</div>
+    </div>
+  </div>
+
+  <!-- ── 01 INTRODUÇÃO ─────────────────────────────────────────────────── -->
+  <section class="section" id="intro">
+    <div class="section-eyebrow">01 · <span lang="pt">Introdução</span><span lang="en">Introduction</span></div>
+    <h2 class="section-title" lang="pt">O ciclo entre dois board reports.</h2>
+    <h2 class="section-title" lang="en">The cycle between two board reports.</h2>
+    <div class="summary-prose">
+      <div lang="pt">
+        <p>O relatório anterior fechava o autopilot v1 — pipeline rodando ponta a ponta em três modos. Cinco dias depois, o autopilot ganhou peso de produto: provedores de IA configuráveis pelo admin com toggle ativo/inativo, busca web real para o agente de research, hardening de Ollama (sem fallback silencioso para nuvem), e duas ondas de refator no XState que resolveram a classe de bugs em que o motor "esquecia" o que estava fazendo quando o usuário trocava de aba.</p>
+        <p>O ciclo termina com a arquitetura preparada para o próximo passo estratégico: o <strong>Blog Level Up</strong> — adicionar checagens SEO e EEAT em duas fases (antes e depois da publicação) com o pipeline ciente do WordPress conectado ao projeto.</p>
+        <p><strong>Estágio atual:</strong> implementado em dev e merged para <code>staging</code>. Branch <code>feat/pipeline-autopilot-wizard-impl</code> alinhada com <code>staging</code> em <code>9ae404d</code>.</p>
+      </div>
+      <div lang="en">
+        <p>The previous report closed autopilot v1 — pipeline running end-to-end in three modes. Five days later, autopilot grew product muscle: admin-configurable AI providers with active/inactive toggle, real web search for the research agent, Ollama hardening (no silent cloud fallback), and two waves of XState refactor that solved the class of bugs where the engine "forgot" what it was doing when the user switched tabs.</p>
+        <p>The cycle ends with architecture prepared for the next strategic step: <strong>Blog Level Up</strong> — add SEO and EEAT checks in two phases (before and after publish) with the pipeline aware of the WordPress site connected to the project.</p>
+        <p><strong>Current stage:</strong> implemented in dev and merged to <code>staging</code>. Branch <code>feat/pipeline-autopilot-wizard-impl</code> aligned with <code>staging</code> at <code>9ae404d</code>.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 02 O QUE FOI FEITO ────────────────────────────────────────────── -->
+  <section class="section" id="what">
+    <div class="section-eyebrow">02 · <span lang="pt">O que foi feito</span><span lang="en">What was built</span></div>
+    <h2 class="section-title" lang="pt">Oito frentes de trabalho concluídas.</h2>
+    <h2 class="section-title" lang="en">Eight workstreams completed.</h2>
+    <p class="section-lede" lang="pt">Cada card é uma frente do ciclo. Algumas são features novas, outras são correções acumuladas, e duas são refatorações estruturais que mudam como o sistema pensa.</p>
+    <p class="section-lede" lang="en">Each card is one workstream. Some are new features, others are accumulated bug fixes, and two are structural refactors that change how the system thinks.</p>
+
+    <div class="card-grid">
+
+      <article class="card">
+        <div class="card-icon green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">Infraestrutura de provedores</h3>
+          <h3 class="card-title" lang="en">Provider infrastructure</h3>
+          <span class="badge green" lang="pt">9 commits</span>
+          <span class="badge green" lang="en">9 commits</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt">CRUD de provedores e modelos no admin, com toggle ativo/inativo respeitado pelo router. Wizard pré-preenche cada estágio com a recomendação do agente, e admin pode sobrescrever modelo por agente.</p>
+          <p lang="en">Provider/model CRUD in admin, with active/inactive toggle honored by the router. Wizard pre-fills each stage with the agent's recommendation, and admin can override model per agent.</p>
+        </div>
+        <div class="card-meta"><span>30 abr · 4 mai</span></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">Busca web real (Serper)</h3>
+          <h3 class="card-title" lang="en">Real web search (Serper)</h3>
+          <span class="badge green">3 commits</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt">Agente de research deixou de devolver "0 fontes" — agora chama Serper de verdade via tool <code>search_web</code>, complementado por <code>fetch_url</code>. Configuração dos tools por agente está no banco.</p>
+          <p lang="en">Research agent stopped returning "0 sources" — now actually calls Serper via the <code>search_web</code> tool, complemented by <code>fetch_url</code>. Per-agent tool config lives in the DB.</p>
+        </div>
+        <div class="card-meta"><span>4 mai</span></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">Saga do botão Continue</h3>
+          <h3 class="card-title" lang="en">Continue-button saga</h3>
+          <span class="badge amber">3 commits</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt">Usuário relatou que o Continue do research engine não fazia nada. Três iterações até a causa raiz: React em batch nas transições XState do mesmo tick — <code>showEngine</code> nunca limpava. Resolvido com callback <code>onComplete</code> explícito.</p>
+          <p lang="en">User reported the research engine's Continue button did nothing. Three iterations until root cause: React batches XState transitions in the same tick — <code>showEngine</code> was never cleared. Fixed with an explicit <code>onComplete</code> callback.</p>
+        </div>
+        <div class="card-meta"><span>4 mai</span></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon amber">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">Ollama hardening</h3>
+          <h3 class="card-title" lang="en">Ollama hardening</h3>
+          <span class="badge amber">2 commits</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt">Decisão do usuário: quando o modelo local não está instalado, o sistema falha alto e recomenda reconfigurar — sem cair silenciosamente para Gemini/OpenAI e gerar custo inesperado.</p>
+          <p lang="en">User decision: when the local model isn't installed, the system fails loud and recommends reconfiguration — no silent fallback to Gemini/OpenAI causing unexpected cost.</p>
+        </div>
+        <div class="card-meta"><span>4 mai</span></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">Estabilidade do autopilot</h3>
+          <h3 class="card-title" lang="en">Autopilot stability</h3>
+          <span class="badge green">5 commits</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt">Assets travado em "Generating images", quota error bloqueando preview, <code>autopilotConfig</code> sumindo no reload, persona falhando quando todos scores eram 0 — todos endereçados.</p>
+          <p lang="en">Assets stuck on "Generating images", quota error blocking preview, <code>autopilotConfig</code> disappearing on reload, persona failing when all scores were 0 — all addressed.</p>
+        </div>
+        <div class="card-meta"><span>30 abr</span></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">Polimento do publish</h3>
+          <h3 class="card-title" lang="en">Publish polish</h3>
+          <span class="badge green">3 commits</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt">Publish respeita <code>autopilot.publish.status</code> em overview; gate de imagem no preview removido; handler <code>RESUME</code> agora existe em todos os estágios da máquina.</p>
+          <p lang="en">Publish respects <code>autopilot.publish.status</code> in overview; image gate in preview removed; <code>RESUME</code> handler now exists in every machine stage.</p>
+        </div>
+        <div class="card-meta"><span>4 mai</span></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon violet">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">Refator XState — Nível 1</h3>
+          <h3 class="card-title" lang="en">XState refactor — Level 1</h3>
+          <span class="badge violet">1 commit</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt"><code>stageStatus</code> map adicionado ao contexto da máquina. Engines passam a registrar metadata em-progresso (sessionId ativo, isGenerating) na máquina, sobrevivendo a remontagens do componente.</p>
+          <p lang="en"><code>stageStatus</code> map added to machine context. Engines now register in-flight metadata (active sessionId, isGenerating) in the machine, surviving component remounts.</p>
+        </div>
+        <div class="card-meta"><span>5 mai</span></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon violet">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">Refator XState — Nível 2</h3>
+          <h3 class="card-title" lang="en">XState refactor — Level 2</h3>
+          <span class="badge violet">12 commits</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt">Substates compostos para research e assets — máquina agora carrega o ciclo de vida (<code>idle</code> → <code>generating</code> → <code>complete</code>). Engines viram projeções: leem <code>state.matches</code>, despacham eventos. 9/9 testes passando.</p>
+          <p lang="en">Compound substates for research and assets — machine now carries the lifecycle (<code>idle</code> → <code>generating</code> → <code>complete</code>). Engines become projections: they read <code>state.matches</code>, dispatch events. 9/9 tests passing.</p>
+        </div>
+        <div class="card-meta"><span>5 mai</span></div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ── 03 ARQUITETURA XSTATE ─────────────────────────────────────────── -->
+  <section class="section" id="xstate">
+    <div class="section-eyebrow">03 · <span lang="pt">Arquitetura XState</span><span lang="en">XState architecture</span></div>
+    <h2 class="section-title" lang="pt">Por que uma máquina de estados, e não <code>useState</code>.</h2>
+    <h2 class="section-title" lang="en">Why a state machine, not <code>useState</code>.</h2>
+    <p class="section-lede" lang="pt">Antes do refator, cada engine carregava seu próprio "running", "phase", "sessionId" em <code>useState</code> local. Funcionava — até o componente desmontar. Esta seção explica por que adotamos XState e por que evoluímos para substates compostos.</p>
+    <p class="section-lede" lang="en">Before the refactor, each engine carried its own "running", "phase", "sessionId" in local <code>useState</code>. It worked — until the component unmounted. This section explains why we adopted XState and why we evolved to compound substates.</p>
+
+    <div class="callout">
+      <strong lang="pt">Princípio:</strong>
+      <strong lang="en">Principle:</strong>
+      <span lang="pt"> tudo que precisa sobreviver à remontagem do componente OU informar uma decisão do pipeline pertence à máquina. O componente é projeção.</span>
+      <span lang="en"> anything that must survive component remount OR inform a pipeline decision belongs in the machine. The component is a projection.</span>
+    </div>
+
+    <h3 class="subsection" lang="pt">Visão geral · A máquina inteira</h3>
+    <h3 class="subsection" lang="en">Overview · The whole machine</h3>
+    <p class="summary-prose" lang="pt">Sete estágios em sequência. Cada um tem subestados internos. Eventos disparam transições. A máquina é a única fonte de verdade sobre onde o pipeline está agora.</p>
+    <p class="summary-prose" lang="en">Seven stages in sequence. Each one has internal substates. Events drive transitions. The machine is the single source of truth about where the pipeline is right now.</p>
+
+    <div class="diagram-card">
+      <div class="toolbar" data-for="vp-machine">
+        <button data-action="zoom-in"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom+</button>
+        <button data-action="zoom-out"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom−</button>
+        <button data-action="fit">Fit</button>
+        <div class="sep"></div>
+        <span class="zoom-label">100%</span>
+        <div class="sep"></div>
+        <button data-action="fullscreen">Fullscreen</button>
+      </div>
+      <div class="diagram-viewport" id="vp-machine">
+        <div class="mermaid">
+stateDiagram-v2
+    direction LR
+    [*] --> setup
+    setup --> brainstorm: SETUP_COMPLETE
+    brainstorm --> research: BRAINSTORM_COMPLETE
+    research --> draft: RESEARCH_COMPLETE
+    draft --> review: DRAFT_COMPLETE
+    draft --> assets: DRAFT_COMPLETE [skipReview]
+    review --> assets: REVIEW_COMPLETE [approved]
+    review --> review: REVIEW_COMPLETE [needs_revision]
+    review --> review_paused: REVIEW_COMPLETE [maxIter or rejected]
+    assets --> preview: ASSETS_COMPLETE
+    preview --> publish: PREVIEW_COMPLETE
+    publish --> [*]: PUBLISH_COMPLETE
+    review_paused --> review: RESUME
+        </div>
+      </div>
+      <div class="diagram-caption" lang="pt">Diagrama 1 · Máquina pipeline em alto nível — 7 estágios, transições por eventos.</div>
+      <div class="diagram-caption" lang="en">Diagram 1 · High-level pipeline machine — 7 stages, event-driven transitions.</div>
+    </div>
+
+    <details class="disclose">
+      <summary lang="pt">Detalhe técnico · Por que XState e não Redux ou Zustand?</summary>
+      <summary lang="en">Tech detail · Why XState and not Redux or Zustand?</summary>
+      <div class="disclose-body">
+        <p lang="pt"><strong>Redux/Zustand</strong> são stores de dados — guardam um valor mutável. São ótimos para "estado da aplicação" (carrinho, user, tema), mas péssimos para fluxos com regras tipo "só pode ir de X para Y se Z". O desenvolvedor escreve essas regras à mão, em todo callback, e cada nova feature multiplica os caminhos de divergência.</p>
+        <p lang="pt"><strong>XState</strong> é uma máquina de estados — codifica AS REGRAS. Você declara: "do estado <code>research.generating</code>, o evento <code>RESEARCH_COMPLETE</code> leva para <code>draft</code>, salvando o resultado". Eventos enviados de fora que não fazem sentido naquele estado são descartados silenciosamente. Isso significa: testar a máquina é testar o pipeline inteiro.</p>
+        <p lang="pt">Bonus: o XState Inspector mostra o estado atual em tempo real durante o desenvolvimento — você literalmente vê a máquina caminhar pelo gráfico enquanto o usuário clica.</p>
+        <p lang="en"><strong>Redux/Zustand</strong> are data stores — they hold a mutable value. Great for "app state" (cart, user, theme), bad for flows with rules like "can only go from X to Y if Z". The developer writes those rules by hand in every callback, and each new feature multiplies divergence paths.</p>
+        <p lang="en"><strong>XState</strong> is a state machine — it encodes THE RULES. You declare: "from state <code>research.generating</code>, the event <code>RESEARCH_COMPLETE</code> moves to <code>draft</code>, saving the result". Events sent from outside that don't make sense in that state are silently discarded. Meaning: testing the machine is testing the entire pipeline.</p>
+        <p lang="en">Bonus: the XState Inspector shows current state in real time during development — you literally watch the machine walk the graph as the user clicks.</p>
+      </div>
+    </details>
+
+    <h3 class="subsection" lang="pt">Os três modos · Visão comparada</h3>
+    <h3 class="subsection" lang="en">The three modes · Compared view</h3>
+    <p class="summary-prose" lang="pt">Mesmo pipeline, três experiências distintas. A diferença está em quem decide quando avançar e o que aparece na tela durante a execução.</p>
+    <p class="summary-prose" lang="en">Same pipeline, three distinct experiences. The difference is who decides when to advance and what appears on screen during execution.</p>
+
+    <div class="diagram-card">
+      <div class="toolbar" data-for="vp-modes-overview">
+        <button data-action="zoom-in"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom+</button>
+        <button data-action="zoom-out"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom−</button>
+        <button data-action="fit">Fit</button>
+        <div class="sep"></div>
+        <span class="zoom-label">100%</span>
+        <div class="sep"></div>
+        <button data-action="fullscreen">Fullscreen</button>
+      </div>
+      <div class="diagram-viewport" id="vp-modes-overview">
+        <div class="mermaid">
+flowchart TB
+    subgraph SBS["step-by-step · user drives"]
+        direction LR
+        SBS1["User clicks Run"] --> SBS2["Stage runs"] --> SBS3["User clicks Continue"] --> SBS4["Next stage idle"]
+    end
+
+    subgraph SUP["supervised · machine drives, user can pause"]
+        direction LR
+        SUP1["Auto-fire each stage"] --> SUP2["Pipeline visible"] --> SUP3["Pause on demand"] --> SUP4["Resume → next stage"]
+    end
+
+    subgraph OVR["overview · machine drives silently with live log"]
+        direction LR
+        OVR1["Auto-fire each stage"] --> OVR2["Engines hidden"] --> OVR3["Live activity log"] --> OVR4["Drill-in for assets/preview gates"]
+    end
+
+    style SBS fill:#dcfce7,stroke:#86efac,color:#166534
+    style SUP fill:#fef3c7,stroke:#fcd34d,color:#92400e
+    style OVR fill:#ede9fe,stroke:#c4b5fd,color:#5b21b6
+        </div>
+      </div>
+      <div class="diagram-caption" lang="pt">Diagrama 2 · Os três modos, simplificados. Detalhes nos diagramas seguintes.</div>
+      <div class="diagram-caption" lang="en">Diagram 2 · The three modes, simplified. Details in the diagrams below.</div>
+    </div>
+
+    <details class="disclose">
+      <summary lang="pt">Detalhe técnico · Modo step-by-step · sequência completa</summary>
+      <summary lang="en">Tech detail · Step-by-step mode · full sequence</summary>
+      <div class="disclose-body">
+        <p lang="pt">O usuário controla cada transição. A máquina espera input explícito.</p>
+        <p lang="en">The user controls every transition. The machine waits for explicit input.</p>
+        <div class="diagram-card">
+          <div class="toolbar" data-for="vp-mode-sbs">
+            <button data-action="zoom-in"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom+</button>
+            <button data-action="zoom-out"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom−</button>
+            <button data-action="fit">Fit</button>
+            <div class="sep"></div>
+            <span class="zoom-label">100%</span>
+            <div class="sep"></div>
+            <button data-action="fullscreen">Fullscreen</button>
+          </div>
+          <div class="diagram-viewport" id="vp-mode-sbs">
+            <div class="mermaid">
+sequenceDiagram
+    actor User
+    participant Engine
+    participant Machine
+    participant API
+
+    User->>Engine: clicks Run
+    Engine->>Machine: STAGE_STARTED
+    Machine-->>Engine: state = generating
+    Engine->>API: POST job
+    API-->>Engine: job result
+    Engine->>Machine: STAGE_COMPLETE
+    Machine-->>Engine: state = next.idle
+    Note over Engine: shows result + Continue button
+    User->>Engine: clicks Continue
+    Engine->>Machine: NAVIGATE next
+    Machine-->>Engine: next stage opens
+            </div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details class="disclose">
+      <summary lang="pt">Detalhe técnico · Modo supervised · sequência completa</summary>
+      <summary lang="en">Tech detail · Supervised mode · full sequence</summary>
+      <div class="disclose-body">
+        <p lang="pt">A máquina dispara cada estágio automaticamente. O usuário pode pausar a qualquer momento. Engine fica visível durante a execução.</p>
+        <p lang="en">The machine auto-fires each stage. The user can pause anytime. Engine stays visible during execution.</p>
+        <div class="diagram-card">
+          <div class="toolbar" data-for="vp-mode-sup">
+            <button data-action="zoom-in"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom+</button>
+            <button data-action="zoom-out"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom−</button>
+            <button data-action="fit">Fit</button>
+            <div class="sep"></div>
+            <span class="zoom-label">100%</span>
+            <div class="sep"></div>
+            <button data-action="fullscreen">Fullscreen</button>
+          </div>
+          <div class="diagram-viewport" id="vp-mode-sup">
+            <div class="mermaid">
+sequenceDiagram
+    participant Auto as useAutoPilotTrigger
+    participant Engine
+    participant Machine
+    participant API
+    actor User
+
+    Note over Auto: monitors machine state
+    Auto->>Engine: canFire? → fire()
+    Engine->>Machine: STAGE_STARTED
+    Engine->>API: POST job (auto)
+    API-->>Engine: result
+    Engine->>Machine: STAGE_COMPLETE
+    Machine-->>Auto: next stage idle
+    Auto->>Engine: canFire? → fire()
+    Note over User: can hit Pause anytime
+    User->>Machine: PAUSE
+    Machine-->>Auto: paused = true
+    Note over Auto: skips canFire while paused
+    User->>Machine: RESUME
+            </div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details class="disclose">
+      <summary lang="pt">Detalhe técnico · Modo overview · sequência completa</summary>
+      <summary lang="en">Tech detail · Overview mode · full sequence</summary>
+      <div class="disclose-body">
+        <p lang="pt">Igual ao supervised, mas com engines escondidos. O usuário vê apenas o painel de overview com KPIs e log de atividades. Para gates (assets, preview) o sistema "drila" o usuário para dentro do engine, e volta sozinho ao overview quando terminar.</p>
+        <p lang="en">Like supervised, but engines are hidden. The user sees only the overview panel with KPIs and activity log. For gates (assets, preview) the system "drills" the user into the engine and returns automatically to overview when done.</p>
+        <div class="diagram-card">
+          <div class="toolbar" data-for="vp-mode-ovr">
+            <button data-action="zoom-in"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom+</button>
+            <button data-action="zoom-out"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom−</button>
+            <button data-action="fit">Fit</button>
+            <div class="sep"></div>
+            <span class="zoom-label">100%</span>
+            <div class="sep"></div>
+            <button data-action="fullscreen">Fullscreen</button>
+          </div>
+          <div class="diagram-viewport" id="vp-mode-ovr">
+            <div class="mermaid">
+sequenceDiagram
+    participant Overview
+    participant Engine as Engine (hidden)
+    participant Machine
+    participant Activity as ActivityLog
+
+    Note over Overview: PipelineOverview shown
+    Note over Engine: rendered with display:none
+    Engine->>Machine: STAGE_STARTED (auto)
+    Engine->>Machine: STAGE_PROGRESS (status updates)
+    Machine-->>Activity: append entry
+    Engine->>Machine: STAGE_COMPLETE
+    Note over Machine: reaches assets gate
+    Machine->>Overview: pendingDrillIn = assets
+    Overview->>Engine: setShowEngine('assets')
+    Note over Engine: now visible for confirmation
+    Engine->>Machine: ASSETS_COMPLETE
+    Overview->>Overview: setShowEngine(null)
+    Note over Overview: returns to overview
+            </div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <h3 class="subsection" lang="pt">Substates · O nível mais fino</h3>
+    <h3 class="subsection" lang="en">Substates · The finer grain</h3>
+    <p class="summary-prose" lang="pt">Antes do refator, cada estágio tinha apenas <code>idle | error</code>. A máquina sabia "estamos em research", mas não distinguia "research está rodando" de "research está parado esperando o usuário". Os engines mantinham essa informação em <code>useState</code> local — e perdiam quando o componente desmontava (por exemplo, ao trocar de aba no overview).</p>
+    <p class="summary-prose" lang="en">Before the refactor, each stage only had <code>idle | error</code>. The machine knew "we're in research", but didn't distinguish "research is running" from "research is idle waiting on the user". Engines kept that info in local <code>useState</code> — and lost it when the component unmounted (e.g., switching tabs in overview).</p>
+
+    <div class="diagram-card">
+      <div class="toolbar" data-for="vp-research-sub">
+        <button data-action="zoom-in"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom+</button>
+        <button data-action="zoom-out"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom−</button>
+        <button data-action="fit">Fit</button>
+        <div class="sep"></div>
+        <span class="zoom-label">100%</span>
+        <div class="sep"></div>
+        <button data-action="fullscreen">Fullscreen</button>
+      </div>
+      <div class="diagram-viewport" id="vp-research-sub">
+        <div class="mermaid">
+stateDiagram-v2
+    direction LR
+    [*] --> idle
+    idle --> generating: RESEARCH_STARTED
+    generating --> [*]: RESEARCH_COMPLETE → draft
+    generating --> error: STAGE_ERROR
+    error --> idle: RETRY
+    state generating {
+        note right of generating
+            stageStatus.research holds:
+            • activeSessionId
+            • isGenerating: true
+        end note
+    }
+        </div>
+      </div>
+      <div class="diagram-caption" lang="pt">Diagrama 3 · Substates do estágio research.</div>
+      <div class="diagram-caption" lang="en">Diagram 3 · Research stage substates.</div>
+    </div>
+
+    <div class="diagram-card">
+      <div class="toolbar" data-for="vp-assets-sub">
+        <button data-action="zoom-in"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom+</button>
+        <button data-action="zoom-out"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom−</button>
+        <button data-action="fit">Fit</button>
+        <div class="sep"></div>
+        <span class="zoom-label">100%</span>
+        <div class="sep"></div>
+        <button data-action="fullscreen">Fullscreen</button>
+      </div>
+      <div class="diagram-viewport" id="vp-assets-sub">
+        <div class="mermaid">
+stateDiagram-v2
+    direction LR
+    [*] --> idle
+    idle --> [*]: shouldSkipAssets → preview
+    idle --> generatingBriefs: ASSETS_BRIEFS_STARTED
+    generatingBriefs --> refining: ASSETS_BRIEFS_COMPLETE
+    generatingBriefs --> error: STAGE_ERROR
+    refining --> generatingImages: ASSETS_IMAGES_STARTED [if not briefs_only]
+    refining --> [*]: ASSETS_COMPLETE → preview [briefs_only manual upload]
+    generatingImages --> [*]: ASSETS_COMPLETE → preview
+    generatingImages --> error: STAGE_ERROR
+    error --> idle: RETRY
+        </div>
+      </div>
+      <div class="diagram-caption" lang="pt">Diagrama 4 · Substates do estágio assets, com guard <code>briefsOnly</code>.</div>
+      <div class="diagram-caption" lang="en">Diagram 4 · Assets stage substates with the <code>briefsOnly</code> guard.</div>
+    </div>
+
+    <details class="disclose">
+      <summary lang="pt">Detalhe técnico · Como o engine virou projeção</summary>
+      <summary lang="en">Tech detail · How the engine became a projection</summary>
+      <div class="disclose-body">
+        <p lang="pt"><strong>Antes:</strong> <code>const [running, setRunning] = useState(false)</code> — o engine sabia se estava rodando.</p>
+        <p lang="pt"><strong>Depois:</strong> <code>const isGenerating = useSelector(actor, s =&gt; s.matches({ research: 'generating' }))</code> — o engine pergunta para a máquina.</p>
+        <p lang="pt">Quando o componente desmonta (porque o usuário navegou para o overview e voltou), a máquina mantém o substate <code>generating</code>. Ao remontar, o engine lê do <code>stageStatus</code> e reconecta o stream SSE para a sessão ativa.</p>
+        <p lang="en"><strong>Before:</strong> <code>const [running, setRunning] = useState(false)</code> — the engine knew if it was running.</p>
+        <p lang="en"><strong>After:</strong> <code>const isGenerating = useSelector(actor, s =&gt; s.matches({ research: 'generating' }))</code> — the engine asks the machine.</p>
+        <p lang="en">When the component unmounts (because the user navigated to overview and back), the machine retains the <code>generating</code> substate. On remount, the engine reads from <code>stageStatus</code> and reconnects the SSE stream to the active session.</p>
+      </div>
+    </details>
+
+  </section>
+
+  <!-- ── 04 ANTES E DEPOIS · XSTATE ────────────────────────────────────── -->
+  <section class="section" id="before-after-xstate">
+    <div class="section-eyebrow">04 · <span lang="pt">Antes e depois · refator XState</span><span lang="en">Before and after · XState refactor</span></div>
+    <h2 class="section-title" lang="pt">A mesma operação, dois desenhos arquitetônicos.</h2>
+    <h2 class="section-title" lang="en">Same operation, two architectural drawings.</h2>
+    <p class="section-lede" lang="pt">À esquerda, o estado anterior — engines carregando estado próprio em paralelo à máquina. À direita, o estado atual — máquina como fonte de verdade, engines como projeção.</p>
+    <p class="section-lede" lang="en">Left: prior state — engines carrying their own state alongside the machine. Right: current state — machine as source of truth, engines as projection.</p>
+
+    <div class="diagram-card">
+      <div class="toolbar" data-for="vp-before-xstate">
+        <button data-action="zoom-in"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom+</button>
+        <button data-action="zoom-out"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom−</button>
+        <button data-action="fit">Fit</button>
+        <div class="sep"></div>
+        <span class="zoom-label">100%</span>
+        <div class="sep"></div>
+        <button data-action="fullscreen">Fullscreen</button>
+      </div>
+      <div class="diagram-viewport" id="vp-before-xstate">
+        <div class="mermaid">
+flowchart LR
+    subgraph BEFORE["BEFORE · state scattered"]
+        direction TB
+        BMachine["Machine context\n• stageResults\n• currentStage"]
+        BResearch["ResearchEngine\n• useState running\n• useState sessionId\n• useState findings"]
+        BAssets["AssetsEngine\n• useState phase\n• useState slotCards\n• useState generatingAll"]
+        BMachine -.->|drift| BResearch
+        BMachine -.->|drift| BAssets
+        BResearch -.->|"unmount\n→ state lost"| Lost["state lost ⚠️"]
+        BAssets -.->|"phase=images\nignores briefs_only"| RogueGen["rogue image gen ⚠️"]
+    end
+
+    style BMachine fill:#fee2e2,stroke:#fca5a5,color:#991b1b
+    style BResearch fill:#fee2e2,stroke:#fca5a5,color:#991b1b
+    style BAssets fill:#fee2e2,stroke:#fca5a5,color:#991b1b
+    style Lost fill:#fef3c7,stroke:#fcd34d,color:#92400e
+    style RogueGen fill:#fef3c7,stroke:#fcd34d,color:#92400e
+        </div>
+      </div>
+      <div class="diagram-caption" lang="pt">Diagrama 5 · Antes do refator. Estado dividido entre máquina e engines, propenso a divergência e perda em remontagens.</div>
+      <div class="diagram-caption" lang="en">Diagram 5 · Before the refactor. State split between machine and engines, prone to drift and loss on remounts.</div>
+    </div>
+
+    <div class="diagram-card">
+      <div class="toolbar" data-for="vp-after-xstate">
+        <button data-action="zoom-in"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom+</button>
+        <button data-action="zoom-out"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom−</button>
+        <button data-action="fit">Fit</button>
+        <div class="sep"></div>
+        <span class="zoom-label">100%</span>
+        <div class="sep"></div>
+        <button data-action="fullscreen">Fullscreen</button>
+      </div>
+      <div class="diagram-viewport" id="vp-after-xstate">
+        <div class="mermaid">
+flowchart LR
+    subgraph AFTER["AFTER · machine owns lifecycle"]
+        direction TB
+        AMachine["Machine context\n• stageResults\n• stageStatus\n• research.{idle | generating | error}\n• assets.{idle | generatingBriefs | refining | generatingImages | error}"]
+        AResearch["ResearchEngine\nstate.matches → projection\ndispatches RESEARCH_STARTED"]
+        AAssets["AssetsEngine\nstate.matches → projection\ndispatches BRIEFS/IMAGES events"]
+        AMachine ==>|"single source\nof truth"| AResearch
+        AMachine ==>|"single source\nof truth"| AAssets
+        AResearch -->|"on remount:\nrebuild from machine"| Survives["state survives ✓"]
+        AAssets -->|"machine guard rejects\nIMAGES_STARTED if briefs_only"| Safe["briefs-only enforced ✓"]
+    end
+
+    style AMachine fill:#dcfce7,stroke:#86efac,color:#166534
+    style AResearch fill:#dcfce7,stroke:#86efac,color:#166534
+    style AAssets fill:#dcfce7,stroke:#86efac,color:#166534
+    style Survives fill:#ede9fe,stroke:#c4b5fd,color:#5b21b6
+    style Safe fill:#ede9fe,stroke:#c4b5fd,color:#5b21b6
+        </div>
+      </div>
+      <div class="diagram-caption" lang="pt">Diagrama 6 · Depois do refator. Máquina é fonte única, engines projetam.</div>
+      <div class="diagram-caption" lang="en">Diagram 6 · After the refactor. Machine is sole source, engines project.</div>
+    </div>
+
+    <div class="callout green">
+      <strong lang="pt">Resultado mensurável:</strong>
+      <strong lang="en">Measurable result:</strong>
+      <span lang="pt"> dois bugs reais resolvidos pela mesma mudança arquitetônica — research perdendo estado em back-navigation, e assets gerando imagens apesar do modo <code>briefs_only</code> configurado. 9/9 substate tests verdes.</span>
+      <span lang="en"> two real bugs solved by the same architectural change — research losing state on back-navigation, and assets generating images despite <code>briefs_only</code> configured. 9/9 substate tests green.</span>
+    </div>
+  </section>
+
+  <!-- ── 05 BLOG LEVEL UP · VISÃO ──────────────────────────────────────── -->
+  <section class="section" id="blog-level-up">
+    <div class="section-eyebrow">05 · <span lang="pt">Próxima fase · Blog Level Up</span><span lang="en">Next phase · Blog Level Up</span></div>
+    <h2 class="section-title" lang="pt">SEO e EEAT em duas frentes — antes e depois da publicação.</h2>
+    <h2 class="section-title" lang="en">SEO and EEAT on two fronts — before and after publish.</h2>
+    <p class="section-lede" lang="pt">A próxima frente não cria novos estágios — ela enriquece os existentes com checagens objetivas (SEO técnico) e subjetivas (EEAT — Experience, Expertise, Authoritativeness, Trustworthiness), em duas fases: pré-publicação no draft/review/publish, e pós-publicação como auditor contínuo do WordPress.</p>
+    <p class="section-lede" lang="en">The next front does not create new stages — it enriches existing ones with objective (technical SEO) and subjective (EEAT — Experience, Expertise, Authoritativeness, Trustworthiness) checks, in two phases: pre-publish in draft/review/publish, and post-publish as a continuous WordPress auditor.</p>
+
+    <h3 class="subsection" lang="pt">Decisões arquitetônicas confirmadas</h3>
+    <h3 class="subsection" lang="en">Confirmed architectural decisions</h3>
+
+    <div class="card-grid">
+      <article class="card">
+        <div class="card-icon violet">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">Projeto ↔ post WordPress</h3>
+          <h3 class="card-title" lang="en">Project ↔ WordPress post</h3>
+          <span class="badge violet" lang="pt">Decisão</span>
+          <span class="badge violet" lang="en">Decision</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt">Nova coluna <code>wordpress_post_id</code> em <code>projects</code>. Vínculo 1:1 — um projeto produz no máximo um post. Permite buscar metadata e analytics via REST.</p>
+          <p lang="en">New <code>wordpress_post_id</code> column on <code>projects</code>. 1:1 link — one project produces at most one post. Enables metadata and analytics fetch via REST.</p>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon violet">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">Tool de Internal Links</h3>
+          <h3 class="card-title" lang="en">Internal Links tool</h3>
+          <span class="badge violet" lang="pt">Decisão</span>
+          <span class="badge violet" lang="en">Decision</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt">Não é um novo estágio — é uma <strong>tool</strong> que o agente de review pode chamar durante o loop. A tool consulta a REST API do WordPress conectado ao canal e retorna posts relevantes por tag/keyword.</p>
+          <p lang="en">It's not a new stage — it's a <strong>tool</strong> the review agent can call during its loop. The tool queries the WordPress REST API of the channel-connected site and returns posts matched by tag/keyword.</p>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon violet">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">Lógica pré vs pós-publicação</h3>
+          <h3 class="card-title" lang="en">Pre vs post-publish logic</h3>
+          <span class="badge violet" lang="pt">Decisão</span>
+          <span class="badge violet" lang="en">Decision</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt">Lógica dedicada para pré-publicação. Modificaremos as instruções dos agentes (draft, review, publish) caso a caso. O <code>wp-seo-enhance</code> MCP continua sendo a base do pós-publicação.</p>
+          <p lang="en">Dedicated pre-publish logic. We modify the agents' instructions (draft, review, publish) case by case. The <code>wp-seo-enhance</code> MCP remains the base of post-publish.</p>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon violet">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">Awareness do WP no canal</h3>
+          <h3 class="card-title" lang="en">WP awareness per channel</h3>
+          <span class="badge violet" lang="pt">Decisão</span>
+          <span class="badge violet" lang="en">Decision</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt">REST API do WordPress conectado ao canal (mesma config já usada pelo publish). Engines de draft/review consultam em tempo de execução para enriquecer contexto e sugerir links internos.</p>
+          <p lang="en">WordPress REST API of the channel-connected site (same config already used by publish). Draft/review engines query at runtime to enrich context and suggest internal links.</p>
+        </div>
+      </article>
+    </div>
+
+    <h3 class="subsection" lang="pt">Antes · O pipeline hoje</h3>
+    <h3 class="subsection" lang="en">Before · The pipeline today</h3>
+    <p class="summary-prose" lang="pt">Hoje o pipeline gera, revisa, publica — sem checagens explícitas de SEO técnico ou EEAT, sem awareness dos posts irmãos no WordPress, sem auditoria pós-publicação.</p>
+    <p class="summary-prose" lang="en">Today the pipeline generates, reviews, publishes — with no explicit technical SEO or EEAT checks, no awareness of sibling posts in WordPress, no post-publish auditing.</p>
+
+    <div class="diagram-card">
+      <div class="toolbar" data-for="vp-blog-before">
+        <button data-action="zoom-in"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom+</button>
+        <button data-action="zoom-out"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom−</button>
+        <button data-action="fit">Fit</button>
+        <div class="sep"></div>
+        <span class="zoom-label">100%</span>
+        <div class="sep"></div>
+        <button data-action="fullscreen">Fullscreen</button>
+      </div>
+      <div class="diagram-viewport" id="vp-blog-before">
+        <div class="mermaid">
+flowchart LR
+    BS["Brainstorm"] --> RS["Research"] --> DR["Draft"] --> RV["Review"] --> AS["Assets"] --> PV["Preview"] --> PB["Publish"] --> WP[("WordPress\npublished post")]
+
+    DR -.->|"no EEAT checks"| Gap1["⚠ no instructions for\nExperience, Expertise"]
+    RV -.->|"no SEO pre-review"| Gap2["⚠ no word count check\nno H3 incidence check"]
+    RV -.->|"no internal links"| Gap3["⚠ no awareness of\nsibling posts in WP"]
+    PB -.->|"no SEO pre-publish"| Gap4["⚠ no alt-text check\nno focus keyword check"]
+    WP -.->|"no audit loop"| Gap5["⚠ no post-publish\ndashboard or audit"]
+
+    style Gap1 fill:#fee2e2,stroke:#fca5a5,color:#991b1b
+    style Gap2 fill:#fee2e2,stroke:#fca5a5,color:#991b1b
+    style Gap3 fill:#fee2e2,stroke:#fca5a5,color:#991b1b
+    style Gap4 fill:#fee2e2,stroke:#fca5a5,color:#991b1b
+    style Gap5 fill:#fee2e2,stroke:#fca5a5,color:#991b1b
+        </div>
+      </div>
+      <div class="diagram-caption" lang="pt">Diagrama 7 · Pipeline atual. Cinco gaps mapeados.</div>
+      <div class="diagram-caption" lang="en">Diagram 7 · Current pipeline. Five gaps mapped.</div>
+    </div>
+
+    <h3 class="subsection" lang="pt">Depois · O pipeline com Blog Level Up</h3>
+    <h3 class="subsection" lang="en">After · The pipeline with Blog Level Up</h3>
+    <p class="summary-prose" lang="pt">Os mesmos sete estágios — agora cada engine relevante carrega instruções de SEO/EEAT e o review tem acesso a uma tool que consulta o WordPress conectado. Pós-publicação, um auditor periódico monitora o post e atualiza um dashboard.</p>
+    <p class="summary-prose" lang="en">Same seven stages — but each relevant engine now carries SEO/EEAT instructions, and review has access to a tool that queries the connected WordPress. Post-publish, a periodic auditor monitors the post and updates a dashboard.</p>
+
+    <div class="diagram-card">
+      <div class="toolbar" data-for="vp-blog-after">
+        <button data-action="zoom-in"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom+</button>
+        <button data-action="zoom-out"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom−</button>
+        <button data-action="fit">Fit</button>
+        <div class="sep"></div>
+        <span class="zoom-label">100%</span>
+        <div class="sep"></div>
+        <button data-action="fullscreen">Fullscreen</button>
+      </div>
+      <div class="diagram-viewport" id="vp-blog-after">
+        <div class="mermaid">
+flowchart LR
+    subgraph PRE["PRE-PUBLISH · enrich engines"]
+        BS["Brainstorm"] --> RS["Research"] --> DR["Draft<br/>+ EEAT instructions:<br/>1st-person, dates,<br/>tech depth, sources"]
+        DR --> RV["Review<br/>+ SEO pre-review<br/>+ EEAT validator<br/>+ Internal Links tool"]
+        RV --> AS["Assets"] --> PV["Preview"] --> PB["Publish<br/>+ SEO pre-publish:<br/>alt text, focus kw,<br/>meta description"]
+    end
+
+    PB --> WP[("WordPress<br/>+ project.wordpress_post_id")]
+
+    subgraph POST["POST-PUBLISH · audit + dashboard"]
+        WP --> AUD["Auditoria SEO + EEAT<br/>via wp-seo-enhance MCP"]
+        AUD --> ILE["Internal Links Engine<br/>scans WP for related posts<br/>suggests cross-link updates"]
+        AUD --> DASH["Dashboard<br/>• KPIs SEO + EEAT<br/>• Performance (CTR, position)<br/>• Editorial status"]
+    end
+
+    RV -.->|"queries WP REST<br/>for related posts"| WP
+
+    style DR fill:#dcfce7,stroke:#86efac,color:#166534
+    style RV fill:#dcfce7,stroke:#86efac,color:#166534
+    style PB fill:#dcfce7,stroke:#86efac,color:#166534
+    style AUD fill:#ede9fe,stroke:#c4b5fd,color:#5b21b6
+    style ILE fill:#ede9fe,stroke:#c4b5fd,color:#5b21b6
+    style DASH fill:#ede9fe,stroke:#c4b5fd,color:#5b21b6
+    style WP fill:#fef3c7,stroke:#fcd34d,color:#92400e
+        </div>
+      </div>
+      <div class="diagram-caption" lang="pt">Diagrama 8 · Pipeline com Blog Level Up. Verde = mudança nas instruções dos agentes. Violeta = nova lógica pós-publicação.</div>
+      <div class="diagram-caption" lang="en">Diagram 8 · Pipeline with Blog Level Up. Green = changes to agent instructions. Violet = new post-publish logic.</div>
+    </div>
+
+    <details class="disclose">
+      <summary lang="pt">Detalhe técnico · O que entra em cada engine na fase pré-publicação</summary>
+      <summary lang="en">Tech detail · What gets added to each engine in the pre-publish phase</summary>
+      <div class="disclose-body">
+        <p lang="pt"><strong>Draft engine</strong> — instruções adicionadas ao prompt: títulos com menos de 70 caracteres; pelo menos 3 incidências de H3; persona escreve com objetivo EEAT (Experience: 1ª pessoa + datas + contexto temporal; Expertise: profundidade técnica + fontes citadas; Authoritativeness: schema markup + fontes confiáveis).</p>
+        <p lang="pt"><strong>Review engine</strong> — três camadas:</p>
+        <ul lang="pt">
+          <li><strong>Avaliador SEO pré-review</strong>: word count 1000–1200, H3 ≥ 3, presença de external links.</li>
+          <li><strong>Tool de Internal Links</strong>: durante o loop de revisão, o agente pode invocar a tool que consulta a REST API do WordPress conectado ao canal e retorna posts relevantes por tag/keyword. O agente decide quais incluir.</li>
+          <li><strong>Avaliador EEAT</strong>: bio do autor, profundidade técnica, fontes citadas, schema markup.</li>
+        </ul>
+        <p lang="pt"><strong>Publish engine</strong> — checagens objetivas: todas as imagens têm alt? Tem focus keyword? Tem meta description? Bloqueia publish se algum estiver faltando.</p>
+        <p lang="en"><strong>Draft engine</strong> — instructions added to the prompt: titles under 70 characters; at least 3 H3 incidences; persona writes with EEAT objective (Experience: first person + dates + temporal context; Expertise: technical depth + cited sources; Authoritativeness: schema markup + reliable sources).</p>
+        <p lang="en"><strong>Review engine</strong> — three layers:</p>
+        <ul lang="en">
+          <li><strong>SEO pre-review evaluator</strong>: word count 1000–1200, H3 ≥ 3, presence of external links.</li>
+          <li><strong>Internal Links tool</strong>: during the review loop, the agent can invoke the tool that queries the channel-connected WordPress REST API and returns posts matched by tag/keyword. The agent decides which to include.</li>
+          <li><strong>EEAT evaluator</strong>: author bio, technical depth, cited sources, schema markup.</li>
+        </ul>
+        <p lang="en"><strong>Publish engine</strong> — objective checks: do all images have alt? Is there a focus keyword? Is there a meta description? Blocks publish if any is missing.</p>
+      </div>
+    </details>
+
+    <details class="disclose">
+      <summary lang="pt">Detalhe técnico · A fase pós-publicação e a integração com wp-seo-enhance</summary>
+      <summary lang="en">Tech detail · The post-publish phase and the wp-seo-enhance integration</summary>
+      <div class="disclose-body">
+        <p lang="pt">O <code>wp-seo-enhance</code> MCP já existe e roda contra o WordPress diretamente — auditoria de imagens, sugestão de links internos, atualização de meta Yoast. Hoje é usado pela skill <code>wp-level-up</code> de forma manual.</p>
+        <p lang="pt">A nova fase pós-publicação automatiza essa execução periodicamente para todos os posts publicados pelo Bright Tale. Resultado vai para um <strong>dashboard de scores</strong> com três blocos:</p>
+        <ul lang="pt">
+          <li><strong>KPIs técnicos</strong>: score SEO, score EEAT, contagem de palavras, internal links, imagens sem alt, completude do Yoast.</li>
+          <li><strong>KPIs de performance</strong>: pageviews, impressões no Google, CTR, posição média, tempo na página.</li>
+          <li><strong>Status editorial</strong>: data de publicação + última atualização, completude da bio do autor, schema aplicado, backlinks recebidos.</li>
+        </ul>
+        <p lang="en">The <code>wp-seo-enhance</code> MCP already exists and runs against WordPress directly — image audit, internal-link suggestions, Yoast meta updates. Today it's used by the <code>wp-level-up</code> skill manually.</p>
+        <p lang="en">The new post-publish phase automates that execution periodically for every post published by Bright Tale. The result feeds a <strong>scores dashboard</strong> with three blocks:</p>
+        <ul lang="en">
+          <li><strong>Technical KPIs</strong>: SEO score, EEAT score, word count, internal links, images without alt, Yoast completeness.</li>
+          <li><strong>Performance KPIs</strong>: pageviews, Google impressions, CTR, average position, time on page.</li>
+          <li><strong>Editorial status</strong>: publish date + last update, author bio completeness, schema applied, backlinks received.</li>
+        </ul>
+      </div>
+    </details>
+
+    <div class="callout amber">
+      <strong lang="pt">Trustworthiness só pós-publicação:</strong>
+      <strong lang="en">Trustworthiness only post-publish:</strong>
+      <span lang="pt"> dos quatro pilares EEAT, três (Experience, Expertise, Authoritativeness) podem ser avaliados antes do publish — Trustworthiness exige sinais externos (backlinks, citações de fora) que só existem depois que o post está no ar.</span>
+      <span lang="en"> of the four EEAT pillars, three (Experience, Expertise, Authoritativeness) can be evaluated before publish — Trustworthiness requires external signals (backlinks, off-site citations) that only exist after the post is live.</span>
+    </div>
+  </section>
+
+  <!-- ── 06 CONCLUSÃO ──────────────────────────────────────────────────── -->
+  <section class="section" id="conclusion">
+    <div class="section-eyebrow">06 · <span lang="pt">Conclusão</span><span lang="en">Conclusion</span></div>
+    <h2 class="section-title" lang="pt">O que fica ao fim deste ciclo.</h2>
+    <h2 class="section-title" lang="en">What remains at the end of this cycle.</h2>
+
+    <div class="conclusion-card">
+      <h3 lang="pt">Pipeline com infraestrutura completa de provedores, busca real, autopilot estável, e máquina XState refatorada para suportar o próximo salto.</h3>
+      <h3 lang="en">Pipeline with complete provider infrastructure, real search, stable autopilot, and XState machine refactored to support the next leap.</h3>
+      <p lang="pt"><strong>Cinco frentes fechadas em 5 dias.</strong> Provedores configuráveis e ativáveis, research com Serper de verdade, Continue do research engine resolvendo a sequência completa, autopilot sem travamentos, e a máquina entendendo seus próprios subestados — preparando o terreno para a fase mais ambiciosa: o Blog Level Up.</p>
+      <p lang="pt">A próxima fase não exige novos estágios, exige modificar instruções de agentes existentes e criar uma tool que o review chama. A arquitetura está pronta.</p>
+      <p lang="en"><strong>Five workstreams closed in 5 days.</strong> Configurable, toggleable providers, research with real Serper, Continue button on research engine resolving the full flow, autopilot without freezes, and the machine understanding its own substates — paving the ground for the most ambitious phase: Blog Level Up.</p>
+      <p lang="en">The next phase needs no new stages — it needs modified agent instructions and a tool the review calls. The architecture is ready.</p>
+    </div>
+
+    <h3 class="subsection" lang="pt">Itens em aberto</h3>
+    <h3 class="subsection" lang="en">Open items</h3>
+    <div class="open-items">
+      <div class="open-item">
+        <div class="open-item-label" lang="pt">Testes de hidratação</div>
+        <div class="open-item-label" lang="en">Hydration tests</div>
+        <div class="open-item-text" lang="pt">5 testes em <code>hydrateEngineFromConfig.test.ts</code> falhando — estale assertions desde a mudança de defaults para <code>null</code>. Ciclo separado.</div>
+        <div class="open-item-text" lang="en">5 tests in <code>hydrateEngineFromConfig.test.ts</code> failing — stale assertions since defaults changed to <code>null</code>. Separate cycle.</div>
+      </div>
+      <div class="open-item">
+        <div class="open-item-label" lang="pt">Estado local residual</div>
+        <div class="open-item-label" lang="en">Residual local state</div>
+        <div class="open-item-text" lang="pt"><code>running</code> e <code>phase</code> ainda existem nos engines via padrão <code>(machine || local)</code> — remoção total exigiria tocar muitos call sites de setters. Aceito por ora.</div>
+        <div class="open-item-text" lang="en"><code>running</code> and <code>phase</code> still exist in engines via the <code>(machine || local)</code> pattern — full removal would require touching many setter call sites. Accepted for now.</div>
+      </div>
+      <div class="open-item">
+        <div class="open-item-label" lang="pt">I/O ainda nos engines</div>
+        <div class="open-item-label" lang="en">I/O still in engines</div>
+        <div class="open-item-text" lang="pt">Mover <code>fetch</code> e SSE para actors XState tornaria o nível 2 totalmente puro — refator futuro.</div>
+        <div class="open-item-text" lang="en">Moving <code>fetch</code> and SSE into XState actors would make level 2 fully pure — future refactor.</div>
+      </div>
+      <div class="open-item">
+        <div class="open-item-label" lang="pt">Inngest brainstorm</div>
+        <div class="open-item-label" lang="en">Inngest brainstorm</div>
+        <div class="open-item-text" lang="pt">Bug do ciclo anterior: <code>idea_archives</code> não popula apesar da sessão completar. Investigação pendente.</div>
+        <div class="open-item-text" lang="en">Bug from prior cycle: <code>idea_archives</code> doesn't populate despite session completing. Investigation pending.</div>
+      </div>
+      <div class="open-item">
+        <div class="open-item-label" lang="pt">Wizard tests</div>
+        <div class="open-item-label" lang="en">Wizard tests</div>
+        <div class="open-item-text" lang="pt">5 testes do Pattern B do wizard ainda precisam atualização. Não bloqueia QA.</div>
+        <div class="open-item-text" lang="en">5 wizard Pattern B tests still need updating. Not blocking QA.</div>
+      </div>
+      <div class="open-item">
+        <div class="open-item-label" lang="pt">Migração para staging</div>
+        <div class="open-item-label" lang="en">Staging migration</div>
+        <div class="open-item-text" lang="pt">✓ Branch <code>feat/pipeline-autopilot-wizard-impl</code> e <code>staging</code> alinhadas em <code>9ae404d</code>. Ambas pushadas.</div>
+        <div class="open-item-text" lang="en">✓ Branch <code>feat/pipeline-autopilot-wizard-impl</code> and <code>staging</code> aligned at <code>9ae404d</code>. Both pushed.</div>
+      </div>
+    </div>
+
+    <!-- WhatsApp share -->
+    <div class="share-card" style="margin-top: 32px;">
+      <div class="share-header">
+        <div class="share-header-left">
+          <div class="share-icon">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413"/></svg>
+          </div>
+          <div>
+            <div class="share-label">Compartilhar no WhatsApp</div>
+            <h3 class="share-title">Resumo de uma linha</h3>
+          </div>
+        </div>
+        <button class="share-copy-btn" onclick="copyWhatsAppSummary(this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span class="share-copy-label">Copiar</span>
+        </button>
+      </div>
+      <div class="share-text" id="whatsapp-summary">*Bright Tale — atualização de 5 maio 2026*
+
+Ciclo de 5 dias fecha autopilot v1.5: provedores configuráveis pelo admin, busca web real (Serper), refator XState com substates compostos para research e assets. Pipeline agora sobrevive a remontagens de componente.
+
+40 commits, 9/9 substate tests verdes, branch alinhada com staging.
+
+Próximo: Blog Level Up — checagens SEO/EEAT pré e pós-publicação, com awareness do WordPress conectado.</div>
+      <div class="share-meta">
+        <span>438 caracteres</span>
+        <span>5 mai 2026</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 07 PRÓXIMOS PASSOS ────────────────────────────────────────────── -->
+  <section class="section" id="next">
+    <div class="section-eyebrow">07 · <span lang="pt">Próximos passos</span><span lang="en">Next steps</span></div>
+    <h2 class="section-title" lang="pt">Três horizontes para o Blog Level Up.</h2>
+    <h2 class="section-title" lang="en">Three horizons for Blog Level Up.</h2>
+    <p class="section-lede" lang="pt">A entrega não é monolítica — divide em três horizontes para validar cada decisão antes da próxima.</p>
+    <p class="section-lede" lang="en">Delivery is not monolithic — split across three horizons so each decision is validated before the next.</p>
+
+    <div class="roadmap">
+      <article class="horizon">
+        <div class="horizon-label">1–2 <span lang="pt">semanas</span><span lang="en">weeks</span></div>
+        <h3 class="horizon-title" lang="pt">Fundação</h3>
+        <h3 class="horizon-title" lang="en">Foundation</h3>
+        <ul class="horizon-list">
+          <li lang="pt">
+            <strong>Migration · <code>projects.wordpress_post_id</code></strong>
+            <span>Coluna nova + endpoint que vincula projeto a post existente após publish.</span>
+          </li>
+          <li lang="en">
+            <strong>Migration · <code>projects.wordpress_post_id</code></strong>
+            <span>New column + endpoint that links project to the post after publish.</span>
+          </li>
+          <li lang="pt">
+            <strong>Tool · <code>fetch_related_wp_posts</code></strong>
+            <span>Wrapper REST que consulta posts por tag/keyword no WP do canal. Disponibilizada para o agente de review no banco.</span>
+          </li>
+          <li lang="en">
+            <strong>Tool · <code>fetch_related_wp_posts</code></strong>
+            <span>REST wrapper that queries posts by tag/keyword on the channel's WP. Made available to the review agent in DB.</span>
+          </li>
+          <li lang="pt">
+            <strong>Resolver falhas pré-existentes</strong>
+            <span>5 testes <code>hydrateEngineFromConfig.test.ts</code> + bug Inngest <code>idea_archives</code>.</span>
+          </li>
+          <li lang="en">
+            <strong>Resolve pre-existing failures</strong>
+            <span>5 <code>hydrateEngineFromConfig.test.ts</code> tests + Inngest <code>idea_archives</code> bug.</span>
+          </li>
+        </ul>
+      </article>
+
+      <article class="horizon">
+        <div class="horizon-label">2–6 <span lang="pt">semanas</span><span lang="en">weeks</span></div>
+        <h3 class="horizon-title" lang="pt">Pré-publicação</h3>
+        <h3 class="horizon-title" lang="en">Pre-publish</h3>
+        <ul class="horizon-list">
+          <li lang="pt">
+            <strong>Instruções EEAT no draft</strong>
+            <span>Atualizar prompt do agente de draft com diretrizes Experience/Expertise/Authoritativeness.</span>
+          </li>
+          <li lang="en">
+            <strong>EEAT instructions in draft</strong>
+            <span>Update draft agent prompt with Experience/Expertise/Authoritativeness guidelines.</span>
+          </li>
+          <li lang="pt">
+            <strong>SEO pre-review + Internal Links no review</strong>
+            <span>Avaliador SEO técnico + integração da tool de Internal Links no loop de revisão.</span>
+          </li>
+          <li lang="en">
+            <strong>SEO pre-review + Internal Links in review</strong>
+            <span>Technical SEO evaluator + Internal Links tool integration in the review loop.</span>
+          </li>
+          <li lang="pt">
+            <strong>SEO pre-publish gate no publish</strong>
+            <span>Bloqueio em alt, focus keyword, meta description ausentes.</span>
+          </li>
+          <li lang="en">
+            <strong>SEO pre-publish gate in publish</strong>
+            <span>Block on missing alt, focus keyword, meta description.</span>
+          </li>
+        </ul>
+      </article>
+
+      <article class="horizon">
+        <div class="horizon-label">6+ <span lang="pt">semanas</span><span lang="en">weeks</span></div>
+        <h3 class="horizon-title" lang="pt">Pós-publicação</h3>
+        <h3 class="horizon-title" lang="en">Post-publish</h3>
+        <ul class="horizon-list">
+          <li lang="pt">
+            <strong>Auditor periódico via wp-seo-enhance MCP</strong>
+            <span>Inngest job rodando em cron, auditando todos os posts publicados pelo Bright Tale.</span>
+          </li>
+          <li lang="en">
+            <strong>Periodic auditor via wp-seo-enhance MCP</strong>
+            <span>Inngest job running on cron, auditing all posts published by Bright Tale.</span>
+          </li>
+          <li lang="pt">
+            <strong>Dashboard de scores</strong>
+            <span>UI com KPIs técnicos, performance e status editorial. Drill-down por post.</span>
+          </li>
+          <li lang="en">
+            <strong>Scores dashboard</strong>
+            <span>UI with technical, performance, and editorial KPIs. Drill-down per post.</span>
+          </li>
+          <li lang="pt">
+            <strong>Loop de cross-link</strong>
+            <span>Sugere atualizações em posts antigos para incluir links ao post novo. Aprovação humana.</span>
+          </li>
+          <li lang="en">
+            <strong>Cross-link loop</strong>
+            <span>Suggests updates to old posts to include links to the new post. Human approval.</span>
+          </li>
+        </ul>
+      </article>
+    </div>
+  </section>
+
+  <footer>
+    <div>
+      <span lang="pt">Gerado em 5 de maio de 2026</span>
+      <span lang="en">Generated on May 5, 2026</span>
+      ·
+      <code>docs/reports/2026-05-05-board-report-xstate-substates-and-blog-level-up.html</code>
+    </div>
+    <div class="contributors">
+      <span lang="pt">Contribuidores</span>
+      <span lang="en">Contributors</span>
+      <div class="avatar-stack">
+        <span class="avatar" title="Hector Siman">HS</span>
+        <span class="avatar" title="Claude Code" style="background: linear-gradient(135deg, var(--violet), var(--accent));">CC</span>
+      </div>
+    </div>
+  </footer>
+
+</div>
+
+<!-- ── Fullscreen toolbar ────────────────────────────────────────────── -->
+<div class="fs-toolbar" id="fs-toolbar">
+  <button id="fs-zoom-in">+ Zoom</button>
+  <button id="fs-zoom-out">− Zoom</button>
+  <button id="fs-reset">Fit</button>
+  <button id="fs-exit">✕ Exit</button>
+</div>
+
+<script>
+  // ── Bilingual toggle ────────────────────────────────────────────────
+  (function () {
+    const html = document.documentElement;
+    const buttons = document.querySelectorAll('.lang-bar button');
+    const stored = (function () { try { return localStorage.getItem('blr-lang'); } catch (_) { return null; } })();
+    if (stored === 'pt' || stored === 'en') html.setAttribute('lang', stored);
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const lang = btn.dataset.lang;
+        html.setAttribute('lang', lang);
+        try { localStorage.setItem('blr-lang', lang); } catch (_) {}
+        buttons.forEach(b => b.setAttribute('aria-pressed', b.dataset.lang === lang ? 'true' : 'false'));
+      });
+    });
+    // Sync initial pressed state with current html lang
+    const current = html.getAttribute('lang');
+    buttons.forEach(b => b.setAttribute('aria-pressed', b.dataset.lang === current ? 'true' : 'false'));
+  })();
+
+  // ── Mermaid ─────────────────────────────────────────────────────────
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({ startOnLoad: false, theme: prefersDark ? 'dark' : 'default', securityLevel: 'loose' });
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    await mermaid.run({ querySelector: '.mermaid' });
+    initAllControls();
+  });
+
+  // ── Panzoom controls ────────────────────────────────────────────────
+  const instances = {};
+  const fitScales = {};
+  const fitOffsets = {};
+
+  function getSvgNaturalSize(svg) {
+    const w = parseFloat(svg.getAttribute('width'))  || svg.getBoundingClientRect().width  || 800;
+    const h = parseFloat(svg.getAttribute('height')) || svg.getBoundingClientRect().height || 600;
+    return { w, h };
+  }
+
+  function computeFit(vp, svg) {
+    const pad = 32;
+    const vpW = vp.clientWidth - pad * 2;
+    const vpH = vp.clientHeight - pad * 2;
+    const { w: svgW, h: svgH } = getSvgNaturalSize(svg);
+    const scale = Math.min(vpW / svgW, vpH / svgH);
+    const x = pad + (vpW - svgW * scale) / 2;
+    const y = pad + (vpH - svgH * scale) / 2;
+    return { scale, x, y };
+  }
+
+  function applyFit(vpId) {
+    const pz = instances[vpId];
+    const vp = document.getElementById(vpId);
+    const svg = vp?.querySelector('svg');
+    if (!pz || !svg) return;
+    const { scale, x, y } = computeFit(vp, svg);
+    fitScales[vpId] = scale;
+    fitOffsets[vpId] = { x, y };
+    pz.zoomAbs(0, 0, scale);
+    pz.moveTo(x, y);
+    updateLabel(vpId, scale);
+  }
+
+  function updateLabel(vpId, scale) {
+    const toolbar = document.querySelector('.toolbar[data-for="' + vpId + '"]');
+    const label = toolbar?.querySelector('.zoom-label');
+    if (label) label.textContent = Math.round(scale * 100) + '%';
+  }
+
+  function initOne(vpId) {
+    const vp = document.getElementById(vpId);
+    if (!vp || instances[vpId]) return;
+    const svg = vp.querySelector('svg');
+    if (!svg) return;
+    const vb = svg.viewBox?.baseVal;
+    if (vb && vb.width > 0 && vb.height > 0) {
+      svg.setAttribute('width', vb.width);
+      svg.setAttribute('height', vb.height);
+    }
+    svg.style.maxWidth = 'none';
+    const pz = panzoom(svg, {
+      zoomSpeed: 0.08, minZoom: 0.05, maxZoom: 20, bounds: false, filterKey: () => true
+    });
+    instances[vpId] = pz;
+    pz.on('transform', () => updateLabel(vpId, pz.getTransform().scale));
+    setTimeout(() => applyFit(vpId), 100);
+  }
+
+  function initAllControls() {
+    let activeVpId = null;
+
+    document.querySelectorAll('.toolbar').forEach(toolbar => {
+      const vpId = toolbar.dataset.for;
+      initOne(vpId);
+      toolbar.querySelectorAll('button[data-action]').forEach(btn => {
+        btn.addEventListener('click', () => handleAction(btn.dataset.action, vpId));
+      });
+    });
+
+    // Re-init lazily for diagrams inside <details> on first open
+    document.querySelectorAll('details.disclose').forEach(d => {
+      d.addEventListener('toggle', () => {
+        if (!d.open) return;
+        d.querySelectorAll('.toolbar').forEach(tb => {
+          const vpId = tb.dataset.for;
+          if (!instances[vpId]) {
+            initOne(vpId);
+          } else {
+            setTimeout(() => applyFit(vpId), 50);
+          }
+        });
+      });
+    });
+
+    document.getElementById('fs-zoom-in').addEventListener('click', () => activeVpId && handleAction('zoom-in', activeVpId));
+    document.getElementById('fs-zoom-out').addEventListener('click', () => activeVpId && handleAction('zoom-out', activeVpId));
+    document.getElementById('fs-reset').addEventListener('click', () => activeVpId && handleAction('fit', activeVpId));
+    document.getElementById('fs-exit').addEventListener('click', () => activeVpId && exitFullscreen(activeVpId));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && activeVpId) exitFullscreen(activeVpId); });
+
+    function handleAction(action, vpId) {
+      const pz = instances[vpId];
+      if (!pz) return;
+      const vp = document.getElementById(vpId);
+      const cx = vp.clientWidth / 2;
+      const cy = vp.clientHeight / 2;
+      if (action === 'zoom-in')    pz.smoothZoom(cx, cy, 1.4);
+      if (action === 'zoom-out')   pz.smoothZoom(cx, cy, 1 / 1.4);
+      if (action === 'fit')        applyFit(vpId);
+      if (action === 'fullscreen') { activeVpId = vpId; enterFullscreen(vpId); }
+    }
+
+    function enterFullscreen(vpId) {
+      document.getElementById(vpId).classList.add('is-fullscreen');
+      document.getElementById('fs-toolbar').classList.add('visible');
+      document.body.style.overflow = 'hidden';
+      activeVpId = vpId;
+      setTimeout(() => applyFit(vpId), 30);
+    }
+
+    function exitFullscreen(vpId) {
+      document.getElementById(vpId).classList.remove('is-fullscreen');
+      document.getElementById('fs-toolbar').classList.remove('visible');
+      document.body.style.overflow = '';
+      activeVpId = null;
+      setTimeout(() => applyFit(vpId), 30);
+    }
+  }
+
+  // ── WhatsApp share ──────────────────────────────────────────────────
+  function copyWhatsAppSummary(btn) {
+    const text = document.getElementById('whatsapp-summary').innerText;
+    const label = btn.querySelector('.share-copy-label');
+    navigator.clipboard.writeText(text).then(() => {
+      const original = label.textContent;
+      btn.classList.add('copied');
+      label.textContent = 'Copiado';
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        label.textContent = original;
+      }, 2000);
+    }).catch(() => {
+      label.textContent = 'Falhou';
+    });
+  }
+</script>
+</body>
+</html>
