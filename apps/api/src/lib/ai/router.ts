@@ -145,13 +145,12 @@ const ROUTE_TABLE: Record<string, Record<AgentType, ModelConfig>> = {
 };
 
 // Runtime fallback order: when the primary provider errors at call time,
-// try these next (in order). Ollama always falls back to cloud so autopilot
-// doesn't hard-fail when a model isn't pulled locally.
+// try these next (in order). Ollama is local-only (no fallback to/from paid).
 const FALLBACK_ORDER: Record<string, string[]> = {
   openai: ['anthropic', 'gemini'],
   anthropic: ['openai', 'gemini'],
   gemini: ['anthropic', 'openai'],
-  ollama: ['gemini', 'anthropic', 'openai'],
+  ollama: [],
 };
 
 // Default model per provider when we fall back from a different provider.
@@ -298,12 +297,9 @@ export async function getProviderChain(
 
   // Build the provider order:
   // - If user picked a provider WITHOUT allowFallback: chain is just that one.
-  //   Exception: ollama always falls back to cloud so autopilot never hard-fails
-  //   when a local model isn't pulled.
   // - Otherwise: tier primary first, then its fallback chain.
   const order: string[] = [];
-  const implicitFallback = options.provider === 'ollama';
-  if (options.provider && !options.allowFallback && !implicitFallback) {
+  if (options.provider && !options.allowFallback) {
     order.push(options.provider);
   } else {
     if (options.provider) order.push(options.provider);

@@ -3,6 +3,7 @@
  * Talks to a local Ollama server (default http://localhost:11434) — zero cost
  * and works offline. Best paired with llama3.1:8b or qwen2.5:7b for JSON output.
  */
+import { NonRetriableError } from 'inngest';
 import type { AIProvider, GenerateContentParams, TokenUsage } from '../provider.js';
 
 export class OllamaProvider implements AIProvider {
@@ -60,6 +61,12 @@ export class OllamaProvider implements AIProvider {
 
       if (!res.ok) {
         const body = await res.text().catch(() => '');
+        if (res.status === 404) {
+          throw new NonRetriableError(
+            `Ollama model "${this.model}" is not installed locally. ` +
+            `Run \`ollama pull ${this.model}\` to install it, or reconfigure the provider in your pipeline settings.`,
+          );
+        }
         throw new Error(`Ollama ${res.status}: ${body || res.statusText}`);
       }
 
