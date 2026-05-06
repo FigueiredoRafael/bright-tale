@@ -776,10 +776,10 @@ stateDiagram-v2
     brainstorm --> research: BRAINSTORM_COMPLETE
     research --> draft: RESEARCH_COMPLETE
     draft --> review: DRAFT_COMPLETE
-    draft --> assets: DRAFT_COMPLETE [skipReview]
-    review --> assets: REVIEW_COMPLETE [approved]
-    review --> review: REVIEW_COMPLETE [needs_revision]
-    review --> review_paused: REVIEW_COMPLETE [maxIter or rejected]
+    draft --> assets: DRAFT_COMPLETE\n(skipReview)
+    review --> assets: REVIEW_COMPLETE\n(approved)
+    review --> review: REVIEW_COMPLETE\n(needs_revision)
+    review --> review_paused: REVIEW_COMPLETE\n(maxIter or rejected)
     assets --> preview: ASSETS_COMPLETE
     preview --> publish: PREVIEW_COMPLETE
     publish --> [*]: PUBLISH_COMPLETE
@@ -994,16 +994,13 @@ stateDiagram-v2
     direction LR
     [*] --> idle
     idle --> generating: RESEARCH_STARTED
-    generating --> [*]: RESEARCH_COMPLETE → draft
+    generating --> [*]: RESEARCH_COMPLETE
     generating --> error: STAGE_ERROR
     error --> idle: RETRY
-    state generating {
-        note right of generating
-            stageStatus.research holds:
-            • activeSessionId
-            • isGenerating: true
-        end note
-    }
+    note right of generating
+      stageStatus.research holds:
+      activeSessionId, isGenerating
+    end note
         </div>
       </div>
       <div class="diagram-caption" lang="pt">Diagrama 3 · Substates do estágio research.</div>
@@ -1025,13 +1022,13 @@ stateDiagram-v2
 stateDiagram-v2
     direction LR
     [*] --> idle
-    idle --> [*]: shouldSkipAssets → preview
+    idle --> [*]: shouldSkipAssets
     idle --> generatingBriefs: ASSETS_BRIEFS_STARTED
     generatingBriefs --> refining: ASSETS_BRIEFS_COMPLETE
     generatingBriefs --> error: STAGE_ERROR
-    refining --> generatingImages: ASSETS_IMAGES_STARTED [if not briefs_only]
-    refining --> [*]: ASSETS_COMPLETE → preview [briefs_only manual upload]
-    generatingImages --> [*]: ASSETS_COMPLETE → preview
+    refining --> generatingImages: ASSETS_IMAGES_STARTED\n(not briefs_only)
+    refining --> [*]: ASSETS_COMPLETE\n(briefs_only manual)
+    generatingImages --> [*]: ASSETS_COMPLETE
     generatingImages --> error: STAGE_ERROR
     error --> idle: RETRY
         </div>
@@ -1597,7 +1594,14 @@ Próximo: Blog Level Up — checagens SEO/EEAT pré e pós-publicação, com awa
 
   // ── Mermaid ─────────────────────────────────────────────────────────
   const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-  mermaid.initialize({ startOnLoad: false, theme: prefersDark ? 'dark' : 'default', securityLevel: 'loose' });
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: prefersDark ? 'dark' : 'default',
+    securityLevel: 'loose',
+    flowchart: { htmlLabels: true, useMaxWidth: false },
+    sequence: { useMaxWidth: false },
+    state: { useMaxWidth: false },
+  });
 
   document.addEventListener('DOMContentLoaded', async () => {
     await mermaid.run({ querySelector: '.mermaid' });
@@ -1610,9 +1614,15 @@ Próximo: Blog Level Up — checagens SEO/EEAT pré e pós-publicação, com awa
   const fitOffsets = {};
 
   function getSvgNaturalSize(svg) {
-    const w = parseFloat(svg.getAttribute('width'))  || svg.getBoundingClientRect().width  || 800;
-    const h = parseFloat(svg.getAttribute('height')) || svg.getBoundingClientRect().height || 600;
-    return { w, h };
+    // Always prefer viewBox — mermaid emits accurate viewBox coordinates,
+    // but the width/height attributes are sometimes "100%" or unset.
+    const vb = svg.viewBox?.baseVal;
+    if (vb && vb.width > 0 && vb.height > 0) {
+      return { w: vb.width, h: vb.height };
+    }
+    const rect = svg.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) return { w: rect.width, h: rect.height };
+    return { w: 800, h: 600 };
   }
 
   function computeFit(vp, svg) {
@@ -1655,13 +1665,22 @@ Próximo: Blog Level Up — checagens SEO/EEAT pré e pós-publicação, com awa
       svg.setAttribute('width', vb.width);
       svg.setAttribute('height', vb.height);
     }
+    // Override mermaid's inline max-width/style.width which collapses content
+    // when our viewport is wider than the diagram's natural size.
     svg.style.maxWidth = 'none';
+    svg.style.width = '';
+    svg.style.height = '';
     const pz = panzoom(svg, {
       zoomSpeed: 0.08, minZoom: 0.05, maxZoom: 20, bounds: false, filterKey: () => true
     });
     instances[vpId] = pz;
     pz.on('transform', () => updateLabel(vpId, pz.getTransform().scale));
-    setTimeout(() => applyFit(vpId), 100);
+    // Two-pass fit: first after layout settles, second after fonts paint
+    // (mermaid sometimes finalises text metrics on a second frame).
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      applyFit(vpId);
+      setTimeout(() => applyFit(vpId), 250);
+    }));
   }
 
   function initAllControls() {
