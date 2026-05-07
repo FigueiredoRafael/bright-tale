@@ -306,6 +306,7 @@ function formValuesToAutopilotConfig(values: FormValues): AutopilotConfig {
       providerOverride: values.assets.providerOverride,
       modelOverride: sanitizeProviderModel(values.assets.providerOverride, values.assets.modelOverride),
       mode: values.assets.assetMode,
+      imageScope: 'all',
     },
     preview: { enabled: values.preview.enabled },
     publish: { status: values.publish.status },

@@ -173,6 +173,7 @@ function buildDefaultAutopilotConfig(pipelineSettings: {
       providerOverride: toProvider('assets'),
       modelOverride: toModel('assets'),
       mode: 'briefs_only',
+      imageScope: 'all',
     },
     preview: {
       enabled: false,

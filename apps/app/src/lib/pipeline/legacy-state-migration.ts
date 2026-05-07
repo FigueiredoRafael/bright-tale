@@ -176,6 +176,7 @@ function migrateAutopilotConfig(raw: Record<string, unknown> | undefined): Autop
     assets: {
       providerOverride: (assets?.providerOverride ?? null) as AutopilotConfig['assets']['providerOverride'],
       mode: migrateAssetsMode(typeof assets?.mode === 'string' ? assets.mode : undefined),
+      imageScope: (typeof assets?.imageScope === 'string' ? assets.imageScope : 'all') as AutopilotConfig['assets']['imageScope'],
     },
     preview: isPlainObject(raw.preview)
       ? (raw.preview as AutopilotConfig['preview'])

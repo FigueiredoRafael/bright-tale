@@ -66,6 +66,7 @@ const AssetsSlot = z.object({
   providerOverride: ProviderOrInherit,
   modelOverride: z.string().nullable().optional(),
   mode: z.enum(['skip', 'briefs_only', 'auto_generate']),
+  imageScope: z.enum(['featured_only', 'featured_and_conclusion', 'all']).default('all'),
 })
 
 const PreviewSlot = z.object({
@@ -92,3 +93,4 @@ export const autopilotConfigPatchSchema = autopilotConfigSchema.deepPartial()
 
 export type AutopilotConfig = z.infer<typeof autopilotConfigSchema>
 export type AutopilotConfigPatch = z.infer<typeof autopilotConfigPatchSchema>
+export type ImageScope = 'featured_only' | 'featured_and_conclusion' | 'all'

@@ -307,7 +307,7 @@ describe('setup state and SETUP_COMPLETE', () => {
     canonicalCore: { providerOverride: null, personaId: null },
     draft: { providerOverride: null, format: 'blog', wordCount: 1000 },
     review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
-    assets: { providerOverride: null, mode: 'auto_generate' },
+    assets: { providerOverride: null, mode: 'auto_generate', imageScope: 'all' as const },
     preview: { enabled: false },
     publish: { status: 'draft' },
   }
@@ -388,7 +388,7 @@ describe('REQUEST_ABORT spawn-on-event', () => {
     canonicalCore: { providerOverride: null, personaId: null },
     draft: { providerOverride: null, format: 'blog', wordCount: 1000 },
     review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
-    assets: { providerOverride: null, mode: 'auto_generate' },
+    assets: { providerOverride: null, mode: 'auto_generate', imageScope: 'all' as const },
     preview: { enabled: false },
     publish: { status: 'draft' },
   }
@@ -595,7 +595,7 @@ describe('guard reads from autopilotConfig.review', () => {
       canonicalCore: { providerOverride: null, personaId: null },
       draft: { providerOverride: null, format: 'blog', wordCount: 1000 },
       review: reviewConfig,
-      assets: { providerOverride: null, mode: 'auto_generate' },
+      assets: { providerOverride: null, mode: 'auto_generate', imageScope: 'all' as const },
       preview: { enabled: false },
       publish: { status: 'draft' as const },
     },
