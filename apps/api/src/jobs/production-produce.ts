@@ -124,11 +124,26 @@ export const productionProduce = inngest.createFunction(
         if (!draft.channel_id) return null;
         const { data } = await sb
           .from('channels')
-          .select('name, niche, language, tone, presentation_style')
+          .select('name, niche, language, tone, presentation_style, video_style, voice_id, voice_provider, voice_speed')
           .eq('id', draft.channel_id as string)
           .maybeSingle();
         return data;
       })) as Record<string, unknown> | null;
+
+      // Derive video_style_config.channel_type from channel.video_style when caller didn't set it.
+      // channels.video_style enum: face | dark | hybrid → videoStyleConfig.channel_type: presenter | dark.
+      const effectiveProductionParams: Record<string, unknown> | null = (() => {
+        if (type !== 'video' || !channelContext) return productionParams ?? null;
+        const channelStyle = channelContext.video_style;
+        const derivedChannelType =
+          channelStyle === 'dark' ? 'dark' : channelStyle === 'face' || channelStyle === 'hybrid' ? 'presenter' : null;
+        if (!derivedChannelType) return productionParams ?? null;
+        const params = { ...(productionParams ?? {}) } as Record<string, unknown>;
+        const styleConfig = { ...((params.video_style_config as Record<string, unknown> | undefined) ?? {}) };
+        if (!styleConfig.channel_type) styleConfig.channel_type = derivedChannelType;
+        params.video_style_config = styleConfig;
+        return params;
+      })();
 
       await assertNotAborted(projectId, draftId, sb);
 
@@ -172,7 +187,7 @@ export const productionProduce = inngest.createFunction(
           title: draft.title as string,
           canonicalCore,
           idea: ideaContext,
-          productionParams: productionParams ?? undefined,
+          productionParams: effectiveProductionParams ?? undefined,
           sources: researchSources,
           persona: layeredPersona?.voice ?? null,
           channel: channelContext as
