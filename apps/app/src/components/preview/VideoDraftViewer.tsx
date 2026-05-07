@@ -37,8 +37,31 @@ import type {
 } from '@brighttale/shared/types/agents';
 
 interface VideoDraftViewerProps {
-  output: VideoOutput;
+  /**
+   * Raw draft_json from the API or a parsed user paste. The viewer unwraps
+   * common legacy wrappers (video_script, video, blog) before rendering, so
+   * callers don't have to know the exact storage shape.
+   */
+  output: VideoOutput | Record<string, unknown>;
   className?: string;
+}
+
+function unwrapVideoOutput(raw: VideoOutput | Record<string, unknown>): VideoOutput {
+  const obj = raw as Record<string, unknown>;
+  // Top-level signals — if any of these are present, raw is already the VideoOutput.
+  const hasTopLevel =
+    'script' in obj ||
+    'teleprompter_script' in obj ||
+    'video_title' in obj ||
+    'thumbnail_ideas' in obj ||
+    'editor_script' in obj;
+  if (hasTopLevel) return obj as unknown as VideoOutput;
+  // Legacy wrappers — earlier seeds emitted { video_script: { ... } } or { video: { ... } }.
+  const videoScript = obj.video_script as Record<string, unknown> | undefined;
+  if (videoScript && typeof videoScript === 'object') return videoScript as unknown as VideoOutput;
+  const video = obj.video as Record<string, unknown> | undefined;
+  if (video && typeof video === 'object') return video as unknown as VideoOutput;
+  return obj as unknown as VideoOutput;
 }
 
 const EMOTION_VARIANT: Record<string, string> = {
@@ -47,9 +70,18 @@ const EMOTION_VARIANT: Record<string, string> = {
   intrigue: 'bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/30',
 };
 
-export function VideoDraftViewer({ output, className = '' }: VideoDraftViewerProps) {
+export function VideoDraftViewer({ output: rawOutput, className = '' }: VideoDraftViewerProps) {
+  const output = useMemo(() => unwrapVideoOutput(rawOutput), [rawOutput]);
   const titlePrimary = output.video_title?.primary ?? output.title_options?.[0] ?? 'Untitled video';
   const duration = output.estimated_duration ?? output.total_duration_estimate ?? null;
+
+  // Detect legacy / non-conforming drafts so we can prompt a regeneration.
+  const isLegacyShape =
+    !output.script &&
+    !output.teleprompter_script &&
+    !output.editor_script &&
+    !output.thumbnail_ideas &&
+    !output.video_description;
   const titleAlternatives = useMemo(() => {
     const alts = output.video_title?.alternatives ?? [];
     const fromOptions = output.title_options ?? [];
@@ -87,6 +119,22 @@ export function VideoDraftViewer({ output, className = '' }: VideoDraftViewerPro
             </div>
           </div>
         </div>
+        {isLegacyShape && (
+          <div className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <div className="font-semibold">Rascunho em formato legado</div>
+                <div>
+                  Esse draft foi gerado antes da atualização do agente BC_VIDEO. Os campos
+                  estruturados (roteiro, editor script, thumbnails, teleprompter) estão
+                  ausentes. Clique em <strong>Produce Another Format</strong> abaixo para
+                  regenerar com o prompt atualizado.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         {output.content_warning && (
           <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
