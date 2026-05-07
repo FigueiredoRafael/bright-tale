@@ -96,6 +96,7 @@ const formSchema = z.object({
     providerOverride: z.enum(['openai', 'anthropic', 'gemini', 'ollama']).nullable(),
     modelOverride: z.string().nullable().optional(),
     assetMode: z.enum(['skip', 'briefs_only', 'auto_generate']),
+    imageScope: z.enum(['featured_only', 'featured_and_conclusion', 'all']),
   }),
   preview: z.object({
     enabled: z.boolean(),
@@ -201,6 +202,7 @@ function buildDefaultValues(
         providerOverride: existing.assets.providerOverride,
         modelOverride: existing.assets.modelOverride ?? null,
         assetMode: existing.assets.mode,
+        imageScope: existing.assets.imageScope ?? 'all',
       },
       preview: { enabled: existing.preview.enabled },
       publish: { status: existing.publish.status },
@@ -254,6 +256,7 @@ function buildDefaultValues(
       providerOverride: null,
       modelOverride: null,
       assetMode: 'skip',
+      imageScope: 'all',
     },
     preview: { enabled: false },
     publish: { status: 'draft' },
@@ -306,7 +309,7 @@ function formValuesToAutopilotConfig(values: FormValues): AutopilotConfig {
       providerOverride: values.assets.providerOverride,
       modelOverride: sanitizeProviderModel(values.assets.providerOverride, values.assets.modelOverride),
       mode: values.assets.assetMode,
-      imageScope: 'all',
+      imageScope: values.assets.imageScope,
     },
     preview: { enabled: values.preview.enabled },
     publish: { status: values.publish.status },
@@ -548,6 +551,7 @@ export function MiniWizardSheet({ isOpen, onClose }: MiniWizardSheetProps) {
   const reviewModel          = useWatch({ control, name: 'review.modelOverride' }) as string | null
   const assetsProvider       = useWatch({ control, name: 'assets.providerOverride' }) as ValidProvider | null
   const assetsModel          = useWatch({ control, name: 'assets.modelOverride' }) as string | null
+  const assetsModeWatch      = useWatch({ control, name: 'assets.assetMode' }) as string
 
   function onSubmit(values: FormValues) {
     const config = formValuesToAutopilotConfig(values)
@@ -799,6 +803,31 @@ export function MiniWizardSheet({ isOpen, onClose }: MiniWizardSheetProps) {
                 </RadioGroup>
               )}
             />
+            {assetsModeWatch === 'auto_generate' && (
+              <>
+                <Label className="mt-3">Image scope</Label>
+                <Controller
+                  control={control}
+                  name="assets.imageScope"
+                  render={({ field }) => (
+                    <RadioGroup value={field.value ?? 'all'} onValueChange={field.onChange} className="mt-1">
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="all" id="mini-scope-all" />
+                        <Label htmlFor="mini-scope-all" className="text-sm font-normal">All sections</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="featured_and_conclusion" id="mini-scope-fc" />
+                        <Label htmlFor="mini-scope-fc" className="text-sm font-normal">Featured + Conclusion</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="featured_only" id="mini-scope-featured" />
+                        <Label htmlFor="mini-scope-featured" className="text-sm font-normal">Featured only</Label>
+                      </div>
+                    </RadioGroup>
+                  )}
+                />
+              </>
+            )}
           </section>
 
           {/* ── Preview slot ───────────────────────────────── */}
