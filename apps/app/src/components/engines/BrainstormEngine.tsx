@@ -608,6 +608,9 @@ export function BrainstormEngine({
       });
 
       setIdeas(mapped);
+      if (json.data?.recommendation && typeof json.data.recommendation === 'object') {
+        setRecommendation(json.data.recommendation as { pick?: string; rationale?: string });
+      }
       if (sessionId && mapped.length > 0) {
         actor.send({ type: 'STAGE_PROGRESS', stage: 'brainstorm', partial: { brainstormSessionId: sessionId } });
       }

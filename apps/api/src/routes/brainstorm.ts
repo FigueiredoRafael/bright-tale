@@ -720,13 +720,19 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
     try {
       const sb = createServiceClient();
       const { id } = request.params as { id: string };
-      const { data, error } = await sb
-        .from('brainstorm_drafts')
-        .select('*')
-        .eq('session_id', id)
-        .order('position', { ascending: true });
-      if (error) throw error;
-      return reply.send({ data: { drafts: data ?? [] }, error: null });
+      const [draftsRes, sessionRes] = await Promise.all([
+        sb.from('brainstorm_drafts').select('*').eq('session_id', id).order('position', { ascending: true }),
+        sb.from('brainstorm_sessions').select('recommendation_json').eq('id', id).maybeSingle(),
+      ]);
+      if (draftsRes.error) throw draftsRes.error;
+      if (sessionRes.error) throw sessionRes.error;
+      return reply.send({
+        data: {
+          drafts: draftsRes.data ?? [],
+          recommendation: sessionRes.data?.recommendation_json ?? null,
+        },
+        error: null,
+      });
     } catch (error) {
       return sendError(reply, error);
     }

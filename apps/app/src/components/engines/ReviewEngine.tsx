@@ -100,6 +100,10 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
   const [provider, setProvider] = useState<ProviderId>('gemini');
   const [model, setModel] = useState<string>(MODELS_BY_PROVIDER.gemini[0].id);
   const [recommendationLoaded, setRecommendationLoaded] = useState(false);
+  const [recommended, setRecommended] = useState<{ provider: string | null; model: string | null }>({
+    provider: null,
+    model: null,
+  });
 
   // Seed provider/model from the autopilot wizard's review slot override.
   // Only fires when a non-null override is present; never resets to null.
@@ -161,6 +165,12 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
           (a) => a.slug === 'review',
         );
         if (agent?.recommended_provider) {
+          // Always expose the admin recommendation to ModelPicker so the dropdown
+          // can inject admin-default models that aren't in the hardcoded list.
+          setRecommended({
+            provider: agent.recommended_provider as string,
+            model: (agent.recommended_model as string) || null,
+          });
           // Only apply agent defaults when autopilotConfig has no per-slot override.
           if (!autopilotConfig?.review?.providerOverride) {
             setProvider(agent.recommended_provider as ProviderId);
@@ -632,7 +642,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
               providers={manualEnabled ? REVIEW_PROVIDERS : REVIEW_PROVIDERS.filter((p) => p !== 'manual')}
               provider={provider}
               model={model}
-              recommended={{ provider: null, model: null }}
+              recommended={recommended}
               onProviderChange={(p) => {
                 setProvider(p);
                 if (p === 'manual') setModel('manual');
@@ -759,7 +769,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
                     providers={manualEnabled ? REVIEW_PROVIDERS : REVIEW_PROVIDERS.filter((p) => p !== 'manual')}
                     provider={provider}
                     model={model}
-                    recommended={{ provider: null, model: null }}
+                    recommended={recommended}
                     onProviderChange={(p) => {
                       setProvider(p);
                       if (p === 'manual') setModel('manual');

@@ -311,6 +311,10 @@ export function DraftEngine({
 
   // Fetch recommended model
   const [recommendationLoaded, setRecommendationLoaded] = useState(false);
+  const [recommended, setRecommended] = useState<{ provider: string | null; model: string | null }>({
+    provider: null,
+    model: null,
+  });
   useEffect(() => {
     (async () => {
       try {
@@ -320,6 +324,12 @@ export function DraftEngine({
           (a) => a.slug === 'content-core'
         );
         if (agent?.recommended_provider) {
+          // Always expose the admin recommendation to ModelPicker so the dropdown
+          // can inject admin-default models that aren't in the hardcoded list.
+          setRecommended({
+            provider: agent.recommended_provider as string,
+            model: (agent.recommended_model as string) || null,
+          });
           if (!autopilotConfig?.draft?.providerOverride) {
             setProvider(agent.recommended_provider as ProviderId);
             if (agent.recommended_model && !autopilotConfig?.draft?.modelOverride) {
@@ -1419,7 +1429,7 @@ export function DraftEngine({
                   providers={DRAFT_PROVIDERS}
                   provider={provider}
                   model={model}
-                  recommended={{ provider: null, model: null }}
+                  recommended={recommended}
                   onProviderChange={(p) => {
                     setProvider(p);
                     if (p === 'manual') {
@@ -1652,7 +1662,7 @@ export function DraftEngine({
                   providers={DRAFT_PROVIDERS}
                   provider={provider}
                   model={model}
-                  recommended={{ provider: null, model: null }}
+                  recommended={recommended}
                   onProviderChange={(p) => {
                     setProvider(p);
                     if (p === 'manual') {
