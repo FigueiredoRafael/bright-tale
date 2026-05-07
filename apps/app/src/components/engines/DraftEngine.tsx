@@ -22,6 +22,8 @@ import { ManualOutputDialog } from './ManualOutputDialog';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
 import { MarkdownPreview } from '@/components/preview/MarkdownPreview';
+import { VideoDraftViewer } from '@/components/preview/VideoDraftViewer';
+import type { VideoOutput } from '@brighttale/shared/types/agents';
 import { ContextBanner } from './ContextBanner';
 import { ContentWarningBanner } from './ContentWarningBanner';
 import { ImportPicker } from './ImportPicker';
@@ -137,6 +139,7 @@ export function DraftEngine({
     b_roll_required: false,
   });
   const [producedContent, setProducedContent] = useState<string>('');
+  const [producedDraftJson, setProducedDraftJson] = useState<Record<string, unknown> | null>(null);
   const [contentWarning, setContentWarning] = useState<string | null>(null);
 
   // Generation state
@@ -265,6 +268,7 @@ export function DraftEngine({
             const content = extractProducedContent(d, (d.type as DraftType) ?? 'blog');
             if (content && content !== '{}') {
               setProducedContent(content);
+              setProducedDraftJson(draftJson);
               setPhase('done');
               setCoreApproved(true);
               restoredAndDone = true;
@@ -586,6 +590,10 @@ export function DraftEngine({
           extractProducedContent({ draft_json: parsedObj }, fmt) ||
           '';
         setProducedContent(content);
+        setProducedDraftJson(
+          (apiDraft && extractDraftJson(apiDraft)) ||
+          (Object.keys(parsedObj).length > 0 ? parsedObj : null),
+        );
         setPhase('done');
         if (!overviewMode) toast.success(`${manualState.phase.charAt(0).toUpperCase() + manualState.phase.slice(1)} content submitted`);
       }
@@ -716,6 +724,7 @@ export function DraftEngine({
             const content = extractProducedContent(draftRow, type);
             if (content && content !== '{}') {
               setProducedContent(content);
+              setProducedDraftJson((draftJson as Record<string, unknown>) ?? null);
               setCoreApproved(true);
               setPhase('done');
               const warning = typeof draftJson?.content_warning === 'string' ? draftJson.content_warning : null;
@@ -734,6 +743,7 @@ export function DraftEngine({
           const content = extractProducedContent(draftRow, type);
           if (content && content !== '{}') {
             setProducedContent(content);
+            setProducedDraftJson((draftJson as Record<string, unknown>) ?? null);
             setPhase('done');
             if (!overviewMode) toast.success('Content generated');
           } else {
@@ -864,7 +874,9 @@ export function DraftEngine({
     } else if (type === 'video') {
       const video = (obj.video_script ?? obj.video ?? obj) as Record<string, unknown>;
       content = typeof video.script === 'string' ? video.script
-        : typeof video.full_script === 'string' ? video.full_script : '';
+        : typeof video.full_script === 'string' ? video.full_script
+        : typeof video.teleprompter_script === 'string' ? video.teleprompter_script
+        : typeof obj.teleprompter_script === 'string' ? (obj.teleprompter_script as string) : '';
     } else if (type === 'shorts') {
       const shorts = (obj.shorts ?? obj.scripts) as unknown[];
       if (Array.isArray(shorts)) {
@@ -886,7 +898,10 @@ export function DraftEngine({
       }
     }
 
-    if (!content) {
+    // Video v0.3 BC_VIDEO_OUTPUT can be structurally rich (script as object) without
+    // a single canonical "content" string — VideoDraftViewer renders the structured
+    // object directly. Accept the import as long as we have a parsed object.
+    if (!content && type !== 'video') {
       toast.error('Could not extract content. Expected full_draft (blog), script (video), or outline (podcast).');
       return;
     }
@@ -904,6 +919,7 @@ export function DraftEngine({
     }
 
     setProducedContent(content);
+    setProducedDraftJson(obj);
     tracker.trackAction('imported', {
       phase: 'produce',
       source: 'manual',
@@ -923,6 +939,18 @@ export function DraftEngine({
    * - shorts: { shorts: [...] }
    * - podcast: { podcast_outline: { outline: "..." } } or { outline: "..." }
    */
+  // Returns the structured draft_json from an API row or a parsed user object.
+  // VideoDraftViewer consumes this for type='video' instead of the markdown string.
+  function extractDraftJson(data: Record<string, unknown>): Record<string, unknown> | null {
+    const fromRow = (data.draft_json ?? data.draftJson) as Record<string, unknown> | null | undefined;
+    if (fromRow && typeof fromRow === 'object' && Object.keys(fromRow).length > 0) return fromRow;
+    // Manual paste path: the parsed object IS the draft_json (no row wrapper).
+    if (data && typeof data === 'object' && !data.draft_json && !data.draftJson) {
+      return data as Record<string, unknown>;
+    }
+    return null;
+  }
+
   function extractProducedContent(data: Record<string, unknown>, fmt: DraftType): string {
     // Try produced_content first (direct field if API sets it)
     if (typeof data.produced_content === 'string') return data.produced_content;
@@ -938,11 +966,15 @@ export function DraftEngine({
       if (typeof draftJson.full_draft === 'string') return draftJson.full_draft;
     }
 
-    // Video: look for script
+    // Video: look for script (legacy: string) or teleprompter_script (v0.3 BC_VIDEO_OUTPUT).
+    // The structured object form is rendered by VideoDraftViewer, but we still need a
+    // markdown fallback so the existing string-based pipeline (tracker, word count) works.
     if (fmt === 'video') {
       const video = (draftJson.video_script ?? draftJson.video) as Record<string, unknown> | undefined;
       if (typeof video?.script === 'string') return video.script;
       if (typeof draftJson.script === 'string') return draftJson.script;
+      if (typeof draftJson.teleprompter_script === 'string') return draftJson.teleprompter_script;
+      if (typeof video?.teleprompter_script === 'string') return video.teleprompter_script;
     }
 
     // Shorts: format as readable text
@@ -1692,19 +1724,24 @@ export function DraftEngine({
       <ContentWarningBanner warning={contentWarning} />
 
       {/* ═══ Final Content Preview ═══ */}
-      {phase === 'done' && producedContent && (
+      {phase === 'done' && (producedContent || (type === 'video' && producedDraftJson)) && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Preview</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <MarkdownPreview content={producedContent} className="bg-muted/20 p-4 rounded" />
+            {type === 'video' && producedDraftJson ? (
+              <VideoDraftViewer output={producedDraftJson as unknown as VideoOutput} />
+            ) : (
+              <MarkdownPreview content={producedContent} className="bg-muted/20 p-4 rounded" />
+            )}
             <div className="flex justify-end gap-2">
               <Button
                 variant="outline"
                 onClick={() => {
                   setPhase('core-ready');
                   setProducedContent('');
+                  setProducedDraftJson(null);
                 }}
               >
                 <Pencil className="h-4 w-4 mr-2" /> Produce Another Format
