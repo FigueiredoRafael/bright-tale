@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useForm, useWatch } from 'react-hook-form'
+import { useForm, useWatch, type Resolver } from 'react-hook-form'
 import { Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -96,7 +96,7 @@ const formSchema = z.object({
     providerOverride: z.enum(['openai', 'anthropic', 'gemini', 'ollama']).nullable(),
     modelOverride: z.string().nullable().optional(),
     assetMode: z.enum(['skip', 'briefs_only', 'auto_generate']),
-    imageScope: z.enum(['featured_only', 'featured_and_conclusion', 'all']),
+    imageScope: z.enum(['featured_only', 'featured_and_conclusion', 'all']).default('all'),
   }),
   preview: z.object({
     enabled: z.boolean(),
@@ -468,7 +468,7 @@ export function MiniWizardSheet({ isOpen, onClose }: MiniWizardSheetProps) {
     reset,
     formState: { errors },
   } = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(formSchema) as Resolver<FormValues>,
     defaultValues: buildDefaultValues(
       autopilotConfig,
       defaultProviders,
@@ -805,7 +805,7 @@ export function MiniWizardSheet({ isOpen, onClose }: MiniWizardSheetProps) {
             />
             {assetsModeWatch === 'auto_generate' && (
               <>
-                <Label className="mt-3">Image scope</Label>
+                <Label className="text-xs font-medium text-muted-foreground mb-2 mt-3 block">Image scope</Label>
                 <Controller
                   control={control}
                   name="assets.imageScope"

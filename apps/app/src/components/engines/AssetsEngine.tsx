@@ -372,7 +372,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     void handleGenerateAllSlots();
   // handleGenerateAllSlots is a stable function declaration in this scope.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoMode, autoPaused, isGeneratingImages, slotCards.length, slotAssets, generatingAll, generatingSlot, assetsBlocked]);
+  }, [autoMode, autoPaused, isGeneratingImages, slotCards.length, scopedSlotCards.length, slotAssets, generatingAll, generatingSlot, assetsBlocked]);
 
   const autoFinishRef = useRef(false);
   useEffect(() => {
