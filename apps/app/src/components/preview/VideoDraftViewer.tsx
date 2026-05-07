@@ -132,7 +132,15 @@ export function VideoDraftViewer({ output, className = '' }: VideoDraftViewerPro
 // ─── Tab: Roteiro ─────────────────────────────────────────────────────────────
 
 function ScriptTab({ output }: { output: VideoOutput }) {
-  const { script } = output;
+  const script = output.script as VideoOutput['script'] | undefined;
+  if (!script || typeof script !== 'object') {
+    return (
+      <EmptyState
+        icon={<Film className="h-5 w-5" />}
+        message="Roteiro estruturado ausente neste output. Veja a aba Publicação para o teleprompter."
+      />
+    );
+  }
   const audioDirection = script.audio_direction;
 
   return (
