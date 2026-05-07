@@ -1,0 +1,1617 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bright Tale · Auditoria Pipeline YouTube v2 · 7 de maio de 2026</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/panzoom@9/dist/panzoom.min.js"></script>
+<style>
+  :root {
+    --bg: #fafaf9; --surface: #ffffff; --surface-2: #f5f5f4;
+    --ink: #0c0a09; --ink-muted: #57534e; --ink-subtle: #a8a29e;
+    --line: #e7e5e4; --line-strong: #d6d3d1;
+    --accent: #1d4ed8; --accent-soft: #eff6ff;
+    --green: #15803d; --green-soft: #dcfce7;
+    --amber: #b45309; --amber-soft: #fef3c7;
+    --red: #b91c1c; --red-soft: #fee2e2;
+    --violet: #6d28d9; --violet-soft: #ede9fe;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 12px -2px rgba(0,0,0,0.06), 0 2px 4px -1px rgba(0,0,0,0.04);
+    --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c0a09; --surface: #1c1917; --surface-2: #292524;
+      --ink: #fafaf9; --ink-muted: #a8a29e; --ink-subtle: #78716c;
+      --line: #292524; --line-strong: #44403c;
+      --accent: #60a5fa; --accent-soft: #1e3a8a26;
+      --green: #4ade80; --green-soft: #14532d40;
+      --amber: #fbbf24; --amber-soft: #78350f40;
+      --red: #f87171; --red-soft: #7f1d1d40;
+      --violet: #a78bfa; --violet-soft: #4c1d9540;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+    font-size: 16px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+  .container { max-width: 1140px; margin: 0 auto; padding: 64px 32px 96px; }
+  @media (max-width: 720px) { .container { padding: 32px 20px 64px; } }
+
+  html[lang="pt"] [lang="en"] { display: none !important; }
+  html[lang="en"] [lang="pt"] { display: none !important; }
+  .lang-bar {
+    position: fixed; top: 16px; right: 20px; z-index: 100;
+    display: inline-flex; gap: 1px; background: var(--line);
+    border: 1px solid var(--line); border-radius: 100px; overflow: hidden;
+    box-shadow: var(--shadow-sm);
+  }
+  .lang-bar button {
+    background: var(--surface); color: var(--ink-muted); border: none;
+    padding: 6px 14px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.06em; cursor: pointer; transition: background 0.15s, color 0.15s;
+  }
+  .lang-bar button:hover { background: var(--surface-2); }
+  .lang-bar button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+
+  .hero { border-bottom: 1px solid var(--line); padding-bottom: 48px; margin-bottom: 64px; }
+  .hero-eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; color: var(--ink-muted); text-transform: uppercase;
+    letter-spacing: 0.08em; padding: 6px 12px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 100px; margin-bottom: 24px;
+  }
+  .hero-eyebrow::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft);
+  }
+  .hero h1 {
+    font-size: clamp(32px, 5vw, 50px); font-weight: 600;
+    letter-spacing: -0.025em; line-height: 1.08; margin: 0 0 16px;
+  }
+  .hero-subtitle {
+    font-size: clamp(16px, 1.9vw, 20px); color: var(--ink-muted);
+    max-width: 820px; line-height: 1.5; margin: 0 0 32px;
+  }
+  .hero-meta {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 24px; padding-top: 24px; border-top: 1px solid var(--line);
+  }
+  .hero-meta dt {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-subtle); text-transform: uppercase;
+    letter-spacing: 0.06em; margin-bottom: 6px;
+  }
+  .hero-meta dd { font-size: 16px; font-weight: 500; margin: 0; }
+
+  .kpi-strip {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1px; background: var(--line); border: 1px solid var(--line);
+    border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 80px;
+  }
+  .kpi { background: var(--surface); padding: 24px 24px 28px; }
+  .kpi-label {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-subtle); text-transform: uppercase;
+    letter-spacing: 0.06em; margin-bottom: 12px;
+  }
+  .kpi-value { font-size: 36px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; color: var(--ink); }
+  .kpi-suffix { font-size: 14px; color: var(--ink-muted); font-weight: 400; margin-left: 4px; }
+  .kpi-delta { font-size: 13px; color: var(--ink-muted); margin-top: 8px; }
+
+  section.section { margin-bottom: 80px; }
+  .section-eyebrow {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--accent); text-transform: uppercase;
+    letter-spacing: 0.08em; margin-bottom: 12px;
+  }
+  .section-title {
+    font-size: clamp(24px, 3.2vw, 32px); font-weight: 600;
+    letter-spacing: -0.02em; line-height: 1.15; margin: 0 0 16px;
+  }
+  .section-lede { font-size: 17px; color: var(--ink-muted); max-width: 760px; margin: 0 0 40px; }
+
+  .summary-prose { font-size: 17px; line-height: 1.7; color: var(--ink); max-width: 760px; }
+  .summary-prose p { margin: 0 0 18px; }
+  .summary-prose strong { font-weight: 600; }
+
+  h3.subsection {
+    font-size: 14px; font-weight: 500; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 0.08em; margin: 32px 0 16px;
+  }
+
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-md); padding: 24px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-md); }
+  .card-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: var(--accent-soft); color: var(--accent);
+    display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px;
+  }
+  .card-icon.green { background: var(--green-soft); color: var(--green); }
+  .card-icon.violet { background: var(--violet-soft); color: var(--violet); }
+  .card-icon.amber { background: var(--amber-soft); color: var(--amber); }
+  .card-icon.red { background: var(--red-soft); color: var(--red); }
+  .card-icon svg { width: 22px; height: 22px; }
+  .card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .card-title { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+  .card-body { font-size: 14px; color: var(--ink-muted); line-height: 1.55; }
+  .card-body p { margin: 0 0 8px; }
+  .card-body p:last-child { margin-bottom: 0; }
+  .card-body code { font-size: 12px; }
+  .card-meta {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-subtle); text-transform: uppercase; letter-spacing: 0.05em;
+  }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; font-weight: 500; text-transform: uppercase;
+    letter-spacing: 0.04em; padding: 4px 10px; border-radius: 100px; white-space: nowrap;
+  }
+  .badge.green { color: var(--green); background: var(--green-soft); }
+  .badge.amber { color: var(--amber); background: var(--amber-soft); }
+  .badge.red { color: var(--red); background: var(--red-soft); }
+  .badge.blue { color: var(--accent); background: var(--accent-soft); }
+  .badge.violet { color: var(--violet); background: var(--violet-soft); }
+  .badge.neutral { color: var(--ink-muted); background: var(--surface-2); }
+  .badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+  .table-wrap {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-md); overflow: hidden;
+  }
+  table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.data thead { background: var(--surface-2); border-bottom: 1px solid var(--line); }
+  table.data th {
+    text-align: left; padding: 14px 20px; font-weight: 500;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  table.data td { padding: 14px 20px; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.5; }
+  table.data tbody tr:last-child td { border-bottom: none; }
+  table.data tbody tr:hover { background: var(--surface-2); }
+  table.data td.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
+
+  .roadmap { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .horizon { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 24px; }
+  .horizon-label {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--accent); text-transform: uppercase;
+    letter-spacing: 0.06em; margin-bottom: 4px;
+  }
+  .horizon-title { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 16px; }
+  .horizon-list { list-style: none; padding: 0; margin: 0; }
+  .horizon-list li { padding: 12px 0; border-top: 1px solid var(--line); font-size: 14px; line-height: 1.5; }
+  .horizon-list li:first-child { border-top: none; }
+  .horizon-list li strong { display: block; font-weight: 500; margin-bottom: 4px; }
+  .horizon-list li span { color: var(--ink-muted); font-size: 13px; }
+  .horizon.accent { border-color: var(--accent); }
+  .horizon.accent .horizon-label { color: var(--accent); }
+  .horizon.amber { border-color: var(--amber); }
+  .horizon.amber .horizon-label { color: var(--amber); }
+  .horizon.green { border-color: var(--green); }
+  .horizon.green .horizon-label { color: var(--green); }
+
+  code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.88em; padding: 2px 6px;
+    background: var(--surface-2); border-radius: 4px; color: var(--ink);
+  }
+
+  .callout {
+    border-left: 3px solid var(--accent); background: var(--accent-soft);
+    padding: 16px 20px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    margin: 24px 0; font-size: 14px; line-height: 1.6;
+  }
+  .callout strong { color: var(--ink); font-weight: 600; }
+  .callout.amber { border-color: var(--amber); background: var(--amber-soft); }
+  .callout.green { border-color: var(--green); background: var(--green-soft); }
+  .callout.red { border-color: var(--red); background: var(--red-soft); }
+
+  .diagram-card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-md); overflow: hidden; margin: 24px 0;
+  }
+  .toolbar {
+    display: flex; align-items: center; gap: 4px;
+    padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface-2);
+  }
+  .toolbar button {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 500; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 6px; padding: 4px 10px; cursor: pointer;
+    transition: background 0.1s, border-color 0.1s; line-height: 1; font-family: inherit;
+  }
+  .toolbar button:hover { background: var(--surface-2); border-color: var(--line-strong); }
+  .toolbar button svg { flex-shrink: 0; }
+  .toolbar .sep { width: 1px; height: 16px; background: var(--line); margin: 0 4px; }
+  .toolbar .zoom-label {
+    font-size: 11px; color: var(--ink-subtle); min-width: 38px; text-align: center;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  .diagram-viewport {
+    overflow: hidden; cursor: grab; position: relative;
+    height: 520px;
+    background: var(--surface-2);
+    border-top: 1px solid var(--line);
+  }
+  .diagram-viewport.tall { height: 1060px; }
+  .diagram-viewport.medium { height: 520px; }
+  .diagram-viewport.wide { height: 520px; }
+  .diagram-viewport:active { cursor: grabbing; }
+  .diagram-viewport.is-fullscreen {
+    position: fixed; inset: 0; z-index: 9999; background: var(--bg); height: 100dvh;
+  }
+  .diagram-viewport .mermaid { display: inline-block; position: absolute; top: 0; left: 0; }
+  .diagram-viewport svg { display: block; }
+  .fs-toolbar { display: none; position: fixed; top: 12px; right: 16px; z-index: 10000; gap: 4px; }
+  .fs-toolbar.visible { display: flex; }
+  .fs-toolbar button {
+    font-size: 12px; font-weight: 500; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 12px; cursor: pointer;
+    box-shadow: var(--shadow-sm); font-family: inherit;
+  }
+  .diagram-caption {
+    padding: 12px 16px; border-top: 1px solid var(--line);
+    background: var(--surface-2); font-size: 12px; color: var(--ink-muted);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  details.disclose {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-md); margin: 16px 0; overflow: hidden;
+  }
+  details.disclose[open] { box-shadow: var(--shadow-sm); }
+  details.disclose > summary {
+    padding: 18px 24px; cursor: pointer; user-select: none;
+    display: flex; align-items: center; gap: 12px;
+    font-weight: 500; font-size: 15px; list-style: none;
+  }
+  details.disclose > summary::-webkit-details-marker { display: none; }
+  details.disclose > summary::before {
+    content: "+"; display: inline-flex; width: 22px; height: 22px; border-radius: 6px;
+    background: var(--surface-2); color: var(--ink-muted);
+    align-items: center; justify-content: center;
+    font-family: ui-monospace, "SF Mono", monospace; font-size: 14px;
+    transition: transform 0.15s, background 0.15s;
+  }
+  details.disclose[open] > summary::before { content: "−"; background: var(--accent-soft); color: var(--accent); }
+  details.disclose > .disclose-body {
+    padding: 0 24px 24px; border-top: 1px solid var(--line); padding-top: 20px;
+    color: var(--ink-muted); font-size: 14px; line-height: 1.65;
+  }
+  details.disclose > .disclose-body p { margin: 0 0 12px; }
+  details.disclose > .disclose-body strong { color: var(--ink); font-weight: 600; }
+  details.disclose > .disclose-body ul { margin: 0 0 12px; padding-left: 20px; }
+  details.disclose > .disclose-body li { margin: 4px 0; }
+
+  .conclusion-card {
+    position: relative;
+    background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+    border: 1px solid var(--line); border-radius: var(--radius-lg);
+    padding: 40px 40px 36px; margin-bottom: 24px; overflow: hidden;
+  }
+  .conclusion-card::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+    background: linear-gradient(90deg, var(--amber), var(--accent), var(--violet));
+  }
+  .conclusion-card h3 {
+    font-size: clamp(20px, 2.6vw, 26px); font-weight: 600;
+    letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 16px; max-width: 800px;
+  }
+  .conclusion-card p { font-size: 16px; line-height: 1.65; color: var(--ink-muted); max-width: 800px; margin: 0 0 14px; }
+  .conclusion-card p strong { color: var(--ink); font-weight: 600; }
+
+  .open-items {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-md); overflow: hidden;
+  }
+  @media (max-width: 720px) { .open-items { grid-template-columns: 1fr; } }
+  .open-item { padding: 18px 20px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .open-item:nth-child(even) { border-right: none; }
+  .open-item-label {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--ink-subtle); text-transform: uppercase;
+    letter-spacing: 0.06em; margin-bottom: 6px;
+  }
+  .open-item-text { font-size: 14px; color: var(--ink); line-height: 1.5; }
+
+  footer {
+    margin-top: 96px; padding-top: 32px; border-top: 1px solid var(--line);
+    color: var(--ink-subtle); font-size: 13px;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 16px;
+  }
+  footer .avatar-stack { display: flex; }
+  footer .avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--violet));
+    border: 2px solid var(--bg); display: inline-flex; align-items: center;
+    justify-content: center; font-size: 11px; font-weight: 600; color: white; margin-left: -8px;
+  }
+  footer .avatar:first-child { margin-left: 0; }
+
+  .progress-bar-wrap {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-md); padding: 24px; margin: 24px 0;
+  }
+  .progress-bar-label {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 14px; font-weight: 500; margin-bottom: 10px;
+  }
+  .progress-bar-label span { font-family: ui-monospace, monospace; font-size: 13px; color: var(--ink-muted); }
+  .progress-track { height: 8px; background: var(--surface-2); border-radius: 100px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 100px; transition: width 0.6s ease; }
+  .progress-fill.green { background: var(--green); }
+  .progress-fill.amber { background: var(--amber); }
+  .progress-fill.red { background: var(--red); }
+  .progress-fill.blue { background: var(--accent); }
+
+  @media (max-width: 600px) {
+    table.data thead { display: none; }
+    table.data tr { display: block; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+    table.data td { display: block; padding: 4px 0; border: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="lang-bar" role="group" aria-label="Language switch">
+  <button data-lang="pt" aria-pressed="true">PT</button>
+  <button data-lang="en" aria-pressed="false">EN</button>
+</div>
+
+<div class="container">
+
+  <!-- HERO -->
+  <header class="hero">
+    <span class="hero-eyebrow">
+      <span lang="pt">Relatório de auditoria · Pipeline YouTube v2 · 7 mai 2026</span>
+      <span lang="en">Audit report · YouTube Pipeline v2 · May 7, 2026</span>
+    </span>
+    <h1 lang="pt">Pipeline de vídeo tem 70% implementado — 7 gaps bloqueiam roteiros competitivos no YouTube.</h1>
+    <h1 lang="en">Video pipeline is 70% implemented — 7 gaps block competitive YouTube scripts.</h1>
+    <p class="hero-subtitle" lang="pt">Auditoria completa da pipeline de geração de roteiros para YouTube: fluxo atual mapeado, gaps identificados via seed + codebase, fluxo alvo desenhado com diagramas, pontos de ajuste por arquivo, e expectativa de conclusão do refactor em v0.3.</p>
+    <p class="hero-subtitle" lang="en">Complete audit of the YouTube script generation pipeline: current flow mapped, gaps identified via seed + codebase, target flow diagrammed, file-level adjustment points, and v0.3 refactor completion estimate.</p>
+    <dl class="hero-meta">
+      <div>
+        <dt lang="pt">Auditado em</dt><dt lang="en">Audited on</dt>
+        <dd>7 mai 2026</dd>
+      </div>
+      <div>
+        <dt lang="pt">Branch alvo</dt><dt lang="en">Target branch</dt>
+        <dd><code>staging</code> → <code>feat/yt-pipeline-v2</code></dd>
+      </div>
+      <div>
+        <dt>Milestone</dt>
+        <dd>v0.3</dd>
+      </div>
+      <div>
+        <dt lang="pt">Pipeline atual</dt><dt lang="en">Current pipeline</dt>
+        <dd lang="pt">70% implementado</dd><dd lang="en">70% implemented</dd>
+      </div>
+    </dl>
+  </header>
+
+  <!-- KPIs -->
+  <div class="kpi-strip">
+    <div class="kpi">
+      <div class="kpi-label" lang="pt">Implementado</div>
+      <div class="kpi-label" lang="en">Implemented</div>
+      <div class="kpi-value">70<span class="kpi-suffix">%</span></div>
+      <div class="kpi-delta" lang="pt">do output competitivo já existe</div>
+      <div class="kpi-delta" lang="en">of competitive output already exists</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Gaps</div>
+      <div class="kpi-value">7</div>
+      <div class="kpi-delta" lang="pt">blockers para v0.3</div>
+      <div class="kpi-delta" lang="en">blockers for v0.3</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label" lang="pt">Arquivos a tocar</div>
+      <div class="kpi-label" lang="en">Files to change</div>
+      <div class="kpi-value">9</div>
+      <div class="kpi-delta" lang="pt">+ 1 arquivo novo + 1 migration</div>
+      <div class="kpi-delta" lang="en">+ 1 new file + 1 migration</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label" lang="pt">Estimativa</div>
+      <div class="kpi-label" lang="en">Estimate</div>
+      <div class="kpi-value">10<span class="kpi-suffix">d</span></div>
+      <div class="kpi-delta" lang="pt">dias úteis para v0.3 completo</div>
+      <div class="kpi-delta" lang="en">working days to complete v0.3</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label" lang="pt">TTS disponível</div>
+      <div class="kpi-label" lang="en">TTS available</div>
+      <div class="kpi-value">0<span class="kpi-suffix">wire</span></div>
+      <div class="kpi-delta" lang="pt">endpoint existe, não conectado</div>
+      <div class="kpi-delta" lang="en">endpoint exists, not wired</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label" lang="pt">Vídeo → Shorts</div>
+      <div class="kpi-label" lang="en">Video → Shorts</div>
+      <div class="kpi-value">0<span class="kpi-suffix">link</span></div>
+      <div class="kpi-delta" lang="pt">agentes independentes, sem FK</div>
+      <div class="kpi-delta" lang="en">independent agents, no FK</div>
+    </div>
+  </div>
+
+  <!-- 01 PESQUISA -->
+  <section class="section" id="research">
+    <div class="section-eyebrow">01 · <span lang="pt">Pesquisa de mercado</span><span lang="en">Market research</span></div>
+    <h2 class="section-title" lang="pt">O que o mercado está fazendo em 2026.</h2>
+    <h2 class="section-title" lang="en">What the market is doing in 2026.</h2>
+    <p class="section-lede" lang="pt">Três frentes de pesquisa foram conduzidas antes da auditoria da pipeline: geração de thumbnails, estrutura de roteiros e automação de Shorts/B-roll. Os achados estão consolidados abaixo com fontes.</p>
+    <p class="section-lede" lang="en">Three research tracks were conducted before the pipeline audit: thumbnail generation, script structure, and Shorts/B-roll automation. Findings are consolidated below with sources.</p>
+
+    <div class="card-grid">
+
+      <article class="card">
+        <div class="card-icon violet">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">Geração de Thumbnails</h3>
+          <h3 class="card-title" lang="en">Thumbnail Generation</h3>
+          <span class="badge violet" lang="pt">3 fontes</span>
+          <span class="badge violet" lang="en">3 sources</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt"><strong>Estado da arte em 2026:</strong> ferramentas como Thumbmagic, ThumbnailCreator e YTZolo geram thumbnails via IA com predição de CTR antes da publicação. O YouTube já testa servir thumbnails diferentes para segmentos diferentes de audiência (A/B automático nativo).</p>
+          <p lang="en"><strong>State of the art in 2026:</strong> tools like Thumbmagic, ThumbnailCreator, and YTZolo generate thumbnails via AI with CTR prediction before publishing. YouTube is already testing serving different thumbnails to different audience segments (native automatic A/B).</p>
+          <p lang="pt"><strong>Padrão de "dualidades":</strong> geração de 3–5 variações de conceito com emoção definida (curiosity / shock / intrigue), paleta de cor, composição e texto overlay. A/B testing é feito pelo criador com base nos conceitos.</p>
+          <p lang="en"><strong>"Dualities" standard:</strong> generation of 3–5 concept variations with defined emotion (curiosity / shock / intrigue), color palette, composition, and text overlay. A/B testing done by the creator based on concepts.</p>
+          <p lang="pt"><strong>Relevância para a pipeline:</strong> o campo <code>thumbnail_ideas[]</code> já existe no output do <code>BC_VIDEO</code> com exatamente esse formato — 3–5 conceitos, emoção, paleta e composição. Está implementado e alinhado com o padrão de mercado.</p>
+          <p lang="en"><strong>Pipeline relevance:</strong> the <code>thumbnail_ideas[]</code> field already exists in <code>BC_VIDEO</code> output with exactly this format — 3–5 concepts, emotion, palette, and composition. It's implemented and aligned with market standard.</p>
+        </div>
+        <div class="card-meta">
+          <a href="https://www.thumbmagic.co/" target="_blank">Thumbmagic</a> ·
+          <a href="https://aizolo.com/blog/thumbnail-generator-ai/" target="_blank">YTZolo</a> ·
+          <a href="https://www.thumbnailcreator.com/" target="_blank">ThumbnailCreator</a>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">Estrutura de Roteiros</h3>
+          <h3 class="card-title" lang="en">Script Structure</h3>
+          <span class="badge blue" lang="pt">5 fontes</span>
+          <span class="badge blue" lang="en">5 sources</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt"><strong>Diferença crítica 2026:</strong> roteiros profissionais distinguem dois documentos separados — <em>teleprompter script</em> (leitura limpa para apresentador ou TTS, sem cues de produção) e <em>editor script</em> (guia técnico com A-roll, B-roll, SFX, texto overlay e transições). O agente <code>BC_VIDEO</code> já gera os dois.</p>
+          <p lang="en"><strong>Critical 2026 distinction:</strong> professional scripts separate two documents — <em>teleprompter script</em> (clean reading for presenter or TTS, no production cues) and <em>editor script</em> (technical guide with A-roll, B-roll, SFX, text overlays, and transitions). The <code>BC_VIDEO</code> agent already generates both.</p>
+          <p lang="pt"><strong>Padrão de velocidade:</strong> 130–160 palavras por minuto para narração natural. Vídeo de 8 min = ~1.200–1.280 palavras no teleprompter. A regra de escalonamento por <code>target_duration_minutes</code> já existe no agente, mas o campo não está declarado formalmente no inputSchema (Gap G2).</p>
+          <p lang="en"><strong>Pace standard:</strong> 130–160 words per minute for natural narration. 8-min video = ~1,200–1,280 words in teleprompter. The scaling rule by <code>target_duration_minutes</code> already exists in the agent, but the field isn't formally declared in the inputSchema (Gap G2).</p>
+          <p lang="pt"><strong>Canais dark/faceless:</strong> script deve ser escrito para <em>performance vocal</em>, sem referências à presença física. Linguagem de IA como "Como você pode ver aqui" é incompatível com TTS. Exige <code>channel_type=dark</code> no input do agente para adaptar o tom (Gap G3).</p>
+          <p lang="en"><strong>Dark/faceless channels:</strong> script must be written for <em>vocal performance</em>, without references to physical presence. AI language like "As you can see here" is incompatible with TTS. Requires <code>channel_type=dark</code> in agent input to adapt tone (Gap G3).</p>
+        </div>
+        <div class="card-meta">
+          <a href="https://www.studiobinder.com/blog/script-writing-on-youtube/" target="_blank">StudioBinder</a> ·
+          <a href="https://subscribr.ai/" target="_blank">Subscribr</a> ·
+          <a href="https://vidiq.com/blog/post/write-youtube-video-script/" target="_blank">vidIQ</a>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22.54 6.42a2.78 2.78 0 00-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46a2.78 2.78 0 00-1.95 1.96A29 29 0 001 12a29 29 0 00.46 5.58A2.78 2.78 0 003.41 19.54C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 001.95-1.96A29 29 0 0023 12a29 29 0 00-.46-5.58z"/><polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">Automação de Shorts e B-roll</h3>
+          <h3 class="card-title" lang="en">Shorts and B-roll Automation</h3>
+          <span class="badge green" lang="pt">4 fontes</span>
+          <span class="badge green" lang="en">4 sources</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt"><strong>Pipelines open-source em 2026:</strong> projetos como ShortGPT e AI-Youtube-Shorts-Generator fazem highlight detection via LLM, transcrição Whisper, recorte vertical 9:16 automático e score de viralidade antes de exportar — tudo a partir de um vídeo longo já existente.</p>
+          <p lang="en"><strong>Open-source pipelines in 2026:</strong> projects like ShortGPT and AI-Youtube-Shorts-Generator do LLM highlight detection, Whisper transcription, automatic 9:16 vertical cropping, and virality scoring before export — all from an existing long-form video.</p>
+          <p lang="pt"><strong>Implicação para nossa pipeline:</strong> hoje os Shorts são derivados do <code>BC_CANONICAL_CORE</code>, independente do vídeo. O padrão de mercado é derivar de capítulos já gerados. O mapper <code>mapVideoOutputToShortsInput()</code> que precisamos criar (Gap G7) está alinhado com esse padrão.</p>
+          <p lang="en"><strong>Implication for our pipeline:</strong> today Shorts are derived from <code>BC_CANONICAL_CORE</code>, independent of the video. The market standard is to derive from already-generated chapters. The <code>mapVideoOutputToShortsInput()</code> mapper we need to create (Gap G7) aligns with this standard.</p>
+          <p lang="pt"><strong>B-roll com Ken Burns + voice ducking</strong> são padrão em canais dark. Animação de B-roll (zoom/pan automático) + trilha sonora com duck automático na narração estão nos pipelines abertos de 2026. Isso é escopo de pós-edição — fora da nossa pipeline de roteiro.</p>
+          <p lang="en"><strong>Ken Burns B-roll + voice ducking</strong> are standard in dark channels. B-roll animation (auto zoom/pan) + soundtrack with automatic duck on narration are in 2026 open pipelines. This is post-editing scope — outside our script pipeline.</p>
+        </div>
+        <div class="card-meta">
+          <a href="https://github.com/RayVentura/ShortGPT" target="_blank">ShortGPT</a> ·
+          <a href="https://github.com/samuraigpt/ai-youtube-shorts-generator" target="_blank">AI-Shorts-Generator</a> ·
+          <a href="https://shotstack.io/learn/best-ai-tools-for-youtube-automation/" target="_blank">Shotstack 2026</a>
+        </div>
+      </article>
+
+    </div>
+
+    <div class="callout green" style="margin-top: 32px">
+      <strong lang="pt">Conclusão da pesquisa:</strong><strong lang="en">Research conclusion:</strong>
+      <span lang="pt"> A BrightTale está alinhada com o padrão de mercado nos outputs gerados (<code>teleprompter_script</code>, <code>editor_script</code>, <code>thumbnail_ideas[]</code>). O gap não é de conceito — é de <strong>configuração</strong>: as variáveis de canal (dark/presenter, número de câmeras, TTS) não chegam ao agente. Fechar os 7 gaps coloca a pipeline em paridade com pipelines comerciais do mercado em 2026.</span>
+      <span lang="en"> BrightTale is aligned with market standards in generated outputs (<code>teleprompter_script</code>, <code>editor_script</code>, <code>thumbnail_ideas[]</code>). The gap is not conceptual — it's <strong>configuration</strong>: channel variables (dark/presenter, camera count, TTS) don't reach the agent. Closing the 7 gaps puts the pipeline at parity with commercial pipelines in the market in 2026.</span>
+    </div>
+  </section>
+
+  <!-- 02 FORMATOS YOUTUBE -->
+  <section class="section" id="formats">
+    <div class="section-eyebrow">02 · <span lang="pt">Formatos de vídeo YouTube</span><span lang="en">YouTube video formats</span></div>
+    <h2 class="section-title" lang="pt">6 formatos competitivos — o que cada um exige e o que a pipeline precisa ajustar.</h2>
+    <h2 class="section-title" lang="en">6 competitive formats — what each requires and what the pipeline needs to adjust.</h2>
+    <p class="section-lede" lang="pt">Cada formato tem uma configuração diferente de roteiro, B-roll, overlays e câmeras. A tabela de suporte abaixo mostra o que o <code>BC_VIDEO</code> precisa receber para gerar cada formato corretamente.</p>
+    <p class="section-lede" lang="en">Each format has a different configuration of script, B-roll, overlays, and cameras. The support table below shows what <code>BC_VIDEO</code> needs to receive to correctly generate each format.</p>
+
+    <div class="card-grid" style="grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));">
+
+      <article class="card">
+        <div class="card-icon green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title">Talking Head Standard</h3>
+          <span class="badge green" lang="pt">Suportado</span>
+          <span class="badge green" lang="en">Supported</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt"><strong>Descrição:</strong> apresentador direto para a câmera. 1 câmera, cortes moderados, B-roll de apoio. Formato base de canais educativos e informativos.</p>
+          <p lang="en"><strong>Description:</strong> presenter direct to camera. 1 camera, moderate cuts, supporting B-roll. Base format for educational and informational channels.</p>
+          <p lang="pt"><strong>Script:</strong> teleprompter com cues de entrega (<code>[pause]</code>, <code>[look at camera]</code>). Editor script com A-roll como principal.</p>
+          <p lang="en"><strong>Script:</strong> teleprompter with delivery cues (<code>[pause]</code>, <code>[look at camera]</code>). Editor script with A-roll as primary.</p>
+          <p lang="pt"><strong>Config da pipeline:</strong><br>
+            <code>channel_type: presenter</code> · <code>camera_count: 1</code><br>
+            <code>cut_frequency: moderate</code> · <code>b_roll_density: low</code><br>
+            <code>text_overlays: minimal</code> · <code>presenter_notes: true</code>
+          </p>
+          <p lang="en"><strong>Pipeline config:</strong><br>
+            <code>channel_type: presenter</code> · <code>camera_count: 1</code><br>
+            <code>cut_frequency: moderate</code> · <code>b_roll_density: low</code><br>
+            <code>text_overlays: minimal</code> · <code>presenter_notes: true</code>
+          </p>
+          <p lang="pt"><strong>Ajuste necessário:</strong> G1 (VideoStyleSelector) + G2 (inputSchema) + G3 (channel context).</p>
+          <p lang="en"><strong>Required adjustment:</strong> G1 (VideoStyleSelector) + G2 (inputSchema) + G3 (channel context).</p>
+        </div>
+        <div class="card-meta"><code>template: talking_head_standard</code></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon violet">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title">Talking Head Dynamic</h3>
+          <span class="badge amber" lang="pt">Parcial (G5)</span>
+          <span class="badge amber" lang="en">Partial (G5)</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt"><strong>Descrição:</strong> apresentador em câmera com cortes rápidos, multi-ângulo, texto overlay em todo claim importante. Estilo MrBeast/high-energy. 2+ câmeras.</p>
+          <p lang="en"><strong>Description:</strong> presenter on camera with fast cuts, multi-angle, text overlay on every important claim. MrBeast/high-energy style. 2+ cameras.</p>
+          <p lang="pt"><strong>Script:</strong> teleprompter com cues de energia (<code>[energetic]</code>, <code>[point to screen]</code>). Editor script com jump-cuts marcados e timestamps para TEXT overlays.</p>
+          <p lang="en"><strong>Script:</strong> teleprompter with energy cues (<code>[energetic]</code>, <code>[point to screen]</code>). Editor script with marked jump-cuts and timestamps for TEXT overlays.</p>
+          <p lang="pt"><strong>Config da pipeline:</strong><br>
+            <code>channel_type: presenter</code> · <code>camera_count: 2</code><br>
+            <code>cut_frequency: fast</code> · <code>b_roll_density: moderate</code><br>
+            <code>text_overlays: heavy</code> · <code>presenter_notes: true</code>
+          </p>
+          <p lang="en"><strong>Pipeline config:</strong><br>
+            <code>channel_type: presenter</code> · <code>camera_count: 2</code><br>
+            <code>cut_frequency: fast</code> · <code>b_roll_density: moderate</code><br>
+            <code>text_overlays: heavy</code> · <code>presenter_notes: true</code>
+          </p>
+          <p lang="pt"><strong>Ajuste necessário:</strong> G1 + G2 + G5 (<code>camera_count</code> para o agente saber usar linguagem multi-câmera no editor script).</p>
+          <p lang="en"><strong>Required adjustment:</strong> G1 + G2 + G5 (<code>camera_count</code> so agent knows to use multi-camera language in editor script).</p>
+        </div>
+        <div class="card-meta"><code>template: talking_head_dynamic</code></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon red">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">Dark Channel / Faceless</h3>
+          <h3 class="card-title" lang="en">Dark Channel / Faceless</h3>
+          <span class="badge red" lang="pt">Bloqueado (G3+G6)</span>
+          <span class="badge red" lang="en">Blocked (G3+G6)</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt"><strong>Descrição:</strong> sem câmera, 100% narração IA + B-roll (stock ou gerado por IA). Formato de canais informativos, true crime, curiosidades. Script deve ser escrito para performance vocal — sem referências visuais.</p>
+          <p lang="en"><strong>Description:</strong> no camera, 100% AI narration + B-roll (stock or AI-generated). Format for informational, true crime, curiosity channels. Script must be written for vocal performance — no visual references.</p>
+          <p lang="pt"><strong>Script:</strong> teleprompter TTS-ready — sem <code>[look at camera]</code>, sem "Como você pode ver", sem deixas físicas. Editor script com descrições de B-roll detalhadas + mood de trilha sonora.</p>
+          <p lang="en"><strong>Script:</strong> TTS-ready teleprompter — no <code>[look at camera]</code>, no "As you can see", no physical cues. Editor script with detailed B-roll descriptions + soundtrack mood.</p>
+          <p lang="pt"><strong>Config da pipeline:</strong><br>
+            <code>channel_type: dark</code> · <code>tts_enabled: true</code><br>
+            <code>b_roll_density: heavy</code> · <code>b_roll_required: true</code><br>
+            <code>text_overlays: moderate</code> · <code>presenter_notes: false</code>
+          </p>
+          <p lang="en"><strong>Pipeline config:</strong><br>
+            <code>channel_type: dark</code> · <code>tts_enabled: true</code><br>
+            <code>b_roll_density: heavy</code> · <code>b_roll_required: true</code><br>
+            <code>text_overlays: moderate</code> · <code>presenter_notes: false</code>
+          </p>
+          <p lang="pt"><strong>Ajuste necessário:</strong> G1 + G2 + G3 (crítico — channel_type não chega ao agente) + G6 (TTS não conectado). <em>Bloqueado por G3: todos os vídeos dark gerados hoje recebem config vazia.</em></p>
+          <p lang="en"><strong>Required adjustment:</strong> G1 + G2 + G3 (critical — channel_type doesn't reach agent) + G6 (TTS not wired). <em>Blocked by G3: all dark videos generated today receive empty config.</em></p>
+        </div>
+        <div class="card-meta"><code>template: talking_head_standard</code> + <code>channel_type: dark</code></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">B-roll Documentary / Video Essay</h3>
+          <h3 class="card-title" lang="en">B-roll Documentary / Video Essay</h3>
+          <span class="badge amber" lang="pt">Parcial (G4+G3)</span>
+          <span class="badge amber" lang="en">Partial (G4+G3)</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt"><strong>Descrição:</strong> narração por cima de B-roll cinematográfico — pode ter ou não apresentador. Estilo documental. Ritmo conduzido pela música e pelos cortes, não pela fala do apresentador.</p>
+          <p lang="en"><strong>Description:</strong> narration over cinematic B-roll — may or may not have a presenter. Documentary style. Rhythm driven by music and cuts, not presenter speech.</p>
+          <p lang="pt"><strong>Script:</strong> narração fluida (teleprompter sem cues físicos). Editor script com sequências de B-roll de 5–15s cada, marcações de mood de trilha, lower thirds para fontes e nomes.</p>
+          <p lang="en"><strong>Script:</strong> fluid narration (teleprompter without physical cues). Editor script with B-roll sequences of 5–15s each, soundtrack mood markings, lower thirds for sources and names.</p>
+          <p lang="pt"><strong>Config da pipeline:</strong><br>
+            <code>template: b_roll_documentary</code> · <code>b_roll_required: true</code><br>
+            <code>b_roll_density: heavy</code> · <code>lower_thirds_enabled: true</code><br>
+            <code>cut_frequency: slow</code> · <code>music_style: cinematic</code>
+          </p>
+          <p lang="en"><strong>Pipeline config:</strong><br>
+            <code>template: b_roll_documentary</code> · <code>b_roll_required: true</code><br>
+            <code>b_roll_density: heavy</code> · <code>lower_thirds_enabled: true</code><br>
+            <code>cut_frequency: slow</code> · <code>music_style: cinematic</code>
+          </p>
+          <p lang="pt"><strong>Ajuste necessário:</strong> G1 + G4 (lower_thirds — formato depende muito disso para creditar fontes) + G3 (channel_type para tom da narração).</p>
+          <p lang="en"><strong>Required adjustment:</strong> G1 + G4 (lower_thirds — format depends heavily on this for source credits) + G3 (channel_type for narration tone).</p>
+        </div>
+        <div class="card-meta"><code>template: b_roll_documentary</code></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M9 8l3 3 3-3"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">Screen Record / Tutorial</h3>
+          <h3 class="card-title" lang="en">Screen Record / Tutorial</h3>
+          <span class="badge amber" lang="pt">Parcial (G1+G2)</span>
+          <span class="badge amber" lang="en">Partial (G1+G2)</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt"><strong>Descrição:</strong> captura de tela como A-roll principal. Apresentador em janela pequena (picture-in-picture) ou apenas voz. Conteúdo passo a passo — tutoriais, demos de produto, reviews de software.</p>
+          <p lang="en"><strong>Description:</strong> screen capture as primary A-roll. Presenter in small window (picture-in-picture) or voice only. Step-by-step content — tutorials, product demos, software reviews.</p>
+          <p lang="pt"><strong>Script:</strong> teleprompter com referências à tela ("agora clique em..."). Editor script com zoom-ins, callouts, anotações na tela. Text overlays para destacar elementos de UI.</p>
+          <p lang="en"><strong>Script:</strong> teleprompter with screen references ("now click on..."). Editor script with zoom-ins, callouts, on-screen annotations. Text overlays to highlight UI elements.</p>
+          <p lang="pt"><strong>Config da pipeline:</strong><br>
+            <code>template: screen_record_tutorial</code><br>
+            <code>text_overlays: heavy</code> · <code>b_roll_density: low</code><br>
+            <code>cut_frequency: variable</code> · <code>presenter_notes: true</code>
+          </p>
+          <p lang="en"><strong>Pipeline config:</strong><br>
+            <code>template: screen_record_tutorial</code><br>
+            <code>text_overlays: heavy</code> · <code>b_roll_density: low</code><br>
+            <code>cut_frequency: variable</code> · <code>presenter_notes: true</code>
+          </p>
+          <p lang="pt"><strong>Ajuste necessário:</strong> G1 + G2. O template <code>screen_record_tutorial</code> já existe no <code>video_style_config</code> — só precisa chegar ao agente via DraftEngine.</p>
+          <p lang="en"><strong>Required adjustment:</strong> G1 + G2. The <code>screen_record_tutorial</code> template already exists in <code>video_style_config</code> — just needs to reach the agent via DraftEngine.</p>
+        </div>
+        <div class="card-meta"><code>template: screen_record_tutorial</code></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22.54 6.42a2.78 2.78 0 00-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46a2.78 2.78 0 00-1.95 1.96A29 29 0 001 12a29 29 0 00.46 5.58A2.78 2.78 0 003.41 19.54C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 001.95-1.96A29 29 0 0023 12a29 29 0 00-.46-5.58z"/><polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title">YouTube Shorts</h3>
+          <span class="badge amber" lang="pt">Parcial (G7)</span>
+          <span class="badge amber" lang="en">Partial (G7)</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt"><strong>Descrição:</strong> 9:16, 30–60 segundos. Hook nos primeiros 2 segundos. Mensagem única, auto-contida — o viewer não precisa de contexto do vídeo longo. Scroll-stop imediato.</p>
+          <p lang="en"><strong>Description:</strong> 9:16, 30–60 seconds. Hook in the first 2 seconds. Single, self-contained message — viewer needs no context from the long video. Immediate scroll-stop.</p>
+          <p lang="pt"><strong>Script:</strong> 3 partes — hook (2 frases max), corpo (auto-contido, sem preamble), CTA (pergunta ou subscribe). Visual style: talking head | b-roll | text overlay.</p>
+          <p lang="en"><strong>Script:</strong> 3 parts — hook (2 sentences max), body (self-contained, no preamble), CTA (question or subscribe). Visual style: talking head | b-roll | text overlay.</p>
+          <p lang="pt"><strong>Config da pipeline:</strong> agente separado <code>BC_SHORTS</code>. Atualmente derivado do <code>BC_CANONICAL_CORE</code> — deve ser derivado dos capítulos do vídeo (mapper vídeo → Shorts).<br>
+            <code>short_count: 3</code> · <code>duration: 30–60s</code><br>
+            <code>visual_style: talking head | b-roll | text overlay</code>
+          </p>
+          <p lang="en"><strong>Pipeline config:</strong> separate <code>BC_SHORTS</code> agent. Currently derived from <code>BC_CANONICAL_CORE</code> — should be derived from video chapters (video → Shorts mapper).<br>
+            <code>short_count: 3</code> · <code>duration: 30–60s</code><br>
+            <code>visual_style: talking head | b-roll | text overlay</code>
+          </p>
+          <p lang="pt"><strong>Ajuste necessário:</strong> G7 (mapper vídeo→Shorts + FK <code>source_content_draft_id</code>).</p>
+          <p lang="en"><strong>Required adjustment:</strong> G7 (video→Shorts mapper + FK <code>source_content_draft_id</code>).</p>
+        </div>
+        <div class="card-meta"><code>BC_SHORTS</code> agent · aspect ratio 9:16</div>
+      </article>
+
+    </div>
+
+    <h3 class="subsection" lang="pt">Matriz de suporte por formato</h3>
+    <h3 class="subsection" lang="en">Support matrix by format</h3>
+
+    <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr>
+            <th lang="pt">Formato</th><th lang="en">Format</th>
+            <th lang="pt">teleprompter_script</th><th lang="en">teleprompter_script</th>
+            <th lang="pt">editor_script</th><th lang="en">editor_script</th>
+            <th lang="pt">lower_thirds</th><th lang="en">lower_thirds</th>
+            <th lang="pt">channel_type</th><th lang="en">channel_type</th>
+            <th lang="pt">camera_count</th><th lang="en">camera_count</th>
+            <th lang="pt">TTS audio</th><th lang="en">TTS audio</th>
+            <th lang="pt">Shorts derivados</th><th lang="en">Derived Shorts</th>
+            <th lang="pt">Status pipeline</th><th lang="en">Pipeline status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Talking Head Standard</strong></td>
+            <td><span class="badge green">✓</span></td>
+            <td><span class="badge green">✓</span></td>
+            <td><span class="badge red">✗ G4</span></td>
+            <td><span class="badge red">✗ G3</span></td>
+            <td><span class="badge red">✗ G5</span></td>
+            <td><span class="badge neutral">N/A</span></td>
+            <td><span class="badge amber">✗ G7</span></td>
+            <td><span class="badge amber" lang="pt">Pós G1+G2+G3</span><span class="badge amber" lang="en">Post G1+G2+G3</span></td>
+          </tr>
+          <tr>
+            <td><strong>Talking Head Dynamic</strong></td>
+            <td><span class="badge green">✓</span></td>
+            <td><span class="badge green">✓</span></td>
+            <td><span class="badge red">✗ G4</span></td>
+            <td><span class="badge red">✗ G3</span></td>
+            <td><span class="badge red">✗ G5</span></td>
+            <td><span class="badge neutral">N/A</span></td>
+            <td><span class="badge amber">✗ G7</span></td>
+            <td><span class="badge red" lang="pt">Bloqueado G5</span><span class="badge red" lang="en">Blocked G5</span></td>
+          </tr>
+          <tr>
+            <td><strong>Dark Channel / Faceless</strong></td>
+            <td><span class="badge red" lang="pt">✗ tom errado</span><span class="badge red" lang="en">✗ wrong tone</span></td>
+            <td><span class="badge green">✓</span></td>
+            <td><span class="badge red">✗ G4</span></td>
+            <td><span class="badge red">✗ G3</span></td>
+            <td><span class="badge neutral">N/A</span></td>
+            <td><span class="badge red">✗ G6</span></td>
+            <td><span class="badge amber">✗ G7</span></td>
+            <td><span class="badge red" lang="pt">Bloqueado G3+G6</span><span class="badge red" lang="en">Blocked G3+G6</span></td>
+          </tr>
+          <tr>
+            <td><strong>B-roll Documentary</strong></td>
+            <td><span class="badge green">✓</span></td>
+            <td><span class="badge green">✓</span></td>
+            <td><span class="badge red">✗ G4</span></td>
+            <td><span class="badge red">✗ G3</span></td>
+            <td><span class="badge neutral">N/A</span></td>
+            <td><span class="badge neutral">N/A</span></td>
+            <td><span class="badge amber">✗ G7</span></td>
+            <td><span class="badge red" lang="pt">Bloqueado G4</span><span class="badge red" lang="en">Blocked G4</span></td>
+          </tr>
+          <tr>
+            <td><strong>Screen Record / Tutorial</strong></td>
+            <td><span class="badge green">✓</span></td>
+            <td><span class="badge green">✓</span></td>
+            <td><span class="badge neutral">N/A</span></td>
+            <td><span class="badge neutral">N/A</span></td>
+            <td><span class="badge neutral">N/A</span></td>
+            <td><span class="badge neutral">N/A</span></td>
+            <td><span class="badge amber">✗ G7</span></td>
+            <td><span class="badge amber" lang="pt">Pós G1+G2</span><span class="badge amber" lang="en">Post G1+G2</span></td>
+          </tr>
+          <tr>
+            <td><strong>YouTube Shorts</strong></td>
+            <td><span class="badge green">✓</span></td>
+            <td><span class="badge neutral">N/A</span></td>
+            <td><span class="badge neutral">N/A</span></td>
+            <td><span class="badge neutral">N/A</span></td>
+            <td><span class="badge neutral">N/A</span></td>
+            <td><span class="badge neutral">N/A</span></td>
+            <td><span class="badge red" lang="pt">✗ sem link ao vídeo</span><span class="badge red" lang="en">✗ no link to video</span></td>
+            <td><span class="badge red" lang="pt">Bloqueado G7</span><span class="badge red" lang="en">Blocked G7</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout amber" style="margin-top: 24px">
+      <strong lang="pt">Observação crítica:</strong><strong lang="en">Critical observation:</strong>
+      <span lang="pt"> Hoje, <strong>4 dos 6 formatos estão total ou parcialmente bloqueados</strong> porque a configuração do canal não chega ao agente (G1 + G3). O único formato que funciona razoavelmente hoje é o <em>Talking Head Standard</em> com o fluxo YAML legado — e mesmo assim sem lower thirds e sem camera_count. Fechar G1 e G3 desbloquearia imediatamente 4 formatos.</span>
+      <span lang="en"> Today, <strong>4 of 6 formats are fully or partially blocked</strong> because channel configuration doesn't reach the agent (G1 + G3). The only format that works reasonably today is <em>Talking Head Standard</em> with the legacy YAML flow — and even then without lower thirds and camera_count. Closing G1 and G3 would immediately unblock 4 formats.</span>
+    </div>
+  </section>
+
+  <!-- 03 INTRODUÇÃO -->
+  <section class="section" id="intro">
+    <div class="section-eyebrow">03 · <span lang="pt">Contexto</span><span lang="en">Context</span></div>
+    <h2 class="section-title" lang="pt">O que existe e o que está faltando.</h2>
+    <h2 class="section-title" lang="en">What exists and what is missing.</h2>
+    <div class="summary-prose">
+      <div lang="pt">
+        <p>A BrightTale já tem um agente de vídeo funcional (<code>BC_VIDEO</code>) que gera <code>teleprompter_script</code>, <code>editor_script</code>, <code>thumbnail_ideas</code>, <code>video_description</code> e <code>pinned_comment</code>. O output existe no contrato do agente — mas não chega completo ao usuário porque o fluxo tem vazamentos: o <code>VideoStyleSelector</code> nunca foi plugado no <code>DraftEngine</code>, o agente ignora <code>target_duration_minutes</code> silenciosamente, e o <code>teleprompter_script</code> gerado nunca vira áudio.</p>
+        <p>Esta auditoria mapeou o estado real a partir do <strong>seed.sql</strong> (fonte de verdade dos contratos de agente), das migrações, dos schemas Zod e do código de produção. O resultado: <strong>7 gaps concretos</strong>, todos corrigíveis sem reescrita — apenas extensões e conexões.</p>
+        <p>O plano de implementação está em <code>docs/specs/2026-05-06-youtube-video-pipeline-v2.md</code>. Este relatório é a auditoria visual desse plano.</p>
+      </div>
+      <div lang="en">
+        <p>BrightTale already has a functional video agent (<code>BC_VIDEO</code>) that generates <code>teleprompter_script</code>, <code>editor_script</code>, <code>thumbnail_ideas</code>, <code>video_description</code>, and <code>pinned_comment</code>. The output exists in the agent contract — but it doesn't reach the user fully because the flow has leaks: <code>VideoStyleSelector</code> was never plugged into <code>DraftEngine</code>, the agent silently ignores <code>target_duration_minutes</code>, and the generated <code>teleprompter_script</code> never becomes audio.</p>
+        <p>This audit mapped real state from <strong>seed.sql</strong> (agent contract source of truth), migrations, Zod schemas, and production code. Result: <strong>7 concrete gaps</strong>, all fixable without rewriting — only extensions and connections.</p>
+        <p>The implementation plan is at <code>docs/specs/2026-05-06-youtube-video-pipeline-v2.md</code>. This report is the visual audit of that plan.</p>
+      </div>
+    </div>
+
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-label"><span lang="pt">Completude do pipeline de vídeo hoje</span><span lang="en">Video pipeline completeness today</span><span>70%</span></div>
+      <div class="progress-track"><div class="progress-fill amber" style="width:70%"></div></div>
+    </div>
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-label"><span lang="pt">Output do agente BC_VIDEO (campos implementados)</span><span lang="en">BC_VIDEO agent output (fields implemented)</span><span>85%</span></div>
+      <div class="progress-track"><div class="progress-fill green" style="width:85%"></div></div>
+    </div>
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-label"><span lang="pt">Integração DraftEngine ↔ agente (config chegando ao LLM)</span><span lang="en">DraftEngine ↔ agent integration (config reaching LLM)</span><span>30%</span></div>
+      <div class="progress-track"><div class="progress-fill red" style="width:30%"></div></div>
+    </div>
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-label"><span lang="pt">Pipeline completo: roteiro → áudio → Shorts</span><span lang="en">Full pipeline: script → audio → Shorts</span><span>15%</span></div>
+      <div class="progress-track"><div class="progress-fill red" style="width:15%"></div></div>
+    </div>
+  </section>
+
+  <!-- 04 FLUXO ATUAL -->
+  <section class="section" id="current-flow">
+    <div class="section-eyebrow">04 · <span lang="pt">Fluxo atual</span><span lang="en">Current flow</span></div>
+    <h2 class="section-title" lang="pt">Onde o dado vai — e onde ele some.</h2>
+    <h2 class="section-title" lang="en">Where data goes — and where it disappears.</h2>
+    <p class="section-lede" lang="pt">O diagrama abaixo mostra o caminho real do dado hoje. Nós vermelhos = gap confirmado no código. Nós âmbar = existe mas não conectado. Nós verdes = funcional.</p>
+    <p class="section-lede" lang="en">The diagram below shows the actual data path today. Red nodes = confirmed gap in code. Amber nodes = exists but not connected. Green nodes = functional.</p>
+
+    <div class="diagram-card">
+      <div class="toolbar">
+        <button onclick="zoomIn('d1')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Zoom +
+        </button>
+        <button onclick="zoomOut('d1')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg> Zoom −
+        </button>
+        <button onclick="resetZoom('d1')">Reset</button>
+        <div class="sep"></div>
+        <span class="zoom-label" id="d1-label">100%</span>
+        <div class="sep"></div>
+        <button onclick="toggleFullscreen('d1')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+          Fullscreen
+        </button>
+      </div>
+      <div class="diagram-viewport tall" id="d1">
+        <div class="mermaid">
+%%{init: {'theme': 'neutral', 'fontSize': 18, 'themeVariables': {'fontSize': '18px'}, 'flowchart': {'padding': 28, 'curve': 'basis', 'useMaxWidth': false}}}%%
+flowchart TD
+    A([Brainstorm]) --> B([Research]) --> C([Canonical Core]) --> D([DraftEngine UI])
+
+    D --> E["productionParams\ntarget_duration_minutes ✓"]
+    D --> F(["❌ G1 — VideoStyleSelector\nnão plugado no DraftEngine"])
+
+    E --> G["POST /produce"]
+    G --> H["production-produce.ts"]
+
+    H --> I["channel context\nname · niche · tone ✓"]
+    H --> J(["❌ G3 — video_style\ne voice_id não carregados"])
+
+    I --> K["mapCanonicalCoreToVideoInput()"]
+    K --> L(["❌ G1+G3 — BC_VIDEO_INPUT\nrecebe config vazia"])
+    K --> M["BC_VIDEO_INPUT"]
+
+    M --> N(["❌ G2 — production_params\nnão no inputSchema"])
+    M --> O["LLM → BC_VIDEO_OUTPUT"]
+
+    O --> P["teleprompter_script ✓"]
+    O --> Q["editor_script ✓"]
+    O --> R["thumbnail_ideas ✓"]
+
+    Q --> S(["❌ G4 — lower_thirds\naunsentes no schema"])
+    P --> T(["⚠ G6 — TTS existe\nmas não conectado"])
+    O --> U(["⚠ G7 — Shorts derivados\ndo core, não do vídeo"])
+
+    style F fill:#fecaca,stroke:#dc2626,color:#7f1d1d
+    style J fill:#fecaca,stroke:#dc2626,color:#7f1d1d
+    style L fill:#fecaca,stroke:#dc2626,color:#7f1d1d
+    style N fill:#fecaca,stroke:#dc2626,color:#7f1d1d
+    style S fill:#fecaca,stroke:#dc2626,color:#7f1d1d
+    style T fill:#fde68a,stroke:#d97706,color:#78350f
+    style U fill:#fde68a,stroke:#d97706,color:#78350f
+    style A fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style B fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style C fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style D fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style O fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style P fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style Q fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style R fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style E fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    style G fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    style H fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    style I fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    style K fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    style M fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+        </div>
+      </div>
+      <div class="diagram-caption" lang="pt">Fluxo atual · vermelho = gap bloqueador · âmbar = existe mas não conectado · verde = funcional</div>
+      <div class="diagram-caption" lang="en">Current flow · red = blocking gap · amber = exists but disconnected · green = functional</div>
+    </div>
+  </section>
+
+  <!-- 05 GAPS -->
+  <section class="section" id="gaps">
+    <div class="section-eyebrow">05 · <span lang="pt">Os 7 gaps</span><span lang="en">The 7 gaps</span></div>
+    <h2 class="section-title" lang="pt">Cada gap, sua causa raiz e onde está no código.</h2>
+    <h2 class="section-title" lang="en">Each gap, its root cause, and where it lives in the code.</h2>
+    <p class="section-lede" lang="pt">Nenhum desses gaps exige reescrita. São todos extensões — campos novos, conexões que faltam, ou um componente que precisa ser movido de uma página para outra.</p>
+    <p class="section-lede" lang="en">None of these gaps require rewrites. They are all extensions — new fields, missing connections, or a component that needs to move from one page to another.</p>
+
+    <div class="card-grid">
+
+      <article class="card">
+        <div class="card-icon red">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">G1 — VideoStyleSelector ausente do DraftEngine</h3>
+          <h3 class="card-title" lang="en">G1 — VideoStyleSelector missing from DraftEngine</h3>
+          <span class="badge red" lang="pt">Crítico</span>
+          <span class="badge red" lang="en">Critical</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt">O <code>VideoStyleSelector</code> existe apenas no <code>ProductionForm</code> (pipeline YAML legado). O <code>DraftEngine</code> — fluxo ativo — nunca lê nem envia <code>video_style_config</code>. O agente recebe o objeto vazio em todos os vídeos gerados hoje.</p>
+          <p lang="en">The <code>VideoStyleSelector</code> only exists in <code>ProductionForm</code> (legacy YAML pipeline). The <code>DraftEngine</code> — the active flow — never reads or sends <code>video_style_config</code>. The agent receives an empty object for every video generated today.</p>
+        </div>
+        <div class="card-meta"><code>DraftEngine.tsx</code> · linhas 748–751, 1584–1606</div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon amber">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">G2 — production_params não declarado no inputSchema</h3>
+          <h3 class="card-title" lang="en">G2 — production_params not declared in inputSchema</h3>
+          <span class="badge amber" lang="pt">Alto</span>
+          <span class="badge amber" lang="en">High</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt">O <code>DraftEngine</code> envia <code>target_duration_minutes</code> corretamente, e a regra existe no agente: <em>"If production_params.target_duration_minutes is provided, scale teleprompter_script."</em> Mas o campo não está declarado no <code>inputSchema</code> do seed — o LLM não o vê formalmente e o ignora na maioria dos casos.</p>
+          <p lang="en">The <code>DraftEngine</code> correctly sends <code>target_duration_minutes</code>, and the rule exists in the agent: <em>"If production_params.target_duration_minutes is provided, scale teleprompter_script."</em> But the field is not declared in the seed's <code>inputSchema</code> — the LLM doesn't see it formally and ignores it in most cases.</p>
+        </div>
+        <div class="card-meta"><code>scripts/agents/video.ts</code> · inputSchema (linha ~35)</div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon red">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">G3 — channel_type dark/presenter não sinalizado</h3>
+          <h3 class="card-title" lang="en">G3 — channel_type dark/presenter not signaled</h3>
+          <span class="badge red" lang="pt">Crítico</span>
+          <span class="badge red" lang="en">Critical</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt">O campo <code>video_style</code> já existe na tabela <code>channels</code> com valores <code>face | dark | hybrid</code>, mas o job de produção (<code>production-produce.ts</code>) não carrega esse campo do canal. O agente não distingue canal dark de canal com apresentador — o <code>teleprompter_script</code> gerado tem cues visuais (<code>[look at camera]</code>) mesmo em canais 100% faceless.</p>
+          <p lang="en">The <code>video_style</code> field already exists in the <code>channels</code> table with values <code>face | dark | hybrid</code>, but the production job (<code>production-produce.ts</code>) doesn't load this field from the channel. The agent can't distinguish dark from presenter channels — generated <code>teleprompter_script</code> includes visual cues (<code>[look at camera]</code>) even for 100% faceless channels.</p>
+        </div>
+        <div class="card-meta"><code>production-produce.ts</code> · channel query linha ~126</div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">G4 — Lower thirds ausentes no editor_script</h3>
+          <h3 class="card-title" lang="en">G4 — Lower thirds missing from editor_script</h3>
+          <span class="badge blue" lang="pt">Médio</span>
+          <span class="badge blue" lang="en">Medium</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt">O <code>editor_script</code> gera notas de A-roll, B-roll, SFX e música mas não tem campo para <em>lower thirds</em> (nome, título, fonte em cena). Canais informativos usam lower thirds em toda entrevista e estatística — sua ausência força o editor a adivinhar o timing.</p>
+          <p lang="en">The <code>editor_script</code> generates A-roll, B-roll, SFX, and music notes but has no field for <em>lower thirds</em> (name, title, source on screen). Informational channels use lower thirds on every interview and statistic — their absence forces the editor to guess timing.</p>
+        </div>
+        <div class="card-meta"><code>scripts/agents/video.ts</code> · outputSchema · <code>schemas/videos.ts</code></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">G5 — camera_count ausente no video_style_config</h3>
+          <h3 class="card-title" lang="en">G5 — camera_count missing from video_style_config</h3>
+          <span class="badge blue" lang="pt">Médio</span>
+          <span class="badge blue" lang="en">Medium</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt">O <code>editor_script</code> não sabe quantas câmeras a gravação tem. Com 1 câmera, o editor faz cortes jump-cut. Com 2+, há multi-angle. Sem esse parâmetro, o script do editor usa linguagem genérica que não serve como guia de produção real.</p>
+          <p lang="en">The <code>editor_script</code> doesn't know how many cameras the recording has. With 1 camera, the editor jump-cuts. With 2+, there's multi-angle. Without this parameter, the editor script uses generic language that doesn't serve as a real production guide.</p>
+        </div>
+        <div class="card-meta"><code>schemas/videoStyle.ts</code> · <code>scripts/agents/video.ts</code></div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon amber">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">G6 — TTS não conectado ao teleprompter_script</h3>
+          <h3 class="card-title" lang="en">G6 — TTS not connected to teleprompter_script</h3>
+          <span class="badge amber" lang="pt">Alto</span>
+          <span class="badge amber" lang="en">High</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt">O endpoint <code>POST /api/voice/synthesize</code> existe e suporta ElevenLabs + OpenAI. A tabela <code>channels</code> já tem <code>voice_id</code>, <code>voice_provider</code>, <code>voice_speed</code>. O <code>teleprompter_script</code> já é gerado limpo pelo agente. Falta apenas um endpoint <code>POST /api/content-drafts/:id/synthesize</code> que conecte os três.</p>
+          <p lang="en">The <code>POST /api/voice/synthesize</code> endpoint exists and supports ElevenLabs + OpenAI. The <code>channels</code> table already has <code>voice_id</code>, <code>voice_provider</code>, <code>voice_speed</code>. The <code>teleprompter_script</code> is already generated cleanly by the agent. Only missing: a <code>POST /api/content-drafts/:id/synthesize</code> endpoint connecting the three.</p>
+        </div>
+        <div class="card-meta"><code>routes/voice.ts</code> (existe) · falta <code>routes/content-drafts.ts</code> /:id/synthesize</div>
+      </article>
+
+      <article class="card">
+        <div class="card-icon amber">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22.54 6.42a2.78 2.78 0 00-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46a2.78 2.78 0 00-1.95 1.96A29 29 0 001 12a29 29 0 00.46 5.58A2.78 2.78 0 003.41 19.54C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 001.95-1.96A29 29 0 0023 12a29 29 0 00-.46-5.58z"/><polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02"/></svg>
+        </div>
+        <header class="card-header">
+          <h3 class="card-title" lang="pt">G7 — Vídeo → Shorts sem mapper nem FK</h3>
+          <h3 class="card-title" lang="en">G7 — Video → Shorts without mapper or FK</h3>
+          <span class="badge amber" lang="pt">Alto</span>
+          <span class="badge amber" lang="en">High</span>
+        </header>
+        <div class="card-body">
+          <p lang="pt">Os agentes <code>BC_VIDEO</code> e <code>BC_SHORTS</code> são completamente independentes — os Shorts são derivados apenas do <code>BC_CANONICAL_CORE</code>, não dos capítulos já gerados no vídeo. Isso desperdiça o trabalho feito: hooks dos capítulos são os melhores candidatos a Shorts. Além disso, <code>shorts_drafts</code> não tem FK para o vídeo de origem.</p>
+          <p lang="en">The <code>BC_VIDEO</code> and <code>BC_SHORTS</code> agents are completely independent — Shorts are derived only from <code>BC_CANONICAL_CORE</code>, not from already-generated video chapters. This wastes work done: chapter hooks are the best Short candidates. Additionally, <code>shorts_drafts</code> has no FK to the source video.</p>
+        </div>
+        <div class="card-meta"><code>shorts_drafts</code> migration · novo <code>mappers/video-to-shorts.ts</code></div>
+      </article>
+
+    </div>
+
+    <div class="callout amber" style="margin-top: 32px">
+      <strong lang="pt">Gap bônus identificado:</strong>
+      <strong lang="en">Bonus gap identified:</strong>
+      <span lang="pt"> <code>production_params</code> existe na coluna <code>content_drafts.production_params</code> do banco, mas o mapper <code>mapContentDraftFromDb()</code> em <code>packages/shared/src/mappers/db.ts</code> nunca inclui esse campo no <code>DomainContentDraft</code>. A config fica no banco mas nunca chega ao frontend.</span>
+      <span lang="en"> <code>production_params</code> exists in the <code>content_drafts.production_params</code> DB column, but the <code>mapContentDraftFromDb()</code> mapper in <code>packages/shared/src/mappers/db.ts</code> never includes this field in <code>DomainContentDraft</code>. The config sits in the DB but never reaches the frontend.</span>
+    </div>
+  </section>
+
+  <!-- 04 FLUXO ALVO -->
+  <section class="section" id="target-flow">
+    <div class="section-eyebrow">06 · <span lang="pt">Fluxo alvo — v0.3</span><span lang="en">Target flow — v0.3</span></div>
+    <h2 class="section-title" lang="pt">Como o pipeline fica depois do refactor.</h2>
+    <h2 class="section-title" lang="en">How the pipeline looks after the refactor.</h2>
+    <p class="section-lede" lang="pt">Todos os nós ficam verdes. O dado flui de ponta a ponta: da configuração do canal até o áudio gerado e os Shorts derivados do vídeo.</p>
+    <p class="section-lede" lang="en">All nodes turn green. Data flows end-to-end: from channel configuration to generated audio and Shorts derived from the video.</p>
+
+    <div class="diagram-card">
+      <div class="toolbar">
+        <button onclick="zoomIn('d2')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Zoom +</button>
+        <button onclick="zoomOut('d2')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg> Zoom −</button>
+        <button onclick="resetZoom('d2')">Reset</button>
+        <div class="sep"></div>
+        <span class="zoom-label" id="d2-label">100%</span>
+        <div class="sep"></div>
+        <button onclick="toggleFullscreen('d2')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg> Fullscreen</button>
+      </div>
+      <div class="diagram-viewport tall" id="d2">
+        <div class="mermaid">
+%%{init: {'theme': 'neutral', 'fontSize': 18, 'themeVariables': {'fontSize': '18px'}, 'flowchart': {'padding': 28, 'curve': 'basis', 'useMaxWidth': false}}}%%
+flowchart TD
+    A([Brainstorm]) --> B([Research]) --> C([Canonical Core])
+    C --> D["DraftEngine\n+ VideoStyleSelector ✓"]
+
+    D --> E["productionParams\nchannel_type · camera_count\ntarget_duration_minutes ✓"]
+
+    E --> G["POST /produce"]
+    G --> H["production-produce.ts\ncanal completo ✓"]
+    H --> I["channel context\nvideo_style · voice_id ✓"]
+    I --> K["mapCanonicalCoreToVideoInput()\n+ video_style_config ✓"]
+    K --> M["BC_VIDEO_INPUT\nproduction_params ✓\nvideo_style_config ✓"]
+    M --> O["LLM\nBC_VIDEO_OUTPUT"]
+
+    O --> P["teleprompter_script\nTTS-ready ou presenter ✓"]
+    O --> Q["editor_script\nlower_thirds · camera cues ✓"]
+    O --> R["thumbnail_ideas\n3-5 A/B ✓"]
+    O --> V["video_description\npinned_comment ✓"]
+
+    P --> T["VoiceService\nElevenLabs / OpenAI\naudioBase64 ✓"]
+
+    O --> U["mapVideoOutputToShortsInput() ✓"]
+    U --> W["BC_SHORTS_OUTPUT\n3 shorts dos capítulos ✓"]
+    W --> X[("shorts_drafts\nFK source_content_draft_id ✓")]
+
+    style A fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style B fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style C fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style D fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style E fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style G fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style H fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style I fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style K fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style M fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style O fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style P fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style Q fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style R fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style V fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style T fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style U fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style W fill:#bbf7d0,stroke:#16a34a,color:#14532d
+    style X fill:#bbf7d0,stroke:#16a34a,color:#14532d
+        </div>
+      </div>
+      <div class="diagram-caption" lang="pt">Fluxo alvo v0.3 · todos os nós verdes · dado fluindo ponta a ponta sem vazamentos</div>
+      <div class="diagram-caption" lang="en">Target flow v0.3 · all nodes green · data flowing end-to-end without leaks</div>
+    </div>
+  </section>
+
+  <!-- 05 PONTOS DE AJUSTE -->
+  <section class="section" id="adjustments">
+    <div class="section-eyebrow">07 · <span lang="pt">Pontos de ajuste</span><span lang="en">Adjustment points</span></div>
+    <h2 class="section-title" lang="pt">9 arquivos a tocar, 1 arquivo novo, 1 migration.</h2>
+    <h2 class="section-title" lang="en">9 files to change, 1 new file, 1 migration.</h2>
+    <p class="section-lede" lang="pt">A tabela abaixo mapeia cada gap ao arquivo exato, à mudança necessária e ao esforço estimado em dias.</p>
+    <p class="section-lede" lang="en">The table below maps each gap to the exact file, required change, and estimated effort in days.</p>
+
+    <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr>
+            <th>Gap</th>
+            <th lang="pt">Arquivo</th><th lang="en">File</th>
+            <th lang="pt">Mudança necessária</th><th lang="en">Required change</th>
+            <th lang="pt">Esforço</th><th lang="en">Effort</th>
+            <th lang="pt">Prioridade</th><th lang="en">Priority</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="badge red">G1</span></td>
+            <td class="mono">apps/app/src/components/engines/DraftEngine.tsx</td>
+            <td lang="pt">Plugar <code>VideoStyleSelector</code> no bloco de params de vídeo (linha ~1590). Incluir <code>video_style_config</code> em <code>productionParams</code> ao chamar <code>/produce</code>.</td>
+            <td lang="en">Plug <code>VideoStyleSelector</code> into video params block (~line 1590). Include <code>video_style_config</code> in <code>productionParams</code> when calling <code>/produce</code>.</td>
+            <td><span class="badge amber">1d</span></td>
+            <td><span class="badge red" lang="pt">P0</span><span class="badge red" lang="en">P0</span></td>
+          </tr>
+          <tr>
+            <td><span class="badge amber">G2</span></td>
+            <td class="mono">scripts/agents/video.ts</td>
+            <td lang="pt">Adicionar <code>production_params.target_duration_minutes</code> ao <code>inputSchema</code>. Adicionar <code>channel_type</code>, <code>camera_count</code>, <code>lower_thirds_enabled</code> ao <code>video_style_config</code> do inputSchema. Adicionar 4 novas regras ao agente.</td>
+            <td lang="en">Add <code>production_params.target_duration_minutes</code> to <code>inputSchema</code>. Add <code>channel_type</code>, <code>camera_count</code>, <code>lower_thirds_enabled</code> to <code>video_style_config</code> in inputSchema. Add 4 new agent rules.</td>
+            <td><span class="badge amber">1d</span></td>
+            <td><span class="badge red" lang="pt">P0</span><span class="badge red" lang="en">P0</span></td>
+          </tr>
+          <tr>
+            <td><span class="badge red">G3</span></td>
+            <td class="mono">apps/api/src/jobs/production-produce.ts</td>
+            <td lang="pt">Adicionar <code>video_style</code>, <code>voice_id</code>, <code>voice_provider</code>, <code>voice_speed</code> à query do canal (linha ~126). Mergear com <code>video_style_config</code> antes de chamar o mapper.</td>
+            <td lang="en">Add <code>video_style</code>, <code>voice_id</code>, <code>voice_provider</code>, <code>voice_speed</code> to channel query (~line 126). Merge into <code>video_style_config</code> before calling the mapper.</td>
+            <td><span class="badge amber">0.5d</span></td>
+            <td><span class="badge red" lang="pt">P0</span><span class="badge red" lang="en">P0</span></td>
+          </tr>
+          <tr>
+            <td><span class="badge blue">G4</span></td>
+            <td class="mono">scripts/agents/video.ts · packages/shared/src/schemas/videos.ts · packages/shared/src/types/agents.ts</td>
+            <td lang="pt">Adicionar <code>lower_thirds[]</code> ao <code>outputSchema</code> do <code>editor_script</code>. Atualizar <code>VideoEditorScript</code> em agents.ts. Atualizar <code>videoChapterSchema</code>.</td>
+            <td lang="en">Add <code>lower_thirds[]</code> to <code>editor_script</code> outputSchema. Update <code>VideoEditorScript</code> in agents.ts. Update <code>videoChapterSchema</code>.</td>
+            <td><span class="badge blue">1d</span></td>
+            <td><span class="badge blue" lang="pt">P1</span><span class="badge blue" lang="en">P1</span></td>
+          </tr>
+          <tr>
+            <td><span class="badge blue">G5</span></td>
+            <td class="mono">packages/shared/src/schemas/videoStyle.ts</td>
+            <td lang="pt">Adicionar <code>channel_type: z.enum(['presenter','dark'])</code>, <code>camera_count: z.number().int().min(1).max(6)</code>, <code>lower_thirds_enabled: z.boolean()</code>, <code>tts_enabled: z.boolean()</code> — todos opcionais.</td>
+            <td lang="en">Add <code>channel_type: z.enum(['presenter','dark'])</code>, <code>camera_count: z.number().int().min(1).max(6)</code>, <code>lower_thirds_enabled: z.boolean()</code>, <code>tts_enabled: z.boolean()</code> — all optional.</td>
+            <td><span class="badge green">0.5d</span></td>
+            <td><span class="badge blue" lang="pt">P1</span><span class="badge blue" lang="en">P1</span></td>
+          </tr>
+          <tr>
+            <td><span class="badge amber">G6</span></td>
+            <td class="mono">apps/api/src/routes/content-drafts.ts</td>
+            <td lang="pt">Novo endpoint <code>POST /:id/synthesize</code>: ownership check → extrai <code>teleprompter_script</code> de <code>draft_json</code> → lê <code>voice_id/provider</code> do canal → chama <code>VoiceService</code> existente → retorna <code>audioBase64</code>.</td>
+            <td lang="en">New endpoint <code>POST /:id/synthesize</code>: ownership check → extract <code>teleprompter_script</code> from <code>draft_json</code> → read <code>voice_id/provider</code> from channel → call existing <code>VoiceService</code> → return <code>audioBase64</code>.</td>
+            <td><span class="badge amber">1.5d</span></td>
+            <td><span class="badge amber" lang="pt">P1</span><span class="badge amber" lang="en">P1</span></td>
+          </tr>
+          <tr>
+            <td><span class="badge amber">G7</span></td>
+            <td class="mono">packages/shared/src/mappers/video-to-shorts.ts <em lang="pt">(novo)</em><em lang="en">(new)</em></td>
+            <td lang="pt">Novo mapper <code>mapVideoOutputToShortsInput()</code>: extrai <code>turning_point</code> do canonical core + 2 capítulos mais fortes do vídeo → monta <code>BC_SHORTS_INPUT</code>.</td>
+            <td lang="en">New mapper <code>mapVideoOutputToShortsInput()</code>: extract <code>turning_point</code> from canonical core + 2 strongest video chapters → build <code>BC_SHORTS_INPUT</code>.</td>
+            <td><span class="badge amber">1d</span></td>
+            <td><span class="badge amber" lang="pt">P1</span><span class="badge amber" lang="en">P1</span></td>
+          </tr>
+          <tr>
+            <td><span class="badge amber">G7</span></td>
+            <td class="mono">supabase/migrations/YYYYMMDDHHMMSS_add_source_video_to_shorts.sql</td>
+            <td lang="pt">ADD COLUMN <code>source_content_draft_id UUID REFERENCES content_drafts(id) ON DELETE SET NULL</code> + index. Nullable — sem backfill.</td>
+            <td lang="en">ADD COLUMN <code>source_content_draft_id UUID REFERENCES content_drafts(id) ON DELETE SET NULL</code> + index. Nullable — no backfill.</td>
+            <td><span class="badge green">0.5d</span></td>
+            <td><span class="badge amber" lang="pt">P1</span><span class="badge amber" lang="en">P1</span></td>
+          </tr>
+          <tr>
+            <td><span class="badge neutral" lang="pt">Bônus</span><span class="badge neutral" lang="en">Bonus</span></td>
+            <td class="mono">packages/shared/src/mappers/db.ts</td>
+            <td lang="pt">Adicionar <code>production_params</code> ao mapeamento de <code>mapContentDraftFromDb()</code> → <code>DomainContentDraft</code>. Atualmente o campo existe no banco mas nunca chega ao frontend.</td>
+            <td lang="en">Add <code>production_params</code> to <code>mapContentDraftFromDb()</code> → <code>DomainContentDraft</code> mapping. Currently the field exists in DB but never reaches the frontend.</td>
+            <td><span class="badge green">0.5d</span></td>
+            <td><span class="badge blue" lang="pt">P1</span><span class="badge blue" lang="en">P1</span></td>
+          </tr>
+          <tr>
+            <td><span class="badge neutral" lang="pt">Seed</span><span class="badge neutral" lang="en">Seed</span></td>
+            <td class="mono">npm run db:seed (após agents/video.ts)</td>
+            <td lang="pt">Regenerar o seed após todas as mudanças em <code>scripts/agents/video.ts</code> para atualizar o <code>sections_json</code> no banco.</td>
+            <td lang="en">Regenerate seed after all changes to <code>scripts/agents/video.ts</code> to update <code>sections_json</code> in the DB.</td>
+            <td><span class="badge green">0.5d</span></td>
+            <td><span class="badge neutral" lang="pt">P2</span><span class="badge neutral" lang="en">P2</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <details class="disclose" style="margin-top: 24px">
+      <summary lang="pt">Diagrama de dependências entre arquivos</summary>
+      <summary lang="en">File dependency diagram</summary>
+      <div class="disclose-body">
+        <div class="diagram-card" style="margin: 0">
+          <div class="toolbar">
+            <button onclick="zoomIn('d3')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Zoom +</button>
+            <button onclick="zoomOut('d3')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg> Zoom −</button>
+            <button onclick="resetZoom('d3')">Reset</button>
+            <div class="sep"></div>
+            <span class="zoom-label" id="d3-label">100%</span>
+          </div>
+          <div class="diagram-viewport medium" id="d3">
+            <div class="mermaid">
+%%{init: {'theme': 'neutral', 'fontSize': 18, 'themeVariables': {'fontSize': '18px'}, 'flowchart': {'padding': 28, 'curve': 'basis', 'useMaxWidth': false}}}%%
+flowchart TD
+    VS["schemas/videoStyle.ts\n+ channel_type\n+ camera_count\n+ lower_thirds_enabled"]
+    AG["scripts/agents/video.ts\n+ production_params\n+ lower_thirds output\n+ 4 regras novas"]
+    AT["types/agents.ts\n+ VideoStyleConfig\n+ VideoEditorScript"]
+    DB["mappers/db.ts\n+ production_params\nem DomainContentDraft"]
+    PP["production-produce.ts\n+ video_style · voice_id\nno channel query"]
+    DE["DraftEngine.tsx\n+ VideoStyleSelector\n+ video_style_config\nem productionParams"]
+    RT["routes/content-drafts.ts\n+ POST /:id/synthesize"]
+    MG["migrations/\nadd source_content_draft_id\nem shorts_drafts"]
+    VM["mappers/video-to-shorts.ts\nnovo: mapVideoOutputToShortsInput"]
+    SD["npm run db:seed\nregerenera seed.sql"]
+
+    VS --> AG
+    VS --> DE
+    AG --> SD
+    AT --> AG
+    AT --> VM
+    DB --> DE
+    PP --> RT
+    MG --> VM
+
+    style VS fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    style AG fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    style AT fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    style DB fill:#fde68a,stroke:#d97706,color:#78350f
+    style PP fill:#fecaca,stroke:#dc2626,color:#7f1d1d
+    style DE fill:#fecaca,stroke:#dc2626,color:#7f1d1d
+    style RT fill:#fde68a,stroke:#d97706,color:#78350f
+    style MG fill:#fde68a,stroke:#d97706,color:#78350f
+    style VM fill:#fde68a,stroke:#d97706,color:#78350f
+    style SD fill:#bbf7d0,stroke:#16a34a,color:#14532d
+            </div>
+          </div>
+        </div>
+      </div>
+    </details>
+  </section>
+
+  <!-- 06 TIMELINE -->
+  <section class="section" id="timeline">
+    <div class="section-eyebrow">08 · <span lang="pt">Expectativa de conclusão</span><span lang="en">Completion estimate</span></div>
+    <h2 class="section-title" lang="pt">10 dias úteis para o pipeline completo.</h2>
+    <h2 class="section-title" lang="en">10 working days to complete the pipeline.</h2>
+    <p class="section-lede" lang="pt">Dividido em 3 semanas de trabalho paralelo. A semana 1 fecha os blockers críticos (P0) que hoje impedem qualquer config de chegar ao agente. A semana 2 entrega os outputs avançados. A semana 3 fecha TTS, mapper e testes.</p>
+    <p class="section-lede" lang="en">Split into 3 weeks of parallel work. Week 1 closes critical blockers (P0) that currently prevent any config from reaching the agent. Week 2 delivers advanced outputs. Week 3 closes TTS, mapper, and tests.</p>
+
+    <div class="roadmap">
+
+      <div class="horizon accent">
+        <div class="horizon-label" lang="pt">Semana 1 · 8–14 mai</div>
+        <div class="horizon-label" lang="en">Week 1 · May 8–14</div>
+        <div class="horizon-title" lang="pt">Blockers P0 — config chegando ao agente</div>
+        <div class="horizon-title" lang="en">P0 Blockers — config reaching the agent</div>
+        <ul class="horizon-list">
+          <li>
+            <strong lang="pt">VideoStyleSelector no DraftEngine</strong>
+            <strong lang="en">VideoStyleSelector in DraftEngine</strong>
+            <span lang="pt">Plugar o selector no bloco de params de vídeo. Incluir <code>video_style_config</code> em <code>productionParams</code>. — 1d</span>
+            <span lang="en">Plug selector into video params block. Include <code>video_style_config</code> in <code>productionParams</code>. — 1d</span>
+          </li>
+          <li>
+            <strong lang="pt">Channel context no job de produção</strong>
+            <strong lang="en">Channel context in production job</strong>
+            <span lang="pt">Carregar <code>video_style</code>, <code>voice_id</code>, <code>voice_provider</code> do canal e mergear com o config do projeto. — 0.5d</span>
+            <span lang="en">Load <code>video_style</code>, <code>voice_id</code>, <code>voice_provider</code> from channel and merge with project config. — 0.5d</span>
+          </li>
+          <li>
+            <strong lang="pt">production_params no inputSchema do agente</strong>
+            <strong lang="en">production_params in agent inputSchema</strong>
+            <span lang="pt">Declarar o campo no seed + regenerar. <code>channel_type</code>, <code>camera_count</code> no <code>videoStyleConfigSchema</code>. — 1d</span>
+            <span lang="en">Declare field in seed + regenerate. <code>channel_type</code>, <code>camera_count</code> in <code>videoStyleConfigSchema</code>. — 1d</span>
+          </li>
+          <li>
+            <strong lang="pt">Mapper DomainContentDraft (bônus)</strong>
+            <strong lang="en">DomainContentDraft mapper (bonus)</strong>
+            <span lang="pt">Incluir <code>production_params</code> no <code>mapContentDraftFromDb()</code>. — 0.5d</span>
+            <span lang="en">Include <code>production_params</code> in <code>mapContentDraftFromDb()</code>. — 0.5d</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="horizon amber">
+        <div class="horizon-label" lang="pt">Semana 2 · 15–21 mai</div>
+        <div class="horizon-label" lang="en">Week 2 · May 15–21</div>
+        <div class="horizon-title" lang="pt">Outputs avançados — lower thirds + TTS</div>
+        <div class="horizon-title" lang="en">Advanced outputs — lower thirds + TTS</div>
+        <ul class="horizon-list">
+          <li>
+            <strong lang="pt">Lower thirds no editor_script</strong>
+            <strong lang="en">Lower thirds in editor_script</strong>
+            <span lang="pt">Campo <code>lower_thirds[]</code> no outputSchema do agente + tipos TS + regra condicional. — 1d</span>
+            <span lang="en">Field <code>lower_thirds[]</code> in agent outputSchema + TS types + conditional rule. — 1d</span>
+          </li>
+          <li>
+            <strong lang="pt">Endpoint /synthesize</strong>
+            <strong lang="en">Endpoint /synthesize</strong>
+            <span lang="pt">Novo <code>POST /api/content-drafts/:id/synthesize</code> com ownership check + VoiceService + redação Axiom. — 1.5d</span>
+            <span lang="en">New <code>POST /api/content-drafts/:id/synthesize</code> with ownership check + VoiceService + Axiom redaction. — 1.5d</span>
+          </li>
+          <li>
+            <strong lang="pt">UI Teleprompter viewer</strong>
+            <strong lang="en">UI Teleprompter viewer</strong>
+            <span lang="pt">Tab "Teleprompter" na página do vídeo com botão "Gerar Áudio". — 0.5d</span>
+            <span lang="en">"Teleprompter" tab on video page with "Generate Audio" button. — 0.5d</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="horizon green">
+        <div class="horizon-label" lang="pt">Semana 3 · 22–28 mai</div>
+        <div class="horizon-label" lang="en">Week 3 · May 22–28</div>
+        <div class="horizon-title" lang="pt">Vídeo → Shorts + testes + seed final</div>
+        <div class="horizon-title" lang="en">Video → Shorts + tests + final seed</div>
+        <ul class="horizon-list">
+          <li>
+            <strong lang="pt">Migration + FK shorts_drafts</strong>
+            <strong lang="en">Migration + FK shorts_drafts</strong>
+            <span lang="pt">ADD COLUMN <code>source_content_draft_id</code> + db:push:dev + db:types. — 0.5d</span>
+            <span lang="en">ADD COLUMN <code>source_content_draft_id</code> + db:push:dev + db:types. — 0.5d</span>
+          </li>
+          <li>
+            <strong lang="pt">Mapper video → shorts</strong>
+            <strong lang="en">Mapper video → shorts</strong>
+            <span lang="pt">Novo arquivo <code>mappers/video-to-shorts.ts</code> + botão "Gerar Shorts" na página do vídeo. — 1d</span>
+            <span lang="en">New file <code>mappers/video-to-shorts.ts</code> + "Generate Shorts" button on video page. — 1d</span>
+          </li>
+          <li>
+            <strong lang="pt">Testes end-to-end + seed final</strong>
+            <strong lang="en">End-to-end tests + final seed</strong>
+            <span lang="pt">Gerar vídeo completo com canal dark, 2 câmeras, lower thirds, TTS. Verificar Shorts derivados. Regenerar seed. — 1d</span>
+            <span lang="en">Generate full video with dark channel, 2 cameras, lower thirds, TTS. Verify derived Shorts. Regenerate seed. — 1d</span>
+          </li>
+        </ul>
+      </div>
+
+    </div>
+
+    <div class="callout green" style="margin-top: 32px">
+      <strong lang="pt">Data alvo:</strong><strong lang="en">Target date:</strong>
+      <span lang="pt"> <strong>28 de maio de 2026</strong> — pipeline completo de geração de roteiro YouTube com TTS, lower thirds, channel_type dark/presenter, e Shorts derivados do vídeo. Branch <code>feat/yt-pipeline-v2</code> pronta para merge em <code>staging</code>.</span>
+      <span lang="en"> <strong>May 28, 2026</strong> — complete YouTube script generation pipeline with TTS, lower thirds, dark/presenter channel_type, and Shorts derived from video. Branch <code>feat/yt-pipeline-v2</code> ready to merge into <code>staging</code>.</span>
+    </div>
+  </section>
+
+  <!-- 07 CONCLUSÃO -->
+  <section class="section" id="conclusion">
+    <div class="section-eyebrow">09 · <span lang="pt">Conclusão</span><span lang="en">Conclusion</span></div>
+
+    <div class="conclusion-card">
+      <h3 lang="pt">A pipeline de vídeo está 70% pronta — o refactor v0.3 fecha os 30% restantes sem reescrita.</h3>
+      <h3 lang="en">The video pipeline is 70% ready — the v0.3 refactor closes the remaining 30% without rewrites.</h3>
+      <p lang="pt">O agente <code>BC_VIDEO</code> já gera um output tecnicamente competitivo: <code>teleprompter_script</code> limpo, <code>editor_script</code> detalhado com A/B-roll, 3–5 conceitos de thumbnail com emoção e paleta, descrição do YouTube, pinned comment e títulos para A/B test. Esse output existe — ele simplesmente não chega ao usuário completo porque o canal de configuração está quebrado.</p>
+      <p lang="en">The <code>BC_VIDEO</code> agent already generates technically competitive output: clean <code>teleprompter_script</code>, detailed <code>editor_script</code> with A/B-roll, 3–5 thumbnail concepts with emotion and palette, YouTube description, pinned comment, and A/B test titles. That output exists — it simply doesn't reach the user fully because the configuration channel is broken.</p>
+      <p lang="pt">O gap mais crítico não é um feature novo — é o <strong>G1</strong>: o <code>VideoStyleSelector</code> existindo apenas no fluxo YAML legado enquanto o <code>DraftEngine</code> (o fluxo real) nunca envia <code>video_style_config</code>. Isso significa que hoje, 100% dos vídeos gerados pela pipeline recebem configuração vazia no agente.</p>
+      <p lang="en">The most critical gap isn't a new feature — it's <strong>G1</strong>: the <code>VideoStyleSelector</code> existing only in the legacy YAML flow while the <code>DraftEngine</code> (the real flow) never sends <code>video_style_config</code>. This means that today, 100% of videos generated by the pipeline reach the agent with empty configuration.</p>
+      <p lang="pt"><strong>10 dias úteis em 3 semanas</strong> são suficientes para fechar todos os gaps e entregar a pipeline completa: configuração → agente → roteiro + editor_script + lower thirds → áudio TTS → Shorts derivados.</p>
+      <p lang="en"><strong>10 working days over 3 weeks</strong> are sufficient to close all gaps and deliver the complete pipeline: configuration → agent → script + editor_script + lower thirds → TTS audio → derived Shorts.</p>
+    </div>
+
+    <h3 class="subsection" lang="pt">Questões em aberto</h3>
+    <h3 class="subsection" lang="en">Open questions</h3>
+    <div class="open-items">
+      <div class="open-item">
+        <div class="open-item-label" lang="pt">UX do VideoStyleSelector</div>
+        <div class="open-item-label" lang="en">VideoStyleSelector UX</div>
+        <div class="open-item-text" lang="pt">Sempre visível ou colapsado em "Opções avançadas"? Impacta onboarding de novos usuários.</div>
+        <div class="open-item-text" lang="en">Always visible or collapsed under "Advanced options"? Impacts onboarding of new users.</div>
+      </div>
+      <div class="open-item">
+        <div class="open-item-label" lang="pt">TTS — override por projeto</div>
+        <div class="open-item-label" lang="en">TTS — per-project override</div>
+        <div class="open-item-text" lang="pt">O <code>voice_id</code> do canal é o default. O usuário pode sobrescrever por projeto no body do <code>/synthesize</code>?</div>
+        <div class="open-item-text" lang="en">Channel <code>voice_id</code> is the default. Can the user override per-project in the <code>/synthesize</code> body?</div>
+      </div>
+      <div class="open-item">
+        <div class="open-item-label" lang="pt">Shorts derivados — automático ou manual?</div>
+        <div class="open-item-label" lang="en">Derived Shorts — automatic or manual?</div>
+        <div class="open-item-text" lang="pt">Gerar automaticamente após o vídeo (auto-pilot) ou apenas via botão? Proposta atual: botão sob demanda.</div>
+        <div class="open-item-text" lang="en">Generate automatically after video (auto-pilot) or only via button? Current proposal: on-demand button.</div>
+      </div>
+      <div class="open-item">
+        <div class="open-item-label" lang="pt">Publicação YouTube API</div>
+        <div class="open-item-label" lang="en">YouTube API publish</div>
+        <div class="open-item-text" lang="pt">O spec atual não inclui upload para YouTube. A pipeline fecha no script — upload é escopo futuro (post v0.3)?</div>
+        <div class="open-item-text" lang="en">The current spec doesn't include YouTube upload. The pipeline ends at script — is upload future scope (post v0.3)?</div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span lang="pt">BrightTale · Auditoria Pipeline YouTube v2 · 7 mai 2026</span>
+    <span lang="en">BrightTale · YouTube Pipeline v2 Audit · May 7, 2026</span>
+    <div class="contributors">
+      <div class="avatar-stack">
+        <div class="avatar">HS</div>
+      </div>
+      <span lang="pt">Hector Siman · gerado com Claude Code</span>
+      <span lang="en">Hector Siman · generated with Claude Code</span>
+    </div>
+  </footer>
+
+</div>
+
+<div class="fs-toolbar" id="fs-toolbar">
+  <button onclick="exitFullscreen()">✕ Fechar</button>
+</div>
+
+<script>
+  // Language toggle
+  document.querySelectorAll('.lang-bar button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const lang = btn.dataset.lang;
+      document.documentElement.lang = lang;
+      document.querySelectorAll('.lang-bar button').forEach(b => b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'));
+    });
+  });
+
+  // Mermaid
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'neutral',
+    securityLevel: 'loose',
+    fontSize: 18,
+    flowchart: { curve: 'basis', padding: 28, useMaxWidth: false },
+    themeVariables: {
+      fontSize: '18px',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif',
+      lineColor: '#888',
+      primaryColor: '#dbeafe',
+      primaryTextColor: '#1e3a8a',
+      primaryBorderColor: '#2563eb',
+      nodeBorder: '2px',
+    }
+  });
+
+  // Pan/zoom per diagram
+  const panzoomInstances = {};
+  const fitScales = {};
+
+  function fitDiagram(id) {
+    const vp = document.getElementById(id);
+    if (!vp) return;
+    const inner = vp.querySelector('.mermaid');
+    if (!inner) return;
+    const svg = inner.querySelector('svg');
+    if (!svg) return;
+
+    const vpW = vp.clientWidth;
+    const vpH = vp.clientHeight;
+    const svgW = svg.scrollWidth || svg.getBoundingClientRect().width;
+    const svgH = svg.scrollHeight || svg.getBoundingClientRect().height;
+    if (!svgW || !svgH) return;
+
+    const padding = 24;
+    const scaleX = (vpW - padding * 2) / svgW;
+    const scaleY = (vpH - padding * 2) / svgH;
+    const scale = Math.min(scaleX, scaleY, 4.0);
+
+    const offsetX = (vpW - svgW * scale) / 2;
+    const offsetY = (vpH - svgH * scale) / 2;
+
+    const pz = panzoomInstances[id];
+    if (!pz) return;
+    pz.zoomAbs(0, 0, scale);
+    pz.moveTo(offsetX, offsetY);
+    fitScales[id] = scale;
+
+    const lbl = document.getElementById(id + '-label');
+    if (lbl) lbl.textContent = Math.round(scale * 100) + '%';
+  }
+
+  function initDiagram(id) {
+    const vp = document.getElementById(id);
+    if (!vp) return;
+    const inner = vp.querySelector('.mermaid');
+    if (!inner) return;
+    const pz = panzoom(inner, { maxZoom: 4, minZoom: 0.08, zoomDoubleClickSpeed: 1 });
+    panzoomInstances[id] = pz;
+    fitScales[id] = 1;
+    pz.on('zoom', e => {
+      const lbl = document.getElementById(id + '-label');
+      if (lbl) lbl.textContent = Math.round(e.getTransform().scale * 100) + '%';
+    });
+    // wait until SVG has real dimensions before fitting
+    let attempts = 0;
+    function tryFit() {
+      const svg = inner.querySelector('svg');
+      const w = svg ? (svg.getBoundingClientRect().width || svg.scrollWidth) : 0;
+      if (w > 10 || attempts > 20) { fitDiagram(id); return; }
+      attempts++;
+      setTimeout(tryFit, 100);
+    }
+    setTimeout(tryFit, 100);
+  }
+
+  function zoomIn(id)  { panzoomInstances[id]?.smoothZoom(0, 0, 1.3); }
+  function zoomOut(id) { panzoomInstances[id]?.smoothZoom(0, 0, 0.77); }
+  function resetZoom(id) { fitDiagram(id); }
+
+  let currentFs = null;
+  function toggleFullscreen(id) {
+    const vp = document.getElementById(id);
+    const tb = document.getElementById('fs-toolbar');
+    vp.classList.add('is-fullscreen');
+    tb.classList.add('visible');
+    currentFs = id;
+    document.body.style.overflow = 'hidden';
+    requestAnimationFrame(() => requestAnimationFrame(() => fitDiagram(id)));
+  }
+  function exitFullscreen() {
+    if (currentFs) {
+      const prev = currentFs;
+      document.getElementById(prev)?.classList.remove('is-fullscreen');
+      currentFs = null;
+      requestAnimationFrame(() => requestAnimationFrame(() => fitDiagram(prev)));
+    }
+    document.getElementById('fs-toolbar')?.classList.remove('visible');
+    document.body.style.overflow = '';
+  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') exitFullscreen(); });
+
+  window.addEventListener('load', () => {
+    setTimeout(() => { ['d1','d2','d3'].forEach(initDiagram); }, 200);
+  });
+</script>
+</body>
+</html>
