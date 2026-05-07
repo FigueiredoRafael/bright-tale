@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,7 @@ import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
 import { getPersonaTheme } from './utils/personaTheme';
 import type { AssetsResult, PipelineContext, PipelineStage } from './types';
+import { getScopedSlots } from '@/lib/assets/scopeFilter';
 
 /* ── Types ── */
 
@@ -286,6 +287,10 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   const assetsErrored = assetsResult != null && !assetsComplete && !!(assetsResult as { errorCode?: string }).errorCode;
   const assetsBlocked = assetsComplete || assetsErrored;
   const assetsConfig = useSelector(actor, (s) => s.context.autopilotConfig?.assets);
+  const scopedSlotCards = useMemo(
+    () => getScopedSlots(slotCards, assetsConfig?.imageScope),
+    [slotCards, assetsConfig?.imageScope],
+  );
   const autopilotConfig = useSelector(actor, (s) => s.context.autopilotConfig);
   const overviewMode = useSelector(actor, (s) => s.context.mode === 'overview');
   const isGeneratingBriefs = useSelector(actor, (s) => s.matches({ assets: 'generatingBriefs' }));
@@ -377,14 +382,15 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     if (finishing) return;
     if (autoFinishRef.current) return;
     const hasGeneratedAll =
-      slotCards.length > 0 && Object.keys(slotAssets).length >= slotCards.length;
+      slotCards.length > 0 &&
+      (scopedSlotCards.length === 0 || Object.keys(slotAssets).length >= scopedSlotCards.length);
     const hasExistingOnly = slotCards.length === 0 && existingAssets.length > 0;
     if (!hasGeneratedAll && !hasExistingOnly) return;
     autoFinishRef.current = true;
     void handleFinish();
   // handleFinish is a stable function declaration in this scope.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoMode, autoPaused, isGeneratingImages, slotCards.length, slotAssets, existingAssets.length, finishing, assetsBlocked]);
+  }, [autoMode, autoPaused, isGeneratingImages, slotCards.length, scopedSlotCards.length, slotAssets, existingAssets.length, finishing, assetsBlocked]);
 
   // When retrySignal is bumped by the orchestrator (user picked a new provider),
   // reset autopilot refs and clear generated images so the full flow re-runs.
@@ -732,11 +738,11 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   }
 
   async function handleGenerateAllSlots() {
-    if (generatingSlot || generatingAll || slotCards.length === 0) return;
+    if (generatingSlot || generatingAll || scopedSlotCards.length === 0) return;
     setGeneratingAll(true);
     let quotaErrorCode: string | null = null;
     try {
-      for (const card of slotCards) {
+      for (const card of scopedSlotCards) {
         setGeneratingSlot(card.slot);
         const result = await generateSlotImage(card);
         if (result.errorCode === 'QUOTA_EXCEEDED' && !quotaErrorCode) {
