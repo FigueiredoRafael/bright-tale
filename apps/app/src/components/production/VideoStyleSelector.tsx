@@ -151,6 +151,52 @@ export default function VideoStyleSelector({ value, onChange, disabled }: VideoS
           </div>
         </div>
 
+        {/* Channel & camera config */}
+        <div className="grid grid-cols-2 gap-3 pt-1">
+          <div className="space-y-1">
+            <Label className="text-xs">Channel Type</Label>
+            <Select
+              disabled={disabled}
+              value={value.channel_type ?? "presenter"}
+              onValueChange={(v) => update("channel_type", v as VideoStyleConfig["channel_type"])}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="presenter" className="text-xs">Presenter (face)</SelectItem>
+                <SelectItem value="dark" className="text-xs">Dark (faceless / TTS)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground">
+              Dark channels get TTS-clean teleprompter (no bracketed cues).
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs">Cameras</Label>
+            <Select
+              disabled={disabled}
+              value={String(value.camera_count ?? 1)}
+              onValueChange={(v) => update("camera_count", Number(v) as VideoStyleConfig["camera_count"])}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[1, 2, 3, 4].map((n) => (
+                  <SelectItem key={n} value={String(n)} className="text-xs">
+                    {n} {n === 1 ? "camera" : "cameras"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground">
+              {(value.camera_count ?? 1) > 1 ? "Editor script uses multi-angle (Cam A/B)." : "Editor script uses cut-based language."}
+            </p>
+          </div>
+        </div>
+
         {/* Toggle flags */}
         <div className="space-y-2 pt-1">
           <div className="flex items-center justify-between">
@@ -167,6 +213,22 @@ export default function VideoStyleSelector({ value, onChange, disabled }: VideoS
               disabled={disabled}
               checked={value.b_roll_required ?? false}
               onCheckedChange={(v) => update("b_roll_required", v)}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Lower thirds (names, sources, stats)</Label>
+            <Switch
+              disabled={disabled}
+              checked={value.lower_thirds_enabled ?? false}
+              onCheckedChange={(v) => update("lower_thirds_enabled", v)}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Force TTS-clean teleprompter</Label>
+            <Switch
+              disabled={disabled}
+              checked={value.tts_enabled ?? false}
+              onCheckedChange={(v) => update("tts_enabled", v)}
             />
           </div>
         </div>

@@ -31,6 +31,8 @@ import { rankPersonas, type RankedPersona } from './utils/personaScoring';
 import { getPersonaTheme } from './utils/personaTheme';
 import { PersonaCarousel } from './PersonaCarousel';
 import type { Persona } from '@brighttale/shared/types/agents';
+import type { VideoStyleConfig } from '@brighttale/shared/schemas/videoStyle';
+import VideoStyleSelector from '@/components/production/VideoStyleSelector';
 import { useSelector } from '@xstate/react';
 import { usePipelineActor } from '@/hooks/usePipelineActor';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
@@ -125,6 +127,15 @@ export function DraftEngine({
   const [targetWords, setTargetWords] = useState<number>(900);
   const [targetMinutes, setTargetMinutes] = useState<number>(8);
   const [targetShortsSeconds, setTargetShortsSeconds] = useState<number>(30);
+  const [videoStyleConfig, setVideoStyleConfig] = useState<VideoStyleConfig>({
+    template: 'talking_head_standard',
+    cut_frequency: 'moderate',
+    b_roll_density: 'low',
+    text_overlays: 'minimal',
+    music_style: 'calm_ambient',
+    presenter_notes: false,
+    b_roll_required: false,
+  });
   const [producedContent, setProducedContent] = useState<string>('');
   const [contentWarning, setContentWarning] = useState<string | null>(null);
 
@@ -471,7 +482,7 @@ export function DraftEngine({
             type,
             title,
             personaId: selectedPersonaId,
-            productionParams: {},
+            productionParams: type === 'video' ? { video_style_config: videoStyleConfig } : {},
           }),
           signal: abortController?.signal,
         })
@@ -619,7 +630,7 @@ export function DraftEngine({
           type,
           title,
           personaId: selectedPersonaId,
-          productionParams: {},
+          productionParams: type === 'video' ? { video_style_config: videoStyleConfig } : {},
         }),
         signal: abortController?.signal,
       })
@@ -749,6 +760,7 @@ export function DraftEngine({
     if (type === 'blog') productionParams.target_word_count = targetWords;
     if (type === 'video' || type === 'podcast') productionParams.target_duration_minutes = targetMinutes;
     if (type === 'shorts') productionParams.target_duration_minutes = targetShortsSeconds / 60;
+    if (type === 'video') productionParams.video_style_config = videoStyleConfig;
 
     tracker.trackStarted({
       draftId,
@@ -1603,6 +1615,13 @@ export function DraftEngine({
                   )}
                 </div>
               </div>
+            )}
+            {type === 'video' && (
+              <VideoStyleSelector
+                value={videoStyleConfig}
+                onChange={setVideoStyleConfig}
+                disabled={phase === 'produce'}
+              />
             )}
             {type === 'shorts' && (
               <div className="space-y-2">
