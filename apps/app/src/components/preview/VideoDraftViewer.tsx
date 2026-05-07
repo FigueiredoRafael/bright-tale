@@ -83,10 +83,10 @@ export function VideoDraftViewer({ output: rawOutput, className = '' }: VideoDra
     !output.thumbnail_ideas &&
     !output.video_description;
   const titleAlternatives = useMemo(() => {
-    const alts = output.video_title?.alternatives ?? [];
-    const fromOptions = output.title_options ?? [];
+    const alts = Array.isArray(output.video_title?.alternatives) ? output.video_title.alternatives : [];
+    const fromOptions = Array.isArray(output.title_options) ? output.title_options : [];
     const merged = [...alts, ...fromOptions.filter((t) => t !== output.video_title?.primary)];
-    return Array.from(new Set(merged));
+    return Array.from(new Set(merged.filter((t): t is string => typeof t === 'string')));
   }, [output.video_title, output.title_options]);
 
   return (
@@ -110,7 +110,7 @@ export function VideoDraftViewer({ output: rawOutput, className = '' }: VideoDra
                   {output.thumbnail.emotion}
                 </span>
               )}
-              {output.lower_thirds && output.lower_thirds.length > 0 && (
+              {Array.isArray(output.lower_thirds) && output.lower_thirds.length > 0 && (
                 <span className="inline-flex items-center gap-1">
                   <ImageIcon className="h-3.5 w-3.5" />
                   {output.lower_thirds.length} lower thirds
@@ -197,12 +197,12 @@ function ScriptTab({ output }: { output: VideoOutput }) {
       {script.problem && <ScriptSectionCard label="Problem" tone="problem" section={script.problem} />}
       {script.teaser && <ScriptSectionCard label="Teaser" tone="teaser" section={script.teaser} />}
 
-      {script.chapters && script.chapters.length > 0 && (
+      {Array.isArray(script.chapters) && script.chapters.length > 0 && (
         <>
           <SectionHeader>Chapters</SectionHeader>
           <div className="space-y-2">
-            {script.chapters.map((ch) => (
-              <ChapterCard key={`ch-${ch.chapter_number}`} chapter={ch} />
+            {script.chapters.map((ch, i) => (
+              <ChapterCard key={`ch-${ch?.chapter_number ?? i}`} chapter={ch} />
             ))}
           </div>
         </>
@@ -293,14 +293,14 @@ function ChapterCard({
           </div>
         )}
         <p className="text-sm leading-relaxed whitespace-pre-line">{chapter.content}</p>
-        {chapter.b_roll_suggestions && chapter.b_roll_suggestions.length > 0 && (
+        {Array.isArray(chapter.b_roll_suggestions) && chapter.b_roll_suggestions.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 pt-1">
             <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               B-roll
             </span>
             {chapter.b_roll_suggestions.map((b, i) => (
               <Badge key={i} variant="outline" className="text-[11px] font-normal">
-                {b}
+                {typeof b === 'string' ? b : JSON.stringify(b)}
               </Badge>
             ))}
           </div>
@@ -425,7 +425,7 @@ function EditorTab({ output }: { output: VideoOutput }) {
             ),
         )}
 
-        {editor.chapters &&
+        {Array.isArray(editor.chapters) &&
           editor.chapters.map((ch, idx) => (
             <EditorAccordionItem
               key={`ch-${idx}`}
@@ -470,34 +470,74 @@ function EditorAccordionItem({
             {section.A_roll}
           </EditorRow>
         )}
-        {section.B_roll && section.B_roll.length > 0 && (
-          <EditorRow icon={<Film className="h-3.5 w-3.5" />} label="B-roll">
-            <ul className="list-disc list-inside space-y-0.5 text-foreground/90">
-              {section.B_roll.map((b, i) => (
-                <li key={i}>{b}</li>
-              ))}
-            </ul>
-          </EditorRow>
-        )}
-        {section.text_overlays && section.text_overlays.length > 0 && (
-          <EditorRow label="Text overlays">
-            <div className="space-y-1.5">
-              {section.text_overlays.map((t, i) => (
-                <div key={i} className="flex items-start gap-2 rounded-sm bg-muted/40 px-2 py-1.5">
-                  <Badge variant="secondary" className="font-mono text-[11px]">
-                    {t.time}
-                  </Badge>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium">{t.text}</div>
-                    {t.style && (
-                      <div className="text-[11px] text-muted-foreground italic">{t.style}</div>
-                    )}
-                  </div>
+        {(() => {
+          // B-roll can come back as string[], a single string, or null — LLMs drift.
+          const br = section.B_roll as unknown;
+          if (Array.isArray(br) && br.length > 0) {
+            return (
+              <EditorRow icon={<Film className="h-3.5 w-3.5" />} label="B-roll">
+                <ul className="list-disc list-inside space-y-0.5 text-foreground/90">
+                  {br.map((b, i) => (
+                    <li key={i}>{typeof b === 'string' ? b : JSON.stringify(b)}</li>
+                  ))}
+                </ul>
+              </EditorRow>
+            );
+          }
+          if (typeof br === 'string' && br.length > 0) {
+            return (
+              <EditorRow icon={<Film className="h-3.5 w-3.5" />} label="B-roll">
+                {br}
+              </EditorRow>
+            );
+          }
+          return null;
+        })()}
+        {(() => {
+          // text_overlays can come back as VideoTextOverlay[], a single string, or null.
+          const to = section.text_overlays as unknown;
+          if (Array.isArray(to) && to.length > 0) {
+            return (
+              <EditorRow label="Text overlays">
+                <div className="space-y-1.5">
+                  {to.map((raw, i) => {
+                    if (!raw || typeof raw !== 'object') {
+                      return (
+                        <div key={i} className="rounded-sm bg-muted/40 px-2 py-1.5 text-sm">
+                          {String(raw)}
+                        </div>
+                      );
+                    }
+                    const t = raw as { time?: string; text?: string; style?: string };
+                    return (
+                      <div key={i} className="flex items-start gap-2 rounded-sm bg-muted/40 px-2 py-1.5">
+                        {t.time && (
+                          <Badge variant="secondary" className="font-mono text-[11px]">
+                            {t.time}
+                          </Badge>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium">{t.text ?? ''}</div>
+                          {t.style && (
+                            <div className="text-[11px] text-muted-foreground italic">{t.style}</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
-          </EditorRow>
-        )}
+              </EditorRow>
+            );
+          }
+          if (typeof to === 'string' && to.length > 0) {
+            return (
+              <EditorRow label="Text overlays">
+                <div className="text-sm italic text-foreground/90">{to}</div>
+              </EditorRow>
+            );
+          }
+          return null;
+        })()}
         {section.SFX && (
           <EditorRow icon={<Volume2 className="h-3.5 w-3.5" />} label="SFX">
             {section.SFX}
@@ -545,7 +585,7 @@ function EditorRow({
 // ─── Tab: Thumbnails ──────────────────────────────────────────────────────────
 
 function ThumbnailsTab({ output }: { output: VideoOutput }) {
-  const ideas = output.thumbnail_ideas ?? [];
+  const ideas = Array.isArray(output.thumbnail_ideas) ? output.thumbnail_ideas : [];
   const primary = output.thumbnail;
 
   if (!primary && ideas.length === 0) {
@@ -804,7 +844,7 @@ function PublishTab({
       )}
 
       {/* Lower thirds (only if present) */}
-      {output.lower_thirds && output.lower_thirds.length > 0 && (
+      {Array.isArray(output.lower_thirds) && output.lower_thirds.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
