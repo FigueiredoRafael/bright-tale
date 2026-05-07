@@ -93,4 +93,4 @@ export const autopilotConfigPatchSchema = autopilotConfigSchema.deepPartial()
 
 export type AutopilotConfig = z.infer<typeof autopilotConfigSchema>
 export type AutopilotConfigPatch = z.infer<typeof autopilotConfigPatchSchema>
-export type ImageScope = 'featured_only' | 'featured_and_conclusion' | 'all'
+export type ImageScope = AutopilotConfig['assets']['imageScope']
