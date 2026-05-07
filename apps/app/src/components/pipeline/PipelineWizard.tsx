@@ -872,9 +872,12 @@ export function PipelineWizard() {
     setSubmitError(null)
 
     const startStage = deriveStartStage(stageResults)
+    // Always persist autopilotConfig — mode controls auto-advance, but the wizard's
+    // brainstorm/research/draft/review inputs should hydrate engines in step-by-step
+    // mode too (otherwise users lose what they typed in the wizard).
     const payload = {
       mode: data.mode,
-      autopilotConfig: data.mode === 'step-by-step' ? null : data.autopilotConfig,
+      autopilotConfig: data.autopilotConfig,
       templateId: data.templateId,
       startStage,
     }
