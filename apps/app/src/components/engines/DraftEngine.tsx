@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Loader2, BookOpen, FileText, Video, Zap, Mic, Check, ClipboardPaste,
   ArrowRight, Sparkles, FolderOpen, ChevronDown, ChevronUp, Pencil,
@@ -939,6 +939,30 @@ export function DraftEngine({
    * - shorts: { shorts: [...] }
    * - podcast: { podcast_outline: { outline: "..." } } or { outline: "..." }
    */
+  // Persist inline edits made in VideoDraftViewer back to the draft row.
+  // Updates local cache optimistically; toasts on PATCH failure but does not
+  // roll back — the viewer keeps the latest user input so they can retry.
+  const handleVideoSave = useCallback(
+    async (next: Record<string, unknown>) => {
+      if (!draftId) return;
+      setProducedDraftJson(next);
+      try {
+        const res = await fetch(`/api/content-drafts/${draftId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ draftJson: next }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (json?.error) throw new Error(json.error.message ?? 'Save failed');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        toast.error('Failed to save draft', { description: msg });
+      }
+    },
+    [draftId],
+  );
+
   // Returns the structured draft_json from an API row or a parsed user object.
   // VideoDraftViewer consumes this for type='video' instead of the markdown string.
   function extractDraftJson(data: Record<string, unknown>): Record<string, unknown> | null {
@@ -1731,7 +1755,10 @@ export function DraftEngine({
           </CardHeader>
           <CardContent className="space-y-4">
             {type === 'video' && producedDraftJson ? (
-              <VideoDraftViewer output={producedDraftJson as unknown as VideoOutput} />
+              <VideoDraftViewer
+                output={producedDraftJson as unknown as VideoOutput}
+                onSave={handleVideoSave}
+              />
             ) : (
               <MarkdownPreview content={producedContent} className="bg-muted/20 p-4 rounded" />
             )}

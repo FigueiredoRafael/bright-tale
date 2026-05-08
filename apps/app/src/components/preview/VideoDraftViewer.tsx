@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { EditableText } from '@/components/preview/EditableText';
 import {
   Clock,
   Camera,
@@ -36,6 +37,8 @@ import type {
   ThumbnailIdea,
 } from '@brighttale/shared/types/agents';
 
+type Path = (string | number)[];
+
 interface VideoDraftViewerProps {
   /**
    * Raw draft_json from the API or a parsed user paste. The viewer unwraps
@@ -44,6 +47,39 @@ interface VideoDraftViewerProps {
    */
   output: VideoOutput | Record<string, unknown>;
   className?: string;
+  /**
+   * When provided, fields become inline-editable. The callback is invoked
+   * (debounced) with the full updated draft_json after each change.
+   */
+  onSave?: (next: Record<string, unknown>) => void | Promise<void>;
+  /** Debounce delay before firing onSave (ms). Default 800. */
+  saveDebounceMs?: number;
+}
+
+/**
+ * Immutable deep-set: returns a new object with `value` placed at `path`.
+ * Creates intermediate objects/arrays as needed based on the next key shape.
+ */
+function setIn<T extends Record<string, unknown>>(obj: T, path: Path, value: unknown): T {
+  if (path.length === 0) return value as T;
+  const [head, ...rest] = path;
+  if (Array.isArray(obj)) {
+    const copy = obj.slice() as unknown as T;
+    const idx = head as number;
+    (copy as unknown as unknown[])[idx] = setIn(
+      ((obj as unknown as unknown[])[idx] as Record<string, unknown>) ?? (typeof rest[0] === 'number' ? [] : {}),
+      rest,
+      value,
+    );
+    return copy;
+  }
+  const source = (obj as Record<string, unknown>) ?? {};
+  const nextChild = setIn(
+    (source[head as string] as Record<string, unknown>) ?? (typeof rest[0] === 'number' ? [] : {}),
+    rest,
+    value,
+  );
+  return { ...source, [head as string]: nextChild } as T;
 }
 
 function unwrapVideoOutput(raw: VideoOutput | Record<string, unknown>): VideoOutput {
@@ -70,8 +106,44 @@ const EMOTION_VARIANT: Record<string, string> = {
   intrigue: 'bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/30',
 };
 
-export function VideoDraftViewer({ output: rawOutput, className = '' }: VideoDraftViewerProps) {
-  const output = useMemo(() => unwrapVideoOutput(rawOutput), [rawOutput]);
+export function VideoDraftViewer({
+  output: rawOutput,
+  className = '',
+  onSave,
+  saveDebounceMs = 800,
+}: VideoDraftViewerProps) {
+  const editable = typeof onSave === 'function';
+
+  // Local state seeded from the unwrapped output so edits are immediate.
+  // Resync uses the React 19 "setState during render" pattern when the
+  // upstream prop reference changes — avoids setState-in-effect cascades.
+  const initialOutput = useMemo(
+    () => unwrapVideoOutput(rawOutput) as VideoOutput & Record<string, unknown>,
+    [rawOutput],
+  );
+  const [output, setOutput] = useState(initialOutput);
+  const [trackedUpstream, setTrackedUpstream] = useState(initialOutput);
+  if (initialOutput !== trackedUpstream) {
+    setTrackedUpstream(initialOutput);
+    setOutput(initialOutput);
+  }
+
+  // Debounced save: fires onSave with the full draft_json some ms after the
+  // last edit. Skip when output is identical to the latest upstream snapshot
+  // (no local changes pending — typically right after a resync).
+  useEffect(() => {
+    if (!editable) return;
+    if (output === trackedUpstream) return;
+    const timer = setTimeout(() => {
+      void onSave!(output);
+    }, saveDebounceMs);
+    return () => clearTimeout(timer);
+  }, [output, trackedUpstream, editable, onSave, saveDebounceMs]);
+
+  function update(path: Path, value: unknown) {
+    setOutput((prev) => setIn(prev, path, value));
+  }
+
   const titlePrimary = output.video_title?.primary ?? output.title_options?.[0] ?? 'Untitled video';
   const duration = output.estimated_duration ?? output.total_duration_estimate ?? null;
 
@@ -95,7 +167,19 @@ export function VideoDraftViewer({ output: rawOutput, className = '' }: VideoDra
       <div className="rounded-lg border bg-gradient-to-br from-primary/5 via-background to-background p-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex-1 min-w-0">
-            <h2 className="text-xl font-bold tracking-tight leading-tight mb-2">{titlePrimary}</h2>
+            {editable ? (
+              <EditableText
+                as="h2"
+                value={titlePrimary}
+                onChange={(v) => update(['video_title', 'primary'], v)}
+                placeholder="Untitled video"
+                staticClassName="block text-xl font-bold tracking-tight leading-tight mb-2 px-1"
+                inputClassName="text-xl font-bold tracking-tight leading-tight mb-2"
+                ariaLabel="Video title"
+              />
+            ) : (
+              <h2 className="text-xl font-bold tracking-tight leading-tight mb-2">{titlePrimary}</h2>
+            )}
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               {duration && (
                 <span className="inline-flex items-center gap-1">
@@ -161,7 +245,7 @@ export function VideoDraftViewer({ output: rawOutput, className = '' }: VideoDra
         </TabsList>
 
         <TabsContent value="script" className="space-y-3 mt-0">
-          <ScriptTab output={output} />
+          <ScriptTab output={output} editable={editable} update={update} />
         </TabsContent>
         <TabsContent value="editor" className="space-y-3 mt-0">
           <EditorTab output={output} />
@@ -170,7 +254,12 @@ export function VideoDraftViewer({ output: rawOutput, className = '' }: VideoDra
           <ThumbnailsTab output={output} />
         </TabsContent>
         <TabsContent value="publish" className="space-y-3 mt-0">
-          <PublishTab output={output} titleAlternatives={titleAlternatives} />
+          <PublishTab
+            output={output}
+            titleAlternatives={titleAlternatives}
+            editable={editable}
+            update={update}
+          />
         </TabsContent>
       </Tabs>
     </div>
@@ -179,7 +268,16 @@ export function VideoDraftViewer({ output: rawOutput, className = '' }: VideoDra
 
 // ─── Tab: Script ──────────────────────────────────────────────────────────────
 
-function ScriptTab({ output }: { output: VideoOutput }) {
+interface EditingProps {
+  editable?: boolean;
+  update?: (path: Path, value: unknown) => void;
+}
+
+function ScriptTab({
+  output,
+  editable,
+  update,
+}: { output: VideoOutput } & EditingProps) {
   const script = output.script as VideoOutput['script'] | undefined;
   if (!script || typeof script !== 'object') {
     return (
@@ -193,34 +291,89 @@ function ScriptTab({ output }: { output: VideoOutput }) {
 
   return (
     <div className="space-y-3">
-      {script.hook && <ScriptSectionCard label="Hook" tone="hook" section={script.hook} />}
-      {script.problem && <ScriptSectionCard label="Problem" tone="problem" section={script.problem} />}
-      {script.teaser && <ScriptSectionCard label="Teaser" tone="teaser" section={script.teaser} />}
+      {script.hook && (
+        <ScriptSectionCard
+          label="Hook"
+          tone="hook"
+          section={script.hook}
+          basePath={['script', 'hook']}
+          editable={editable}
+          update={update}
+        />
+      )}
+      {script.problem && (
+        <ScriptSectionCard
+          label="Problem"
+          tone="problem"
+          section={script.problem}
+          basePath={['script', 'problem']}
+          editable={editable}
+          update={update}
+        />
+      )}
+      {script.teaser && (
+        <ScriptSectionCard
+          label="Teaser"
+          tone="teaser"
+          section={script.teaser}
+          basePath={['script', 'teaser']}
+          editable={editable}
+          update={update}
+        />
+      )}
 
       {Array.isArray(script.chapters) && script.chapters.length > 0 && (
         <>
           <SectionHeader>Chapters</SectionHeader>
           <div className="space-y-2">
             {script.chapters.map((ch, i) => (
-              <ChapterCard key={`ch-${ch?.chapter_number ?? i}`} chapter={ch} />
+              <ChapterCard
+                key={`ch-${ch?.chapter_number ?? i}`}
+                chapter={ch}
+                basePath={['script', 'chapters', i]}
+                editable={editable}
+                update={update}
+              />
             ))}
           </div>
         </>
       )}
 
       {script.affiliate_segment && (
-        <AffiliateCard segment={script.affiliate_segment} />
+        <AffiliateCard
+          segment={script.affiliate_segment}
+          basePath={['script', 'affiliate_segment']}
+          editable={editable}
+          update={update}
+        />
       )}
 
-      {script.outro && <OutroCard outro={script.outro} />}
+      {script.outro && (
+        <OutroCard
+          outro={script.outro}
+          basePath={['script', 'outro']}
+          editable={editable}
+          update={update}
+        />
+      )}
 
       {audioDirection && (
         <Card className="bg-muted/40">
           <CardContent className="py-3 flex items-start gap-2">
             <Music className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-            <div className="text-xs text-muted-foreground leading-relaxed">
+            <div className="text-xs text-muted-foreground leading-relaxed flex-1">
               <span className="font-medium text-foreground">Audio direction · </span>
-              {audioDirection}
+              {editable && update ? (
+                <EditableText
+                  value={audioDirection}
+                  multiline
+                  onChange={(v) => update(['script', 'audio_direction'], v)}
+                  placeholder="Editor selects mood and music…"
+                  staticClassName="inline-block px-1"
+                />
+              ) : (
+                audioDirection
+              )}
             </div>
           </CardContent>
         </Card>
@@ -239,11 +392,15 @@ function ScriptSectionCard({
   label,
   tone,
   section,
+  basePath,
+  editable,
+  update,
 }: {
   label: string;
   tone: keyof typeof TONE_BORDER;
   section: VideoScriptSection;
-}) {
+  basePath: Path;
+} & EditingProps) {
   return (
     <Card className={TONE_BORDER[tone]}>
       <CardHeader className="pb-2">
@@ -255,12 +412,34 @@ function ScriptSectionCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
-        <p className="text-sm leading-relaxed whitespace-pre-line">{section.content}</p>
-        {section.visual_notes && (
-          <p className="text-xs text-muted-foreground italic border-t pt-2">
+        {editable && update ? (
+          <EditableText
+            as="p"
+            multiline
+            value={section.content}
+            onChange={(v) => update([...basePath, 'content'], v)}
+            placeholder="Section content…"
+            staticClassName="block text-sm leading-relaxed whitespace-pre-line px-1 py-0.5"
+            inputClassName="text-sm leading-relaxed"
+          />
+        ) : (
+          <p className="text-sm leading-relaxed whitespace-pre-line">{section.content}</p>
+        )}
+        {(section.visual_notes || (editable && update)) && (
+          <div className="text-xs text-muted-foreground italic border-t pt-2">
             <span className="font-medium not-italic">Visual notes · </span>
-            {section.visual_notes}
-          </p>
+            {editable && update ? (
+              <EditableText
+                value={section.visual_notes ?? ''}
+                multiline
+                onChange={(v) => update([...basePath, 'visual_notes'], v)}
+                placeholder="Add visual notes…"
+                staticClassName="inline-block px-1"
+              />
+            ) : (
+              section.visual_notes
+            )}
+          </div>
         )}
       </CardContent>
     </Card>
@@ -269,30 +448,66 @@ function ScriptSectionCard({
 
 function ChapterCard({
   chapter,
+  basePath,
+  editable,
+  update,
 }: {
   chapter: NonNullable<VideoOutput['script']['chapters']>[number];
-}) {
+  basePath: Path;
+} & EditingProps) {
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold px-1.5">
               {chapter.chapter_number}
             </span>
-            <CardTitle className="text-sm font-semibold truncate">{chapter.title}</CardTitle>
+            {editable && update ? (
+              <EditableText
+                value={chapter.title}
+                onChange={(v) => update([...basePath, 'title'], v)}
+                placeholder="Chapter title…"
+                staticClassName="text-sm font-semibold truncate flex-1 px-1 py-0.5"
+                inputClassName="text-sm font-semibold"
+                ariaLabel="Chapter title"
+              />
+            ) : (
+              <CardTitle className="text-sm font-semibold truncate">{chapter.title}</CardTitle>
+            )}
           </div>
           {chapter.duration && <DurationBadge value={chapter.duration} />}
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {chapter.key_stat_or_quote && (
+        {(chapter.key_stat_or_quote || (editable && update)) && (
           <div className="rounded-md border-l-4 border-l-primary bg-primary/5 px-3 py-2 text-xs">
             <span className="font-semibold text-primary">Key stat · </span>
-            <span className="text-foreground/90">{chapter.key_stat_or_quote}</span>
+            {editable && update ? (
+              <EditableText
+                value={chapter.key_stat_or_quote ?? ''}
+                onChange={(v) => update([...basePath, 'key_stat_or_quote'], v)}
+                placeholder="Key statistic or quote…"
+                staticClassName="inline-block px-1 text-foreground/90"
+              />
+            ) : (
+              <span className="text-foreground/90">{chapter.key_stat_or_quote}</span>
+            )}
           </div>
         )}
-        <p className="text-sm leading-relaxed whitespace-pre-line">{chapter.content}</p>
+        {editable && update ? (
+          <EditableText
+            as="p"
+            multiline
+            value={chapter.content}
+            onChange={(v) => update([...basePath, 'content'], v)}
+            placeholder="Chapter content…"
+            staticClassName="block text-sm leading-relaxed whitespace-pre-line px-1 py-0.5"
+            inputClassName="text-sm leading-relaxed"
+          />
+        ) : (
+          <p className="text-sm leading-relaxed whitespace-pre-line">{chapter.content}</p>
+        )}
         {Array.isArray(chapter.b_roll_suggestions) && chapter.b_roll_suggestions.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 pt-1">
             <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -312,9 +527,14 @@ function ChapterCard({
 
 function AffiliateCard({
   segment,
+  basePath,
+  editable,
+  update,
 }: {
   segment: NonNullable<VideoOutput['script']['affiliate_segment']>;
-}) {
+  basePath: Path;
+} & EditingProps) {
+  const ed = editable && update;
   return (
     <Card className="border-l-4 border-l-amber-500/70 bg-amber-500/5">
       <CardHeader className="pb-2">
@@ -326,31 +546,82 @@ function AffiliateCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
-        {segment.transition_in && (
-          <p className="text-xs text-muted-foreground italic">
+        {(segment.transition_in || ed) && (
+          <div className="text-xs text-muted-foreground italic">
             <span className="font-medium not-italic">In · </span>
-            {segment.transition_in}
-          </p>
+            {ed ? (
+              <EditableText
+                value={segment.transition_in ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'transition_in'], v)}
+                placeholder="Transition in…"
+                staticClassName="inline-block px-1"
+              />
+            ) : (
+              segment.transition_in
+            )}
+          </div>
         )}
-        <p className="text-sm leading-relaxed whitespace-pre-line">{segment.script}</p>
-        {segment.transition_out && (
-          <p className="text-xs text-muted-foreground italic">
+        {ed ? (
+          <EditableText
+            as="p"
+            multiline
+            value={segment.script}
+            onChange={(v) => update!([...basePath, 'script'], v)}
+            placeholder="Affiliate script…"
+            staticClassName="block text-sm leading-relaxed whitespace-pre-line px-1 py-0.5"
+            inputClassName="text-sm leading-relaxed"
+          />
+        ) : (
+          <p className="text-sm leading-relaxed whitespace-pre-line">{segment.script}</p>
+        )}
+        {(segment.transition_out || ed) && (
+          <div className="text-xs text-muted-foreground italic">
             <span className="font-medium not-italic">Out · </span>
-            {segment.transition_out}
-          </p>
+            {ed ? (
+              <EditableText
+                value={segment.transition_out ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'transition_out'], v)}
+                placeholder="Transition out…"
+                staticClassName="inline-block px-1"
+              />
+            ) : (
+              segment.transition_out
+            )}
+          </div>
         )}
-        {segment.visual_notes && (
-          <p className="text-xs text-muted-foreground italic border-t pt-2">
+        {(segment.visual_notes || ed) && (
+          <div className="text-xs text-muted-foreground italic border-t pt-2">
             <span className="font-medium not-italic">Visual notes · </span>
-            {segment.visual_notes}
-          </p>
+            {ed ? (
+              <EditableText
+                value={segment.visual_notes ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'visual_notes'], v)}
+                placeholder="Visual notes…"
+                staticClassName="inline-block px-1"
+              />
+            ) : (
+              segment.visual_notes
+            )}
+          </div>
         )}
       </CardContent>
     </Card>
   );
 }
 
-function OutroCard({ outro }: { outro: NonNullable<VideoOutput['script']['outro']> }) {
+function OutroCard({
+  outro,
+  basePath,
+  editable,
+  update,
+}: {
+  outro: NonNullable<VideoOutput['script']['outro']>;
+  basePath: Path;
+} & EditingProps) {
+  const ed = editable && update;
   return (
     <Card className="border-l-4 border-l-emerald-500/70">
       <CardHeader className="pb-2">
@@ -362,19 +633,49 @@ function OutroCard({ outro }: { outro: NonNullable<VideoOutput['script']['outro'
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
-        {outro.recap && (
-          <p className="text-sm leading-relaxed whitespace-pre-line italic">{outro.recap}</p>
+        {(outro.recap || ed) && (
+          ed ? (
+            <EditableText
+              as="p"
+              multiline
+              value={outro.recap ?? ''}
+              onChange={(v) => update!([...basePath, 'recap'], v)}
+              placeholder="Recap line…"
+              staticClassName="block text-sm leading-relaxed whitespace-pre-line italic px-1 py-0.5"
+              inputClassName="text-sm leading-relaxed italic"
+            />
+          ) : (
+            <p className="text-sm leading-relaxed whitespace-pre-line italic">{outro.recap}</p>
+          )
         )}
-        {outro.cta && (
+        {(outro.cta || ed) && (
           <div className="rounded-md bg-muted/40 px-3 py-2 text-xs">
             <span className="font-semibold">CTA · </span>
-            {outro.cta}
+            {ed ? (
+              <EditableText
+                value={outro.cta ?? ''}
+                onChange={(v) => update!([...basePath, 'cta'], v)}
+                placeholder="Subscribe call-to-action…"
+                staticClassName="inline-block px-1"
+              />
+            ) : (
+              outro.cta
+            )}
           </div>
         )}
-        {outro.end_screen_prompt && (
+        {(outro.end_screen_prompt || ed) && (
           <div className="rounded-md bg-muted/40 px-3 py-2 text-xs">
             <span className="font-semibold">End screen prompt · </span>
-            {outro.end_screen_prompt}
+            {ed ? (
+              <EditableText
+                value={outro.end_screen_prompt ?? ''}
+                onChange={(v) => update!([...basePath, 'end_screen_prompt'], v)}
+                placeholder="End-screen comment prompt…"
+                staticClassName="inline-block px-1"
+              />
+            ) : (
+              outro.end_screen_prompt
+            )}
           </div>
         )}
       </CardContent>
@@ -733,10 +1034,13 @@ function parsePalette(raw: string): Array<{ label: string; hex: string }> {
 function PublishTab({
   output,
   titleAlternatives,
+  editable,
+  update,
 }: {
   output: VideoOutput;
   titleAlternatives: string[];
-}) {
+} & EditingProps) {
+  const ed = editable && update;
   const teleprompter = output.teleprompter_script ?? '';
   const wordCount = teleprompter ? teleprompter.split(/\s+/).filter(Boolean).length : 0;
   const estMinutes = wordCount > 0 ? (wordCount / 150).toFixed(1) : null;
@@ -744,7 +1048,7 @@ function PublishTab({
   return (
     <div className="space-y-4">
       {/* Title block */}
-      {output.video_title && (
+      {(output.video_title || ed) && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -752,8 +1056,19 @@ function PublishTab({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="text-lg font-bold leading-tight">{output.video_title.primary}</div>
-            {titleAlternatives.length > 0 && (
+            {ed ? (
+              <EditableText
+                value={output.video_title?.primary ?? ''}
+                onChange={(v) => update!(['video_title', 'primary'], v)}
+                placeholder="Primary title…"
+                staticClassName="block text-lg font-bold leading-tight px-1 py-0.5"
+                inputClassName="text-lg font-bold leading-tight"
+                ariaLabel="Primary title"
+              />
+            ) : (
+              <div className="text-lg font-bold leading-tight">{output.video_title?.primary}</div>
+            )}
+            {(titleAlternatives.length > 0 || ed) && (
               <div className="space-y-1">
                 <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Alternatives (A/B test)
@@ -761,7 +1076,26 @@ function PublishTab({
                 <ul className="space-y-1 text-sm">
                   {titleAlternatives.map((t, i) => (
                     <li key={i} className="rounded-sm border bg-muted/30 px-3 py-1.5">
-                      {t}
+                      {ed ? (
+                        <EditableText
+                          value={t}
+                          onChange={(v) => {
+                            const alts = Array.isArray(output.video_title?.alternatives)
+                              ? [...output.video_title.alternatives]
+                              : [];
+                            // Find index of this alternative in source array (by string match)
+                            const srcIdx = alts.findIndex((a) => a === t);
+                            if (srcIdx >= 0) {
+                              alts[srcIdx] = v;
+                              update!(['video_title', 'alternatives'], alts);
+                            }
+                          }}
+                          placeholder="Alternative title…"
+                          staticClassName="inline-block px-1 w-full"
+                        />
+                      ) : (
+                        t
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -772,7 +1106,7 @@ function PublishTab({
       )}
 
       {/* Description */}
-      {output.video_description && (
+      {(output.video_description || ed) && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -780,15 +1114,27 @@ function PublishTab({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ScrollArea className="h-[280px] rounded-md border bg-muted/20 p-3">
-              <MarkdownPreview content={output.video_description} className="text-sm" />
-            </ScrollArea>
+            {ed ? (
+              <EditableText
+                value={output.video_description ?? ''}
+                multiline
+                onChange={(v) => update!(['video_description'], v)}
+                placeholder="YouTube description (markdown)…"
+                staticClassName="block text-sm leading-relaxed whitespace-pre-wrap rounded-md border bg-muted/20 p-3 min-h-[120px]"
+                inputClassName="text-sm font-mono"
+                maxHeight={400}
+              />
+            ) : (
+              <ScrollArea className="h-[280px] rounded-md border bg-muted/20 p-3">
+                <MarkdownPreview content={output.video_description ?? ''} className="text-sm" />
+              </ScrollArea>
+            )}
           </CardContent>
         </Card>
       )}
 
       {/* Pinned comment */}
-      {output.pinned_comment && (
+      {(output.pinned_comment || ed) && (
         <Card className="border-l-4 border-l-blue-500/70">
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
@@ -799,13 +1145,25 @@ function PublishTab({
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-sm leading-relaxed whitespace-pre-line">{output.pinned_comment}</p>
+            {ed ? (
+              <EditableText
+                as="p"
+                multiline
+                value={output.pinned_comment ?? ''}
+                onChange={(v) => update!(['pinned_comment'], v)}
+                placeholder="Engagement comment…"
+                staticClassName="block text-sm leading-relaxed whitespace-pre-line px-1 py-0.5"
+                inputClassName="text-sm leading-relaxed"
+              />
+            ) : (
+              <p className="text-sm leading-relaxed whitespace-pre-line">{output.pinned_comment}</p>
+            )}
           </CardContent>
         </Card>
       )}
 
       {/* Teleprompter */}
-      {teleprompter && (
+      {(teleprompter || ed) && (
         <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -834,11 +1192,23 @@ function PublishTab({
                 Generate Audio (Wave 2)
               </Button>
             </div>
-            <ScrollArea className="h-[320px] rounded-md border bg-muted/20 p-3">
-              <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground/90">
-                {teleprompter}
-              </pre>
-            </ScrollArea>
+            {ed ? (
+              <EditableText
+                multiline
+                value={teleprompter}
+                onChange={(v) => update!(['teleprompter_script'], v)}
+                placeholder="Teleprompter script…"
+                staticClassName="block font-mono text-xs leading-relaxed whitespace-pre-wrap rounded-md border bg-muted/20 p-3 min-h-[200px]"
+                inputClassName="font-mono text-xs leading-relaxed"
+                maxHeight={500}
+              />
+            ) : (
+              <ScrollArea className="h-[320px] rounded-md border bg-muted/20 p-3">
+                <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground/90">
+                  {teleprompter}
+                </pre>
+              </ScrollArea>
+            )}
           </CardContent>
         </Card>
       )}
@@ -859,9 +1229,28 @@ function PublishTab({
                     {lt.timestamp}
                   </Badge>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold">{lt.line1}</div>
-                    {lt.line2 && (
-                      <div className="text-xs text-muted-foreground">{lt.line2}</div>
+                    {ed ? (
+                      <EditableText
+                        value={lt.line1}
+                        onChange={(v) => update!(['lower_thirds', i, 'line1'], v)}
+                        placeholder="Primary text…"
+                        staticClassName="block text-sm font-semibold px-1"
+                        inputClassName="text-sm font-semibold"
+                      />
+                    ) : (
+                      <div className="text-sm font-semibold">{lt.line1}</div>
+                    )}
+                    {(lt.line2 || ed) && (
+                      ed ? (
+                        <EditableText
+                          value={lt.line2 ?? ''}
+                          onChange={(v) => update!(['lower_thirds', i, 'line2'], v)}
+                          placeholder="Secondary text (optional)…"
+                          staticClassName="block text-xs text-muted-foreground px-1"
+                        />
+                      ) : (
+                        <div className="text-xs text-muted-foreground">{lt.line2}</div>
+                      )
                     )}
                   </div>
                   <span className="text-[10px] text-muted-foreground shrink-0 pt-1">
