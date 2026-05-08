@@ -34,6 +34,8 @@ export const createShortsSchema = z.object({
   status: z.enum(["draft", "review", "approved", "published"]).default("draft"),
   project_id: z.string().uuid().optional(),
   idea_id: z.string().optional(),
+  /** content_drafts.id of the source video this shorts batch was derived from (G7). */
+  source_content_draft_id: z.string().uuid().optional(),
 });
 
 export type CreateShortsInput = z.infer<typeof createShortsSchema>;

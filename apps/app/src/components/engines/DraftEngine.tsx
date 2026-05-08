@@ -939,6 +939,43 @@ export function DraftEngine({
    * - shorts: { shorts: [...] }
    * - podcast: { podcast_outline: { outline: "..." } } or { outline: "..." }
    */
+  // Wave 3 (G7): derive a Shorts draft from the produced video. Calls
+  // POST /:id/derive-shorts which seeds a new content_drafts row of
+  // type='shorts' with canonical_core_json pre-filled by
+  // mapVideoOutputToShortsInput. The user still has to run /produce on the
+  // new draft — this just skips the canonical-core regeneration.
+  const [derivingShorts, setDerivingShorts] = useState(false);
+  const handleDeriveShorts = useCallback(async () => {
+    if (!draftId || derivingShorts) return;
+    setDerivingShorts(true);
+    try {
+      const res = await fetch(`/api/content-drafts/${draftId}/derive-shorts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json();
+      if (!res.ok || json?.error) {
+        throw new Error(json?.error?.message ?? `Request failed (${res.status})`);
+      }
+      const newDraft = json.data?.draft as { id?: string; title?: string; channel_id?: string | null } | undefined;
+      const link = newDraft?.channel_id && newDraft.id
+        ? `/channels/${newDraft.channel_id}/drafts/${newDraft.id}`
+        : null;
+      toast.success('Shorts draft created from this video', {
+        description: link
+          ? `Open the new draft and click "Produce" to generate the 3 shorts.`
+          : `Find the new draft (type "shorts") in your channel drafts list.`,
+        action: link ? { label: 'Open', onClick: () => { window.location.href = link; } } : undefined,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      toast.error('Failed to derive shorts', { description: msg });
+    } finally {
+      setDerivingShorts(false);
+    }
+  }, [draftId, derivingShorts]);
+
   // Persist inline edits made in VideoDraftViewer back to the draft row.
   // Updates local cache optimistically; toasts on PATCH failure but does not
   // roll back — the viewer keeps the latest user input so they can retry.
@@ -1763,7 +1800,22 @@ export function DraftEngine({
             ) : (
               <MarkdownPreview content={producedContent} className="bg-muted/20 p-4 rounded" />
             )}
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2 flex-wrap">
+              {type === 'video' && producedDraftJson && (
+                <Button
+                  variant="outline"
+                  onClick={handleDeriveShorts}
+                  disabled={derivingShorts || !draftId}
+                  title={!draftId ? 'Save the draft first to enable shorts derivation.' : 'Spawn a shorts draft from this video'}
+                >
+                  {derivingShorts ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Zap className="h-4 w-4 mr-2" />
+                  )}
+                  {derivingShorts ? 'Generating…' : 'Generate Shorts'}
+                </Button>
+              )}
               <Button
                 variant="outline"
                 onClick={() => {

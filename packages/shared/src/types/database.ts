@@ -3064,6 +3064,7 @@ export type Database = {
           project_id: string | null
           short_count: number
           shorts_json: string
+          source_content_draft_id: string | null
           status: string
           total_duration: string | null
           updated_at: string
@@ -3077,6 +3078,7 @@ export type Database = {
           project_id?: string | null
           short_count?: number
           shorts_json: string
+          source_content_draft_id?: string | null
           status?: string
           total_duration?: string | null
           updated_at?: string
@@ -3090,6 +3092,7 @@ export type Database = {
           project_id?: string | null
           short_count?: number
           shorts_json?: string
+          source_content_draft_id?: string | null
           status?: string
           total_duration?: string | null
           updated_at?: string
@@ -3101,6 +3104,13 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shorts_drafts_source_content_draft_id_fkey"
+            columns: ["source_content_draft_id"]
+            isOneToOne: false
+            referencedRelation: "content_drafts"
             referencedColumns: ["id"]
           },
         ]

@@ -104,6 +104,7 @@ export async function shortsRoutes(fastify: FastifyInstance): Promise<void> {
           project_id: data.project_id,
           idea_id: data.idea_id,
           user_id: request.userId ?? null,
+          source_content_draft_id: data.source_content_draft_id ?? null,
         })
         .select()
         .single();

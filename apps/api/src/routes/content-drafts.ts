@@ -48,6 +48,8 @@ import { deriveTier } from "@brighttale/shared/utils/reviewTierCompat";
 import { loadCreditSettings } from "../lib/credit-settings.js";
 import { calculateDraftCost } from "../lib/calculate-draft-cost.js";
 import { getVoiceProvider } from "../lib/voice/index.js";
+import { mapVideoOutputToShortsInput } from "@brighttale/shared/mappers/video-to-shorts";
+import type { CanonicalCore, VideoOutput } from "@brighttale/shared/types/agents";
 
 
 const createSchema = z.object({
@@ -2421,6 +2423,114 @@ export async function contentDraftsRoutes(
         const { error } = await sb.from("content_drafts").delete().eq("id", id);
         if (error) throw error;
         return reply.send({ data: { deleted: true }, error: null });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  /**
+   * POST /:id/derive-shorts — spawn a new shorts draft from a video draft (G7).
+   * Reuses the source video's canonical core + chapter signals to seed the
+   * shorts pipeline so the user doesn't burn another canonical-core LLM call.
+   * The new content_drafts row carries production_params.source_content_draft_id
+   * so the eventual shorts_drafts insert can populate the FK column added in
+   * supabase/migrations/20260508130000_shorts_drafts_source_video.sql.
+   */
+  fastify.post(
+    "/:id/derive-shorts",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        if (!request.userId)
+          throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        const { id } = request.params as { id: string };
+        const sb = createServiceClient();
+        const source = (await loadDraft(id)) as Record<string, unknown>;
+
+        if (source.user_id && source.user_id !== request.userId) {
+          throw new ApiError(403, "Forbidden", "FORBIDDEN");
+        }
+        if (source.type !== "video") {
+          throw new ApiError(
+            422,
+            `Source draft must be type=video (got "${source.type}").`,
+            "BAD_SOURCE_TYPE",
+          );
+        }
+
+        const draftJson = source.draft_json as Record<string, unknown> | null;
+        const canonicalCoreJson = source.canonical_core_json as Record<string, unknown> | null;
+        if (!draftJson || Object.keys(draftJson).length === 0) {
+          throw new ApiError(
+            422,
+            "Source video has no produced output (draft_json is empty).",
+            "NO_VIDEO_OUTPUT",
+          );
+        }
+        if (!canonicalCoreJson || Object.keys(canonicalCoreJson).length === 0) {
+          throw new ApiError(
+            422,
+            "Source video is missing its canonical core.",
+            "NO_CANONICAL_CORE",
+          );
+        }
+
+        // Unwrap legacy wrappers before passing to the mapper, mirroring what
+        // VideoDraftViewer does so the same drafts work in either path.
+        const inner =
+          (draftJson.video_script as Record<string, unknown> | undefined) ??
+          (draftJson.video as Record<string, unknown> | undefined) ??
+          draftJson;
+        const shortsInput = mapVideoOutputToShortsInput(
+          inner as unknown as VideoOutput,
+          canonicalCoreJson as unknown as CanonicalCore,
+        );
+
+        const sourceTitle = (source.title as string) ?? "Untitled video";
+        const inheritedParams =
+          (source.production_params as Record<string, unknown> | null | undefined) ?? {};
+        const newProductionParams: Record<string, unknown> = {
+          ...inheritedParams,
+          source_content_draft_id: id,
+        };
+
+        const { data: created, error: insertErr } = await (
+          sb.from("content_drafts") as unknown as {
+            insert: (row: Record<string, unknown>) => {
+              select: (cols: string) => {
+                single: () => Promise<{ data: unknown; error: unknown }>;
+              };
+            };
+          }
+        )
+          .insert({
+            channel_id: (source.channel_id as string | null) ?? null,
+            idea_id: (source.idea_id as string | null) ?? null,
+            research_session_id: (source.research_session_id as string | null) ?? null,
+            project_id: (source.project_id as string | null) ?? null,
+            persona_id: (source.persona_id as string | null) ?? null,
+            user_id: source.user_id as string | null,
+            org_id: source.org_id as string | null,
+            type: "shorts",
+            title: `Shorts from: ${sourceTitle}`,
+            canonical_core_json: shortsInput,
+            production_params: newProductionParams,
+            status: "draft",
+          })
+          .select("id, type, title, project_id, channel_id")
+          .single();
+
+        if (insertErr) throw insertErr;
+
+        return reply.send({
+          data: {
+            draft: created,
+            shortsInput,
+            sourceContentDraftId: id,
+          },
+          error: null,
+        });
       } catch (error) {
         return sendError(reply, error);
       }
