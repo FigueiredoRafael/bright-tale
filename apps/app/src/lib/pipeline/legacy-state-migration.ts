@@ -42,7 +42,7 @@ interface LegacyShape {
 export interface MigratedPipelineInput
   extends Pick<
     PipelineMachineInput,
-    'mode' | 'initialStageResults' | 'initialIterationCount' | 'initialPaused' | 'initialPauseReason'
+    'mode' | 'initialStageResults' | 'initialIterationCount' | 'initialPaused' | 'initialPauseReason' | 'autopilotConfig'
   > {
   /**
    * Stage the orchestrator should NAVIGATE to after spawning the machine.
@@ -153,6 +153,7 @@ export function mapLegacyPipelineState(raw: unknown): MigratedPipelineInput | nu
     initialStage,
     initialPaused,
     initialPauseReason,
+    autopilotConfig: migrateAutopilotConfig(input.autopilotConfig),
   }
 }
 

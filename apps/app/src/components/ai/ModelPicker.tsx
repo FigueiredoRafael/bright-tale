@@ -15,24 +15,24 @@ export interface ModelOption {
 export const MODELS_BY_PROVIDER: Record<ProviderId, ModelOption[]> = {
     ollama: [
         { id: "gemma4:e4b", label: "Gemma 4 (4B)", note: "local · Google · partial GPU" },
-        { id: "tinyllama:latest", label: "TinyLlama 1B", note: "local · ultra leve · teste" },
-        { id: "llama3.1:8b", label: "Llama 3.1 8B", note: "local · zero custo" },
-        { id: "qwen2.5:7b", label: "Qwen 2.5 7B", note: "local · bom JSON" },
-        { id: "mistral-nemo:12b", label: "Mistral Nemo 12B", note: "local · qualidade" },
+        { id: "tinyllama:latest", label: "TinyLlama 1B", note: "local · ultra light · test" },
+        { id: "llama3.1:8b", label: "Llama 3.1 8B", note: "local · zero cost" },
+        { id: "qwen2.5:7b", label: "Qwen 2.5 7B", note: "local · good JSON" },
+        { id: "mistral-nemo:12b", label: "Mistral Nemo 12B", note: "local · quality" },
     ],
     gemini: [
-        { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", note: "free tier · rápido" },
-        { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", note: "qualidade alta" },
+        { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", note: "free tier · fast" },
+        { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", note: "high quality" },
     ],
     openai: [
-        { id: "gpt-4o-mini", label: "GPT-4o mini", note: "barato + rápido" },
-        { id: "gpt-4o", label: "GPT-4o", note: "qualidade alta" },
-        { id: "o1-mini", label: "o1 mini", note: "raciocínio" },
+        { id: "gpt-4o-mini", label: "GPT-4o mini", note: "cheap + fast" },
+        { id: "gpt-4o", label: "GPT-4o", note: "high quality" },
+        { id: "o1-mini", label: "o1 mini", note: "reasoning" },
     ],
     anthropic: [
-        { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", note: "barato + rápido" },
-        { id: "claude-sonnet-4-5-20250514", label: "Claude Sonnet 4.5", note: "balanceado" },
-        { id: "claude-opus-4-5-20250514", label: "Claude Opus 4.5", note: "máx qualidade" },
+        { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", note: "cheap + fast" },
+        { id: "claude-sonnet-4-5-20250514", label: "Claude Sonnet 4.5", note: "balanced" },
+        { id: "claude-opus-4-5-20250514", label: "Claude Opus 4.5", note: "max quality" },
     ],
     manual: [
         { id: "manual", label: "Manual paste", note: "emits input to Axiom · no LLM call" },
@@ -100,7 +100,7 @@ export function ModelPicker({ provider, model, recommended, onProviderChange, on
             </div>
 
             <div className="space-y-2">
-                <Label className="text-xs">Modelo</Label>
+                <Label className="text-xs">Model</Label>
                 <div className="grid grid-cols-2 gap-2">
                     {models.map((m) => {
                         const isRecommended = recommended?.provider === provider && recommended?.model === m.id;

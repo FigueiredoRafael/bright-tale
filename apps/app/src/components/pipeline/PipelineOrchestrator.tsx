@@ -144,6 +144,7 @@ function OrchestratorInner({
           pipelineSettings,
           creditSettings,
           mode: legacy?.mode,
+          autopilotConfig: legacy?.autopilotConfig ?? null,
           initialStageResults: legacy?.initialStageResults,
           initialIterationCount: legacy?.initialIterationCount,
           initialPaused: legacy?.initialPaused,
