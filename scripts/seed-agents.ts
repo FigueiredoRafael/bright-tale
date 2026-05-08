@@ -51,12 +51,15 @@ function generateUpsertSQL(): string {
       `  now(),`,
       `  now()`,
       `)`,
+      // Note: recommended_provider and recommended_model are intentionally NOT
+      // overwritten on conflict. Those columns are admin-managed via
+      // /zadmin/agents/[slug]/editor — the .ts agent definitions ship with null
+      // and the seed only seeds them on first insert. Adding them to the SET
+      // clause would wipe the admin's per-stage provider/model picks every regen.
       `on conflict (slug) do update set`,
       `  name = excluded.name,`,
       `  instructions = excluded.instructions,`,
       `  sections_json = excluded.sections_json,`,
-      `  recommended_provider = excluded.recommended_provider,`,
-      `  recommended_model = excluded.recommended_model,`,
       `  tools_json = excluded.tools_json,`,
       `  updated_at = now();`,
     ].join('\n');

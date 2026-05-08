@@ -122,8 +122,6 @@ on conflict (slug) do update set
   name = excluded.name,
   instructions = excluded.instructions,
   sections_json = excluded.sections_json,
-  recommended_provider = excluded.recommended_provider,
-  recommended_model = excluded.recommended_model,
   tools_json = excluded.tools_json,
   updated_at = now();
 
@@ -316,8 +314,6 @@ on conflict (slug) do update set
   name = excluded.name,
   instructions = excluded.instructions,
   sections_json = excluded.sections_json,
-  recommended_provider = excluded.recommended_provider,
-  recommended_model = excluded.recommended_model,
   tools_json = excluded.tools_json,
   updated_at = now();
 
@@ -537,8 +533,6 @@ on conflict (slug) do update set
   name = excluded.name,
   instructions = excluded.instructions,
   sections_json = excluded.sections_json,
-  recommended_provider = excluded.recommended_provider,
-  recommended_model = excluded.recommended_model,
   tools_json = excluded.tools_json,
   updated_at = now();
 
@@ -869,8 +863,6 @@ on conflict (slug) do update set
   name = excluded.name,
   instructions = excluded.instructions,
   sections_json = excluded.sections_json,
-  recommended_provider = excluded.recommended_provider,
-  recommended_model = excluded.recommended_model,
   tools_json = excluded.tools_json,
   updated_at = now();
 
@@ -1156,8 +1148,6 @@ on conflict (slug) do update set
   name = excluded.name,
   instructions = excluded.instructions,
   sections_json = excluded.sections_json,
-  recommended_provider = excluded.recommended_provider,
-  recommended_model = excluded.recommended_model,
   tools_json = excluded.tools_json,
   updated_at = now();
 
@@ -1310,8 +1300,6 @@ on conflict (slug) do update set
   name = excluded.name,
   instructions = excluded.instructions,
   sections_json = excluded.sections_json,
-  recommended_provider = excluded.recommended_provider,
-  recommended_model = excluded.recommended_model,
   tools_json = excluded.tools_json,
   updated_at = now();
 
@@ -1495,8 +1483,6 @@ on conflict (slug) do update set
   name = excluded.name,
   instructions = excluded.instructions,
   sections_json = excluded.sections_json,
-  recommended_provider = excluded.recommended_provider,
-  recommended_model = excluded.recommended_model,
   tools_json = excluded.tools_json,
   updated_at = now();
 
@@ -2044,8 +2030,6 @@ on conflict (slug) do update set
   name = excluded.name,
   instructions = excluded.instructions,
   sections_json = excluded.sections_json,
-  recommended_provider = excluded.recommended_provider,
-  recommended_model = excluded.recommended_model,
   tools_json = excluded.tools_json,
   updated_at = now();
 
@@ -2348,8 +2332,6 @@ on conflict (slug) do update set
   name = excluded.name,
   instructions = excluded.instructions,
   sections_json = excluded.sections_json,
-  recommended_provider = excluded.recommended_provider,
-  recommended_model = excluded.recommended_model,
   tools_json = excluded.tools_json,
   updated_at = now();
 
@@ -2610,7 +2592,5 @@ on conflict (slug) do update set
   name = excluded.name,
   instructions = excluded.instructions,
   sections_json = excluded.sections_json,
-  recommended_provider = excluded.recommended_provider,
-  recommended_model = excluded.recommended_model,
   tools_json = excluded.tools_json,
   updated_at = now();
