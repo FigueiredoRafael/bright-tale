@@ -47,6 +47,7 @@ import { logAiUsage } from "../lib/axiom.js";
 import { deriveTier } from "@brighttale/shared/utils/reviewTierCompat";
 import { loadCreditSettings } from "../lib/credit-settings.js";
 import { calculateDraftCost } from "../lib/calculate-draft-cost.js";
+import { getVoiceProvider } from "../lib/voice/index.js";
 
 
 const createSchema = z.object({
@@ -69,6 +70,48 @@ const providerOverrideSchema = z.object({
   modelTier: z.string().optional(),
   productionParams: z.record(z.unknown()).optional(),
 });
+
+const synthesizeDraftSchema = z.object({
+  voiceId: z.string().optional(),
+  provider: z.enum(["elevenlabs", "openai"]).optional(),
+  speed: z.number().min(0.5).max(2).optional(),
+  format: z.enum(["mp3", "wav"]).default("mp3"),
+  style: z.string().optional(),
+});
+
+/**
+ * Splits a long script into chunks ≤ maxChars at sentence boundaries.
+ * Falls back to hard-cut on whitespace when a single sentence exceeds the
+ * limit. Output preserves whitespace between sentences.
+ */
+function chunkTeleprompter(text: string, maxChars = 3800): string[] {
+  if (text.length <= maxChars) return [text];
+  const sentences = text.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) ?? [text];
+  const chunks: string[] = [];
+  let current = "";
+  for (const s of sentences) {
+    if ((current + s).length > maxChars) {
+      if (current) chunks.push(current.trim());
+      if (s.length > maxChars) {
+        // Single sentence longer than the cap — hard split on whitespace.
+        let remaining = s;
+        while (remaining.length > maxChars) {
+          const cut = remaining.lastIndexOf(" ", maxChars);
+          const at = cut > maxChars / 2 ? cut : maxChars;
+          chunks.push(remaining.slice(0, at).trim());
+          remaining = remaining.slice(at);
+        }
+        current = remaining;
+      } else {
+        current = s;
+      }
+    } else {
+      current += s;
+    }
+  }
+  if (current.trim()) chunks.push(current.trim());
+  return chunks;
+}
 
 const updateSchema = z.object({
   title: z.string().optional(),
@@ -2378,6 +2421,130 @@ export async function contentDraftsRoutes(
         const { error } = await sb.from("content_drafts").delete().eq("id", id);
         if (error) throw error;
         return reply.send({ data: { deleted: true }, error: null });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  /**
+   * POST /:id/synthesize — generate TTS audio from the draft's teleprompter_script.
+   * Channel voice settings act as defaults; body params override per-call.
+   * Long scripts are chunked at sentence boundaries and concatenated client-side
+   * (mp3 frames are independently decodable, so a raw concat is acceptable).
+   */
+  fastify.post(
+    "/:id/synthesize",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        if (!request.userId)
+          throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        const { id } = request.params as { id: string };
+        const body = synthesizeDraftSchema.parse(request.body ?? {});
+
+        const sb = createServiceClient();
+        const draft = (await loadDraft(id)) as Record<string, unknown>;
+
+        // Ownership: content_drafts.user_id is the authoritative scope.
+        if (draft.user_id && draft.user_id !== request.userId) {
+          throw new ApiError(403, "Forbidden", "FORBIDDEN");
+        }
+
+        const draftJson = (draft.draft_json ?? {}) as Record<string, unknown>;
+        // Unwrap legacy shapes (video_script / video) before reading the script.
+        const inner =
+          (draftJson.video_script as Record<string, unknown> | undefined) ??
+          (draftJson.video as Record<string, unknown> | undefined) ??
+          draftJson;
+        const teleprompter =
+          typeof inner.teleprompter_script === "string"
+            ? inner.teleprompter_script
+            : typeof draftJson.teleprompter_script === "string"
+              ? (draftJson.teleprompter_script as string)
+              : "";
+        if (!teleprompter.trim()) {
+          throw new ApiError(
+            422,
+            "Draft has no teleprompter_script. Produce or paste a video draft first.",
+            "NO_TELEPROMPTER",
+          );
+        }
+
+        // Channel defaults
+        let channelDefaults: {
+          voice_id?: string | null;
+          voice_provider?: string | null;
+          voice_speed?: number | null;
+        } = {};
+        if (draft.channel_id) {
+          const { data: ch } = await sb
+            .from("channels")
+            .select("voice_id, voice_provider, voice_speed")
+            .eq("id", draft.channel_id as string)
+            .maybeSingle();
+          if (ch) channelDefaults = ch as typeof channelDefaults;
+        }
+
+        const voiceId = body.voiceId ?? channelDefaults.voice_id ?? null;
+        if (!voiceId) {
+          throw new ApiError(
+            422,
+            "No voiceId provided and the channel has no default voice. Set channel.voice_id or pass voiceId in the body.",
+            "NO_VOICE_ID",
+          );
+        }
+        const providerName =
+          body.provider ?? (channelDefaults.voice_provider as "elevenlabs" | "openai" | null) ?? "elevenlabs";
+        const speed =
+          body.speed ?? (typeof channelDefaults.voice_speed === "number" ? channelDefaults.voice_speed : undefined);
+
+        const provider = getVoiceProvider(providerName);
+        if (!provider) {
+          throw new ApiError(
+            500,
+            `Voice provider "${providerName}" is not configured. Set ELEVENLABS_API_KEY or OPENAI_API_KEY in apps/api/.env.local.`,
+            "CONFIG_ERROR",
+          );
+        }
+
+        const chunks = chunkTeleprompter(teleprompter);
+        const results = [] as Array<{
+          audio: Buffer;
+          mimeType: string;
+          estimatedSeconds: number;
+          providerName: string;
+          voiceId: string;
+        }>;
+        for (const chunk of chunks) {
+          const r = await provider.synthesize({
+            text: chunk,
+            voiceId,
+            speed,
+            format: body.format,
+            style: body.style,
+          });
+          results.push(r);
+        }
+
+        const combined = Buffer.concat(results.map((r) => r.audio));
+        const totalSeconds = results.reduce(
+          (acc, r) => acc + (r.estimatedSeconds || 0),
+          0,
+        );
+
+        return reply.send({
+          data: {
+            audioBase64: combined.toString("base64"),
+            mimeType: results[0]?.mimeType ?? "audio/mpeg",
+            estimatedSeconds: totalSeconds,
+            provider: results[0]?.providerName ?? providerName,
+            voiceId,
+            characterCount: teleprompter.length,
+            chunkCount: chunks.length,
+          },
+          error: null,
+        });
       } catch (error) {
         return sendError(reply, error);
       }

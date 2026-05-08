@@ -1758,6 +1758,7 @@ export function DraftEngine({
               <VideoDraftViewer
                 output={producedDraftJson as unknown as VideoOutput}
                 onSave={handleVideoSave}
+                draftId={draftId ?? undefined}
               />
             ) : (
               <MarkdownPreview content={producedContent} className="bg-muted/20 p-4 rounded" />

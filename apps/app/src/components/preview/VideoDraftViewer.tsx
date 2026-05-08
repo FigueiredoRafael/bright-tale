@@ -16,6 +16,7 @@ import {
   Copy,
   Check,
   AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -54,6 +55,12 @@ interface VideoDraftViewerProps {
   onSave?: (next: Record<string, unknown>) => void | Promise<void>;
   /** Debounce delay before firing onSave (ms). Default 800. */
   saveDebounceMs?: number;
+  /**
+   * Draft id — when present the Publish tab's "Generate Audio" button calls
+   * POST /api/content-drafts/:draftId/synthesize and renders an audio player
+   * inline. Without it the button stays disabled.
+   */
+  draftId?: string;
 }
 
 /**
@@ -111,6 +118,7 @@ export function VideoDraftViewer({
   className = '',
   onSave,
   saveDebounceMs = 800,
+  draftId,
 }: VideoDraftViewerProps) {
   const editable = typeof onSave === 'function';
 
@@ -259,6 +267,7 @@ export function VideoDraftViewer({
             titleAlternatives={titleAlternatives}
             editable={editable}
             update={update}
+            draftId={draftId}
           />
         </TabsContent>
       </Tabs>
@@ -1399,19 +1408,58 @@ function parsePalette(raw: string): Array<{ label: string; hex: string }> {
 
 // ─── Tab: Publish ─────────────────────────────────────────────────────────────
 
+interface SynthesisResult {
+  audioBase64: string;
+  mimeType: string;
+  estimatedSeconds: number;
+  provider: string;
+  voiceId: string;
+  characterCount: number;
+  chunkCount: number;
+}
+
 function PublishTab({
   output,
   titleAlternatives,
   editable,
   update,
+  draftId,
 }: {
   output: VideoOutput;
   titleAlternatives: string[];
+  draftId?: string;
 } & EditingProps) {
   const ed = editable && update;
   const teleprompter = output.teleprompter_script ?? '';
   const wordCount = teleprompter ? teleprompter.split(/\s+/).filter(Boolean).length : 0;
   const estMinutes = wordCount > 0 ? (wordCount / 150).toFixed(1) : null;
+
+  const [synthesizing, setSynthesizing] = useState(false);
+  const [audio, setAudio] = useState<SynthesisResult | null>(null);
+  const [synthError, setSynthError] = useState<string | null>(null);
+
+  async function handleSynthesize() {
+    if (!draftId || synthesizing) return;
+    setSynthesizing(true);
+    setSynthError(null);
+    try {
+      const res = await fetch(`/api/content-drafts/${draftId}/synthesize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json();
+      if (!res.ok || json?.error) {
+        throw new Error(json?.error?.message ?? `Request failed (${res.status})`);
+      }
+      setAudio(json.data as SynthesisResult);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setSynthError(msg);
+    } finally {
+      setSynthesizing(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -1553,13 +1601,58 @@ function PublishTab({
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <CopyButton text={teleprompter} />
-              <Button variant="outline" size="sm" disabled className="gap-1.5" title="Coming in Wave 2">
-                <Volume2 className="h-3.5 w-3.5" />
-                Generate Audio (Wave 2)
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={handleSynthesize}
+                disabled={!draftId || !teleprompter.trim() || synthesizing}
+                title={
+                  !draftId
+                    ? 'Save the draft first to enable TTS.'
+                    : !teleprompter.trim()
+                      ? 'Empty teleprompter — generate or paste a script first.'
+                      : 'Generate audio narration'
+                }
+              >
+                {synthesizing ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Volume2 className="h-3.5 w-3.5" />
+                )}
+                {synthesizing ? 'Synthesizing…' : 'Generate Audio'}
               </Button>
             </div>
+            {audio && (
+              <div className="rounded-md border bg-muted/20 p-3 space-y-2">
+                <audio
+                  controls
+                  src={`data:${audio.mimeType};base64,${audio.audioBase64}`}
+                  className="w-full"
+                />
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                  <span>~{Math.round(audio.estimatedSeconds)}s</span>
+                  <span>·</span>
+                  <span>{audio.provider}</span>
+                  <span>·</span>
+                  <span className="font-mono">voice {audio.voiceId.slice(0, 12)}{audio.voiceId.length > 12 ? '…' : ''}</span>
+                  {audio.chunkCount > 1 && (
+                    <>
+                      <span>·</span>
+                      <span>{audio.chunkCount} chunks</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+            {synthError && (
+              <div className="rounded-md border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-700 dark:text-red-300">
+                <span className="font-semibold">Audio generation failed · </span>
+                {synthError}
+              </div>
+            )}
             {ed ? (
               <EditableText
                 multiline
