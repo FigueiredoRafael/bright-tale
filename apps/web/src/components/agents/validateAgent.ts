@@ -6,11 +6,17 @@ export interface AgentValidationError {
   message: string;
 }
 
-function validateFields(fields: SchemaField[], path: string, errors: AgentValidationError[], scope: AgentValidationError['scope']) {
+function validateFields(fields: SchemaField[] | unknown, path: string, errors: AgentValidationError[], scope: AgentValidationError['scope']) {
+  if (!Array.isArray(fields)) {
+    if (fields !== undefined && fields !== null) {
+      errors.push({ scope, path, message: 'fields must be an array.' });
+    }
+    return;
+  }
   const seen = new Set<string>();
   fields.forEach((field, i) => {
     const fieldPath = `${path}[${i}]`;
-    const name = field.name.trim();
+    const name = (field?.name ?? '').trim();
     if (!name) {
       errors.push({ scope, path: `${fieldPath}.name`, message: 'Field name is required.' });
     } else if (seen.has(name)) {
@@ -18,17 +24,18 @@ function validateFields(fields: SchemaField[], path: string, errors: AgentValida
     } else {
       seen.add(name);
     }
-    if (field.type === 'object' && field.fields) {
+    if (field?.type === 'object' && field.fields !== undefined) {
       validateFields(field.fields, `${fieldPath}.fields`, errors, scope);
     }
-    if (field.type === 'array' && field.items?.type === 'object' && field.items.fields) {
+    if (field?.type === 'array' && field.items?.type === 'object' && field.items.fields !== undefined) {
       validateFields(field.items.fields, `${fieldPath}.items.fields`, errors, scope);
     }
   });
 }
 
 function validateSchema(schema: PromptSchema, scope: 'inputSchema' | 'outputSchema', errors: AgentValidationError[]) {
-  if (schema.fields.length > 0 && !schema.name.trim()) {
+  const fields = Array.isArray(schema.fields) ? schema.fields : [];
+  if (fields.length > 0 && !schema.name.trim()) {
     errors.push({ scope, path: 'name', message: 'Schema name is required when fields are defined.' });
   }
   validateFields(schema.fields, 'fields', errors, scope);

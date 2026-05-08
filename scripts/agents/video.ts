@@ -135,7 +135,7 @@ export const video: AgentDefinition = {
         ]),
         str('estimated_duration', 'Estimate based on script word count at ~150 words/minute, e.g. "8-10 minutes"'),
         str('teleprompter_script', 'Clean narration script for presenter (multiline)', false),
-        obj('editor_script', 'Detailed script for video editor with A-roll, B-roll, effects', {}, false),
+        obj('editor_script', 'Detailed script for video editor with A-roll, B-roll, effects (free-form: per-section A_roll/B_roll/text_overlays/SFX/BGM/Transitions/Visual_effects/Pacing_notes plus color_grading)', [], false),
         arrOf('lower_thirds', 'Lower third overlays — generate when video_style_config.lower_thirds_enabled = true (min 3 items: key stats, expert quotes, chapter titles)', [
           str('timestamp', 'Time the overlay appears, e.g. "0:35"'),
           str('line1', 'Primary text — name, headline stat, or chapter title'),
