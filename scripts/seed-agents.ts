@@ -47,7 +47,7 @@ function generateUpsertSQL(): string {
       `  ${jsonQuote(agent.sections)},`,
       agent.recommendedProvider ? `  ${dollarQuote(agent.recommendedProvider)},` : `  null,`,
       agent.recommendedModel ? `  ${dollarQuote(agent.recommendedModel)},` : `  null,`,
-      agent.tools && agent.tools.length > 0 ? `  ${jsonQuote(agent.tools)},` : `  null,`,
+      agent.tools && agent.tools.length > 0 ? `  ${jsonQuote(agent.tools)},` : `  '[]'::jsonb,`,
       `  now(),`,
       `  now()`,
       `)`,

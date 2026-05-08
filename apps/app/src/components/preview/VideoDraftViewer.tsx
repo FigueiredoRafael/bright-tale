@@ -124,12 +124,12 @@ export function VideoDraftViewer({ output: rawOutput, className = '' }: VideoDra
             <div className="flex items-start gap-2">
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <div className="font-semibold">Rascunho em formato legado</div>
+                <div className="font-semibold">Legacy draft format</div>
                 <div>
-                  Esse draft foi gerado antes da atualização do agente BC_VIDEO. Os campos
-                  estruturados (roteiro, editor script, thumbnails, teleprompter) estão
-                  ausentes. Clique em <strong>Produce Another Format</strong> abaixo para
-                  regenerar com o prompt atualizado.
+                  This draft was generated before the BC_VIDEO agent update. The structured
+                  fields (script, editor script, thumbnails, teleprompter) are missing.
+                  Click <strong>Produce Another Format</strong> below to regenerate with
+                  the updated prompt.
                 </div>
               </div>
             </div>
@@ -147,7 +147,7 @@ export function VideoDraftViewer({ output: rawOutput, className = '' }: VideoDra
       <Tabs defaultValue="script" className="space-y-4">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="script" className="gap-1.5">
-            <Film className="h-3.5 w-3.5" /> Roteiro
+            <Film className="h-3.5 w-3.5" /> Script
           </TabsTrigger>
           <TabsTrigger value="editor" className="gap-1.5">
             <Camera className="h-3.5 w-3.5" /> Editor
@@ -156,7 +156,7 @@ export function VideoDraftViewer({ output: rawOutput, className = '' }: VideoDra
             <ImageIcon className="h-3.5 w-3.5" /> Thumbnails
           </TabsTrigger>
           <TabsTrigger value="publish" className="gap-1.5">
-            <Megaphone className="h-3.5 w-3.5" /> Publicação
+            <Megaphone className="h-3.5 w-3.5" /> Publish
           </TabsTrigger>
         </TabsList>
 
@@ -177,7 +177,7 @@ export function VideoDraftViewer({ output: rawOutput, className = '' }: VideoDra
   );
 }
 
-// ─── Tab: Roteiro ─────────────────────────────────────────────────────────────
+// ─── Tab: Script ──────────────────────────────────────────────────────────────
 
 function ScriptTab({ output }: { output: VideoOutput }) {
   const script = output.script as VideoOutput['script'] | undefined;
@@ -185,7 +185,7 @@ function ScriptTab({ output }: { output: VideoOutput }) {
     return (
       <EmptyState
         icon={<Film className="h-5 w-5" />}
-        message="Roteiro estruturado ausente neste output. Veja a aba Publicação para o teleprompter."
+        message="Structured script missing from this output. Check the Publish tab for the teleprompter."
       />
     );
   }
@@ -390,7 +390,7 @@ function EditorTab({ output }: { output: VideoOutput }) {
     return (
       <EmptyState
         icon={<Camera className="h-5 w-5" />}
-        message="Editor script não foi gerado neste output."
+        message="No editor script generated for this output."
       />
     );
   }
@@ -592,7 +592,7 @@ function ThumbnailsTab({ output }: { output: VideoOutput }) {
     return (
       <EmptyState
         icon={<ImageIcon className="h-5 w-5" />}
-        message="Nenhum conceito de thumbnail foi gerado."
+        message="No thumbnail concepts generated."
       />
     );
   }
@@ -728,7 +728,7 @@ function parsePalette(raw: string): Array<{ label: string; hex: string }> {
     });
 }
 
-// ─── Tab: Publicação ──────────────────────────────────────────────────────────
+// ─── Tab: Publish ─────────────────────────────────────────────────────────────
 
 function PublishTab({
   output,
