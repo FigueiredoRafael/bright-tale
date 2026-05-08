@@ -248,10 +248,10 @@ export function VideoDraftViewer({
           <ScriptTab output={output} editable={editable} update={update} />
         </TabsContent>
         <TabsContent value="editor" className="space-y-3 mt-0">
-          <EditorTab output={output} />
+          <EditorTab output={output} editable={editable} update={update} />
         </TabsContent>
         <TabsContent value="thumbnails" className="space-y-3 mt-0">
-          <ThumbnailsTab output={output} />
+          <ThumbnailsTab output={output} editable={editable} update={update} />
         </TabsContent>
         <TabsContent value="publish" className="space-y-3 mt-0">
           <PublishTab
@@ -685,9 +685,14 @@ function OutroCard({
 
 // ─── Tab: Editor ──────────────────────────────────────────────────────────────
 
-function EditorTab({ output }: { output: VideoOutput }) {
+function EditorTab({
+  output,
+  editable,
+  update,
+}: { output: VideoOutput } & EditingProps) {
   const editor = output.editor_script;
-  if (!editor) {
+  const ed = editable && update;
+  if (!editor && !ed) {
     return (
       <EmptyState
         icon={<Camera className="h-5 w-5" />}
@@ -696,23 +701,33 @@ function EditorTab({ output }: { output: VideoOutput }) {
     );
   }
 
-  const sections: Array<{ key: string; label: string; section?: VideoEditorSection }> = [
-    { key: 'hook', label: 'Hook', section: editor.hook },
-    { key: 'problem', label: 'Problem', section: editor.problem },
-    { key: 'teaser', label: 'Teaser', section: editor.teaser },
+  const sections: Array<{ key: string; label: string; section?: VideoEditorSection; path: Path }> = [
+    { key: 'hook', label: 'Hook', section: editor?.hook, path: ['editor_script', 'hook'] },
+    { key: 'problem', label: 'Problem', section: editor?.problem, path: ['editor_script', 'problem'] },
+    { key: 'teaser', label: 'Teaser', section: editor?.teaser, path: ['editor_script', 'teaser'] },
   ];
 
   return (
     <div className="space-y-3">
-      {editor.color_grading && (
+      {(editor?.color_grading || ed) && (
         <Card className="border-violet-500/30 bg-gradient-to-br from-violet-500/5 to-background">
           <CardContent className="py-3 flex items-start gap-2">
             <Wand2 className="h-4 w-4 text-violet-600 dark:text-violet-400 shrink-0 mt-0.5" />
-            <div className="text-xs leading-relaxed">
+            <div className="text-xs leading-relaxed flex-1">
               <span className="font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">
                 Color grading ·{' '}
               </span>
-              <span className="text-foreground/90">{editor.color_grading}</span>
+              {ed ? (
+                <EditableText
+                  value={editor?.color_grading ?? ''}
+                  multiline
+                  onChange={(v) => update!(['editor_script', 'color_grading'], v)}
+                  placeholder="Color grading direction (mood, contrast, palette progression)…"
+                  staticClassName="inline-block px-1 text-foreground/90"
+                />
+              ) : (
+                <span className="text-foreground/90">{editor?.color_grading}</span>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -720,31 +735,52 @@ function EditorTab({ output }: { output: VideoOutput }) {
 
       <Accordion type="multiple" defaultValue={['hook']} className="space-y-2">
         {sections.map(
-          ({ key, label, section }) =>
-            section && (
-              <EditorAccordionItem key={key} value={key} label={label} section={section} />
+          ({ key, label, section, path }) =>
+            (section || ed) && (
+              <EditorAccordionItem
+                key={key}
+                value={key}
+                label={label}
+                section={section ?? {}}
+                basePath={path}
+                editable={editable}
+                update={update}
+              />
             ),
         )}
 
-        {Array.isArray(editor.chapters) &&
-          editor.chapters.map((ch, idx) => (
+        {Array.isArray(editor?.chapters) &&
+          editor!.chapters!.map((ch, idx) => (
             <EditorAccordionItem
               key={`ch-${idx}`}
               value={`ch-${idx}`}
               label={`Chapter ${idx + 1}`}
               section={ch}
+              basePath={['editor_script', 'chapters', idx]}
+              editable={editable}
+              update={update}
             />
           ))}
 
-        {editor.affiliate_segment && (
+        {(editor?.affiliate_segment || ed) && (
           <EditorAccordionItem
             value="affiliate"
             label="Affiliate Segment"
-            section={editor.affiliate_segment}
+            section={editor?.affiliate_segment ?? {}}
+            basePath={['editor_script', 'affiliate_segment']}
+            editable={editable}
+            update={update}
           />
         )}
-        {editor.outro && (
-          <EditorAccordionItem value="outro" label="Outro" section={editor.outro} />
+        {(editor?.outro || ed) && (
+          <EditorAccordionItem
+            value="outro"
+            label="Outro"
+            section={editor?.outro ?? {}}
+            basePath={['editor_script', 'outro']}
+            editable={editable}
+            update={update}
+          />
         )}
       </Accordion>
     </div>
@@ -755,112 +791,310 @@ function EditorAccordionItem({
   value,
   label,
   section,
+  basePath,
+  editable,
+  update,
 }: {
   value: string;
   label: string;
   section: VideoEditorSection;
-}) {
+  basePath: Path;
+} & EditingProps) {
+  const ed = editable && update;
   return (
     <AccordionItem value={value} className="rounded-md border bg-card px-3">
       <AccordionTrigger className="py-3 hover:no-underline">
         <span className="text-sm font-semibold">{label}</span>
       </AccordionTrigger>
       <AccordionContent className="pb-3 space-y-3 text-sm">
-        {section.A_roll && (
+        {(section.A_roll || ed) && (
           <EditorRow icon={<Camera className="h-3.5 w-3.5" />} label="A-roll">
-            {section.A_roll}
+            {ed ? (
+              <EditableText
+                value={section.A_roll ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'A_roll'], v)}
+                placeholder="Camera framing, subject blocking, mood…"
+                staticClassName="block px-1"
+              />
+            ) : (
+              section.A_roll
+            )}
           </EditorRow>
         )}
-        {(() => {
-          // B-roll can come back as string[], a single string, or null — LLMs drift.
-          const br = section.B_roll as unknown;
-          if (Array.isArray(br) && br.length > 0) {
-            return (
-              <EditorRow icon={<Film className="h-3.5 w-3.5" />} label="B-roll">
-                <ul className="list-disc list-inside space-y-0.5 text-foreground/90">
-                  {br.map((b, i) => (
-                    <li key={i}>{typeof b === 'string' ? b : JSON.stringify(b)}</li>
-                  ))}
-                </ul>
-              </EditorRow>
-            );
-          }
-          if (typeof br === 'string' && br.length > 0) {
-            return (
-              <EditorRow icon={<Film className="h-3.5 w-3.5" />} label="B-roll">
-                {br}
-              </EditorRow>
-            );
-          }
-          return null;
-        })()}
-        {(() => {
-          // text_overlays can come back as VideoTextOverlay[], a single string, or null.
-          const to = section.text_overlays as unknown;
-          if (Array.isArray(to) && to.length > 0) {
-            return (
-              <EditorRow label="Text overlays">
-                <div className="space-y-1.5">
-                  {to.map((raw, i) => {
-                    if (!raw || typeof raw !== 'object') {
-                      return (
-                        <div key={i} className="rounded-sm bg-muted/40 px-2 py-1.5 text-sm">
-                          {String(raw)}
-                        </div>
-                      );
-                    }
-                    const t = raw as { time?: string; text?: string; style?: string };
-                    return (
-                      <div key={i} className="flex items-start gap-2 rounded-sm bg-muted/40 px-2 py-1.5">
-                        {t.time && (
-                          <Badge variant="secondary" className="font-mono text-[11px]">
-                            {t.time}
-                          </Badge>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium">{t.text ?? ''}</div>
-                          {t.style && (
-                            <div className="text-[11px] text-muted-foreground italic">{t.style}</div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </EditorRow>
-            );
-          }
-          if (typeof to === 'string' && to.length > 0) {
-            return (
-              <EditorRow label="Text overlays">
-                <div className="text-sm italic text-foreground/90">{to}</div>
-              </EditorRow>
-            );
-          }
-          return null;
-        })()}
-        {section.SFX && (
+        <EditorBRoll section={section} basePath={basePath} editable={editable} update={update} />
+        <EditorTextOverlays section={section} basePath={basePath} editable={editable} update={update} />
+        {(section.SFX || ed) && (
           <EditorRow icon={<Volume2 className="h-3.5 w-3.5" />} label="SFX">
-            {section.SFX}
+            {ed ? (
+              <EditableText
+                value={section.SFX ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'SFX'], v)}
+                placeholder="Sound effects (whooshes, hits, foley)…"
+                staticClassName="block px-1"
+              />
+            ) : (
+              section.SFX
+            )}
           </EditorRow>
         )}
-        {section.BGM && (
+        {(section.BGM || ed) && (
           <EditorRow icon={<Music className="h-3.5 w-3.5" />} label="BGM">
-            {section.BGM}
+            {ed ? (
+              <EditableText
+                value={section.BGM ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'BGM'], v)}
+                placeholder="Background music mood, intensity, genre…"
+                staticClassName="block px-1"
+              />
+            ) : (
+              section.BGM
+            )}
           </EditorRow>
         )}
-        {section.Transitions && (
-          <EditorRow label="Transitions">{section.Transitions}</EditorRow>
+        {(section.Transitions || ed) && (
+          <EditorRow label="Transitions">
+            {ed ? (
+              <EditableText
+                value={section.Transitions ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'Transitions'], v)}
+                placeholder="Hard cut, fade, swipe, dip-to-color…"
+                staticClassName="block px-1"
+              />
+            ) : (
+              section.Transitions
+            )}
+          </EditorRow>
         )}
-        {section.Visual_effects && (
-          <EditorRow label="Visual effects">{section.Visual_effects}</EditorRow>
+        {(section.Visual_effects || ed) && (
+          <EditorRow label="Visual effects">
+            {ed ? (
+              <EditableText
+                value={section.Visual_effects ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'Visual_effects'], v)}
+                placeholder="Zoom, jump cut, overlay, parallax…"
+                staticClassName="block px-1"
+              />
+            ) : (
+              section.Visual_effects
+            )}
+          </EditorRow>
         )}
-        {section.Pacing_notes && (
-          <EditorRow label="Pacing">{section.Pacing_notes}</EditorRow>
+        {(section.Pacing_notes || ed) && (
+          <EditorRow label="Pacing">
+            {ed ? (
+              <EditableText
+                value={section.Pacing_notes ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'Pacing_notes'], v)}
+                placeholder="Tempo, dwell time, breath cues…"
+                staticClassName="block px-1"
+              />
+            ) : (
+              section.Pacing_notes
+            )}
+          </EditorRow>
         )}
       </AccordionContent>
     </AccordionItem>
   );
+}
+
+function EditorBRoll({
+  section,
+  basePath,
+  editable,
+  update,
+}: { section: VideoEditorSection; basePath: Path } & EditingProps) {
+  const br = section.B_roll as unknown;
+  const ed = editable && update;
+  if (Array.isArray(br) && br.length > 0) {
+    return (
+      <EditorRow icon={<Film className="h-3.5 w-3.5" />} label="B-roll">
+        {ed ? (
+          <ul className="space-y-1 text-foreground/90">
+            {br.map((b, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <span className="text-muted-foreground select-none mt-0.5">•</span>
+                <EditableText
+                  value={typeof b === 'string' ? b : JSON.stringify(b)}
+                  multiline
+                  onChange={(v) => {
+                    const next = (br as unknown[]).slice();
+                    next[i] = v;
+                    update!([...basePath, 'B_roll'], next);
+                  }}
+                  placeholder="B-roll shot description…"
+                  staticClassName="flex-1 px-1"
+                />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <ul className="list-disc list-inside space-y-0.5 text-foreground/90">
+            {br.map((b, i) => (
+              <li key={i}>{typeof b === 'string' ? b : JSON.stringify(b)}</li>
+            ))}
+          </ul>
+        )}
+      </EditorRow>
+    );
+  }
+  if (typeof br === 'string' && br.length > 0) {
+    return (
+      <EditorRow icon={<Film className="h-3.5 w-3.5" />} label="B-roll">
+        {ed ? (
+          <EditableText
+            value={br}
+            multiline
+            onChange={(v) => update!([...basePath, 'B_roll'], v)}
+            placeholder="B-roll shots (one per line)…"
+            staticClassName="block px-1"
+          />
+        ) : (
+          br
+        )}
+      </EditorRow>
+    );
+  }
+  if (ed) {
+    return (
+      <EditorRow icon={<Film className="h-3.5 w-3.5" />} label="B-roll">
+        <EditableText
+          value=""
+          multiline
+          onChange={(v) => {
+            // Convert single-paragraph input into a string[] split by newline.
+            const lines = v.split('\n').map((l) => l.trim()).filter(Boolean);
+            update!([...basePath, 'B_roll'], lines.length > 0 ? lines : v);
+          }}
+          placeholder="Add B-roll shot descriptions…"
+          staticClassName="block px-1 italic text-muted-foreground"
+        />
+      </EditorRow>
+    );
+  }
+  return null;
+}
+
+function EditorTextOverlays({
+  section,
+  basePath,
+  editable,
+  update,
+}: { section: VideoEditorSection; basePath: Path } & EditingProps) {
+  const to = section.text_overlays as unknown;
+  const ed = editable && update;
+  if (Array.isArray(to) && to.length > 0) {
+    return (
+      <EditorRow label="Text overlays">
+        <div className="space-y-1.5">
+          {to.map((raw, i) => {
+            if (!raw || typeof raw !== 'object') {
+              return (
+                <div key={i} className="rounded-sm bg-muted/40 px-2 py-1.5 text-sm">
+                  {ed ? (
+                    <EditableText
+                      value={String(raw)}
+                      onChange={(v) => {
+                        const next = (to as unknown[]).slice();
+                        next[i] = v;
+                        update!([...basePath, 'text_overlays'], next);
+                      }}
+                      placeholder="Overlay text…"
+                      staticClassName="block px-1"
+                    />
+                  ) : (
+                    String(raw)
+                  )}
+                </div>
+              );
+            }
+            const t = raw as { time?: string; text?: string; style?: string };
+            return (
+              <div key={i} className="flex items-start gap-2 rounded-sm bg-muted/40 px-2 py-1.5">
+                {(t.time || ed) && (
+                  ed ? (
+                    <EditableText
+                      value={t.time ?? ''}
+                      onChange={(v) => update!([...basePath, 'text_overlays', i, 'time'], v)}
+                      placeholder="0:05"
+                      staticClassName="font-mono text-[11px] inline-block px-1 border rounded-md min-w-[42px] text-center"
+                      inputClassName="font-mono text-[11px]"
+                    />
+                  ) : (
+                    <Badge variant="secondary" className="font-mono text-[11px]">
+                      {t.time}
+                    </Badge>
+                  )
+                )}
+                <div className="flex-1 min-w-0">
+                  {ed ? (
+                    <EditableText
+                      value={t.text ?? ''}
+                      onChange={(v) => update!([...basePath, 'text_overlays', i, 'text'], v)}
+                      placeholder="Overlay copy…"
+                      staticClassName="block text-sm font-medium px-1"
+                      inputClassName="text-sm font-medium"
+                    />
+                  ) : (
+                    <div className="text-sm font-medium">{t.text ?? ''}</div>
+                  )}
+                  {(t.style || ed) && (
+                    ed ? (
+                      <EditableText
+                        value={t.style ?? ''}
+                        onChange={(v) => update!([...basePath, 'text_overlays', i, 'style'], v)}
+                        placeholder="Style notes (bold, lower-third, etc.)…"
+                        staticClassName="block text-[11px] text-muted-foreground italic px-1"
+                      />
+                    ) : (
+                      <div className="text-[11px] text-muted-foreground italic">{t.style}</div>
+                    )
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </EditorRow>
+    );
+  }
+  if (typeof to === 'string' && to.length > 0) {
+    return (
+      <EditorRow label="Text overlays">
+        {ed ? (
+          <EditableText
+            value={to}
+            multiline
+            onChange={(v) => update!([...basePath, 'text_overlays'], v)}
+            placeholder="Text overlays (free-form note)…"
+            staticClassName="block text-sm italic px-1"
+          />
+        ) : (
+          <div className="text-sm italic text-foreground/90">{to}</div>
+        )}
+      </EditorRow>
+    );
+  }
+  if (ed) {
+    return (
+      <EditorRow label="Text overlays">
+        <EditableText
+          value=""
+          multiline
+          onChange={(v) => update!([...basePath, 'text_overlays'], v)}
+          placeholder="Add overlay copy or full notes…"
+          staticClassName="block px-1 italic text-muted-foreground"
+        />
+      </EditorRow>
+    );
+  }
+  return null;
 }
 
 function EditorRow({
@@ -885,11 +1119,16 @@ function EditorRow({
 
 // ─── Tab: Thumbnails ──────────────────────────────────────────────────────────
 
-function ThumbnailsTab({ output }: { output: VideoOutput }) {
+function ThumbnailsTab({
+  output,
+  editable,
+  update,
+}: { output: VideoOutput } & EditingProps) {
   const ideas = Array.isArray(output.thumbnail_ideas) ? output.thumbnail_ideas : [];
   const primary = output.thumbnail;
+  const ed = editable && update;
 
-  if (!primary && ideas.length === 0) {
+  if (!primary && ideas.length === 0 && !ed) {
     return (
       <EmptyState
         icon={<ImageIcon className="h-5 w-5" />}
@@ -900,38 +1139,79 @@ function ThumbnailsTab({ output }: { output: VideoOutput }) {
 
   return (
     <div className="space-y-4">
-      {primary && (
+      {(primary || ed) && (
         <Card className="border-primary/30 bg-gradient-to-br from-primary/5 via-background to-background">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <CardTitle className="text-sm font-semibold uppercase tracking-wide text-primary">
                 Primary thumbnail
               </CardTitle>
-              <span
-                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${EMOTION_VARIANT[primary.emotion] ?? 'border-border'}`}
-              >
-                {primary.emotion}
-              </span>
+              {(primary?.emotion || ed) && (
+                <EmotionBadge
+                  value={primary?.emotion}
+                  size="md"
+                  editable={Boolean(ed)}
+                  onChange={(v) => update!(['thumbnail', 'emotion'], v)}
+                />
+              )}
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="text-2xl font-bold tracking-tight">{primary.text_overlay}</div>
-            <p className="text-sm leading-relaxed">{primary.visual_concept}</p>
+            {ed ? (
+              <EditableText
+                value={primary?.text_overlay ?? ''}
+                onChange={(v) => update!(['thumbnail', 'text_overlay'], v)}
+                placeholder="Bold thumbnail copy…"
+                staticClassName="block text-2xl font-bold tracking-tight px-1 py-0.5"
+                inputClassName="text-2xl font-bold tracking-tight"
+              />
+            ) : (
+              <div className="text-2xl font-bold tracking-tight">{primary?.text_overlay}</div>
+            )}
+            {ed ? (
+              <EditableText
+                as="p"
+                multiline
+                value={primary?.visual_concept ?? ''}
+                onChange={(v) => update!(['thumbnail', 'visual_concept'], v)}
+                placeholder="What the viewer sees on the thumbnail…"
+                staticClassName="block text-sm leading-relaxed px-1 py-0.5"
+                inputClassName="text-sm leading-relaxed"
+              />
+            ) : (
+              <p className="text-sm leading-relaxed">{primary?.visual_concept}</p>
+            )}
             <Separator />
-            <p className="text-xs italic text-muted-foreground">
+            <div className="text-xs italic text-muted-foreground">
               <span className="font-medium not-italic">Why it works · </span>
-              {primary.why_it_works}
-            </p>
+              {ed ? (
+                <EditableText
+                  value={primary?.why_it_works ?? ''}
+                  multiline
+                  onChange={(v) => update!(['thumbnail', 'why_it_works'], v)}
+                  placeholder="Why this thumbnail concept earns the click…"
+                  staticClassName="inline-block px-1"
+                />
+              ) : (
+                primary?.why_it_works
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
 
-      {ideas.length > 0 && (
+      {(ideas.length > 0 || ed) && (
         <>
           <SectionHeader>Concept variations · {ideas.length}</SectionHeader>
           <div className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
             {ideas.map((idea, i) => (
-              <ThumbnailCard key={i} idea={idea} />
+              <ThumbnailCard
+                key={i}
+                idea={idea}
+                basePath={['thumbnail_ideas', i]}
+                editable={editable}
+                update={update}
+              />
             ))}
           </div>
         </>
@@ -940,50 +1220,138 @@ function ThumbnailsTab({ output }: { output: VideoOutput }) {
   );
 }
 
-function ThumbnailCard({ idea }: { idea: ThumbnailIdea }) {
+function ThumbnailCard({
+  idea,
+  basePath,
+  editable,
+  update,
+}: { idea: ThumbnailIdea; basePath: Path } & EditingProps) {
   const palette = parsePalette(idea.color_palette);
+  const ed = editable && update;
   return (
     <Card className="h-full">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <CardTitle className="text-base font-bold leading-tight">{idea.text_overlay}</CardTitle>
-          <span
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${EMOTION_VARIANT[idea.emotion] ?? 'border-border'}`}
-          >
-            {idea.emotion}
-          </span>
+          {ed ? (
+            <EditableText
+              value={idea.text_overlay}
+              onChange={(v) => update!([...basePath, 'text_overlay'], v)}
+              placeholder="Concept text overlay…"
+              staticClassName="text-base font-bold leading-tight px-1 py-0.5 flex-1 min-w-0"
+              inputClassName="text-base font-bold leading-tight"
+            />
+          ) : (
+            <CardTitle className="text-base font-bold leading-tight">{idea.text_overlay}</CardTitle>
+          )}
+          <EmotionBadge
+            value={idea.emotion}
+            size="sm"
+            editable={Boolean(ed)}
+            onChange={(v) => update!([...basePath, 'emotion'], v)}
+          />
         </div>
       </CardHeader>
       <CardContent className="space-y-2 text-xs">
-        <p className="text-foreground/90 leading-relaxed">{idea.concept}</p>
-        {palette.length > 0 && (
+        {ed ? (
+          <EditableText
+            as="p"
+            multiline
+            value={idea.concept}
+            onChange={(v) => update!([...basePath, 'concept'], v)}
+            placeholder="Visual concept description…"
+            staticClassName="block text-foreground/90 leading-relaxed px-1 py-0.5"
+            inputClassName="text-xs leading-relaxed"
+          />
+        ) : (
+          <p className="text-foreground/90 leading-relaxed">{idea.concept}</p>
+        )}
+        {(palette.length > 0 || ed) && (
           <div className="flex items-center gap-1.5 flex-wrap pt-1">
             <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
               Palette
             </span>
-            {palette.map((c, i) => (
-              <span
-                key={i}
-                className="inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px]"
-                title={c.label}
-              >
+            {ed ? (
+              <EditableText
+                value={idea.color_palette}
+                onChange={(v) => update!([...basePath, 'color_palette'], v)}
+                placeholder="Comma-separated colors (e.g. dark blue, white, neon green)…"
+                staticClassName="flex-1 inline-block px-1 text-[11px]"
+                inputClassName="text-[11px]"
+              />
+            ) : (
+              palette.map((c, i) => (
                 <span
-                  className="h-2.5 w-2.5 rounded-full border"
-                  style={{ backgroundColor: c.hex }}
-                />
-                {c.label}
-              </span>
-            ))}
+                  key={i}
+                  className="inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px]"
+                  title={c.label}
+                >
+                  <span
+                    className="h-2.5 w-2.5 rounded-full border"
+                    style={{ backgroundColor: c.hex }}
+                  />
+                  {c.label}
+                </span>
+              ))
+            )}
           </div>
         )}
-        {idea.composition && (
-          <p className="text-[11px] text-muted-foreground italic border-t pt-2">
+        {(idea.composition || ed) && (
+          <div className="text-[11px] text-muted-foreground italic border-t pt-2">
             <span className="font-medium not-italic">Composition · </span>
-            {idea.composition}
-          </p>
+            {ed ? (
+              <EditableText
+                value={idea.composition ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'composition'], v)}
+                placeholder="Framing, layout, focal point…"
+                staticClassName="inline-block px-1"
+              />
+            ) : (
+              idea.composition
+            )}
+          </div>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+const EMOTION_VALUES = ['curiosity', 'shock', 'intrigue'] as const;
+
+function EmotionBadge({
+  value,
+  size,
+  editable,
+  onChange,
+}: {
+  value?: string;
+  size: 'sm' | 'md';
+  editable: boolean | undefined;
+  onChange?: (v: string) => void;
+}) {
+  const sizeClasses = size === 'sm' ? 'text-[10px] px-2 py-0.5' : 'text-[11px] px-2 py-0.5';
+  const variant = (value && EMOTION_VARIANT[value]) ?? 'border-border';
+  if (editable && onChange) {
+    return (
+      <select
+        value={value ?? 'curiosity'}
+        onChange={(e) => onChange(e.target.value)}
+        className={`rounded-full border bg-background font-medium uppercase tracking-wide outline-none ring-2 ring-transparent focus:ring-primary/40 ${sizeClasses} ${variant}`}
+      >
+        {EMOTION_VALUES.map((opt) => (
+          <option key={opt} value={opt}>
+            {opt}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border font-medium uppercase tracking-wide ${sizeClasses} ${variant}`}
+    >
+      {value}
+    </span>
   );
 }
 
