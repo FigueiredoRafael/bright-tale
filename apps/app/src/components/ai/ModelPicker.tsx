@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles } from "lucide-react";
@@ -10,6 +11,41 @@ export interface ModelOption {
     id: string;
     label: string;
     note?: string;
+}
+
+type AdminModelMap = Record<string, string[]>;
+
+let adminModelsCache: AdminModelMap | null = null;
+let adminModelsPromise: Promise<AdminModelMap> | null = null;
+
+function fetchAdminModels(): Promise<AdminModelMap> {
+    if (adminModelsCache) return Promise.resolve(adminModelsCache);
+    if (adminModelsPromise) return adminModelsPromise;
+    adminModelsPromise = fetch("/api/ai-providers")
+        .then((r) => r.json())
+        .then(({ data, error }) => {
+            const map: AdminModelMap = {};
+            if (!error && Array.isArray(data)) {
+                for (const row of data as Array<{ provider: string; modelsJson?: string[] }>) {
+                    if (Array.isArray(row.modelsJson) && row.modelsJson.length > 0) {
+                        map[row.provider] = row.modelsJson;
+                    }
+                }
+            }
+            adminModelsCache = map;
+            return map;
+        })
+        .catch(() => {
+            adminModelsCache = {};
+            return {} as AdminModelMap;
+        });
+    return adminModelsPromise;
+}
+
+/** Test-only: reset the module-level admin-models cache. */
+export function __resetAdminModelsCacheForTests() {
+    adminModelsCache = null;
+    adminModelsPromise = null;
 }
 
 export const MODELS_BY_PROVIDER: Record<ProviderId, ModelOption[]> = {
@@ -63,13 +99,32 @@ export function ModelPicker({ provider, model, recommended, onProviderChange, on
     const visibleProviders = providers ?? DEFAULT_PROVIDERS;
     const baseModels = MODELS_BY_PROVIDER[provider];
 
-    // If the admin-recommended model for this provider isn't in the hardcoded list,
+    const [adminModels, setAdminModels] = useState<AdminModelMap>(() => adminModelsCache ?? {});
+    useEffect(() => {
+        if (adminModelsCache) return;
+        let cancelled = false;
+        fetchAdminModels().then((m) => {
+            if (!cancelled) setAdminModels(m);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    // Admin-registered models for this provider (deduped against the hardcoded list).
+    const adminList = adminModels[provider] ?? [];
+    const adminExtras: ModelOption[] = adminList
+        .filter((id) => !baseModels.some((m) => m.id === id))
+        .map((id) => ({ id, label: id, note: "admin" }));
+
+    // If the admin-recommended model for this provider isn't in either list,
     // inject it at the top so it's always visible and selectable.
     const adminModel = recommended?.provider === provider ? recommended?.model : null;
-    const adminModelInList = adminModel ? baseModels.some((m) => m.id === adminModel) : true;
+    const merged: ModelOption[] = [...adminExtras, ...baseModels];
+    const adminModelInList = adminModel ? merged.some((m) => m.id === adminModel) : true;
     const models: ModelOption[] = adminModel && !adminModelInList
-        ? [{ id: adminModel, label: adminModel, note: "admin default" }, ...baseModels]
-        : baseModels;
+        ? [{ id: adminModel, label: adminModel, note: "admin default" }, ...merged]
+        : merged;
 
     return (
         <div className="space-y-3 pt-3 border-t">
