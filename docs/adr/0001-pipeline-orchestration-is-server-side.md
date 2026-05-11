@@ -1,0 +1,3 @@
+# Pipeline orchestration is server-side
+
+Until 2026-05, pipeline orchestration ran in the browser: an xstate machine in `apps/app/src/lib/pipeline/machine.ts` decided stage transitions, and `useAutoPilotTrigger` (a React effect) fired the next stage's `handleRun`. This meant autopilot froze whenever the user closed the tab, two tabs of the same Project could fight over `pipeline_state_json`, and recovery on reload re-fired already-completed stages. We move all orchestration server-side: Stage Runs are created and driven by the server, the browser is a read-only viewer that observes Stage Runs and renders Engines.
