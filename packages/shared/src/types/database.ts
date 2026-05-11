@@ -1985,6 +1985,7 @@ export type Database = {
           id: string
           message: string
           metadata: Json | null
+          project_id: string | null
           session_id: string
           session_type: string
           stage: string
@@ -1994,6 +1995,7 @@ export type Database = {
           id?: string
           message: string
           metadata?: Json | null
+          project_id?: string | null
           session_id: string
           session_type: string
           stage: string
@@ -2003,11 +2005,20 @@ export type Database = {
           id?: string
           message?: string
           metadata?: Json | null
+          project_id?: string | null
           session_id?: string
           session_type?: string
           stage?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "job_events_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       managers: {
         Row: {
@@ -2530,6 +2541,7 @@ export type Database = {
           id: string
           mode: string | null
           org_id: string | null
+          paused: boolean
           pipeline_state_json: Json | null
           research_id: string | null
           status: string
@@ -2550,6 +2562,7 @@ export type Database = {
           id?: string
           mode?: string | null
           org_id?: string | null
+          paused?: boolean
           pipeline_state_json?: Json | null
           research_id?: string | null
           status: string
@@ -2570,6 +2583,7 @@ export type Database = {
           id?: string
           mode?: string | null
           org_id?: string | null
+          paused?: boolean
           pipeline_state_json?: Json | null
           research_id?: string | null
           status?: string
@@ -3111,6 +3125,62 @@ export type Database = {
             columns: ["source_content_draft_id"]
             isOneToOne: false
             referencedRelation: "content_drafts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stage_runs: {
+        Row: {
+          attempt_no: number
+          awaiting_reason: string | null
+          created_at: string
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          input_json: Json | null
+          payload_ref: Json | null
+          project_id: string
+          stage: string
+          started_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_no?: number
+          awaiting_reason?: string | null
+          created_at?: string
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          input_json?: Json | null
+          payload_ref?: Json | null
+          project_id: string
+          stage: string
+          started_at?: string | null
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_no?: number
+          awaiting_reason?: string | null
+          created_at?: string
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          input_json?: Json | null
+          payload_ref?: Json | null
+          project_id?: string
+          stage?: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stage_runs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
