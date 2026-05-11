@@ -10,7 +10,8 @@ import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
 import { generateWithFallback } from '../lib/ai/router.js';
-import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
+import { loadAgentPrompt, loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
+import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
 import { checkCredits, debitCredits } from '../lib/credits.js';
 import { inngest } from '../jobs/client.js';
 import { emitJobEvent } from '../jobs/emitter.js';
@@ -862,8 +863,16 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           if (ch) channelContext = ch as Record<string, unknown>;
         }
 
-        const baseSystem = (await loadAgentPrompt('research')) ?? '';
-        const systemPrompt = baseSystem;
+        const agentConfig = await loadAgentConfig('research');
+        const systemPrompt = agentConfig.instructions ?? '';
+        const { provider: resolvedProvider, model: resolvedModel } = resolveProviderOverride(
+          undefined,
+          undefined,
+          agentConfig,
+        );
+        const enabledTools = resolveTools(agentConfig.tools).filter(
+          () => resolvedProvider !== 'ollama',
+        );
 
         const userMessage = buildResearchMessage({
           ideaId: (orig.idea_id as string) ?? undefined,
@@ -880,10 +889,14 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           (orig.model_tier as string) ?? 'standard',
           {
             agentType: 'research',
-            systemPrompt: systemPrompt ?? '',
+            systemPrompt,
             userMessage,
+            tools: enabledTools.length > 0 ? enabledTools : undefined,
+            toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
           },
           {
+            provider: resolvedProvider,
+            model: resolvedModel,
             logContext: {
               userId: request.userId!,
               orgId,
