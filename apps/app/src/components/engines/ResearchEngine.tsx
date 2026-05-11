@@ -615,6 +615,17 @@ export function ResearchEngine({
     toast.error(friendly.title, { description: friendly.hint });
   }
 
+  // Once results land, leave the `generating` substate so the Research button
+  // unlocks. RESEARCH_COMPLETE only fires in auto modes (auto-approve); in
+  // step-by-step the user reviews findings before advancing to draft, so we
+  // need an intermediate transition back to `idle`.
+  useEffect(() => {
+    if (running) return;
+    if (!isGenerating) return;
+    if (!findings && cards.length === 0) return;
+    actor.send({ type: 'RESEARCH_GENERATED' });
+  }, [running, isGenerating, findings, cards.length, actor]);
+
   // Auto-pilot: when findings render, auto-approve and advance to draft.
   const autoApprovedRef = useRef<string | null>(null);
   const autoMode = useSelector(actor, (s) => s.context.mode);

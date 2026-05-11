@@ -375,6 +375,7 @@ export const pipelineMachine = setup({
         generating: {
           on: {
             RESUME: { actions: 'resumeAuto' },
+            RESEARCH_GENERATED: { target: 'idle' },
           },
         },
         error: { on: { RETRY: { target: 'idle', actions: 'clearError' } } },

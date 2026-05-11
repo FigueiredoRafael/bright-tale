@@ -47,6 +47,14 @@ describe('research substates', () => {
     expect(actor.getSnapshot().matches('draft')).toBe(true)
   })
 
+  it('RESEARCH_GENERATED returns generating → idle (unlocks button before approval)', () => {
+    const actor = startMachineAt('research')
+    actor.send({ type: 'RESEARCH_STARTED' })
+    expect(actor.getSnapshot().matches({ research: 'generating' })).toBe(true)
+    actor.send({ type: 'RESEARCH_GENERATED' })
+    expect(actor.getSnapshot().matches({ research: 'idle' })).toBe(true)
+  })
+
   it('STAGE_ERROR from generating goes to research.error', () => {
     const actor = startMachineAt('research')
     actor.send({ type: 'RESEARCH_STARTED' })
