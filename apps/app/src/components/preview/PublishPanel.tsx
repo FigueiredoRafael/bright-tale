@@ -49,7 +49,7 @@ export function PublishPanel({
   const [wpConfig, setWpConfig] = useState<WordPressConfig | null>(null);
   const [loadingConfigs, setLoadingConfigs] = useState(true);
 
-  const canPublish = draftStatus === 'approved' && hasAssets;
+  const canPublish = draftStatus === 'approved';
   const isPublished = draftStatus === 'published' || draftStatus === 'scheduled';
 
   useEffect(() => {
@@ -98,9 +98,13 @@ export function PublishPanel({
 
         {!canPublish && !isPublished && (
           <p className="text-sm text-muted-foreground">
-            {draftStatus !== 'approved'
-              ? 'Draft must be approved before publishing.'
-              : 'Upload or generate assets before publishing.'}
+            Draft must be approved before publishing.
+          </p>
+        )}
+
+        {canPublish && !isPublished && !hasAssets && (
+          <p className="text-xs text-muted-foreground">
+            No assets attached — post will publish without a featured image.
           </p>
         )}
 
