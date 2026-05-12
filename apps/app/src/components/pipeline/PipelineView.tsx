@@ -160,6 +160,20 @@ export function PipelineView({
     else router.push(`/projects/${projectId}?stage=${s}`);
   }
 
+  // Derive a human header status from the snapshot itself — saying "Idle"
+  // while a stage is running is misleading.
+  const activeStage = STAGES.find((s) => {
+    const status = stageRuns[s]?.status;
+    return status === 'queued' || status === 'running' || status === 'awaiting_user';
+  });
+  const headerText = liveEvent?.message
+    ? liveEvent.message
+    : activeStage
+      ? `${STAGE_LABELS[activeStage]} — ${stageRuns[activeStage]?.status}`
+      : isConnected
+        ? 'Idle'
+        : 'Connecting…';
+
   return (
     <div className="space-y-2" data-testid="pipeline-view-overview">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -170,11 +184,7 @@ export function PipelineView({
           )}
           aria-label={isConnected ? 'Connected to live stream' : 'Disconnected'}
         />
-        {liveEvent ? (
-          <span className="truncate">{liveEvent.message}</span>
-        ) : (
-          <span>{isConnected ? 'Idle' : 'Connecting…'}</span>
-        )}
+        <span className="truncate">{headerText}</span>
       </div>
       <ol className="flex flex-wrap gap-2">
         {STAGES.map((s) => {
