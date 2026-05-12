@@ -113,6 +113,17 @@ export const researchInputSchema = z.object({
 });
 export type ResearchInput = z.infer<typeof researchInputSchema>;
 
+export const reviewInputSchema = z.object({
+  // when maxIterations === 0 the orchestrator skips the stage entirely (handled
+  // by `shouldSkip` in advanceAfter); positive values run the review job
+  maxIterations: z.number().int().min(0).optional(),
+  autoApproveThreshold: z.number().min(0).max(100).optional(),
+  hardFailThreshold: z.number().min(0).max(100).optional(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
+});
+export type ReviewInput = z.infer<typeof reviewInputSchema>;
+
 export const draftInputSchema = z.object({
   // content format; required so the dispatcher knows which production agent to call
   type: z.enum(['blog', 'video', 'shorts', 'podcast']),
@@ -136,7 +147,7 @@ export const STAGE_INPUT_SCHEMAS: Record<Stage, z.ZodTypeAny> = {
   brainstorm: brainstormInputSchema,
   research: researchInputSchema,
   draft: draftInputSchema,
-  review: z.never(),
+  review: reviewInputSchema,
   assets: z.never(),
   preview: z.never(),
   publish: z.never(),
