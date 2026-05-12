@@ -141,9 +141,9 @@ describe('<PipelineView variant="overview" />', () => {
     fetchSpy.mockRestore();
   });
 
-  it('supervised variant currently renders a placeholder (StageView lands with Slice 5)', () => {
+  it('supervised variant renders <StageView /> for the given stage', () => {
     render(<PipelineView projectId={PROJECT_ID} variant="supervised" stage="brainstorm" />);
-    expect(screen.getByText(/Supervised view/i)).toBeInTheDocument();
+    expect(screen.getByTestId('stage-view-brainstorm')).toBeInTheDocument();
     expect(screen.queryByTestId('pipeline-view-overview')).not.toBeInTheDocument();
   });
 });

@@ -385,3 +385,168 @@ describe('POST /projects/:projectId/stage-runs/:stageRunId/continue', () => {
     expect(res.json().error.code).toBe('FORBIDDEN');
   });
 });
+
+// ─── PATCH /:projectId/stage-runs/:stageRunId (abort) ────────────────────────
+
+describe('PATCH /projects/:projectId/stage-runs/:stageRunId (abort)', () => {
+  it('transitions a running Stage Run to aborted and emits finished', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { id: 'sr-1', project_id: PROJECT_ID, stage: 'brainstorm', status: 'running' },
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-1`,
+      headers: AUTH,
+      payload: { action: 'abort' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.status).toBe('aborted');
+    const updateCall = (sbChain.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(updateCall.status).toBe('aborted');
+
+    const finishedCall = (inngestSendMock as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => (c[0] as { name: string }).name === 'pipeline/stage.run.finished',
+    );
+    expect(finishedCall).toBeDefined();
+  });
+
+  it('returns 409 when the Stage Run is already terminal', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { id: 'sr-1', project_id: PROJECT_ID, stage: 'brainstorm', status: 'completed' },
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-1`,
+      headers: AUTH,
+      payload: { action: 'abort' },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('INVALID_STATUS');
+  });
+
+  it('returns 400 when action is not "abort"', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-1`,
+      headers: AUTH,
+      payload: { action: 'something_else' },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 404 when the Stage Run does not belong to the project', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { id: 'sr-1', project_id: 'OTHER_PROJECT', stage: 'brainstorm', status: 'running' },
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-1`,
+      headers: AUTH,
+      payload: { action: 'abort' },
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+// ─── POST /:projectId/stage-runs/:stageRunId/manual-output ───────────────────
+
+describe('POST /projects/:projectId/stage-runs/:stageRunId/manual-output', () => {
+  it('forwards to the legacy endpoint and marks the Stage Run completed', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: {
+        id: 'sr-1',
+        project_id: PROJECT_ID,
+        stage: 'brainstorm',
+        status: 'awaiting_user',
+        awaiting_reason: 'manual_paste',
+        payload_ref: { kind: 'brainstorm_session', id: 'bs-sess-1' },
+      },
+      error: null,
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: { draftIds: ['bd-1'] }, error: null }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    process.env.API_URL = 'http://api.test';
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-1/manual-output`,
+      headers: AUTH,
+      payload: { output: 'BC_BRAINSTORM_OUTPUT:\n...' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.status).toBe('completed');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://api.test/brainstorm/sessions/bs-sess-1/manual-output',
+      expect.objectContaining({ method: 'POST' }),
+    );
+
+    const updateCall = (sbChain.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(updateCall.status).toBe('completed');
+    expect(updateCall.payload_ref).toEqual({ kind: 'brainstorm_draft', id: 'bd-1' });
+  });
+
+  it('returns 409 when the Stage Run is not awaiting_user(manual_paste)', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: {
+        id: 'sr-1',
+        project_id: PROJECT_ID,
+        stage: 'brainstorm',
+        status: 'running',
+        awaiting_reason: null,
+        payload_ref: null,
+      },
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-1/manual-output`,
+      headers: AUTH,
+      payload: { output: 'x' },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('INVALID_STATUS');
+  });
+
+  it('returns 400 STAGE_NOT_SUPPORTED for non-brainstorm stages', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: {
+        id: 'sr-1',
+        project_id: PROJECT_ID,
+        stage: 'research',
+        status: 'awaiting_user',
+        awaiting_reason: 'manual_paste',
+        payload_ref: { kind: 'research_session', id: 'rs-1' },
+      },
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-1/manual-output`,
+      headers: AUTH,
+      payload: { output: 'x' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('STAGE_NOT_SUPPORTED');
+  });
+});

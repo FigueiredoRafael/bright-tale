@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation';
 import { STAGES, type Stage } from '@brighttale/shared/pipeline/inputs';
 import { useProjectStream } from '@/hooks/useProjectStream';
 import { cn } from '@/lib/utils';
+import { StageView } from './StageView';
 
 interface PipelineViewProps {
   projectId: string;
@@ -66,14 +67,14 @@ export function PipelineView({
   const { stageRuns, liveEvent, isConnected } = useProjectStream(projectId);
 
   if (variant === 'supervised') {
-    // <StageView> arrives with Slice 5 (#13). Until then surface a placeholder
-    // so the dashboard can already cross-link without a hard fail.
-    return (
-      <div className="rounded-md border p-4 text-sm text-muted-foreground">
-        Supervised view for <span className="font-mono">{stage}</span> not yet wired —
-        Slice 5 (StageView component) ships this.
-      </div>
-    );
+    if (!stage) {
+      return (
+        <div className="rounded-md border p-4 text-sm text-muted-foreground">
+          Supervised view requires a `stage` prop.
+        </div>
+      );
+    }
+    return <StageView projectId={projectId} stage={stage} />;
   }
 
   function handleClick(s: Stage): void {

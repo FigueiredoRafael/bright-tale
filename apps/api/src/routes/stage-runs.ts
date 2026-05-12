@@ -160,6 +160,205 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  /**
+   * PATCH /:projectId/stage-runs/:stageRunId
+   *
+   * Currently the only supported action is `abort`, which transitions a
+   * non-terminal Stage Run to `aborted`. The dispatcher is responsible for
+   * actually stopping any underlying work (jobs poll `stage_runs.status`).
+   */
+  fastify.patch<{ Params: { projectId: string; stageRunId: string } }>(
+    '/:projectId/stage-runs/:stageRunId',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        const { projectId, stageRunId } = request.params;
+        const userId = (request as unknown as { userId?: string }).userId;
+        if (!userId) throw new ApiError(401, 'Unauthorized', 'UNAUTHORIZED');
+
+        const body = z.object({ action: z.literal('abort') }).parse(request.body);
+
+        const sb = createServiceClient();
+        await assertProjectOwner(projectId, userId, sb);
+
+        const { data: stageRun } = await (sb.from('stage_runs') as unknown as {
+          select: (cols: string) => {
+            eq: (col: string, val: string) => {
+              maybeSingle: () => Promise<{ data: Record<string, unknown> | null; error: unknown }>;
+            };
+          };
+        })
+          .select('id, project_id, stage, status')
+          .eq('id', stageRunId)
+          .maybeSingle();
+        if (!stageRun) throw new ApiError(404, 'Stage Run not found', 'NOT_FOUND');
+        if (stageRun.project_id !== projectId) {
+          throw new ApiError(404, 'Stage Run does not belong to this project', 'NOT_FOUND');
+        }
+        const terminal = ['completed', 'failed', 'aborted', 'skipped'];
+        if (terminal.includes(stageRun.status as string)) {
+          throw new ApiError(
+            409,
+            `Stage Run is already terminal (status=${stageRun.status})`,
+            'INVALID_STATUS',
+          );
+        }
+
+        const now = new Date().toISOString();
+        await (sb.from('stage_runs') as unknown as {
+          update: (row: Record<string, unknown>) => {
+            eq: (col: string, val: string) => Promise<unknown>;
+          };
+        })
+          .update({
+            status: 'aborted',
+            finished_at: now,
+            updated_at: now,
+          })
+          .eq('id', stageRunId);
+
+        await inngest.send({
+          name: 'pipeline/stage.run.finished',
+          data: { stageRunId, projectId },
+        });
+        // Silence body unused-var lint
+        void body;
+
+        return reply.send({
+          data: { stageRunId, status: 'aborted' },
+          error: null,
+        });
+      } catch (err) {
+        return sendError(reply, err);
+      }
+    },
+  );
+
+  /**
+   * POST /:projectId/stage-runs/:stageRunId/manual-output
+   *
+   * For Stage Runs parked in `awaiting_user(manual_paste)` — the user
+   * pastes the LLM output produced externally. The handler delegates to
+   * the existing legacy `/api/brainstorm/sessions/:id/manual-output`
+   * route (resolved via `payload_ref.id`), then transitions the Stage
+   * Run to completed and emits `pipeline/stage.run.finished`.
+   *
+   * Stages other than brainstorm currently return 400 — they can join
+   * as their dispatchers learn the manual-paste protocol.
+   */
+  fastify.post<{ Params: { projectId: string; stageRunId: string } }>(
+    '/:projectId/stage-runs/:stageRunId/manual-output',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        const { projectId, stageRunId } = request.params;
+        const userId = (request as unknown as { userId?: string }).userId;
+        if (!userId) throw new ApiError(401, 'Unauthorized', 'UNAUTHORIZED');
+
+        const body = z.object({ output: z.string().min(1) }).parse(request.body);
+
+        const sb = createServiceClient();
+        await assertProjectOwner(projectId, userId, sb);
+
+        const { data: stageRun } = await (sb.from('stage_runs') as unknown as {
+          select: (cols: string) => {
+            eq: (col: string, val: string) => {
+              maybeSingle: () => Promise<{ data: Record<string, unknown> | null; error: unknown }>;
+            };
+          };
+        })
+          .select('id, project_id, stage, status, awaiting_reason, payload_ref')
+          .eq('id', stageRunId)
+          .maybeSingle();
+        if (!stageRun) throw new ApiError(404, 'Stage Run not found', 'NOT_FOUND');
+        if (stageRun.project_id !== projectId) {
+          throw new ApiError(404, 'Stage Run does not belong to this project', 'NOT_FOUND');
+        }
+        if (
+          stageRun.status !== 'awaiting_user' ||
+          stageRun.awaiting_reason !== 'manual_paste'
+        ) {
+          throw new ApiError(
+            409,
+            `Stage Run is not awaiting manual_paste (status=${stageRun.status}, awaiting_reason=${stageRun.awaiting_reason})`,
+            'INVALID_STATUS',
+          );
+        }
+        if (stageRun.stage !== 'brainstorm') {
+          throw new ApiError(
+            400,
+            `manual-output is only wired for brainstorm at this slice (stage=${stageRun.stage})`,
+            'STAGE_NOT_SUPPORTED',
+          );
+        }
+        const ref = stageRun.payload_ref as { kind?: string; id?: string } | null;
+        if (!ref || ref.kind !== 'brainstorm_session' || !ref.id) {
+          throw new ApiError(
+            500,
+            'Stage Run has no brainstorm_session payload_ref to forward manual output to',
+            'MISSING_PAYLOAD_REF',
+          );
+        }
+
+        // Forward to the existing legacy endpoint. Internal authentication.
+        const apiBase = process.env.API_URL ?? 'http://localhost:3001';
+        const internalKey = process.env.INTERNAL_API_KEY;
+        if (!internalKey) throw new ApiError(500, 'INTERNAL_API_KEY not set', 'CONFIG');
+
+        const forwardRes = await fetch(`${apiBase}/brainstorm/sessions/${ref.id}/manual-output`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-internal-key': internalKey,
+            'x-user-id': userId,
+          },
+          body: JSON.stringify({ output: body.output }),
+        });
+        const forwardBody = (await forwardRes.json().catch(() => ({}))) as {
+          data?: { draftIds?: string[] };
+          error?: { message?: string; code?: string };
+        };
+        if (!forwardRes.ok || forwardBody?.error) {
+          throw new ApiError(
+            forwardRes.status || 502,
+            forwardBody?.error?.message ?? 'Legacy manual-output failed',
+            forwardBody?.error?.code ?? 'UPSTREAM_ERROR',
+          );
+        }
+
+        const firstDraftId = forwardBody?.data?.draftIds?.[0] ?? null;
+        const now = new Date().toISOString();
+        await (sb.from('stage_runs') as unknown as {
+          update: (row: Record<string, unknown>) => {
+            eq: (col: string, val: string) => Promise<unknown>;
+          };
+        })
+          .update({
+            status: 'completed',
+            awaiting_reason: null,
+            payload_ref: firstDraftId
+              ? { kind: 'brainstorm_draft', id: firstDraftId }
+              : (stageRun.payload_ref ?? null),
+            finished_at: now,
+            updated_at: now,
+          })
+          .eq('id', stageRunId);
+
+        await inngest.send({
+          name: 'pipeline/stage.run.finished',
+          data: { stageRunId, projectId },
+        });
+
+        return reply.send({
+          data: { stageRunId, status: 'completed' },
+          error: null,
+        });
+      } catch (err) {
+        return sendError(reply, err);
+      }
+    },
+  );
+
   fastify.get<{ Params: { projectId: string } }>(
     '/:projectId/stages',
     { preHandler: [authenticate] },
