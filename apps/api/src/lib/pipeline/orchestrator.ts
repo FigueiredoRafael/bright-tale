@@ -19,6 +19,7 @@ import {
 } from '@brighttale/shared/pipeline/inputs';
 import { createServiceClient } from '../supabase/index.js';
 import { assertProjectOwner } from '../projects/ownership.js';
+import { inngest } from '../../jobs/client.js';
 
 // The `stage_runs` table and the `projects.mode`/`paused`/`autopilot_config`
 // columns are introduced by the migration shipping with this slice. Until
@@ -194,6 +195,19 @@ export async function requestStageRun(
     attempt_no: attemptNo,
   });
   if (!inserted) throw new Error('Failed to insert stage_runs row');
+
+  // 8. Emit pipeline/stage.requested so the matching dispatch function
+  // (e.g. brainstorm) can pick it up. The dispatcher is responsible for
+  // transitioning the Stage Run to `running` and executing the work.
+  await inngest.send({
+    name: 'pipeline/stage.requested',
+    data: {
+      stageRunId: inserted.id as string,
+      stage,
+      projectId,
+    },
+  });
+
   return rowToStageRun(inserted);
 }
 

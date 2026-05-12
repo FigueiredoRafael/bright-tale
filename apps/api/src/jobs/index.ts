@@ -11,3 +11,5 @@ export { productionGenerate } from './production-generate.js';
 export { productionProduce } from './production-produce.js';
 export { referenceCheck } from './reference-check.js';
 export { affiliateExpireReferrals } from './affiliate-expire-referrals.js';
+export { pipelineAdvance } from './pipeline-advance.js';
+export { pipelineBrainstormDispatch } from './pipeline-brainstorm-dispatch.js';

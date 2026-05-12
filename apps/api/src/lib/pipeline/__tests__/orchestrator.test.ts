@@ -31,6 +31,11 @@ mockChain.single = vi.fn();
 
 vi.mock('@/lib/supabase', () => ({ createServiceClient: () => mockChain }));
 
+// ── Inngest mock ─────────────────────────────────────────────────────────────
+
+const { inngestSendMock } = vi.hoisted(() => ({ inngestSendMock: vi.fn(async () => ({ ids: ['evt-1'] })) }));
+vi.mock('@/jobs/client', () => ({ inngest: { send: inngestSendMock } }));
+
 // ── Import under test (after mocks) ──────────────────────────────────────────
 
 import { requestStageRun, advanceAfter } from '@/lib/pipeline/orchestrator';
@@ -226,6 +231,42 @@ describe('requestStageRun', () => {
     expect(result.attemptNo).toBe(3);
     const insertedRow = (mockChain.insert as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(insertedRow.attempt_no).toBe(3);
+  });
+
+  it('emits pipeline/stage.requested after inserting a queued Stage Run', async () => {
+    mockChain.maybeSingle
+      .mockResolvedValueOnce({ data: { channel_id: CHANNEL_ID, research_id: null }, error: null })
+      .mockResolvedValueOnce({ data: { user_id: OWNER_ID }, error: null })
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({ data: null, error: null });
+
+    mockChain.single.mockResolvedValueOnce({
+      data: {
+        id: 'sr-emit',
+        project_id: PROJECT_ID,
+        stage: 'brainstorm',
+        status: 'queued',
+        awaiting_reason: null,
+        payload_ref: null,
+        attempt_no: 1,
+        input_json: { mode: 'topic_driven', topic: 'x' },
+        error_message: null,
+        started_at: null,
+        finished_at: null,
+        created_at: '2026-05-11T00:00:00Z',
+        updated_at: '2026-05-11T00:00:00Z',
+      },
+      error: null,
+    });
+
+    await requestStageRun(PROJECT_ID, 'brainstorm', { mode: 'topic_driven', topic: 'x' }, OWNER_ID);
+
+    expect(inngestSendMock).toHaveBeenCalledTimes(1);
+    const [event] = (inngestSendMock as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(event.name).toBe('pipeline/stage.requested');
+    expect(event.data.stageRunId).toBe('sr-emit');
+    expect(event.data.stage).toBe('brainstorm');
+    expect(event.data.projectId).toBe(PROJECT_ID);
   });
 });
 

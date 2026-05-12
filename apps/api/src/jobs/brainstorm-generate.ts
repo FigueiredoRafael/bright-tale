@@ -30,6 +30,8 @@ interface BrainstormGenerateEvent {
     provider?: 'gemini' | 'openai' | 'anthropic' | 'ollama';
     model?: string;
     targetCount?: number;
+    /** Set when this run was launched via the new Pipeline Orchestrator. */
+    stageRunId?: string;
   };
 }
 
@@ -82,7 +84,7 @@ export const brainstormGenerate = inngest.createFunction(
     triggers: [{ event: 'brainstorm/generate' }],
   },
   async ({ event, step }: { event: BrainstormGenerateEvent; step: { run: (name: string, fn: () => Promise<unknown>) => Promise<unknown> } }) => {
-    const { sessionId, orgId, userId, channelId, inputJson, modelTier, provider, model, targetCount } = event.data;
+    const { sessionId, orgId, userId, channelId, inputJson, modelTier, provider, model, targetCount, stageRunId } = event.data;
     const sb = createServiceClient();
 
     // Load projectId from brainstorm_sessions if available
@@ -269,6 +271,33 @@ export const brainstormGenerate = inngest.createFunction(
         { ideaCount: persisted },
       );
 
+      // Pipeline Orchestrator handoff: write terminal status to the Stage Run
+      // and emit `pipeline/stage.run.finished` so `pipeline-advance` can react.
+      if (stageRunId) {
+        const { data: firstDraft } = await sb
+          .from('brainstorm_drafts')
+          .select('id')
+          .eq('session_id', sessionId)
+          .order('position', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        const now = new Date().toISOString();
+        await (sb.from('stage_runs') as unknown as {
+          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+        })
+          .update({
+            status: 'completed',
+            payload_ref: firstDraft?.id ? { kind: 'brainstorm_draft', id: firstDraft.id } : null,
+            finished_at: now,
+            updated_at: now,
+          })
+          .eq('id', stageRunId);
+        await inngest.send({
+          name: 'pipeline/stage.run.finished',
+          data: { stageRunId, projectId },
+        });
+      }
+
       return { success: true, ideas: persisted };
     } catch (err) {
       if (err instanceof JobAborted) {
@@ -286,6 +315,25 @@ export const brainstormGenerate = inngest.createFunction(
         .eq('id', sessionId);
 
       await emitJobEvent(sessionId, 'brainstorm', 'failed', message.slice(0, 200), { error: message });
+
+      if (stageRunId) {
+        const now = new Date().toISOString();
+        await (sb.from('stage_runs') as unknown as {
+          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+        })
+          .update({
+            status: 'failed',
+            error_message: message.slice(0, 500),
+            finished_at: now,
+            updated_at: now,
+          })
+          .eq('id', stageRunId);
+        await inngest.send({
+          name: 'pipeline/stage.run.finished',
+          data: { stageRunId, projectId },
+        });
+      }
+
       throw err;
     }
   },
