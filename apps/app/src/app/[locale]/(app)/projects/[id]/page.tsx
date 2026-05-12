@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useRouter } from '@/i18n/navigation';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { PipelineOrchestrator } from '@/components/pipeline/PipelineOrchestrator';
+import { PipelineView } from '@/components/pipeline/PipelineView';
 import { PipelineSettingsProvider } from '@/providers/PipelineSettingsProvider';
 import { PipelineAbortProvider } from '@/components/pipeline/PipelineAbortProvider';
 import { ConnectChannelEmptyState } from '@/components/projects/ConnectChannelEmptyState';
+import { STAGES, type Stage } from '@brighttale/shared/pipeline/inputs';
 
 interface Channel {
   id: string;
@@ -18,6 +20,15 @@ export default function ProjectPipelinePage() {
   const params = useParams();
   const projectId = params.id as string;
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Demo flag — render the new <PipelineView supervised /> instead of the
+  // legacy <PipelineOrchestrator />. Set ?v=2 on the URL. Remove once the
+  // legacy code is deleted in Slice 14 (#22).
+  const useV2 = searchParams?.get('v') === '2';
+  const stageParam = searchParams?.get('stage') as Stage | null;
+  const v2Stage: Stage = stageParam && (STAGES as readonly string[]).includes(stageParam)
+    ? stageParam
+    : 'brainstorm';
   const [project, setProject] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -104,15 +115,49 @@ export default function ProjectPipelinePage() {
           })()
         : 'running'
 
+  if (useV2) {
+    return (
+      <div>
+        <div className="flex items-center justify-between px-6 pt-4">
+          <button
+            onClick={() => router.push('/projects')}
+            className="text-xs text-muted-foreground hover:underline flex items-center gap-1"
+          >
+            <ArrowLeft className="h-3 w-3" /> Back to projects
+          </button>
+          <a
+            href={`?${stageParam ? `stage=${stageParam}` : ''}`}
+            className="text-xs text-muted-foreground hover:underline"
+            data-testid="v2-toggle-off"
+          >
+            ← Legacy view
+          </a>
+        </div>
+        <div className="space-y-4 p-6">
+          <h1 className="text-lg font-semibold">{(project.title as string) ?? 'Untitled Project'}</h1>
+          <PipelineView projectId={projectId} variant="overview" />
+          <PipelineView projectId={projectId} variant="supervised" stage={v2Stage} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <div className="px-6 pt-4">
+      <div className="flex items-center justify-between px-6 pt-4">
         <button
           onClick={() => router.push('/projects')}
           className="text-xs text-muted-foreground hover:underline flex items-center gap-1"
         >
           <ArrowLeft className="h-3 w-3" /> Back to projects
         </button>
+        <a
+          href={`?v=2${stageParam ? `&stage=${stageParam}` : ''}`}
+          className="text-xs text-muted-foreground hover:underline"
+          data-testid="v2-toggle-on"
+        >
+          Try the new pipeline view →
+        </a>
       </div>
       <PipelineAbortProvider
         projectId={projectId}
