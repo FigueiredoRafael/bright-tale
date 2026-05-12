@@ -244,6 +244,17 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       const { id } = request.params as { id: string };
       const data = updateProjectSchema.parse(request.body);
 
+      // Reject legacy nested mode/paused writes — they used to live in
+      // pipeline_state_json before Slice 12 promoted them to columns.
+      const psj = data.pipelineStateJson as Record<string, unknown> | undefined;
+      if (psj && (Object.prototype.hasOwnProperty.call(psj, 'mode') || Object.prototype.hasOwnProperty.call(psj, 'paused'))) {
+        throw new ApiError(
+          400,
+          'Writing mode/paused via pipelineStateJson is deprecated — use the top-level `mode` and `paused` fields instead.',
+          'DEPRECATED_FIELD',
+        );
+      }
+
       // Check if project exists
       const { data: existing, error: findErr } = await sb
         .from('projects')
@@ -351,6 +362,7 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       if (data.research_id !== undefined) updateData.research_id = data.research_id;
       if (data.current_stage) updateData.current_stage = data.current_stage;
       if (data.mode !== undefined) updateData.mode = data.mode;
+      if (data.paused !== undefined) updateData.paused = data.paused;
       if (data.status) updateData.status = data.status;
       if (data.winner !== undefined) updateData.winner = data.winner;
       if (data.completed_stages !== undefined)
@@ -383,6 +395,17 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       const sb = createServiceClient();
       const { id } = request.params as { id: string };
       const data = updateProjectSchema.parse(request.body);
+
+      // Reject legacy nested mode/paused writes — they used to live in
+      // pipeline_state_json before Slice 12 promoted them to columns.
+      const psj = data.pipelineStateJson as Record<string, unknown> | undefined;
+      if (psj && (Object.prototype.hasOwnProperty.call(psj, 'mode') || Object.prototype.hasOwnProperty.call(psj, 'paused'))) {
+        throw new ApiError(
+          400,
+          'Writing mode/paused via pipelineStateJson is deprecated — use the top-level `mode` and `paused` fields instead.',
+          'DEPRECATED_FIELD',
+        );
+      }
 
       // Check if project exists
       const { data: existing, error: findErr } = await sb
@@ -485,6 +508,7 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       if (data.research_id !== undefined) updateData.research_id = data.research_id;
       if (data.current_stage) updateData.current_stage = data.current_stage;
       if (data.mode !== undefined) updateData.mode = data.mode;
+      if (data.paused !== undefined) updateData.paused = data.paused;
       if (data.status) updateData.status = data.status;
       if (data.winner !== undefined) updateData.winner = data.winner;
       if (data.completed_stages !== undefined)

@@ -512,3 +512,62 @@ describe('POST /projects/:id/winner', () => {
     expect(body.data.message).toBe('Project marked as winner');
   });
 });
+
+// ─── Slice 12 (#20) — Mode + Paused columns ──────────────────────────────────
+
+describe('PATCH /projects/:id — Mode + Paused (Slice 12)', () => {
+  it('writes top-level mode + paused to the columns', async () => {
+    mockChain.maybeSingle.mockResolvedValueOnce({
+      data: { id: 'p-1', title: 'T', research_id: null, winner: false, mode: 'autopilot', paused: false },
+      error: null,
+    });
+    mockChain.single.mockResolvedValueOnce({
+      data: { id: 'p-1', mode: 'manual', paused: true },
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/projects/p-1',
+      headers: AUTH,
+      payload: { mode: 'manual', paused: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // mockChain.update is called with the column changes.
+    const updateCalls = (mockChain.update as ReturnType<typeof vi.fn>).mock.calls;
+    const updateBody = updateCalls.find((c) => c[0]?.mode === 'manual')?.[0];
+    expect(updateBody).toBeDefined();
+    expect(updateBody.mode).toBe('manual');
+    expect(updateBody.paused).toBe(true);
+  });
+
+  it('rejects legacy pipelineStateJson.mode writes with 400 DEPRECATED_FIELD', async () => {
+    mockChain.maybeSingle.mockResolvedValueOnce({
+      data: { id: 'p-1', title: 'T', research_id: null, winner: false },
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/projects/p-1',
+      headers: AUTH,
+      payload: { pipelineStateJson: { mode: 'autopilot' } },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('DEPRECATED_FIELD');
+  });
+
+  it('rejects legacy pipelineStateJson.paused writes with 400 DEPRECATED_FIELD', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/projects/p-1',
+      headers: AUTH,
+      payload: { pipelineStateJson: { paused: true } },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('DEPRECATED_FIELD');
+  });
+});

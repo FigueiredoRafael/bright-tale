@@ -42,7 +42,14 @@ export const updateProjectSchema = z.object({
   completed_stages: z.array(z.string()).optional(),
   pipelineStateJson: z.record(z.unknown()).optional(),
   channelId: z.string().uuid().nullable().optional(),
-  mode: z.enum(["step-by-step", "supervised", "overview"]).nullable().optional(),
+  // mode is the new canonical taxonomy (autopilot|manual). Legacy values
+  // (step-by-step|supervised|overview) are still accepted while Slice 13's
+  // backfill is pending, but the orchestrator only honours autopilot|manual.
+  mode: z
+    .enum(["autopilot", "manual", "step-by-step", "supervised", "overview"])
+    .nullable()
+    .optional(),
+  paused: z.boolean().optional(),
   autopilotConfigJson: z.record(z.unknown()).nullable().optional(),
   autopilotTemplateId: z.string().nullable().optional(),
   abortRequestedAt: z.string().datetime().nullable().optional(),
