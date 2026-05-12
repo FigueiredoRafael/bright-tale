@@ -68,12 +68,17 @@ export const pipelineResearchDispatch = inngest.createFunction(
       }
     }
 
-    // Resolve the idea: prefer explicit input.ideaId, otherwise read the prior
-    // brainstorm Stage Run's payload_ref → brainstorm_drafts pick.
-    let ideaId = (input.ideaId as string | undefined) ?? null;
+    // Resolve the idea_archive id (NOT brainstorm_draft id) — research_sessions.
+    // idea_id is FK to idea_archives.id. If the user has an explicit ideaArchiveId
+    // in input, honour it. Otherwise read the prior brainstorm Stage Run's
+    // payload_ref (which points to a brainstorm_draft) and promote that draft
+    // to idea_archives if it hasn't been promoted yet — same shape as
+    // POST /brainstorm/sessions/:id/drafts/save.
+    let ideaArchiveId = (input.ideaId as string | undefined) ?? null;
     let topic = (input.topic as string | undefined) ?? null;
+    let brainstormDraftId: string | null = null;
 
-    if (!ideaId) {
+    if (!ideaArchiveId) {
       const { data: priorBrainstorm } = await sb
         .from('stage_runs')
         .select('id, stage, status, payload_ref')
@@ -84,18 +89,59 @@ export const pipelineResearchDispatch = inngest.createFunction(
         .maybeSingle();
       const ref = priorBrainstorm?.payload_ref as { kind?: string; id?: string } | null | undefined;
       if (ref?.kind === 'brainstorm_draft' && ref.id) {
-        ideaId = ref.id;
+        brainstormDraftId = ref.id;
       }
     }
 
-    if (ideaId && !topic) {
+    if (brainstormDraftId) {
       const { data: draft } = await sb
         .from('brainstorm_drafts')
-        .select('id, title, session_id')
-        .eq('id', ideaId)
+        .select('*')
+        .eq('id', brainstormDraftId)
         .maybeSingle();
-      if (draft?.title) topic = draft.title as string;
+      if (draft) {
+        if (!topic && draft.title) topic = draft.title as string;
+        // Try to find an existing idea_archive promotion for this draft.
+        const { data: existingArchive } = await sb
+          .from('idea_archives')
+          .select('id')
+          .eq('brainstorm_session_id', draft.session_id as string)
+          .eq('title', draft.title as string)
+          .maybeSingle();
+        if (existingArchive?.id) {
+          ideaArchiveId = existingArchive.id as string;
+        } else {
+          // Promote: same shape as POST /brainstorm/sessions/:id/drafts/save.
+          const { count } = await sb
+            .from('idea_archives')
+            .select('*', { count: 'exact', head: true });
+          const newIdeaId = `BC-IDEA-${String((count ?? 0) + 1).padStart(3, '0')}`;
+          const { data: archive, error: archiveErr } = await sb
+            .from('idea_archives')
+            .insert({
+              idea_id: newIdeaId,
+              title: draft.title ?? '',
+              core_tension: draft.core_tension ?? '',
+              target_audience: draft.target_audience ?? '',
+              verdict: draft.verdict ?? 'experimental',
+              discovery_data: draft.discovery_data ?? '',
+              source_type: 'brainstorm',
+              channel_id: draft.channel_id,
+              brainstorm_session_id: draft.session_id,
+              user_id: draft.user_id,
+              org_id: draft.org_id,
+            })
+            .select('id')
+            .single();
+          if (!archiveErr && archive?.id) {
+            ideaArchiveId = archive.id as string;
+          }
+        }
+      }
     }
+
+    // Convenience alias for the legacy event payload.
+    const ideaId = ideaArchiveId;
 
     const level = (input.level as 'surface' | 'medium' | 'deep' | undefined) ?? 'medium';
     const focusTags = (input.focusTags as string[] | undefined) ?? [];
@@ -110,7 +156,7 @@ export const pipelineResearchDispatch = inngest.createFunction(
         channel_id: project.channel_id ?? null,
         org_id: orgId,
         user_id: userId,
-        idea_id: ideaId,
+        idea_id: ideaArchiveId,
         level,
         focus_tags: focusTags,
         input_json: { topic, ideaTitle: topic, focusTags, level },

@@ -95,6 +95,24 @@ vi.mock('../../lib/supabase/index.js', () => ({
           }),
         };
       }
+      if (table === 'idea_archives') {
+        return {
+          // count-only HEAD query (the `select('*', { count, head })` path)
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: () => Promise.resolve({ data: null, error: null }),
+              }),
+            }),
+            count: 0,
+          }),
+          insert: () => ({
+            select: () => ({
+              single: () => Promise.resolve({ data: { id: 'idea-arch-1' }, error: null }),
+            }),
+          }),
+        };
+      }
       if (table === 'research_sessions') {
         return { insert: sessionInsertMock };
       }
@@ -173,7 +191,10 @@ describe('pipeline-research-dispatch', () => {
     expect(sessionRow.org_id).toBe(ORG_ID);
     expect(sessionRow.user_id).toBe(USER_ID);
     expect(sessionRow.level).toBe('medium');
-    expect(sessionRow.idea_id).toBe(PICKED_DRAFT_ID);
+    // idea_id is the idea_archives.id (promoted from the brainstorm_draft),
+    // NOT the brainstorm_draft.id directly. research_sessions.idea_id FK
+    // requires this indirection.
+    expect(sessionRow.idea_id).toBe('idea-arch-1');
 
     expect(stageRunsUpdateMock).toHaveBeenCalled();
     const updateRow = stageRunsUpdateMock.mock.calls[0][0];
