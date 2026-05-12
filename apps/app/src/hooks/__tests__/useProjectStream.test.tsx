@@ -108,11 +108,14 @@ describe('useProjectStream', () => {
     expect(fetchMock).toHaveBeenCalledWith(`/api/projects/${PROJECT_ID}/stages`);
   });
 
-  it('opens a Realtime channel named project:<id> and subscribes', async () => {
+  it('opens a Realtime channel scoped to project:<id> (with per-instance suffix) and subscribes', async () => {
     renderHook(() => useProjectStream(PROJECT_ID));
 
     await waitFor(() => {
-      expect(supabaseMock.channel).toHaveBeenCalledWith(`project:${PROJECT_ID}`);
+      // Per-instance suffix prevents collisions when multiple consumers
+      // subscribe on the same page; we only assert the prefix here.
+      const channelName = (supabaseMock.channel as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      expect(channelName.startsWith(`project:${PROJECT_ID}`)).toBe(true);
       expect(channelMock.subscribe).toHaveBeenCalled();
     });
   });

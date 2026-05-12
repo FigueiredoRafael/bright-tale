@@ -8,7 +8,7 @@
  *
  * Cleanup on unmount drops the channel via `supabase.removeChannel`.
  */
-import { useEffect, useReducer, useState } from 'react';
+import { useEffect, useId, useReducer, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { Stage, StageRun } from '@brighttale/shared/pipeline/inputs';
 
@@ -98,6 +98,10 @@ export function useProjectStream(projectId: string): {
   const [state, dispatch] = useReducer(reducer, { stageRuns: EMPTY_STAGE_RUNS });
   const [liveEvent, setLiveEvent] = useState<JobEvent | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  // Per-instance suffix so multiple consumers of useProjectStream on the
+  // same page don't collide on a single shared Supabase Realtime channel
+  // (which throws "cannot add postgres_changes callbacks after subscribe()").
+  const instanceId = useId();
 
   useEffect(() => {
     let cancelled = false;
@@ -117,7 +121,7 @@ export function useProjectStream(projectId: string): {
 
     // 2. Realtime
     const channel = supabase
-      .channel(`project:${projectId}`)
+      .channel(`project:${projectId}:${instanceId}`)
       .on(
         'postgres_changes',
         {
@@ -153,7 +157,7 @@ export function useProjectStream(projectId: string): {
       cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, [projectId]);
+  }, [projectId, instanceId]);
 
   return { stageRuns: state.stageRuns, liveEvent, isConnected };
 }
