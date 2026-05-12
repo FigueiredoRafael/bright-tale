@@ -83,9 +83,18 @@ describe('<StageView /> — 4 visual states', () => {
     expect(screen.getByTestId('attempt-badge')).toHaveTextContent('Attempt 3');
   });
 
-  it('state 1: no Stage Run → renders BrainstormForm', () => {
+  it('state 1: no Stage Run → renders the form header + BrainstormForm', () => {
     render(<StageView projectId={PROJECT_ID} stage="brainstorm" />);
+    const header = screen.getByTestId('stage-form-header');
+    expect(header).toHaveTextContent('Run Brainstorm');
+    expect(header).toHaveTextContent(/Generate content ideas/);
     expect(screen.getByTestId('brainstorm-form')).toBeInTheDocument();
+  });
+
+  it('state 1 for non-brainstorm stages: header is shown with the per-stage description', () => {
+    render(<StageView projectId={PROJECT_ID} stage="research" />);
+    expect(screen.getByTestId('stage-form-header')).toHaveTextContent('Run Research');
+    expect(screen.getByTestId('stage-form-placeholder')).toBeInTheDocument();
   });
 
   it('state 2 (running): renders ActivityPanel with Abort button', () => {

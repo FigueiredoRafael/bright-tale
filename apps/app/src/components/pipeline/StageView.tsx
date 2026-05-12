@@ -18,10 +18,17 @@ import {
   Ban,
   CheckCircle2,
   ChevronRight,
+  FileCheck2,
+  FileText,
+  Image as ImageIcon,
+  Lightbulb,
   Loader2,
   RotateCcw,
+  Search,
+  Send,
   Sparkles,
   XCircle,
+  Eye,
 } from 'lucide-react';
 import {
   STAGES,
@@ -46,6 +53,50 @@ const STAGE_LABELS: Record<Stage, string> = {
   assets: 'Assets',
   preview: 'Preview',
   publish: 'Publish',
+};
+
+interface StageMeta {
+  Icon: typeof Lightbulb;
+  action: string;
+  description: string;
+}
+
+const STAGE_META: Record<Stage, StageMeta> = {
+  brainstorm: {
+    Icon: Lightbulb,
+    action: 'Run Brainstorm',
+    description: 'Generate content ideas with AI from a topic or a reference URL.',
+  },
+  research: {
+    Icon: Search,
+    action: 'Run Research',
+    description: 'Gather sources, statistics, and expert quotes about the selected idea.',
+  },
+  draft: {
+    Icon: FileText,
+    action: 'Produce Draft',
+    description: 'Write a blog post, video script, podcast, or short from the research + idea.',
+  },
+  review: {
+    Icon: FileCheck2,
+    action: 'Run Review',
+    description: 'Score the draft against the agent-4 quality bar; approve or request revisions.',
+  },
+  assets: {
+    Icon: ImageIcon,
+    action: 'Generate Assets',
+    description: 'Produce visual prompt briefs (one per section) for downstream image generation.',
+  },
+  preview: {
+    Icon: Eye,
+    action: 'Preview',
+    description: 'Sanity-check the draft has body content before publishing.',
+  },
+  publish: {
+    Icon: Send,
+    action: 'Publish',
+    description: 'Push the draft to the connected WordPress site.',
+  },
 };
 
 const TERMINAL_STATUS_META: Record<
@@ -135,6 +186,20 @@ export function StageView({ projectId, stage }: StageViewProps) {
   );
 }
 
+function StageFormHeader({ stage }: { stage: Stage }) {
+  const meta = STAGE_META[stage];
+  const Icon = meta.Icon;
+  return (
+    <div className="space-y-1" data-testid="stage-form-header">
+      <div className="flex items-center gap-2">
+        <Icon className="h-5 w-5 text-blue-500" aria-hidden />
+        <h2 className="text-base font-semibold">{meta.action}</h2>
+      </div>
+      <p className="text-sm text-muted-foreground">{meta.description}</p>
+    </div>
+  );
+}
+
 function FormForStage({
   projectId,
   stage,
@@ -144,12 +209,16 @@ function FormForStage({
   stage: Stage;
   onSubmitted: () => void;
 }) {
-  if (stage === 'brainstorm') {
-    return <BrainstormForm projectId={projectId} onSubmitted={() => onSubmitted()} />;
-  }
   return (
-    <div className="rounded-md border p-4 text-sm text-muted-foreground" data-testid="stage-form-placeholder">
-      No form yet for <span className="font-mono">{stage}</span>. Migrate it the same way Brainstorm was migrated in Slice 5.
+    <div className="space-y-3">
+      <StageFormHeader stage={stage} />
+      {stage === 'brainstorm' ? (
+        <BrainstormForm projectId={projectId} onSubmitted={() => onSubmitted()} />
+      ) : (
+        <div className="rounded-md border p-4 text-sm text-muted-foreground" data-testid="stage-form-placeholder">
+          No form yet for this stage. The Continue button on the previous stage (or autopilot) starts it for you; this Slice 5 page only ships the Brainstorm form.
+        </div>
+      )}
     </div>
   );
 }
