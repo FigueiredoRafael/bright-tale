@@ -130,7 +130,7 @@ describe('production-generate stage_runs writeback', () => {
     });
   });
 
-  it('on success: updates stage_runs to completed with payload_ref → content_draft and emits pipeline/stage.run.finished', async () => {
+  it('on success: chains into production/produce with stageRunId (does not write Stage Run terminal itself)', async () => {
     const { productionGenerate } = await import('../production-generate.js');
 
     const event = {
@@ -151,15 +151,19 @@ describe('production-generate stage_runs writeback', () => {
 
     await (productionGenerate as unknown as (args: unknown) => Promise<unknown>)({ event, step });
 
-    expect(stageRunsUpdateMock).toHaveBeenCalled();
-    const updateRow = stageRunsUpdateMock.mock.calls[0][0];
-    expect(updateRow.status).toBe('completed');
-    expect(updateRow.payload_ref).toEqual({ kind: 'content_draft', id: DRAFT_ID });
+    // production-generate now chains into produce; the Stage Run terminal
+    // is owned by production-produce (canonical-core is only half of Draft).
+    const produceCall = (inngestSendMock.mock.calls as unknown as unknown[][]).find(
+      (c) => (c[0] as { name: string }).name === 'production/produce',
+    );
+    expect(produceCall).toBeDefined();
+    expect((produceCall![0] as { data: { stageRunId: string; draftId: string } }).data.stageRunId).toBe(STAGE_RUN_ID);
 
+    // No pipeline/stage.run.finished from this worker on success.
     const finishedCall = (inngestSendMock.mock.calls as unknown as unknown[][]).find(
       (c) => (c[0] as { name: string }).name === 'pipeline/stage.run.finished',
     );
-    expect(finishedCall).toBeDefined();
+    expect(finishedCall).toBeUndefined();
   });
 
   it('on failure: updates stage_runs to failed and emits pipeline/stage.run.finished', async () => {

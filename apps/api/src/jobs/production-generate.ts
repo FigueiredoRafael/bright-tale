@@ -230,21 +230,24 @@ export const productionGenerate = inngest.createFunction(
       // routes own those stages.
       await emitJobEvent(draftId, 'production', 'completed', 'Canonical core gerado!', { draftId, type, stage: 'canonical-core' });
 
+      // Pipeline Orchestrator handoff: canonical-core is only HALF of the
+      // Draft Stage — the actual body comes from production-produce.
+      // Chain into produce so the Stage Run stays "running" until the body
+      // is written. production-produce owns the Stage Run terminal write.
       if (stageRunId) {
-        const now = new Date().toISOString();
-        await (sb.from('stage_runs') as unknown as {
-          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        })
-          .update({
-            status: 'completed',
-            payload_ref: { kind: 'content_draft', id: draftId },
-            finished_at: now,
-            updated_at: now,
-          })
-          .eq('id', stageRunId);
         await inngest.send({
-          name: 'pipeline/stage.run.finished',
-          data: { stageRunId, projectId },
+          name: 'production/produce',
+          data: {
+            draftId,
+            orgId,
+            userId,
+            type,
+            modelTier,
+            provider,
+            model,
+            productionParams,
+            stageRunId,
+          },
         });
       }
 

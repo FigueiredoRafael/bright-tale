@@ -40,6 +40,10 @@ interface ProductionProduceEvent {
     provider?: 'gemini' | 'openai' | 'anthropic' | 'ollama';
     model?: string;
     productionParams?: Record<string, unknown> | null;
+    /** Set when launched as part of the new Pipeline Orchestrator's Draft Stage.
+     *  production-generate (canonical-core) chains into production-produce
+     *  (the real content); production-produce owns the Stage Run terminal. */
+    stageRunId?: string;
   };
 }
 
@@ -56,7 +60,7 @@ export const productionProduce = inngest.createFunction(
     event: ProductionProduceEvent;
     step: { run: (name: string, fn: () => Promise<unknown>) => Promise<unknown> };
   }) => {
-    const { draftId, orgId, userId, type, modelTier, provider, model, productionParams } = event.data;
+    const { draftId, orgId, userId, type, modelTier, provider, model, productionParams, stageRunId } = event.data;
     const sb = createServiceClient();
 
     // Load projectId from content_drafts
@@ -261,11 +265,45 @@ export const productionProduce = inngest.createFunction(
         `${type === 'blog' ? 'Post' : type === 'video' ? 'Vídeo' : type === 'shorts' ? 'Shorts' : 'Podcast'} pronto!`,
         { draftId, type, stage: 'produce' },
       );
+
+      // Pipeline Orchestrator handoff: this is the actual end of the Draft
+      // Stage (canonical-core only produces structure; produce writes the
+      // body). Stage Run terminal is owned here.
+      if (stageRunId) {
+        const now = new Date().toISOString();
+        await (sb.from('stage_runs') as unknown as {
+          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+        })
+          .update({
+            status: 'completed',
+            payload_ref: { kind: 'content_draft', id: draftId },
+            finished_at: now,
+            updated_at: now,
+          })
+          .eq('id', stageRunId);
+        await inngest.send({
+          name: 'pipeline/stage.run.finished',
+          data: { stageRunId, projectId },
+        });
+      }
+
       return { success: true, draftId };
     } catch (err) {
       if (err instanceof JobAborted) {
         await sb.from('content_drafts').update({ status: 'paused' }).eq('id', draftId);
         await emitJobEvent(draftId, 'production', 'aborted', 'Sessão cancelada pelo usuário');
+        if (stageRunId) {
+          const now = new Date().toISOString();
+          await (sb.from('stage_runs') as unknown as {
+            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+          })
+            .update({ status: 'aborted', finished_at: now, updated_at: now })
+            .eq('id', stageRunId);
+          await inngest.send({
+            name: 'pipeline/stage.run.finished',
+            data: { stageRunId, projectId },
+          });
+        }
         return;
       }
 
@@ -278,6 +316,25 @@ export const productionProduce = inngest.createFunction(
         .update({ status: 'failed', error_message: message.slice(0, 500) })
         .eq('id', draftId);
       await emitJobEvent(draftId, 'production', 'failed', message.slice(0, 200), { error: message });
+
+      if (stageRunId) {
+        const now = new Date().toISOString();
+        await (sb.from('stage_runs') as unknown as {
+          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+        })
+          .update({
+            status: 'failed',
+            error_message: message.slice(0, 500),
+            finished_at: now,
+            updated_at: now,
+          })
+          .eq('id', stageRunId);
+        await inngest.send({
+          name: 'pipeline/stage.run.finished',
+          data: { stageRunId, projectId },
+        });
+      }
+
       throw err;
     }
   },
