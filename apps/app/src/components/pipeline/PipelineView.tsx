@@ -206,7 +206,12 @@ export function PipelineView({
 
   function handleClick(s: Stage): void {
     if (onStageClick) onStageClick(s);
-    else router.push(`/projects/${projectId}?stage=${s}`);
+    // Default target is the new supervised view (?v=2). The legacy
+    // /projects/:id without ?v=2 still renders <PipelineOrchestrator/>,
+    // which boots the wizard for projects without pipeline_state_json
+    // setup. Clicking a stage card should land on the new architecture's
+    // detail view, not the legacy wizard.
+    else router.push(`/projects/${projectId}?v=2&stage=${s}`);
   }
 
   // Derive a human header status from the snapshot itself — saying "Idle"

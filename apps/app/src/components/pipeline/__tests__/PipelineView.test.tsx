@@ -299,10 +299,10 @@ describe('<PipelineView variant="overview" />', () => {
     expect(pushMock).not.toHaveBeenCalled();
   });
 
-  it('falls back to router.push(/projects/:id?stage=:stage) when no handler is given', () => {
+  it('falls back to router.push(/projects/:id?v=2&stage=:stage) when no handler is given', () => {
     render(<PipelineView projectId={PROJECT_ID} />);
     fireEvent.click(screen.getByTestId('stage-card-brainstorm'));
-    expect(pushMock).toHaveBeenCalledWith(`/projects/${PROJECT_ID}?stage=brainstorm`);
+    expect(pushMock).toHaveBeenCalledWith(`/projects/${PROJECT_ID}?v=2&stage=brainstorm`);
   });
 
   it('does not write to the server on view (no fetch beyond what the hook does)', () => {
