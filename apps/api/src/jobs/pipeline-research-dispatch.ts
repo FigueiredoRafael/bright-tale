@@ -101,8 +101,9 @@ export const pipelineResearchDispatch = inngest.createFunction(
     const focusTags = (input.focusTags as string[] | undefined) ?? [];
     const provider = input.provider as string | undefined;
     const model = input.model as string | undefined;
+    const modelTier = (input.modelTier as string | undefined) ?? 'standard';
 
-    const { data: session } = await sb
+    const { data: session, error: insertError } = await sb
       .from('research_sessions')
       .insert({
         project_id: projectId,
@@ -113,11 +114,29 @@ export const pipelineResearchDispatch = inngest.createFunction(
         level,
         focus_tags: focusTags,
         input_json: { topic, ideaTitle: topic, focusTags, level },
+        model_tier: modelTier,
         status: 'running',
       })
       .select()
       .single();
-    if (!session?.id) return;
+    if (insertError || !session?.id) {
+      // Surface the silent failure on the Stage Run so the UI shows why.
+      const now = new Date().toISOString();
+      await sb
+        .from('stage_runs')
+        .update({
+          status: 'failed',
+          error_message: `Failed to create research_sessions row: ${(insertError as { message?: string } | undefined)?.message ?? 'unknown'}`,
+          finished_at: now,
+          updated_at: now,
+        })
+        .eq('id', stageRunId);
+      await inngest.send({
+        name: 'pipeline/stage.run.finished',
+        data: { stageRunId, projectId },
+      });
+      return;
+    }
 
     const now = new Date().toISOString();
     await sb
