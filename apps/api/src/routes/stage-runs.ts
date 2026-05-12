@@ -592,7 +592,14 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
             : 0;
           payload = {
             kind: ref.kind,
-            title: (draft?.title as string) ?? '(untitled)',
+            // `content_drafts.title` is set by the pipeline-draft-dispatch
+            // insert only when the user provided one upfront; autopilot
+            // leaves it null and the produce agent writes the generated
+            // title into draft_json.title instead.
+            title:
+              (draft?.title as string) ??
+              (draftJson?.title as string) ??
+              '(untitled)',
             type: (draft?.type as string) ?? null,
             status: (draft?.status as string) ?? null,
             publishedUrl: (draft?.published_url as string) ?? null,
