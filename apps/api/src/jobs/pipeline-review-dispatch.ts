@@ -48,12 +48,28 @@ export const pipelineReviewDispatch = inngest.createFunction(
       .eq('id', stageRunId)
       .maybeSingle();
     if (!stageRun) return;
+    // Idempotency: only `queued` runs are eligible. Inngest dev mode and
+    // network blips can re-deliver `pipeline/stage.requested` for the same
+    // Stage Run — without this guard each delivery re-runs the LLM and
+    // re-charges credits.
+    if (stageRun.status !== 'queued') return;
 
     const input = (stageRun.input_json ?? {}) as Record<string, unknown>;
     const autoApproveThreshold =
       (input.autoApproveThreshold as number | undefined) ?? AUTO_APPROVE_DEFAULT;
     const provider = input.provider as string | undefined;
     const model = input.model as string | undefined;
+
+    // Atomic compare-and-swap: only this invocation that flips queued→running
+    // proceeds. Concurrent re-deliveries see the row already running and bail.
+    const startedAt = new Date().toISOString();
+    const { data: claimed } = await sb
+      .from('stage_runs')
+      .update({ status: 'running', started_at: startedAt, updated_at: startedAt })
+      .eq('id', stageRunId)
+      .eq('status', 'queued')
+      .select('id');
+    if (!claimed || (claimed as unknown[]).length === 0) return;
 
     // Resolve the draft to review from the prior draft Stage Run.
     const { data: priorDraft } = await sb
@@ -80,13 +96,6 @@ export const pipelineReviewDispatch = inngest.createFunction(
       await markFailed(sb, stageRunId, projectId, `content_draft ${draftId} not found`);
       return;
     }
-
-    // Transition queued → running.
-    const startedAt = new Date().toISOString();
-    await sb
-      .from('stage_runs')
-      .update({ status: 'running', started_at: startedAt, updated_at: startedAt })
-      .eq('id', stageRunId);
 
     try {
       const agentConfig = await loadAgentConfig('review');

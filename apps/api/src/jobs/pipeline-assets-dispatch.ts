@@ -50,6 +50,7 @@ export const pipelineAssetsDispatch = inngest.createFunction(
       .eq('id', stageRunId)
       .maybeSingle();
     if (!stageRun) return;
+    if (stageRun.status !== 'queued') return;
 
     const input = (stageRun.input_json ?? {}) as Record<string, unknown>;
     const mode = (input.mode as 'auto_generate' | 'briefs_only' | 'manual_upload' | undefined) ?? 'briefs_only';

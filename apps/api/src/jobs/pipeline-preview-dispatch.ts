@@ -40,6 +40,7 @@ export const pipelinePreviewDispatch = inngest.createFunction(
       .eq('id', stageRunId)
       .maybeSingle();
     if (!stageRun) return;
+    if (stageRun.status !== 'queued') return;
 
     // Resolve the draft from the prior draft Stage Run.
     const { data: priorDraft } = await sb

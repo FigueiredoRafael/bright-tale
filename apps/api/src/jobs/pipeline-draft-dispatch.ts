@@ -41,6 +41,9 @@ export const pipelineDraftDispatch = inngest.createFunction(
       .eq('id', stageRunId)
       .maybeSingle();
     if (!stageRun) return;
+    // Idempotency: only `queued` is eligible. Without this, Inngest event
+    // re-delivery causes duplicate content_drafts inserts and re-charges.
+    if (stageRun.status !== 'queued') return;
 
     const input = (stageRun.input_json ?? {}) as Record<string, unknown>;
     const type = (input.type as 'blog' | 'video' | 'shorts' | 'podcast' | undefined) ?? 'blog';

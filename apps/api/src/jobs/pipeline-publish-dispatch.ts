@@ -47,7 +47,8 @@ export const pipelinePublishDispatch = inngest.createFunction(
       .maybeSingle();
     if (!stageRun) return;
     // Only run when the orchestrator has transitioned us to `queued` via
-    // the Continue endpoint. awaiting_user stays parked until the user clicks.
+    // the Continue endpoint. awaiting_user stays parked until the user clicks;
+    // terminal states are inherently excluded too (idempotency on re-delivery).
     if (stageRun.status !== 'queued') return;
 
     // Resolve the draft from the prior draft Stage Run.

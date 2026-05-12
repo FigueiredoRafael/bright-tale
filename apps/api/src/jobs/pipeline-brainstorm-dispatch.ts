@@ -45,6 +45,7 @@ export const pipelineBrainstormDispatch = inngest.createFunction(
       .eq('id', stageRunId)
       .maybeSingle();
     if (!stageRun) return;
+    if (stageRun.status !== 'queued') return;
 
     const input = (stageRun.input_json ?? {}) as Record<string, unknown>;
 
