@@ -12,7 +12,7 @@ import { debitCredits } from '../lib/credits.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
-import { buildProduceMessage } from '../lib/ai/prompts/production.js';
+import { buildProduceMessage, buildReproduceMessage } from '../lib/ai/prompts/production.js';
 import { calculateDraftCost } from '../lib/calculate-draft-cost.js';
 import { loadCreditSettings } from '../lib/credit-settings.js';
 import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
@@ -186,18 +186,47 @@ export const productionProduce = inngest.createFunction(
         const researchSources =
           type === 'blog' && approvedCardsObj?.sources ? (approvedCardsObj.sources as unknown[]) : undefined;
 
-        const userMessage = buildProduceMessage({
-          type: type as string,
-          title: draft.title as string,
-          canonicalCore,
-          idea: ideaContext,
-          productionParams: effectiveProductionParams ?? undefined,
-          sources: researchSources,
-          persona: layeredPersona?.voice ?? null,
-          channel: channelContext as
-            | { name?: string; niche?: string; language?: string; tone?: string }
-            | undefined,
-        });
+        // When the orchestrator hands us a `review_feedback` blob in
+        // productionParams it means this run is a revision (review loop).
+        // Switch to the reproduce prompt so the agent rewrites the draft
+        // against the feedback instead of producing from scratch.
+        const reviewFeedback =
+          effectiveProductionParams && typeof effectiveProductionParams === 'object'
+            ? ((effectiveProductionParams as Record<string, unknown>).review_feedback as
+                | Record<string, unknown>
+                | undefined)
+            : undefined;
+        const draftTitle = (draft.title as string) ?? ((draft.draft_json as Record<string, unknown> | null)?.title as string | undefined) ?? '';
+        const userMessage = reviewFeedback
+          ? buildReproduceMessage({
+              type: type as string,
+              title: draftTitle,
+              canonicalCore,
+              previousDraft: draft.draft_json,
+              idea: ideaContext,
+              reviewFeedback: reviewFeedback as {
+                overall_verdict?: string;
+                score?: number | null;
+                critical_issues?: string[];
+                minor_issues?: string[];
+                strengths?: string[];
+              },
+              channel: channelContext as
+                | { name?: string; niche?: string; language?: string; tone?: string }
+                | undefined,
+            })
+          : buildProduceMessage({
+              type: type as string,
+              title: draftTitle,
+              canonicalCore,
+              idea: ideaContext,
+              productionParams: effectiveProductionParams ?? undefined,
+              sources: researchSources,
+              persona: layeredPersona?.voice ?? null,
+              channel: channelContext as
+                | { name?: string; niche?: string; language?: string; tone?: string }
+                | undefined,
+            });
         const enabledTools = resolveTools(produceAgentConfig.tools).filter(
           () => resolvedProvider !== 'ollama',
         );

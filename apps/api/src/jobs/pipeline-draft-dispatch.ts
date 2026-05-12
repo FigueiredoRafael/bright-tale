@@ -99,6 +99,72 @@ export const pipelineDraftDispatch = inngest.createFunction(
     const provider = input.provider as string | undefined;
     const model = input.model as string | undefined;
 
+    // Revision path: when the orchestrator triggers a draft Stage Run with
+    // `review_feedback` in productionParams, we re-produce against the
+    // existing content_draft instead of inserting a new one. Skips
+    // canonical-core (already valid) and goes straight to production/produce
+    // so the agent receives the feedback context.
+    const reviewFeedback =
+      productionParams && typeof productionParams === 'object'
+        ? ((productionParams as Record<string, unknown>).review_feedback as
+            | Record<string, unknown>
+            | undefined)
+        : undefined;
+    if (reviewFeedback) {
+      const { data: priorDraftRun } = await sb
+        .from('stage_runs')
+        .select('payload_ref')
+        .eq('project_id', projectId)
+        .eq('stage', 'draft')
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const existingDraftRef = priorDraftRun?.payload_ref as
+        | { kind?: string; id?: string }
+        | null
+        | undefined;
+      if (existingDraftRef?.kind !== 'content_draft' || !existingDraftRef.id) {
+        const now = new Date().toISOString();
+        await sb
+          .from('stage_runs')
+          .update({
+            status: 'failed',
+            error_message: 'Revision requested but no prior content_draft to revise',
+            finished_at: now,
+            updated_at: now,
+          })
+          .eq('id', stageRunId);
+        await inngest.send({
+          name: 'pipeline/stage.run.finished',
+          data: { stageRunId, projectId },
+        });
+        return;
+      }
+
+      const now = new Date().toISOString();
+      await sb
+        .from('stage_runs')
+        .update({ status: 'running', started_at: now, updated_at: now })
+        .eq('id', stageRunId);
+
+      await inngest.send({
+        name: 'production/produce',
+        data: {
+          draftId: existingDraftRef.id,
+          orgId,
+          userId,
+          type,
+          modelTier,
+          provider,
+          model,
+          productionParams,
+          stageRunId,
+        },
+      });
+      return;
+    }
+
     const { data: draft, error: insertError } = await sb
       .from('content_drafts')
       .insert({

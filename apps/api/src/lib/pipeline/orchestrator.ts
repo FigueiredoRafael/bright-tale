@@ -380,15 +380,63 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
   // 4. Only advance on successful terminal
   if (finished.status !== 'completed' && finished.status !== 'skipped') return;
 
-  // 5. Determine next Stage
-  const next = successorOf(finished.stage as Stage);
-  if (!next) return;
-
   const projectId = finished.project_id as string;
   const autopilotConfig = project.autopilot_config_json as
     | Record<string, Record<string, unknown>>
     | null
     | undefined;
+
+  // 5a. Review-loop hand-off. When a review Stage Run completes with verdict
+  // `revision_required` AND we still have iteration budget, the next stage
+  // is NOT assets — we loop back to draft (re-produce with feedback). The
+  // iteration cap is enforced inside pipeline-review-dispatch (it parks the
+  // Stage Run in `awaiting_user(manual_review)` once the budget is spent so
+  // we never reach this branch with revision_required + over budget).
+  if (finished.stage === 'review') {
+    const { data: priorDraftRun } = await sb
+      .from('stage_runs')
+      .select('payload_ref')
+      .eq('project_id', projectId)
+      .eq('stage', 'draft')
+      .eq('status', 'completed')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const ref = priorDraftRun?.payload_ref as { kind?: string; id?: string } | null | undefined;
+    if (ref?.kind === 'content_draft' && ref.id) {
+      const { data: draftRow } = await sb
+        .from('content_drafts')
+        .select('id, type, review_verdict, review_feedback_json')
+        .eq('id', ref.id)
+        .maybeSingle();
+      if (draftRow?.review_verdict === 'revision_required') {
+        const attemptNo = (await latestAttemptNo(sb, projectId, 'draft' as Stage)) + 1;
+        const inputJson: Record<string, unknown> = {
+          type: (draftRow.type as string) ?? 'blog',
+          productionParams: { review_feedback: draftRow.review_feedback_json },
+        };
+        await clearAbortFlag(sb, projectId);
+        const inserted = await insertStageRun(sb, {
+          project_id: projectId,
+          stage: 'draft',
+          status: 'queued',
+          attempt_no: attemptNo,
+          input_json: inputJson,
+        });
+        if (inserted?.id) {
+          await inngest.send({
+            name: 'pipeline/stage.requested',
+            data: { stageRunId: inserted.id as string, stage: 'draft', projectId },
+          });
+        }
+        return;
+      }
+    }
+  }
+
+  // 5. Determine next Stage
+  const next = successorOf(finished.stage as Stage);
+  if (!next) return;
 
   // 6. Idempotency guard: if the next Stage already has a run that is either
   // in flight (queued/running/awaiting_user) or has resolved successfully

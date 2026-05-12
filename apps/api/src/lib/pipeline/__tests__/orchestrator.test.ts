@@ -399,12 +399,14 @@ describe('advanceAfter', () => {
       .mockResolvedValueOnce(projectWithSkipReview)
       .mockResolvedValueOnce({ data: null, error: null }) // existingNext for review
       // Recurse: load just-inserted skipped review row, re-check project,
+      // then review-loop check (priorDraftRun lookup + draft row),
       // existingNext for assets is null, then queue assets.
       .mockResolvedValueOnce({
         data: { id: 'sr-rev', project_id: PROJECT_ID, stage: 'review', status: 'skipped' },
         error: null,
       })
       .mockResolvedValueOnce(projectWithSkipReview)
+      .mockResolvedValueOnce({ data: null, error: null }) // priorDraftRun lookup
       .mockResolvedValueOnce({ data: null, error: null }); // existingNext for assets
 
     // Two inserts: skipped review, then queued assets
@@ -491,6 +493,7 @@ describe('advanceAfter', () => {
         error: null,
       })
       .mockResolvedValueOnce(projectWithSkipReview)
+      .mockResolvedValueOnce({ data: null, error: null }) // priorDraftRun lookup
       .mockResolvedValueOnce({ data: null, error: null }); // existingNext assets
 
     mockChain.single

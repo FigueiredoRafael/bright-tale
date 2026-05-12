@@ -29,6 +29,8 @@ interface StageRequestedEvent {
 type Sb = any;
 
 const AUTO_APPROVE_DEFAULT = 90;
+const HARD_FAIL_DEFAULT = 40;
+const MAX_ITERATIONS_DEFAULT = 5;
 
 export const pipelineReviewDispatch = inngest.createFunction(
   {
@@ -55,10 +57,31 @@ export const pipelineReviewDispatch = inngest.createFunction(
     if (stageRun.status !== 'queued') return;
 
     const input = (stageRun.input_json ?? {}) as Record<string, unknown>;
-    const autoApproveThreshold =
-      (input.autoApproveThreshold as number | undefined) ?? AUTO_APPROVE_DEFAULT;
     const provider = input.provider as string | undefined;
     const model = input.model as string | undefined;
+
+    // Load review config from the project's autopilot config so the dispatcher
+    // can honour the user's chosen thresholds + iteration cap.
+    const { data: projectRow } = await sb
+      .from('projects')
+      .select('autopilot_config_json')
+      .eq('id', projectId)
+      .maybeSingle();
+    const reviewConfig =
+      ((projectRow?.autopilot_config_json as Record<string, Record<string, unknown>> | null | undefined)
+        ?.review as Record<string, unknown> | undefined) ?? {};
+    const autoApproveThreshold =
+      (input.autoApproveThreshold as number | undefined) ??
+      (reviewConfig.autoApproveThreshold as number | undefined) ??
+      AUTO_APPROVE_DEFAULT;
+    const hardFailThreshold =
+      (input.hardFailThreshold as number | undefined) ??
+      (reviewConfig.hardFailThreshold as number | undefined) ??
+      HARD_FAIL_DEFAULT;
+    const maxIterations =
+      (input.maxIterations as number | undefined) ??
+      (reviewConfig.maxIterations as number | undefined) ??
+      MAX_ITERATIONS_DEFAULT;
 
     // Atomic compare-and-swap: only this invocation that flips queued→running
     // proceeds. Concurrent re-deliveries see the row already running and bail.
@@ -143,52 +166,88 @@ export const pipelineReviewDispatch = inngest.createFunction(
       const formatReview = result[`${draftType}_review`] as Record<string, unknown> | undefined;
       const reviewScore = (formatReview?.score as number | undefined) ?? null;
 
-      let newVerdict: 'approved' | 'revision_required' | 'rejected';
-      let newStatus: 'approved' | 'in_review' | 'failed';
-      let approvedAt: string | null = null;
+      const iterationCount = ((draft.iteration_count as number) ?? 0) + 1;
 
-      if (
+      // Verdict + Stage Run terminal decision. Four lanes:
+      //   approved        → draft.approved + Stage Run completed (advance → assets)
+      //   hard-rejected   → draft.failed   + Stage Run failed
+      //   revise + budget → draft.in_review + Stage Run completed (advance loops back to draft)
+      //   revise + out    → draft.in_review + Stage Run awaiting_user(manual_review)
+      let newVerdict: 'approved' | 'revision_required' | 'rejected';
+      let newDraftStatus: 'approved' | 'in_review' | 'failed';
+      let approvedAt: string | null = null;
+      type RunOutcome =
+        | { status: 'completed' }
+        | { status: 'failed'; errorMessage: string }
+        | { status: 'awaiting_user'; awaitingReason: 'manual_review' };
+      let runOutcome: RunOutcome;
+
+      const hardReject =
+        overallVerdict === 'rejected' ||
+        (reviewScore !== null && reviewScore < hardFailThreshold);
+      const approved =
         overallVerdict === 'approved' ||
-        (reviewScore !== null && reviewScore >= autoApproveThreshold)
-      ) {
+        (reviewScore !== null && reviewScore >= autoApproveThreshold);
+
+      if (approved) {
         newVerdict = 'approved';
-        newStatus = 'approved';
+        newDraftStatus = 'approved';
         approvedAt = new Date().toISOString();
-      } else if (overallVerdict === 'rejected') {
+        runOutcome = { status: 'completed' };
+      } else if (hardReject) {
         newVerdict = 'rejected';
-        newStatus = 'failed';
+        newDraftStatus = 'failed';
+        runOutcome = {
+          status: 'failed',
+          errorMessage: `Review rejected${reviewScore != null ? ` (score ${reviewScore} < ${hardFailThreshold})` : ''}`,
+        };
+      } else if (iterationCount >= maxIterations) {
+        newVerdict = 'revision_required';
+        newDraftStatus = 'in_review';
+        runOutcome = { status: 'awaiting_user', awaitingReason: 'manual_review' };
       } else {
         newVerdict = 'revision_required';
-        newStatus = 'in_review';
+        newDraftStatus = 'in_review';
+        runOutcome = { status: 'completed' };
       }
 
-      const iterationCount = ((draft.iteration_count as number) ?? 0) + 1;
       const updateData: Record<string, unknown> = {
         review_feedback_json: result,
         review_score: reviewScore,
         review_verdict: newVerdict,
         iteration_count: iterationCount,
-        status: newStatus,
+        status: newDraftStatus,
       };
       if (approvedAt) updateData.approved_at = approvedAt;
 
       await sb.from('content_drafts').update(updateData).eq('id', draftId);
 
       const now = new Date().toISOString();
-      await sb
-        .from('stage_runs')
-        .update({
-          status: 'completed',
-          payload_ref: { kind: 'content_draft', id: draftId },
-          finished_at: now,
-          updated_at: now,
-        })
-        .eq('id', stageRunId);
+      const stageRunPatch: Record<string, unknown> = {
+        payload_ref: { kind: 'content_draft', id: draftId },
+        updated_at: now,
+      };
+      if (runOutcome.status === 'completed') {
+        stageRunPatch.status = 'completed';
+        stageRunPatch.finished_at = now;
+      } else if (runOutcome.status === 'failed') {
+        stageRunPatch.status = 'failed';
+        stageRunPatch.finished_at = now;
+        stageRunPatch.error_message = runOutcome.errorMessage.slice(0, 500);
+      } else {
+        stageRunPatch.status = 'awaiting_user';
+        stageRunPatch.awaiting_reason = runOutcome.awaitingReason;
+      }
+      await sb.from('stage_runs').update(stageRunPatch).eq('id', stageRunId);
 
-      await inngest.send({
-        name: 'pipeline/stage.run.finished',
-        data: { stageRunId, projectId },
-      });
+      // Only completed/failed feed advanceAfter — awaiting_user keeps the
+      // Stage Run parked for the human and must not auto-advance.
+      if (runOutcome.status !== 'awaiting_user') {
+        await inngest.send({
+          name: 'pipeline/stage.run.finished',
+          data: { stageRunId, projectId },
+        });
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       await markFailed(sb, stageRunId, projectId, message);

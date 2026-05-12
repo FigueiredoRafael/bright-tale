@@ -298,9 +298,125 @@ function AwaitingUserPanel({
   if (reason === 'manual_paste') {
     return <ManualPastePanel run={run} projectId={projectId} onMutated={onMutated} />;
   }
+  if (reason === 'manual_review') {
+    return <ManualReviewPanel run={run} projectId={projectId} onMutated={onMutated} />;
+  }
   return (
     <div className="rounded-md border p-3 text-sm" data-testid="awaiting-unknown">
       Awaiting user — reason: {reason ?? 'unspecified'}
+    </div>
+  );
+}
+
+function ManualReviewPanel({
+  run,
+  projectId,
+  onMutated,
+}: {
+  run: StageRun;
+  projectId: string;
+  onMutated: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState<'approve' | 'rerun' | 'abandon' | null>(null);
+
+  async function approveAnyway(): Promise<void> {
+    if (!confirm('Approve this draft despite the unresolved review feedback?')) return;
+    setBusy('approve');
+    try {
+      // Treat manual approval as a successful Stage Run terminal so the
+      // pipeline advances to assets. The /continue endpoint flips
+      // awaiting_user → queued + re-emits stage.requested, which we don't
+      // want for review (the work is already done). Instead the user can
+      // just hit Re-run with override or accept the current draft via the
+      // legacy /content-drafts/:id/approve route below.
+      const res = await fetch(`/api/content-drafts/${(run.payloadRef as { id?: string } | null)?.id ?? ''}/approve`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        // Then mark the Stage Run completed so advanceAfter advances to assets.
+        await fetch(`/api/projects/${projectId}/stage-runs/${run.id}/continue`, {
+          method: 'POST',
+        });
+        await onMutated();
+      } else {
+        const body = (await res.json().catch(() => null)) as
+          | { error?: { message?: string } } | null;
+        toast.error(body?.error?.message ?? `Failed to approve (${res.status})`);
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function rerun(): Promise<void> {
+    if (!confirm('Re-run review with the current draft? A new Stage Run will be created.')) return;
+    setBusy('rerun');
+    try {
+      const res = await fetch(`/api/projects/${projectId}/stage-runs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ stage: 'review', input: defaultInputForStage('review') }),
+      });
+      if (res.ok) {
+        await onMutated();
+      } else {
+        const body = (await res.json().catch(() => null)) as
+          | { error?: { message?: string } } | null;
+        toast.error(body?.error?.message ?? `Failed to re-run review (${res.status})`);
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function abandon(): Promise<void> {
+    if (!confirm('Abandon this draft? The Stage Run will be aborted.')) return;
+    setBusy('abandon');
+    try {
+      const res = await fetch(`/api/projects/${projectId}/stage-runs/${run.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'abort' }),
+      });
+      if (res.ok) await onMutated();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="rounded-md border p-3 space-y-3" data-testid="manual-review-panel">
+      <div className="text-sm">
+        Reached the review iteration cap with unresolved feedback. The draft still
+        needs revision but auto-pilot has stopped re-trying. Decide how to proceed.
+      </div>
+      <div className="flex flex-wrap gap-2 text-sm">
+        <button
+          type="button"
+          onClick={approveAnyway}
+          disabled={busy !== null}
+          className="inline-flex items-center gap-1 rounded-md border bg-primary px-3 py-1.5 font-medium text-primary-foreground"
+        >
+          {busy === 'approve' ? 'Approving…' : 'Approve anyway'}
+        </button>
+        <button
+          type="button"
+          onClick={rerun}
+          disabled={busy !== null}
+          className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5"
+        >
+          <RotateCcw className="h-3 w-3" aria-hidden />
+          {busy === 'rerun' ? 'Re-running…' : 'Re-run review'}
+        </button>
+        <button
+          type="button"
+          onClick={abandon}
+          disabled={busy !== null}
+          className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-rose-700"
+        >
+          {busy === 'abandon' ? 'Aborting…' : 'Abandon'}
+        </button>
+      </div>
     </div>
   );
 }
