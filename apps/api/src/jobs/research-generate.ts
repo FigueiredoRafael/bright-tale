@@ -34,6 +34,8 @@ interface ResearchGenerateEvent {
     modelTier: string;
     provider?: 'gemini' | 'openai' | 'anthropic' | 'ollama';
     model?: string;
+    /** Set when this run was launched via the new Pipeline Orchestrator. */
+    stageRunId?: string;
   };
 }
 
@@ -68,7 +70,7 @@ export const researchGenerate = inngest.createFunction(
     triggers: [{ event: 'research/generate' }],
   },
   async ({ event, step }: { event: ResearchGenerateEvent; step: { run: (name: string, fn: () => Promise<unknown>) => Promise<unknown> } }) => {
-    const { sessionId, orgId, userId, channelId, ideaId, level, inputJson, modelTier, provider, model } = event.data;
+    const { sessionId, orgId, userId, channelId, ideaId, level, inputJson, modelTier, provider, model, stageRunId } = event.data;
     const sb = createServiceClient();
 
     // Load projectId from research_sessions if available
@@ -208,6 +210,24 @@ export const researchGenerate = inngest.createFunction(
         { cardCount },
       );
 
+      if (stageRunId) {
+        const now = new Date().toISOString();
+        await (sb.from('stage_runs') as unknown as {
+          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+        })
+          .update({
+            status: 'completed',
+            payload_ref: { kind: 'research_session', id: sessionId },
+            finished_at: now,
+            updated_at: now,
+          })
+          .eq('id', stageRunId);
+        await inngest.send({
+          name: 'pipeline/stage.run.finished',
+          data: { stageRunId, projectId },
+        });
+      }
+
       return { success: true, cards: cardCount };
     } catch (err) {
       if (err instanceof JobAborted) {
@@ -225,6 +245,25 @@ export const researchGenerate = inngest.createFunction(
         .eq('id', sessionId);
 
       await emitJobEvent(sessionId, 'research', 'failed', message.slice(0, 200), { error: message });
+
+      if (stageRunId) {
+        const now = new Date().toISOString();
+        await (sb.from('stage_runs') as unknown as {
+          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+        })
+          .update({
+            status: 'failed',
+            error_message: message.slice(0, 500),
+            finished_at: now,
+            updated_at: now,
+          })
+          .eq('id', stageRunId);
+        await inngest.send({
+          name: 'pipeline/stage.run.finished',
+          data: { stageRunId, projectId },
+        });
+      }
+
       throw err;
     }
   },

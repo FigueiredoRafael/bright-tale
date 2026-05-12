@@ -446,4 +446,74 @@ describe('advanceAfter', () => {
     expect(rows[1].stage).toBe('assets');
     expect(rows[1].status).toBe('queued');
   });
+
+  it('emits pipeline/stage.requested after inserting the next queued Stage Run on advance', async () => {
+    mockChain.maybeSingle
+      .mockResolvedValueOnce(mockFinishedRun('completed', 'brainstorm'))
+      .mockResolvedValueOnce(mockProject('autopilot', false));
+
+    mockChain.single.mockResolvedValueOnce({
+      data: {
+        id: 'sr-research',
+        project_id: PROJECT_ID,
+        stage: 'research',
+        status: 'queued',
+        attempt_no: 1,
+        created_at: '2026-05-11T00:00:00Z',
+        updated_at: '2026-05-11T00:00:00Z',
+      },
+      error: null,
+    });
+
+    await advanceAfter('sr-1');
+
+    const requested = (inngestSendMock as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0])
+      .find((e) => e.name === 'pipeline/stage.requested');
+    expect(requested).toBeDefined();
+    expect(requested.data.stageRunId).toBe('sr-research');
+    expect(requested.data.stage).toBe('research');
+    expect(requested.data.projectId).toBe(PROJECT_ID);
+  });
+
+  it('does NOT emit pipeline/stage.requested when the next Stage Run is inserted as skipped', async () => {
+    const projectWithSkipReview = {
+      data: {
+        id: PROJECT_ID,
+        mode: 'autopilot',
+        paused: false,
+        autopilot_config_json: { review: { maxIterations: 0 } },
+      },
+      error: null,
+    };
+
+    mockChain.maybeSingle
+      .mockResolvedValueOnce(mockFinishedRun('completed', 'draft'))
+      .mockResolvedValueOnce(projectWithSkipReview)
+      // Inner recurse: load the just-inserted skipped review row
+      .mockResolvedValueOnce({
+        data: { id: 'sr-rev', project_id: PROJECT_ID, stage: 'review', status: 'skipped' },
+        error: null,
+      })
+      .mockResolvedValueOnce(projectWithSkipReview);
+
+    mockChain.single
+      .mockResolvedValueOnce({
+        data: { id: 'sr-rev', project_id: PROJECT_ID, stage: 'review', status: 'skipped', attempt_no: 1 },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { id: 'sr-assets', project_id: PROJECT_ID, stage: 'assets', status: 'queued', attempt_no: 1 },
+        error: null,
+      });
+
+    await advanceAfter('sr-draft');
+
+    const requestedEvents = (inngestSendMock as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0])
+      .filter((e) => e.name === 'pipeline/stage.requested');
+    // Only the queued assets emits an event — the skipped review does not.
+    expect(requestedEvents).toHaveLength(1);
+    expect(requestedEvents[0].data.stage).toBe('assets');
+  });
 });

@@ -100,6 +100,19 @@ export const brainstormInputSchema = z.object({
 });
 export type BrainstormInput = z.infer<typeof brainstormInputSchema>;
 
+export const researchInputSchema = z.object({
+  // depth of research; required so the dispatcher can size the job
+  level: z.enum(['surface', 'medium', 'deep']),
+  // optional in autopilot — the dispatcher resolves topic from the prior
+  // brainstorm Stage Run's recommendation pick when these are absent
+  ideaId: z.string().optional(),
+  topic: z.string().min(1).optional(),
+  focusTags: z.array(z.string()).optional(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
+});
+export type ResearchInput = z.infer<typeof researchInputSchema>;
+
 /**
  * STAGE_INPUT_SCHEMAS maps every Stage to its Zod schema.
  * Stages not yet migrated map to `z.never()`; the orchestrator detects this
@@ -107,7 +120,7 @@ export type BrainstormInput = z.infer<typeof brainstormInputSchema>;
  */
 export const STAGE_INPUT_SCHEMAS: Record<Stage, z.ZodTypeAny> = {
   brainstorm: brainstormInputSchema,
-  research: z.never(),
+  research: researchInputSchema,
   draft: z.never(),
   review: z.never(),
   assets: z.never(),

@@ -283,7 +283,26 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
     nextRow.awaiting_reason = 'manual_advance';
   } else {
     nextRow.status = 'queued';
+    // Carry forward autopilot-config defaults for this stage so the dispatcher
+    // has something to work with (e.g. research.level). The dispatcher is free
+    // to enrich further (resolving prior-stage winners, etc).
+    const stageDefaults = autopilotConfig?.[next];
+    if (stageDefaults) nextRow.input_json = stageDefaults;
   }
 
-  await insertStageRun(sb, nextRow);
+  const inserted = await insertStageRun(sb, nextRow);
+
+  // Only `queued` Stage Runs need a dispatcher event. `awaiting_user` (publish)
+  // is parked for human confirmation; `skipped` rows are written above and
+  // recurse without emitting.
+  if (inserted?.id && nextRow.status === 'queued') {
+    await inngest.send({
+      name: 'pipeline/stage.requested',
+      data: {
+        stageRunId: inserted.id as string,
+        stage: next,
+        projectId,
+      },
+    });
+  }
 }
