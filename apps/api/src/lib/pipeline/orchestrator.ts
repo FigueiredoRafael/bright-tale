@@ -72,6 +72,17 @@ export function successorOf(stage: Stage): Stage | null {
   return STAGES[idx + 1];
 }
 
+/**
+ * Whether a `projects.mode` value should trigger auto-advance. Accepts
+ * the new canonical `'autopilot'` plus legacy taxonomy values that the
+ * Slice 13 backfill maps to autopilot (`'overview'`, `'supervised'`,
+ * `null`). Explicit `'manual'` / `'step-by-step'` suppress advance.
+ */
+export function isAutopilotMode(mode: string | null | undefined): boolean {
+  if (mode === 'manual' || mode === 'step-by-step') return false;
+  return true;
+}
+
 /** Whether a Stage should be skipped per autopilot config. */
 export function shouldSkip(
   stage: Stage,
@@ -241,8 +252,11 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
     .maybeSingle();
   if (!project) return;
 
-  // 3. Gate: only autopilot + not paused continues
-  if (project.mode !== 'autopilot') return;
+  // 3. Gate: only autopilot + not paused continues.
+  // Legacy mode values ('overview' | 'supervised' | null) map to autopilot;
+  // 'step-by-step' | 'manual' suppress auto-advance. Coercion matches the
+  // Slice 13 backfill rule so projects predating Slice 12 work transparently.
+  if (!isAutopilotMode(project.mode as string | null | undefined)) return;
   if (project.paused === true) return;
 
   // 4. Only advance on successful terminal

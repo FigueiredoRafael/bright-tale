@@ -183,20 +183,9 @@ describe('requestStageRun', () => {
     expect(mockChain.insert).not.toHaveBeenCalled();
   });
 
-  it('rejects with StageNotMigratedError when requesting a stage whose schema is z.never', async () => {
-    // Ownership pass + predecessor lookup returning "research has no predecessor done" wouldn't reach
-    // schema; we need predecessor done so we reach migration check. Brainstorm is migrated; we use draft
-    // here whose predecessor is research. Provide a completed research stage_run:
-    mockChain.maybeSingle
-      .mockResolvedValueOnce({ data: { channel_id: CHANNEL_ID, research_id: null }, error: null })
-      .mockResolvedValueOnce({ data: { user_id: OWNER_ID }, error: null })
-      .mockResolvedValueOnce({ data: { id: 'sr-pre' }, error: null }); // predecessor done
-
-    await expect(
-      requestStageRun(PROJECT_ID, 'draft', {} as unknown, OWNER_ID),
-    ).rejects.toThrow(/not yet migrated/i);
-
-    expect(mockChain.insert).not.toHaveBeenCalled();
+  it.skip('rejects with StageNotMigratedError — all stages migrated as of Slice 10, no z.never schemas remain', () => {
+    // Kept as a skipped placeholder so the path is obvious if any stage
+    // is ever rolled back to z.never. See @brighttale/shared/pipeline/inputs.
   });
 
   it('increments attempt_no when a prior terminal Stage Run for the same Stage exists', async () => {

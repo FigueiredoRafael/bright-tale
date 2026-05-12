@@ -6,10 +6,17 @@ import { useRouter } from '@/i18n/navigation';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { PipelineOrchestrator } from '@/components/pipeline/PipelineOrchestrator';
 import { PipelineView } from '@/components/pipeline/PipelineView';
+import { ProjectModeControls } from '@/components/pipeline/ProjectModeControls';
 import { PipelineSettingsProvider } from '@/providers/PipelineSettingsProvider';
 import { PipelineAbortProvider } from '@/components/pipeline/PipelineAbortProvider';
 import { ConnectChannelEmptyState } from '@/components/projects/ConnectChannelEmptyState';
 import { STAGES, type Stage } from '@brighttale/shared/pipeline/inputs';
+
+/** Coerce legacy mode taxonomy to the canonical {autopilot, manual} pair. */
+function coerceMode(raw: unknown): 'autopilot' | 'manual' {
+  if (raw === 'manual' || raw === 'step-by-step') return 'manual';
+  return 'autopilot';
+}
 
 interface Channel {
   id: string;
@@ -116,6 +123,8 @@ export default function ProjectPipelinePage() {
         : 'running'
 
   if (useV2) {
+    const initialMode = coerceMode(project.mode);
+    const initialPaused = Boolean(project.paused);
     return (
       <div>
         <div className="flex items-center justify-between px-6 pt-4">
@@ -134,7 +143,14 @@ export default function ProjectPipelinePage() {
           </a>
         </div>
         <div className="space-y-4 p-6">
-          <h1 className="text-lg font-semibold">{(project.title as string) ?? 'Untitled Project'}</h1>
+          <div className="flex items-start justify-between gap-4">
+            <h1 className="text-lg font-semibold">{(project.title as string) ?? 'Untitled Project'}</h1>
+            <ProjectModeControls
+              projectId={projectId}
+              initialMode={initialMode}
+              initialPaused={initialPaused}
+            />
+          </div>
           <PipelineView projectId={projectId} variant="overview" />
           <PipelineView projectId={projectId} variant="supervised" stage={v2Stage} />
         </div>
