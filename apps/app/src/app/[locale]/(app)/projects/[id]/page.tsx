@@ -119,6 +119,9 @@ export default function ProjectPipelinePage() {
     ? {
         ...(rawStateJson ?? {}),
         ...(persistedMode ? { mode: persistedMode } : {}),
+        // Honour `?stage=` for legacy view too — clicking "Open in engine"
+        // on a v2 TerminalPanel deep-links here at the chosen stage.
+        ...(stageParam ? { currentStage: stageParam } : {}),
         paused: persistedPaused,
       }
     : undefined

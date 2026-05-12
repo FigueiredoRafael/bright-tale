@@ -521,28 +521,58 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
         } else if (ref.kind === 'research_session') {
           const { data: rs } = await sb
             .from('research_sessions')
-            .select('id, cards_json, level')
+            .select('id, cards_json, approved_cards_json, level')
             .eq('id', ref.id)
             .maybeSingle();
-          const cards = (rs?.cards_json ?? {}) as Record<string, unknown>;
-          const cardCount =
-            (['sources', 'statistics', 'expert_quotes', 'counterarguments'] as const).reduce(
-              (n, k) => n + (Array.isArray(cards[k]) ? (cards[k] as unknown[]).length : 0),
-              0,
-            );
-          payload = { kind: ref.kind, cardCount, level: rs?.level ?? null };
+          const cards = (rs?.approved_cards_json ?? rs?.cards_json ?? {}) as Record<string, unknown>;
+          const counts: Record<string, number> = {};
+          let total = 0;
+          for (const k of ['sources', 'statistics', 'expert_quotes', 'counterarguments'] as const) {
+            const n = Array.isArray(cards[k]) ? (cards[k] as unknown[]).length : 0;
+            counts[k] = n;
+            total += n;
+          }
+          const sources = Array.isArray(cards.sources)
+            ? (cards.sources as Array<Record<string, unknown>>).slice(0, 3).map((s) => ({
+                title: (s.title as string) ?? (s.url as string) ?? '(no title)',
+                url: (s.url as string) ?? null,
+              }))
+            : [];
+          payload = { kind: ref.kind, cardCount: total, counts, level: rs?.level ?? null, sources };
         } else if (ref.kind === 'content_draft') {
           const { data: draft } = await sb
             .from('content_drafts')
-            .select('id, title, type, status, published_url')
+            .select(
+              'id, title, type, status, published_url, draft_json, review_verdict, review_score, iteration_count',
+            )
             .eq('id', ref.id)
             .maybeSingle();
+          const draftJson = (draft?.draft_json ?? null) as Record<string, unknown> | null;
+          const sections = Array.isArray(draftJson?.sections)
+            ? (draftJson.sections as Array<Record<string, unknown>>).slice(0, 6).map((s) => ({
+                title: (s.section_title as string) ?? (s.title as string) ?? '',
+                wordCountTarget: (s.word_count_target as number) ?? null,
+              }))
+            : [];
+          const sectionCount = Array.isArray(draftJson?.sections)
+            ? (draftJson.sections as unknown[]).length
+            : 0;
+          const assetBriefs = (draftJson?.asset_briefs ?? null) as Record<string, unknown> | null;
+          const assetSlots = assetBriefs && Array.isArray(assetBriefs.slots)
+            ? (assetBriefs.slots as unknown[]).length
+            : 0;
           payload = {
             kind: ref.kind,
             title: (draft?.title as string) ?? '(untitled)',
             type: (draft?.type as string) ?? null,
             status: (draft?.status as string) ?? null,
             publishedUrl: (draft?.published_url as string) ?? null,
+            sectionCount,
+            sections,
+            reviewVerdict: (draft?.review_verdict as string) ?? null,
+            reviewScore: (draft?.review_score as number) ?? null,
+            iterationCount: (draft?.iteration_count as number) ?? null,
+            assetSlots,
           };
         } else if (ref.kind === 'publish_record') {
           payload = {

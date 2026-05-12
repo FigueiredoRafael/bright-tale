@@ -447,15 +447,24 @@ function TerminalPanel({
         </div>
       ) : null}
       <PayloadSummary projectId={projectId} stageRunId={run.id} run={run} />
-      <PrimaryCta
-        run={run}
-        projectId={projectId}
-        nextStage={nextStage}
-        nextRunExists={nextRunExists}
-        projectMode={projectMode}
-        onMutated={onMutated}
-      />
-      <ReRunLink projectId={projectId} run={run} onMutated={onMutated} />
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <PrimaryCta
+          run={run}
+          projectId={projectId}
+          nextStage={nextStage}
+          nextRunExists={nextRunExists}
+          projectMode={projectMode}
+          onMutated={onMutated}
+        />
+        <a
+          href={`/projects/${projectId}?stage=${run.stage}`}
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
+          data-testid="stage-open-engine"
+        >
+          <Eye className="h-3 w-3" aria-hidden /> Open in engine
+        </a>
+        <ReRunLink projectId={projectId} run={run} onMutated={onMutated} />
+      </div>
     </div>
   );
 }
@@ -468,13 +477,25 @@ interface PayloadResponse {
         kind: 'brainstorm_draft';
         ideas: Array<{ id: string; title: string; isWinner: boolean }>;
       }
-    | { kind: 'research_session'; cardCount: number; level: string | null }
+    | {
+        kind: 'research_session';
+        cardCount: number;
+        counts?: Record<string, number>;
+        level: string | null;
+        sources?: Array<{ title: string; url: string | null }>;
+      }
     | {
         kind: 'content_draft';
         title: string;
         type: string | null;
         status: string | null;
         publishedUrl: string | null;
+        sectionCount?: number;
+        sections?: Array<{ title: string; wordCountTarget: number | null }>;
+        reviewVerdict?: string | null;
+        reviewScore?: number | null;
+        iterationCount?: number | null;
+        assetSlots?: number;
       }
     | { kind: 'publish_record'; publishedUrl: string | null; wpPostId: string }
     | { kind: string; raw?: Record<string, unknown> }
@@ -557,11 +578,40 @@ function PayloadSummary({
   }
 
   if (payload.kind === 'research_session') {
-    const p = payload as { cardCount: number; level: string | null };
+    const p = payload as {
+      cardCount: number;
+      counts?: Record<string, number>;
+      level: string | null;
+      sources?: Array<{ title: string; url: string | null }>;
+    };
+    const breakdown = p.counts
+      ? (['sources', 'statistics', 'expert_quotes', 'counterarguments'] as const)
+          .filter((k) => (p.counts?.[k] ?? 0) > 0)
+          .map((k) => `${p.counts?.[k]} ${k.replace('_', ' ')}`)
+          .join(' · ')
+      : null;
     return (
-      <div className="mt-2 text-sm" data-testid="payload-summary">
-        <span className="font-medium">{p.cardCount} research cards</span>
-        {p.level ? <> · {p.level} depth</> : null}
+      <div className="mt-2 text-sm space-y-1" data-testid="payload-summary">
+        <div>
+          <span className="font-medium">{p.cardCount} research cards</span>
+          {p.level ? <span className="text-muted-foreground"> · {p.level} depth</span> : null}
+        </div>
+        {breakdown ? <div className="text-xs text-muted-foreground">{breakdown}</div> : null}
+        {p.sources && p.sources.length > 0 ? (
+          <ul className="mt-1 list-disc pl-5 text-xs text-muted-foreground">
+            {p.sources.map((s, i) => (
+              <li key={i}>
+                {s.url ? (
+                  <a href={s.url} target="_blank" rel="noreferrer" className="text-blue-600 underline">
+                    {s.title}
+                  </a>
+                ) : (
+                  s.title
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
     );
   }
@@ -572,13 +622,47 @@ function PayloadSummary({
       type: string | null;
       status: string | null;
       publishedUrl: string | null;
+      sectionCount?: number;
+      sections?: Array<{ title: string; wordCountTarget: number | null }>;
+      reviewVerdict?: string | null;
+      reviewScore?: number | null;
+      iterationCount?: number | null;
+      assetSlots?: number;
     };
     return (
-      <div className="mt-2 text-sm" data-testid="payload-summary">
+      <div className="mt-2 text-sm space-y-1" data-testid="payload-summary">
         <div>
           <span className="font-medium">{p.title}</span>
           {p.type ? <span className="ml-2 text-xs text-muted-foreground">({p.type})</span> : null}
         </div>
+        {p.sectionCount ? (
+          <div className="text-xs text-muted-foreground">
+            {p.sectionCount} {p.sectionCount === 1 ? 'section' : 'sections'}
+            {p.assetSlots ? <> · {p.assetSlots} asset {p.assetSlots === 1 ? 'brief' : 'briefs'}</> : null}
+          </div>
+        ) : null}
+        {p.sections && p.sections.length > 0 ? (
+          <ul className="mt-1 list-disc pl-5 text-xs text-muted-foreground">
+            {p.sections.slice(0, 5).map((s, i) => (
+              <li key={i}>
+                {s.title || `Section ${i + 1}`}
+                {s.wordCountTarget ? (
+                  <span className="text-muted-foreground/70"> ({s.wordCountTarget}w)</span>
+                ) : null}
+              </li>
+            ))}
+            {(p.sections.length > 5 || (p.sectionCount ?? 0) > 5) ? (
+              <li>+{(p.sectionCount ?? p.sections.length) - 5} more</li>
+            ) : null}
+          </ul>
+        ) : null}
+        {p.reviewVerdict ? (
+          <div className="text-xs">
+            Review: <span className="font-medium">{p.reviewVerdict}</span>
+            {p.reviewScore != null ? <> · score {p.reviewScore}</> : null}
+            {p.iterationCount ? <> · iteration {p.iterationCount}</> : null}
+          </div>
+        ) : null}
         {p.publishedUrl ? (
           <a
             href={p.publishedUrl}
