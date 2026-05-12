@@ -1,17 +1,22 @@
 "use client";
 
 /**
- * <ProjectModeControls> — top-level toggles that drive the orchestrator:
+ * <ProjectModeControls> — compact icon toggles for the project header.
  *
- *   Mode    autopilot ↔ manual     (writes projects.mode)
- *   Paused  on ↔ off               (writes projects.paused)
+ *   Mode    Bot icon (autopilot, blue) ↔ User icon (manual, slate)
+ *   Paused  Pause icon (idle, neutral) ↔ Play icon (paused, amber)
  *
- * View (overview ↔ supervised) is UI-only and lives in localStorage; it
- * is NOT a server concern, so this component intentionally does not
- * expose it. The dashboard-level <ProjectViewToggle> (a follow-up) owns
- * that bit.
+ * Each toggle PATCHes /api/projects/:id with optimistic UI + revert on
+ * failure. Tooltips spell out the action that the click would trigger.
+ *
+ * View (overview ↔ supervised) is UI-only and deliberately not exposed
+ * here — that surface concern belongs to whichever page renders the
+ * pipeline.
  */
 import { useState } from 'react';
+import { Bot, Pause, Play, User } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 
 interface ProjectModeControlsProps {
   projectId: string;
@@ -43,8 +48,8 @@ export function ProjectModeControls({
 
   async function toggleMode(): Promise<void> {
     const next = mode === 'autopilot' ? 'manual' : 'autopilot';
-    setPending('mode');
     const prev = mode;
+    setPending('mode');
     setMode(next);
     const ok = await patch({ mode: next });
     if (!ok) setMode(prev);
@@ -53,38 +58,68 @@ export function ProjectModeControls({
 
   async function togglePaused(): Promise<void> {
     const next = !paused;
-    setPending('paused');
     const prev = paused;
+    setPending('paused');
     setPaused(next);
     const ok = await patch({ paused: next });
     if (!ok) setPaused(prev);
     setPending(null);
   }
 
+  const ModeIcon = mode === 'autopilot' ? Bot : User;
+  const PausedIcon = paused ? Play : Pause;
+
   return (
-    <div className="flex items-center gap-3" data-testid="project-mode-controls">
-      <button
-        type="button"
-        onClick={toggleMode}
-        disabled={pending === 'mode'}
-        className="rounded-md border px-3 py-1.5 text-sm"
-        data-testid="mode-toggle"
-        data-mode={mode}
-        aria-label={`Switch to ${mode === 'autopilot' ? 'manual' : 'autopilot'} mode`}
-      >
-        Mode: <span className="font-semibold">{mode}</span>
-      </button>
-      <button
-        type="button"
-        onClick={togglePaused}
-        disabled={pending === 'paused'}
-        className="rounded-md border px-3 py-1.5 text-sm"
-        data-testid="paused-toggle"
-        data-paused={paused ? 'true' : 'false'}
-        aria-label={paused ? 'Resume pipeline' : 'Pause pipeline'}
-      >
-        {paused ? 'Resume' : 'Pause'}
-      </button>
-    </div>
+    <TooltipProvider>
+      <div className="flex items-center gap-1" data-testid="project-mode-controls">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={toggleMode}
+              disabled={pending === 'mode'}
+              aria-label={`Switch to ${mode === 'autopilot' ? 'manual' : 'autopilot'} mode`}
+              className={cn(
+                'inline-flex h-8 w-8 items-center justify-center rounded-md border transition',
+                mode === 'autopilot'
+                  ? 'border-blue-300 bg-blue-50 text-blue-600 hover:bg-blue-100'
+                  : 'border-slate-300 bg-card text-slate-500 hover:bg-slate-100',
+              )}
+              data-testid="mode-toggle"
+              data-mode={mode}
+            >
+              <ModeIcon className="h-4 w-4" aria-hidden />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {mode === 'autopilot' ? 'Autopilot — click to switch to manual' : 'Manual — click to switch to autopilot'}
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={togglePaused}
+              disabled={pending === 'paused'}
+              aria-label={paused ? 'Resume pipeline' : 'Pause pipeline'}
+              className={cn(
+                'inline-flex h-8 w-8 items-center justify-center rounded-md border transition',
+                paused
+                  ? 'border-amber-300 bg-amber-50 text-amber-600 hover:bg-amber-100'
+                  : 'border-slate-300 bg-card text-slate-500 hover:bg-slate-100',
+              )}
+              data-testid="paused-toggle"
+              data-paused={paused ? 'true' : 'false'}
+            >
+              <PausedIcon className="h-4 w-4" aria-hidden />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {paused ? 'Paused — click to resume' : 'Running — click to pause'}
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    </TooltipProvider>
   );
 }
