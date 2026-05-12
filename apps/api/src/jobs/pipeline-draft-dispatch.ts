@@ -109,7 +109,6 @@ export const pipelineDraftDispatch = inngest.createFunction(
         type,
         status: 'draft',
         production_params: productionParams,
-        model_tier: modelTier,
       })
       .select()
       .single();

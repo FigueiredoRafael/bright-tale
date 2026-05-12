@@ -124,6 +124,41 @@ export default function ProjectPipelinePage() {
           })()
         : 'running'
 
+  // Wizard gate — runs before any view (legacy or v2). The Pipeline Wizard
+  // collects content type (blog/video/shorts/podcast), mode preset, and other
+  // per-stage defaults that the dispatchers/engines need to read. Once it
+  // completes, `pipeline_state_json.mode` is persisted and subsequent loads
+  // bypass this branch to render the chosen view.
+  if (machineState === 'setup') {
+    return (
+      <div>
+        <div className="flex items-center justify-between px-6 pt-4">
+          <button
+            onClick={() => router.push('/projects')}
+            className="text-xs text-muted-foreground hover:underline flex items-center gap-1"
+          >
+            <ArrowLeft className="h-3 w-3" /> Back to projects
+          </button>
+        </div>
+        <PipelineAbortProvider
+          projectId={projectId}
+          machineState={machineState}
+          currentStage={persistedStage}
+          isPaused={persistedPaused}
+        >
+          <PipelineSettingsProvider>
+            <PipelineOrchestrator
+              projectId={projectId}
+              channelId={channelId}
+              projectTitle={(project.title as string) ?? 'Untitled Project'}
+              initialPipelineState={pipelineStateJson}
+            />
+          </PipelineSettingsProvider>
+        </PipelineAbortProvider>
+      </div>
+    );
+  }
+
   if (useV2) {
     const initialMode = coerceMode(project.mode);
     const initialPaused = Boolean(project.paused);

@@ -390,7 +390,24 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
     | null
     | undefined;
 
-  // 6. Skip-check: when autopilotConfig says skip this stage, insert a skipped
+  // 6. Idempotency guard: if the next Stage already has a run that is either
+  // in flight (queued/running/awaiting_user) or has resolved successfully
+  // (completed/skipped), do nothing. This prevents duplicate Stage Runs when
+  // `pipeline/stage.run.finished` is delivered more than once (Inngest replays
+  // outside step.run, manual re-emits, retries, etc.). Only `failed`/`aborted`
+  // prior runs are eligible for forward auto-advance — and even those are
+  // owned by `resumeProject`, not `advanceAfter`.
+  const { data: existingNext } = await sb
+    .from('stage_runs')
+    .select('id, status')
+    .eq('project_id', projectId)
+    .eq('stage', next)
+    .in('status', ['queued', 'running', 'awaiting_user', 'completed', 'skipped'])
+    .limit(1)
+    .maybeSingle();
+  if (existingNext) return;
+
+  // 7. Skip-check: when autopilotConfig says skip this stage, insert a skipped
   // Stage Run and recurse into the following stage.
   if (shouldSkip(next, autopilotConfig)) {
     const inserted = await insertStageRun(sb, {
@@ -403,7 +420,7 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
     return;
   }
 
-  // 7. Insert the next Stage Run. Publish is a hard-coded special case:
+  // 8. Insert the next Stage Run. Publish is a hard-coded special case:
   // always awaiting_user(manual_advance) regardless of Mode.
   const nextRow: Record<string, unknown> = {
     project_id: projectId,

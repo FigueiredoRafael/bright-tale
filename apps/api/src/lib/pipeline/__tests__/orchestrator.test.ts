@@ -326,7 +326,8 @@ describe('advanceAfter', () => {
   it('creates the next Stage Run as queued when autopilot completes a non-publish stage', async () => {
     mockChain.maybeSingle
       .mockResolvedValueOnce(mockFinishedRun('completed', 'brainstorm'))
-      .mockResolvedValueOnce(mockProject('autopilot', false));
+      .mockResolvedValueOnce(mockProject('autopilot', false))
+      .mockResolvedValueOnce({ data: null, error: null }); // no existingNext
 
     // The insert+select chain returns the new stage_run
     mockChain.single.mockResolvedValueOnce({
@@ -355,7 +356,8 @@ describe('advanceAfter', () => {
     // Finished preview → next is publish
     mockChain.maybeSingle
       .mockResolvedValueOnce(mockFinishedRun('completed', 'preview'))
-      .mockResolvedValueOnce(mockProject('autopilot', false));
+      .mockResolvedValueOnce(mockProject('autopilot', false))
+      .mockResolvedValueOnce({ data: null, error: null }); // no existingNext
 
     mockChain.single.mockResolvedValueOnce({
       data: {
@@ -391,17 +393,19 @@ describe('advanceAfter', () => {
       error: null,
     };
 
-    // First advanceAfter call: finished draft → next is review → SKIP → insert skipped review
+    // First advanceAfter call: finished draft → next is review → existingNext null → SKIP → insert skipped review
     mockChain.maybeSingle
       .mockResolvedValueOnce(mockFinishedRun('completed', 'draft'))
       .mockResolvedValueOnce(projectWithSkipReview)
-      // After inserting skipped review, advanceAfter recurses (logical) — loads the
-      // just-inserted "completed/skipped" review run, then re-checks the project, then queues assets
+      .mockResolvedValueOnce({ data: null, error: null }) // existingNext for review
+      // Recurse: load just-inserted skipped review row, re-check project,
+      // existingNext for assets is null, then queue assets.
       .mockResolvedValueOnce({
         data: { id: 'sr-rev', project_id: PROJECT_ID, stage: 'review', status: 'skipped' },
         error: null,
       })
-      .mockResolvedValueOnce(projectWithSkipReview);
+      .mockResolvedValueOnce(projectWithSkipReview)
+      .mockResolvedValueOnce({ data: null, error: null }); // existingNext for assets
 
     // Two inserts: skipped review, then queued assets
     mockChain.single
@@ -439,7 +443,8 @@ describe('advanceAfter', () => {
   it('emits pipeline/stage.requested after inserting the next queued Stage Run on advance', async () => {
     mockChain.maybeSingle
       .mockResolvedValueOnce(mockFinishedRun('completed', 'brainstorm'))
-      .mockResolvedValueOnce(mockProject('autopilot', false));
+      .mockResolvedValueOnce(mockProject('autopilot', false))
+      .mockResolvedValueOnce({ data: null, error: null }); // no existingNext
 
     mockChain.single.mockResolvedValueOnce({
       data: {
@@ -479,12 +484,14 @@ describe('advanceAfter', () => {
     mockChain.maybeSingle
       .mockResolvedValueOnce(mockFinishedRun('completed', 'draft'))
       .mockResolvedValueOnce(projectWithSkipReview)
+      .mockResolvedValueOnce({ data: null, error: null }) // existingNext review
       // Inner recurse: load the just-inserted skipped review row
       .mockResolvedValueOnce({
         data: { id: 'sr-rev', project_id: PROJECT_ID, stage: 'review', status: 'skipped' },
         error: null,
       })
-      .mockResolvedValueOnce(projectWithSkipReview);
+      .mockResolvedValueOnce(projectWithSkipReview)
+      .mockResolvedValueOnce({ data: null, error: null }); // existingNext assets
 
     mockChain.single
       .mockResolvedValueOnce({
