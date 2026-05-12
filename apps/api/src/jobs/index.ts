@@ -16,3 +16,4 @@ export { pipelineBrainstormDispatch } from './pipeline-brainstorm-dispatch.js';
 export { pipelineResearchDispatch } from './pipeline-research-dispatch.js';
 export { pipelineDraftDispatch } from './pipeline-draft-dispatch.js';
 export { pipelineReviewDispatch } from './pipeline-review-dispatch.js';
+export { pipelineAssetsDispatch } from './pipeline-assets-dispatch.js';

@@ -113,6 +113,15 @@ export const researchInputSchema = z.object({
 });
 export type ResearchInput = z.infer<typeof researchInputSchema>;
 
+export const assetsInputSchema = z.object({
+  // `skip` is a special value handled by advanceAfter (shouldSkip); when present
+  // the orchestrator inserts a `skipped` Stage Run and never invokes the dispatcher
+  mode: z.enum(['auto_generate', 'briefs_only', 'manual_upload', 'skip']).optional(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
+});
+export type AssetsInput = z.infer<typeof assetsInputSchema>;
+
 export const reviewInputSchema = z.object({
   // when maxIterations === 0 the orchestrator skips the stage entirely (handled
   // by `shouldSkip` in advanceAfter); positive values run the review job
@@ -148,7 +157,7 @@ export const STAGE_INPUT_SCHEMAS: Record<Stage, z.ZodTypeAny> = {
   research: researchInputSchema,
   draft: draftInputSchema,
   review: reviewInputSchema,
-  assets: z.never(),
+  assets: assetsInputSchema,
   preview: z.never(),
   publish: z.never(),
 };
