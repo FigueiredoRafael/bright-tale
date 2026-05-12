@@ -23,6 +23,26 @@ import {
   XCircle,
 } from 'lucide-react';
 import { STAGES, type Stage, type StageRun, type StageRunStatus } from '@brighttale/shared/pipeline/inputs';
+
+/**
+ * Pick the Stage the supervised view should focus on when the caller
+ * didn't pin one explicitly. Prefer whatever is in flight; otherwise the
+ * most recent terminal stage; otherwise the first stage of the pipeline.
+ */
+export function deriveActiveStage(runs: Record<Stage, StageRun | null>): Stage {
+  for (const s of STAGES) {
+    const status = runs[s]?.status;
+    if (status === 'queued' || status === 'running' || status === 'awaiting_user') return s;
+  }
+  for (let i = STAGES.length - 1; i >= 0; i--) {
+    const s = STAGES[i];
+    const status = runs[s]?.status;
+    if (status === 'completed' || status === 'skipped' || status === 'failed' || status === 'aborted') {
+      return s;
+    }
+  }
+  return STAGES[0];
+}
 import { useProjectStream } from '@/hooks/useProjectStream';
 import { cn } from '@/lib/utils';
 import { StageView } from './StageView';
@@ -178,14 +198,10 @@ export function PipelineView({
   const { stageRuns, liveEvent, isConnected, project, refresh } = useProjectStream(projectId);
 
   if (variant === 'supervised') {
-    if (!stage) {
-      return (
-        <div className="rounded-md border p-4 text-sm text-muted-foreground">
-          Supervised view requires a `stage` prop.
-        </div>
-      );
-    }
-    return <StageView projectId={projectId} stage={stage} />;
+    // When the caller doesn't pin a stage (URL has no ?stage param), follow
+    // whatever is in flight so the user always lands on the most relevant view.
+    const focusStage = stage ?? deriveActiveStage(stageRuns);
+    return <StageView projectId={projectId} stage={focusStage} />;
   }
 
   function handleClick(s: Stage): void {

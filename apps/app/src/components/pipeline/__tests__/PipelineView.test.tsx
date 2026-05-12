@@ -320,4 +320,29 @@ describe('<PipelineView variant="overview" />', () => {
     expect(screen.getByTestId('stage-view-brainstorm')).toBeInTheDocument();
     expect(screen.queryByTestId('pipeline-view-overview')).not.toBeInTheDocument();
   });
+
+  it('supervised variant auto-focuses the active stage when no stage prop is given', () => {
+    useProjectStreamMock.mockReturnValueOnce({
+      stageRuns: {
+        brainstorm: run({ stage: 'brainstorm', status: 'completed' }),
+        research: run({ stage: 'research', status: 'queued' }),
+        draft: null,
+        review: null,
+        assets: null,
+        preview: null,
+        publish: null,
+      },
+      liveEvent: null,
+      isConnected: true,
+      refresh: vi.fn(async () => undefined),
+      project: { mode: 'autopilot', paused: false },
+    });
+    render(<PipelineView projectId={PROJECT_ID} variant="supervised" />);
+    expect(screen.getByTestId('stage-view-research')).toBeInTheDocument();
+  });
+
+  it('supervised variant falls back to brainstorm when there is no active stage', () => {
+    render(<PipelineView projectId={PROJECT_ID} variant="supervised" />);
+    expect(screen.getByTestId('stage-view-brainstorm')).toBeInTheDocument();
+  });
 });

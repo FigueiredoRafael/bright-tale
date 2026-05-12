@@ -251,8 +251,14 @@ function ActivityPanel({
     <div className="rounded-md border p-3" data-testid="activity-panel">
       <div className="flex items-center gap-2 text-sm font-medium">
         <Loader2 className="h-4 w-4 animate-spin text-blue-500" aria-hidden />
-        <span>{run.status === 'queued' ? 'Queued — waiting to start' : 'Running…'}</span>
+        <span>{run.status === 'queued' ? 'Queued — dispatcher will pick this up' : 'Running…'}</span>
       </div>
+      {run.status === 'queued' ? (
+        <div className="mt-1 pl-6 text-xs text-muted-foreground">
+          Usually starts within a few seconds. If it stays queued for &gt; 30s, the Inngest dev
+          server may need a restart.
+        </div>
+      ) : null}
       {liveMessage ? <div className="mt-1 pl-6 text-sm text-muted-foreground">{liveMessage}</div> : null}
       <button
         type="button"

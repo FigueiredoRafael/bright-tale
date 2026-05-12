@@ -33,9 +33,11 @@ export default function ProjectPipelinePage() {
   // legacy code is deleted in Slice 14 (#22).
   const useV2 = searchParams?.get('v') === '2';
   const stageParam = searchParams?.get('stage') as Stage | null;
-  const v2Stage: Stage = stageParam && (STAGES as readonly string[]).includes(stageParam)
+  // When the URL pins ?stage=, honour it. Otherwise let PipelineView's
+  // supervised variant auto-focus the active/most-relevant stage.
+  const v2Stage: Stage | undefined = stageParam && (STAGES as readonly string[]).includes(stageParam)
     ? stageParam
-    : 'brainstorm';
+    : undefined;
   const [project, setProject] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [channels, setChannels] = useState<Channel[]>([]);
