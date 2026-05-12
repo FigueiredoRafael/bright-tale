@@ -9,30 +9,92 @@
  *   - queued | running      → activity panel + Abort button
  *   - awaiting_user         → manual_paste textarea OR manual_advance Continue
  *   - completed | failed |
- *     aborted | skipped     → payload summary + Re-run button
- *
- * The Re-run button posts a fresh /stage-runs (orchestrator increments
- * attempt_no automatically).
+ *     aborted | skipped     → payload summary + primary CTA (continue/autopilot)
+ *                              + secondary Re-run link
  */
-import { useState } from 'react';
-import { type Stage, type StageRun } from '@brighttale/shared/pipeline/inputs';
+import { useEffect, useState } from 'react';
+import {
+  ArrowRight,
+  Ban,
+  CheckCircle2,
+  Loader2,
+  RotateCcw,
+  Sparkles,
+  XCircle,
+} from 'lucide-react';
+import {
+  STAGES,
+  type Stage,
+  type StageRun,
+  type StageRunStatus,
+} from '@brighttale/shared/pipeline/inputs';
 import { useProjectStream } from '@/hooks/useProjectStream';
 import { BrainstormForm } from './BrainstormForm';
+import { cn } from '@/lib/utils';
 
 interface StageViewProps {
   projectId: string;
   stage: Stage;
 }
 
+const STAGE_LABELS: Record<Stage, string> = {
+  brainstorm: 'Brainstorm',
+  research: 'Research',
+  draft: 'Draft',
+  review: 'Review',
+  assets: 'Assets',
+  preview: 'Preview',
+  publish: 'Publish',
+};
+
+const TERMINAL_STATUS_META: Record<
+  Exclude<StageRunStatus, 'queued' | 'running' | 'awaiting_user'>,
+  { Icon: typeof CheckCircle2; iconClass: string; label: string }
+> = {
+  completed: { Icon: CheckCircle2, iconClass: 'text-emerald-500', label: 'Completed' },
+  failed: { Icon: XCircle, iconClass: 'text-rose-500', label: 'Failed' },
+  aborted: { Icon: Ban, iconClass: 'text-zinc-500', label: 'Aborted' },
+  skipped: { Icon: Ban, iconClass: 'text-slate-400', label: 'Skipped' },
+};
+
+function successorOf(stage: Stage): Stage | null {
+  const idx = STAGES.indexOf(stage);
+  if (idx < 0 || idx >= STAGES.length - 1) return null;
+  return STAGES[idx + 1];
+}
+
+/** Sensible default input the orchestrator + dispatcher can consume for each
+ *  Stage when the user just clicks "Continue to <next>" in manual mode. */
+function defaultInputForStage(stage: Stage): Record<string, unknown> {
+  switch (stage) {
+    case 'research':
+      return { level: 'medium' };
+    case 'draft':
+      return { type: 'blog' };
+    case 'assets':
+      return { mode: 'briefs_only' };
+    case 'review':
+    case 'preview':
+    case 'publish':
+    default:
+      return {};
+  }
+}
+
 export function StageView({ projectId, stage }: StageViewProps) {
-  const { stageRuns, liveEvent, isConnected, refresh } = useProjectStream(projectId);
+  const { stageRuns, liveEvent, isConnected, project, refresh } = useProjectStream(projectId);
   const run = stageRuns[stage];
+  const nextStage = successorOf(stage);
+  const nextRun = nextStage ? stageRuns[nextStage] : null;
 
   return (
     <section className="space-y-3" data-testid={`stage-view-${stage}`} data-status={run?.status ?? 'idle'}>
       <header className="flex items-center gap-2 text-xs text-muted-foreground">
         <span
-          className={`inline-block h-2 w-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-slate-300'}`}
+          className={cn(
+            'inline-block h-2 w-2 rounded-full',
+            isConnected ? 'bg-emerald-500' : 'bg-slate-300',
+          )}
           aria-label={isConnected ? 'Live' : 'Disconnected'}
         />
         <span>Stage: {stage}</span>
@@ -50,7 +112,14 @@ export function StageView({ projectId, stage }: StageViewProps) {
       ) : null}
 
       {run && (run.status === 'completed' || run.status === 'failed' || run.status === 'aborted' || run.status === 'skipped') ? (
-        <TerminalPanel run={run} projectId={projectId} />
+        <TerminalPanel
+          run={run}
+          projectId={projectId}
+          nextStage={nextStage}
+          nextRunExists={Boolean(nextRun)}
+          projectMode={project.mode}
+          onMutated={refresh}
+        />
       ) : null}
     </section>
   );
@@ -101,10 +170,11 @@ function ActivityPanel({
 
   return (
     <div className="rounded-md border p-3" data-testid="activity-panel">
-      <div className="text-sm font-medium">
-        {run.status === 'queued' ? 'Queued — waiting to start' : 'Running…'}
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <Loader2 className="h-4 w-4 animate-spin text-blue-500" aria-hidden />
+        <span>{run.status === 'queued' ? 'Queued — waiting to start' : 'Running…'}</span>
       </div>
-      {liveMessage ? <div className="mt-1 text-sm text-muted-foreground">{liveMessage}</div> : null}
+      {liveMessage ? <div className="mt-1 pl-6 text-sm text-muted-foreground">{liveMessage}</div> : null}
       <button
         type="button"
         onClick={abort}
@@ -154,9 +224,10 @@ function ManualAdvancePanel({ run, projectId }: { run: StageRun; projectId: stri
         type="button"
         onClick={cont}
         disabled={busy}
-        className="mt-3 rounded-md border bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground"
+        className="mt-3 inline-flex items-center gap-2 rounded-md border bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground"
         data-testid="stage-continue"
       >
+        <ArrowRight className="h-4 w-4" aria-hidden />
         {busy ? 'Continuing…' : 'Continue'}
       </button>
     </div>
@@ -220,44 +291,335 @@ function ManualPastePanel({ run, projectId }: { run: StageRun; projectId: string
   );
 }
 
-function TerminalPanel({ run, projectId }: { run: StageRun; projectId: string }) {
+// ─── TerminalPanel ────────────────────────────────────────────────────────────
+
+interface TerminalPanelProps {
+  run: StageRun;
+  projectId: string;
+  nextStage: Stage | null;
+  nextRunExists: boolean;
+  projectMode: 'autopilot' | 'manual';
+  onMutated: () => Promise<void>;
+}
+
+function TerminalPanel({
+  run,
+  projectId,
+  nextStage,
+  nextRunExists,
+  projectMode,
+  onMutated,
+}: TerminalPanelProps) {
+  const statusMeta =
+    TERMINAL_STATUS_META[run.status as keyof typeof TERMINAL_STATUS_META] ??
+    TERMINAL_STATUS_META.completed;
+  const Icon = statusMeta.Icon;
+
+  return (
+    <div className="rounded-md border p-3" data-testid="terminal-panel">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <Icon className={cn('h-4 w-4', statusMeta.iconClass)} aria-hidden />
+        <span>{statusMeta.label}</span>
+      </div>
+      {run.errorMessage ? (
+        <div className="mt-2 rounded bg-rose-50 px-2 py-1 text-sm text-rose-800">
+          {run.errorMessage}
+        </div>
+      ) : null}
+      <PayloadSummary projectId={projectId} stageRunId={run.id} run={run} />
+      <PrimaryCta
+        run={run}
+        projectId={projectId}
+        nextStage={nextStage}
+        nextRunExists={nextRunExists}
+        projectMode={projectMode}
+        onMutated={onMutated}
+      />
+      <ReRunLink projectId={projectId} run={run} onMutated={onMutated} />
+    </div>
+  );
+}
+
+// ─── PayloadSummary ──────────────────────────────────────────────────────────
+
+interface PayloadResponse {
+  payload:
+    | {
+        kind: 'brainstorm_draft';
+        ideas: Array<{ id: string; title: string; isWinner: boolean }>;
+      }
+    | { kind: 'research_session'; cardCount: number; level: string | null }
+    | {
+        kind: 'content_draft';
+        title: string;
+        type: string | null;
+        status: string | null;
+        publishedUrl: string | null;
+      }
+    | { kind: 'publish_record'; publishedUrl: string | null; wpPostId: string }
+    | { kind: string; raw?: Record<string, unknown> }
+    | null;
+}
+
+function PayloadSummary({
+  projectId,
+  stageRunId,
+  run,
+}: {
+  projectId: string;
+  stageRunId: string;
+  run: StageRun;
+}) {
+  const [payload, setPayload] = useState<PayloadResponse['payload'] | null>(null);
+  const [loading, setLoading] = useState<boolean>(Boolean(run.payloadRef));
+
+  useEffect(() => {
+    if (!run.payloadRef) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/stage-runs/${stageRunId}/payload`);
+        const body = await res.json();
+        if (cancelled) return;
+        setPayload(body?.data?.payload ?? null);
+      } catch {
+        if (!cancelled) setPayload(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, stageRunId, run.payloadRef]);
+
+  if (!run.payloadRef) return null;
+  if (loading) {
+    return <div className="mt-2 text-xs text-muted-foreground">Loading output…</div>;
+  }
+  if (!payload) {
+    return (
+      <div className="mt-2 text-xs text-muted-foreground" data-testid="payload-summary">
+        Output: <span className="font-mono">{run.payloadRef.kind}#{run.payloadRef.id}</span>
+      </div>
+    );
+  }
+
+  if (payload.kind === 'brainstorm_draft') {
+    const ideas = (payload as { ideas: Array<{ id: string; title: string; isWinner: boolean }> }).ideas ?? [];
+    const winner = ideas.find((i) => i.isWinner);
+    return (
+      <div className="mt-2" data-testid="payload-summary">
+        <div className="text-sm">
+          <span className="font-medium">{ideas.length} ideas</span> generated
+          {winner ? (
+            <>
+              {' '}
+              · selected: <span className="font-medium">{winner.title}</span>
+            </>
+          ) : null}
+        </div>
+        {ideas.length > 1 ? (
+          <ul className="mt-1 list-disc pl-5 text-xs text-muted-foreground">
+            {ideas.slice(0, 5).map((i) => (
+              <li key={i.id} className={i.isWinner ? 'text-foreground' : ''}>
+                {i.title}
+              </li>
+            ))}
+            {ideas.length > 5 ? <li>+{ideas.length - 5} more</li> : null}
+          </ul>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (payload.kind === 'research_session') {
+    const p = payload as { cardCount: number; level: string | null };
+    return (
+      <div className="mt-2 text-sm" data-testid="payload-summary">
+        <span className="font-medium">{p.cardCount} research cards</span>
+        {p.level ? <> · {p.level} depth</> : null}
+      </div>
+    );
+  }
+
+  if (payload.kind === 'content_draft') {
+    const p = payload as {
+      title: string;
+      type: string | null;
+      status: string | null;
+      publishedUrl: string | null;
+    };
+    return (
+      <div className="mt-2 text-sm" data-testid="payload-summary">
+        <div>
+          <span className="font-medium">{p.title}</span>
+          {p.type ? <span className="ml-2 text-xs text-muted-foreground">({p.type})</span> : null}
+        </div>
+        {p.publishedUrl ? (
+          <a
+            href={p.publishedUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-blue-600 underline"
+          >
+            {p.publishedUrl}
+          </a>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (payload.kind === 'publish_record') {
+    const p = payload as { publishedUrl: string | null; wpPostId: string };
+    return (
+      <div className="mt-2 text-sm" data-testid="payload-summary">
+        Published
+        {p.publishedUrl ? (
+          <>
+            {' '}
+            ·{' '}
+            <a
+              href={p.publishedUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-blue-600 underline"
+            >
+              {p.publishedUrl}
+            </a>
+          </>
+        ) : (
+          <> · WP post #{p.wpPostId}</>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 text-xs text-muted-foreground" data-testid="payload-summary">
+      Output: <span className="font-mono">{payload.kind}</span>
+    </div>
+  );
+}
+
+// ─── PrimaryCta ───────────────────────────────────────────────────────────────
+
+function PrimaryCta({
+  run,
+  projectId,
+  nextStage,
+  nextRunExists,
+  projectMode,
+  onMutated,
+}: {
+  run: StageRun;
+  projectId: string;
+  nextStage: Stage | null;
+  nextRunExists: boolean;
+  projectMode: 'autopilot' | 'manual';
+  onMutated: () => Promise<void>;
+}) {
   const [busy, setBusy] = useState(false);
 
-  async function rerun(): Promise<void> {
+  // No CTA when:
+  //   - this stage didn't complete cleanly (failed/aborted — user re-runs)
+  //   - there is no successor stage (publish is the last)
+  //   - the next stage already has a run in flight or done
+  if (run.status !== 'completed' && run.status !== 'skipped') return null;
+  if (!nextStage) {
+    return (
+      <div className="mt-3 inline-flex items-center gap-1 text-sm text-emerald-700" data-testid="pipeline-complete">
+        <CheckCircle2 className="h-4 w-4" aria-hidden /> Pipeline complete.
+      </div>
+    );
+  }
+  if (nextRunExists) return null;
+
+  if (projectMode === 'autopilot') {
+    return (
+      <div
+        className="mt-3 inline-flex items-center gap-2 rounded-md bg-blue-50 px-2 py-1 text-xs text-blue-800"
+        data-testid="autopilot-cta"
+      >
+        <Sparkles className="h-3.5 w-3.5" aria-hidden />
+        Autopilot will continue to <span className="font-medium">{STAGE_LABELS[nextStage]}</span> automatically.
+      </div>
+    );
+  }
+
+  async function advance(): Promise<void> {
     setBusy(true);
     try {
-      // Re-running is just POSTing a fresh Stage Run with the same input.
-      // For Brainstorm the user will hit the form again; this button covers
-      // failed/aborted/skipped cases where the user wants another attempt.
-      await fetch(`/api/projects/${projectId}/stage-runs`, {
+      const res = await fetch(`/api/projects/${projectId}/stage-runs`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ stage: run.stage, input: run.inputJson ?? {} }),
+        body: JSON.stringify({ stage: nextStage, input: defaultInputForStage(nextStage!) }),
       });
+      if (res.ok) await onMutated();
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="rounded-md border p-3" data-testid="terminal-panel">
-      <div className="text-sm font-medium capitalize">Status: {run.status}</div>
-      {run.errorMessage ? (
-        <div className="mt-1 text-sm text-rose-700">{run.errorMessage}</div>
-      ) : null}
-      {run.payloadRef ? (
-        <div className="mt-1 text-xs text-muted-foreground">
-          Output: <span className="font-mono">{run.payloadRef.kind}#{run.payloadRef.id}</span>
-        </div>
-      ) : null}
+    <button
+      type="button"
+      onClick={advance}
+      disabled={busy}
+      className="mt-3 inline-flex items-center gap-2 rounded-md border bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground"
+      data-testid="continue-to-next"
+      data-next={nextStage}
+    >
+      <ArrowRight className="h-4 w-4" aria-hidden />
+      {busy ? 'Starting…' : `Continue to ${STAGE_LABELS[nextStage]}`}
+    </button>
+  );
+}
+
+// ─── ReRunLink ────────────────────────────────────────────────────────────────
+
+function ReRunLink({
+  projectId,
+  run,
+  onMutated,
+}: {
+  projectId: string;
+  run: StageRun;
+  onMutated: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  async function rerun(): Promise<void> {
+    if (!confirm(`Re-run ${run.stage}? A new Stage Run with attempt #${run.attemptNo + 1} will be created.`)) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/stage-runs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ stage: run.stage, input: run.inputJson ?? {} }),
+      });
+      if (res.ok) await onMutated();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3">
       <button
         type="button"
         onClick={rerun}
         disabled={busy}
-        className="mt-3 rounded-md border px-3 py-1.5 text-sm"
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
         data-testid="stage-rerun"
       >
-        {busy ? 'Starting…' : 'Re-run'}
+        <RotateCcw className="h-3 w-3" aria-hidden />
+        {busy ? 'Re-running…' : `Re-run ${run.stage}`}
       </button>
     </div>
   );

@@ -57,6 +57,7 @@ beforeEach(() => {
     liveEvent: null,
     isConnected: false,
     refresh: vi.fn(async () => undefined),
+      project: { mode: 'autopilot', paused: false },
   });
 });
 
@@ -81,6 +82,7 @@ describe('<PipelineView variant="overview" />', () => {
       liveEvent: null,
       isConnected: true,
       refresh: vi.fn(async () => undefined),
+      project: { mode: 'autopilot', paused: false },
     });
 
     render(<PipelineView projectId={PROJECT_ID} />);
@@ -113,6 +115,7 @@ describe('<PipelineView variant="overview" />', () => {
       liveEvent: null,
       isConnected: true,
       refresh: vi.fn(async () => undefined),
+      project: { mode: 'autopilot', paused: false },
     });
 
     render(<PipelineView projectId={PROJECT_ID} />);
@@ -140,6 +143,7 @@ describe('<PipelineView variant="overview" />', () => {
       liveEvent: null,
       isConnected: true,
       refresh: vi.fn(async () => undefined),
+      project: { mode: 'autopilot', paused: false },
     });
     const { rerender } = render(<PipelineView projectId={PROJECT_ID} />);
     expect(screen.getByText('Idle')).toBeInTheDocument();
@@ -157,6 +161,7 @@ describe('<PipelineView variant="overview" />', () => {
       liveEvent: null,
       isConnected: false,
       refresh: vi.fn(async () => undefined),
+      project: { mode: 'autopilot', paused: false },
     });
     rerender(<PipelineView projectId={PROJECT_ID} />);
     expect(screen.getByText('Connecting…')).toBeInTheDocument();
@@ -185,6 +190,7 @@ describe('<PipelineView variant="overview" />', () => {
       },
       isConnected: true,
       refresh: vi.fn(async () => undefined),
+      project: { mode: 'autopilot', paused: false },
     });
 
     render(<PipelineView projectId={PROJECT_ID} />);

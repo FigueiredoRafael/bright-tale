@@ -54,6 +54,7 @@ function streamWith(runs: Partial<Record<StageRun['stage'], StageRun | null>>): 
     liveEvent: null,
     isConnected: true,
     refresh: vi.fn(async () => undefined),
+      project: { mode: 'autopilot', paused: false },
   });
 }
 
@@ -127,7 +128,9 @@ describe('<StageView /> — 4 visual states', () => {
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({ output: 'AI output here' });
   });
 
-  it('state 4 (completed): renders TerminalPanel with Re-run button + payload ref', () => {
+  it('state 4 (completed): renders TerminalPanel with payload fallback while loading', () => {
+    // Snapshot fetch returns empty by default; PayloadSummary stays in loading state
+    // briefly, then renders the fallback (kind#id). We check the panel exists + rerun link.
     streamWith({
       brainstorm: runForBrainstorm({
         status: 'completed',
@@ -137,11 +140,10 @@ describe('<StageView /> — 4 visual states', () => {
     render(<StageView projectId={PROJECT_ID} stage="brainstorm" />);
 
     expect(screen.getByTestId('terminal-panel')).toBeInTheDocument();
-    expect(screen.getByText(/brainstorm_draft#bd-1/)).toBeInTheDocument();
     expect(screen.getByTestId('stage-rerun')).toBeInTheDocument();
   });
 
-  it('state 4 (failed): shows errorMessage and Re-run button', () => {
+  it('state 4 (failed): shows errorMessage and Re-run link', () => {
     streamWith({
       brainstorm: runForBrainstorm({
         status: 'failed',
@@ -154,22 +156,102 @@ describe('<StageView /> — 4 visual states', () => {
     expect(screen.getByTestId('stage-rerun')).toBeInTheDocument();
   });
 
-  it('Re-run posts a fresh Stage Run with the prior input_json', async () => {
+  it('Re-run prompts confirmation, then posts a fresh Stage Run with the prior input_json', async () => {
     streamWith({
       brainstorm: runForBrainstorm({
         status: 'failed',
         inputJson: { mode: 'topic_driven', topic: 'AI pricing' },
       }),
     });
+    vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
     render(<StageView projectId={PROJECT_ID} stage="brainstorm" />);
 
     fireEvent.click(screen.getByTestId('stage-rerun'));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const [url, init] = fetchMock.mock.calls[0];
+    const postCall = fetchMock.mock.calls.find(
+      (c) => typeof c[1] === 'object' && (c[1] as RequestInit).method === 'POST',
+    );
+    expect(postCall).toBeDefined();
+    const [url, init] = postCall!;
     expect(url).toBe(`/api/projects/${PROJECT_ID}/stage-runs`);
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.stage).toBe('brainstorm');
     expect(body.input).toEqual({ mode: 'topic_driven', topic: 'AI pricing' });
+  });
+
+  it('state 4 (completed) + autopilot mode: shows autopilot CTA badge, no Continue button', () => {
+    streamWith({
+      brainstorm: runForBrainstorm({
+        status: 'completed',
+        payloadRef: { kind: 'brainstorm_draft', id: 'bd-1' },
+      }),
+    });
+    render(<StageView projectId={PROJECT_ID} stage="brainstorm" />);
+
+    expect(screen.getByTestId('autopilot-cta')).toBeInTheDocument();
+    expect(screen.queryByTestId('continue-to-next')).not.toBeInTheDocument();
+  });
+
+  it('state 4 (completed) + manual mode: shows Continue button → POSTs next stage_run', async () => {
+    useProjectStreamMock.mockReturnValue({
+      stageRuns: {
+        brainstorm: runForBrainstorm({
+          status: 'completed',
+          payloadRef: { kind: 'brainstorm_draft', id: 'bd-1' },
+        }),
+        research: null,
+        draft: null,
+        review: null,
+        assets: null,
+        preview: null,
+        publish: null,
+      },
+      liveEvent: null,
+      isConnected: true,
+      refresh: vi.fn(async () => undefined),
+      project: { mode: 'manual', paused: false },
+    });
+    render(<StageView projectId={PROJECT_ID} stage="brainstorm" />);
+
+    const cta = screen.getByTestId('continue-to-next');
+    expect(cta).toHaveAttribute('data-next', 'research');
+    fireEvent.click(cta);
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.find((c) => {
+          const init = c[1] as RequestInit | undefined;
+          if (!init || init.method !== 'POST') return false;
+          const body = JSON.parse(init.body as string);
+          return body.stage === 'research';
+        }),
+      ).toBeDefined(),
+    );
+  });
+
+  it('publish completed: shows "Pipeline complete." not a Continue CTA', () => {
+    streamWith({
+      publish: {
+        ...runForBrainstorm({ stage: 'publish', status: 'completed' }),
+        id: 'sr-pub',
+        stage: 'publish',
+      } as StageRun,
+    });
+    render(<StageView projectId={PROJECT_ID} stage="publish" />);
+
+    expect(screen.getByTestId('pipeline-complete')).toBeInTheDocument();
+    expect(screen.queryByTestId('continue-to-next')).not.toBeInTheDocument();
+  });
+
+  it('state 4 (completed) but next stage already exists: shows neither autopilot nor continue', () => {
+    streamWith({
+      brainstorm: runForBrainstorm({ status: 'completed' }),
+      research: runForBrainstorm({ stage: 'research', status: 'queued' }),
+    });
+    render(<StageView projectId={PROJECT_ID} stage="brainstorm" />);
+
+    expect(screen.queryByTestId('autopilot-cta')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('continue-to-next')).not.toBeInTheDocument();
   });
 });

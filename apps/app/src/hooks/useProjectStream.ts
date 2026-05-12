@@ -90,15 +90,22 @@ function rowToJobEvent(row: Record<string, unknown>): JobEvent {
   };
 }
 
+export interface ProjectMeta {
+  mode: 'autopilot' | 'manual';
+  paused: boolean;
+}
+
 export function useProjectStream(projectId: string): {
   stageRuns: StageRunsByStage;
   liveEvent: JobEvent | null;
   isConnected: boolean;
+  project: ProjectMeta;
   refresh: () => Promise<void>;
 } {
   const [state, dispatch] = useReducer(reducer, { stageRuns: EMPTY_STAGE_RUNS });
   const [liveEvent, setLiveEvent] = useState<JobEvent | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [project, setProject] = useState<ProjectMeta>({ mode: 'autopilot', paused: false });
   const cancelledRef = useRef(false);
   // Per-instance suffix so multiple consumers of useProjectStream on the
   // same page don't collide on a single shared Supabase Realtime channel
@@ -112,6 +119,14 @@ export function useProjectStream(projectId: string): {
       if (cancelledRef.current) return;
       const rows = (body?.data?.stageRuns ?? []) as StageRun[];
       dispatch({ type: 'snapshot', rows });
+      // Snapshot also carries project mode + paused (added in the
+      // pipeline UX revamp). Coerce legacy mode values here so consumers
+      // can rely on the canonical {autopilot, manual} pair.
+      const proj = body?.data?.project as { mode?: string | null; paused?: boolean } | undefined;
+      const rawMode = proj?.mode;
+      const mode: 'autopilot' | 'manual' =
+        rawMode === 'manual' || rawMode === 'step-by-step' ? 'manual' : 'autopilot';
+      setProject({ mode, paused: Boolean(proj?.paused ?? false) });
     } catch {
       // ignored — caller can retry
     }
@@ -121,7 +136,10 @@ export function useProjectStream(projectId: string): {
     cancelledRef.current = false;
     const supabase = createClient();
 
-    // 1. Snapshot
+    // 1. Snapshot — refresh is async; setState only fires after the fetch
+    // resolves, so the lint warning about synchronous setState-in-effect
+    // doesn't actually apply here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
 
     // 2. Realtime
@@ -173,5 +191,5 @@ export function useProjectStream(projectId: string): {
     };
   }, [projectId, instanceId, refresh, isConnected]);
 
-  return { stageRuns: state.stageRuns, liveEvent, isConnected, refresh };
+  return { stageRuns: state.stageRuns, liveEvent, isConnected, project, refresh };
 }

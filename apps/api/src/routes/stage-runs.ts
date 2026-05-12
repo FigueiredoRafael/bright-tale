@@ -367,24 +367,153 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
         const { projectId } = request.params;
         const sb: Sb = createServiceClient();
 
-        const { data, error } = await sb
-          .from('stage_runs')
-          .select('*')
-          .eq('project_id', projectId)
-          .order('created_at', { ascending: false });
-        if (error) throw error;
+        const [stageRunsRes, projectRes] = await Promise.all([
+          sb
+            .from('stage_runs')
+            .select('*')
+            .eq('project_id', projectId)
+            .order('created_at', { ascending: false }),
+          sb
+            .from('projects')
+            .select('mode, paused')
+            .eq('id', projectId)
+            .maybeSingle(),
+        ]);
+        if (stageRunsRes.error) throw stageRunsRes.error;
 
         // De-dupe: latest Stage Run per Stage by created_at (already sorted desc).
         const seen = new Set<string>();
         const latest: StageRun[] = [];
-        for (const row of (data ?? []) as Record<string, unknown>[]) {
+        for (const row of (stageRunsRes.data ?? []) as Record<string, unknown>[]) {
           const stage = row.stage as string;
           if (seen.has(stage)) continue;
           seen.add(stage);
           latest.push(rowToStageRun(row));
         }
 
-        return reply.send({ data: { stageRuns: latest }, error: null });
+        const projectRow = projectRes.data as { mode?: string | null; paused?: boolean | null } | null;
+        return reply.send({
+          data: {
+            stageRuns: latest,
+            project: {
+              mode: projectRow?.mode ?? null,
+              paused: Boolean(projectRow?.paused ?? false),
+            },
+          },
+          error: null,
+        });
+      } catch (err) {
+        return sendError(reply, err);
+      }
+    },
+  );
+
+  /**
+   * GET /:projectId/stage-runs/:stageRunId/payload
+   *
+   * Resolves the Stage Run's `payload_ref` to a normalized summary the UI can
+   * render in the TerminalPanel. The body shape depends on `payload_ref.kind`.
+   *
+   *   brainstorm_draft  → { kind, ideas: [{id, title, isWinner}] }
+   *   research_session  → { kind, cardCount }
+   *   content_draft     → { kind, title, type, status }
+   *   publish_record    → { kind, publishedUrl }
+   *   <unknown>         → { kind, raw }
+   */
+  fastify.get<{ Params: { projectId: string; stageRunId: string } }>(
+    '/:projectId/stage-runs/:stageRunId/payload',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        const { projectId, stageRunId } = request.params;
+        const userId = (request as unknown as { userId?: string }).userId;
+        if (!userId) throw new ApiError(401, 'Unauthorized', 'UNAUTHORIZED');
+
+        const sb: Sb = createServiceClient();
+        await assertProjectOwner(projectId, userId, sb);
+
+        const { data: stageRun } = await sb
+          .from('stage_runs')
+          .select('id, project_id, stage, status, payload_ref')
+          .eq('id', stageRunId)
+          .maybeSingle();
+        if (!stageRun) throw new ApiError(404, 'Stage Run not found', 'NOT_FOUND');
+        if (stageRun.project_id !== projectId) {
+          throw new ApiError(404, 'Stage Run does not belong to this project', 'NOT_FOUND');
+        }
+
+        const ref = stageRun.payload_ref as { kind?: string; id?: string; published_url?: string } | null;
+        if (!ref?.kind || !ref.id) {
+          return reply.send({ data: { payload: null }, error: null });
+        }
+
+        let payload: Record<string, unknown> = { kind: ref.kind };
+
+        if (ref.kind === 'brainstorm_draft') {
+          const { data: winner } = await sb
+            .from('brainstorm_drafts')
+            .select('id, title, session_id')
+            .eq('id', ref.id)
+            .maybeSingle();
+          if (winner?.session_id) {
+            const { data: siblings } = await sb
+              .from('brainstorm_drafts')
+              .select('id, title, position')
+              .eq('session_id', winner.session_id)
+              .order('position', { ascending: true });
+            const winnerId = winner.id as string;
+            payload = {
+              kind: ref.kind,
+              ideas:
+                (siblings ?? []).map((s: Record<string, unknown>) => ({
+                  id: s.id as string,
+                  title: (s.title as string) ?? '(no title)',
+                  isWinner: s.id === winnerId,
+                })),
+            };
+          } else {
+            payload = {
+              kind: ref.kind,
+              ideas: [{ id: ref.id, title: (winner?.title as string) ?? '(unknown idea)', isWinner: true }],
+            };
+          }
+        } else if (ref.kind === 'research_session') {
+          const { data: rs } = await sb
+            .from('research_sessions')
+            .select('id, cards_json, level')
+            .eq('id', ref.id)
+            .maybeSingle();
+          const cards = (rs?.cards_json ?? {}) as Record<string, unknown>;
+          const cardCount =
+            (['sources', 'statistics', 'expert_quotes', 'counterarguments'] as const).reduce(
+              (n, k) => n + (Array.isArray(cards[k]) ? (cards[k] as unknown[]).length : 0),
+              0,
+            );
+          payload = { kind: ref.kind, cardCount, level: rs?.level ?? null };
+        } else if (ref.kind === 'content_draft') {
+          const { data: draft } = await sb
+            .from('content_drafts')
+            .select('id, title, type, status, published_url')
+            .eq('id', ref.id)
+            .maybeSingle();
+          payload = {
+            kind: ref.kind,
+            title: (draft?.title as string) ?? '(untitled)',
+            type: (draft?.type as string) ?? null,
+            status: (draft?.status as string) ?? null,
+            publishedUrl: (draft?.published_url as string) ?? null,
+          };
+        } else if (ref.kind === 'publish_record') {
+          payload = {
+            kind: ref.kind,
+            publishedUrl: (ref.published_url as string) ?? null,
+            wpPostId: ref.id,
+          };
+        } else {
+          payload = { kind: ref.kind, raw: ref };
+        }
+
+        return reply.send({ data: { payload }, error: null });
       } catch (err) {
         return sendError(reply, err);
       }
