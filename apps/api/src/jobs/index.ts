@@ -14,3 +14,4 @@ export { affiliateExpireReferrals } from './affiliate-expire-referrals.js';
 export { pipelineAdvance } from './pipeline-advance.js';
 export { pipelineBrainstormDispatch } from './pipeline-brainstorm-dispatch.js';
 export { pipelineResearchDispatch } from './pipeline-research-dispatch.js';
+export { pipelineDraftDispatch } from './pipeline-draft-dispatch.js';

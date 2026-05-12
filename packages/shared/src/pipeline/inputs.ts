@@ -113,6 +113,20 @@ export const researchInputSchema = z.object({
 });
 export type ResearchInput = z.infer<typeof researchInputSchema>;
 
+export const draftInputSchema = z.object({
+  // content format; required so the dispatcher knows which production agent to call
+  type: z.enum(['blog', 'video', 'shorts', 'podcast']),
+  // optional — dispatcher resolves these from prior stages if absent
+  personaId: z.string().optional(),
+  ideaId: z.string().optional(),
+  researchSessionId: z.string().optional(),
+  productionParams: z.record(z.string(), z.unknown()).optional(),
+  modelTier: z.string().optional(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
+});
+export type DraftInput = z.infer<typeof draftInputSchema>;
+
 /**
  * STAGE_INPUT_SCHEMAS maps every Stage to its Zod schema.
  * Stages not yet migrated map to `z.never()`; the orchestrator detects this
@@ -121,7 +135,7 @@ export type ResearchInput = z.infer<typeof researchInputSchema>;
 export const STAGE_INPUT_SCHEMAS: Record<Stage, z.ZodTypeAny> = {
   brainstorm: brainstormInputSchema,
   research: researchInputSchema,
-  draft: z.never(),
+  draft: draftInputSchema,
   review: z.never(),
   assets: z.never(),
   preview: z.never(),

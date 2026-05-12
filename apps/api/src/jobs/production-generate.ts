@@ -52,6 +52,8 @@ interface ProductionGenerateEvent {
     provider?: 'gemini' | 'openai' | 'anthropic' | 'ollama';
     model?: string;
     productionParams?: Record<string, unknown> | null;
+    /** Set when launched via the new Pipeline Orchestrator. */
+    stageRunId?: string;
   };
 }
 
@@ -62,7 +64,7 @@ export const productionGenerate = inngest.createFunction(
     triggers: [{ event: 'production/generate' }],
   },
   async ({ event, step }: { event: ProductionGenerateEvent; step: { run: (name: string, fn: () => Promise<unknown>) => Promise<unknown> } }) => {
-    const { draftId, orgId, userId, type, modelTier, provider, model, productionParams } = event.data;
+    const { draftId, orgId, userId, type, modelTier, provider, model, productionParams, stageRunId } = event.data;
     const sb = createServiceClient();
 
     // Load projectId from content_drafts
@@ -227,6 +229,25 @@ export const productionGenerate = inngest.createFunction(
       // review feedback as deliberate steps. The /produce and /review
       // routes own those stages.
       await emitJobEvent(draftId, 'production', 'completed', 'Canonical core gerado!', { draftId, type, stage: 'canonical-core' });
+
+      if (stageRunId) {
+        const now = new Date().toISOString();
+        await (sb.from('stage_runs') as unknown as {
+          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+        })
+          .update({
+            status: 'completed',
+            payload_ref: { kind: 'content_draft', id: draftId },
+            finished_at: now,
+            updated_at: now,
+          })
+          .eq('id', stageRunId);
+        await inngest.send({
+          name: 'pipeline/stage.run.finished',
+          data: { stageRunId, projectId },
+        });
+      }
+
       return { success: true, draftId };
     } catch (err) {
       if (err instanceof JobAborted) {
@@ -247,6 +268,25 @@ export const productionGenerate = inngest.createFunction(
         .update({ status: 'failed' })
         .eq('id', draftId);
       await emitJobEvent(draftId, 'production', 'failed', message.slice(0, 240), { error: rawMessage, provider, model });
+
+      if (stageRunId) {
+        const now = new Date().toISOString();
+        await (sb.from('stage_runs') as unknown as {
+          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+        })
+          .update({
+            status: 'failed',
+            error_message: message.slice(0, 500),
+            finished_at: now,
+            updated_at: now,
+          })
+          .eq('id', stageRunId);
+        await inngest.send({
+          name: 'pipeline/stage.run.finished',
+          data: { stageRunId, projectId },
+        });
+      }
+
       throw err;
     }
   },
