@@ -25,7 +25,7 @@ interface StageViewProps {
 }
 
 export function StageView({ projectId, stage }: StageViewProps) {
-  const { stageRuns, liveEvent, isConnected } = useProjectStream(projectId);
+  const { stageRuns, liveEvent, isConnected, refresh } = useProjectStream(projectId);
   const run = stageRuns[stage];
 
   return (
@@ -39,7 +39,7 @@ export function StageView({ projectId, stage }: StageViewProps) {
         {run ? <span>· attempt {run.attemptNo}</span> : null}
       </header>
 
-      {!run ? <FormForStage projectId={projectId} stage={stage} /> : null}
+      {!run ? <FormForStage projectId={projectId} stage={stage} onSubmitted={refresh} /> : null}
 
       {run && (run.status === 'queued' || run.status === 'running') ? (
         <ActivityPanel run={run} projectId={projectId} liveMessage={liveEvent?.message ?? null} />
@@ -56,9 +56,17 @@ export function StageView({ projectId, stage }: StageViewProps) {
   );
 }
 
-function FormForStage({ projectId, stage }: { projectId: string; stage: Stage }) {
+function FormForStage({
+  projectId,
+  stage,
+  onSubmitted,
+}: {
+  projectId: string;
+  stage: Stage;
+  onSubmitted: () => void;
+}) {
   if (stage === 'brainstorm') {
-    return <BrainstormForm projectId={projectId} />;
+    return <BrainstormForm projectId={projectId} onSubmitted={() => onSubmitted()} />;
   }
   return (
     <div className="rounded-md border p-4 text-sm text-muted-foreground" data-testid="stage-form-placeholder">

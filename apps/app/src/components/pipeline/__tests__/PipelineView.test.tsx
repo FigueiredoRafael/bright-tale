@@ -56,6 +56,7 @@ beforeEach(() => {
     },
     liveEvent: null,
     isConnected: false,
+    refresh: vi.fn(async () => undefined),
   });
 });
 
@@ -79,6 +80,7 @@ describe('<PipelineView variant="overview" />', () => {
       },
       liveEvent: null,
       isConnected: true,
+      refresh: vi.fn(async () => undefined),
     });
 
     render(<PipelineView projectId={PROJECT_ID} />);
@@ -110,6 +112,7 @@ describe('<PipelineView variant="overview" />', () => {
         createdAt: '2026-05-11T00:01:00Z',
       },
       isConnected: true,
+      refresh: vi.fn(async () => undefined),
     });
 
     render(<PipelineView projectId={PROJECT_ID} />);

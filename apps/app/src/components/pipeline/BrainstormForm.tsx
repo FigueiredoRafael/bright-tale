@@ -28,6 +28,7 @@ export function BrainstormForm({ projectId, onSubmitted }: BrainstormFormProps) 
   const [model, setModel] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
@@ -60,6 +61,7 @@ export function BrainstormForm({ projectId, onSubmitted }: BrainstormFormProps) 
         setError(body?.error?.message ?? 'Failed to start brainstorm');
         return;
       }
+      setSubmitted(true);
       onSubmitted?.(body.data.stageRun.id as string);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Network error');
@@ -161,13 +163,23 @@ export function BrainstormForm({ projectId, onSubmitted }: BrainstormFormProps) 
         </div>
       ) : null}
 
+      {submitted ? (
+        <div
+          className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900"
+          role="status"
+          data-testid="bs-submitted"
+        >
+          Stage Run created. Waiting for the orchestrator to pick it up…
+        </div>
+      ) : null}
+
       <button
         type="submit"
-        disabled={submitting}
+        disabled={submitting || submitted}
         className="rounded-md border bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground"
         data-testid="bs-submit"
       >
-        {submitting ? 'Starting…' : 'Start Brainstorm'}
+        {submitting ? 'Starting…' : submitted ? 'Started' : 'Start Brainstorm'}
       </button>
     </form>
   );

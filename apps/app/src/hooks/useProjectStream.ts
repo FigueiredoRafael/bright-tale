@@ -8,7 +8,7 @@
  *
  * Cleanup on unmount drops the channel via `supabase.removeChannel`.
  */
-import { useEffect, useId, useReducer, useState } from 'react';
+import { useCallback, useEffect, useId, useReducer, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { Stage, StageRun } from '@brighttale/shared/pipeline/inputs';
 
@@ -94,30 +94,35 @@ export function useProjectStream(projectId: string): {
   stageRuns: StageRunsByStage;
   liveEvent: JobEvent | null;
   isConnected: boolean;
+  refresh: () => Promise<void>;
 } {
   const [state, dispatch] = useReducer(reducer, { stageRuns: EMPTY_STAGE_RUNS });
   const [liveEvent, setLiveEvent] = useState<JobEvent | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const cancelledRef = useRef(false);
   // Per-instance suffix so multiple consumers of useProjectStream on the
   // same page don't collide on a single shared Supabase Realtime channel
   // (which throws "cannot add postgres_changes callbacks after subscribe()").
   const instanceId = useId();
 
+  const refresh = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/stages`);
+      const body = await res.json();
+      if (cancelledRef.current) return;
+      const rows = (body?.data?.stageRuns ?? []) as StageRun[];
+      dispatch({ type: 'snapshot', rows });
+    } catch {
+      // ignored — caller can retry
+    }
+  }, [projectId]);
+
   useEffect(() => {
-    let cancelled = false;
+    cancelledRef.current = false;
     const supabase = createClient();
 
     // 1. Snapshot
-    fetch(`/api/projects/${projectId}/stages`)
-      .then((res) => res.json())
-      .then((body) => {
-        if (cancelled) return;
-        const rows = (body?.data?.stageRuns ?? []) as StageRun[];
-        dispatch({ type: 'snapshot', rows });
-      })
-      .catch(() => {
-        // Snapshot failures are non-fatal — the stream will fill in.
-      });
+    void refresh();
 
     // 2. Realtime
     const channel = supabase
@@ -149,15 +154,24 @@ export function useProjectStream(projectId: string): {
         },
       )
       .subscribe((status: string) => {
-        if (cancelled) return;
+        if (cancelledRef.current) return;
         setIsConnected(status === 'SUBSCRIBED');
       });
 
+    // 3. Fallback polling — runs only when Realtime hasn't reached SUBSCRIBED
+    // (e.g. anon session + RLS not delivering rows). Cheap: snapshot call hits
+    // the API service_role client and bypasses RLS.
+    const pollId = window.setInterval(() => {
+      if (cancelledRef.current) return;
+      if (!isConnected) void refresh();
+    }, 4000);
+
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
+      window.clearInterval(pollId);
       supabase.removeChannel(channel);
     };
-  }, [projectId, instanceId]);
+  }, [projectId, instanceId, refresh, isConnected]);
 
-  return { stageRuns: state.stageRuns, liveEvent, isConnected };
+  return { stageRuns: state.stageRuns, liveEvent, isConnected, refresh };
 }

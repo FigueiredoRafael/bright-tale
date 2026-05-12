@@ -53,6 +53,7 @@ function streamWith(runs: Partial<Record<StageRun['stage'], StageRun | null>>): 
     },
     liveEvent: null,
     isConnected: true,
+    refresh: vi.fn(async () => undefined),
   });
 }
 
