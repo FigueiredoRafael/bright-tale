@@ -563,8 +563,45 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         .order('position', { ascending: true });
 
       let ideas: Array<Record<string, unknown>> = [];
+      let pickedDraftId: string | null = null;
       if (drafts && drafts.length > 0) {
         ideas = drafts as Array<Record<string, unknown>>;
+
+        // Resolve which brainstorm_draft was picked. Two signals:
+        //   1) Project's brainstorm Stage Run payload_ref → brainstorm_draft.id
+        //   2) Title match against idea_archives created from this session
+        // The Stage Run signal is the new pipeline source-of-truth; we keep
+        // the title-match fallback for projects that pre-date Stage Runs.
+        const projectId = (session as Record<string, unknown>).project_id as
+          | string
+          | null
+          | undefined;
+        if (projectId) {
+          const { data: srRow } = await sb
+            .from('stage_runs')
+            .select('payload_ref')
+            .eq('project_id', projectId)
+            .eq('stage', 'brainstorm')
+            .eq('status', 'completed')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const ref = srRow?.payload_ref as { kind?: string; id?: string } | null | undefined;
+          if (ref?.kind === 'brainstorm_draft' && ref.id) pickedDraftId = ref.id;
+        }
+        if (!pickedDraftId) {
+          const { data: archived } = await sb
+            .from('idea_archives')
+            .select('title')
+            .eq('brainstorm_session_id', id);
+          const archivedTitles = new Set(
+            ((archived ?? []) as Array<Record<string, unknown>>).map((a) => a.title as string),
+          );
+          const winner = (drafts as Array<Record<string, unknown>>).find((d) =>
+            archivedTitles.has(d.title as string),
+          );
+          if (winner) pickedDraftId = winner.id as string;
+        }
       } else {
         const { data: archived } = await sb
           .from('idea_archives')
@@ -574,7 +611,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         ideas = (archived ?? []) as Array<Record<string, unknown>>;
       }
 
-      return reply.send({ data: { session, ideas }, error: null });
+      return reply.send({ data: { session, ideas, pickedDraftId }, error: null });
     } catch (error) {
       return sendError(reply, error);
     }
