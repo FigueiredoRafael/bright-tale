@@ -1173,7 +1173,7 @@ export function BrainstormEngine({
 
               return (
                 <div
-                  key={idea.idea_id}
+                  key={ideaKey}
                   role="button"
                   tabIndex={0}
                   onClick={() => setSelectedIdeaId(ideaKey)}
