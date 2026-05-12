@@ -20,6 +20,7 @@ import {
 } from '@brighttale/shared/schemas/projects';
 import { bulkCreateSchema } from '@brighttale/shared/schemas/discovery';
 import type { Json } from '@brighttale/shared/types/database';
+import { isAutopilotMode, resumeProject } from '../lib/pipeline/orchestrator.js';
 
 export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
   /**
@@ -381,6 +382,19 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
 
       if (error) throw error;
 
+      // If the update flipped the project into an autopilot-eligible state
+      // (mode → autopilot/legacy-autopilot OR paused → false), re-evaluate
+      // the pipeline so the orchestrator picks up wherever it left off.
+      const becameAutopilot =
+        data.mode !== undefined &&
+        isAutopilotMode(data.mode as string | null) &&
+        !isAutopilotMode(existing.mode as string | null);
+      const becameUnpaused =
+        data.paused === false && existing.paused === true;
+      if (becameAutopilot || becameUnpaused) {
+        await resumeProject(id);
+      }
+
       return reply.send({ data: project, error: null });
     } catch (error) {
       return sendError(reply, error);
@@ -524,6 +538,19 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
         .single();
 
       if (error) throw error;
+
+      // If the update flipped the project into an autopilot-eligible state
+      // (mode → autopilot/legacy-autopilot OR paused → false), re-evaluate
+      // the pipeline so the orchestrator picks up wherever it left off.
+      const becameAutopilot =
+        data.mode !== undefined &&
+        isAutopilotMode(data.mode as string | null) &&
+        !isAutopilotMode(existing.mode as string | null);
+      const becameUnpaused =
+        data.paused === false && existing.paused === true;
+      if (becameAutopilot || becameUnpaused) {
+        await resumeProject(id);
+      }
 
       return reply.send({ data: project, error: null });
     } catch (error) {

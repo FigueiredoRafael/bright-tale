@@ -38,7 +38,7 @@ vi.mock('@/jobs/client', () => ({ inngest: { send: inngestSendMock } }));
 
 // ── Import under test (after mocks) ──────────────────────────────────────────
 
-import { requestStageRun, advanceAfter } from '@/lib/pipeline/orchestrator';
+import { requestStageRun, advanceAfter, resumeProject } from '@/lib/pipeline/orchestrator';
 
 const OWNER_ID = '00000000-0000-0000-0000-000000000001';
 const PROJECT_ID = '00000000-0000-0000-0000-0000000000aa';
@@ -504,5 +504,128 @@ describe('advanceAfter', () => {
     // Only the queued assets emits an event — the skipped review does not.
     expect(requestedEvents).toHaveLength(1);
     expect(requestedEvents[0].data.stage).toBe('assets');
+  });
+});
+
+// ─── resumeProject ───────────────────────────────────────────────────────────
+
+describe('resumeProject', () => {
+  function mockProject(mode: string, paused: boolean) {
+    return { data: { id: PROJECT_ID, mode, paused, autopilot_config_json: null }, error: null };
+  }
+
+  it('no-ops when the project is in manual mode', async () => {
+    mockChain.maybeSingle.mockResolvedValueOnce(mockProject('manual', false));
+    // No second query because we bail out before reading stage_runs.
+    await resumeProject(PROJECT_ID);
+    expect(mockChain.insert).not.toHaveBeenCalled();
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+
+  it('no-ops when the project is paused', async () => {
+    mockChain.maybeSingle.mockResolvedValueOnce(mockProject('autopilot', true));
+    await resumeProject(PROJECT_ID);
+    expect(mockChain.insert).not.toHaveBeenCalled();
+  });
+
+  it('starts brainstorm from scratch when no Stage Runs exist yet', async () => {
+    mockChain.maybeSingle.mockResolvedValueOnce(mockProject('autopilot', false));
+    // allRuns query — no rows.
+    (mockChain.order as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ data: [], error: null });
+
+    mockChain.single.mockResolvedValueOnce({
+      data: { id: 'sr-new', project_id: PROJECT_ID, stage: 'brainstorm', status: 'queued', attempt_no: 1 },
+      error: null,
+    });
+
+    await resumeProject(PROJECT_ID);
+
+    const inserted = (mockChain.insert as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+    expect(inserted.stage).toBe('brainstorm');
+    expect(inserted.attempt_no).toBe(1);
+
+    const requested = (inngestSendMock as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0])
+      .find((e) => e.name === 'pipeline/stage.requested');
+    expect(requested?.data.stage).toBe('brainstorm');
+  });
+
+  it('retries the aborted stage with attempt_no + 1 when the predecessor is completed', async () => {
+    mockChain.maybeSingle.mockResolvedValueOnce(mockProject('autopilot', false));
+    (mockChain.order as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      data: [
+        { stage: 'research', status: 'aborted', attempt_no: 1, created_at: '2026-05-11T11:00:00Z' },
+        { stage: 'brainstorm', status: 'completed', attempt_no: 1, created_at: '2026-05-11T10:00:00Z' },
+      ],
+      error: null,
+    });
+
+    mockChain.single.mockResolvedValueOnce({
+      data: { id: 'sr-retry', project_id: PROJECT_ID, stage: 'research', status: 'queued', attempt_no: 2 },
+      error: null,
+    });
+
+    await resumeProject(PROJECT_ID);
+
+    const inserted = (mockChain.insert as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+    expect(inserted.stage).toBe('research');
+    expect(inserted.attempt_no).toBe(2);
+    expect(inserted.status).toBe('queued');
+  });
+
+  it('no-ops when a stage already has a non-terminal run in flight', async () => {
+    mockChain.maybeSingle.mockResolvedValueOnce(mockProject('autopilot', false));
+    (mockChain.order as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      data: [
+        { stage: 'research', status: 'running', attempt_no: 1, created_at: '2026-05-11T11:00:00Z' },
+        { stage: 'brainstorm', status: 'completed', attempt_no: 1, created_at: '2026-05-11T10:00:00Z' },
+      ],
+      error: null,
+    });
+
+    await resumeProject(PROJECT_ID);
+
+    expect(mockChain.insert).not.toHaveBeenCalled();
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+
+  it('inserts publish as awaiting_user(manual_advance), no event emitted', async () => {
+    mockChain.maybeSingle.mockResolvedValueOnce(mockProject('autopilot', false));
+    (mockChain.order as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      data: [
+        { stage: 'preview', status: 'completed', attempt_no: 1, created_at: '2026-05-11T15:00:00Z' },
+        { stage: 'assets', status: 'completed', attempt_no: 1, created_at: '2026-05-11T14:00:00Z' },
+        { stage: 'review', status: 'completed', attempt_no: 1, created_at: '2026-05-11T13:00:00Z' },
+        { stage: 'draft', status: 'completed', attempt_no: 1, created_at: '2026-05-11T12:00:00Z' },
+        { stage: 'research', status: 'completed', attempt_no: 1, created_at: '2026-05-11T11:00:00Z' },
+        { stage: 'brainstorm', status: 'completed', attempt_no: 1, created_at: '2026-05-11T10:00:00Z' },
+      ],
+      error: null,
+    });
+
+    mockChain.single.mockResolvedValueOnce({
+      data: {
+        id: 'sr-pub',
+        project_id: PROJECT_ID,
+        stage: 'publish',
+        status: 'awaiting_user',
+        awaiting_reason: 'manual_advance',
+        attempt_no: 1,
+      },
+      error: null,
+    });
+
+    await resumeProject(PROJECT_ID);
+
+    const inserted = (mockChain.insert as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+    expect(inserted.stage).toBe('publish');
+    expect(inserted.status).toBe('awaiting_user');
+    expect(inserted.awaiting_reason).toBe('manual_advance');
+
+    // awaiting_user must NOT emit pipeline/stage.requested (user has to click Continue)
+    const requested = (inngestSendMock as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0])
+      .find((e) => e.name === 'pipeline/stage.requested');
+    expect(requested).toBeUndefined();
   });
 });

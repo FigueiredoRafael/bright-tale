@@ -222,6 +222,112 @@ export async function requestStageRun(
   return rowToStageRun(inserted);
 }
 
+// ─── Public: resumeProject ──────────────────────────────────────────────────
+
+/**
+ * Re-evaluate the pipeline state and (re-)start whichever Stage is next.
+ * Idempotent: a no-op when nothing should change. Called when the user
+ * toggles a Project from manual → autopilot or unpauses, so the autopilot
+ * picks up from wherever the pipeline left off.
+ *
+ * Walks the Stages in order:
+ *   - if any Stage has a non-terminal run already in flight → nothing to do
+ *   - the first Stage whose predecessor is `completed`/`skipped` and whose
+ *     own latest run is either missing or `failed`/`aborted` is the
+ *     resume point — insert a queued run and emit `pipeline/stage.requested`
+ *   - if all Stages have `completed`/`skipped` runs → pipeline finished
+ */
+export async function resumeProject(projectId: string): Promise<void> {
+  const sb: Sb = createServiceClient();
+
+  const { data: project } = await sb
+    .from('projects')
+    .select('id, mode, paused, autopilot_config_json')
+    .eq('id', projectId)
+    .maybeSingle();
+  if (!project) return;
+  if (!isAutopilotMode(project.mode as string | null | undefined)) return;
+  if (project.paused === true) return;
+
+  const { data: allRuns } = await sb
+    .from('stage_runs')
+    .select('stage, status, attempt_no, created_at')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false });
+
+  // Latest run per stage (descending created_at → first hit is newest).
+  const latestByStage = new Map<Stage, { status: string; attemptNo: number }>();
+  for (const row of (allRuns ?? []) as Array<Record<string, unknown>>) {
+    const stage = row.stage as Stage;
+    if (latestByStage.has(stage)) continue;
+    latestByStage.set(stage, {
+      status: row.status as string,
+      attemptNo: row.attempt_no as number,
+    });
+  }
+
+  const autopilotConfig = project.autopilot_config_json as
+    | Record<string, Record<string, unknown>>
+    | null
+    | undefined;
+
+  let predecessor: Stage | null = null;
+  for (const stage of STAGES) {
+    const latest = latestByStage.get(stage) ?? null;
+
+    // Already in flight here — nothing to do.
+    if (
+      latest &&
+      (latest.status === 'queued' || latest.status === 'running' || latest.status === 'awaiting_user')
+    ) {
+      return;
+    }
+
+    // Predecessor must be done; otherwise we cannot start this stage.
+    if (predecessor) {
+      const predLatest = latestByStage.get(predecessor);
+      if (!predLatest || (predLatest.status !== 'completed' && predLatest.status !== 'skipped')) {
+        return; // pipeline stalled before this stage
+      }
+    }
+
+    if (latest && (latest.status === 'completed' || latest.status === 'skipped')) {
+      predecessor = stage;
+      continue;
+    }
+
+    // Resume point: either no run yet, or last attempt was failed/aborted.
+    const attemptNo = latest ? latest.attemptNo + 1 : 1;
+    const nextRow: Record<string, unknown> = {
+      project_id: projectId,
+      stage,
+      attempt_no: attemptNo,
+    };
+    if (stage === 'publish') {
+      nextRow.status = 'awaiting_user';
+      nextRow.awaiting_reason = 'manual_advance';
+    } else {
+      nextRow.status = 'queued';
+      const stageDefaults = autopilotConfig?.[stage];
+      if (stageDefaults) nextRow.input_json = stageDefaults;
+    }
+
+    const inserted = await insertStageRun(sb, nextRow);
+    if (inserted?.id && nextRow.status === 'queued') {
+      await inngest.send({
+        name: 'pipeline/stage.requested',
+        data: {
+          stageRunId: inserted.id as string,
+          stage,
+          projectId,
+        },
+      });
+    }
+    return;
+  }
+  // All stages have completed/skipped runs — pipeline is finished.
+}
+
 // ─── Public: advanceAfter ───────────────────────────────────────────────────
 
 /**
