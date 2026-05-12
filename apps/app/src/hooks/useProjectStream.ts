@@ -176,12 +176,14 @@ export function useProjectStream(projectId: string): {
         setIsConnected(status === 'SUBSCRIBED');
       });
 
-    // 3. Fallback polling — runs only when Realtime hasn't reached SUBSCRIBED
-    // (e.g. anon session + RLS not delivering rows). Cheap: snapshot call hits
-    // the API service_role client and bypasses RLS.
+    // 3. Periodic snapshot poll. Runs even when Realtime is SUBSCRIBED
+    // because in many setups (anon session + RLS) the channel reaches
+    // SUBSCRIBED but never delivers any rows. The snapshot endpoint goes
+    // through the API's service_role client and bypasses RLS, so it's the
+    // reliable source of truth.
     const pollId = window.setInterval(() => {
       if (cancelledRef.current) return;
-      if (!isConnected) void refresh();
+      void refresh();
     }, 4000);
 
     return () => {
@@ -189,7 +191,7 @@ export function useProjectStream(projectId: string): {
       window.clearInterval(pollId);
       supabase.removeChannel(channel);
     };
-  }, [projectId, instanceId, refresh, isConnected]);
+  }, [projectId, instanceId, refresh]);
 
   return { stageRuns: state.stageRuns, liveEvent, isConnected, project, refresh };
 }

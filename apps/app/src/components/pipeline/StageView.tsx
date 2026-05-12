@@ -165,11 +165,16 @@ export function StageView({ projectId, stage }: StageViewProps) {
       {!run ? <FormForStage projectId={projectId} stage={stage} onSubmitted={refresh} /> : null}
 
       {run && (run.status === 'queued' || run.status === 'running') ? (
-        <ActivityPanel run={run} projectId={projectId} liveMessage={liveEvent?.message ?? null} />
+        <ActivityPanel
+          run={run}
+          projectId={projectId}
+          liveMessage={liveEvent?.message ?? null}
+          onMutated={refresh}
+        />
       ) : null}
 
       {run && run.status === 'awaiting_user' ? (
-        <AwaitingUserPanel run={run} projectId={projectId} />
+        <AwaitingUserPanel run={run} projectId={projectId} onMutated={refresh} />
       ) : null}
 
       {run && (run.status === 'completed' || run.status === 'failed' || run.status === 'aborted' || run.status === 'skipped') ? (
@@ -227,21 +232,24 @@ function ActivityPanel({
   run,
   projectId,
   liveMessage,
+  onMutated,
 }: {
   run: StageRun;
   projectId: string;
   liveMessage: string | null;
+  onMutated: () => Promise<void>;
 }) {
   const [aborting, setAborting] = useState(false);
 
   async function abort(): Promise<void> {
     setAborting(true);
     try {
-      await fetch(`/api/projects/${projectId}/stage-runs/${run.id}`, {
+      const res = await fetch(`/api/projects/${projectId}/stage-runs/${run.id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action: 'abort' }),
       });
+      if (res.ok) await onMutated();
     } finally {
       setAborting(false);
     }
@@ -273,13 +281,21 @@ function ActivityPanel({
   );
 }
 
-function AwaitingUserPanel({ run, projectId }: { run: StageRun; projectId: string }) {
+function AwaitingUserPanel({
+  run,
+  projectId,
+  onMutated,
+}: {
+  run: StageRun;
+  projectId: string;
+  onMutated: () => Promise<void>;
+}) {
   const reason = run.awaitingReason;
   if (reason === 'manual_advance') {
-    return <ManualAdvancePanel run={run} projectId={projectId} />;
+    return <ManualAdvancePanel run={run} projectId={projectId} onMutated={onMutated} />;
   }
   if (reason === 'manual_paste') {
-    return <ManualPastePanel run={run} projectId={projectId} />;
+    return <ManualPastePanel run={run} projectId={projectId} onMutated={onMutated} />;
   }
   return (
     <div className="rounded-md border p-3 text-sm" data-testid="awaiting-unknown">
@@ -288,15 +304,24 @@ function AwaitingUserPanel({ run, projectId }: { run: StageRun; projectId: strin
   );
 }
 
-function ManualAdvancePanel({ run, projectId }: { run: StageRun; projectId: string }) {
+function ManualAdvancePanel({
+  run,
+  projectId,
+  onMutated,
+}: {
+  run: StageRun;
+  projectId: string;
+  onMutated: () => Promise<void>;
+}) {
   const [busy, setBusy] = useState(false);
 
   async function cont(): Promise<void> {
     setBusy(true);
     try {
-      await fetch(`/api/projects/${projectId}/stage-runs/${run.id}/continue`, {
+      const res = await fetch(`/api/projects/${projectId}/stage-runs/${run.id}/continue`, {
         method: 'POST',
       });
+      if (res.ok) await onMutated();
     } finally {
       setBusy(false);
     }
@@ -319,7 +344,15 @@ function ManualAdvancePanel({ run, projectId }: { run: StageRun; projectId: stri
   );
 }
 
-function ManualPastePanel({ run, projectId }: { run: StageRun; projectId: string }) {
+function ManualPastePanel({
+  run,
+  projectId,
+  onMutated,
+}: {
+  run: StageRun;
+  projectId: string;
+  onMutated: () => Promise<void>;
+}) {
   const [output, setOutput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -340,6 +373,8 @@ function ManualPastePanel({ run, projectId }: { run: StageRun; projectId: string
       const body = await res.json();
       if (!res.ok || body?.error) {
         setError(body?.error?.message ?? 'Failed to submit manual output');
+      } else {
+        await onMutated();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Network error');
