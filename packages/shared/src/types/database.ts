@@ -2539,6 +2539,7 @@ export type Database = {
           created_at: string
           current_stage: string
           id: string
+          migrated_to_stage_runs_at: string | null
           mode: string | null
           org_id: string | null
           paused: boolean
@@ -2560,6 +2561,7 @@ export type Database = {
           created_at?: string
           current_stage: string
           id?: string
+          migrated_to_stage_runs_at?: string | null
           mode?: string | null
           org_id?: string | null
           paused?: boolean
@@ -2581,6 +2583,7 @@ export type Database = {
           created_at?: string
           current_stage?: string
           id?: string
+          migrated_to_stage_runs_at?: string | null
           mode?: string | null
           org_id?: string | null
           paused?: boolean
