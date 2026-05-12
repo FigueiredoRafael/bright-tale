@@ -113,6 +113,20 @@ export const researchInputSchema = z.object({
 });
 export type ResearchInput = z.infer<typeof researchInputSchema>;
 
+export const previewInputSchema = z.object({
+  provider: z.string().optional(),
+  model: z.string().optional(),
+});
+export type PreviewInput = z.infer<typeof previewInputSchema>;
+
+export const publishInputSchema = z.object({
+  // optional override target for the WordPress publish (defaults to the channel's configured site)
+  destinationId: z.string().optional(),
+  status: z.enum(['publish', 'draft', 'pending', 'future']).optional(),
+  scheduledAt: z.string().datetime().optional(),
+});
+export type PublishInput = z.infer<typeof publishInputSchema>;
+
 export const assetsInputSchema = z.object({
   // `skip` is a special value handled by advanceAfter (shouldSkip); when present
   // the orchestrator inserts a `skipped` Stage Run and never invokes the dispatcher
@@ -158,8 +172,8 @@ export const STAGE_INPUT_SCHEMAS: Record<Stage, z.ZodTypeAny> = {
   draft: draftInputSchema,
   review: reviewInputSchema,
   assets: assetsInputSchema,
-  preview: z.never(),
-  publish: z.never(),
+  preview: previewInputSchema,
+  publish: publishInputSchema,
 };
 
 export function isStageMigrated(stage: Stage): boolean {

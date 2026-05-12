@@ -28,13 +28,26 @@ vi.mock('@/lib/pipeline/orchestrator', async () => {
 
 // Snapshot endpoint reads stage_runs through supabase directly. Provide a chain.
 const sbChain: Record<string, any> = {};
-['from', 'select', 'eq', 'order'].forEach((m) => {
+['from', 'select', 'eq', 'order', 'update'].forEach((m) => {
   sbChain[m] = vi.fn().mockReturnValue(sbChain);
 });
+sbChain.maybeSingle = vi.fn();
 sbChain.then = undefined; // not a thenable except via terminal ops
 
 vi.mock('@/lib/supabase', () => ({
   createServiceClient: () => sbChain,
+}));
+
+// Stub assertProjectOwner so route tests don't have to mock projects + channels.
+const { assertProjectOwnerMock } = vi.hoisted(() => ({ assertProjectOwnerMock: vi.fn(async () => undefined) }));
+vi.mock('@/lib/projects/ownership', () => ({
+  assertProjectOwner: assertProjectOwnerMock,
+}));
+
+// Stub inngest so Continue endpoint can dispatch without a real client.
+const { inngestSendMock } = vi.hoisted(() => ({ inngestSendMock: vi.fn(async () => ({ ids: ['evt-1'] })) }));
+vi.mock('@/jobs/client', () => ({
+  inngest: { send: inngestSendMock },
 }));
 
 vi.mock('@/middleware/authenticate', () => ({
@@ -65,9 +78,11 @@ beforeEach(async () => {
   process.env.INTERNAL_API_KEY = 'test-key';
   vi.clearAllMocks();
   // Reset chain methods (preserve self-return semantics)
-  ['from', 'select', 'eq', 'order'].forEach((m) => {
+  ['from', 'select', 'eq', 'order', 'update'].forEach((m) => {
     sbChain[m] = vi.fn().mockReturnValue(sbChain);
   });
+  sbChain.maybeSingle = vi.fn();
+  assertProjectOwnerMock.mockResolvedValue(undefined);
 
   app = Fastify({ logger: false });
   await app.register(stageRunsRoutes, { prefix: '/projects' });
@@ -288,5 +303,85 @@ describe('GET /projects/:projectId/stages', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json().data.stageRuns).toEqual([]);
+  });
+});
+
+// ─── POST /:projectId/stage-runs/:stageRunId/continue ────────────────────────
+
+describe('POST /projects/:projectId/stage-runs/:stageRunId/continue', () => {
+  it('flips awaiting_user → queued and emits pipeline/stage.requested', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: {
+        id: 'sr-pub',
+        project_id: PROJECT_ID,
+        stage: 'publish',
+        status: 'awaiting_user',
+        awaiting_reason: 'manual_advance',
+      },
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-pub/continue`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.error).toBeNull();
+    expect(body.data.stageRunId).toBe('sr-pub');
+    expect(body.data.status).toBe('queued');
+    expect(body.data.stage).toBe('publish');
+
+    expect(inngestSendMock).toHaveBeenCalledTimes(1);
+    const event = (inngestSendMock as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(event.name).toBe('pipeline/stage.requested');
+    expect(event.data.stageRunId).toBe('sr-pub');
+    expect(event.data.stage).toBe('publish');
+  });
+
+  it('returns 409 INVALID_STATUS when Stage Run is not awaiting_user', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { id: 'sr-pub', project_id: PROJECT_ID, stage: 'publish', status: 'running' },
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-pub/continue`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('INVALID_STATUS');
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the Stage Run is not found', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({ data: null, error: null });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-missing/continue`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.code).toBe('NOT_FOUND');
+  });
+
+  it('returns 403 when caller does not own the project', async () => {
+    const { ApiError } = await import('@/lib/api/errors');
+    assertProjectOwnerMock.mockRejectedValueOnce(new ApiError(403, 'Forbidden', 'FORBIDDEN'));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-pub/continue`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('FORBIDDEN');
   });
 });

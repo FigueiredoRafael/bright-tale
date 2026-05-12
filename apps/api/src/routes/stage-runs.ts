@@ -18,6 +18,8 @@ import { authenticate } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
+import { assertProjectOwner } from '../lib/projects/ownership.js';
+import { inngest } from '../jobs/client.js';
 import {
   requestStageRun,
   StageNotMigratedError,
@@ -83,6 +85,77 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
       } catch (err) {
         const translated = translateOrchestratorError(err);
         return sendError(reply, translated ?? err);
+      }
+    },
+  );
+
+  /**
+   * POST /:projectId/stage-runs/:stageRunId/continue
+   *
+   * Flips an `awaiting_user` Stage Run into `queued` and emits
+   * `pipeline/stage.requested` so the matching dispatcher picks it up.
+   * Currently only Publish creates `awaiting_user(manual_advance)` rows
+   * (per ADR-0004), but the endpoint is stage-agnostic so future
+   * manual_paste flows can use it too.
+   */
+  fastify.post<{ Params: { projectId: string; stageRunId: string } }>(
+    '/:projectId/stage-runs/:stageRunId/continue',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        const { projectId, stageRunId } = request.params;
+        const userId = (request as unknown as { userId?: string }).userId;
+        if (!userId) throw new ApiError(401, 'Unauthorized', 'UNAUTHORIZED');
+
+        const sb = createServiceClient();
+        await assertProjectOwner(projectId, userId, sb);
+
+        const { data: stageRun } = await (sb.from('stage_runs') as unknown as {
+          select: (cols: string) => {
+            eq: (col: string, val: string) => {
+              maybeSingle: () => Promise<{ data: Record<string, unknown> | null; error: unknown }>;
+            };
+          };
+        })
+          .select('id, project_id, stage, status, awaiting_reason')
+          .eq('id', stageRunId)
+          .maybeSingle();
+        if (!stageRun) throw new ApiError(404, 'Stage Run not found', 'NOT_FOUND');
+        if (stageRun.project_id !== projectId) {
+          throw new ApiError(404, 'Stage Run does not belong to this project', 'NOT_FOUND');
+        }
+        if (stageRun.status !== 'awaiting_user') {
+          throw new ApiError(
+            409,
+            `Stage Run is not awaiting_user (status=${stageRun.status})`,
+            'INVALID_STATUS',
+          );
+        }
+
+        const now = new Date().toISOString();
+        await (sb.from('stage_runs') as unknown as {
+          update: (row: Record<string, unknown>) => {
+            eq: (col: string, val: string) => Promise<unknown>;
+          };
+        })
+          .update({ status: 'queued', awaiting_reason: null, updated_at: now })
+          .eq('id', stageRunId);
+
+        await inngest.send({
+          name: 'pipeline/stage.requested',
+          data: {
+            stageRunId,
+            stage: stageRun.stage as Stage,
+            projectId,
+          },
+        });
+
+        return reply.send({
+          data: { stageRunId, status: 'queued', stage: stageRun.stage },
+          error: null,
+        });
+      } catch (err) {
+        return sendError(reply, err);
       }
     },
   );
