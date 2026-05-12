@@ -3,16 +3,24 @@
 /**
  * <PipelineView> — read-only mirror of a Project's Stage Runs.
  *
- * variant="overview"  renders all 7 stages side-by-side as compact cards.
- * variant="supervised" renders the single Stage's detail view (uses
- *   <StageView>, which lands with Slice 5 / #13 — until then this variant
- *   falls through to a "not yet implemented" note so the dashboard
- *   navigation can still cross-link).
+ * variant="overview"   renders all 7 stages side-by-side as compact cards.
+ * variant="supervised" renders the single Stage's detail view (<StageView/>).
  *
  * Subscribes to Stage Run + job_events changes via useProjectStream.
  */
 import { useRouter } from 'next/navigation';
-import { STAGES, type Stage } from '@brighttale/shared/pipeline/inputs';
+import {
+  Ban,
+  CheckCircle2,
+  Clock,
+  Hourglass,
+  Loader2,
+  Lock,
+  Play,
+  SkipForward,
+  XCircle,
+} from 'lucide-react';
+import { STAGES, type Stage, type StageRun, type StageRunStatus } from '@brighttale/shared/pipeline/inputs';
 import { useProjectStream } from '@/hooks/useProjectStream';
 import { cn } from '@/lib/utils';
 import { StageView } from './StageView';
@@ -37,24 +45,94 @@ const STAGE_LABELS: Record<Stage, string> = {
   publish: 'Publish',
 };
 
-const STATUS_BADGE: Record<string, string> = {
-  queued: 'bg-slate-200 text-slate-700',
-  running: 'bg-blue-200 text-blue-800 animate-pulse',
-  awaiting_user: 'bg-amber-200 text-amber-900',
-  completed: 'bg-emerald-200 text-emerald-800',
-  failed: 'bg-rose-200 text-rose-800',
-  aborted: 'bg-zinc-300 text-zinc-700',
-  skipped: 'bg-slate-100 text-slate-500',
-};
+/**
+ * The computed "gate" of a stage in the overview. Combines:
+ *   - the Stage Run Status (when one exists)
+ *   - whether the predecessor stage has completed (for stages with no run yet)
+ *
+ * locked   the predecessor hasn't completed yet — card is greyed out
+ * ready    no Stage Run yet, but the predecessor is done — user can start it
+ * queued | running | awaiting_user | completed | failed | aborted | skipped
+ *          mirror StageRunStatus directly
+ */
+type StageGate =
+  | 'locked'
+  | 'ready'
+  | StageRunStatus;
 
-const STATUS_LABEL: Record<string, string> = {
-  queued: 'Queued',
-  running: 'Running',
-  awaiting_user: 'Awaiting',
-  completed: 'Done',
-  failed: 'Failed',
-  aborted: 'Aborted',
-  skipped: 'Skipped',
+function computeStageGate(stage: Stage, runs: Record<Stage, StageRun | null>): StageGate {
+  const run = runs[stage];
+  if (run) return run.status;
+  // No run yet — check predecessor.
+  const idx = STAGES.indexOf(stage);
+  if (idx === 0) return 'ready'; // first stage has no predecessor
+  const predecessor = STAGES[idx - 1];
+  const predecessorRun = runs[predecessor];
+  if (predecessorRun?.status === 'completed' || predecessorRun?.status === 'skipped') {
+    return 'ready';
+  }
+  return 'locked';
+}
+
+interface GateMeta {
+  Icon: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+  iconClass: string;
+  cardClass: string;
+  /** Optional short label rendered next to the icon when the icon alone
+   *  isn't enough to disambiguate (e.g. awaiting_user → reason). */
+  label?: string;
+  /** Whether the icon should spin. */
+  spin?: boolean;
+}
+
+const GATE_META: Record<StageGate, GateMeta> = {
+  locked: {
+    Icon: Lock,
+    iconClass: 'text-slate-400',
+    cardClass: 'border-dashed opacity-60',
+  },
+  ready: {
+    Icon: Play,
+    iconClass: 'text-blue-500',
+    cardClass: 'border-blue-300',
+  },
+  queued: {
+    Icon: Clock,
+    iconClass: 'text-slate-500',
+    cardClass: '',
+  },
+  running: {
+    Icon: Loader2,
+    iconClass: 'text-blue-500',
+    cardClass: 'border-blue-400',
+    spin: true,
+  },
+  awaiting_user: {
+    Icon: Hourglass,
+    iconClass: 'text-amber-500',
+    cardClass: 'border-amber-300',
+    label: 'You',
+  },
+  completed: {
+    Icon: CheckCircle2,
+    iconClass: 'text-emerald-500',
+    cardClass: 'border-emerald-300',
+  },
+  failed: {
+    Icon: XCircle,
+    iconClass: 'text-rose-500',
+    cardClass: 'border-rose-300',
+  },
+  aborted: {
+    Icon: Ban,
+    iconClass: 'text-zinc-500',
+    cardClass: 'border-zinc-300',
+  },
+  skipped: {
+    Icon: SkipForward,
+    iconClass: 'text-slate-400',
+    cardClass: 'border-dashed',
+  },
 };
 
 export function PipelineView({
@@ -95,41 +173,48 @@ export function PipelineView({
         {liveEvent ? (
           <span className="truncate">{liveEvent.message}</span>
         ) : (
-          <span>No live activity</span>
+          <span>{isConnected ? 'Idle' : 'Connecting…'}</span>
         )}
       </div>
       <ol className="flex flex-wrap gap-2">
         {STAGES.map((s) => {
           const run = stageRuns[s];
-          const status = run?.status ?? 'idle';
+          const gate = computeStageGate(s, stageRuns);
+          const meta = GATE_META[gate];
+          const isLocked = gate === 'locked';
           return (
             <li key={s}>
               <button
                 type="button"
                 onClick={() => handleClick(s)}
-                className="w-32 rounded-md border bg-card p-2 text-left transition hover:shadow"
+                disabled={isLocked}
+                className={cn(
+                  'flex w-32 flex-col items-start gap-1 rounded-md border bg-card p-2 text-left transition',
+                  isLocked ? 'cursor-not-allowed' : 'hover:shadow',
+                  meta.cardClass,
+                )}
                 data-testid={`stage-card-${s}`}
                 data-stage={s}
-                data-status={status}
+                data-status={gate}
+                aria-label={`${STAGE_LABELS[s]} — ${gate}`}
               >
-                <div className="text-xs font-medium">{STAGE_LABELS[s]}</div>
-                <div
-                  className={cn(
-                    'mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium',
-                    STATUS_BADGE[status] ?? 'bg-slate-100 text-slate-500',
-                  )}
-                >
-                  {STATUS_LABEL[status] ?? '—'}
+                <div className="flex w-full items-center justify-between">
+                  <span className="text-xs font-medium">{STAGE_LABELS[s]}</span>
+                  <meta.Icon
+                    className={cn('h-4 w-4 shrink-0', meta.iconClass, meta.spin && 'animate-spin')}
+                    aria-hidden
+                  />
                 </div>
-                {typeof run?.attemptNo === 'number' && run.attemptNo > 1 ? (
-                  <div className="mt-1 text-[10px] text-muted-foreground">
-                    Attempt {run.attemptNo}
-                  </div>
+                {meta.label ? (
+                  <span className="text-[10px] font-medium text-muted-foreground">{meta.label}</span>
                 ) : null}
-                {run?.updatedAt ? (
-                  <div className="mt-0.5 text-[10px] text-muted-foreground">
+                {typeof run?.attemptNo === 'number' && run.attemptNo > 1 ? (
+                  <span className="text-[10px] text-muted-foreground">Attempt {run.attemptNo}</span>
+                ) : null}
+                {run?.updatedAt && (gate === 'completed' || gate === 'failed' || gate === 'aborted' || gate === 'skipped') ? (
+                  <span className="text-[10px] text-muted-foreground">
                     {new Date(run.updatedAt).toLocaleTimeString()}
-                  </div>
+                  </span>
                 ) : null}
               </button>
             </li>
