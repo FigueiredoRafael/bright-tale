@@ -39,6 +39,7 @@ import {
 import { useProjectStream } from '@/hooks/useProjectStream';
 import { BrainstormForm } from './BrainstormForm';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 interface StageViewProps {
   projectId: string;
@@ -821,9 +822,29 @@ function ReRunLink({
       const res = await fetch(`/api/projects/${projectId}/stage-runs`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ stage: run.stage, input: run.inputJson ?? {} }),
+        body: JSON.stringify({
+          stage: run.stage,
+          // The orchestrator validates each stage's input against a Zod schema
+          // (e.g. research requires `level`). When the prior run carried no
+          // input_json — common for autopilot runs that took advanceAfter's
+          // empty defaults — fall back to the per-stage default so the schema
+          // accepts the re-run instead of 400-ing on missing fields.
+          input:
+            run.inputJson && Object.keys(run.inputJson as Record<string, unknown>).length > 0
+              ? run.inputJson
+              : defaultInputForStage(run.stage),
+        }),
       });
-      if (res.ok) await onMutated();
+      if (res.ok) {
+        await onMutated();
+      } else {
+        const body = (await res.json().catch(() => null)) as
+          | { error?: { message?: string; code?: string } }
+          | null;
+        toast.error(
+          body?.error?.message ?? `Failed to re-run ${run.stage} (${res.status})`,
+        );
+      }
     } finally {
       setBusy(false);
     }
