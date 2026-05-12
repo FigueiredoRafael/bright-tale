@@ -234,6 +234,18 @@ export const researchGenerate = inngest.createFunction(
         // research_sessions.status does not support 'paused' status yet,
         // so we only emit the abort event (no database update)
         await emitJobEvent(sessionId, 'research', 'aborted', 'Sessão cancelada pelo usuário');
+        if (stageRunId) {
+          const now = new Date().toISOString();
+          await (sb.from('stage_runs') as unknown as {
+            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+          })
+            .update({ status: 'aborted', finished_at: now, updated_at: now })
+            .eq('id', stageRunId);
+          await inngest.send({
+            name: 'pipeline/stage.run.finished',
+            data: { stageRunId, projectId },
+          });
+        }
         return;
       }
 

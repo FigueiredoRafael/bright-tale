@@ -246,6 +246,18 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
           })
           .eq('id', stageRunId);
 
+        // Also raise the legacy `projects.abort_requested_at` flag so any
+        // long-running worker (brainstorm-generate, research-generate,
+        // production-generate) bails on its next assertNotAborted checkpoint.
+        // Saves credits + stops the LLM from racing past the user's abort.
+        await (sb.from('projects') as unknown as {
+          update: (row: Record<string, unknown>) => {
+            eq: (col: string, val: string) => Promise<unknown>;
+          };
+        })
+          .update({ abort_requested_at: now })
+          .eq('id', projectId);
+
         await inngest.send({
           name: 'pipeline/stage.run.finished',
           data: { stageRunId, projectId },

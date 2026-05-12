@@ -163,6 +163,15 @@ async function insertStageRun(sb: Sb, row: Record<string, unknown>): Promise<Rec
   return data as Record<string, unknown>;
 }
 
+/**
+ * Clear the legacy `projects.abort_requested_at` flag so the next worker
+ * doesn't bail on a stale abort signal from a previous attempt. Called
+ * by every code path that starts a fresh Stage Run.
+ */
+async function clearAbortFlag(sb: Sb, projectId: string): Promise<void> {
+  await sb.from('projects').update({ abort_requested_at: null }).eq('id', projectId);
+}
+
 // ─── Public: requestStageRun ────────────────────────────────────────────────
 
 export async function requestStageRun(
@@ -197,7 +206,9 @@ export async function requestStageRun(
   // 6. Determine attempt_no (1 if no prior attempt; previous + 1 otherwise)
   const attemptNo = (await latestAttemptNo(sb, projectId, stage)) + 1;
 
-  // 7. Insert
+  // 7. Insert. Clear the abort flag first so the new attempt isn't killed
+  // by a stale abort_requested_at left over from the prior run.
+  await clearAbortFlag(sb, projectId);
   const inserted = await insertStageRun(sb, {
     project_id: projectId,
     stage,
@@ -312,6 +323,7 @@ export async function resumeProject(projectId: string): Promise<void> {
       if (stageDefaults) nextRow.input_json = stageDefaults;
     }
 
+    await clearAbortFlag(sb, projectId);
     const inserted = await insertStageRun(sb, nextRow);
     if (inserted?.id && nextRow.status === 'queued') {
       await inngest.send({
@@ -410,6 +422,7 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
     if (stageDefaults) nextRow.input_json = stageDefaults;
   }
 
+  await clearAbortFlag(sb, projectId);
   const inserted = await insertStageRun(sb, nextRow);
 
   // Only `queued` Stage Runs need a dispatcher event. `awaiting_user` (publish)

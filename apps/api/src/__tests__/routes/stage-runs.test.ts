@@ -225,6 +225,11 @@ describe('GET /projects/:projectId/stages', () => {
   it('returns the latest Stage Run per Stage', async () => {
     // Snapshot endpoint queries `stage_runs` ordered by created_at desc.
     // The route is responsible for de-duping to one per stage.
+    // It ALSO fetches the project's mode/paused via maybeSingle.
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { mode: 'autopilot', paused: false },
+      error: null,
+    });
     sbChain.order = vi.fn().mockResolvedValueOnce({
       data: [
         {
@@ -293,6 +298,10 @@ describe('GET /projects/:projectId/stages', () => {
   });
 
   it('returns an empty array when the project has no Stage Runs yet', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { mode: 'autopilot', paused: false },
+      error: null,
+    });
     sbChain.order = vi.fn().mockResolvedValueOnce({ data: [], error: null });
 
     const res = await app.inject({

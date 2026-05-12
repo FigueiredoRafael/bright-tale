@@ -253,6 +253,18 @@ export const productionGenerate = inngest.createFunction(
       if (err instanceof JobAborted) {
         await sb.from('content_drafts').update({ status: 'paused' }).eq('id', draftId);
         await emitJobEvent(draftId, 'production', 'aborted', 'Sessão cancelada pelo usuário');
+        if (stageRunId) {
+          const now = new Date().toISOString();
+          await (sb.from('stage_runs') as unknown as {
+            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+          })
+            .update({ status: 'aborted', finished_at: now, updated_at: now })
+            .eq('id', stageRunId);
+          await inngest.send({
+            name: 'pipeline/stage.run.finished',
+            data: { stageRunId, projectId },
+          });
+        }
         return;
       }
 

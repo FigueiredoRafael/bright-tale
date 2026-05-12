@@ -23,7 +23,7 @@ interface MockChain {
 }
 
 const mockChain: MockChain = {} as MockChain;
-['from', 'select', 'insert', 'eq', 'in', 'order', 'limit'].forEach((m) => {
+['from', 'select', 'insert', 'update', 'eq', 'in', 'order', 'limit'].forEach((m) => {
   (mockChain as unknown as Record<string, unknown>)[m] = vi.fn().mockReturnValue(mockChain);
 });
 mockChain.maybeSingle = vi.fn();
@@ -46,7 +46,7 @@ const CHANNEL_ID = '00000000-0000-0000-0000-0000000000bb';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  ['from', 'select', 'insert', 'eq', 'in', 'order', 'limit'].forEach((m) => {
+  ['from', 'select', 'insert', 'update', 'eq', 'in', 'order', 'limit'].forEach((m) => {
     (mockChain as unknown as Record<string, ReturnType<typeof vi.fn>>)[m] = vi.fn().mockReturnValue(mockChain);
   });
   // Reset terminal mocks so per-test `mockResolvedValueOnce` queues start empty.
