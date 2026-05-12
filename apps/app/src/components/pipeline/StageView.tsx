@@ -434,6 +434,34 @@ function TerminalPanel({
     TERMINAL_STATUS_META[run.status as keyof typeof TERMINAL_STATUS_META] ??
     TERMINAL_STATUS_META.completed;
   const Icon = statusMeta.Icon;
+  const [payload, setPayload] = useState<PayloadResponse['payload'] | null>(null);
+  const [payloadLoading, setPayloadLoading] = useState<boolean>(Boolean(run.payloadRef));
+
+  useEffect(() => {
+    if (!run.payloadRef) {
+      setPayloadLoading(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/stage-runs/${run.id}/payload`);
+        const body = await res.json();
+        if (cancelled) return;
+        setPayload(body?.data?.payload ?? null);
+      } catch {
+        if (!cancelled) setPayload(null);
+      } finally {
+        if (!cancelled) setPayloadLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, run.id, run.payloadRef]);
+
+  const engineUrl =
+    (payload as { engineUrl?: string | null } | null)?.engineUrl ?? `/projects/${projectId}?stage=${run.stage}`;
 
   return (
     <div className="rounded-md border p-3" data-testid="terminal-panel">
@@ -446,7 +474,11 @@ function TerminalPanel({
           {run.errorMessage}
         </div>
       ) : null}
-      <PayloadSummary projectId={projectId} stageRunId={run.id} run={run} />
+      <PayloadSummary
+        run={run}
+        payload={payload}
+        loading={payloadLoading}
+      />
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <PrimaryCta
           run={run}
@@ -457,7 +489,9 @@ function TerminalPanel({
           onMutated={onMutated}
         />
         <a
-          href={`/projects/${projectId}?stage=${run.stage}`}
+          href={engineUrl}
+          target={engineUrl?.startsWith('http') ? '_blank' : undefined}
+          rel={engineUrl?.startsWith('http') ? 'noreferrer' : undefined}
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
           data-testid="stage-open-engine"
         >
@@ -471,72 +505,54 @@ function TerminalPanel({
 
 // ─── PayloadSummary ──────────────────────────────────────────────────────────
 
+type PayloadKnown =
+  | {
+      kind: 'brainstorm_draft';
+      ideas: Array<{ id: string; title: string; isWinner: boolean }>;
+      engineUrl?: string | null;
+    }
+  | {
+      kind: 'research_session';
+      cardCount: number;
+      counts?: Record<string, number>;
+      level: string | null;
+      sources?: Array<{ title: string; url: string | null }>;
+      engineUrl?: string | null;
+    }
+  | {
+      kind: 'content_draft';
+      title: string;
+      type: string | null;
+      status: string | null;
+      publishedUrl: string | null;
+      sectionCount?: number;
+      sections?: Array<{ title: string; wordCountTarget: number | null }>;
+      reviewVerdict?: string | null;
+      reviewScore?: number | null;
+      iterationCount?: number | null;
+      assetSlots?: number;
+      engineUrl?: string | null;
+    }
+  | {
+      kind: 'publish_record';
+      publishedUrl: string | null;
+      wpPostId: string;
+      engineUrl?: string | null;
+    };
+
 interface PayloadResponse {
-  payload:
-    | {
-        kind: 'brainstorm_draft';
-        ideas: Array<{ id: string; title: string; isWinner: boolean }>;
-      }
-    | {
-        kind: 'research_session';
-        cardCount: number;
-        counts?: Record<string, number>;
-        level: string | null;
-        sources?: Array<{ title: string; url: string | null }>;
-      }
-    | {
-        kind: 'content_draft';
-        title: string;
-        type: string | null;
-        status: string | null;
-        publishedUrl: string | null;
-        sectionCount?: number;
-        sections?: Array<{ title: string; wordCountTarget: number | null }>;
-        reviewVerdict?: string | null;
-        reviewScore?: number | null;
-        iterationCount?: number | null;
-        assetSlots?: number;
-      }
-    | { kind: 'publish_record'; publishedUrl: string | null; wpPostId: string }
-    | { kind: string; raw?: Record<string, unknown> }
-    | null;
+  payload: PayloadKnown | { kind: string; raw?: Record<string, unknown>; engineUrl?: string | null } | null;
 }
 
 function PayloadSummary({
-  projectId,
-  stageRunId,
   run,
+  payload,
+  loading,
 }: {
-  projectId: string;
-  stageRunId: string;
   run: StageRun;
+  payload: PayloadResponse['payload'] | null;
+  loading: boolean;
 }) {
-  const [payload, setPayload] = useState<PayloadResponse['payload'] | null>(null);
-  const [loading, setLoading] = useState<boolean>(Boolean(run.payloadRef));
-
-  useEffect(() => {
-    if (!run.payloadRef) {
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`/api/projects/${projectId}/stage-runs/${stageRunId}/payload`);
-        const body = await res.json();
-        if (cancelled) return;
-        setPayload(body?.data?.payload ?? null);
-      } catch {
-        if (!cancelled) setPayload(null);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, stageRunId, run.payloadRef]);
-
   if (!run.payloadRef) return null;
   if (loading) {
     return <div className="mt-2 text-xs text-muted-foreground">Loading output…</div>;

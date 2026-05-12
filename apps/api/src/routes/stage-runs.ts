@@ -488,6 +488,15 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
           return reply.send({ data: { payload: null }, error: null });
         }
 
+        // Resolve channel id for engine deep-links. Falls back to null if the
+        // project pre-dates Wave 1 backfill or the channel was deleted.
+        const { data: projectRow } = await sb
+          .from('projects')
+          .select('channel_id')
+          .eq('id', projectId)
+          .maybeSingle();
+        const channelId = (projectRow?.channel_id as string | null | undefined) ?? null;
+
         let payload: Record<string, unknown> = { kind: ref.kind };
 
         if (ref.kind === 'brainstorm_draft') {
@@ -511,11 +520,15 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
                   title: (s.title as string) ?? '(no title)',
                   isWinner: s.id === winnerId,
                 })),
+              engineUrl: channelId
+                ? `/channels/${channelId}/brainstorm/${winner.session_id}`
+                : null,
             };
           } else {
             payload = {
               kind: ref.kind,
               ideas: [{ id: ref.id, title: (winner?.title as string) ?? '(unknown idea)', isWinner: true }],
+              engineUrl: null,
             };
           }
         } else if (ref.kind === 'research_session') {
@@ -538,7 +551,14 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
                 url: (s.url as string) ?? null,
               }))
             : [];
-          payload = { kind: ref.kind, cardCount: total, counts, level: rs?.level ?? null, sources };
+          payload = {
+            kind: ref.kind,
+            cardCount: total,
+            counts,
+            level: rs?.level ?? null,
+            sources,
+            engineUrl: channelId ? `/channels/${channelId}/research/${ref.id}` : null,
+          };
         } else if (ref.kind === 'content_draft') {
           const { data: draft } = await sb
             .from('content_drafts')
@@ -573,12 +593,14 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
             reviewScore: (draft?.review_score as number) ?? null,
             iterationCount: (draft?.iteration_count as number) ?? null,
             assetSlots,
+            engineUrl: channelId ? `/channels/${channelId}/drafts/${ref.id}` : null,
           };
         } else if (ref.kind === 'publish_record') {
           payload = {
             kind: ref.kind,
             publishedUrl: (ref.published_url as string) ?? null,
             wpPostId: ref.id,
+            engineUrl: (ref.published_url as string) ?? null,
           };
         } else {
           payload = { kind: ref.kind, raw: ref };
