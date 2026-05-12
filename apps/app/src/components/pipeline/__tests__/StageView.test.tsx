@@ -66,6 +66,23 @@ beforeEach(() => {
 });
 
 describe('<StageView /> — 4 visual states', () => {
+  it('renders the breadcrumb "Pipeline › Brainstorm" without an attempt badge for attempt 1', () => {
+    streamWith({ brainstorm: runForBrainstorm({ status: 'completed' }) });
+    render(<StageView projectId={PROJECT_ID} stage="brainstorm" />);
+
+    const breadcrumb = screen.getByTestId('stage-breadcrumb');
+    expect(breadcrumb).toHaveTextContent(/Pipeline/);
+    expect(breadcrumb).toHaveTextContent(/Brainstorm/);
+    expect(screen.queryByTestId('attempt-badge')).not.toBeInTheDocument();
+  });
+
+  it('shows an "Attempt N" badge when attempt_no ≥ 2', () => {
+    streamWith({ brainstorm: runForBrainstorm({ status: 'completed', attemptNo: 3 }) });
+    render(<StageView projectId={PROJECT_ID} stage="brainstorm" />);
+
+    expect(screen.getByTestId('attempt-badge')).toHaveTextContent('Attempt 3');
+  });
+
   it('state 1: no Stage Run → renders BrainstormForm', () => {
     render(<StageView projectId={PROJECT_ID} stage="brainstorm" />);
     expect(screen.getByTestId('brainstorm-form')).toBeInTheDocument();

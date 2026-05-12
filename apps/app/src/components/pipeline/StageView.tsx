@@ -17,6 +17,7 @@ import {
   ArrowRight,
   Ban,
   CheckCircle2,
+  ChevronRight,
   Loader2,
   RotateCcw,
   Sparkles,
@@ -89,7 +90,7 @@ export function StageView({ projectId, stage }: StageViewProps) {
 
   return (
     <section className="space-y-3" data-testid={`stage-view-${stage}`} data-status={run?.status ?? 'idle'}>
-      <header className="flex items-center gap-2 text-xs text-muted-foreground">
+      <header className="flex items-center gap-2 text-xs" data-testid="stage-breadcrumb">
         <span
           className={cn(
             'inline-block h-2 w-2 rounded-full',
@@ -97,8 +98,17 @@ export function StageView({ projectId, stage }: StageViewProps) {
           )}
           aria-label={isConnected ? 'Live' : 'Disconnected'}
         />
-        <span>Stage: {stage}</span>
-        {run ? <span>· attempt {run.attemptNo}</span> : null}
+        <span className="text-muted-foreground">Pipeline</span>
+        <ChevronRight className="h-3 w-3 text-muted-foreground" aria-hidden />
+        <span className="font-medium">{STAGE_LABELS[stage]}</span>
+        {run && run.attemptNo > 1 ? (
+          <span
+            className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
+            data-testid="attempt-badge"
+          >
+            Attempt {run.attemptNo}
+          </span>
+        ) : null}
       </header>
 
       {!run ? <FormForStage projectId={projectId} stage={stage} onSubmitted={refresh} /> : null}
