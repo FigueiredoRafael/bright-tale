@@ -553,13 +553,28 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       if (error) throw error;
       if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
 
-      const { data: ideas } = await sb
-        .from('idea_archives')
+      // Prefer the raw `brainstorm_drafts` rows (every generated idea) over
+      // `idea_archives` (only ideas the user has promoted). Older sessions
+      // that pre-date the drafts pipeline fall back to idea_archives.
+      const { data: drafts } = await sb
+        .from('brainstorm_drafts')
         .select('*')
-        .eq('brainstorm_session_id', id)
-        .order('created_at', { ascending: true });
+        .eq('session_id', id)
+        .order('position', { ascending: true });
 
-      return reply.send({ data: { session, ideas: ideas ?? [] }, error: null });
+      let ideas: Array<Record<string, unknown>> = [];
+      if (drafts && drafts.length > 0) {
+        ideas = drafts as Array<Record<string, unknown>>;
+      } else {
+        const { data: archived } = await sb
+          .from('idea_archives')
+          .select('*')
+          .eq('brainstorm_session_id', id)
+          .order('created_at', { ascending: true });
+        ideas = (archived ?? []) as Array<Record<string, unknown>>;
+      }
+
+      return reply.send({ data: { session, ideas }, error: null });
     } catch (error) {
       return sendError(reply, error);
     }
