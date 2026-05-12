@@ -568,15 +568,24 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
             .eq('id', ref.id)
             .maybeSingle();
           const draftJson = (draft?.draft_json ?? null) as Record<string, unknown> | null;
-          const sections = Array.isArray(draftJson?.sections)
-            ? (draftJson.sections as Array<Record<string, unknown>>).slice(0, 6).map((s) => ({
-                title: (s.section_title as string) ?? (s.title as string) ?? '',
-                wordCountTarget: (s.word_count_target as number) ?? null,
-              }))
-            : [];
-          const sectionCount = Array.isArray(draftJson?.sections)
-            ? (draftJson.sections as unknown[]).length
-            : 0;
+          // The produce agent saves the section breakdown under `outline`
+          // (each item `{ h2, key_points, word_count_target }`). Older drafts
+          // produced via the legacy pipeline used `sections` with
+          // `{ section_title, ... }`. Accept either.
+          const rawSections = Array.isArray(draftJson?.outline)
+            ? (draftJson.outline as unknown[])
+            : Array.isArray(draftJson?.sections)
+              ? (draftJson.sections as unknown[])
+              : [];
+          const sections = rawSections.slice(0, 6).map((entry) => {
+            const s = entry as Record<string, unknown>;
+            return {
+              title:
+                (s.h2 as string) ?? (s.section_title as string) ?? (s.title as string) ?? '',
+              wordCountTarget: (s.word_count_target as number) ?? null,
+            };
+          });
+          const sectionCount = rawSections.length;
           const assetBriefs = (draftJson?.asset_briefs ?? null) as Record<string, unknown> | null;
           const assetSlots = assetBriefs && Array.isArray(assetBriefs.slots)
             ? (assetBriefs.slots as unknown[]).length
