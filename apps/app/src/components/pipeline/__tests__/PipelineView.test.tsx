@@ -167,6 +167,98 @@ describe('<PipelineView variant="overview" />', () => {
     expect(screen.getByText('Connecting…')).toBeInTheDocument();
   });
 
+  it('renders the Resume button when autopilot + nothing in flight + an aborted stage exists', () => {
+    useProjectStreamMock.mockReturnValueOnce({
+      stageRuns: {
+        brainstorm: run({ stage: 'brainstorm', status: 'completed' }),
+        research: run({ stage: 'research', status: 'aborted' }),
+        draft: null,
+        review: null,
+        assets: null,
+        preview: null,
+        publish: null,
+      },
+      liveEvent: null,
+      isConnected: true,
+      refresh: vi.fn(async () => undefined),
+      project: { mode: 'autopilot', paused: false },
+    });
+
+    render(<PipelineView projectId={PROJECT_ID} />);
+    expect(screen.getByTestId('resume-pipeline')).toBeInTheDocument();
+  });
+
+  it('hides the Resume button when a stage is already in flight', () => {
+    useProjectStreamMock.mockReturnValueOnce({
+      stageRuns: {
+        brainstorm: run({ stage: 'brainstorm', status: 'completed' }),
+        research: run({ stage: 'research', status: 'queued' }),
+        draft: null,
+        review: null,
+        assets: null,
+        preview: null,
+        publish: null,
+      },
+      liveEvent: null,
+      isConnected: true,
+      refresh: vi.fn(async () => undefined),
+      project: { mode: 'autopilot', paused: false },
+    });
+    render(<PipelineView projectId={PROJECT_ID} />);
+    expect(screen.queryByTestId('resume-pipeline')).not.toBeInTheDocument();
+  });
+
+  it('hides the Resume button in manual mode', () => {
+    useProjectStreamMock.mockReturnValueOnce({
+      stageRuns: {
+        brainstorm: run({ stage: 'brainstorm', status: 'completed' }),
+        research: run({ stage: 'research', status: 'failed' }),
+        draft: null,
+        review: null,
+        assets: null,
+        preview: null,
+        publish: null,
+      },
+      liveEvent: null,
+      isConnected: true,
+      refresh: vi.fn(async () => undefined),
+      project: { mode: 'manual', paused: false },
+    });
+    render(<PipelineView projectId={PROJECT_ID} />);
+    expect(screen.queryByTestId('resume-pipeline')).not.toBeInTheDocument();
+  });
+
+  it('POSTs /api/projects/:id/resume when the Resume button is clicked', async () => {
+    const refreshMock = vi.fn(async () => undefined);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    useProjectStreamMock.mockReturnValueOnce({
+      stageRuns: {
+        brainstorm: run({ stage: 'brainstorm', status: 'completed' }),
+        research: run({ stage: 'research', status: 'aborted' }),
+        draft: null,
+        review: null,
+        assets: null,
+        preview: null,
+        publish: null,
+      },
+      liveEvent: null,
+      isConnected: true,
+      refresh: refreshMock,
+      project: { mode: 'autopilot', paused: false },
+    });
+
+    render(<PipelineView projectId={PROJECT_ID} />);
+    fireEvent.click(screen.getByTestId('resume-pipeline'));
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(`/api/projects/${PROJECT_ID}/resume`);
+    expect((init as RequestInit).method).toBe('POST');
+    await vi.waitFor(() => expect(refreshMock).toHaveBeenCalled());
+  });
+
   it('shows the latest liveEvent message at the top', () => {
     useProjectStreamMock.mockReturnValueOnce({
       stageRuns: {

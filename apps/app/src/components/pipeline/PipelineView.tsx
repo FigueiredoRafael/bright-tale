@@ -8,6 +8,7 @@
  *
  * Subscribes to Stage Run + job_events changes via useProjectStream.
  */
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Ban,
@@ -17,6 +18,7 @@ import {
   Loader2,
   Lock,
   Play,
+  RefreshCw,
   SkipForward,
   XCircle,
 } from 'lucide-react';
@@ -135,6 +137,37 @@ const GATE_META: Record<StageGate, GateMeta> = {
   },
 };
 
+function ResumePipelineButton({
+  projectId,
+  onResumed,
+}: {
+  projectId: string;
+  onResumed: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  async function resume(): Promise<void> {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/resume`, { method: 'POST' });
+      if (res.ok) await onResumed();
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <button
+      type="button"
+      onClick={resume}
+      disabled={busy}
+      className="ml-auto inline-flex items-center gap-1 rounded-md border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+      data-testid="resume-pipeline"
+    >
+      <RefreshCw className={cn('h-3 w-3', busy && 'animate-spin')} aria-hidden />
+      {busy ? 'Resuming…' : 'Resume pipeline'}
+    </button>
+  );
+}
+
 export function PipelineView({
   projectId,
   variant = 'overview',
@@ -142,7 +175,7 @@ export function PipelineView({
   onStageClick,
 }: PipelineViewProps) {
   const router = useRouter();
-  const { stageRuns, liveEvent, isConnected } = useProjectStream(projectId);
+  const { stageRuns, liveEvent, isConnected, project, refresh } = useProjectStream(projectId);
 
   if (variant === 'supervised') {
     if (!stage) {
@@ -174,6 +207,16 @@ export function PipelineView({
         ? 'Idle'
         : 'Connecting…';
 
+  // Resume affordance: when autopilot is on, nothing is in flight, and
+  // some stage's latest run is aborted/failed, the pipeline is stuck and
+  // needs an explicit nudge. POST /resume calls resumeProject server-side.
+  const anyInFlight = Boolean(activeStage);
+  const hasResumable = STAGES.some((s) => {
+    const status = stageRuns[s]?.status;
+    return status === 'aborted' || status === 'failed';
+  });
+  const canResume = project.mode === 'autopilot' && !project.paused && !anyInFlight && hasResumable;
+
   return (
     <div className="space-y-2" data-testid="pipeline-view-overview">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -185,6 +228,9 @@ export function PipelineView({
           aria-label={isConnected ? 'Connected to live stream' : 'Disconnected'}
         />
         <span className="truncate">{headerText}</span>
+        {canResume ? (
+          <ResumePipelineButton projectId={projectId} onResumed={refresh} />
+        ) : null}
       </div>
       <ol className="flex flex-wrap gap-2">
         {STAGES.map((s) => {

@@ -22,6 +22,7 @@ import { assertProjectOwner } from '../lib/projects/ownership.js';
 import { inngest } from '../jobs/client.js';
 import {
   requestStageRun,
+  resumeProject,
   StageNotMigratedError,
   StageInputValidationError,
   PredecessorNotDoneError,
@@ -154,6 +155,34 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
           data: { stageRunId, status: 'queued', stage: stageRun.stage },
           error: null,
         });
+      } catch (err) {
+        return sendError(reply, err);
+      }
+    },
+  );
+
+  /**
+   * POST /:projectId/resume
+   *
+   * Re-evaluates the pipeline and (re)starts the next pending Stage. Used by
+   * the "Resume pipeline" UI affordance after an abort/failure when the user
+   * wants autopilot to pick up again. Idempotent — a no-op when there is
+   * nothing to resume.
+   */
+  fastify.post<{ Params: { projectId: string } }>(
+    '/:projectId/resume',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        const { projectId } = request.params;
+        const userId = (request as unknown as { userId?: string }).userId;
+        if (!userId) throw new ApiError(401, 'Unauthorized', 'UNAUTHORIZED');
+
+        const sb = createServiceClient();
+        await assertProjectOwner(projectId, userId, sb);
+
+        await resumeProject(projectId);
+        return reply.send({ data: { ok: true }, error: null });
       } catch (err) {
         return sendError(reply, err);
       }
