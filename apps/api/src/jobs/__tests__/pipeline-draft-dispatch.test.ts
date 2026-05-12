@@ -82,6 +82,36 @@ vi.mock('../../lib/supabase/index.js', () => ({
       if (table === 'content_drafts') {
         return { insert: draftInsertMock };
       }
+      if (table === 'brainstorm_drafts') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({
+                  data: { id: BRAINSTORM_PICK_ID, title: 't', session_id: 'bs-sess', channel_id: CHANNEL_ID, user_id: USER_ID, org_id: ORG_ID, core_tension: '', target_audience: '', verdict: 'experimental', discovery_data: '' },
+                  error: null,
+                }),
+            }),
+          }),
+        };
+      }
+      if (table === 'idea_archives') {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: () => Promise.resolve({ data: null, error: null }),
+              }),
+            }),
+            count: 0,
+          }),
+          insert: () => ({
+            select: () => ({
+              single: () => Promise.resolve({ data: { id: 'idea-arch-1' }, error: null }),
+            }),
+          }),
+        };
+      }
       return {};
     },
   }),

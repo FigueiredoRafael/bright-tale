@@ -9,6 +9,7 @@
  */
 import { inngest } from './client.js';
 import { createServiceClient } from '../lib/supabase/index.js';
+import { resolveIdeaArchiveFromBrainstorm } from '../lib/pipeline/idea-resolution.js';
 
 interface StageRequestedEvent {
   name: 'pipeline/stage.requested';
@@ -81,20 +82,12 @@ export const pipelineDraftDispatch = inngest.createFunction(
       }
     }
 
-    let ideaId = (input.ideaId as string | undefined) ?? null;
-    if (!ideaId) {
-      const { data: priorBrainstorm } = await sb
-        .from('stage_runs')
-        .select('id, stage, status, payload_ref')
-        .eq('project_id', projectId)
-        .eq('stage', 'brainstorm')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      const ref = priorBrainstorm?.payload_ref as { kind?: string; id?: string } | null | undefined;
-      if (ref?.kind === 'brainstorm_draft' && ref.id) {
-        ideaId = ref.id;
-      }
+    // idea_id is FK to idea_archives.id, NOT brainstorm_drafts.id. Promote
+    // via shared helper if the user didn't pass an explicit one.
+    let ideaArchiveId = (input.ideaId as string | undefined) ?? null;
+    if (!ideaArchiveId) {
+      const resolved = await resolveIdeaArchiveFromBrainstorm(sb, projectId);
+      ideaArchiveId = resolved.ideaArchiveId;
     }
 
     const personaId = (input.personaId as string | undefined) ?? null;
@@ -103,7 +96,7 @@ export const pipelineDraftDispatch = inngest.createFunction(
     const provider = input.provider as string | undefined;
     const model = input.model as string | undefined;
 
-    const { data: draft } = await sb
+    const { data: draft, error: insertError } = await sb
       .from('content_drafts')
       .insert({
         org_id: orgId,
@@ -111,7 +104,7 @@ export const pipelineDraftDispatch = inngest.createFunction(
         channel_id: project.channel_id ?? null,
         project_id: projectId,
         research_session_id: researchSessionId,
-        idea_id: ideaId,
+        idea_id: ideaArchiveId,
         persona_id: personaId,
         type,
         status: 'draft',
@@ -120,7 +113,23 @@ export const pipelineDraftDispatch = inngest.createFunction(
       })
       .select()
       .single();
-    if (!draft?.id) return;
+    if (insertError || !draft?.id) {
+      const now = new Date().toISOString();
+      await sb
+        .from('stage_runs')
+        .update({
+          status: 'failed',
+          error_message: `Failed to create content_drafts row: ${(insertError as { message?: string } | undefined)?.message ?? 'unknown'}`,
+          finished_at: now,
+          updated_at: now,
+        })
+        .eq('id', stageRunId);
+      await inngest.send({
+        name: 'pipeline/stage.run.finished',
+        data: { stageRunId, projectId },
+      });
+      return;
+    }
 
     const now = new Date().toISOString();
     await sb
