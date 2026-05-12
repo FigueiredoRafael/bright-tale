@@ -214,17 +214,21 @@ function OrchestratorInner({
     if (snapshot === lastPersistedRef.current) return
     const t = setTimeout(() => {
       lastPersistedRef.current = snapshot
+      // `mode` and `paused` live on top-level columns since Slice 12 and the
+      // PATCH route rejects them nested inside `pipelineStateJson`. Everything
+      // else (autopilot config, stage results, activity log, …) still rides
+      // pipeline_state_json.
       void fetch(`/api/projects/${projectId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          mode: ctx.mode,
+          paused: ctx.paused,
           pipelineStateJson: {
-            mode: ctx.mode,
             autopilotConfig: ctx.autopilotConfig,
             stageResults: ctx.stageResults,
             iterationCount: ctx.iterationCount,
             currentStage,
-            paused: ctx.paused,
             pauseReason: ctx.pauseReason,
             activityLog,
           },

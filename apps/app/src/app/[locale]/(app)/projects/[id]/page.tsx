@@ -107,12 +107,21 @@ export default function ProjectPipelinePage() {
     );
   }
 
-  // Derive abort-provider props from persisted pipeline state JSON.
-  // The orchestrator persists { mode, currentStage, paused, ... } via PATCH on every change.
-  const pipelineStateJson = project.pipeline_state_json as Record<string, unknown> | undefined
-  const persistedMode = pipelineStateJson?.mode as string | undefined
-  const persistedStage = (pipelineStateJson?.currentStage as string | undefined) ?? 'brainstorm'
-  const persistedPaused = Boolean(pipelineStateJson?.paused)
+  // Derive abort-provider props. `mode`/`paused` are top-level columns since
+  // Slice 12; everything else still rides `pipeline_state_json`. We re-merge
+  // them into a single bag for the legacy orchestrator's hydration, which
+  // expects mode/paused there.
+  const rawStateJson = project.pipeline_state_json as Record<string, unknown> | undefined
+  const persistedMode = (project.mode as string | undefined) ?? (rawStateJson?.mode as string | undefined)
+  const persistedStage = (rawStateJson?.currentStage as string | undefined) ?? 'brainstorm'
+  const persistedPaused = Boolean((project.paused as boolean | undefined) ?? rawStateJson?.paused)
+  const pipelineStateJson: Record<string, unknown> | undefined = rawStateJson || persistedMode || persistedPaused
+    ? {
+        ...(rawStateJson ?? {}),
+        ...(persistedMode ? { mode: persistedMode } : {}),
+        paused: persistedPaused,
+      }
+    : undefined
 
   // machineState is 'setup' when there is no mode set yet, 'done' when published, else 'running'
   const machineState: 'setup' | 'running' | 'done' = !persistedMode
