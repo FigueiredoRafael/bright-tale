@@ -82,28 +82,26 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
     .maybeSingle();
   if (!projectRow) return { kind: 'noop', mirrored: 0, reason: 'project not found' };
 
-  const psj = projectRow.pipeline_state_json as Record<string, unknown> | null | undefined;
-  if (!psj || typeof psj !== 'object') {
-    return { kind: 'noop', mirrored: 0, reason: 'pipeline_state_json is empty' };
-  }
-
+  const psj = (projectRow.pipeline_state_json as Record<string, unknown> | null | undefined) ?? {};
   const stageResults = (psj.stageResults ?? {}) as Record<string, unknown>;
   const completedStages = STAGES.filter((s) => !!stageResults[s]);
-  if (completedStages.length === 0) {
-    return { kind: 'noop', mirrored: 0, reason: 'no completed stages in pipeline_state_json' };
-  }
 
   const payloads = await loadPayloadIndex(sb, projectId);
 
   // Existing rows are the second input to the planner — pipeline_state_json
   // may be sparse (some completed stages tracked outside the orchestrator,
   // e.g. channel-level draft pages), so we also look at what `stage_runs`
-  // itself already says is terminal. The rightmost-terminal index is the
-  // floor up to which every prior stage must be terminal too.
+  // itself already says is terminal.
+  //
+  // Order by `created_at desc` so the bucketing's "latest" handle reflects
+  // the row the v2 stages endpoint shows (it dedupes to latest-per-stage).
+  // If the latest is non-terminal we must update it even when an older
+  // terminal row exists.
   const { data: existingRows } = await sb
     .from('stage_runs')
-    .select('id, stage, status')
-    .eq('project_id', projectId);
+    .select('id, stage, status, created_at')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false });
   const existingByStage = bucketExistingRows(existingRows ?? []);
 
   const desired: StageRunInsert[] = [];
@@ -111,7 +109,7 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
   const completedIndexes = completedStages.map((s) => STAGES.indexOf(s));
   const terminalDbIndexes: number[] = [];
   for (let i = 0; i < STAGES.length; i++) {
-    if (existingByStage.get(STAGES[i])?.terminal) terminalDbIndexes.push(i);
+    if (existingByStage.get(STAGES[i])?.latest?.isTerminal) terminalDbIndexes.push(i);
   }
   const rightmostIdx = Math.max(
     -1,
@@ -126,10 +124,11 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
   for (let i = 0; i <= rightmostIdx; i++) {
     const stage = STAGES[i];
     const wasCompleted = !!stageResults[stage];
-    const dbTerminal = !!existingByStage.get(stage)?.terminal;
+    const latest = existingByStage.get(stage)?.latest;
 
-    if (dbTerminal) {
-      // Real terminal already in DB — nothing to mirror, leave alone.
+    // The v2 stages endpoint surfaces the LATEST row per stage. If the latest
+    // is already terminal, the view is correct as-is — leave it alone.
+    if (latest?.isTerminal) {
       continue;
     }
 
@@ -255,18 +254,26 @@ function resolveTimestamps(
   return { startedAt: null, finishedAt: null };
 }
 
-type StageBucket = { terminal?: { id: string }; nonTerminal?: { id: string } };
+type StageBucket = {
+  /** Most-recent row per stage, regardless of status — the row the v2 view shows. */
+  latest?: { id: string; status: string; isTerminal: boolean };
+  /** Most-recent non-terminal row, if any (DB guarantees ≤1). */
+  nonTerminal?: { id: string };
+};
 
+/** `rows` MUST be ordered by created_at desc so the first one we see per stage is the latest. */
 function bucketExistingRows(rows: unknown[]): Map<string, StageBucket> {
   const byStage = new Map<string, StageBucket>();
   for (const r of rows as Record<string, unknown>[]) {
     const stage = r.stage as string;
     const status = r.status as string;
     const id = r.id as string;
+    const isTerminal = TERMINAL_STATUSES.includes(status);
     const bucket = byStage.get(stage) ?? {};
-    if (TERMINAL_STATUSES.includes(status)) {
-      bucket.terminal = { id };
-    } else {
+    if (!bucket.latest) {
+      bucket.latest = { id, status, isTerminal };
+    }
+    if (!isTerminal && !bucket.nonTerminal) {
       bucket.nonTerminal = { id };
     }
     byStage.set(stage, bucket);
@@ -295,8 +302,8 @@ async function upsertStageRuns(
   for (const sr of desired) {
     const bucket = byStage.get(sr.stage);
 
-    // A real terminal row already exists — never clobber.
-    if (bucket?.terminal) continue;
+    // The latest row is already terminal — view is correct, do nothing.
+    if (bucket?.latest?.isTerminal) continue;
 
     if (bucket?.nonTerminal) {
       const { error } = await (sb.from('stage_runs') as unknown as {
@@ -311,7 +318,14 @@ async function upsertStageRuns(
           updated_at: now,
         })
         .eq('id', bucket.nonTerminal.id);
-      if (!error) mirrored += 1;
+      if (error) {
+        console.warn(
+          `[mirror] update stage_runs ${bucket.nonTerminal.id} (stage=${sr.stage} → ${sr.status}) failed:`,
+          error,
+        );
+      } else {
+        mirrored += 1;
+      }
       continue;
     }
 
@@ -320,7 +334,11 @@ async function upsertStageRuns(
       created_at: now,
       updated_at: now,
     });
-    if (!error) mirrored += 1;
+    if (error) {
+      console.warn(`[mirror] insert stage_runs (stage=${sr.stage} → ${sr.status}) failed:`, error);
+    } else {
+      mirrored += 1;
+    }
   }
   return mirrored;
 }

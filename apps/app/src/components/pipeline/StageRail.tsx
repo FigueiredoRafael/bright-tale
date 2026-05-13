@@ -69,6 +69,16 @@ export function StatusPill({ status, className }: StatusPillProps) {
 
 // ── Derive status from machine state ─────────────────────────────────────────
 
+const STAGE_ORDER: ReadonlyArray<PipelineStage> = [
+  'brainstorm',
+  'research',
+  'draft',
+  'review',
+  'assets',
+  'preview',
+  'publish',
+]
+
 export function deriveRailStatus(
   stage: PipelineStage,
   currentStage: PipelineStage,
@@ -89,6 +99,16 @@ export function deriveRailStatus(
     if (subState === 'error') return 'failed'
     if (paused || subState === 'paused') return 'paused'
     return 'running'
+  }
+
+  // Gap-fill: if any downstream stage already completed, this one was
+  // effectively bypassed (e.g. work tracked via channel-level pages outside
+  // the orchestrator). Mark `skipped` instead of the default `queued` so the
+  // rail doesn't show an impossible "downstream Done, upstream Queued" state.
+  const myIdx = STAGE_ORDER.indexOf(stage)
+  for (let i = myIdx + 1; i < STAGE_ORDER.length; i++) {
+    const downstream = stageResults[STAGE_ORDER[i]] as { completedAt?: string } | undefined
+    if (downstream?.completedAt) return 'skipped'
   }
 
   return 'queued'
