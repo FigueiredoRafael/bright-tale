@@ -86,11 +86,15 @@ function renderResultFields(result: Record<string, unknown>, skip: string[] = []
 }
 
 function EmptyState({ status }: { status: RailStageStatus }) {
+  // status='done' here means the rail marked the stage Done via gap-fill
+  // (downstream completed → work happened, just not via this orchestrator).
+  // Tell the user where to look.
   const msg =
     status === 'queued'  ? 'Waiting for previous stage…'
     : status === 'paused'  ? 'Pipeline paused'
     : status === 'failed'  ? 'This stage encountered an error'
     : status === 'skipped' ? 'Stage skipped per autopilot config'
+    : status === 'done'    ? 'Completed outside the engine — see the channel page for details.'
     :                        'Stage in progress…'
 
   return (

@@ -101,14 +101,15 @@ export function deriveRailStatus(
     return 'running'
   }
 
-  // Gap-fill: if any downstream stage already completed, this one was
-  // effectively bypassed (e.g. work tracked via channel-level pages outside
-  // the orchestrator). Mark `skipped` instead of the default `queued` so the
-  // rail doesn't show an impossible "downstream Done, upstream Queued" state.
+  // Gap-fill: downstream completed → this stage's work definitely happened
+  // (Review/Publish can't pass without Research). It just wasn't tracked by
+  // this orchestrator — likely done via the channel-level Research/Draft
+  // pages. Show as `done` (not `skipped`) so the rail is semantically
+  // honest. The panel renders an "outside the engine" empty state.
   const myIdx = STAGE_ORDER.indexOf(stage)
   for (let i = myIdx + 1; i < STAGE_ORDER.length; i++) {
     const downstream = stageResults[STAGE_ORDER[i]] as { completedAt?: string } | undefined
-    if (downstream?.completedAt) return 'skipped'
+    if (downstream?.completedAt) return 'done'
   }
 
   return 'queued'
