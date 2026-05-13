@@ -31,7 +31,8 @@ export const pipelinePreviewDispatch = inngest.createFunction(
   {
     id: 'pipeline-preview-dispatch',
     retries: 0,
-    triggers: [{ event: 'pipeline/stage.requested' }],
+    // See pipeline-brainstorm-dispatch for the rationale behind `if:`.
+    triggers: [{ event: 'pipeline/stage.requested', if: "event.data.stage == 'preview'" }],
   },
   async ({ event }: { event: StageRequestedEvent }) => {
     if (event.data.stage !== 'preview') return;

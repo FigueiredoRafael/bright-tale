@@ -15,6 +15,7 @@ import { ApiError } from '../lib/api/errors.js';
 import { assertProjectOwner } from '../lib/projects/ownership.js';
 import { derivedFromStageResults, nextStageAfter } from '../lib/pipeline-state.js';
 import { setupProjectSchema } from '@brighttale/shared/schemas/projectSetup';
+import { abortProject } from '../lib/pipeline/stage-run-writer.js';
 
 export async function projectSetupRoutes(fastify: FastifyInstance): Promise<void> {
   /**
@@ -102,12 +103,12 @@ export async function projectSetupRoutes(fastify: FastifyInstance): Promise<void
       // Verify project ownership
       await assertProjectOwner(projectId, userId, sb);
 
-      const { error } = await sb
-        .from('projects')
-        .update({ abort_requested_at: new Date().toISOString() })
-        .eq('id', projectId);
-
-      if (error) throw error;
+      // Single seam: writer marks every non-terminal Stage Run aborted and
+      // raises the legacy `projects.abort_requested_at` flag so any in-flight
+      // AI worker bails on its next assertNotAborted checkpoint. Before this,
+      // the route only flipped the project-wide flag and the Realtime stream
+      // kept showing `running` Stage Runs until eventual GC.
+      await abortProject(sb, projectId);
 
       return reply.send({
         data: { ok: true },

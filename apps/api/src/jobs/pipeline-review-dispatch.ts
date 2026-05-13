@@ -46,7 +46,8 @@ export const pipelineReviewDispatch = inngest.createFunction(
     // is too short for this; bump finish timeout to 5 min so the function
     // completes naturally instead of being killed mid-call.
     timeouts: { finish: '5m' },
-    triggers: [{ event: 'pipeline/stage.requested' }],
+    // See pipeline-brainstorm-dispatch for the rationale behind `if:`.
+    triggers: [{ event: 'pipeline/stage.requested', if: "event.data.stage == 'review'" }],
   },
   async ({ event, step }: { event: StageRequestedEvent; step: { run: <T>(id: string, fn: () => Promise<T>) => Promise<T> } }) => {
     if (event.data.stage !== 'review') return;

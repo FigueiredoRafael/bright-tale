@@ -61,6 +61,7 @@ import {
   markAwaitingUser,
   markAborted,
   bulkAbort,
+  abortProject,
   isTerminal,
 } from '@/lib/pipeline/stage-run-writer';
 
@@ -211,6 +212,31 @@ describe('markAborted', () => {
     });
     expect(inngestSendMock).not.toHaveBeenCalled();
   });
+
+  it('with raiseProjectAbort=true: ALSO updates projects.abort_requested_at', async () => {
+    // Capture both `update()` invocations so we can assert one targeted
+    // stage_runs and the other targeted projects.abort_requested_at.
+    const updateCalls: Array<{ table: string; payload: Record<string, unknown> }> = [];
+    sb.from = vi.fn((table: string) => ({
+      update: vi.fn((payload: Record<string, unknown>) => {
+        updateCalls.push({ table, payload });
+        lastChain = { payload, filters: [], errorToReturn: null };
+        return makeUpdateChain(null);
+      }),
+    })) as unknown as typeof sb.from;
+
+    await markAborted(sb, 'sr-1', {
+      projectId: PROJECT_ID,
+      stage: 'draft',
+      errorMessage: 'User aborted live Stage Run',
+      raiseProjectAbort: true,
+    });
+
+    const stageRunsUpdate = updateCalls.find((c) => c.table === 'stage_runs');
+    const projectsUpdate = updateCalls.find((c) => c.table === 'projects');
+    expect(stageRunsUpdate?.payload).toMatchObject({ status: 'aborted' });
+    expect(projectsUpdate?.payload).toMatchObject({ abort_requested_at: expect.any(String) });
+  });
 });
 
 describe('bulkAbort', () => {
@@ -257,6 +283,70 @@ describe('bulkAbort', () => {
     await expect(
       bulkAbort(sb, PROJECT_ID, ['draft'], 'cascade'),
     ).rejects.toThrow(/bulkAbort/);
+  });
+});
+
+describe('abortProject', () => {
+  it('marks every non-terminal Stage Run aborted AND raises projects.abort_requested_at', async () => {
+    const updateCalls: Array<{ table: string; payload: Record<string, unknown>; filters: Array<{ method: string; args: unknown[] }> }> = [];
+    sb.from = vi.fn((table: string) => ({
+      update: vi.fn((payload: Record<string, unknown>) => {
+        const entry = { table, payload, filters: [] as Array<{ method: string; args: unknown[] }> };
+        updateCalls.push(entry);
+        const chain = {} as Record<string, unknown> & PromiseLike<{ error: unknown }>;
+        ['eq', 'in'].forEach((m) => {
+          (chain as unknown as Record<string, ReturnType<typeof vi.fn>>)[m] = vi.fn((...args: unknown[]) => {
+            entry.filters.push({ method: m, args });
+            return chain;
+          });
+        });
+        (chain as { then: (resolve: (v: { error: unknown }) => unknown) => Promise<unknown> }).then = (resolve) =>
+          Promise.resolve({ error: null }).then(resolve);
+        return chain;
+      }),
+    })) as unknown as typeof sb.from;
+
+    await abortProject(sb, PROJECT_ID, 'User aborted from UI');
+
+    // 1st UPDATE: stage_runs (every non-terminal aborted)
+    const runsCall = updateCalls.find((c) => c.table === 'stage_runs');
+    expect(runsCall?.payload).toMatchObject({
+      status: 'aborted',
+      error_message: 'User aborted from UI',
+    });
+    expect(runsCall?.payload.finished_at).toEqual(expect.any(String));
+    const projectFilter = runsCall?.filters.find((f) => f.method === 'eq' && f.args[0] === 'project_id');
+    expect(projectFilter?.args[1]).toBe(PROJECT_ID);
+    const statusFilter = runsCall?.filters.find((f) => f.method === 'in' && f.args[0] === 'status');
+    expect(statusFilter?.args[1]).toEqual(['queued', 'running', 'awaiting_user']);
+
+    // 2nd UPDATE: projects.abort_requested_at
+    const projectsCall = updateCalls.find((c) => c.table === 'projects');
+    expect(projectsCall?.payload).toMatchObject({
+      abort_requested_at: expect.any(String),
+    });
+    const projectIdFilter = projectsCall?.filters.find((f) => f.method === 'eq' && f.args[0] === 'id');
+    expect(projectIdFilter?.args[1]).toBe(PROJECT_ID);
+  });
+
+  it('throws when stage_runs update errors (and never raises the legacy flag)', async () => {
+    let callCount = 0;
+    sb.from = vi.fn(() => ({
+      update: vi.fn(() => {
+        callCount++;
+        const chain = {} as Record<string, unknown> & PromiseLike<{ error: unknown }>;
+        ['eq', 'in'].forEach((m) => {
+          (chain as unknown as Record<string, ReturnType<typeof vi.fn>>)[m] = vi.fn(() => chain);
+        });
+        (chain as { then: (resolve: (v: { error: unknown }) => unknown) => Promise<unknown> }).then = (resolve) =>
+          Promise.resolve({ error: { message: 'permission denied' } }).then(resolve);
+        return chain;
+      }),
+    })) as unknown as typeof sb.from;
+
+    await expect(abortProject(sb, PROJECT_ID)).rejects.toThrow(/abortProject/);
+    // Caller throws before the projects update fires.
+    expect(callCount).toBe(1);
   });
 });
 

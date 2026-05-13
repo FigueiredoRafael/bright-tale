@@ -261,6 +261,13 @@ export async function markAwaitingUser(
  * any → aborted (single row). Terminal. Emits advance event by default so
  * the orchestrator can decide what comes next.
  *
+ * `raiseProjectAbort` (default true for callers that explicitly abort a live
+ * Stage Run) ALSO sets `projects.abort_requested_at` so any long-running AI
+ * worker bails on its next `assertNotAborted` checkpoint. Without this, the
+ * Stage Run row reads `aborted` while the LLM keeps spending credits — the
+ * exact split-brain that #7 of the architecture review flagged. The
+ * orchestrator's `clearAbortFlag` resets it before each fresh insert.
+ *
  * Cascade re-runs use `bulkAbort()` instead — it batches the aborts of many
  * rows in one UPDATE and suppresses the event because the caller is
  * immediately about to queue a fresh Stage Run.
@@ -268,7 +275,7 @@ export async function markAwaitingUser(
 export async function markAborted(
   sb: Sb,
   stageRunId: string,
-  opts: BaseOptions & { errorMessage?: string },
+  opts: BaseOptions & { errorMessage?: string; raiseProjectAbort?: boolean },
 ): Promise<void> {
   const now = new Date().toISOString();
   const patch: Record<string, unknown> = {
@@ -287,14 +294,84 @@ export async function markAborted(
     });
     throw new Error(`markAborted ${stageRunId}: ${error.message}`);
   }
+  if (opts.raiseProjectAbort) {
+    const { error: projectErr } = await sb
+      .from('projects')
+      .update({ abort_requested_at: now })
+      .eq('id', opts.projectId);
+    if (projectErr) {
+      logTransition('warn', 'markAborted: raiseProjectAbort write failed', {
+        stageRunId,
+        projectId: opts.projectId,
+        err: projectErr.message,
+      });
+    }
+  }
   logTransition('info', 'stage-run → aborted', {
     stageRunId,
     projectId: opts.projectId,
     stage: opts.stage,
+    raiseProjectAbort: !!opts.raiseProjectAbort,
   });
   if (!opts.suppressAdvanceEvent) {
     await emitFinished(stageRunId, { projectId: opts.projectId, stage: opts.stage });
   }
+}
+
+/**
+ * Project-wide abort: mark every non-terminal Stage Run aborted AND raise
+ * the legacy `projects.abort_requested_at` flag.
+ *
+ * This is the single seam for "the user wants the whole project to stop".
+ * Without it, callers had to (a) UPDATE projects, (b) hope workers poll the
+ * flag before the next checkpoint — meanwhile the stage_runs rows stayed in
+ * `queued`/`running`/`awaiting_user` until eventual GC, lying about the
+ * pipeline state in the UI + Realtime stream.
+ *
+ * No per-row advance event is emitted — a project-level abort is terminal
+ * for the pipeline.
+ */
+export async function abortProject(
+  sb: Sb,
+  projectId: string,
+  errorMessage = 'Project aborted by user',
+): Promise<void> {
+  const now = new Date().toISOString();
+  // 1. Mark every non-terminal Stage Run aborted in one UPDATE.
+  const { error: runsErr } = await sb
+    .from('stage_runs')
+    .update({
+      status: 'aborted',
+      error_message: errorMessage.slice(0, ERROR_MESSAGE_MAX_LENGTH),
+      finished_at: now,
+      updated_at: now,
+    })
+    .eq('project_id', projectId)
+    .in('status', ['queued', 'running', 'awaiting_user']);
+  if (runsErr) {
+    logTransition('error', 'abortProject: stage_runs update failed', {
+      projectId,
+      err: runsErr.message,
+    });
+    throw new Error(`abortProject project=${projectId}: ${runsErr.message}`);
+  }
+  // 2. Raise the legacy project-wide flag so long-running workers bail on
+  // their next assertNotAborted checkpoint.
+  const { error: projErr } = await sb
+    .from('projects')
+    .update({ abort_requested_at: now })
+    .eq('id', projectId);
+  if (projErr) {
+    logTransition('error', 'abortProject: projects update failed', {
+      projectId,
+      err: projErr.message,
+    });
+    throw new Error(`abortProject project=${projectId}: ${projErr.message}`);
+  }
+  logTransition('info', 'project aborted (all stage-runs aborted, legacy flag raised)', {
+    projectId,
+    reason: errorMessage,
+  });
 }
 
 /**

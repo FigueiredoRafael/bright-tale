@@ -32,7 +32,8 @@ export const pipelineResearchDispatch = inngest.createFunction(
   {
     id: 'pipeline-research-dispatch',
     retries: 0,
-    triggers: [{ event: 'pipeline/stage.requested' }],
+    // See pipeline-brainstorm-dispatch for the rationale behind `if:`.
+    triggers: [{ event: 'pipeline/stage.requested', if: "event.data.stage == 'research'" }],
   },
   async ({ event }: { event: StageRequestedEvent }) => {
     if (event.data.stage !== 'research') return;

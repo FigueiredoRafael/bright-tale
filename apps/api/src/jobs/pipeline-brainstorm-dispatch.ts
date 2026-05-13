@@ -32,7 +32,12 @@ export const pipelineBrainstormDispatch = inngest.createFunction(
   {
     id: 'pipeline-brainstorm-dispatch',
     retries: 0,
-    triggers: [{ event: 'pipeline/stage.requested' }],
+    // Server-side filter so Inngest only invokes this function when the
+    // request actually targets brainstorm. Without `if:`, the broad topic
+    // (`pipeline/stage.requested`) fans out 1→7 — every dispatcher wakes,
+    // six only to early-return, paying Inngest cycles + log noise per
+    // stage advance. The runtime guard below is a defensive belt+suspenders.
+    triggers: [{ event: 'pipeline/stage.requested', if: "event.data.stage == 'brainstorm'" }],
   },
   async ({ event }: { event: StageRequestedEvent }) => {
     if (event.data.stage !== 'brainstorm') return;

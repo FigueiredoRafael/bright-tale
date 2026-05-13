@@ -37,7 +37,8 @@ export const pipelinePublishDispatch = inngest.createFunction(
   {
     id: 'pipeline-publish-dispatch',
     retries: 0,
-    triggers: [{ event: 'pipeline/stage.requested' }],
+    // See pipeline-brainstorm-dispatch for the rationale behind `if:`.
+    triggers: [{ event: 'pipeline/stage.requested', if: "event.data.stage == 'publish'" }],
   },
   async ({ event }: { event: StageRequestedEvent }) => {
     if (event.data.stage !== 'publish') return;

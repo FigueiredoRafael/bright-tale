@@ -43,7 +43,8 @@ export const pipelineAssetsDispatch = inngest.createFunction(
     id: 'pipeline-assets-dispatch',
     retries: 0,
     timeouts: { finish: '5m' },
-    triggers: [{ event: 'pipeline/stage.requested' }],
+    // See pipeline-brainstorm-dispatch for the rationale behind `if:`.
+    triggers: [{ event: 'pipeline/stage.requested', if: "event.data.stage == 'assets'" }],
   },
   async ({ event, step }: { event: StageRequestedEvent; step: { run: <T>(id: string, fn: () => Promise<T>) => Promise<T> } }) => {
     if (event.data.stage !== 'assets') return;

@@ -28,7 +28,7 @@ import {
   PredecessorNotDoneError,
   ConcurrentStageRunError,
 } from '../lib/pipeline/orchestrator.js';
-import { bulkAbort } from '../lib/pipeline/stage-run-writer.js';
+import { bulkAbort, markAborted } from '../lib/pipeline/stage-run-writer.js';
 import { STAGES, type Stage, type StageRun } from '@brighttale/shared/pipeline/inputs';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -269,34 +269,12 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
           );
         }
 
-        const now = new Date().toISOString();
-        await (sb.from('stage_runs') as unknown as {
-          update: (row: Record<string, unknown>) => {
-            eq: (col: string, val: string) => Promise<unknown>;
-          };
-        })
-          .update({
-            status: 'aborted',
-            finished_at: now,
-            updated_at: now,
-          })
-          .eq('id', stageRunId);
-
-        // Also raise the legacy `projects.abort_requested_at` flag so any
-        // long-running worker (brainstorm-generate, research-generate,
-        // production-generate) bails on its next assertNotAborted checkpoint.
-        // Saves credits + stops the LLM from racing past the user's abort.
-        await (sb.from('projects') as unknown as {
-          update: (row: Record<string, unknown>) => {
-            eq: (col: string, val: string) => Promise<unknown>;
-          };
-        })
-          .update({ abort_requested_at: now })
-          .eq('id', projectId);
-
-        await inngest.send({
-          name: 'pipeline/stage.run.finished',
-          data: { stageRunId, projectId },
+        // Single seam: writer flips the row aborted, raises the legacy
+        // `projects.abort_requested_at` flag, and emits the advance event.
+        await markAborted(sb, stageRunId, {
+          projectId,
+          stage: stageRun.stage as string,
+          raiseProjectAbort: true,
         });
         // Silence body unused-var lint
         void body;
