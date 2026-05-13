@@ -36,6 +36,14 @@ type Sb = any;
 const createStageRunBodySchema = z.object({
   stage: z.enum(STAGES),
   input: z.unknown(),
+  /**
+   * When true, mark the latest run of the requested stage AND every stage
+   * after it as `aborted` before creating the new attempt. The advance
+   * cascade then naturally rebuilds the downstream Stage Runs because the
+   * idempotency guard only treats {queued,running,awaiting_user,completed,skipped}
+   * as "still owns the slot" — aborted/failed are free to be re-attempted.
+   */
+  cascade: z.boolean().optional(),
 });
 
 function rowToStageRun(row: Record<string, unknown>): StageRun {
@@ -80,6 +88,42 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
         if (!userId) throw new ApiError(401, 'Unauthorized', 'UNAUTHORIZED');
 
         const body = createStageRunBodySchema.parse(request.body);
+
+        if (body.cascade) {
+          // Cascade re-run: supersede the requested stage's latest run and
+          // every stage downstream of it. We mark them aborted (terminal),
+          // which makes the idempotency guard in advanceAfter skip them —
+          // a fresh chain rebuilds as each upstream run completes.
+          const sb: Sb = createServiceClient();
+          await assertProjectOwner(projectId, userId, sb);
+
+          const fromIdx = STAGES.indexOf(body.stage);
+          const affected = STAGES.slice(fromIdx);
+          const now = new Date().toISOString();
+          for (const stage of affected) {
+            const { data: latest } = await sb
+              .from('stage_runs')
+              .select('id, status')
+              .eq('project_id', projectId)
+              .eq('stage', stage)
+              .in('status', ['queued', 'running', 'awaiting_user', 'completed', 'skipped'])
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (latest?.id) {
+              await sb
+                .from('stage_runs')
+                .update({
+                  status: 'aborted',
+                  error_message: `Superseded by cascade re-run from '${body.stage}'`,
+                  finished_at: now,
+                  updated_at: now,
+                })
+                .eq('id', latest.id as string);
+            }
+          }
+        }
+
         const stageRun = await requestStageRun(projectId, body.stage, body.input, userId);
 
         return reply.status(201).send({ data: { stageRun }, error: null });

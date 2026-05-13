@@ -638,13 +638,16 @@ function UpstreamRerunLinks({
 
   async function rerunStage(stage: 'draft' | 'research'): Promise<void> {
     const label = stage === 'draft' ? 'draft' : 'research';
-    if (!confirm(`Re-run ${label}? A new Stage Run will be created and downstream stages will need to follow.`)) return;
+    const idx = STAGES.indexOf(stage as Stage);
+    const downstream = STAGES.slice(idx + 1);
+    const downstreamLabel = downstream.length > 0 ? ` Downstream stages (${downstream.join(', ')}) will be reset and redone.` : '';
+    if (!confirm(`Re-run ${label}?${downstreamLabel}`)) return;
     setBusy(stage);
     try {
       const res = await fetch(`/api/projects/${projectId}/stage-runs`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ stage, input: defaultInputForStage(stage as Stage) }),
+        body: JSON.stringify({ stage, input: defaultInputForStage(stage as Stage), cascade: true }),
       });
       if (res.ok) {
         await onMutated();
@@ -1060,7 +1063,10 @@ function ReRunLink({
   const [busy, setBusy] = useState(false);
 
   async function rerun(): Promise<void> {
-    if (!confirm(`Re-run ${run.stage}? A new Stage Run with attempt #${run.attemptNo + 1} will be created.`)) {
+    const idx = STAGES.indexOf(run.stage);
+    const downstream = STAGES.slice(idx + 1);
+    const downstreamLabel = downstream.length > 0 ? ` Downstream stages (${downstream.join(', ')}) will be reset and redone.` : '';
+    if (!confirm(`Re-run ${run.stage}?${downstreamLabel}`)) {
       return;
     }
     setBusy(true);
@@ -1079,6 +1085,7 @@ function ReRunLink({
             run.inputJson && Object.keys(run.inputJson as Record<string, unknown>).length > 0
               ? run.inputJson
               : defaultInputForStage(run.stage),
+          cascade: true,
         }),
       });
       if (res.ok) {
