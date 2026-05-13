@@ -16,27 +16,32 @@ interface CreditBalance {
   creditsAddon: number;
   creditsResetAt: string | null;
   available: number;
+  signupBonusCredits: number;
+  signupBonusExpiresAt: string | null;
 }
 
 /**
  * Returns the org's current credit balance.
  */
 export async function getBalance(orgId: string): Promise<CreditBalance> {
-  const sb = createServiceClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sb = createServiceClient() as any;
   const { data: org, error } = await sb
     .from('organizations')
-    .select('credits_total, credits_used, credits_addon, credits_reset_at')
+    .select('credits_total, credits_used, credits_addon, credits_reset_at, signup_bonus_credits, signup_bonus_expires_at')
     .eq('id', orgId)
     .single();
 
   if (error || !org) throw new ApiError(404, 'Organization not found', 'NOT_FOUND');
 
   return {
-    creditsTotal: org.credits_total,
-    creditsUsed: org.credits_used,
-    creditsAddon: org.credits_addon,
-    creditsResetAt: org.credits_reset_at,
-    available: (org.credits_total - org.credits_used) + org.credits_addon,
+    creditsTotal: org.credits_total as number,
+    creditsUsed: org.credits_used as number,
+    creditsAddon: org.credits_addon as number,
+    creditsResetAt: org.credits_reset_at as string | null,
+    available: ((org.credits_total as number) - (org.credits_used as number)) + (org.credits_addon as number),
+    signupBonusCredits: (org.signup_bonus_credits as number) ?? 0,
+    signupBonusExpiresAt: (org.signup_bonus_expires_at as string | null) ?? null,
   };
 }
 
