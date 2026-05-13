@@ -21,9 +21,7 @@ import {
 import { ManualOutputDialog } from './ManualOutputDialog';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
-import { MarkdownPreview } from '@/components/preview/MarkdownPreview';
-import { VideoDraftViewer } from '@/components/preview/VideoDraftViewer';
-import type { VideoOutput } from '@brighttale/shared/types/agents';
+import { DraftViewer } from '@/components/preview/DraftViewer';
 import { ContextBanner } from './ContextBanner';
 import { ContentWarningBanner } from './ContentWarningBanner';
 import { ImportPicker } from './ImportPicker';
@@ -1791,15 +1789,14 @@ export function DraftEngine({
             <CardTitle className="text-base">Preview</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {type === 'video' && producedDraftJson ? (
-              <VideoDraftViewer
-                output={producedDraftJson as unknown as VideoOutput}
-                onSave={handleVideoSave}
-                draftId={draftId ?? undefined}
-              />
-            ) : (
-              <MarkdownPreview content={producedContent} className="bg-muted/20 p-4 rounded" />
-            )}
+            <DraftViewer
+              type={type}
+              bodyMarkdown={producedContent}
+              draftJson={producedDraftJson}
+              draftId={draftId ?? undefined}
+              onVideoSave={handleVideoSave}
+              className="bg-muted/20 p-4 rounded"
+            />
             <div className="flex justify-end gap-2 flex-wrap">
               {type === 'video' && producedDraftJson && (
                 <Button

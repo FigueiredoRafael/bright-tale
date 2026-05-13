@@ -29,6 +29,7 @@ import {
   Sparkles,
   XCircle,
   Eye,
+  ExternalLink,
 } from 'lucide-react';
 import {
   STAGES,
@@ -38,6 +39,7 @@ import {
 } from '@brighttale/shared/pipeline/inputs';
 import { useProjectStream } from '@/hooks/useProjectStream';
 import { BrainstormForm } from './BrainstormForm';
+import { StageRunOutputSheet } from './StageRunOutputSheet';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
@@ -703,6 +705,7 @@ function TerminalPanel({
 
   const engineUrl =
     (payload as { engineUrl?: string | null } | null)?.engineUrl ?? `/projects/${projectId}?stage=${run.stage}`;
+  const [outputSheetOpen, setOutputSheetOpen] = useState(false);
 
   return (
     <div className="rounded-md border p-3" data-testid="terminal-panel">
@@ -735,6 +738,16 @@ function TerminalPanel({
           projectMode={projectMode}
           onMutated={onMutated}
         />
+        {run.payloadRef ? (
+          <button
+            type="button"
+            onClick={() => setOutputSheetOpen(true)}
+            className="inline-flex items-center gap-1 text-xs text-foreground hover:underline"
+            data-testid="stage-view-output"
+          >
+            <Eye className="h-3 w-3" aria-hidden /> View output
+          </button>
+        ) : null}
         <a
           href={engineUrl}
           target={engineUrl?.startsWith('http') ? '_blank' : undefined}
@@ -742,7 +755,7 @@ function TerminalPanel({
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
           data-testid="stage-open-engine"
         >
-          <Eye className="h-3 w-3" aria-hidden /> Open in engine
+          <ExternalLink className="h-3 w-3" aria-hidden /> Open engine
         </a>
         <ReRunLink projectId={projectId} run={run} onMutated={onMutated} />
         {run.stage === 'review' &&
@@ -750,6 +763,11 @@ function TerminalPanel({
           <UpstreamRerunLinks projectId={projectId} onMutated={onMutated} />
         ) : null}
       </div>
+      <StageRunOutputSheet
+        open={outputSheetOpen}
+        onOpenChange={setOutputSheetOpen}
+        run={run}
+      />
     </div>
   );
 }
