@@ -231,9 +231,15 @@ function resolveTimestamps(
 }
 
 /**
- * Idempotent: a stage already in a terminal state on the DB is left untouched
- * so we never clobber a real dispatcher write. Otherwise we INSERT (new row)
- * or UPDATE (row exists but is queued/running) to the plan's terminal shape.
+ * Idempotent. Per (project, stage) we may already have:
+ *   • a terminal row (real dispatcher already wrote — leave alone, skip mirror)
+ *   • a non-terminal row (queued/running/awaiting_user from a stale dispatch
+ *     attempt — UPDATE it to the mirror's terminal shape so the v2 rail stops
+ *     showing it as "Queued")
+ *   • nothing → INSERT fresh.
+ *
+ * The DB has `one_non_terminal_per_stage` unique partial index, so at most one
+ * non-terminal row exists per stage; updating it terminal is safe.
  */
 async function upsertStageRuns(
   sb: Sb,
@@ -244,41 +250,53 @@ async function upsertStageRuns(
     .from('stage_runs')
     .select('id, stage, status')
     .eq('project_id', projectId);
-  const existing = new Map<string, { id: string; status: string }>(
-    (existingRows ?? []).map((r: Record<string, unknown>) => [
-      r.stage as string,
-      { id: r.id as string, status: r.status as string },
-    ]),
-  );
+
+  // Bucket per stage: keep separate handles for terminal vs non-terminal rows
+  // so we don't accidentally overwrite (or get blocked by) the wrong one.
+  const byStage = new Map<string, { terminal?: { id: string }; nonTerminal?: { id: string } }>();
+  for (const r of (existingRows ?? []) as Record<string, unknown>[]) {
+    const stage = r.stage as string;
+    const status = r.status as string;
+    const id = r.id as string;
+    const bucket = byStage.get(stage) ?? {};
+    if (TERMINAL_STATUSES.includes(status)) {
+      bucket.terminal = { id };
+    } else {
+      bucket.nonTerminal = { id };
+    }
+    byStage.set(stage, bucket);
+  }
 
   let mirrored = 0;
   const now = new Date().toISOString();
   for (const sr of desired) {
-    const found = existing.get(sr.stage);
-    if (found && TERMINAL_STATUSES.includes(found.status)) {
-      continue;
-    }
-    if (!found) {
-      const { error } = await sb.from('stage_runs').insert({
-        ...sr,
-        created_at: now,
-        updated_at: now,
-      });
+    const bucket = byStage.get(sr.stage);
+
+    // A real terminal row already exists — never clobber.
+    if (bucket?.terminal) continue;
+
+    if (bucket?.nonTerminal) {
+      const { error } = await (sb.from('stage_runs') as unknown as {
+        update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<{ error: unknown }> };
+      })
+        .update({
+          status: sr.status,
+          awaiting_reason: sr.awaiting_reason,
+          payload_ref: sr.payload_ref,
+          started_at: sr.started_at,
+          finished_at: sr.finished_at,
+          updated_at: now,
+        })
+        .eq('id', bucket.nonTerminal.id);
       if (!error) mirrored += 1;
       continue;
     }
-    const { error } = await (sb.from('stage_runs') as unknown as {
-      update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<{ error: unknown }> };
-    })
-      .update({
-        status: sr.status,
-        awaiting_reason: sr.awaiting_reason,
-        payload_ref: sr.payload_ref,
-        started_at: sr.started_at,
-        finished_at: sr.finished_at,
-        updated_at: now,
-      })
-      .eq('id', found.id);
+
+    const { error } = await sb.from('stage_runs').insert({
+      ...sr,
+      created_at: now,
+      updated_at: now,
+    });
     if (!error) mirrored += 1;
   }
   return mirrored;

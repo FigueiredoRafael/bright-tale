@@ -58,6 +58,17 @@ export default function ProjectPipelinePage() {
           setSelectedChannelId((projJson.data.channel_id as string) ?? '');
         }
         if (chJson.data?.items) setChannels(chJson.data.items);
+
+        // Mirror legacy `pipeline_state_json` into `stage_runs` on every page
+        // load. The legacy orchestrator already triggers this after PATCH
+        // persist, but a user landing directly on `?v=2` never mounts the
+        // legacy orchestrator and would otherwise see a half-populated rail.
+        // Idempotent on the server — cheap when nothing new to mirror.
+        void fetch(`/api/projects/${projectId}/stage-runs/mirror-from-legacy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        }).catch(() => {});
       } finally {
         setLoading(false);
       }
