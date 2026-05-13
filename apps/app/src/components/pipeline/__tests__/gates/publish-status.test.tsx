@@ -126,7 +126,7 @@ describe('Gate: publish.status', () => {
     await waitFor(() => {
       expect(capturedBodies.length).toBe(1)
     })
-    expect(capturedBodies[0]!.wpStatus).toBe('publish')
+    expect(capturedBodies[0]!.mode).toBe('publish')
   })
 
   it("publish.status='draft' → auto-fired POST body contains wpStatus='draft'", async () => {
@@ -135,6 +135,6 @@ describe('Gate: publish.status', () => {
     await waitFor(() => {
       expect(capturedBodies.length).toBe(1)
     })
-    expect(capturedBodies[0]!.wpStatus).toBe('draft')
+    expect(capturedBodies[0]!.mode).toBe('draft')
   })
 })

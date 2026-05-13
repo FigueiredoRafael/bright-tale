@@ -12,7 +12,7 @@
  *     aborted | skipped     → payload summary + primary CTA (continue/autopilot)
  *                              + secondary Re-run link
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowRight,
   Ban,
@@ -40,6 +40,80 @@ import { useProjectStream } from '@/hooks/useProjectStream';
 import { BrainstormForm } from './BrainstormForm';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+
+/**
+ * Map raw provider/router errors to a short, user-readable reason. The full
+ * error stays in `run.errorMessage` for debugging; this is what surfaces in
+ * the toast and the headline of the output panel.
+ */
+function friendlyErrorMessage(raw: string | null | undefined): string {
+  if (!raw) return 'Unknown error — check the API logs.';
+  const lower = raw.toLowerCase();
+  if (lower.includes('429') || lower.includes('quota') || lower.includes('resource_exhausted') || lower.includes('rate limit')) {
+    return 'AI provider out of quota / rate-limited. Switch the recommended provider or wait for the quota to reset.';
+  }
+  if (lower.includes('insufficient credits') || lower.includes('credit balance') || lower.includes('billing')) {
+    return 'AI provider rejected the request for billing reasons. Top up the account or pick a different provider.';
+  }
+  if (lower.includes('401') || lower.includes('unauthorized') || lower.includes('invalid_api_key')) {
+    return 'AI provider rejected the API key. Check your provider credentials.';
+  }
+  if (lower.includes('aborted')) return 'Run was aborted.';
+  // Trim long stack-y messages.
+  return raw.length > 240 ? `${raw.slice(0, 240)}…` : raw;
+}
+
+function ConfirmDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  confirmLabel,
+  cancelLabel = 'Cancel',
+  destructive,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description?: ReactNode;
+  confirmLabel: string;
+  cancelLabel?: string;
+  destructive?: boolean;
+  onConfirm: () => void | Promise<void>;
+}) {
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          {description ? <AlertDialogDescription>{description}</AlertDialogDescription> : null}
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              void onConfirm();
+            }}
+            className={destructive ? 'bg-destructive text-white hover:bg-destructive/90' : undefined}
+          >
+            {confirmLabel}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
 
 interface StageViewProps {
   projectId: string;
@@ -139,6 +213,21 @@ export function StageView({ projectId, stage }: StageViewProps) {
   const run = stageRuns[stage];
   const nextStage = successorOf(stage);
   const nextRun = nextStage ? stageRuns[nextStage] : null;
+
+  // Toast on each fresh failure. Tracks already-toasted run IDs so re-renders
+  // (or returning to the page) don't spam the same notification.
+  const toastedFailuresRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!run || run.status !== 'failed' || !run.id) return;
+    if (toastedFailuresRef.current.has(run.id)) return;
+    toastedFailuresRef.current.add(run.id);
+    const reason = friendlyErrorMessage(run.errorMessage);
+    toast.error(`${STAGE_LABELS[stage]} failed`, {
+      description: reason,
+      duration: 8000,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run?.id, run?.status, run?.errorMessage, stage]);
 
   return (
     <section className="space-y-3" data-testid={`stage-view-${stage}`} data-status={run?.status ?? 'idle'}>
@@ -318,9 +407,9 @@ function ManualReviewPanel({
   onMutated: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState<'approve' | 'rerun' | 'abandon' | null>(null);
+  const [confirming, setConfirming] = useState<'approve' | 'rerun' | 'abandon' | null>(null);
 
   async function approveAnyway(): Promise<void> {
-    if (!confirm('Approve this draft despite the unresolved review feedback?')) return;
     setBusy('approve');
     try {
       // Treat manual approval as a successful Stage Run terminal so the
@@ -349,7 +438,6 @@ function ManualReviewPanel({
   }
 
   async function rerun(): Promise<void> {
-    if (!confirm('Re-run review with the current draft? A new Stage Run will be created.')) return;
     setBusy('rerun');
     try {
       const res = await fetch(`/api/projects/${projectId}/stage-runs`, {
@@ -370,7 +458,6 @@ function ManualReviewPanel({
   }
 
   async function abandon(): Promise<void> {
-    if (!confirm('Abandon this draft? The Stage Run will be aborted.')) return;
     setBusy('abandon');
     try {
       const res = await fetch(`/api/projects/${projectId}/stage-runs/${run.id}`, {
@@ -393,7 +480,7 @@ function ManualReviewPanel({
       <div className="flex flex-wrap gap-2 text-sm">
         <button
           type="button"
-          onClick={approveAnyway}
+          onClick={() => setConfirming('approve')}
           disabled={busy !== null}
           className="inline-flex items-center gap-1 rounded-md border bg-primary px-3 py-1.5 font-medium text-primary-foreground"
         >
@@ -401,7 +488,7 @@ function ManualReviewPanel({
         </button>
         <button
           type="button"
-          onClick={rerun}
+          onClick={() => setConfirming('rerun')}
           disabled={busy !== null}
           className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5"
         >
@@ -410,7 +497,7 @@ function ManualReviewPanel({
         </button>
         <button
           type="button"
-          onClick={abandon}
+          onClick={() => setConfirming('abandon')}
           disabled={busy !== null}
           className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-rose-700"
         >
@@ -420,6 +507,40 @@ function ManualReviewPanel({
       <div className="flex flex-wrap items-center gap-3 pt-1">
         <UpstreamRerunLinks projectId={projectId} onMutated={onMutated} />
       </div>
+      <ConfirmDialog
+        open={confirming === 'approve'}
+        onOpenChange={(o) => !o && setConfirming(null)}
+        title="Approve draft anyway?"
+        description="The unresolved review feedback will be ignored and the draft advances to assets."
+        confirmLabel="Approve"
+        onConfirm={() => {
+          setConfirming(null);
+          void approveAnyway();
+        }}
+      />
+      <ConfirmDialog
+        open={confirming === 'rerun'}
+        onOpenChange={(o) => !o && setConfirming(null)}
+        title="Re-run review?"
+        description="A new review Stage Run will be created against the current draft."
+        confirmLabel="Re-run"
+        onConfirm={() => {
+          setConfirming(null);
+          void rerun();
+        }}
+      />
+      <ConfirmDialog
+        open={confirming === 'abandon'}
+        onOpenChange={(o) => !o && setConfirming(null)}
+        title="Abandon this draft?"
+        description="The Stage Run will be aborted. You can re-run upstream stages to start over."
+        confirmLabel="Abandon"
+        destructive
+        onConfirm={() => {
+          setConfirming(null);
+          void abandon();
+        }}
+      />
     </div>
   );
 }
@@ -590,8 +711,14 @@ function TerminalPanel({
         <span>{statusMeta.label}</span>
       </div>
       {run.errorMessage ? (
-        <div className="mt-2 rounded bg-rose-50 px-2 py-1 text-sm text-rose-800">
-          {run.errorMessage}
+        <div className="mt-2 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900" data-testid="stage-error">
+          <div className="font-medium">{friendlyErrorMessage(run.errorMessage)}</div>
+          {friendlyErrorMessage(run.errorMessage) !== run.errorMessage ? (
+            <details className="mt-1 text-xs text-rose-800/80">
+              <summary className="cursor-pointer select-none">Technical detail</summary>
+              <pre className="mt-1 whitespace-pre-wrap break-words font-mono">{run.errorMessage}</pre>
+            </details>
+          ) : null}
         </div>
       ) : null}
       <PayloadSummary
@@ -635,13 +762,9 @@ function UpstreamRerunLinks({
   onMutated: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState<'draft' | 'research' | null>(null);
+  const [confirming, setConfirming] = useState<'draft' | 'research' | null>(null);
 
   async function rerunStage(stage: 'draft' | 'research'): Promise<void> {
-    const label = stage === 'draft' ? 'draft' : 'research';
-    const idx = STAGES.indexOf(stage as Stage);
-    const downstream = STAGES.slice(idx + 1);
-    const downstreamLabel = downstream.length > 0 ? ` Downstream stages (${downstream.join(', ')}) will be reset and redone.` : '';
-    if (!confirm(`Re-run ${label}?${downstreamLabel}`)) return;
     setBusy(stage);
     try {
       const res = await fetch(`/api/projects/${projectId}/stage-runs`, {
@@ -654,18 +777,21 @@ function UpstreamRerunLinks({
       } else {
         const body = (await res.json().catch(() => null)) as
           | { error?: { message?: string } } | null;
-        toast.error(body?.error?.message ?? `Failed to re-run ${label} (${res.status})`);
+        toast.error(body?.error?.message ?? `Failed to re-run ${stage} (${res.status})`);
       }
     } finally {
       setBusy(null);
     }
   }
 
+  const downstreamFor = (stage: 'draft' | 'research'): Stage[] =>
+    STAGES.slice(STAGES.indexOf(stage as Stage) + 1);
+
   return (
     <>
       <button
         type="button"
-        onClick={() => rerunStage('draft')}
+        onClick={() => setConfirming('draft')}
         disabled={busy !== null}
         className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
         data-testid="stage-rerun-draft"
@@ -675,7 +801,7 @@ function UpstreamRerunLinks({
       </button>
       <button
         type="button"
-        onClick={() => rerunStage('research')}
+        onClick={() => setConfirming('research')}
         disabled={busy !== null}
         className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
         data-testid="stage-rerun-research"
@@ -683,6 +809,25 @@ function UpstreamRerunLinks({
         <RotateCcw className="h-3 w-3" aria-hidden />
         {busy === 'research' ? 'Re-running…' : 'Re-run research'}
       </button>
+      {confirming ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setConfirming(null)}
+          title={`Re-run ${confirming}?`}
+          description={
+            downstreamFor(confirming).length > 0
+              ? `Downstream stages (${downstreamFor(confirming).join(', ')}) will be reset and redone.`
+              : undefined
+          }
+          confirmLabel="Re-run"
+          destructive
+          onConfirm={() => {
+            const stage = confirming;
+            setConfirming(null);
+            void rerunStage(stage);
+          }}
+        />
+      ) : null}
     </>
   );
 }
@@ -1133,14 +1278,11 @@ function ReRunLink({
   onMutated: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const idx = STAGES.indexOf(run.stage);
+  const downstream = STAGES.slice(idx + 1);
 
   async function rerun(): Promise<void> {
-    const idx = STAGES.indexOf(run.stage);
-    const downstream = STAGES.slice(idx + 1);
-    const downstreamLabel = downstream.length > 0 ? ` Downstream stages (${downstream.join(', ')}) will be reset and redone.` : '';
-    if (!confirm(`Re-run ${run.stage}?${downstreamLabel}`)) {
-      return;
-    }
     setBusy(true);
     try {
       const res = await fetch(`/api/projects/${projectId}/stage-runs`, {
@@ -1179,7 +1321,7 @@ function ReRunLink({
     <div className="mt-3">
       <button
         type="button"
-        onClick={rerun}
+        onClick={() => setConfirming(true)}
         disabled={busy}
         className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
         data-testid="stage-rerun"
@@ -1187,6 +1329,22 @@ function ReRunLink({
         <RotateCcw className="h-3 w-3" aria-hidden />
         {busy ? 'Re-running…' : `Re-run ${run.stage}`}
       </button>
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={`Re-run ${run.stage}?`}
+        description={
+          downstream.length > 0
+            ? `Downstream stages (${downstream.join(', ')}) will be reset and redone.`
+            : undefined
+        }
+        confirmLabel="Re-run"
+        destructive={downstream.length > 0}
+        onConfirm={() => {
+          setConfirming(false);
+          void rerun();
+        }}
+      />
     </div>
   );
 }

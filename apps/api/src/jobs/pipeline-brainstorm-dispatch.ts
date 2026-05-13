@@ -14,6 +14,7 @@
  */
 import { inngest } from './client.js';
 import { createServiceClient } from '../lib/supabase/index.js';
+import { markAwaitingUser, markRunning } from '../lib/pipeline/stage-run-writer.js';
 
 interface StageRequestedEvent {
   name: 'pipeline/stage.requested';
@@ -38,6 +39,7 @@ export const pipelineBrainstormDispatch = inngest.createFunction(
 
     const sb: Sb = createServiceClient();
     const { stageRunId, projectId } = event.data;
+    const ctx = { projectId, stage: 'brainstorm' as const };
 
     const { data: stageRun } = await sb
       .from('stage_runs')
@@ -90,33 +92,21 @@ export const pipelineBrainstormDispatch = inngest.createFunction(
     if (!session?.id) return;
 
     const provider = input.provider as string | undefined;
-    const now = new Date().toISOString();
 
     if (provider === 'manual') {
       // Park the Stage Run — user will paste the AI output via the existing
       // manual-output endpoint, which is responsible for transitioning the
       // Stage Run to `completed` and emitting `pipeline/stage.run.finished`.
-      await sb
-        .from('stage_runs')
-        .update({
-          status: 'awaiting_user',
-          awaiting_reason: 'manual_paste',
-          payload_ref: { kind: 'brainstorm_session', id: session.id },
-          started_at: now,
-          updated_at: now,
-        })
-        .eq('id', stageRunId);
+      await markAwaitingUser(sb, stageRunId, {
+        ...ctx,
+        awaitingReason: 'manual_paste',
+        payloadRef: { kind: 'brainstorm_session', id: session.id },
+        markStarted: true,
+      });
       return;
     }
 
-    await sb
-      .from('stage_runs')
-      .update({
-        status: 'running',
-        started_at: now,
-        updated_at: now,
-      })
-      .eq('id', stageRunId);
+    await markRunning(sb, stageRunId, ctx);
 
     await inngest.send({
       name: 'brainstorm/generate',

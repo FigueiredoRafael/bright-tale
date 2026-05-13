@@ -189,10 +189,14 @@ describe('<StageView /> — 4 visual states', () => {
         inputJson: { mode: 'topic_driven', topic: 'AI pricing' },
       }),
     });
-    vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
     render(<StageView projectId={PROJECT_ID} stage="brainstorm" />);
 
+    // Open the confirmation dialog (Radix AlertDialog, not window.confirm)
     fireEvent.click(screen.getByTestId('stage-rerun'));
+
+    // Click the "Re-run" confirm button inside the dialog
+    const confirmButton = await screen.findByRole('button', { name: /^Re-run$/i });
+    fireEvent.click(confirmButton);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const postCall = fetchMock.mock.calls.find(

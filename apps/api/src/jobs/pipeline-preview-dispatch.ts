@@ -9,6 +9,11 @@
  */
 import { inngest } from './client.js';
 import { createServiceClient } from '../lib/supabase/index.js';
+import {
+  markCompleted,
+  markFailed,
+  markRunning,
+} from '../lib/pipeline/stage-run-writer.js';
 
 interface StageRequestedEvent {
   name: 'pipeline/stage.requested';
@@ -33,6 +38,7 @@ export const pipelinePreviewDispatch = inngest.createFunction(
 
     const sb: Sb = createServiceClient();
     const { stageRunId, projectId } = event.data;
+    const ctx = { projectId, stage: 'preview' as const };
 
     const { data: stageRun } = await sb
       .from('stage_runs')
@@ -53,7 +59,7 @@ export const pipelinePreviewDispatch = inngest.createFunction(
       .maybeSingle();
     const draftRef = priorDraft?.payload_ref as { kind?: string; id?: string } | null | undefined;
     if (draftRef?.kind !== 'content_draft' || !draftRef.id) {
-      await markFailed(sb, stageRunId, projectId, 'No prior draft Stage Run to preview');
+      await markFailed(sb, stageRunId, { ...ctx, errorMessage: 'No prior draft Stage Run to preview' });
       return;
     }
     const draftId = draftRef.id;
@@ -65,46 +71,21 @@ export const pipelinePreviewDispatch = inngest.createFunction(
       .eq('id', draftId)
       .maybeSingle();
     if (!draft) {
-      await markFailed(sb, stageRunId, projectId, `content_draft ${draftId} not found`);
+      await markFailed(sb, stageRunId, { ...ctx, errorMessage: `content_draft ${draftId} not found` });
       return;
     }
     if (!draft.draft_json) {
-      await markFailed(sb, stageRunId, projectId, 'Draft has no draft_json — produce step incomplete');
+      await markFailed(sb, stageRunId, {
+        ...ctx,
+        errorMessage: 'Draft has no draft_json — produce step incomplete',
+      });
       return;
     }
 
-    const now = new Date().toISOString();
-    await sb
-      .from('stage_runs')
-      .update({
-        status: 'completed',
-        payload_ref: { kind: 'content_draft', id: draftId },
-        started_at: now,
-        finished_at: now,
-        updated_at: now,
-      })
-      .eq('id', stageRunId);
-
-    await inngest.send({
-      name: 'pipeline/stage.run.finished',
-      data: { stageRunId, projectId },
+    await markRunning(sb, stageRunId, ctx);
+    await markCompleted(sb, stageRunId, {
+      ...ctx,
+      payloadRef: { kind: 'content_draft', id: draftId },
     });
   },
 );
-
-async function markFailed(sb: Sb, stageRunId: string, projectId: string, message: string): Promise<void> {
-  const now = new Date().toISOString();
-  await sb
-    .from('stage_runs')
-    .update({
-      status: 'failed',
-      error_message: message.slice(0, 500),
-      finished_at: now,
-      updated_at: now,
-    })
-    .eq('id', stageRunId);
-  await inngest.send({
-    name: 'pipeline/stage.run.finished',
-    data: { stageRunId, projectId },
-  });
-}

@@ -101,8 +101,10 @@ describe('POST /research-sessions', () => {
       payload: { level: 'medium', topic: 'deep work', focusTags: ['stats'] },
     });
 
-    // Research now runs synchronously and returns cards directly.
-    expect(res.statusCode).toBe(200);
+    // Research is enqueued and runs async via the research/generate job;
+    // the route responds 202 Accepted with the session id so the client can
+    // subscribe to SSE for live results.
+    expect(res.statusCode).toBe(202);
     const body = res.json();
     expect(body.data.sessionId).toBe('rs-1');
     expect(body.data.level).toBe('medium');

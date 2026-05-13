@@ -131,6 +131,7 @@ export const researchGenerate = inngest.createFunction(
           targetAudience: undefined,
           level: (inputJson.level as string) ?? undefined,
           instruction: (inputJson.instruction as string) ?? undefined,
+          reviewFeedback: (inputJson.reviewFeedback as ResearchInput['reviewFeedback']) ?? undefined,
           channel: channelContext as ResearchInput['channel'],
         });
 

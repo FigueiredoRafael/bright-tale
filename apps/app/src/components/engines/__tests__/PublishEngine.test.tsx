@@ -241,7 +241,7 @@ describe('PublishEngine', () => {
     await waitFor(() => {
       expect(capturedBodies.length).toBe(1)
     })
-    expect(capturedBodies[0]!.wpStatus).toBe('draft')
+    expect(capturedBodies[0]!.mode).toBe('draft')
   })
 
   it("publish.status='published' → POST body has wpStatus='publish'", async () => {
@@ -250,7 +250,7 @@ describe('PublishEngine', () => {
     await waitFor(() => {
       expect(capturedBodies.length).toBe(1)
     })
-    expect(capturedBodies[0]!.wpStatus).toBe('publish')
+    expect(capturedBodies[0]!.mode).toBe('publish')
   })
 
   it('auto-fires publish in overview mode without manual click', async () => {
@@ -259,7 +259,7 @@ describe('PublishEngine', () => {
     await waitFor(() => {
       expect(capturedBodies.length).toBe(1)
     })
-    expect(capturedBodies[0]!.wpStatus).toBe('draft')
+    expect(capturedBodies[0]!.mode).toBe('draft')
   })
 
   it('auto-fires publish in supervised mode using configured wpStatus', async () => {
@@ -292,7 +292,7 @@ describe('PublishEngine', () => {
     await waitFor(() => {
       expect(capturedBodies.length).toBe(1)
     })
-    expect(capturedBodies[0]!.wpStatus).toBe('publish')
+    expect(capturedBodies[0]!.mode).toBe('publish')
   })
 
   it('does NOT auto-fire in step-by-step mode', async () => {

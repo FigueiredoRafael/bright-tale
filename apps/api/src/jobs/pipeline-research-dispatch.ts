@@ -14,6 +14,7 @@
 import { inngest } from './client.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { resolveIdeaArchiveFromBrainstorm } from '../lib/pipeline/idea-resolution.js';
+import { markFailed, markRunning } from '../lib/pipeline/stage-run-writer.js';
 
 interface StageRequestedEvent {
   name: 'pipeline/stage.requested';
@@ -38,6 +39,7 @@ export const pipelineResearchDispatch = inngest.createFunction(
 
     const sb: Sb = createServiceClient();
     const { stageRunId, projectId } = event.data;
+    const ctx = { projectId, stage: 'research' as const };
 
     const { data: stageRun } = await sb
       .from('stage_runs')
@@ -86,6 +88,7 @@ export const pipelineResearchDispatch = inngest.createFunction(
     const provider = input.provider as string | undefined;
     const model = input.model as string | undefined;
     const modelTier = (input.modelTier as string | undefined) ?? 'standard';
+    const reviewFeedback = input.reviewFeedback ?? null;
 
     const { data: session, error: insertError } = await sb
       .from('research_sessions')
@@ -97,7 +100,7 @@ export const pipelineResearchDispatch = inngest.createFunction(
         idea_id: ideaArchiveId,
         level,
         focus_tags: focusTags,
-        input_json: { topic, ideaTitle: topic, focusTags, level },
+        input_json: { topic, ideaTitle: topic, focusTags, level, reviewFeedback },
         model_tier: modelTier,
         status: 'running',
       })
@@ -105,32 +108,14 @@ export const pipelineResearchDispatch = inngest.createFunction(
       .single();
     if (insertError || !session?.id) {
       // Surface the silent failure on the Stage Run so the UI shows why.
-      const now = new Date().toISOString();
-      await sb
-        .from('stage_runs')
-        .update({
-          status: 'failed',
-          error_message: `Failed to create research_sessions row: ${(insertError as { message?: string } | undefined)?.message ?? 'unknown'}`,
-          finished_at: now,
-          updated_at: now,
-        })
-        .eq('id', stageRunId);
-      await inngest.send({
-        name: 'pipeline/stage.run.finished',
-        data: { stageRunId, projectId },
+      await markFailed(sb, stageRunId, {
+        ...ctx,
+        errorMessage: `Failed to create research_sessions row: ${(insertError as { message?: string } | undefined)?.message ?? 'unknown'}`,
       });
       return;
     }
 
-    const now = new Date().toISOString();
-    await sb
-      .from('stage_runs')
-      .update({
-        status: 'running',
-        started_at: now,
-        updated_at: now,
-      })
-      .eq('id', stageRunId);
+    await markRunning(sb, stageRunId, ctx);
 
     await inngest.send({
       name: 'research/generate',
@@ -141,7 +126,7 @@ export const pipelineResearchDispatch = inngest.createFunction(
         channelId: project.channel_id ?? null,
         ideaId: ideaArchiveId,
         level,
-        inputJson: { topic, ideaTitle: topic, focusTags, level },
+        inputJson: { topic, ideaTitle: topic, focusTags, level, reviewFeedback },
         modelTier: 'standard',
         provider,
         model,

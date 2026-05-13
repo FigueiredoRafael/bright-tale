@@ -33,6 +33,16 @@ const STAGE_RUN_ID = 'sr-assets';
 const PROJECT_ID = 'proj-xyz';
 const DRAFT_ID = 'cd-1';
 
+// Inngest's `step.run(id, fn)` is exercised inside the dispatcher to gate the
+// LLM call. The tests don't replay across step boundaries, so a passthrough
+// implementation is sufficient here.
+const STEP_MOCK = { run: <T>(_id: string, fn: () => Promise<T>) => fn() };
+
+type HandlerArgs = {
+  event: { data: { stageRunId: string; stage: string; projectId: string } };
+  step: typeof STEP_MOCK;
+};
+
 let stageRunRow: Record<string, unknown>;
 let priorDraftStageRun: Record<string, unknown> | null;
 let draftRow: Record<string, unknown> | null;
@@ -124,10 +134,9 @@ describe('pipeline-assets-dispatch', () => {
   it('returns early when event stage is not assets', async () => {
     const { pipelineAssetsDispatch } = await import('../pipeline-assets-dispatch.js');
 
-    await (pipelineAssetsDispatch as unknown as (args: {
-      event: { data: { stageRunId: string; stage: string; projectId: string } };
-    }) => Promise<void>)({
+    await (pipelineAssetsDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
       event: { data: { stageRunId: STAGE_RUN_ID, stage: 'draft', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
     });
 
     expect(generateWithFallbackMock).not.toHaveBeenCalled();
@@ -137,10 +146,9 @@ describe('pipeline-assets-dispatch', () => {
   it('briefs_only: runs agent, writes asset_briefs into draft_json, marks stage_run completed', async () => {
     const { pipelineAssetsDispatch } = await import('../pipeline-assets-dispatch.js');
 
-    await (pipelineAssetsDispatch as unknown as (args: {
-      event: { data: { stageRunId: string; stage: string; projectId: string } };
-    }) => Promise<void>)({
+    await (pipelineAssetsDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
       event: { data: { stageRunId: STAGE_RUN_ID, stage: 'assets', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
     });
 
     const draftUpdate = contentDraftsUpdateMock.mock.calls[0][0];
@@ -164,10 +172,9 @@ describe('pipeline-assets-dispatch', () => {
 
     const { pipelineAssetsDispatch } = await import('../pipeline-assets-dispatch.js');
 
-    await (pipelineAssetsDispatch as unknown as (args: {
-      event: { data: { stageRunId: string; stage: string; projectId: string } };
-    }) => Promise<void>)({
+    await (pipelineAssetsDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
       event: { data: { stageRunId: STAGE_RUN_ID, stage: 'assets', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
     });
 
     expect(generateWithFallbackMock).not.toHaveBeenCalled();
@@ -184,10 +191,9 @@ describe('pipeline-assets-dispatch', () => {
     const { pipelineAssetsDispatch } = await import('../pipeline-assets-dispatch.js');
 
     await expect(
-      (pipelineAssetsDispatch as unknown as (args: {
-        event: { data: { stageRunId: string; stage: string; projectId: string } };
-      }) => Promise<void>)({
+      (pipelineAssetsDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
         event: { data: { stageRunId: STAGE_RUN_ID, stage: 'assets', projectId: PROJECT_ID } },
+        step: STEP_MOCK,
       }),
     ).rejects.toThrow(/assets agent down/);
 
@@ -202,10 +208,9 @@ describe('pipeline-assets-dispatch', () => {
 
     const { pipelineAssetsDispatch } = await import('../pipeline-assets-dispatch.js');
 
-    await (pipelineAssetsDispatch as unknown as (args: {
-      event: { data: { stageRunId: string; stage: string; projectId: string } };
-    }) => Promise<void>)({
+    await (pipelineAssetsDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
       event: { data: { stageRunId: STAGE_RUN_ID, stage: 'assets', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
     });
 
     const failedRow = stageRunsUpdateMock.mock.calls

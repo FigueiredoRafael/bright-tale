@@ -3,6 +3,11 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 
+// The wizard exercises long userEvent click chains. In parallel suite runs
+// fork scheduling makes those chains slower than vitest's 5s default. Bump
+// the per-test budget so this file isn't flaky under load.
+vi.setConfig({ testTimeout: 30_000 })
+
 const sendSpy = vi.fn()
 
 // Mutable context that tests can override per-test
@@ -35,6 +40,14 @@ vi.mock('@/providers/PipelineSettingsProvider', () => ({
         draft: 'anthropic',
         review: 'gemini',
         assets: 'gemini',
+      },
+      defaultModels: {
+        brainstorm: 'gemini-2.5-flash',
+        research: 'gemini-2.5-flash',
+        canonicalCore: 'gpt-4o',
+        draft: 'claude-3-5-sonnet',
+        review: 'gemini-2.5-flash',
+        assets: 'gemini-2.5-flash',
       },
     },
     creditSettings: {

@@ -28,6 +28,7 @@ import {
   PredecessorNotDoneError,
   ConcurrentStageRunError,
 } from '../lib/pipeline/orchestrator.js';
+import { bulkAbort } from '../lib/pipeline/stage-run-writer.js';
 import { STAGES, type Stage, type StageRun } from '@brighttale/shared/pipeline/inputs';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -59,6 +60,7 @@ function rowToStageRun(row: Record<string, unknown>): StageRun {
     errorMessage: (row.error_message ?? null) as string | null,
     startedAt: (row.started_at ?? null) as string | null,
     finishedAt: (row.finished_at ?? null) as string | null,
+    outcomeJson: row.outcome_json,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -93,28 +95,23 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
           // Cascade re-run: supersede the requested stage's runs and every
           // stage downstream of it. Marking them aborted makes the
           // idempotency guard in advanceAfter skip them — the chain
-          // rebuilds as each upstream stage completes.
+          // rebuilds as each upstream stage completes. All write semantics
+          // (status filter, error_message truncation, timestamps) live in
+          // bulkAbort so this route stays a thin HTTP adapter.
           const sb: Sb = createServiceClient();
           await assertProjectOwner(projectId, userId, sb);
 
           const fromIdx = STAGES.indexOf(body.stage);
           const affected = STAGES.slice(fromIdx);
-          const now = new Date().toISOString();
-          // Single bulk update covering every non-failed/non-aborted run for
-          // any affected stage. PostgREST translates this to one UPDATE…WHERE.
-          const { error: cascadeErr } = await sb
-            .from('stage_runs')
-            .update({
-              status: 'aborted',
-              error_message: `Superseded by cascade re-run from '${body.stage}'`,
-              finished_at: now,
-              updated_at: now,
-            })
-            .eq('project_id', projectId)
-            .in('stage', affected)
-            .in('status', ['queued', 'running', 'awaiting_user', 'completed', 'skipped']);
-          if (cascadeErr) {
-            request.log.error({ err: cascadeErr, projectId, fromStage: body.stage }, 'cascade abort failed');
+          try {
+            await bulkAbort(
+              sb,
+              projectId,
+              affected,
+              `Superseded by cascade re-run from '${body.stage}'`,
+            );
+          } catch (err) {
+            request.log.error({ err, projectId, fromStage: body.stage }, 'cascade abort failed');
             throw new ApiError(500, 'Failed to supersede downstream Stage Runs', 'CASCADE_FAILED');
           }
         }

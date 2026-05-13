@@ -15,6 +15,11 @@ import { generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { buildReviewMessage } from '../lib/ai/prompts/review.js';
+import {
+  markAwaitingUser,
+  markCompleted,
+  markFailed,
+} from '../lib/pipeline/stage-run-writer.js';
 
 interface StageRequestedEvent {
   name: 'pipeline/stage.requested';
@@ -36,13 +41,19 @@ export const pipelineReviewDispatch = inngest.createFunction(
   {
     id: 'pipeline-review-dispatch',
     retries: 0,
+    // Review agents see the entire draft + canonical core + JSON schema, so
+    // the LLM call regularly runs 1-2 min. Default Inngest function timeout
+    // is too short for this; bump finish timeout to 5 min so the function
+    // completes naturally instead of being killed mid-call.
+    timeouts: { finish: '5m' },
     triggers: [{ event: 'pipeline/stage.requested' }],
   },
-  async ({ event }: { event: StageRequestedEvent }) => {
+  async ({ event, step }: { event: StageRequestedEvent; step: { run: <T>(id: string, fn: () => Promise<T>) => Promise<T> } }) => {
     if (event.data.stage !== 'review') return;
 
     const sb: Sb = createServiceClient();
     const { stageRunId, projectId } = event.data;
+    const ctx = { projectId, stage: 'review' as const };
 
     const { data: stageRun } = await sb
       .from('stage_runs')
@@ -50,11 +61,12 @@ export const pipelineReviewDispatch = inngest.createFunction(
       .eq('id', stageRunId)
       .maybeSingle();
     if (!stageRun) return;
-    // Idempotency: only `queued` runs are eligible. Inngest dev mode and
-    // network blips can re-deliver `pipeline/stage.requested` for the same
-    // Stage Run — without this guard each delivery re-runs the LLM and
-    // re-charges credits.
-    if (stageRun.status !== 'queued') return;
+    // Idempotency: bail on TERMINAL statuses. `queued` is the normal entry
+    // and `running` means we already claimed this row on an earlier replay
+    // of the same Inngest invocation (Inngest re-executes the function from
+    // the top after each `step.run` and reads cached step results) — letting
+    // it through is required so the post-LLM verdict logic actually runs.
+    if (stageRun.status !== 'queued' && stageRun.status !== 'running') return;
 
     const input = (stageRun.input_json ?? {}) as Record<string, unknown>;
     const provider = input.provider as string | undefined;
@@ -83,16 +95,21 @@ export const pipelineReviewDispatch = inngest.createFunction(
       (reviewConfig.maxIterations as number | undefined) ??
       MAX_ITERATIONS_DEFAULT;
 
-    // Atomic compare-and-swap: only this invocation that flips queued→running
-    // proceeds. Concurrent re-deliveries see the row already running and bail.
-    const startedAt = new Date().toISOString();
-    const { data: claimed } = await sb
-      .from('stage_runs')
-      .update({ status: 'running', started_at: startedAt, updated_at: startedAt })
-      .eq('id', stageRunId)
-      .eq('status', 'queued')
-      .select('id');
-    if (!claimed || (claimed as unknown[]).length === 0) return;
+    // Atomic compare-and-swap inside step.run so the claim only happens on
+    // the FIRST Inngest invocation; replays see the cached `claimed: true`
+    // result and skip past instead of re-running the CAS (which would lose
+    // since the row is now `running`).
+    const claimed = await step.run('claim-stage-run', async () => {
+      const startedAt = new Date().toISOString();
+      const { data } = await sb
+        .from('stage_runs')
+        .update({ status: 'running', started_at: startedAt, updated_at: startedAt })
+        .eq('id', stageRunId)
+        .eq('status', 'queued')
+        .select('id');
+      return { won: !!(data && (data as unknown[]).length > 0) };
+    });
+    if (!claimed.won) return;
 
     // Resolve the draft to review from the prior draft Stage Run.
     const { data: priorDraft } = await sb
@@ -105,7 +122,7 @@ export const pipelineReviewDispatch = inngest.createFunction(
       .maybeSingle();
     const draftRef = priorDraft?.payload_ref as { kind?: string; id?: string } | null | undefined;
     if (draftRef?.kind !== 'content_draft' || !draftRef.id) {
-      await markFailed(sb, stageRunId, projectId, 'No prior draft Stage Run to review');
+      await markFailed(sb, stageRunId, { ...ctx, errorMessage: 'No prior draft Stage Run to review' });
       return;
     }
     const draftId = draftRef.id;
@@ -116,7 +133,7 @@ export const pipelineReviewDispatch = inngest.createFunction(
       .eq('id', draftId)
       .maybeSingle();
     if (!draft) {
-      await markFailed(sb, stageRunId, projectId, `content_draft ${draftId} not found`);
+      await markFailed(sb, stageRunId, { ...ctx, errorMessage: `content_draft ${draftId} not found` });
       return;
     }
 
@@ -139,25 +156,31 @@ export const pipelineReviewDispatch = inngest.createFunction(
         channel: undefined,
       });
 
-      const response = await generateWithFallback(
-        'review',
-        (draft.model_tier as string) ?? 'standard',
-        {
-          agentType: 'review',
-          systemPrompt: agentConfig.instructions ?? '',
-          userMessage,
-        },
-        {
-          provider: resolvedProvider,
-          model: resolvedModel,
-          logContext: {
-            userId: (draft.user_id as string) ?? '',
-            orgId: (draft.org_id as string) ?? '',
-            channelId: (draft.channel_id as string) ?? null,
-            sessionId: draftId,
-            sessionType: 'review',
+      // Wrap the LLM call in `step.run` so Inngest treats it as a long-running
+      // step. Without this the function executes inline and dev-mode kills it
+      // before the OpenAI/Anthropic response comes back (~10s default), which
+      // leaves the Stage Run orphaned in `running` with no error_message.
+      const response = await step.run('call-review-agent', () =>
+        generateWithFallback(
+          'review',
+          (draft.model_tier as string) ?? 'standard',
+          {
+            agentType: 'review',
+            systemPrompt: agentConfig.instructions ?? '',
+            userMessage,
           },
-        },
+          {
+            provider: resolvedProvider,
+            model: resolvedModel,
+            logContext: {
+              userId: (draft.user_id as string) ?? '',
+              orgId: (draft.org_id as string) ?? '',
+              channelId: (draft.channel_id as string) ?? null,
+              sessionId: draftId,
+              sessionType: 'review',
+            },
+          },
+        ),
       );
 
       const result = response.result as Record<string, unknown>;
@@ -222,53 +245,40 @@ export const pipelineReviewDispatch = inngest.createFunction(
 
       await sb.from('content_drafts').update(updateData).eq('id', draftId);
 
-      const now = new Date().toISOString();
-      const stageRunPatch: Record<string, unknown> = {
-        payload_ref: { kind: 'content_draft', id: draftId },
-        updated_at: now,
+      const payloadRef = { kind: 'content_draft', id: draftId };
+      // Carry the verdict + feedback in the Stage Run itself so the
+      // orchestrator never has to open `payload_ref → content_drafts` to
+      // decide loop-vs-forward. `draftType` lets the orchestrator build the
+      // revision draft's `input_json.productionParams` without another lookup.
+      const outcome: Record<string, unknown> = {
+        verdict: newVerdict,
+        draftType: draft.type as string,
+        iterationCount,
+        score: reviewScore,
+        feedbackJson: result,
       };
       if (runOutcome.status === 'completed') {
-        stageRunPatch.status = 'completed';
-        stageRunPatch.finished_at = now;
+        await markCompleted(sb, stageRunId, { ...ctx, payloadRef, outcome });
       } else if (runOutcome.status === 'failed') {
-        stageRunPatch.status = 'failed';
-        stageRunPatch.finished_at = now;
-        stageRunPatch.error_message = runOutcome.errorMessage.slice(0, 500);
+        await markFailed(sb, stageRunId, {
+          ...ctx,
+          errorMessage: runOutcome.errorMessage,
+          payloadRef,
+          outcome,
+        });
       } else {
-        stageRunPatch.status = 'awaiting_user';
-        stageRunPatch.awaiting_reason = runOutcome.awaitingReason;
-      }
-      await sb.from('stage_runs').update(stageRunPatch).eq('id', stageRunId);
-
-      // Only completed/failed feed advanceAfter — awaiting_user keeps the
-      // Stage Run parked for the human and must not auto-advance.
-      if (runOutcome.status !== 'awaiting_user') {
-        await inngest.send({
-          name: 'pipeline/stage.run.finished',
-          data: { stageRunId, projectId },
+        await markAwaitingUser(sb, stageRunId, {
+          ...ctx,
+          awaitingReason: runOutcome.awaitingReason,
+          payloadRef,
+          outcome,
         });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
-      await markFailed(sb, stageRunId, projectId, message);
+      console.error(err);
+      await markFailed(sb, stageRunId, { ...ctx, errorMessage: message });
       throw err;
     }
   },
 );
-
-async function markFailed(sb: Sb, stageRunId: string, projectId: string, message: string): Promise<void> {
-  const now = new Date().toISOString();
-  await sb
-    .from('stage_runs')
-    .update({
-      status: 'failed',
-      error_message: message.slice(0, 500),
-      finished_at: now,
-      updated_at: now,
-    })
-    .eq('id', stageRunId);
-  await inngest.send({
-    name: 'pipeline/stage.run.finished',
-    data: { stageRunId, projectId },
-  });
-}

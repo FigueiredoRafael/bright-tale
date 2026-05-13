@@ -1,0 +1,15 @@
+-- Add `outcome_json` to stage_runs so dispatchers can record the
+-- orchestrator-relevant result of the Stage (verdict, feedback summary,
+-- next-stage hints) without forcing the orchestrator to open Payload Ref.
+--
+-- Per ADR-0003 the orchestrator must treat `payload_ref` as opaque. Before
+-- this column, the review dispatcher wrote its verdict into
+-- `content_drafts.review_verdict` and the orchestrator's `advanceAfter` /
+-- `resumeProject` had to dereference `payload_ref` to decide loop-vs-forward.
+-- That coupled the orchestrator to the content_drafts schema and made the
+-- review-loop branch un-testable without a real content_drafts row.
+--
+-- `outcome_json` is intentionally schemaless: each Stage owns the shape
+-- (e.g. review writes `{ verdict, feedbackJson, draftType }`). The
+-- orchestrator reads ONLY this column and the Stage Run status.
+alter table stage_runs add column if not exists outcome_json jsonb;

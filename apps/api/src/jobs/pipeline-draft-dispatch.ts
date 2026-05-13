@@ -10,6 +10,7 @@
 import { inngest } from './client.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { resolveIdeaArchiveFromBrainstorm } from '../lib/pipeline/idea-resolution.js';
+import { markFailed, markRunning } from '../lib/pipeline/stage-run-writer.js';
 
 interface StageRequestedEvent {
   name: 'pipeline/stage.requested';
@@ -34,6 +35,7 @@ export const pipelineDraftDispatch = inngest.createFunction(
 
     const sb: Sb = createServiceClient();
     const { stageRunId, projectId } = event.data;
+    const ctx = { projectId, stage: 'draft' as const };
 
     const { data: stageRun } = await sb
       .from('stage_runs')
@@ -111,47 +113,36 @@ export const pipelineDraftDispatch = inngest.createFunction(
             | undefined)
         : undefined;
     if (reviewFeedback) {
-      const { data: priorDraftRun } = await sb
-        .from('stage_runs')
-        .select('payload_ref')
+      // Resolve the artifact to revise straight from `content_drafts` rather
+      // than via a prior stage_run. Manual cascade re-runs supersede the
+      // prior draft run (status=aborted) but the content_draft row itself
+      // survives — that's the document we want to revise. Querying
+      // content_drafts directly works for both manual and auto-loop paths.
+      const { data: priorContentDraft } = await sb
+        .from('content_drafts')
+        .select('id')
         .eq('project_id', projectId)
-        .eq('stage', 'draft')
-        .eq('status', 'completed')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      const existingDraftRef = priorDraftRun?.payload_ref as
-        | { kind?: string; id?: string }
-        | null
-        | undefined;
-      if (existingDraftRef?.kind !== 'content_draft' || !existingDraftRef.id) {
-        const now = new Date().toISOString();
-        await sb
-          .from('stage_runs')
-          .update({
-            status: 'failed',
-            error_message: 'Revision requested but no prior content_draft to revise',
-            finished_at: now,
-            updated_at: now,
-          })
-          .eq('id', stageRunId);
-        await inngest.send({
-          name: 'pipeline/stage.run.finished',
-          data: { stageRunId, projectId },
+      const existingDraftId = (priorContentDraft?.id as string | undefined) ?? null;
+      if (!existingDraftId) {
+        await markFailed(sb, stageRunId, {
+          ...ctx,
+          errorMessage: 'Revision requested but no prior content_draft to revise',
         });
         return;
       }
 
-      const now = new Date().toISOString();
-      await sb
-        .from('stage_runs')
-        .update({ status: 'running', started_at: now, updated_at: now })
-        .eq('id', stageRunId);
+      await markRunning(sb, stageRunId, {
+        ...ctx,
+        payloadRef: { kind: 'content_draft', id: existingDraftId },
+      });
 
       await inngest.send({
         name: 'production/produce',
         data: {
-          draftId: existingDraftRef.id,
+          draftId: existingDraftId,
           orgId,
           userId,
           type,
@@ -182,32 +173,14 @@ export const pipelineDraftDispatch = inngest.createFunction(
       .select()
       .single();
     if (insertError || !draft?.id) {
-      const now = new Date().toISOString();
-      await sb
-        .from('stage_runs')
-        .update({
-          status: 'failed',
-          error_message: `Failed to create content_drafts row: ${(insertError as { message?: string } | undefined)?.message ?? 'unknown'}`,
-          finished_at: now,
-          updated_at: now,
-        })
-        .eq('id', stageRunId);
-      await inngest.send({
-        name: 'pipeline/stage.run.finished',
-        data: { stageRunId, projectId },
+      await markFailed(sb, stageRunId, {
+        ...ctx,
+        errorMessage: `Failed to create content_drafts row: ${(insertError as { message?: string } | undefined)?.message ?? 'unknown'}`,
       });
       return;
     }
 
-    const now = new Date().toISOString();
-    await sb
-      .from('stage_runs')
-      .update({
-        status: 'running',
-        started_at: now,
-        updated_at: now,
-      })
-      .eq('id', stageRunId);
+    await markRunning(sb, stageRunId, ctx);
 
     await inngest.send({
       name: 'production/generate',

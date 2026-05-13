@@ -139,8 +139,10 @@ describe('POST /content-drafts/:id/canonical-core', () => {
 });
 
 describe('POST /content-drafts/:id/produce', () => {
-  it('runs agent-3b-{type} and stores draft_json', async () => {
-    // loadDraft → maybeSingle returns draft; loadCreditSettings → maybeSingle returns null (uses defaults)
+  it('enqueues the production-produce job and returns 202 with queued status', async () => {
+    // Route is now async: dispatches `production/produce` to Inngest and
+    // returns 202 immediately. SSE on /:id/events streams progress; the
+    // worker is responsible for writing the final draft_json.
     mockChain.maybeSingle
       .mockResolvedValueOnce({
         data: {
@@ -153,20 +155,7 @@ describe('POST /content-drafts/:id/produce', () => {
         error: null,
       })
       .mockResolvedValueOnce({ data: null, error: null });
-    mockChain.single
-      .mockResolvedValueOnce({ data: { org_id: 'org-1' }, error: null })
-      .mockResolvedValueOnce({
-        data: { id: 'cd-1', draft_json: { stage: 'produce', produced: true }, status: 'in_review' },
-        error: null,
-      });
-    // override generateWithFallback to avoid relying on params.input.stage
-    const router = await import('@/lib/ai/router');
-    (router.generateWithFallback as any).mockResolvedValueOnce({
-      result: { stage: 'produce', produced: true, body: 'content' },
-      providerName: 'mock',
-      model: 'mock',
-      attempts: 1,
-    });
+    mockChain.single.mockResolvedValueOnce({ data: { org_id: 'org-1' }, error: null });
 
     const res = await app.inject({
       method: 'POST',
@@ -174,10 +163,11 @@ describe('POST /content-drafts/:id/produce', () => {
       headers: AUTH_USER,
     });
 
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(202);
     const body = res.json();
-    expect(body.data.status).toBe('in_review');
-    expect(body.data.draft_json.stage).toBe('produce');
+    expect(body.data.draftId).toBe('cd-1');
+    expect(body.data.status).toBe('queued');
+    expect(body.error).toBeNull();
   });
 });
 

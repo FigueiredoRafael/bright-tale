@@ -15,6 +15,11 @@
  */
 import { inngest } from './client.js';
 import { createServiceClient } from '../lib/supabase/index.js';
+import {
+  markCompleted,
+  markFailed,
+  markRunning,
+} from '../lib/pipeline/stage-run-writer.js';
 
 interface StageRequestedEvent {
   name: 'pipeline/stage.requested';
@@ -39,6 +44,7 @@ export const pipelinePublishDispatch = inngest.createFunction(
 
     const sb: Sb = createServiceClient();
     const { stageRunId, projectId } = event.data;
+    const ctx = { projectId, stage: 'publish' as const };
 
     const { data: stageRun } = await sb
       .from('stage_runs')
@@ -62,16 +68,12 @@ export const pipelinePublishDispatch = inngest.createFunction(
       .maybeSingle();
     const draftRef = priorDraft?.payload_ref as { kind?: string; id?: string } | null | undefined;
     if (draftRef?.kind !== 'content_draft' || !draftRef.id) {
-      await markFailed(sb, stageRunId, projectId, 'No prior draft Stage Run to publish');
+      await markFailed(sb, stageRunId, { ...ctx, errorMessage: 'No prior draft Stage Run to publish' });
       return;
     }
     const draftId = draftRef.id;
 
-    const now = new Date().toISOString();
-    await sb
-      .from('stage_runs')
-      .update({ status: 'running', started_at: now, updated_at: now })
-      .eq('id', stageRunId);
+    await markRunning(sb, stageRunId, ctx);
 
     try {
       const apiBase = process.env.API_URL ?? 'http://localhost:3001';
@@ -86,6 +88,20 @@ export const pipelinePublishDispatch = inngest.createFunction(
       if (!draft?.user_id) throw new Error(`content_draft ${draftId} has no user_id`);
 
       const input = (stageRun.input_json ?? {}) as Record<string, unknown>;
+      // Map publishInputSchema (status/scheduledAt/destinationId) → the
+      // WordPress route's publishDraftSchema (mode/scheduledDate/channelId).
+      // status='future' becomes mode='schedule' per WP route convention.
+      const rawStatus = (input.status as string | undefined) ?? 'publish';
+      const mode: 'publish' | 'draft' | 'schedule' =
+        rawStatus === 'future'
+          ? 'schedule'
+          : rawStatus === 'draft'
+            ? 'draft'
+            : 'publish';
+      const publishBody: Record<string, unknown> = { draftId, mode };
+      if (input.scheduledAt) publishBody.scheduledDate = input.scheduledAt;
+      if (input.destinationId) publishBody.channelId = input.destinationId;
+
       const response = await fetch(`${apiBase}/wordpress/publish-draft`, {
         method: 'POST',
         headers: {
@@ -93,12 +109,7 @@ export const pipelinePublishDispatch = inngest.createFunction(
           'x-internal-key': internalKey,
           'x-user-id': draft.user_id as string,
         },
-        body: JSON.stringify({
-          draftId,
-          status: (input.status as string) ?? 'publish',
-          scheduledAt: input.scheduledAt,
-          destinationId: input.destinationId,
-        }),
+        body: JSON.stringify(publishBody),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || body?.error) {
@@ -110,46 +121,20 @@ export const pipelinePublishDispatch = inngest.createFunction(
       const publishedUrl = (body?.data?.published_url as string | undefined) ?? null;
       const wpPostId = (body?.data?.wp_post_id as number | string | undefined) ?? null;
 
-      const finishedAt = new Date().toISOString();
-      await sb
-        .from('stage_runs')
-        .update({
-          status: 'completed',
-          payload_ref: {
-            kind: 'publish_record',
-            id: String(wpPostId ?? draftId),
-            published_url: publishedUrl,
-          },
-          finished_at: finishedAt,
-          updated_at: finishedAt,
-        })
-        .eq('id', stageRunId);
-
-      await inngest.send({
-        name: 'pipeline/stage.run.finished',
-        data: { stageRunId, projectId },
+      await markCompleted(sb, stageRunId, {
+        ...ctx,
+        payloadRef: {
+          kind: 'publish_record',
+          id: String(wpPostId ?? draftId),
+          // published_url is a non-standard PayloadRef field carried through
+          // for the UI — narrowed away from the type but persisted as JSONB.
+          ...(publishedUrl ? { published_url: publishedUrl } : {}),
+        } as unknown as { kind: string; id: string },
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
-      await markFailed(sb, stageRunId, projectId, message);
+      await markFailed(sb, stageRunId, { ...ctx, errorMessage: message });
       throw err;
     }
   },
 );
-
-async function markFailed(sb: Sb, stageRunId: string, projectId: string, message: string): Promise<void> {
-  const now = new Date().toISOString();
-  await sb
-    .from('stage_runs')
-    .update({
-      status: 'failed',
-      error_message: message.slice(0, 500),
-      finished_at: now,
-      updated_at: now,
-    })
-    .eq('id', stageRunId);
-  await inngest.send({
-    name: 'pipeline/stage.run.finished',
-    data: { stageRunId, projectId },
-  });
-}

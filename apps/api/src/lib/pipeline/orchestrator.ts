@@ -114,6 +114,7 @@ function rowToStageRun(row: Record<string, unknown>): StageRun {
     errorMessage: (row.error_message ?? null) as string | null,
     startedAt: (row.started_at ?? null) as string | null,
     finishedAt: (row.finished_at ?? null) as string | null,
+    outcomeJson: row.outcome_json,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -172,6 +173,74 @@ async function clearAbortFlag(sb: Sb, projectId: string): Promise<void> {
   await sb.from('projects').update({ abort_requested_at: null }).eq('id', projectId);
 }
 
+/**
+ * Read the latest review Stage Run's outcome. Returns null when there's no
+ * review run yet, or when the most recent one didn't write an outcome
+ * (legacy rows from before the outcome_json migration).
+ *
+ * This is the orchestrator's ONLY window into review results — it must never
+ * dereference `payload_ref → content_drafts` for that purpose (ADR-0003).
+ */
+async function latestReviewOutcome(
+  sb: Sb,
+  projectId: string,
+): Promise<{
+  verdict?: string;
+  draftType?: string;
+  iterationCount?: number;
+  feedbackJson?: unknown;
+} | null> {
+  const resp = await sb
+    .from('stage_runs')
+    .select('outcome_json, created_at')
+    .eq('project_id', projectId)
+    .eq('stage', 'review')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const row = (resp as { data?: unknown } | undefined)?.data as
+    | { outcome_json?: unknown }
+    | null
+    | undefined;
+  const outcome = row?.outcome_json as
+    | {
+        verdict?: string;
+        draftType?: string;
+        iterationCount?: number;
+        feedbackJson?: unknown;
+      }
+    | null
+    | undefined;
+  return outcome ?? null;
+}
+
+/**
+ * Inject `review_feedback` into draft `productionParams` or research
+ * `reviewFeedback` so the regenerated artifact incorporates the prior
+ * review's critical/minor issues. No-op for other stages or when there's
+ * no pending revision feedback. Preserves caller-supplied overrides.
+ */
+async function enrichWithReviewFeedback(
+  sb: Sb,
+  projectId: string,
+  stage: Stage,
+  input: unknown,
+): Promise<unknown> {
+  if (stage !== 'draft' && stage !== 'research') return input;
+  const outcome = await latestReviewOutcome(sb, projectId);
+  if (!outcome || outcome.verdict !== 'revision_required') return input;
+  const feedback = outcome.feedbackJson ?? null;
+  if (!feedback) return input;
+  const base = (input ?? {}) as Record<string, unknown>;
+  if (stage === 'draft') {
+    const params = (base.productionParams as Record<string, unknown> | undefined) ?? {};
+    if (params.review_feedback !== undefined) return base;
+    return { ...base, productionParams: { ...params, review_feedback: feedback } };
+  }
+  if (base.reviewFeedback !== undefined) return base;
+  return { ...base, reviewFeedback: feedback };
+}
+
 // ─── Public: requestStageRun ────────────────────────────────────────────────
 
 export async function requestStageRun(
@@ -199,6 +268,13 @@ export async function requestStageRun(
   const parsed = STAGE_INPUT_SCHEMAS[stage].safeParse(input);
   if (!parsed.success) throw new StageInputValidationError(stage, parsed.error.message);
 
+  // 4b. Review-feedback enrichment. When the user manually re-runs draft or
+  // research after the auto-revision cap, the upstream caller hands us the
+  // bare input — without the prior review_feedback the regenerated artifact
+  // ignores the issues that triggered the rerun. Mirror the auto-loop's
+  // enrichment (advanceAfter) here so manual reruns also act on the feedback.
+  const enrichedInput = await enrichWithReviewFeedback(sb, projectId, stage, parsed.data);
+
   // 5. Concurrent (UNIQUE) check — one non-terminal Stage Run per (project, stage)
   const conflict = await findNonTerminal(sb, projectId, stage);
   if (conflict) throw new ConcurrentStageRunError(stage);
@@ -213,7 +289,7 @@ export async function requestStageRun(
     project_id: projectId,
     stage,
     status: 'queued',
-    input_json: parsed.data,
+    input_json: enrichedInput,
     attempt_no: attemptNo,
   });
   if (!inserted) throw new Error('Failed to insert stage_runs row');
@@ -303,6 +379,80 @@ export async function resumeProject(projectId: string): Promise<void> {
     }
 
     if (latest && (latest.status === 'completed' || latest.status === 'skipped')) {
+      // Review-loop carve-out: a `completed` review with verdict
+      // `revision_required` is a loop checkpoint, not a terminal. If the
+      // draft hasn't been re-produced yet, the resume point is a fresh
+      // draft revision — not the downstream stage. Mirror the same branch
+      // in `advanceAfter` so manual Resume and auto-advance agree.
+      //
+      // We read the verdict + feedback from `stage_runs.outcome_json` — the
+      // orchestrator MUST NOT open `payload_ref → content_drafts` (ADR-0003).
+      if (stage === 'review' && latest.status === 'completed') {
+        const latestReviewResp = await sb
+          .from('stage_runs')
+          .select('outcome_json, created_at')
+          .eq('project_id', projectId)
+          .eq('stage', 'review')
+          .eq('status', 'completed')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const latestReview = (latestReviewResp as { data?: unknown } | undefined)?.data as
+          | { outcome_json?: { verdict?: string; draftType?: string; feedbackJson?: unknown } | null; created_at?: string }
+          | null
+          | undefined;
+        const outcome = latestReview?.outcome_json;
+        if (outcome?.verdict === 'revision_required') {
+          // Has a fresh draft attempt landed since this review? If yes, the
+          // revision is already in flight — fall through to default logic.
+          const laterDraftResp = await sb
+            .from('stage_runs')
+            .select('id')
+            .eq('project_id', projectId)
+            .eq('stage', 'draft')
+            .gt('created_at', latestReview?.created_at ?? '')
+            .limit(1)
+            .maybeSingle();
+          const laterDraft = (laterDraftResp as { data?: unknown } | undefined)?.data;
+          if (!laterDraft) {
+            // Cascade-abort any downstream runs that snuck in past the
+            // review checkpoint (e.g. a prior resume that mis-routed past
+            // the revision loop). They're obsolete now.
+            const nowIso = new Date().toISOString();
+            await sb
+              .from('stage_runs')
+              .update({
+                status: 'aborted',
+                error_message: 'Superseded by review revision loop',
+                finished_at: nowIso,
+                updated_at: nowIso,
+              })
+              .eq('project_id', projectId)
+              .in('stage', ['assets', 'preview', 'publish'])
+              .in('status', ['queued', 'running', 'awaiting_user', 'completed', 'skipped']);
+            const attemptNo = (await latestAttemptNo(sb, projectId, 'draft' as Stage)) + 1;
+            const inputJson: Record<string, unknown> = {
+              type: outcome.draftType ?? 'blog',
+              productionParams: { review_feedback: outcome.feedbackJson },
+            };
+            await clearAbortFlag(sb, projectId);
+            const inserted = await insertStageRun(sb, {
+              project_id: projectId,
+              stage: 'draft',
+              status: 'queued',
+              attempt_no: attemptNo,
+              input_json: inputJson,
+            });
+            if (inserted?.id) {
+              await inngest.send({
+                name: 'pipeline/stage.requested',
+                data: { stageRunId: inserted.id as string, stage: 'draft', projectId },
+              });
+            }
+            return;
+          }
+        }
+      }
       predecessor = stage;
       continue;
     }
@@ -392,45 +542,41 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
   // iteration cap is enforced inside pipeline-review-dispatch (it parks the
   // Stage Run in `awaiting_user(manual_review)` once the budget is spent so
   // we never reach this branch with revision_required + over budget).
+  //
+  // The verdict + draftType + feedback live in `stage_runs.outcome_json`
+  // (written by the review dispatcher). Reading them here keeps the
+  // orchestrator out of `content_drafts` — ADR-0003 forbids dereferencing
+  // `payload_ref` for control flow.
   if (finished.stage === 'review') {
-    const { data: priorDraftRun } = await sb
+    const { data: finishedRow } = await sb
       .from('stage_runs')
-      .select('payload_ref')
-      .eq('project_id', projectId)
-      .eq('stage', 'draft')
-      .eq('status', 'completed')
-      .order('created_at', { ascending: false })
-      .limit(1)
+      .select('outcome_json')
+      .eq('id', stageRunId)
       .maybeSingle();
-    const ref = priorDraftRun?.payload_ref as { kind?: string; id?: string } | null | undefined;
-    if (ref?.kind === 'content_draft' && ref.id) {
-      const { data: draftRow } = await sb
-        .from('content_drafts')
-        .select('id, type, review_verdict, review_feedback_json')
-        .eq('id', ref.id)
-        .maybeSingle();
-      if (draftRow?.review_verdict === 'revision_required') {
-        const attemptNo = (await latestAttemptNo(sb, projectId, 'draft' as Stage)) + 1;
-        const inputJson: Record<string, unknown> = {
-          type: (draftRow.type as string) ?? 'blog',
-          productionParams: { review_feedback: draftRow.review_feedback_json },
-        };
-        await clearAbortFlag(sb, projectId);
-        const inserted = await insertStageRun(sb, {
-          project_id: projectId,
-          stage: 'draft',
-          status: 'queued',
-          attempt_no: attemptNo,
-          input_json: inputJson,
+    const outcome = (finishedRow?.outcome_json ?? null) as
+      | { verdict?: string; draftType?: string; feedbackJson?: unknown }
+      | null;
+    if (outcome?.verdict === 'revision_required') {
+      const attemptNo = (await latestAttemptNo(sb, projectId, 'draft' as Stage)) + 1;
+      const inputJson: Record<string, unknown> = {
+        type: outcome.draftType ?? 'blog',
+        productionParams: { review_feedback: outcome.feedbackJson },
+      };
+      await clearAbortFlag(sb, projectId);
+      const inserted = await insertStageRun(sb, {
+        project_id: projectId,
+        stage: 'draft',
+        status: 'queued',
+        attempt_no: attemptNo,
+        input_json: inputJson,
+      });
+      if (inserted?.id) {
+        await inngest.send({
+          name: 'pipeline/stage.requested',
+          data: { stageRunId: inserted.id as string, stage: 'draft', projectId },
         });
-        if (inserted?.id) {
-          await inngest.send({
-            name: 'pipeline/stage.requested',
-            data: { stageRunId: inserted.id as string, stage: 'draft', projectId },
-          });
-        }
-        return;
       }
+      return;
     }
   }
 
@@ -447,13 +593,31 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
   // owned by `resumeProject`, not `advanceAfter`.
   const { data: existingNext } = await sb
     .from('stage_runs')
-    .select('id, status')
+    .select('id, status, outcome_json')
     .eq('project_id', projectId)
     .eq('stage', next)
     .in('status', ['queued', 'running', 'awaiting_user', 'completed', 'skipped'])
+    .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (existingNext) return;
+  // Special-case the review loop: a prior `completed` review with verdict
+  // `revision_required` is a loop checkpoint, not a terminal — when the draft
+  // revision (iteration N+1) finishes, we MUST enqueue a fresh review run.
+  // The verdict lives on the Stage Run's outcome_json so we never open
+  // content_drafts to make this decision.
+  let blocked = !!existingNext;
+  if (
+    blocked &&
+    next === 'review' &&
+    finished.stage === 'draft' &&
+    (existingNext as { status?: string } | null)?.status === 'completed'
+  ) {
+    const outcome = (existingNext as { outcome_json?: { verdict?: string } | null } | null)?.outcome_json;
+    if (outcome?.verdict === 'revision_required') {
+      blocked = false;
+    }
+  }
+  if (blocked) return;
 
   // 7. Skip-check: when autopilotConfig says skip this stage, insert a skipped
   // Stage Run and recurse into the following stage.

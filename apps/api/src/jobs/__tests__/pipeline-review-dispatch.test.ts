@@ -33,6 +33,12 @@ const STAGE_RUN_ID = 'sr-review';
 const PROJECT_ID = 'proj-xyz';
 const DRAFT_ID = 'cd-1';
 
+const STEP_MOCK = { run: <T>(_id: string, fn: () => Promise<T>) => fn() };
+type HandlerArgs = {
+  event: { data: { stageRunId: string; stage: string; projectId: string } };
+  step: typeof STEP_MOCK;
+};
+
 let stageRunRow: Record<string, unknown>;
 let priorDraftStageRun: Record<string, unknown> | null;
 let draftRow: Record<string, unknown> | null;
@@ -73,6 +79,30 @@ vi.mock('../../lib/supabase/index.js', () => ({
           update: contentDraftsUpdateMock,
         };
       }
+      // Project lookup: the dispatcher reads autopilot_config_json to resolve
+      // review thresholds + maxIterations. Default config keeps the tests
+      // exercising the standard verdict logic.
+      if (table === 'projects') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () => Promise.resolve({
+                data: {
+                  id: PROJECT_ID,
+                  autopilot_config_json: {
+                    review: {
+                      autoApproveThreshold: 90,
+                      hardFailThreshold: 40,
+                      maxIterations: 5,
+                    },
+                  },
+                },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
       return {};
     },
   }),
@@ -82,12 +112,23 @@ describe('pipeline-review-dispatch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    stageRunsUpdateMock = vi.fn().mockReturnValue({
-      eq: vi.fn().mockResolvedValue({ error: null }),
-    });
-    contentDraftsUpdateMock = vi.fn().mockReturnValue({
-      eq: vi.fn().mockResolvedValue({ error: null }),
-    });
+    // The atomic CAS in pipeline-review-dispatch chains
+    // `.update(...).eq('id', x).eq('status', 'queued').select('id')` and the
+    // writer module also awaits `.update(...).eq('id', x)` directly. The mock
+    // returns a chainable+thenable so both patterns resolve cleanly.
+    function makeUpdateChain() {
+      const chain: Record<string, unknown> & PromiseLike<{ data: unknown; error: null }> = {
+        then(onResolve) {
+          return Promise.resolve({ data: [{ id: STAGE_RUN_ID }], error: null }).then(onResolve);
+        },
+      } as Record<string, unknown> & PromiseLike<{ data: unknown; error: null }>;
+      ['eq', 'in', 'select'].forEach((m) => {
+        (chain as Record<string, ReturnType<typeof vi.fn>>)[m] = vi.fn(() => chain);
+      });
+      return chain;
+    }
+    stageRunsUpdateMock = vi.fn(() => makeUpdateChain());
+    contentDraftsUpdateMock = vi.fn(() => makeUpdateChain());
 
     stageRunRow = {
       id: STAGE_RUN_ID,
@@ -126,10 +167,9 @@ describe('pipeline-review-dispatch', () => {
   it('returns early when event stage is not review', async () => {
     const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
 
-    await (pipelineReviewDispatch as unknown as (args: {
-      event: { data: { stageRunId: string; stage: string; projectId: string } };
-    }) => Promise<void>)({
+    await (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
       event: { data: { stageRunId: STAGE_RUN_ID, stage: 'draft', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
     });
 
     expect(generateWithFallbackMock).not.toHaveBeenCalled();
@@ -139,10 +179,9 @@ describe('pipeline-review-dispatch', () => {
   it('on approved verdict: writes draft → approved + stage_run → completed + emits finished', async () => {
     const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
 
-    await (pipelineReviewDispatch as unknown as (args: {
-      event: { data: { stageRunId: string; stage: string; projectId: string } };
-    }) => Promise<void>)({
+    await (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
       event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
     });
 
     // stage_run transitioned running → completed
@@ -174,10 +213,9 @@ describe('pipeline-review-dispatch', () => {
 
     const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
 
-    await (pipelineReviewDispatch as unknown as (args: {
-      event: { data: { stageRunId: string; stage: string; projectId: string } };
-    }) => Promise<void>)({
+    await (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
       event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
     });
 
     const draftUpdate = contentDraftsUpdateMock.mock.calls[0][0];
@@ -196,10 +234,9 @@ describe('pipeline-review-dispatch', () => {
     const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
 
     await expect(
-      (pipelineReviewDispatch as unknown as (args: {
-        event: { data: { stageRunId: string; stage: string; projectId: string } };
-      }) => Promise<void>)({
+      (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
         event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
+        step: STEP_MOCK,
       }),
     ).rejects.toThrow(/agent timeout/);
 
@@ -215,10 +252,9 @@ describe('pipeline-review-dispatch', () => {
 
     const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
 
-    await (pipelineReviewDispatch as unknown as (args: {
-      event: { data: { stageRunId: string; stage: string; projectId: string } };
-    }) => Promise<void>)({
+    await (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
       event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
     });
 
     const failedRow = stageRunsUpdateMock.mock.calls

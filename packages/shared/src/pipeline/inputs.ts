@@ -79,6 +79,15 @@ export interface StageRun {
   errorMessage: string | null;
   startedAt: string | null;
   finishedAt: string | null;
+  /**
+   * Per-stage opaque outcome blob (see ADR-0003). Written by the dispatcher
+   * on terminal/awaiting transitions; read by the orchestrator to decide
+   * loop-vs-forward without dereferencing `payloadRef`.
+   *
+   * Known shapes:
+   *   review → { verdict, draftType, iterationCount, score, feedbackJson }
+   */
+  outcomeJson?: unknown;
   createdAt: string;
   updatedAt: string;
 }
@@ -108,6 +117,11 @@ export const researchInputSchema = z.object({
   ideaId: z.string().optional(),
   topic: z.string().min(1).optional(),
   focusTags: z.array(z.string()).optional(),
+  // When the prior draft was reviewed with verdict=revision_required, the
+  // orchestrator injects the agent-4 feedback blob here so the research
+  // agent can target the gaps identified by review (e.g. missing sources,
+  // weak evidence on specific claims).
+  reviewFeedback: z.unknown().optional(),
   provider: z.string().optional(),
   model: z.string().optional(),
 });

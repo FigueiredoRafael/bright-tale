@@ -72,6 +72,7 @@ function rowToStageRun(row: Record<string, unknown>): StageRun {
     errorMessage: (row.error_message ?? null) as string | null,
     startedAt: (row.started_at ?? null) as string | null,
     finishedAt: (row.finished_at ?? null) as string | null,
+    outcomeJson: row.outcome_json,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };

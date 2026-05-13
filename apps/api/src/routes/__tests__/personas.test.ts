@@ -92,6 +92,7 @@ function createChain() {
     limit:      vi.fn().mockReturnThis(),
     insert:     vi.fn().mockReturnThis(),
     update:     vi.fn().mockReturnThis(),
+    upsert:     vi.fn().mockReturnThis(),
     single:     vi.fn().mockResolvedValue({ data: null, error: null }),
     maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
     then(res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) {
@@ -108,6 +109,7 @@ function createChain() {
   ;(chain.limit as ReturnType<typeof vi.fn>).mockReturnValue(chain)
   ;(chain.insert as ReturnType<typeof vi.fn>).mockReturnValue(chain)
   ;(chain.update as ReturnType<typeof vi.fn>).mockReturnValue(chain)
+  ;(chain.upsert as ReturnType<typeof vi.fn>).mockReturnValue(chain)
   return chain
 }
 
