@@ -95,19 +95,50 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
 
   const payloads = await loadPayloadIndex(sb, projectId);
   const desired: StageRunInsert[] = [];
-  for (const stage of completedStages) {
-    const payloadRef = resolvePayloadRef(stage, payloads);
-    if (!payloadRef) continue;
-    const ts = resolveTimestamps(stage, payloads);
+
+  // Highest-index completed stage. Anything BEFORE this index that the legacy
+  // never persisted gets a `skipped` mirror row — otherwise the v2 rail would
+  // show downstream stages as Done while gating stages read "Queued",
+  // which is impossible in the strictly-linear orchestrator and confuses
+  // the user.
+  const rightmostCompletedIdx = Math.max(
+    ...completedStages.map((s) => STAGES.indexOf(s)),
+  );
+
+  for (let i = 0; i <= rightmostCompletedIdx; i++) {
+    const stage = STAGES[i];
+    const wasCompleted = !!stageResults[stage];
+
+    if (wasCompleted) {
+      const payloadRef = resolvePayloadRef(stage, payloads);
+      if (!payloadRef) continue;
+      const ts = resolveTimestamps(stage, payloads);
+      desired.push({
+        project_id: projectId,
+        stage,
+        status: 'completed',
+        awaiting_reason: null,
+        payload_ref: payloadRef,
+        attempt_no: 1,
+        started_at: ts.startedAt,
+        finished_at: ts.finishedAt,
+      });
+      continue;
+    }
+
+    // Gap-filler: legacy never tracked this stage but a downstream stage IS
+    // completed, so logically this one was bypassed. Mark `skipped` with no
+    // payload so the v2 view renders it as a terminal-skipped tile rather
+    // than the default-Queued fallback.
     desired.push({
       project_id: projectId,
       stage,
-      status: 'completed',
+      status: 'skipped',
       awaiting_reason: null,
-      payload_ref: payloadRef,
+      payload_ref: null,
       attempt_no: 1,
-      started_at: ts.startedAt,
-      finished_at: ts.finishedAt,
+      started_at: null,
+      finished_at: null,
     });
   }
 
