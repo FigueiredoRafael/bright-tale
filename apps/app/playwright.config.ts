@@ -38,10 +38,13 @@ export default defineConfig({
   webServer: process.env.PLAYWRIGHT_NO_SERVER
     ? undefined
     : {
+        // NOTE: the `.next/dev/lock` lockfile is shared across all `next dev`
+        // instances in the same project dir. If `npm run dev` is already
+        // running for development, stop it before invoking the e2e suite.
         command: `next dev --port ${PORT}`,
         url: BASE_URL,
         reuseExistingServer: !process.env.CI,
-        timeout: 120_000,
+        timeout: 180_000,
         stdout: 'pipe',
         stderr: 'pipe',
         env: {
