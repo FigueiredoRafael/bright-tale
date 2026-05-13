@@ -31,15 +31,34 @@ import {
 } from '@/components/ui/sheet';
 import { DraftViewer } from '@/components/preview/DraftViewer';
 import { ResearchFindingsReport } from '@/components/engines/ResearchFindingsReport';
+import { IdeaCard } from '@/components/brainstorm/IdeaCard';
 import type { StageRun } from '@brighttale/shared/pipeline/inputs';
+
+interface BrainstormPayload {
+  kind: 'brainstorm_draft';
+  ideas: Array<{
+    id: string;
+    title: string;
+    isWinner: boolean;
+    verdict?: string | null;
+    coreTension?: string | null;
+    targetAudience?: string | null;
+    discoveryData?: string | null;
+  }>;
+  engineUrl?: string | null;
+}
+
+type SheetPayload = { kind: string; [key: string]: unknown } | null;
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   run: StageRun;
+  /** Already-resolved payload summary from StageView's `/payload` fetch. */
+  payload?: SheetPayload;
 }
 
-export function StageRunOutputSheet({ open, onOpenChange, run }: Props) {
+export function StageRunOutputSheet({ open, onOpenChange, run, payload }: Props) {
   const kind = run.payloadRef?.kind ?? null;
   const id = run.payloadRef?.id ?? null;
 
@@ -65,7 +84,13 @@ export function StageRunOutputSheet({ open, onOpenChange, run }: Props) {
           ) : kind === 'research_session' ? (
             <ResearchOutput sessionId={id} />
           ) : kind === 'brainstorm_draft' ? (
-            <BrainstormOutput draftId={id} />
+            <BrainstormOutput
+              payload={
+                payload?.kind === 'brainstorm_draft'
+                  ? (payload as unknown as BrainstormPayload)
+                  : null
+              }
+            />
           ) : kind === 'publish_record' ? (
             <PublishOutput run={run} />
           ) : (
@@ -136,37 +161,30 @@ function ResearchOutput({ sessionId }: { sessionId: string }) {
 
 // ─── brainstorm_draft ───────────────────────────────────────────────────────
 
-function BrainstormOutput({ draftId }: { draftId: string }) {
-  // Brainstorm idea-card extraction lives inside BrainstormEngine today
-  // (1325 lines, xstate-coupled). For now we render the minimal fields the
-  // session endpoint already exposes; a follow-up will extract <IdeaCard />
-  // so this can render every sibling in the session like the legacy Engine.
-  const { data, loading, error } = useFetchJson<{
-    id: string;
-    title: string | null;
-    discovery_data: Record<string, unknown> | null;
-    why_works: string | null;
-    risks: string | null;
-  }>(`/api/brainstorm/drafts/${draftId}`);
-
-  if (loading) return <Spinner />;
-  if (error || !data) return <FetchError what="idea" />;
-
+function BrainstormOutput({ payload }: { payload: BrainstormPayload | null }) {
+  if (!payload || !payload.ideas?.length) {
+    return (
+      <p className="text-sm text-muted-foreground" data-testid="stage-output-brainstorm-empty">
+        No ideas recorded for this Stage Run.
+      </p>
+    );
+  }
   return (
-    <div className="space-y-3 text-sm" data-testid="stage-output-brainstorm">
-      {data.title ? <h3 className="text-base font-medium">{data.title}</h3> : null}
-      {data.why_works ? (
-        <section>
-          <h4 className="font-medium text-foreground/80">Why it works</h4>
-          <p className="text-muted-foreground">{data.why_works}</p>
-        </section>
-      ) : null}
-      {data.risks ? (
-        <section>
-          <h4 className="font-medium text-foreground/80">Risks</h4>
-          <p className="text-muted-foreground">{data.risks}</p>
-        </section>
-      ) : null}
+    <div className="space-y-2.5" data-testid="stage-output-brainstorm">
+      {payload.ideas.map((i) => (
+        <IdeaCard
+          key={i.id}
+          isWinner={i.isWinner}
+          idea={{
+            id: i.id,
+            title: i.title,
+            verdict: (i.verdict as 'viable' | 'weak' | 'experimental' | null) ?? null,
+            core_tension: i.coreTension ?? null,
+            target_audience: i.targetAudience ?? null,
+            discovery_data: i.discoveryData ?? null,
+          }}
+        />
+      ))}
     </div>
   );
 }

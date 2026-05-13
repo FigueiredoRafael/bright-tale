@@ -767,6 +767,7 @@ function TerminalPanel({
         open={outputSheetOpen}
         onOpenChange={setOutputSheetOpen}
         run={run}
+        payload={payload}
       />
     </div>
   );
@@ -855,7 +856,15 @@ function UpstreamRerunLinks({
 type PayloadKnown =
   | {
       kind: 'brainstorm_draft';
-      ideas: Array<{ id: string; title: string; isWinner: boolean }>;
+      ideas: Array<{
+        id: string;
+        title: string;
+        isWinner: boolean;
+        verdict?: string | null;
+        coreTension?: string | null;
+        targetAudience?: string | null;
+        discoveryData?: string | null;
+      }>;
       engineUrl?: string | null;
     }
   | {

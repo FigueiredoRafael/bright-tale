@@ -522,7 +522,7 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
           if (winner?.session_id) {
             const { data: siblings } = await sb
               .from('brainstorm_drafts')
-              .select('id, title, position')
+              .select('id, title, verdict, core_tension, target_audience, discovery_data, position')
               .eq('session_id', winner.session_id)
               .order('position', { ascending: true });
             const winnerId = winner.id as string;
@@ -533,6 +533,10 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
                   id: s.id as string,
                   title: (s.title as string) ?? '(no title)',
                   isWinner: s.id === winnerId,
+                  verdict: (s.verdict as string | null) ?? null,
+                  coreTension: (s.core_tension as string | null) ?? null,
+                  targetAudience: (s.target_audience as string | null) ?? null,
+                  discoveryData: (s.discovery_data as string | null) ?? null,
                 })),
               engineUrl: channelId
                 ? `/channels/${channelId}/brainstorm/${winner.session_id}`
@@ -541,7 +545,17 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
           } else {
             payload = {
               kind: ref.kind,
-              ideas: [{ id: ref.id, title: (winner?.title as string) ?? '(unknown idea)', isWinner: true }],
+              ideas: [
+                {
+                  id: ref.id,
+                  title: (winner?.title as string) ?? '(unknown idea)',
+                  isWinner: true,
+                  verdict: null,
+                  coreTension: null,
+                  targetAudience: null,
+                  discoveryData: null,
+                },
+              ],
               engineUrl: null,
             };
           }

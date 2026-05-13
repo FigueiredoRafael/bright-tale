@@ -141,6 +141,45 @@ test.describe('v2 supervised — Stage Run output sheet', () => {
     await expect(sheet.getByTestId('stage-output-research')).toBeVisible();
   });
 
+  test('brainstorm_draft: sheet renders the full idea set with winner marked', async ({ page }) => {
+    const mock = await mockPipelineV2(page);
+    mock.completeStageRun('brainstorm', { kind: 'brainstorm_draft', id: 'bd-1' });
+    mock.payloads.set('brainstorm_draft#bd-1', {
+      kind: 'brainstorm_draft',
+      ideas: [
+        {
+          id: 'bd-1',
+          title: 'Why deep-sea creatures glow',
+          isWinner: true,
+          verdict: 'viable',
+          coreTension: 'Survival vs predation',
+          targetAudience: 'Curious adults 25-45',
+          discoveryData: null,
+        },
+        {
+          id: 'bd-2',
+          title: 'Alternative angle: chemistry of light',
+          isWinner: false,
+          verdict: 'experimental',
+          coreTension: null,
+          targetAudience: null,
+          discoveryData: null,
+        },
+      ],
+      engineUrl: null,
+    });
+
+    await openStage(page, 'brainstorm');
+    await page.getByTestId('stage-view-output').click();
+
+    const sheet = page.getByTestId('stage-output-sheet');
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByTestId('stage-output-brainstorm')).toBeVisible();
+    await expect(sheet.getByText('Why deep-sea creatures glow')).toBeVisible();
+    await expect(sheet.getByText(/Alternative angle/)).toBeVisible();
+    await expect(sheet.getByTestId('idea-card-winner')).toBeVisible();
+  });
+
   test('unknown payload kind: falls back to raw kind#id (no crash)', async ({ page }) => {
     const mock = await mockPipelineV2(page);
     seedUpstream(mock);
