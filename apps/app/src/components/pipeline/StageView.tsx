@@ -618,7 +618,8 @@ function TerminalPanel({
           <Eye className="h-3 w-3" aria-hidden /> Open in engine
         </a>
         <ReRunLink projectId={projectId} run={run} onMutated={onMutated} />
-        {run.stage === 'review' && run.status !== 'completed' ? (
+        {run.stage === 'review' &&
+        (payload as { reviewVerdict?: string | null } | null)?.reviewVerdict !== 'approved' ? (
           <UpstreamRerunLinks projectId={projectId} onMutated={onMutated} />
         ) : null}
       </div>
@@ -713,6 +714,7 @@ type PayloadKnown =
       assetSlots?: number;
       reviewFeedback?: {
         overallVerdict: string | null;
+        overallNotes?: string | null;
         criticalIssues: string[];
         minorIssues: string[];
         strengths: string[];
@@ -833,6 +835,7 @@ function PayloadSummary({
       assetSlots?: number;
       reviewFeedback?: {
         overallVerdict: string | null;
+        overallNotes?: string | null;
         criticalIssues: string[];
         minorIssues: string[];
         strengths: string[];
@@ -878,6 +881,11 @@ function PayloadSummary({
         ) : null}
         {isReviewStage && p.reviewFeedback ? (
           <div className="mt-2 space-y-2 rounded border-l-2 border-muted-foreground/30 pl-3">
+            {p.reviewFeedback.overallNotes ? (
+              <div className="text-xs text-muted-foreground whitespace-pre-line">
+                {p.reviewFeedback.overallNotes}
+              </div>
+            ) : null}
             {p.reviewFeedback.criticalIssues.length > 0 ? (
               <div>
                 <div className="text-xs font-medium text-rose-700">Critical issues</div>

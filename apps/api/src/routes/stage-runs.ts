@@ -592,20 +592,44 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
             : 0;
           // Surface the structured review feedback so the v2 supervisado can
           // render critical issues, strengths, etc. — not just verdict+score.
+          // Agent-4 returns a layered shape:
+          //   { overall_verdict, overall_notes,
+          //     <type>_review: { strengths, issues, rubric_checks: [{ critical_issues, minor_issues, strengths }, ...] },
+          //     ... other type-scoped reviews }
+          // We aggregate across the three levels so the UI gets a flat list.
           const rfj = (draft?.review_feedback_json ?? null) as
             | Record<string, unknown>
             | null;
           const typeKey = `${(draft?.type as string) ?? 'blog'}_review`;
           const formatReview =
-            rfj && typeof rfj[typeKey] === 'object'
+            rfj && typeof rfj[typeKey] === 'object' && !Array.isArray(rfj[typeKey])
               ? (rfj[typeKey] as Record<string, unknown>)
               : null;
-          const issuesFrom = (key: 'critical_issues' | 'minor_issues' | 'strengths') => {
-            const top = Array.isArray(rfj?.[key]) ? (rfj[key] as unknown[]) : null;
-            const inner = Array.isArray(formatReview?.[key]) ? (formatReview[key] as unknown[]) : null;
-            return (top ?? inner ?? []).map((v) =>
-              typeof v === 'string' ? v : JSON.stringify(v),
-            ) as string[];
+          // rubric_checks can come as a single dict ({critical_issues,...}) or
+          // a list of such dicts; accept either.
+          const rubricChecks: Array<Record<string, unknown>> = Array.isArray(formatReview?.rubric_checks)
+            ? (formatReview.rubric_checks as Array<Record<string, unknown>>)
+            : formatReview?.rubric_checks && typeof formatReview.rubric_checks === 'object'
+              ? [formatReview.rubric_checks as Record<string, unknown>]
+              : [];
+          const collect = (key: 'critical_issues' | 'minor_issues' | 'strengths'): string[] => {
+            const out: string[] = [];
+            const push = (raw: unknown) => {
+              if (!Array.isArray(raw)) return;
+              for (const v of raw) {
+                if (typeof v === 'string') out.push(v);
+                else if (v && typeof v === 'object') {
+                  const r = v as Record<string, unknown>;
+                  if (typeof r.text === 'string') out.push(r.text);
+                  else if (typeof r.issue === 'string') out.push(r.issue);
+                  else out.push(JSON.stringify(v));
+                }
+              }
+            };
+            push(rfj?.[key]);
+            push(formatReview?.[key]);
+            for (const rc of rubricChecks) push(rc?.[key]);
+            return Array.from(new Set(out));
           };
           const reviewFeedback = rfj
             ? {
@@ -613,9 +637,13 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
                   (rfj.overall_verdict as string) ??
                   (rfj.verdict as string) ??
                   null,
-                criticalIssues: issuesFrom('critical_issues').slice(0, 5),
-                minorIssues: issuesFrom('minor_issues').slice(0, 5),
-                strengths: issuesFrom('strengths').slice(0, 5),
+                overallNotes:
+                  (rfj.overall_notes as string) ??
+                  (formatReview?.notes as string) ??
+                  null,
+                criticalIssues: collect('critical_issues').slice(0, 5),
+                minorIssues: collect('minor_issues').slice(0, 5),
+                strengths: collect('strengths').slice(0, 5),
                 suggestedRevisions:
                   (rfj.suggested_revisions as string) ??
                   (formatReview?.suggested_revisions as string) ??
