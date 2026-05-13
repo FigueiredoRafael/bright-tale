@@ -94,20 +94,44 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
   }
 
   const payloads = await loadPayloadIndex(sb, projectId);
+
+  // Existing rows are the second input to the planner — pipeline_state_json
+  // may be sparse (some completed stages tracked outside the orchestrator,
+  // e.g. channel-level draft pages), so we also look at what `stage_runs`
+  // itself already says is terminal. The rightmost-terminal index is the
+  // floor up to which every prior stage must be terminal too.
+  const { data: existingRows } = await sb
+    .from('stage_runs')
+    .select('id, stage, status')
+    .eq('project_id', projectId);
+  const existingByStage = bucketExistingRows(existingRows ?? []);
+
   const desired: StageRunInsert[] = [];
 
-  // Highest-index completed stage. Anything BEFORE this index that the legacy
-  // never persisted gets a `skipped` mirror row — otherwise the v2 rail would
-  // show downstream stages as Done while gating stages read "Queued",
-  // which is impossible in the strictly-linear orchestrator and confuses
-  // the user.
-  const rightmostCompletedIdx = Math.max(
-    ...completedStages.map((s) => STAGES.indexOf(s)),
+  const completedIndexes = completedStages.map((s) => STAGES.indexOf(s));
+  const terminalDbIndexes: number[] = [];
+  for (let i = 0; i < STAGES.length; i++) {
+    if (existingByStage.get(STAGES[i])?.terminal) terminalDbIndexes.push(i);
+  }
+  const rightmostIdx = Math.max(
+    -1,
+    ...completedIndexes,
+    ...terminalDbIndexes,
   );
 
-  for (let i = 0; i <= rightmostCompletedIdx; i++) {
+  if (rightmostIdx < 0) {
+    return { kind: 'noop', mirrored: 0, reason: 'no progress to mirror' };
+  }
+
+  for (let i = 0; i <= rightmostIdx; i++) {
     const stage = STAGES[i];
     const wasCompleted = !!stageResults[stage];
+    const dbTerminal = !!existingByStage.get(stage)?.terminal;
+
+    if (dbTerminal) {
+      // Real terminal already in DB — nothing to mirror, leave alone.
+      continue;
+    }
 
     if (wasCompleted) {
       const payloadRef = resolvePayloadRef(stage, payloads);
@@ -126,10 +150,11 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
       continue;
     }
 
-    // Gap-filler: legacy never tracked this stage but a downstream stage IS
-    // completed, so logically this one was bypassed. Mark `skipped` with no
-    // payload so the v2 view renders it as a terminal-skipped tile rather
-    // than the default-Queued fallback.
+    // Gap-filler: neither pipeline_state_json nor a real dispatcher tracked
+    // this stage, but something downstream IS terminal — by linear-order
+    // invariant this stage was effectively skipped. Mark it so the v2 view
+    // renders it as a terminal-skipped tile rather than the default-Queued
+    // fallback or a stale `queued` row from a stalled dispatch attempt.
     desired.push({
       project_id: projectId,
       stage,
@@ -143,10 +168,10 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
   }
 
   if (desired.length === 0) {
-    return { kind: 'noop', mirrored: 0, reason: 'no derivable Stage Runs (payload rows missing?)' };
+    return { kind: 'noop', mirrored: 0, reason: 'nothing new to mirror' };
   }
 
-  const mirrored = await upsertStageRuns(sb, projectId, desired);
+  const mirrored = await upsertStageRuns(sb, desired, existingByStage);
 
   if (mirrored > 0) {
     await (sb.from('projects') as unknown as {
@@ -230,6 +255,25 @@ function resolveTimestamps(
   return { startedAt: null, finishedAt: null };
 }
 
+type StageBucket = { terminal?: { id: string }; nonTerminal?: { id: string } };
+
+function bucketExistingRows(rows: unknown[]): Map<string, StageBucket> {
+  const byStage = new Map<string, StageBucket>();
+  for (const r of rows as Record<string, unknown>[]) {
+    const stage = r.stage as string;
+    const status = r.status as string;
+    const id = r.id as string;
+    const bucket = byStage.get(stage) ?? {};
+    if (TERMINAL_STATUSES.includes(status)) {
+      bucket.terminal = { id };
+    } else {
+      bucket.nonTerminal = { id };
+    }
+    byStage.set(stage, bucket);
+  }
+  return byStage;
+}
+
 /**
  * Idempotent. Per (project, stage) we may already have:
  *   • a terminal row (real dispatcher already wrote — leave alone, skip mirror)
@@ -243,30 +287,9 @@ function resolveTimestamps(
  */
 async function upsertStageRuns(
   sb: Sb,
-  projectId: string,
   desired: StageRunInsert[],
+  byStage: Map<string, StageBucket>,
 ): Promise<number> {
-  const { data: existingRows } = await sb
-    .from('stage_runs')
-    .select('id, stage, status')
-    .eq('project_id', projectId);
-
-  // Bucket per stage: keep separate handles for terminal vs non-terminal rows
-  // so we don't accidentally overwrite (or get blocked by) the wrong one.
-  const byStage = new Map<string, { terminal?: { id: string }; nonTerminal?: { id: string } }>();
-  for (const r of (existingRows ?? []) as Record<string, unknown>[]) {
-    const stage = r.stage as string;
-    const status = r.status as string;
-    const id = r.id as string;
-    const bucket = byStage.get(stage) ?? {};
-    if (TERMINAL_STATUSES.includes(status)) {
-      bucket.terminal = { id };
-    } else {
-      bucket.nonTerminal = { id };
-    }
-    byStage.set(stage, bucket);
-  }
-
   let mirrored = 0;
   const now = new Date().toISOString();
   for (const sr of desired) {
