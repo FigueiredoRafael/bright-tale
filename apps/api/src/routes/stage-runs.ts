@@ -29,6 +29,7 @@ import {
   ConcurrentStageRunError,
 } from '../lib/pipeline/orchestrator.js';
 import { bulkAbort, markAborted } from '../lib/pipeline/stage-run-writer.js';
+import { mirrorFromLegacy } from '../lib/pipeline/mirror-from-legacy.js';
 import { STAGES, type Stage, type StageRun } from '@brighttale/shared/pipeline/inputs';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -283,6 +284,39 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
           data: { stageRunId, status: 'aborted' },
           error: null,
         });
+      } catch (err) {
+        return sendError(reply, err);
+      }
+    },
+  );
+
+  /**
+   * POST /:projectId/stage-runs/mirror-from-legacy
+   *
+   * Bridge from the legacy xstate orchestrator → `stage_runs`. The legacy
+   * `<PipelineOrchestrator />` persists progress in
+   * `projects.pipeline_state_json`; the v2 supervised view reads only from
+   * `stage_runs`. This endpoint upserts the missing `stage_runs` rows so the
+   * two views stay coherent.
+   *
+   * Idempotent: rows already in a terminal state are left untouched (we never
+   * clobber a real dispatcher write). The legacy orchestrator calls this on
+   * every persist; cheap when there is nothing to mirror.
+   */
+  fastify.post<{ Params: { projectId: string } }>(
+    '/:projectId/stage-runs/mirror-from-legacy',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        const { projectId } = request.params;
+        const userId = (request as unknown as { userId?: string }).userId;
+        if (!userId) throw new ApiError(401, 'Unauthorized', 'UNAUTHORIZED');
+
+        const sb: Sb = createServiceClient();
+        await assertProjectOwner(projectId, userId, sb);
+
+        const outcome = await mirrorFromLegacy(sb, projectId);
+        return reply.send({ data: outcome, error: null });
       } catch (err) {
         return sendError(reply, err);
       }

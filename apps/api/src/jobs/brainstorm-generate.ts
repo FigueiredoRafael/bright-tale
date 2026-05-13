@@ -276,7 +276,7 @@ export const brainstormGenerate = inngest.createFunction(
       if (stageRunId) {
         const { data: firstDraft } = await sb
           .from('brainstorm_drafts')
-          .select('id')
+          .select('id, title')
           .eq('session_id', sessionId)
           .order('position', { ascending: true })
           .limit(1)
@@ -292,6 +292,13 @@ export const brainstormGenerate = inngest.createFunction(
             updated_at: now,
           })
           .eq('id', stageRunId);
+        if (projectId && firstDraft?.title) {
+          await (sb.from('projects') as unknown as {
+            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+          })
+            .update({ title: firstDraft.title as string })
+            .eq('id', projectId);
+        }
         await inngest.send({
           name: 'pipeline/stage.run.finished',
           data: { stageRunId, projectId },

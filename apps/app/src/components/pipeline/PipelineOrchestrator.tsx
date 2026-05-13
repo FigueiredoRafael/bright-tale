@@ -233,9 +233,20 @@ function OrchestratorInner({
             activityLog,
           },
         }),
-      }).catch(() => {
-        toast.error('Failed to persist pipeline state')
       })
+        .then(() => {
+          // Mirror legacy progress into stage_runs so the v2 supervised view
+          // sees the same advances. Non-fatal: a failed mirror does not block
+          // the legacy flow. Idempotent on the server.
+          return fetch(`/api/projects/${projectId}/stage-runs/mirror-from-legacy`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+          }).catch(() => {})
+        })
+        .catch(() => {
+          toast.error('Failed to persist pipeline state')
+        })
     }, 150)
     return () => clearTimeout(t)
   }, [ctx.mode, ctx.autopilotConfig, ctx.stageResults, ctx.iterationCount, currentStage, ctx.paused, ctx.pauseReason, activityLog, projectId])

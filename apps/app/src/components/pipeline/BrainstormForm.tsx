@@ -5,9 +5,14 @@
  * architecture. Submits `{ stage: 'brainstorm', input }` to the generic
  * `POST /api/projects/:id/stage-runs` endpoint.
  *
+ * On mount we hydrate from `projects.autopilot_config_json.brainstorm` so
+ * the inputs the user already supplied in the wizard land here pre-filled
+ * (and, when `mode==='autopilot'`, we auto-submit so the dispatcher fires
+ * without an extra click).
+ *
  * Validation mirrors `brainstormInputSchema` in @brighttale/shared.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { brainstormInputSchema } from '@brighttale/shared/pipeline/inputs';
 
 interface BrainstormFormProps {
@@ -29,11 +34,58 @@ export function BrainstormForm({ projectId, onSubmitted }: BrainstormFormProps) 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [shouldAutorun, setShouldAutorun] = useState(false);
+  const autorunFiredRef = useRef(false);
 
-  async function handleSubmit(e: React.FormEvent): Promise<void> {
-    e.preventDefault();
+  // Hydrate from the wizard's autopilotConfig. Runs once on mount.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}`);
+        const body = await res.json();
+        if (cancelled || !body?.data) return;
+        const bs = (body.data.autopilot_config_json as Record<string, unknown> | null | undefined)
+          ?.brainstorm as Record<string, unknown> | null | undefined;
+        if (bs) {
+          const m = (bs.mode as Mode | undefined);
+          if (m === 'topic_driven' || m === 'reference_guided') setMode(m);
+          if (typeof bs.topic === 'string') setTopic(bs.topic);
+          if (typeof bs.referenceUrl === 'string') setReferenceUrl(bs.referenceUrl);
+          if (typeof bs.niche === 'string') setNiche(bs.niche);
+          if (typeof bs.tone === 'string') setTone(bs.tone);
+          if (typeof bs.audience === 'string') setAudience(bs.audience);
+          const providerOverride = bs.providerOverride as string | null | undefined;
+          if (providerOverride) setProvider(providerOverride);
+          const modelOverride = bs.modelOverride as string | null | undefined;
+          if (modelOverride) setModel(modelOverride);
+        }
+        const projectMode = body.data.mode as string | null | undefined;
+        if (projectMode === 'autopilot' && bs) setShouldAutorun(true);
+      } catch {
+        // Hydration failure is non-fatal — user can still fill the form by hand.
+      } finally {
+        if (!cancelled) setHydrated(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  // Autopilot autorun: once the wizard config is hydrated and the project's
+  // mode is autopilot, fire the same submit a real click would. Guarded by a
+  // ref so React's StrictMode double-invoke (or a re-render) can't double-fire.
+  useEffect(() => {
+    if (!hydrated || !shouldAutorun || submitted || submitting || autorunFiredRef.current) return;
+    autorunFiredRef.current = true;
+    void submitCore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, shouldAutorun, submitted, submitting]);
+
+  async function submitCore(): Promise<void> {
     setError(null);
-
     const input: Record<string, unknown> = { mode };
     if (mode === 'topic_driven' && topic.trim()) input.topic = topic.trim();
     if (mode === 'reference_guided' && referenceUrl.trim()) input.referenceUrl = referenceUrl.trim();
@@ -68,6 +120,11 @@ export function BrainstormForm({ projectId, onSubmitted }: BrainstormFormProps) 
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent): Promise<void> {
+    e.preventDefault();
+    await submitCore();
   }
 
   return (

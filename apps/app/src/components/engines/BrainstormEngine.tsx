@@ -464,6 +464,13 @@ export function BrainstormEngine({
       ideaTitle: result.ideaTitle,
       reason: matchByPick ? 'ai_pick' : firstViable ? 'first_viable' : 'fallback_first',
     });
+    if (projectId && chosen.title) {
+      void fetch(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: chosen.title }),
+      }).catch(() => {});
+    }
     actor.send({ type: 'BRAINSTORM_COMPLETE', result });
   }, [
     autoMode,
@@ -476,6 +483,7 @@ export function BrainstormEngine({
     sessionId,
     actor,
     tracker,
+    projectId,
   ]);
 
   async function handleRun() {
@@ -772,6 +780,16 @@ export function BrainstormEngine({
       verdict: result.ideaVerdict,
       coreTension: result.ideaCoreTension,
     });
+
+    if (projectId && selectedIdea.title) {
+      void fetch(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: selectedIdea.title }),
+      }).catch(() => {
+        // non-fatal: project title sync failing shouldn't block the pipeline
+      });
+    }
 
     actor.send({ type: 'BRAINSTORM_COMPLETE', result });
   }

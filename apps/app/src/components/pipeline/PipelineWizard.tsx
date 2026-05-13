@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useForm, Controller, FormProvider, useFormContext } from 'react-hook-form'
 import type { Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -765,6 +766,7 @@ function MobileSummarySheet({ open, onClose }: MobileSummarySheetProps) {
 
 export function PipelineWizard() {
   const actor = usePipelineActor()
+  const router = useRouter()
   const { pipelineSettings } = usePipelineSettings()
 
   const snapshot = actor.getSnapshot()
@@ -910,6 +912,8 @@ export function PipelineWizard() {
         templateId: parsed.data.templateId,
         startStage: parsed.data.startStage,
       })
+
+      router.replace(`/projects/${projectId}?v=2&stage=${parsed.data.startStage}`)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error'
       setSubmitError(msg)

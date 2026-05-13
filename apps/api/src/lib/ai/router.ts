@@ -379,6 +379,16 @@ function shouldRetrySameProvider(err: unknown): boolean {
   if (msg.includes('high demand')) return true;
   if (/\b5\d{2}\b/.test(msg)) return true;
   if (msg.includes('econn') || msg.includes('etimedout') || msg.includes('network')) return true;
+  // Malformed JSON from the model (truncated stream, stray trailing comma,
+  // missing quote, etc.) — V8's JSON.parse throws "Expected ',' or ']'…",
+  // "Unexpected token … in JSON", etc. Almost always transient; one retry
+  // with the same model produces a clean payload.
+  if (
+    (err as { name?: string })?.name === 'SyntaxError' &&
+    (msg.includes('json') || msg.includes('position') || msg.includes('token'))
+  ) {
+    return true;
+  }
   return false;
 }
 
