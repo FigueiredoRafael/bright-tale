@@ -90,37 +90,32 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
         const body = createStageRunBodySchema.parse(request.body);
 
         if (body.cascade) {
-          // Cascade re-run: supersede the requested stage's latest run and
-          // every stage downstream of it. We mark them aborted (terminal),
-          // which makes the idempotency guard in advanceAfter skip them —
-          // a fresh chain rebuilds as each upstream run completes.
+          // Cascade re-run: supersede the requested stage's runs and every
+          // stage downstream of it. Marking them aborted makes the
+          // idempotency guard in advanceAfter skip them — the chain
+          // rebuilds as each upstream stage completes.
           const sb: Sb = createServiceClient();
           await assertProjectOwner(projectId, userId, sb);
 
           const fromIdx = STAGES.indexOf(body.stage);
           const affected = STAGES.slice(fromIdx);
           const now = new Date().toISOString();
-          for (const stage of affected) {
-            const { data: latest } = await sb
-              .from('stage_runs')
-              .select('id, status')
-              .eq('project_id', projectId)
-              .eq('stage', stage)
-              .in('status', ['queued', 'running', 'awaiting_user', 'completed', 'skipped'])
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            if (latest?.id) {
-              await sb
-                .from('stage_runs')
-                .update({
-                  status: 'aborted',
-                  error_message: `Superseded by cascade re-run from '${body.stage}'`,
-                  finished_at: now,
-                  updated_at: now,
-                })
-                .eq('id', latest.id as string);
-            }
+          // Single bulk update covering every non-failed/non-aborted run for
+          // any affected stage. PostgREST translates this to one UPDATE…WHERE.
+          const { error: cascadeErr } = await sb
+            .from('stage_runs')
+            .update({
+              status: 'aborted',
+              error_message: `Superseded by cascade re-run from '${body.stage}'`,
+              finished_at: now,
+              updated_at: now,
+            })
+            .eq('project_id', projectId)
+            .in('stage', affected)
+            .in('status', ['queued', 'running', 'awaiting_user', 'completed', 'skipped']);
+          if (cascadeErr) {
+            request.log.error({ err: cascadeErr, projectId, fromStage: body.stage }, 'cascade abort failed');
+            throw new ApiError(500, 'Failed to supersede downstream Stage Runs', 'CASCADE_FAILED');
           }
         }
 
@@ -595,12 +590,39 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
                 url: (s.url as string) ?? null,
               }))
             : [];
+          // Surface the validation + warning signals the agent emits so the
+          // user can see *quality* of the research, not just card counts.
+          const ideaValidation =
+            cards.idea_validation && typeof cards.idea_validation === 'object'
+              ? (cards.idea_validation as Record<string, unknown>)
+              : null;
+          const refinedAngle =
+            cards.refined_angle && typeof cards.refined_angle === 'object'
+              ? (cards.refined_angle as Record<string, unknown>)
+              : null;
+          const knowledgeGaps = Array.isArray(cards.knowledge_gaps)
+            ? (cards.knowledge_gaps as unknown[]).filter((g) => typeof g === 'string').length
+            : 0;
           payload = {
             kind: ref.kind,
             cardCount: total,
             counts,
             level: rs?.level ?? null,
             sources,
+            confidenceScore: (ideaValidation?.confidence_score as number) ?? null,
+            evidenceStrength: (ideaValidation?.evidence_strength as string) ?? null,
+            coreClaimVerified: (ideaValidation?.core_claim_verified as boolean) ?? null,
+            validationNotes: (ideaValidation?.validation_notes as string) ?? null,
+            contentWarning: (cards.content_warning as string) ?? null,
+            researchSummary: (cards.research_summary as string) ?? null,
+            knowledgeGaps,
+            refinedAngle: refinedAngle
+              ? {
+                  shouldPivot: (refinedAngle.should_pivot as boolean) ?? null,
+                  recommendation: (refinedAngle.recommendation as string) ?? null,
+                  updatedTitle: (refinedAngle.updated_title as string) ?? null,
+                }
+              : null,
             engineUrl: channelId ? `/channels/${channelId}/research/${ref.id}` : null,
           };
         } else if (ref.kind === 'content_draft') {

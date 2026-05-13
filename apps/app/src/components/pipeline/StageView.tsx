@@ -701,6 +701,18 @@ type PayloadKnown =
       counts?: Record<string, number>;
       level: string | null;
       sources?: Array<{ title: string; url: string | null }>;
+      confidenceScore?: number | null;
+      evidenceStrength?: string | null;
+      coreClaimVerified?: boolean | null;
+      validationNotes?: string | null;
+      contentWarning?: string | null;
+      researchSummary?: string | null;
+      knowledgeGaps?: number;
+      refinedAngle?: {
+        shouldPivot: boolean | null;
+        recommendation: string | null;
+        updatedTitle: string | null;
+      } | null;
       engineUrl?: string | null;
     }
   | {
@@ -791,6 +803,18 @@ function PayloadSummary({
       counts?: Record<string, number>;
       level: string | null;
       sources?: Array<{ title: string; url: string | null }>;
+      confidenceScore?: number | null;
+      evidenceStrength?: string | null;
+      coreClaimVerified?: boolean | null;
+      validationNotes?: string | null;
+      contentWarning?: string | null;
+      researchSummary?: string | null;
+      knowledgeGaps?: number;
+      refinedAngle?: {
+        shouldPivot: boolean | null;
+        recommendation: string | null;
+        updatedTitle: string | null;
+      } | null;
     };
     const breakdown = p.counts
       ? (['sources', 'statistics', 'expert_quotes', 'counterarguments'] as const)
@@ -798,6 +822,14 @@ function PayloadSummary({
           .map((k) => `${p.counts?.[k]} ${k.replace('_', ' ')}`)
           .join(' · ')
       : null;
+    const confidenceClass =
+      p.confidenceScore == null
+        ? 'text-muted-foreground'
+        : p.confidenceScore >= 70
+          ? 'text-emerald-700'
+          : p.confidenceScore >= 40
+            ? 'text-amber-700'
+            : 'text-rose-700';
     return (
       <div className="mt-2 text-sm space-y-1" data-testid="payload-summary">
         <div>
@@ -805,6 +837,46 @@ function PayloadSummary({
           {p.level ? <span className="text-muted-foreground"> · {p.level} depth</span> : null}
         </div>
         {breakdown ? <div className="text-xs text-muted-foreground">{breakdown}</div> : null}
+        {p.confidenceScore != null || p.evidenceStrength || p.coreClaimVerified != null ? (
+          <div className="text-xs">
+            {p.confidenceScore != null ? (
+              <>
+                Confidence: <span className={`font-medium ${confidenceClass}`}>{p.confidenceScore}</span>
+              </>
+            ) : null}
+            {p.evidenceStrength ? (
+              <span className="text-muted-foreground"> · evidence {p.evidenceStrength}</span>
+            ) : null}
+            {p.coreClaimVerified != null ? (
+              <span className="text-muted-foreground">
+                {' '}· core claim {p.coreClaimVerified ? 'verified' : 'unverified'}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+        {p.contentWarning ? (
+          <div className="mt-1 rounded bg-amber-50 px-2 py-1 text-xs text-amber-900">
+            ⚠ {p.contentWarning}
+          </div>
+        ) : null}
+        {p.refinedAngle?.shouldPivot ? (
+          <div className="mt-1 rounded bg-rose-50 px-2 py-1 text-xs text-rose-900">
+            Pivot suggested
+            {p.refinedAngle.recommendation ? <>: {p.refinedAngle.recommendation}</> : null}
+            {p.refinedAngle.updatedTitle ? (
+              <div className="mt-0.5">New title: <span className="font-medium">{p.refinedAngle.updatedTitle}</span></div>
+            ) : null}
+          </div>
+        ) : null}
+        {p.researchSummary ? (
+          <details className="mt-1 text-xs">
+            <summary className="cursor-pointer text-muted-foreground">Research summary</summary>
+            <div className="mt-1 whitespace-pre-line text-xs">{p.researchSummary}</div>
+          </details>
+        ) : null}
+        {p.knowledgeGaps && p.knowledgeGaps > 0 ? (
+          <div className="text-xs text-muted-foreground">{p.knowledgeGaps} knowledge gaps flagged</div>
+        ) : null}
         {p.sources && p.sources.length > 0 ? (
           <ul className="mt-1 list-disc pl-5 text-xs text-muted-foreground">
             {p.sources.map((s, i) => (

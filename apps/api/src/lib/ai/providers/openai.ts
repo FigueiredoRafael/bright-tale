@@ -97,7 +97,10 @@ export class OpenAIProvider implements AIProvider {
         const content = choice.message?.content;
         if (!content) throw new Error("No content generated from OpenAI");
 
-        const parsed = JSON.parse(content);
+        // Some OpenAI-compatible providers (notably Ollama-cloud, vLLM proxies,
+        // and Gemini's OpenAI-compatible endpoint) wrap JSON in ``` fences
+        // even with response_format=json_object. Strip them before parsing.
+        const parsed = JSON.parse(stripCodeFence(content));
         if (schema && typeof (schema as { parse?: unknown }).parse === "function") {
           return (schema as { parse: (v: unknown) => unknown }).parse(parsed);
         }
@@ -112,6 +115,12 @@ export class OpenAIProvider implements AIProvider {
 
     throw new Error("OpenAI tool call loop exceeded maximum turns");
   }
+}
+
+function stripCodeFence(text: string): string {
+  const trimmed = text.trim();
+  const fenceMatch = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/);
+  return fenceMatch ? fenceMatch[1].trim() : trimmed;
 }
 
 // Satisfy AgentType import (used transitively)
