@@ -417,6 +417,9 @@ function ManualReviewPanel({
           {busy === 'abandon' ? 'Aborting…' : 'Abandon'}
         </button>
       </div>
+      <div className="flex flex-wrap items-center gap-3 pt-1">
+        <UpstreamRerunLinks projectId={projectId} onMutated={onMutated} />
+      </div>
     </div>
   );
 }
@@ -615,8 +618,68 @@ function TerminalPanel({
           <Eye className="h-3 w-3" aria-hidden /> Open in engine
         </a>
         <ReRunLink projectId={projectId} run={run} onMutated={onMutated} />
+        {run.stage === 'review' && run.status !== 'completed' ? (
+          <UpstreamRerunLinks projectId={projectId} onMutated={onMutated} />
+        ) : null}
       </div>
     </div>
+  );
+}
+
+function UpstreamRerunLinks({
+  projectId,
+  onMutated,
+}: {
+  projectId: string;
+  onMutated: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState<'draft' | 'research' | null>(null);
+
+  async function rerunStage(stage: 'draft' | 'research'): Promise<void> {
+    const label = stage === 'draft' ? 'draft' : 'research';
+    if (!confirm(`Re-run ${label}? A new Stage Run will be created and downstream stages will need to follow.`)) return;
+    setBusy(stage);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/stage-runs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ stage, input: defaultInputForStage(stage as Stage) }),
+      });
+      if (res.ok) {
+        await onMutated();
+      } else {
+        const body = (await res.json().catch(() => null)) as
+          | { error?: { message?: string } } | null;
+        toast.error(body?.error?.message ?? `Failed to re-run ${label} (${res.status})`);
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => rerunStage('draft')}
+        disabled={busy !== null}
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
+        data-testid="stage-rerun-draft"
+      >
+        <RotateCcw className="h-3 w-3" aria-hidden />
+        {busy === 'draft' ? 'Re-running…' : 'Re-run draft'}
+      </button>
+      <button
+        type="button"
+        onClick={() => rerunStage('research')}
+        disabled={busy !== null}
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
+        data-testid="stage-rerun-research"
+      >
+        <RotateCcw className="h-3 w-3" aria-hidden />
+        {busy === 'research' ? 'Re-running…' : 'Re-run research'}
+      </button>
+    </>
   );
 }
 
@@ -648,6 +711,13 @@ type PayloadKnown =
       reviewScore?: number | null;
       iterationCount?: number | null;
       assetSlots?: number;
+      reviewFeedback?: {
+        overallVerdict: string | null;
+        criticalIssues: string[];
+        minorIssues: string[];
+        strengths: string[];
+        suggestedRevisions: string | null;
+      } | null;
       engineUrl?: string | null;
     }
   | {
@@ -761,20 +831,30 @@ function PayloadSummary({
       reviewScore?: number | null;
       iterationCount?: number | null;
       assetSlots?: number;
+      reviewFeedback?: {
+        overallVerdict: string | null;
+        criticalIssues: string[];
+        minorIssues: string[];
+        strengths: string[];
+        suggestedRevisions: string | null;
+      } | null;
     };
+    // The Review stage owns the feedback presentation; on other stages
+    // (draft/assets/preview/publish) the verdict block is enough.
+    const isReviewStage = run.stage === 'review';
     return (
       <div className="mt-2 text-sm space-y-1" data-testid="payload-summary">
         <div>
           <span className="font-medium">{p.title}</span>
           {p.type ? <span className="ml-2 text-xs text-muted-foreground">({p.type})</span> : null}
         </div>
-        {p.sectionCount ? (
+        {p.sectionCount && !isReviewStage ? (
           <div className="text-xs text-muted-foreground">
             {p.sectionCount} {p.sectionCount === 1 ? 'section' : 'sections'}
             {p.assetSlots ? <> · {p.assetSlots} asset {p.assetSlots === 1 ? 'brief' : 'briefs'}</> : null}
           </div>
         ) : null}
-        {p.sections && p.sections.length > 0 ? (
+        {p.sections && p.sections.length > 0 && !isReviewStage ? (
           <ul className="mt-1 list-disc pl-5 text-xs text-muted-foreground">
             {p.sections.slice(0, 5).map((s, i) => (
               <li key={i}>
@@ -794,6 +874,48 @@ function PayloadSummary({
             Review: <span className="font-medium">{p.reviewVerdict}</span>
             {p.reviewScore != null ? <> · score {p.reviewScore}</> : null}
             {p.iterationCount ? <> · iteration {p.iterationCount}</> : null}
+          </div>
+        ) : null}
+        {isReviewStage && p.reviewFeedback ? (
+          <div className="mt-2 space-y-2 rounded border-l-2 border-muted-foreground/30 pl-3">
+            {p.reviewFeedback.criticalIssues.length > 0 ? (
+              <div>
+                <div className="text-xs font-medium text-rose-700">Critical issues</div>
+                <ul className="mt-0.5 list-disc pl-5 text-xs">
+                  {p.reviewFeedback.criticalIssues.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {p.reviewFeedback.minorIssues.length > 0 ? (
+              <div>
+                <div className="text-xs font-medium text-amber-700">Minor issues</div>
+                <ul className="mt-0.5 list-disc pl-5 text-xs text-muted-foreground">
+                  {p.reviewFeedback.minorIssues.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {p.reviewFeedback.strengths.length > 0 ? (
+              <div>
+                <div className="text-xs font-medium text-emerald-700">Strengths</div>
+                <ul className="mt-0.5 list-disc pl-5 text-xs text-muted-foreground">
+                  {p.reviewFeedback.strengths.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {p.reviewFeedback.suggestedRevisions ? (
+              <div>
+                <div className="text-xs font-medium">Suggested revisions</div>
+                <div className="text-xs text-muted-foreground whitespace-pre-line">
+                  {p.reviewFeedback.suggestedRevisions}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
         {p.publishedUrl ? (

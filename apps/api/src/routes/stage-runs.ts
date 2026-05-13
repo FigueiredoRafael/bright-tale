@@ -563,7 +563,7 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
           const { data: draft } = await sb
             .from('content_drafts')
             .select(
-              'id, title, type, status, published_url, draft_json, review_verdict, review_score, iteration_count',
+              'id, title, type, status, published_url, draft_json, review_verdict, review_score, iteration_count, review_feedback_json',
             )
             .eq('id', ref.id)
             .maybeSingle();
@@ -590,6 +590,38 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
           const assetSlots = assetBriefs && Array.isArray(assetBriefs.slots)
             ? (assetBriefs.slots as unknown[]).length
             : 0;
+          // Surface the structured review feedback so the v2 supervisado can
+          // render critical issues, strengths, etc. — not just verdict+score.
+          const rfj = (draft?.review_feedback_json ?? null) as
+            | Record<string, unknown>
+            | null;
+          const typeKey = `${(draft?.type as string) ?? 'blog'}_review`;
+          const formatReview =
+            rfj && typeof rfj[typeKey] === 'object'
+              ? (rfj[typeKey] as Record<string, unknown>)
+              : null;
+          const issuesFrom = (key: 'critical_issues' | 'minor_issues' | 'strengths') => {
+            const top = Array.isArray(rfj?.[key]) ? (rfj[key] as unknown[]) : null;
+            const inner = Array.isArray(formatReview?.[key]) ? (formatReview[key] as unknown[]) : null;
+            return (top ?? inner ?? []).map((v) =>
+              typeof v === 'string' ? v : JSON.stringify(v),
+            ) as string[];
+          };
+          const reviewFeedback = rfj
+            ? {
+                overallVerdict:
+                  (rfj.overall_verdict as string) ??
+                  (rfj.verdict as string) ??
+                  null,
+                criticalIssues: issuesFrom('critical_issues').slice(0, 5),
+                minorIssues: issuesFrom('minor_issues').slice(0, 5),
+                strengths: issuesFrom('strengths').slice(0, 5),
+                suggestedRevisions:
+                  (rfj.suggested_revisions as string) ??
+                  (formatReview?.suggested_revisions as string) ??
+                  null,
+              }
+            : null;
           payload = {
             kind: ref.kind,
             // `content_drafts.title` is set by the pipeline-draft-dispatch
@@ -609,6 +641,7 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
             reviewScore: (draft?.review_score as number) ?? null,
             iterationCount: (draft?.iteration_count as number) ?? null,
             assetSlots,
+            reviewFeedback,
             engineUrl: channelId ? `/channels/${channelId}/drafts/${ref.id}` : null,
           };
         } else if (ref.kind === 'publish_record') {
