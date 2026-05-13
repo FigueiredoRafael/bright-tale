@@ -20,6 +20,10 @@ import type { Page, Route, Request } from '@playwright/test';
  * The mock keeps Stage Runs in an in-memory map; the test scripts call
  * `mock.completeStageRun(stage, payloadRef)` etc. to advance state, then the
  * UI's `refresh()` pulls the new snapshot.
+ *
+ * IMPORTANT: Playwright matches routes in REVERSE registration order — the
+ * route registered LAST is tried FIRST. We therefore register the broad
+ * catch-all FIRST and the specific routes LAST so the specifics win.
  */
 
 export type Stage = 'brainstorm' | 'research' | 'draft' | 'review' | 'assets' | 'preview' | 'publish';
@@ -138,58 +142,125 @@ export async function mockPipelineV2(
     return Array.from(runs.values()).sort((a, b) => a.created_at.localeCompare(b.created_at));
   }
 
-  // ── /api/projects/:id ──────────────────────────────────────────────────
-  await page.route(`**/api/projects/${project.id}`, async (route: Route) => {
-    if (route.request().method() !== 'GET') {
-      return route.fulfill({ status: 405, body: JSON.stringify({ data: null, error: { code: 'METHOD' } }) });
-    }
+  // ─── Register routes in BOTTOM-UP order ───────────────────────────────
+  // Playwright tries the LAST registered route first. So the catch-all is
+  // registered first (so it runs last), and the specifics are registered
+  // last (so they run first).
+
+  // ── Catch-all (registered first → tried last) ──────────────────────────
+  await page.route('**/api/**', async (route: Route) => {
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: null, error: null }),
+    });
+  });
+
+  // ── /api/me ────────────────────────────────────────────────────────────
+  await page.route('**/api/me', async (route: Route) => {
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { id: 'user-e2e', email: 'e2e@example.com' }, error: null }),
+    });
+  });
+
+  // ── /api/channels ──────────────────────────────────────────────────────
+  await page.route('**/api/channels', async (route: Route) => {
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        data: {
-          id: project.id,
-          channel_id: project.channelId,
-          title: project.title,
-          mode: project.mode,
-          paused: project.paused,
-          autopilot_config_json: null,
-          pipeline_state_json: null,
-          migrated_to_stage_runs_at: nowIso(-86400),
-        },
+        data: { items: [{ id: project.channelId, name: 'E2E Channel' }] },
         error: null,
       }),
     });
   });
 
-  // ── /api/projects/:id/stages ───────────────────────────────────────────
-  await page.route(`**/api/projects/${project.id}/stages`, async (route: Route) => {
+  // ── GET /api/research-sessions/:id (sheet) ─────────────────────────────
+  await page.route(`**/api/research-sessions/*`, async (route: Route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const id = route.request().url().split('/').pop()?.split('?')[0] ?? '';
+    const session = researchSessions.get(id);
+    if (!session) {
+      return route.fulfill({ status: 404, body: JSON.stringify({ data: null, error: { code: 'NOT_FOUND' } }) });
+    }
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({
-        data: {
-          project: { mode: project.mode, paused: project.paused },
-          stageRuns: snapshot().map((row) => ({
-            id: row.id,
-            projectId: row.project_id,
-            stage: row.stage,
-            status: row.status,
-            awaitingReason: row.awaiting_reason,
-            payloadRef: row.payload_ref,
-            attemptNo: row.attempt_no,
-            inputJson: row.input_json,
-            errorMessage: row.error_message,
-            startedAt: row.started_at,
-            finishedAt: row.finished_at,
-            outcomeJson: row.outcome_json,
-            createdAt: row.created_at,
-            updatedAt: row.updated_at,
-          })),
-        },
-        error: null,
-      }),
+      body: JSON.stringify({ data: session, error: null }),
     });
+  });
+
+  // ── GET /api/content-drafts/:id (sheet) ────────────────────────────────
+  await page.route(`**/api/content-drafts/*`, async (route: Route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const id = route.request().url().split('/').pop()?.split('?')[0] ?? '';
+    const draft = drafts.get(id);
+    if (!draft) {
+      return route.fulfill({ status: 404, body: JSON.stringify({ data: null, error: { code: 'NOT_FOUND' } }) });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: draft, error: null }),
+    });
+  });
+
+  // ── GET /:srId/payload ─────────────────────────────────────────────────
+  await page.route(`**/api/projects/${project.id}/stage-runs/*/payload`, async (route: Route) => {
+    const url = route.request().url();
+    const match = url.match(/stage-runs\/([^/]+)\/payload/);
+    const srId = match?.[1] ?? '';
+    const stageRun = Array.from(runs.values()).find((r) => r.id === srId);
+    if (!stageRun?.payload_ref) {
+      return route.fulfill({ status: 200, body: JSON.stringify({ data: { payload: null }, error: null }) });
+    }
+    const key = `${stageRun.payload_ref.kind}#${stageRun.payload_ref.id}`;
+    const payload = payloads.get(key) ?? { kind: stageRun.payload_ref.kind, raw: { id: stageRun.payload_ref.id } };
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { payload }, error: null }),
+    });
+  });
+
+  // ── PATCH/POST on a specific Stage Run ─────────────────────────────────
+  // Use `**` so the matcher captures both `/stage-runs/:id` and the deeper
+  // action paths (`/stage-runs/:id/continue`, `/stage-runs/:id/manual-output`).
+  await page.route(`**/api/projects/${project.id}/stage-runs/**`, async (route: Route) => {
+    const method = route.request().method();
+    const url = route.request().url();
+    // `/payload` has its own route registered after this one (which therefore
+    // runs first); guard here too for safety.
+    if (url.includes('/payload')) return route.fallback();
+    const body = await readBody(route.request());
+    actions.push({ method, url, body });
+
+    // The Stage Run id is the path segment right after `/stage-runs/`.
+    const segments = new URL(url).pathname.split('/');
+    const srIdx = segments.indexOf('stage-runs');
+    const stageRunId = srIdx >= 0 ? segments[srIdx + 1] : '';
+    const stageRun = Array.from(runs.values()).find((r) => r.id === stageRunId);
+    if (!stageRun) {
+      return route.fulfill({ status: 404, body: JSON.stringify({ data: null, error: { code: 'NOT_FOUND' } }) });
+    }
+
+    if (method === 'PATCH' && (body as { action?: string } | null)?.action === 'abort') {
+      setStageRun(stageRun.stage, { status: 'aborted', finished_at: nowIso() });
+      return route.fulfill({
+        status: 200,
+        body: JSON.stringify({ data: { stageRunId: stageRun.id, status: 'aborted' }, error: null }),
+      });
+    }
+    if (method === 'POST' && url.endsWith('/continue')) {
+      setStageRun(stageRun.stage, { status: 'completed', finished_at: nowIso() });
+      return route.fulfill({
+        status: 200,
+        body: JSON.stringify({ data: { stageRunId: stageRun.id, status: 'completed' }, error: null }),
+      });
+    }
+    return route.fallback();
   });
 
   // ── POST /api/projects/:id/stage-runs ──────────────────────────────────
@@ -230,110 +301,57 @@ export async function mockPipelineV2(
     });
   });
 
-  // ── PATCH/POST on a specific Stage Run ─────────────────────────────────
-  await page.route(`**/api/projects/${project.id}/stage-runs/*`, async (route: Route) => {
-    const method = route.request().method();
-    const url = route.request().url();
-    const body = await readBody(route.request());
-    actions.push({ method, url, body });
-
-    // Find the targeted Stage Run by id
-    const id = url.split('/').pop() ?? '';
-    const stageRun = Array.from(runs.values()).find((r) => r.id === id || url.includes(r.id));
-    if (!stageRun) {
-      return route.fulfill({ status: 404, body: JSON.stringify({ data: null, error: { code: 'NOT_FOUND' } }) });
-    }
-
-    if (method === 'PATCH' && (body as { action?: string } | null)?.action === 'abort') {
-      setStageRun(stageRun.stage, { status: 'aborted', finished_at: nowIso() });
-      return route.fulfill({
-        status: 200,
-        body: JSON.stringify({ data: { stageRunId: stageRun.id, status: 'aborted' }, error: null }),
-      });
-    }
-    if (method === 'POST' && url.endsWith('/continue')) {
-      setStageRun(stageRun.stage, { status: 'completed', finished_at: nowIso() });
-      return route.fulfill({
-        status: 200,
-        body: JSON.stringify({ data: { stageRunId: stageRun.id, status: 'completed' }, error: null }),
-      });
-    }
-    return route.fallback();
-  });
-
-  // ── GET /:srId/payload ─────────────────────────────────────────────────
-  await page.route(`**/api/projects/${project.id}/stage-runs/*/payload`, async (route: Route) => {
-    const url = route.request().url();
-    const match = url.match(/stage-runs\/([^/]+)\/payload/);
-    const srId = match?.[1] ?? '';
-    const stageRun = Array.from(runs.values()).find((r) => r.id === srId);
-    if (!stageRun?.payload_ref) {
-      return route.fulfill({ status: 200, body: JSON.stringify({ data: { payload: null }, error: null }) });
-    }
-    const key = `${stageRun.payload_ref.kind}#${stageRun.payload_ref.id}`;
-    const payload = payloads.get(key) ?? { kind: stageRun.payload_ref.kind, raw: { id: stageRun.payload_ref.id } };
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: { payload }, error: null }),
-    });
-  });
-
-  // ── GET /api/content-drafts/:id (sheet) ────────────────────────────────
-  await page.route(`**/api/content-drafts/*`, async (route: Route) => {
-    if (route.request().method() !== 'GET') return route.fallback();
-    const id = route.request().url().split('/').pop() ?? '';
-    const draft = drafts.get(id);
-    if (!draft) {
-      return route.fulfill({ status: 404, body: JSON.stringify({ data: null, error: { code: 'NOT_FOUND' } }) });
-    }
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: draft, error: null }),
-    });
-  });
-
-  // ── GET /api/research-sessions/:id (sheet) ─────────────────────────────
-  await page.route(`**/api/research-sessions/*`, async (route: Route) => {
-    if (route.request().method() !== 'GET') return route.fallback();
-    const id = route.request().url().split('/').pop()?.split('?')[0] ?? '';
-    const session = researchSessions.get(id);
-    if (!session) {
-      return route.fulfill({ status: 404, body: JSON.stringify({ data: null, error: { code: 'NOT_FOUND' } }) });
-    }
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: session, error: null }),
-    });
-  });
-
-  // ── Defaults the page expects to load ──────────────────────────────────
-  await page.route('**/api/channels', async (route: Route) => {
+  // ── /api/projects/:id/stages ───────────────────────────────────────────
+  await page.route(`**/api/projects/${project.id}/stages`, async (route: Route) => {
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        data: [{ id: project.channelId, name: 'E2E Channel' }],
+        data: {
+          project: { mode: project.mode, paused: project.paused },
+          stageRuns: snapshot().map((row) => ({
+            id: row.id,
+            projectId: row.project_id,
+            stage: row.stage,
+            status: row.status,
+            awaitingReason: row.awaiting_reason,
+            payloadRef: row.payload_ref,
+            attemptNo: row.attempt_no,
+            inputJson: row.input_json,
+            errorMessage: row.error_message,
+            startedAt: row.started_at,
+            finishedAt: row.finished_at,
+            outcomeJson: row.outcome_json,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+          })),
+        },
         error: null,
       }),
     });
   });
 
-  await page.route('**/api/me', async (route: Route) => {
-    return route.fulfill({
-      status: 200,
-      body: JSON.stringify({ data: { id: 'user-e2e', email: 'e2e@example.com' }, error: null }),
-    });
-  });
-
-  // Catch-all for /api/* — keep the page from blocking on uncovered endpoints.
-  await page.route('**/api/**', async (route: Route) => {
+  // ── /api/projects/:id (registered LAST so it runs FIRST for exact match) ─
+  await page.route(`**/api/projects/${project.id}`, async (route: Route) => {
+    if (route.request().method() !== 'GET') {
+      return route.fulfill({ status: 405, body: JSON.stringify({ data: null, error: { code: 'METHOD' } }) });
+    }
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: null, error: null }),
+      body: JSON.stringify({
+        data: {
+          id: project.id,
+          channel_id: project.channelId,
+          title: project.title,
+          mode: project.mode,
+          paused: project.paused,
+          autopilot_config_json: null,
+          pipeline_state_json: null,
+          migrated_to_stage_runs_at: nowIso(-86400),
+        },
+        error: null,
+      }),
     });
   });
 
