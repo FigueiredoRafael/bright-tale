@@ -16,12 +16,16 @@ import {
   UserX,
   UserCheck,
   Trash2,
+  Gift,
+  RotateCcw,
 } from 'lucide-react';
 import type { UserListItem } from '@brighttale/shared/types/users';
 import { UserEditModal } from './user-edit-modal';
 import { UserRoleModal } from './user-role-modal';
 import { UserPromoteToManagerModal } from './user-promote-to-manager-modal';
 import { UserDeleteDialog } from './user-delete-dialog';
+import { UserDonateModal } from './user-donate-modal';
+import { UserResetTokensModal } from './user-reset-tokens-modal';
 
 const AVATAR_GRADIENTS = [
   'from-purple-500 to-violet-700',
@@ -100,12 +104,14 @@ function SortHeader({
   );
 }
 
-function ActionMenu({ user, onEdit, onRole, onPromoteManager, onDelete, openUpward }: {
+function ActionMenu({ user, onEdit, onRole, onPromoteManager, onDelete, onDonate, onResetTokens, openUpward }: {
   user: UserListItem;
   onEdit: () => void;
   onRole: () => void;
   onPromoteManager: () => void;
   onDelete: () => void;
+  onDonate: () => void;
+  onResetTokens: () => void;
   openUpward: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -148,6 +154,14 @@ function ActionMenu({ user, onEdit, onRole, onPromoteManager, onDelete, openUpwa
               <ShieldCheck className="w-3.5 h-3.5" />
               Promover para manager
             </button>
+            <button type="button" onClick={() => { setOpen(false); onDonate(); }} className={menuCls}>
+              <Gift className="w-3.5 h-3.5" />
+              Doar tokens
+            </button>
+            <button type="button" onClick={() => { setOpen(false); onResetTokens(); }} className={menuCls}>
+              <RotateCcw className="w-3.5 h-3.5" />
+              Resetar tokens
+            </button>
             <button type="button" onClick={handleToggleActive} className={menuCls}>
               {user.isActive ? (
                 <><UserX className="w-3.5 h-3.5" /> Desativar</>
@@ -185,6 +199,8 @@ export function UsersTable({ users }: UsersTableProps) {
   const [roleUser, setRoleUser] = useState<UserListItem | null>(null);
   const [promoteUser, setPromoteUser] = useState<UserListItem | null>(null);
   const [deleteUser, setDeleteUser] = useState<UserListItem | null>(null);
+  const [donateUser, setDonateUser] = useState<UserListItem | null>(null);
+  const [resetUser, setResetUser] = useState<UserListItem | null>(null);
 
   const handleSort = (field: SortKey) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -357,6 +373,8 @@ export function UsersTable({ users }: UsersTableProps) {
                       onRole={() => setRoleUser(user)}
                       onPromoteManager={() => setPromoteUser(user)}
                       onDelete={() => setDeleteUser(user)}
+                      onDonate={() => setDonateUser(user)}
+                      onResetTokens={() => setResetUser(user)}
                       openUpward={i >= users.length - 2}
                     />
                   </td>
@@ -383,6 +401,12 @@ export function UsersTable({ users }: UsersTableProps) {
       )}
       {deleteUser && (
         <UserDeleteDialog user={deleteUser} onClose={() => setDeleteUser(null)} />
+      )}
+      {donateUser && (
+        <UserDonateModal user={donateUser} onClose={() => setDonateUser(null)} />
+      )}
+      {resetUser && (
+        <UserResetTokensModal user={resetUser} onClose={() => setResetUser(null)} />
       )}
     </>
   );
