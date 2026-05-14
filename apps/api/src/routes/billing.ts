@@ -8,7 +8,7 @@ import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
 import { getStripe } from '../lib/billing/stripe.js';
-import { PLANS, getPlan, planFromPriceId, ADDON_PACKS, type PlanId, type BillingCycle } from '../lib/billing/plans.js';
+import { getPlan, planFromPriceIdAsync, loadPlanConfigs, ADDON_PACKS, type PlanId, type BillingCycle } from '../lib/billing/plans.js';
 import { buildAffiliateContainer } from '../lib/affiliate/container.js';
 
 type StripeClient = ReturnType<typeof getStripe>;
@@ -112,7 +112,7 @@ export async function __fireAffiliateCommissionHook(
     const priceId = subscription.items.data[0]?.price.id;
     if (!orgId || !priceId) return;
 
-    const mapping = planFromPriceId(priceId);
+    const mapping = await planFromPriceIdAsync(priceId);
     if (!mapping) return;
 
     const userId = await __resolveOrgPrimaryUserId(orgId);
@@ -165,14 +165,17 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
    * doesn't have to duplicate the config.
    */
   fastify.get('/plans', async (_request, reply) => {
+    const plans = await loadPlanConfigs();
     return reply.send({
       data: {
-        plans: Object.values(PLANS).map((p) => ({
+        plans: Object.values(plans).map((p) => ({
           id: p.id,
           displayName: p.displayName,
           credits: p.credits,
           usdMonthly: p.usdMonthly,
           usdAnnual: p.usdAnnual,
+          displayPriceBrlMonthly: p.displayPriceBrlMonthly ?? 0,
+          displayPriceBrlAnnual: p.displayPriceBrlAnnual ?? 0,
           features: p.features,
           // Don't leak Stripe price IDs — not needed client-side.
         })),
@@ -227,12 +230,13 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
     try {
       if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
       const body = checkoutSchema.parse(request.body);
-      const plan = getPlan(body.planId as PlanId);
+      const plans = await loadPlanConfigs();
+      const plan = plans[body.planId as PlanId] ?? getPlan(body.planId as PlanId);
       const priceId = plan.stripePriceId[body.billingCycle];
       if (!priceId) {
         throw new ApiError(
           500,
-          `Stripe price id for ${body.planId}/${body.billingCycle} not configured (set STRIPE_PRICE_${body.planId.toUpperCase()}_${body.billingCycle.toUpperCase()}).`,
+          `Stripe price id for ${body.planId}/${body.billingCycle} not configured. Update via admin plan-configs.`,
           'CONFIG_ERROR',
         );
       }
@@ -389,6 +393,155 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
       }
     },
   );
+
+  /* ─── M-001 Admin: plan-configs + stripe-mode ─────────────────────────────── */
+
+  type AnyClient = { from: (t: string) => { select: (...args: unknown[]) => unknown; update: (...args: unknown[]) => unknown; upsert: (...args: unknown[]) => unknown; [k: string]: (...args: unknown[]) => unknown } };
+  const anySb = () => createServiceClient() as unknown as AnyClient;
+
+  const updatePlanConfigSchema = z.object({
+    displayName: z.string().min(1).max(64).optional(),
+    credits: z.number().int().nonnegative().optional(),
+    priceUsdMonthlyCents: z.number().int().nonnegative().optional(),
+    priceUsdAnnualCents: z.number().int().nonnegative().optional(),
+    displayPriceBrlMonthly: z.number().int().nonnegative().optional(),
+    displayPriceBrlAnnual: z.number().int().nonnegative().optional(),
+    stripePriceIdMonthlyTest: z.string().nullable().optional(),
+    stripePriceIdAnnualTest: z.string().nullable().optional(),
+    stripePriceIdMonthlyLive: z.string().nullable().optional(),
+    stripePriceIdAnnualLive: z.string().nullable().optional(),
+    isActive: z.boolean().optional(),
+  });
+
+  async function assertManagerAdmin(userId: string): Promise<void> {
+    const sb = createServiceClient();
+    const { data: manager } = await sb
+      .from('managers')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .maybeSingle();
+    if (!manager) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
+  }
+
+  /**
+   * GET /billing/admin/plan-configs — list all plan configs + current stripe mode.
+   */
+  fastify.get('/admin/plan-configs', { preHandler: [authenticateWithUser] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      await assertManagerAdmin(request.userId);
+
+      const sb = anySb();
+      const { data: rows, error: rowsErr } = await (sb.from('plan_configs').select('*') as unknown as Promise<{ data: unknown[]; error: { message: string } | null }>);
+      if (rowsErr) throw new ApiError(500, rowsErr.message, 'DB_ERROR');
+
+      const { data: modeRow } = await (
+        sb.from('system_settings').select('value') as unknown as {
+          eq: (k: string, v: string) => { single: () => Promise<{ data: { value: string } | null }> };
+        }
+      ).eq('key', 'stripe_mode').single();
+
+      return reply.send({
+        data: {
+          plans: rows ?? [],
+          stripeMode: modeRow?.value ?? 'test',
+        },
+        error: null,
+      });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * PUT /billing/admin/plan-configs/:planId — update price IDs / prices / BRL display.
+   */
+  fastify.put('/admin/plan-configs/:planId', { preHandler: [authenticateWithUser] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      await assertManagerAdmin(request.userId);
+
+      const { planId } = request.params as { planId: string };
+      const body = updatePlanConfigSchema.parse(request.body);
+
+      const update: Record<string, unknown> = {};
+      if (body.displayName !== undefined) update['display_name'] = body.displayName;
+      if (body.credits !== undefined) update['credits'] = body.credits;
+      if (body.priceUsdMonthlyCents !== undefined) update['price_usd_monthly_cents'] = body.priceUsdMonthlyCents;
+      if (body.priceUsdAnnualCents !== undefined) update['price_usd_annual_cents'] = body.priceUsdAnnualCents;
+      if (body.displayPriceBrlMonthly !== undefined) update['display_price_brl_monthly'] = body.displayPriceBrlMonthly;
+      if (body.displayPriceBrlAnnual !== undefined) update['display_price_brl_annual'] = body.displayPriceBrlAnnual;
+      if (body.stripePriceIdMonthlyTest !== undefined) update['stripe_price_id_monthly_test'] = body.stripePriceIdMonthlyTest;
+      if (body.stripePriceIdAnnualTest !== undefined) update['stripe_price_id_annual_test'] = body.stripePriceIdAnnualTest;
+      if (body.stripePriceIdMonthlyLive !== undefined) update['stripe_price_id_monthly_live'] = body.stripePriceIdMonthlyLive;
+      if (body.stripePriceIdAnnualLive !== undefined) update['stripe_price_id_annual_live'] = body.stripePriceIdAnnualLive;
+      if (body.isActive !== undefined) update['is_active'] = body.isActive;
+
+      if (Object.keys(update).length === 0) {
+        throw new ApiError(400, 'No fields to update', 'BAD_REQUEST');
+      }
+
+      const sb = anySb();
+      const planConfigsQuery = sb.from('plan_configs') as unknown as {
+        update: (v: Record<string, unknown>) => {
+          eq: (c: string, v: string) => {
+            select: () => { single: () => Promise<{ data: Record<string, unknown> | null; error: { message: string } | null }> };
+          };
+        };
+      };
+      const { data: updated, error: updateErr } = await planConfigsQuery.update(update).eq('plan_id', planId).select().single();
+      if (updateErr) throw new ApiError(500, updateErr.message, 'DB_ERROR');
+      if (!updated) throw new ApiError(404, `Plan ${planId} not found`, 'NOT_FOUND');
+
+      return reply.send({ data: updated, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * GET /billing/admin/stripe-mode — returns current stripe mode.
+   */
+  fastify.get('/admin/stripe-mode', { preHandler: [authenticateWithUser] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      await assertManagerAdmin(request.userId);
+
+      const sb = anySb();
+      const { data: row } = await (
+        sb.from('system_settings').select('value') as unknown as {
+          eq: (k: string, v: string) => { single: () => Promise<{ data: { value: string } | null }> };
+        }
+      ).eq('key', 'stripe_mode').single();
+
+      return reply.send({ data: { mode: row?.value ?? 'test' }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * PUT /billing/admin/stripe-mode — toggle sandbox/live.
+   */
+  fastify.put('/admin/stripe-mode', { preHandler: [authenticateWithUser] }, async (request, reply) => {
+    try {
+      if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
+      await assertManagerAdmin(request.userId);
+
+      const { mode } = z.object({ mode: z.enum(['test', 'live']) }).parse(request.body);
+
+      const sb = anySb();
+      const { error: upsertErr } = await (
+        sb.from('system_settings').upsert({ key: 'stripe_mode', value: mode }) as unknown as Promise<{ error: { message: string } | null }>
+      );
+      if (upsertErr) throw new ApiError(500, upsertErr.message, 'DB_ERROR');
+
+      return reply.send({ data: { mode }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
 }
 
 /* ─── Webhook event dispatch ──────────────────────────────────────────────── */
@@ -465,9 +618,10 @@ async function syncSubscription(subscription: StripeSubscription): Promise<void>
   const orgId = subscription.metadata?.org_id;
   const priceId = subscription.items.data[0]?.price.id;
   if (!orgId || !priceId) return;
-  const mapping = planFromPriceId(priceId);
+  const mapping = await planFromPriceIdAsync(priceId);
   if (!mapping) return;
-  const plan = getPlan(mapping.planId);
+  const plans = await loadPlanConfigs();
+  const plan = plans[mapping.planId] ?? getPlan(mapping.planId);
 
   const currentPeriodEnd = (subscription as unknown as { current_period_end?: number }).current_period_end;
   const currentPeriodStart = (subscription as unknown as { current_period_start?: number }).current_period_start;
@@ -518,9 +672,10 @@ async function resetCreditsOnRenewal(invoice: StripeInvoice): Promise<void> {
   const orgId = subscription.metadata?.org_id;
   const priceId = subscription.items.data[0]?.price.id;
   if (!orgId || !priceId) return;
-  const mapping = planFromPriceId(priceId);
+  const mapping = await planFromPriceIdAsync(priceId);
   if (!mapping) return;
-  const plan = getPlan(mapping.planId);
+  const plans = await loadPlanConfigs();
+  const plan = plans[mapping.planId] ?? getPlan(mapping.planId);
   const periodEnd = (subscription as unknown as { current_period_end?: number }).current_period_end;
 
   const sb = createServiceClient();

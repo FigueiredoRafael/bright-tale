@@ -8,7 +8,7 @@
  * does not accept ratios directly (only fixed pixel sizes).
  */
 
-import OpenAI from "openai";
+import { OpenAI } from "openai";
 import type { ImageProvider, GenerateImageParams, GeneratedImageResult } from "../imageProvider.js";
 
 type SupportedSize = "1024x1024" | "1024x1536" | "1536x1024" | "1024x1792" | "1792x1024";

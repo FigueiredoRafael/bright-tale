@@ -7,6 +7,7 @@
     "packages/*"
   ],
   "scripts": {
+    "dev:local": "bash scripts/dev-local.sh",
     "predev": "bash scripts/db-drift-check.sh || true",
     "dev": "concurrently -n app,api,web,docs,inngest,ollama -c blue,green,cyan,yellow,magenta,gray \"npm:dev:app\" \"npm:dev:api\" \"npm:dev:web\" \"npm:dev:docs\" \"npm:dev:inngest\" \"npm:dev:ollama\"",
     "dev:app": "NODE_OPTIONS='--max-old-space-size=512' npm run dev --workspace=@brighttale/app",
@@ -39,6 +40,7 @@
     "db:drift": "bash scripts/db-drift-check.sh",
     "db:diff": "npm run db:link:dev && bash scripts/db-with-token.sh migration list --linked",
     "db:types": "bash scripts/db-with-token.sh gen types typescript --project-id fxwykfyiicalcgbxslng > packages/shared/src/types/database.ts",
+    "db:types:local": "supabase gen types typescript --local > packages/shared/src/types/database.ts",
     "db:seed:agents": "tsx scripts/seed-agents.ts",
     "db:seed:personas": "tsx scripts/seed-personas.ts",
     "db:seed:provider-keys": "tsx scripts/seed-provider-keys.ts",
@@ -64,7 +66,9 @@
     "typescript": "^5.6.0"
   },
   "lint-staged": {
-    "apps/app/**/*.{ts,tsx}": "eslint -c apps/app/eslint.config.mjs --no-warn-ignored --max-warnings 0"
+    "apps/app/**/*.{ts,tsx}": "eslint -c apps/app/eslint.config.mjs --no-warn-ignored --max-warnings 0",
+    "apps/api/**/*.ts": "eslint -c apps/api/eslint.config.mjs --no-warn-ignored --max-warnings 0",
+    "apps/web/**/*.{ts,tsx}": "eslint -c apps/web/eslint.config.mjs --no-warn-ignored --max-warnings 0"
   },
   "engines": {
     "node": ">=20.0.0"
