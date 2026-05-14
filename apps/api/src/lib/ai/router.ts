@@ -23,6 +23,8 @@ import { sleepCancellable } from './abortable.js';
 import { createServiceClient } from '../supabase/index.js';
 import { decrypt } from '../crypto.js';
 import { captureError } from '../logger.js';
+import { acquire as acquireSemaphore } from '../pipeline/provider-semaphore.js';
+import { getMaxConcurrent } from './concurrency.js';
 
 // ---------------------------------------------------------------------------
 // Active-provider cache
@@ -485,8 +487,25 @@ export async function generateWithFallback(
     const route = chain[i];
     let attempt = 0;
     while (attempt <= SAME_PROVIDER_RETRIES) {
+      // provider-semaphore caps in-flight calls per (userId, provider, model).
+      // Released before per-attempt backoff so a sibling Track can use the slot
+      // while we wait; re-acquired on retry. Multi-track autopilot relies on
+      // this to avoid 429s on free-tier providers.
+      const release = await acquireSemaphore(
+        {
+          userId: options.logContext?.userId ?? 'anon',
+          provider: route.providerName,
+          model: route.model,
+        },
+        getMaxConcurrent(route.providerName, route.model),
+      );
+      let result: unknown;
       try {
-        const result = await route.provider.generateContent(params);
+        try {
+          result = await route.provider.generateContent(params);
+        } finally {
+          release();
+        }
         const usage = route.provider.lastUsage;
         const durationMs = Date.now() - startTime;
         if (options.logContext) {
