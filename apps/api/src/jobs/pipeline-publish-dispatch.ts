@@ -1,17 +1,24 @@
 /**
  * pipeline-publish-dispatch — Publish Stage worker.
  *
- * The orchestrator's advanceAfter inserts Publish Stage Runs in
- * `awaiting_user(manual_advance)` per ADR-0004 (canonical decision in
- * CLAUDE.md). The Continue endpoint flips that to `queued` and emits
- * `pipeline/stage.requested`, which this dispatcher picks up.
+ * T2.7 scopes the dispatcher to (track, publish_target). The orchestrator
+ * (fan-out-planner) emits one Stage Run per active `publish_targets` row
+ * compatible with the Track's medium; this worker resolves the row, finds
+ * the prior `production` content_draft for the same Track, and routes to
+ * the type-specific driver. Outcome lives on the single Stage Run row —
+ * one target failing never touches its siblings.
  *
- * The actual WP API call is performed by the existing
- * `POST /wordpress/publish-draft` route. We invoke it via internal fetch
- * (INTERNAL_API_KEY auth) to avoid duplicating ~500 lines of WP
- * integration. The route writes `published_url` + `published_at` onto
- * `content_drafts`; we mirror the URL into the Stage Run's
- * `payload_ref` for the UI.
+ * Drivers:
+ *   - `wordpress` — calls the existing `POST /wordpress/publish-draft` route
+ *     internally (INTERNAL_API_KEY auth) with `channelId` resolved from
+ *     `publish_targets.channel_id`. Mirrors `published_url` + `wp_post_id`
+ *     into the Stage Run's payload_ref for the UI.
+ *   - everything else — fail fast with `NOT_IMPLEMENTED`. T6.x adds the
+ *     real YouTube/Spotify/Apple/RSS drivers.
+ *
+ * As before, the Stage Run is parked in `awaiting_user(manual_advance)` by
+ * the orchestrator until the Continue endpoint flips it to `queued` and
+ * emits `pipeline/stage.requested`.
  */
 import { inngest } from './client.js';
 import { createServiceClient } from '../lib/supabase/index.js';
@@ -49,7 +56,7 @@ export const pipelinePublishDispatch = inngest.createFunction(
 
     const { data: stageRun } = await sb
       .from('stage_runs')
-      .select('id, project_id, stage, status, input_json')
+      .select('id, project_id, stage, status, track_id, publish_target_id, input_json')
       .eq('id', stageRunId)
       .maybeSingle();
     if (!stageRun) return;
@@ -58,18 +65,67 @@ export const pipelinePublishDispatch = inngest.createFunction(
     // terminal states are inherently excluded too (idempotency on re-delivery).
     if (stageRun.status !== 'queued') return;
 
-    // Resolve the draft from the prior draft Stage Run.
-    const { data: priorDraft } = await sb
+    const trackId = (stageRun.track_id as string | null | undefined) ?? null;
+    const publishTargetId = (stageRun.publish_target_id as string | null | undefined) ?? null;
+
+    if (!publishTargetId) {
+      await markFailed(sb, stageRunId, {
+        ...ctx,
+        errorMessage: 'Publish Stage Run missing publish_target_id',
+      });
+      return;
+    }
+
+    const { data: target } = await sb
+      .from('publish_targets')
+      .select('id, type, channel_id, org_id, is_active, config_json, display_name')
+      .eq('id', publishTargetId)
+      .maybeSingle();
+    if (!target) {
+      await markFailed(sb, stageRunId, {
+        ...ctx,
+        errorMessage: `publish_target ${publishTargetId} not found`,
+      });
+      return;
+    }
+    if (target.is_active === false) {
+      await markFailed(sb, stageRunId, {
+        ...ctx,
+        errorMessage: `publish_target ${publishTargetId} is inactive`,
+      });
+      return;
+    }
+
+    const targetType = target.type as string;
+    if (targetType !== 'wordpress') {
+      await markFailed(sb, stageRunId, {
+        ...ctx,
+        errorMessage: `NOT_IMPLEMENTED: publish driver for type=${targetType} not yet implemented`,
+      });
+      return;
+    }
+
+    // Resolve the draft from the prior production Stage Run. Track-scoped:
+    // each Track has its own production run carrying a medium-specific draft.
+    // Legacy single-Track projects (trackId=null) fall back to the most-recent
+    // production run regardless of track — preserves pre-multi-track behavior
+    // for projects backfilled before T2.1 ran.
+    let priorQuery = sb
       .from('stage_runs')
       .select('id, stage, status, payload_ref')
       .eq('project_id', projectId)
-      .eq('stage', 'draft')
+      .eq('stage', 'production');
+    if (trackId) priorQuery = priorQuery.eq('track_id', trackId);
+    const { data: priorProduction } = await priorQuery
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
-    const draftRef = priorDraft?.payload_ref as { kind?: string; id?: string } | null | undefined;
+    const draftRef = priorProduction?.payload_ref as { kind?: string; id?: string } | null | undefined;
     if (draftRef?.kind !== 'content_draft' || !draftRef.id) {
-      await markFailed(sb, stageRunId, { ...ctx, errorMessage: 'No prior draft Stage Run to publish' });
+      await markFailed(sb, stageRunId, {
+        ...ctx,
+        errorMessage: 'No prior production Stage Run with content_draft payload_ref',
+      });
       return;
     }
     const draftId = draftRef.id;
@@ -89,9 +145,10 @@ export const pipelinePublishDispatch = inngest.createFunction(
       if (!draft?.user_id) throw new Error(`content_draft ${draftId} has no user_id`);
 
       const input = (stageRun.input_json ?? {}) as Record<string, unknown>;
-      // Map publishInputSchema (status/scheduledAt/destinationId) → the
-      // WordPress route's publishDraftSchema (mode/scheduledDate/channelId).
-      // status='future' becomes mode='schedule' per WP route convention.
+      // Map publishInputSchema (status/scheduledAt) → the WordPress route's
+      // publishDraftSchema (mode/scheduledDate/channelId). The channelId
+      // comes from the publish_target, not the input — that's the whole
+      // point of fan-out: each target row owns the destination.
       const rawStatus = (input.status as string | undefined) ?? 'publish';
       const mode: 'publish' | 'draft' | 'schedule' =
         rawStatus === 'future'
@@ -101,7 +158,7 @@ export const pipelinePublishDispatch = inngest.createFunction(
             : 'publish';
       const publishBody: Record<string, unknown> = { draftId, mode };
       if (input.scheduledAt) publishBody.scheduledDate = input.scheduledAt;
-      if (input.destinationId) publishBody.channelId = input.destinationId;
+      if (target.channel_id) publishBody.channelId = target.channel_id;
 
       const response = await fetch(`${apiBase}/wordpress/publish-draft`, {
         method: 'POST',
