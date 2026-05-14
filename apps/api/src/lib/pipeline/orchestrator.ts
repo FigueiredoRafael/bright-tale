@@ -484,6 +484,10 @@ export async function resumeProject(projectId: string): Promise<void> {
       nextRow.awaiting_reason = 'manual_advance';
     } else {
       nextRow.status = 'queued';
+      // TODO(T2.3): swap for resolveAutopilotConfig(project, track, stage)
+      // once tracks land. Today this lookup uses raw Stage names against the
+      // legacy autopilot config shape (canonicalCore/draft slots), which only
+      // works for stages that happen to share a name with their slot key.
       const stageDefaults = autopilotConfig?.[stage];
       if (stageDefaults) nextRow.input_json = stageDefaults;
     }
@@ -664,6 +668,7 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
     // Carry forward autopilot-config defaults for this stage so the dispatcher
     // has something to work with (e.g. research.level). The dispatcher is free
     // to enrich further (resolving prior-stage winners, etc).
+    // TODO(T2.3): swap for resolveAutopilotConfig(project, track, next).
     const stageDefaults = autopilotConfig?.[next];
     if (stageDefaults) nextRow.input_json = stageDefaults;
   }
