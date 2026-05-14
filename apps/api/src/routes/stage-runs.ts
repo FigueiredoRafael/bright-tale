@@ -30,6 +30,7 @@ import {
 } from '../lib/pipeline/orchestrator.js';
 import { bulkAbort, markAborted } from '../lib/pipeline/stage-run-writer.js';
 import { mirrorFromLegacy } from '../lib/pipeline/mirror-from-legacy.js';
+import { ensureTracksForProject } from '../lib/pipeline/legacy-track-migrator.js';
 import { STAGES, type Stage, type StageRun } from '@brighttale/shared/pipeline/inputs';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -326,6 +327,11 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
 
         const sb: Sb = createServiceClient();
         await assertProjectOwner(projectId, userId, sb);
+
+        // T2.1: lazy multi-track migration. Idempotent — no-op once a Track
+        // exists for the project. Must run before the legacy mirror so the
+        // resulting canonical/production rows respect the new track_id FK.
+        await ensureTracksForProject(sb, projectId);
 
         // Coalesce concurrent calls for the same project — see
         // `mirrorInFlight` comment above.
