@@ -3,6 +3,7 @@
  * One Inngest job runs both stages so the user sees a single modal end-to-end.
  */
 import { inngest } from './client.js';
+import { markCompleted } from '../lib/pipeline/stage-run-writer.js';
 import { generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentConfig, loadAgentPrompt, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
@@ -54,6 +55,15 @@ interface ProductionGenerateEvent {
     productionParams?: Record<string, unknown> | null;
     /** Set when launched via the new Pipeline Orchestrator. */
     stageRunId?: string;
+    /**
+     * T2.6 — disambiguates the two callers:
+     *   'canonical' (pipeline-canonical-dispatch): terminal-write the
+     *     canonical Stage Run after save-core; do NOT chain to produce.
+     *   'draft'     (legacy pipeline-draft-dispatch): chain into produce
+     *     so the legacy Draft Stage Run stays running through the body.
+     *   undefined   (legacy callers / pre-T2.6 events): treated as 'draft'.
+     */
+    phase?: 'canonical' | 'draft';
   };
 }
 
@@ -64,7 +74,7 @@ export const productionGenerate = inngest.createFunction(
     triggers: [{ event: 'production/generate' }],
   },
   async ({ event, step }: { event: ProductionGenerateEvent; step: { run: (name: string, fn: () => Promise<unknown>) => Promise<unknown> } }) => {
-    const { draftId, orgId, userId, type, modelTier, provider, model, productionParams, stageRunId } = event.data;
+    const { draftId, orgId, userId, type, modelTier, provider, model, productionParams, stageRunId, phase } = event.data;
     const sb = createServiceClient();
 
     // Load projectId from content_drafts
@@ -230,25 +240,40 @@ export const productionGenerate = inngest.createFunction(
       // routes own those stages.
       await emitJobEvent(draftId, 'production', 'completed', 'Canonical core gerado!', { draftId, type, stage: 'canonical-core' });
 
-      // Pipeline Orchestrator handoff: canonical-core is only HALF of the
-      // Draft Stage — the actual body comes from production-produce.
-      // Chain into produce so the Stage Run stays "running" until the body
-      // is written. production-produce owns the Stage Run terminal write.
+      // Pipeline Orchestrator handoff. Two routes:
+      //   phase='canonical' (T2.6 canonical-dispatch): the canonical Stage
+      //     Run is project-scoped and ends at canonical-core. Terminal-write
+      //     it now; the per-Track production Stage Runs (owned by
+      //     pipeline-production-dispatch + production-produce) carry the
+      //     pipeline forward from here.
+      //   phase='draft' / undefined (legacy draft-dispatch): canonical-core
+      //     is only HALF of the Draft Stage — chain into produce so the
+      //     Stage Run stays running until the body is written.
       if (stageRunId) {
-        await inngest.send({
-          name: 'production/produce',
-          data: {
-            draftId,
-            orgId,
-            userId,
-            type,
-            modelTier,
-            provider,
-            model,
-            productionParams,
-            stageRunId,
-          },
-        });
+        if (phase === 'canonical') {
+          if (projectId) {
+            await markCompleted(sb, stageRunId, {
+              projectId,
+              stage: 'canonical',
+              payloadRef: { kind: 'content_draft', id: draftId },
+            });
+          }
+        } else {
+          await inngest.send({
+            name: 'production/produce',
+            data: {
+              draftId,
+              orgId,
+              userId,
+              type,
+              modelTier,
+              provider,
+              model,
+              productionParams,
+              stageRunId,
+            },
+          });
+        }
       }
 
       return { success: true, draftId };

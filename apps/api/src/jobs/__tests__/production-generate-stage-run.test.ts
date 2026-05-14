@@ -166,6 +166,52 @@ describe('production-generate stage_runs writeback', () => {
     expect(finishedCall).toBeUndefined();
   });
 
+  it('phase=canonical: marks Stage Run completed with content_draft payloadRef and does NOT chain to produce', async () => {
+    const { productionGenerate } = await import('../production-generate.js');
+
+    const event = {
+      data: {
+        draftId: DRAFT_ID,
+        orgId: 'org-1',
+        userId: 'user-1',
+        type: 'blog' as const,
+        modelTier: 'standard',
+        stageRunId: STAGE_RUN_ID,
+        phase: 'canonical' as const,
+      },
+      name: 'production/generate',
+    };
+
+    const step = {
+      run: vi.fn(async (_name: string, fn: () => Promise<unknown>) => fn()),
+    };
+
+    await (productionGenerate as unknown as (args: unknown) => Promise<unknown>)({ event, step });
+
+    // Stage Run marked completed with payload_ref → content_draft
+    expect(stageRunsUpdateMock).toHaveBeenCalled();
+    const completedCall = stageRunsUpdateMock.mock.calls.find(
+      (c: unknown[]) => (c[0] as { status?: string }).status === 'completed',
+    );
+    expect(completedCall).toBeDefined();
+    expect((completedCall![0] as { payload_ref: { kind: string; id: string } }).payload_ref).toEqual({
+      kind: 'content_draft',
+      id: DRAFT_ID,
+    });
+
+    // No chain into produce
+    const produceCall = (inngestSendMock.mock.calls as unknown as unknown[][]).find(
+      (c) => (c[0] as { name: string }).name === 'production/produce',
+    );
+    expect(produceCall).toBeUndefined();
+
+    // Advance event emitted by markCompleted
+    const finishedCall = (inngestSendMock.mock.calls as unknown as unknown[][]).find(
+      (c) => (c[0] as { name: string }).name === 'pipeline/stage.run.finished',
+    );
+    expect(finishedCall).toBeDefined();
+  });
+
   it('on failure: updates stage_runs to failed and emits pipeline/stage.run.finished', async () => {
     const router = await import('../../lib/ai/router.js');
     vi.mocked(router.generateWithFallback).mockRejectedValueOnce(new Error('boom'));
