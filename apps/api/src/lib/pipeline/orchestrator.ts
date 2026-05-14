@@ -121,6 +121,26 @@ export function shouldSkip(
   return false;
 }
 
+/**
+ * Skip decision against the resolved (project ▸ track ▸ fallback) AutopilotConfig
+ * slot — i.e. the same fragment the dispatcher receives. Differs from
+ * `shouldSkip` (which reads the project-level config tree by slot name) in that
+ * a per-Track override of `review.maxIterations: 0` or `assets.mode: 'skip'`
+ * actually takes effect, because the resolver has already coalesced both
+ * sources into a single slot value.
+ */
+function isSkipFromResolvedSlot(stage: Stage, resolvedSlot: unknown): boolean {
+  if (!resolvedSlot || typeof resolvedSlot !== 'object') return false;
+  if (stage === 'review') {
+    const maxIterations = (resolvedSlot as { maxIterations?: unknown }).maxIterations;
+    return typeof maxIterations === 'number' && maxIterations === 0;
+  }
+  if (stage === 'assets') {
+    return (resolvedSlot as { mode?: unknown }).mode === 'skip';
+  }
+  return false;
+}
+
 // ─── Row mapping ────────────────────────────────────────────────────────────
 
 function rowToStageRun(row: Record<string, unknown>): StageRun {
@@ -533,10 +553,13 @@ export async function resumeProject(projectId: string): Promise<void> {
 export async function advanceAfter(stageRunId: string): Promise<void> {
   const sb: Sb = createServiceClient();
 
-  // 1. Load the finished Stage Run
+  // 1. Load the finished Stage Run. We pull `track_id` (and
+  // `publish_target_id`) so per-Track dispatches can (a) skip when the Track
+  // is paused mid-flight and (b) carry the dimensions forward to the next
+  // Stage Run. Shared stages (brainstorm/research/canonical) leave them null.
   const { data: finished } = await sb
     .from('stage_runs')
-    .select('id, project_id, stage, status')
+    .select('id, project_id, stage, status, track_id, publish_target_id')
     .eq('id', stageRunId)
     .maybeSingle();
   if (!finished) return;
@@ -560,10 +583,6 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
   if (finished.status !== 'completed' && finished.status !== 'skipped') return;
 
   const projectId = finished.project_id as string;
-  const autopilotConfig = project.autopilot_config_json as
-    | Record<string, Record<string, unknown>>
-    | null
-    | undefined;
 
   // 5a. Review-loop hand-off. When a review Stage Run completes with verdict
   // `revision_required` AND we still have iteration budget, the next stage
@@ -586,6 +605,20 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
       | { verdict?: string; draftType?: string; feedbackJson?: unknown }
       | null;
     if (outcome?.verdict === 'revision_required') {
+      // Multi-track: the revision re-run must inherit the review's Track so
+      // a Track-1 verdict doesn't trigger a Track-2 re-render. Paused tracks
+      // skip the revision entirely — resumeProject picks it up on un-pause.
+      const revisionTrackId = ((finished as { track_id?: string | null }).track_id ?? null) as
+        | string
+        | null;
+      if (revisionTrackId) {
+        const { data: trackData } = await sb
+          .from('tracks')
+          .select('id, paused')
+          .eq('id', revisionTrackId)
+          .maybeSingle();
+        if ((trackData as { paused?: boolean } | null)?.paused === true) return;
+      }
       // TODO(T2.6): swap LEGACY_DRAFT_STAGE for 'production' once the
       // productionDispatcher listens on `stage == 'production'`.
       const attemptNo = (await latestAttemptNo(sb, projectId, LEGACY_DRAFT_STAGE as Stage)) + 1;
@@ -600,6 +633,7 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
         status: 'queued',
         attempt_no: attemptNo,
         input_json: inputJson,
+        track_id: revisionTrackId,
       });
       if (inserted?.id) {
         await inngest.send({
@@ -626,6 +660,32 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
   const next = successorOf(finished.stage as Stage);
   if (!next) return;
 
+  // 5b. Per-Track gate: when the finished run carries a `track_id`, the next
+  // Stage inherits it. We need the Track row to (a) bail if the user paused
+  // it mid-flight, (b) feed its `autopilot_config_json` into the resolver so
+  // the dispatcher receives the resolved AutopilotConfig slot rather than the
+  // project-only legacy lookup.
+  const finishedTrackId = ((finished as { track_id?: string | null }).track_id ?? null) as
+    | string
+    | null;
+  const finishedPublishTargetId = ((finished as { publish_target_id?: string | null }).publish_target_id ?? null) as
+    | string
+    | null;
+  type TrackRowLite = { id: string; paused: boolean; autopilot_config_json: unknown };
+  let trackRow: TrackRowLite | null = null;
+  if (finishedTrackId) {
+    const { data: trackData } = await sb
+      .from('tracks')
+      .select('id, paused, autopilot_config_json')
+      .eq('id', finishedTrackId)
+      .maybeSingle();
+    trackRow = (trackData as TrackRowLite | null) ?? null;
+    // Paused Tracks short-circuit dispatch. `resumeProject` (or the explicit
+    // un-pause endpoint) is responsible for picking the work back up once the
+    // user un-pauses — we deliberately do not enqueue here.
+    if (trackRow?.paused === true) return;
+  }
+
   // 6. Idempotency guard: if the next Stage already has a run that is either
   // in flight (queued/running/awaiting_user) or has resolved successfully
   // (completed/skipped), do nothing. This prevents duplicate Stage Runs when
@@ -633,12 +693,22 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
   // outside step.run, manual re-emits, retries, etc.). Only `failed`/`aborted`
   // prior runs are eligible for forward auto-advance — and even those are
   // owned by `resumeProject`, not `advanceAfter`.
-  const { data: existingNext } = await sb
+  //
+  // Multi-track scope: when the finished run is per-Track, the guard must
+  // match the same (stage, track_id). Otherwise a sibling Track's existing
+  // review row would mask a missing review for THIS Track.
+  let existingNextQuery = sb
     .from('stage_runs')
     .select('id, status, outcome_json')
     .eq('project_id', projectId)
     .eq('stage', next)
-    .in('status', ['queued', 'running', 'awaiting_user', 'completed', 'skipped'])
+    .in('status', ['queued', 'running', 'awaiting_user', 'completed', 'skipped']);
+  if (finishedTrackId) {
+    existingNextQuery = existingNextQuery.eq('track_id', finishedTrackId);
+  } else {
+    existingNextQuery = existingNextQuery.is('track_id', null);
+  }
+  const { data: existingNext } = await existingNextQuery
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -661,14 +731,28 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
   }
   if (blocked) return;
 
-  // 7. Skip-check: when autopilotConfig says skip this stage, insert a skipped
-  // Stage Run and recurse into the following stage.
-  if (shouldSkip(next, autopilotConfig)) {
+  // 6b. Resolve the AutopilotConfig slot for the next Stage. `track ▸ project ▸
+  // fallback` precedence is owned by the resolver — we pass both sources and
+  // let it do the coalesce. The resolved slot replaces the prior
+  // `autopilotConfig?.[next]` lookup (project-only, slot-name-coupled) so per-
+  // Track overrides like `review.maxIterations` finally reach the dispatcher.
+  const projectSource = { autopilotConfigJson: project.autopilot_config_json };
+  const trackSource = trackRow ? { autopilotConfigJson: trackRow.autopilot_config_json } : null;
+  const resolvedSlot = resolveAutopilotConfig(projectSource, trackSource, next);
+
+  // 7. Skip-check: when the resolved slot says skip this stage, insert a
+  // skipped Stage Run and recurse into the following stage. Reading from the
+  // resolved slot (not raw project config) is what makes per-Track skip
+  // overrides actually skip — e.g. one Track sets `review.maxIterations: 0`
+  // while siblings keep the project default.
+  if (isSkipFromResolvedSlot(next, resolvedSlot)) {
     const inserted = await insertStageRun(sb, {
       project_id: projectId,
       stage: next,
       status: 'skipped',
       attempt_no: 1,
+      track_id: finishedTrackId,
+      publish_target_id: finishedPublishTargetId,
     });
     if (inserted?.id) await advanceAfter(inserted.id as string);
     return;
@@ -680,18 +764,20 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
     project_id: projectId,
     stage: next,
     attempt_no: 1,
+    track_id: finishedTrackId,
+    publish_target_id: finishedPublishTargetId,
   };
   if (next === 'publish') {
     nextRow.status = 'awaiting_user';
     nextRow.awaiting_reason = 'manual_advance';
   } else {
     nextRow.status = 'queued';
-    // Carry forward autopilot-config defaults for this stage so the dispatcher
-    // has something to work with (e.g. research.level). The dispatcher is free
-    // to enrich further (resolving prior-stage winners, etc).
-    // TODO(T2.3): swap for resolveAutopilotConfig(project, track, next).
-    const stageDefaults = autopilotConfig?.[next];
-    if (stageDefaults) nextRow.input_json = stageDefaults;
+    // Carry forward the resolved slot so the dispatcher receives the
+    // (project + track) coalesced AutopilotConfig fragment. Dispatchers are
+    // still free to enrich further (prior-stage winners, etc).
+    if (resolvedSlot !== null && resolvedSlot !== undefined) {
+      nextRow.input_json = resolvedSlot;
+    }
   }
 
   await clearAbortFlag(sb, projectId);

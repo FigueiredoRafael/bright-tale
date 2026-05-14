@@ -23,6 +23,7 @@ interface MockChain {
   update: ReturnType<typeof vi.fn>;
   eq: ReturnType<typeof vi.fn>;
   in: ReturnType<typeof vi.fn>;
+  is: ReturnType<typeof vi.fn>;
   order: ReturnType<typeof vi.fn>;
   limit: ReturnType<typeof vi.fn>;
   maybeSingle: ReturnType<typeof vi.fn>;
@@ -30,7 +31,7 @@ interface MockChain {
 }
 
 const mockChain: MockChain = {} as MockChain;
-['from', 'select', 'insert', 'update', 'eq', 'in', 'order', 'limit'].forEach((m) => {
+['from', 'select', 'insert', 'update', 'eq', 'in', 'is', 'order', 'limit'].forEach((m) => {
   (mockChain as unknown as Record<string, unknown>)[m] = vi.fn().mockReturnValue(mockChain);
 });
 mockChain.maybeSingle = vi.fn();
@@ -51,7 +52,7 @@ const DRAFT_ID = 'draft-uuid-1';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  ['from', 'select', 'insert', 'update', 'eq', 'in', 'order', 'limit'].forEach((m) => {
+  ['from', 'select', 'insert', 'update', 'eq', 'in', 'is', 'order', 'limit'].forEach((m) => {
     (mockChain as unknown as Record<string, ReturnType<typeof vi.fn>>)[m] = vi.fn().mockReturnValue(mockChain);
   });
   mockChain.maybeSingle = vi.fn();
