@@ -2,6 +2,15 @@ import { z } from 'zod'
 import { autopilotConfigSchema } from './autopilotConfig'
 
 export const startStageSchema = z.enum([
+  'brainstorm', 'research', 'canonical', 'production', 'review', 'assets', 'preview', 'publish',
+])
+
+/**
+ * @deprecated Pre-split start-stage union. Kept for legacy callers that still
+ * surface `draft` as a valid resume target on legacy projects. New code should
+ * use `startStageSchema`.
+ */
+export const legacyStartStageSchema = z.enum([
   'brainstorm', 'research', 'draft', 'review', 'assets', 'preview', 'publish',
 ])
 

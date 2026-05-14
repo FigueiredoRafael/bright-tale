@@ -60,7 +60,8 @@ interface PipelineViewProps {
 const STAGE_LABELS: Record<Stage, string> = {
   brainstorm: 'Brainstorm',
   research: 'Research',
-  draft: 'Draft',
+  canonical: 'Canonical',
+  production: 'Production',
   review: 'Review',
   assets: 'Assets',
   preview: 'Preview',

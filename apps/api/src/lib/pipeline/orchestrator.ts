@@ -14,6 +14,7 @@ import {
   STAGE_INPUT_SCHEMAS,
   STAGES,
   type Stage,
+  type LegacyStage,
   type StageRun,
   isStageMigrated,
 } from '@brighttale/shared/pipeline/inputs';
@@ -26,6 +27,13 @@ import { inngest } from '../../jobs/client.js';
 // `npm run db:types` regenerates `Database`, we cast around it.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Sb = any;
+
+/**
+ * Marker for the legacy `draft` Stage that still backs the revision-loop
+ * re-render path. T2.6 (dispatcher split) replaces every remaining usage
+ * with the new `'production'` Stage.
+ */
+const LEGACY_DRAFT_STAGE = 'draft' as LegacyStage;
 
 // ─── Errors ─────────────────────────────────────────────────────────────────
 
@@ -67,6 +75,10 @@ export function predecessorOf(stage: Stage): Stage | null {
 
 /** Returns the next stage after `stage`, or null if `stage` is the final. */
 export function successorOf(stage: Stage): Stage | null {
+  // Legacy compat: pre-split `stage_runs` rows persist with `stage = 'draft'`
+  // until the T2.1 migrator splits them into canonical + production. Their
+  // successor is review, matching the old 7-stage order.
+  if ((stage as LegacyStage) === 'draft') return 'review';
   const idx = STAGES.indexOf(stage);
   if (idx < 0 || idx >= STAGES.length - 1) return null;
   return STAGES[idx + 1];
@@ -226,13 +238,13 @@ async function enrichWithReviewFeedback(
   stage: Stage,
   input: unknown,
 ): Promise<unknown> {
-  if (stage !== 'draft' && stage !== 'research') return input;
+  if (stage !== 'production' && stage !== 'research') return input;
   const outcome = await latestReviewOutcome(sb, projectId);
   if (!outcome || outcome.verdict !== 'revision_required') return input;
   const feedback = outcome.feedbackJson ?? null;
   if (!feedback) return input;
   const base = (input ?? {}) as Record<string, unknown>;
-  if (stage === 'draft') {
+  if (stage === 'production') {
     const params = (base.productionParams as Record<string, unknown> | undefined) ?? {};
     if (params.review_feedback !== undefined) return base;
     return { ...base, productionParams: { ...params, review_feedback: feedback } };
@@ -430,7 +442,10 @@ export async function resumeProject(projectId: string): Promise<void> {
               .eq('project_id', projectId)
               .in('stage', ['assets', 'preview', 'publish'])
               .in('status', ['queued', 'running', 'awaiting_user', 'completed', 'skipped']);
-            const attemptNo = (await latestAttemptNo(sb, projectId, 'draft' as Stage)) + 1;
+            // TODO(T2.6): once productionDispatcher lands, swap LEGACY_DRAFT_STAGE
+            // for 'production'. Until then, the legacy draft dispatcher is the
+            // only listener wired to handle revision-loop re-renders.
+            const attemptNo = (await latestAttemptNo(sb, projectId, LEGACY_DRAFT_STAGE as Stage)) + 1;
             const inputJson: Record<string, unknown> = {
               type: outcome.draftType ?? 'blog',
               productionParams: { review_feedback: outcome.feedbackJson },
@@ -438,7 +453,7 @@ export async function resumeProject(projectId: string): Promise<void> {
             await clearAbortFlag(sb, projectId);
             const inserted = await insertStageRun(sb, {
               project_id: projectId,
-              stage: 'draft',
+              stage: LEGACY_DRAFT_STAGE,
               status: 'queued',
               attempt_no: attemptNo,
               input_json: inputJson,
@@ -446,7 +461,7 @@ export async function resumeProject(projectId: string): Promise<void> {
             if (inserted?.id) {
               await inngest.send({
                 name: 'pipeline/stage.requested',
-                data: { stageRunId: inserted.id as string, stage: 'draft', projectId },
+                data: { stageRunId: inserted.id as string, stage: LEGACY_DRAFT_STAGE, projectId },
               });
             }
             return;
@@ -557,7 +572,9 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
       | { verdict?: string; draftType?: string; feedbackJson?: unknown }
       | null;
     if (outcome?.verdict === 'revision_required') {
-      const attemptNo = (await latestAttemptNo(sb, projectId, 'draft' as Stage)) + 1;
+      // TODO(T2.6): swap LEGACY_DRAFT_STAGE for 'production' once the
+      // productionDispatcher listens on `stage == 'production'`.
+      const attemptNo = (await latestAttemptNo(sb, projectId, LEGACY_DRAFT_STAGE as Stage)) + 1;
       const inputJson: Record<string, unknown> = {
         type: outcome.draftType ?? 'blog',
         productionParams: { review_feedback: outcome.feedbackJson },
@@ -565,7 +582,7 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
       await clearAbortFlag(sb, projectId);
       const inserted = await insertStageRun(sb, {
         project_id: projectId,
-        stage: 'draft',
+        stage: LEGACY_DRAFT_STAGE,
         status: 'queued',
         attempt_no: attemptNo,
         input_json: inputJson,
@@ -573,7 +590,7 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
       if (inserted?.id) {
         await inngest.send({
           name: 'pipeline/stage.requested',
-          data: { stageRunId: inserted.id as string, stage: 'draft', projectId },
+          data: { stageRunId: inserted.id as string, stage: LEGACY_DRAFT_STAGE, projectId },
         });
       }
       return;
@@ -609,7 +626,7 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
   if (
     blocked &&
     next === 'review' &&
-    finished.stage === 'draft' &&
+    (finished.stage as LegacyStage) === LEGACY_DRAFT_STAGE &&
     (existingNext as { status?: string } | null)?.status === 'completed'
   ) {
     const outcome = (existingNext as { outcome_json?: { verdict?: string } | null } | null)?.outcome_json;

@@ -203,7 +203,7 @@ describe('POST /:projectId/stage-runs — cascade=true', () => {
     );
     // Cascading from 'research' should hit research + all downstream stages
     expect(stageFilter?.args[1]).toEqual([
-      'research', 'draft', 'review', 'assets', 'preview', 'publish',
+      'research', 'canonical', 'production', 'review', 'assets', 'preview', 'publish',
     ]);
 
     const statusFilter = call.filters.find(
@@ -241,7 +241,7 @@ describe('POST /:projectId/stage-runs — cascade=true', () => {
       (f) => f.method === 'in' && f.args[0] === 'stage',
     );
     expect(stageFilter?.args[1]).toEqual([
-      'brainstorm', 'research', 'draft', 'review', 'assets', 'preview', 'publish',
+      'brainstorm', 'research', 'canonical', 'production', 'review', 'assets', 'preview', 'publish',
     ]);
   });
 

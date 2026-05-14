@@ -28,7 +28,8 @@ type StageRunsByStage = Record<Stage, StageRun | null>;
 const EMPTY_STAGE_RUNS: StageRunsByStage = {
   brainstorm: null,
   research: null,
-  draft: null,
+  canonical: null,
+  production: null,
   review: null,
   assets: null,
   preview: null,

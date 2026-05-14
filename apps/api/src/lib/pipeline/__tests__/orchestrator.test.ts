@@ -395,7 +395,7 @@ describe('advanceAfter', () => {
 
     // First advanceAfter call: finished draft → next is review → existingNext null → SKIP → insert skipped review
     mockChain.maybeSingle
-      .mockResolvedValueOnce(mockFinishedRun('completed', 'draft'))
+      .mockResolvedValueOnce(mockFinishedRun('completed', 'production'))
       .mockResolvedValueOnce(projectWithSkipReview)
       .mockResolvedValueOnce({ data: null, error: null }) // existingNext for review
       // Recurse: load just-inserted skipped review row, re-check project,
@@ -484,7 +484,7 @@ describe('advanceAfter', () => {
     };
 
     mockChain.maybeSingle
-      .mockResolvedValueOnce(mockFinishedRun('completed', 'draft'))
+      .mockResolvedValueOnce(mockFinishedRun('completed', 'production'))
       .mockResolvedValueOnce(projectWithSkipReview)
       .mockResolvedValueOnce({ data: null, error: null }) // existingNext review
       // Inner recurse: load the just-inserted skipped review row
@@ -606,7 +606,8 @@ describe('resumeProject', () => {
         { stage: 'preview', status: 'completed', attempt_no: 1, created_at: '2026-05-11T15:00:00Z' },
         { stage: 'assets', status: 'completed', attempt_no: 1, created_at: '2026-05-11T14:00:00Z' },
         { stage: 'review', status: 'completed', attempt_no: 1, created_at: '2026-05-11T13:00:00Z' },
-        { stage: 'draft', status: 'completed', attempt_no: 1, created_at: '2026-05-11T12:00:00Z' },
+        { stage: 'production', status: 'completed', attempt_no: 1, created_at: '2026-05-11T12:30:00Z' },
+        { stage: 'canonical', status: 'completed', attempt_no: 1, created_at: '2026-05-11T12:00:00Z' },
         { stage: 'research', status: 'completed', attempt_no: 1, created_at: '2026-05-11T11:00:00Z' },
         { stage: 'brainstorm', status: 'completed', attempt_no: 1, created_at: '2026-05-11T10:00:00Z' },
       ],

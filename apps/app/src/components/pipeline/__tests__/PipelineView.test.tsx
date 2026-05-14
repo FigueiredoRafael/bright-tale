@@ -48,7 +48,8 @@ beforeEach(() => {
     stageRuns: {
       brainstorm: null,
       research: null,
-      draft: null,
+      canonical: null,
+      production: null,
       review: null,
       assets: null,
       preview: null,
@@ -62,10 +63,10 @@ beforeEach(() => {
 });
 
 describe('<PipelineView variant="overview" />', () => {
-  it('renders one card per Stage (7 total)', () => {
+  it('renders one card per Stage (8 total)', () => {
     render(<PipelineView projectId={PROJECT_ID} />);
     const cards = screen.getAllByTestId(/^stage-card-/);
-    expect(cards).toHaveLength(7);
+    expect(cards).toHaveLength(8);
   });
 
   it('renders status badges from the useProjectStream snapshot, with gating for downstream stages', () => {
@@ -90,7 +91,7 @@ describe('<PipelineView variant="overview" />', () => {
     expect(screen.getByTestId('stage-card-brainstorm')).toHaveAttribute('data-status', 'completed');
     expect(screen.getByTestId('stage-card-research')).toHaveAttribute('data-status', 'running');
     // draft has no Stage Run AND research is still running → locked
-    expect(screen.getByTestId('stage-card-draft')).toHaveAttribute('data-status', 'locked');
+    expect(screen.getByTestId('stage-card-production')).toHaveAttribute('data-status', 'locked');
     // assets onward also locked
     expect(screen.getByTestId('stage-card-publish')).toHaveAttribute('data-status', 'locked');
   });
@@ -120,13 +121,13 @@ describe('<PipelineView variant="overview" />', () => {
 
     render(<PipelineView projectId={PROJECT_ID} />);
     expect(screen.getByTestId('stage-card-research')).toHaveAttribute('data-status', 'ready');
-    expect(screen.getByTestId('stage-card-draft')).toHaveAttribute('data-status', 'locked');
+    expect(screen.getByTestId('stage-card-production')).toHaveAttribute('data-status', 'locked');
   });
 
   it('disables locked stage cards (no click navigation)', () => {
     render(<PipelineView projectId={PROJECT_ID} />);
-    const draft = screen.getByTestId('stage-card-draft');
-    expect(draft).toBeDisabled();
+    const production = screen.getByTestId('stage-card-production');
+    expect(production).toBeDisabled();
   });
 
   it('shows "Idle" when connected but no live activity, and "Connecting…" while disconnected', () => {
