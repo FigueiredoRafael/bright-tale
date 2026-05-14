@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -140,7 +160,7 @@ export type Database = {
             foreignKeyName: "affiliate_commissions_referral_id_fkey"
             columns: ["referral_id"]
             isOneToOne: false
-            referencedRelation: "affiliate_referrals_legacy"
+            referencedRelation: "affiliate_referrals"
             referencedColumns: ["id"]
           },
         ]
@@ -315,7 +335,7 @@ export type Database = {
             foreignKeyName: "affiliate_fraud_flags_referral_id_fkey"
             columns: ["referral_id"]
             isOneToOne: false
-            referencedRelation: "affiliate_referrals_legacy"
+            referencedRelation: "affiliate_referrals"
             referencedColumns: ["id"]
           },
         ]
@@ -430,66 +450,6 @@ export type Database = {
         ]
       }
       affiliate_referrals: {
-        Row: {
-          affiliate_code: string
-          affiliate_id: string
-          attribution_status: string
-          click_id: string | null
-          converted_at: string | null
-          created_at: string
-          id: string
-          platform: string | null
-          signup_date: string
-          signup_ip_hash: string | null
-          user_id: string
-          window_end: string
-        }
-        Insert: {
-          affiliate_code: string
-          affiliate_id: string
-          attribution_status?: string
-          click_id?: string | null
-          converted_at?: string | null
-          created_at?: string
-          id?: string
-          platform?: string | null
-          signup_date?: string
-          signup_ip_hash?: string | null
-          user_id: string
-          window_end?: string
-        }
-        Update: {
-          affiliate_code?: string
-          affiliate_id?: string
-          attribution_status?: string
-          click_id?: string | null
-          converted_at?: string | null
-          created_at?: string
-          id?: string
-          platform?: string | null
-          signup_date?: string
-          signup_ip_hash?: string | null
-          user_id?: string
-          window_end?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "affiliate_referrals_affiliate_id_fkey1"
-            columns: ["affiliate_id"]
-            isOneToOne: false
-            referencedRelation: "affiliates"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "affiliate_referrals_click_id_fkey1"
-            columns: ["click_id"]
-            isOneToOne: false
-            referencedRelation: "affiliate_clicks"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      affiliate_referrals_legacy: {
         Row: {
           affiliate_code: string
           affiliate_id: string
@@ -1315,6 +1275,7 @@ export type Database = {
           channel_type: string
           created_at: string
           custom_model_config_json: Json | null
+          default_media_config_json: Json | null
           estimated_revenue_brl: number | null
           id: string
           is_evergreen: boolean
@@ -1348,6 +1309,7 @@ export type Database = {
           channel_type?: string
           created_at?: string
           custom_model_config_json?: Json | null
+          default_media_config_json?: Json | null
           estimated_revenue_brl?: number | null
           id?: string
           is_evergreen?: boolean
@@ -1381,6 +1343,7 @@ export type Database = {
           channel_type?: string
           created_at?: string
           custom_model_config_json?: Json | null
+          default_media_config_json?: Json | null
           estimated_revenue_brl?: number | null
           id?: string
           is_evergreen?: boolean
@@ -2532,6 +2495,7 @@ export type Database = {
       projects: {
         Row: {
           abort_requested_at: string | null
+          auto_advance: boolean
           autopilot_config_json: Json | null
           autopilot_template_id: string | null
           channel_id: string | null
@@ -2554,6 +2518,7 @@ export type Database = {
         }
         Insert: {
           abort_requested_at?: string | null
+          auto_advance?: boolean
           autopilot_config_json?: Json | null
           autopilot_template_id?: string | null
           channel_id?: string | null
@@ -2576,6 +2541,7 @@ export type Database = {
         }
         Update: {
           abort_requested_at?: string | null
+          auto_advance?: boolean
           autopilot_config_json?: Json | null
           autopilot_template_id?: string | null
           channel_id?: string | null
@@ -2623,6 +2589,60 @@ export type Database = {
             columns: ["research_id"]
             isOneToOne: false
             referencedRelation: "research_archives"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      publish_targets: {
+        Row: {
+          channel_id: string | null
+          config_json: Json | null
+          created_at: string
+          credentials_encrypted: string | null
+          display_name: string
+          id: string
+          is_active: boolean
+          org_id: string | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          channel_id?: string | null
+          config_json?: Json | null
+          created_at?: string
+          credentials_encrypted?: string | null
+          display_name: string
+          id?: string
+          is_active?: boolean
+          org_id?: string | null
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          channel_id?: string | null
+          config_json?: Json | null
+          created_at?: string
+          credentials_encrypted?: string | null
+          display_name?: string
+          id?: string
+          is_active?: boolean
+          org_id?: string | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "publish_targets_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "publish_targets_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -3141,11 +3161,14 @@ export type Database = {
           finished_at: string | null
           id: string
           input_json: Json | null
+          outcome_json: Json | null
           payload_ref: Json | null
           project_id: string
+          publish_target_id: string | null
           stage: string
           started_at: string | null
           status: string
+          track_id: string | null
           updated_at: string
         }
         Insert: {
@@ -3156,11 +3179,14 @@ export type Database = {
           finished_at?: string | null
           id?: string
           input_json?: Json | null
+          outcome_json?: Json | null
           payload_ref?: Json | null
           project_id: string
+          publish_target_id?: string | null
           stage: string
           started_at?: string | null
           status: string
+          track_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -3171,11 +3197,14 @@ export type Database = {
           finished_at?: string | null
           id?: string
           input_json?: Json | null
+          outcome_json?: Json | null
           payload_ref?: Json | null
           project_id?: string
+          publish_target_id?: string | null
           stage?: string
           started_at?: string | null
           status?: string
+          track_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -3184,6 +3213,20 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_runs_publish_target_id_fkey"
+            columns: ["publish_target_id"]
+            isOneToOne: false
+            referencedRelation: "publish_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_runs_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
             referencedColumns: ["id"]
           },
         ]
@@ -3270,6 +3313,47 @@ export type Database = {
             columns: ["parent_template_id"]
             isOneToOne: false
             referencedRelation: "templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tracks: {
+        Row: {
+          autopilot_config_json: Json | null
+          created_at: string
+          id: string
+          medium: string
+          paused: boolean
+          project_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          autopilot_config_json?: Json | null
+          created_at?: string
+          id?: string
+          medium: string
+          paused?: boolean
+          project_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          autopilot_config_json?: Json | null
+          created_at?: string
+          id?: string
+          medium?: string
+          paused?: boolean
+          project_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tracks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
@@ -3745,6 +3829,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       manager_role: ["owner", "admin", "support", "billing", "readonly"],
@@ -3759,3 +3846,4 @@ export const Constants = {
     },
   },
 } as const
+

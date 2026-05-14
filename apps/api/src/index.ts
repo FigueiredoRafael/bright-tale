@@ -63,6 +63,7 @@ import { adminPersonaArchetypesRoutes } from "./routes/admin-persona-archetypes.
 import { adminPipelineSettingsRoutes } from "./routes/admin-pipeline-settings.js";
 import { aiProvidersRoutes } from "./routes/ai-providers.js";
 import { adminCreditSettingsRoutes } from "./routes/admin-credit-settings.js";
+import { testMockAiRoutes } from "./routes/test-mock-ai.js";
 import { currencyRefreshRoutes } from "./routes/currency-refresh.js";
 import rateLimit from "@fastify/rate-limit";
 // Side-effect import: activates `rawBody?: boolean` on FastifyContextConfig
@@ -325,6 +326,9 @@ server.register(aiProvidersRoutes, { prefix: "/ai-providers" });
 server.register(adminCreditSettingsRoutes, { prefix: "/admin/credit-settings" });
 server.register(autopilotTemplatesRoutes, { prefix: "/autopilot-templates" });
 server.register(currencyRefreshRoutes);
+
+// Test-only: mock AI queue endpoints — only registered when MOCK_AI_PROVIDER=1 and not production.
+server.register(testMockAiRoutes);
 
 // Affiliate platform — @tn-figueiredo/affiliate@0.4.0 (Phase 2A.3 wires /ref + /internal)
 const affiliateContainer = buildAffiliateContainer();
