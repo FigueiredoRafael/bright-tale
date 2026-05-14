@@ -64,7 +64,7 @@ SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=<your-client-secret>
 INTERNAL_API_KEY=<generate with: npm run generate:secret>
 # Local Docker Supabase (pre-filled in .env.example):
 SUPABASE_URL=http://127.0.0.1:54321
-SUPABASE_SERVICE_ROLE_KEY=sb_secret_N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz
+SUPABASE_SERVICE_ROLE_KEY=<local-service-role-key — run: supabase status>
 
 # At least ONE AI provider (Gemini has a free tier, Ollama is fully local):
 GOOGLE_AI_KEY=AIza...           # https://aistudio.google.com/app/apikey
