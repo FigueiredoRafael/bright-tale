@@ -4,6 +4,10 @@ import {
   mockPipelineV2,
   type PipelineV2Mock,
 } from './fixtures/pipelineV2Mocks';
+import {
+  test as testWithMockAI,
+  expect as mockExpect,
+} from './fixtures/mock-ai-provider';
 
 /**
  * v2 supervised pipeline e2e — exercises the new `<PipelineView />` rendered
@@ -226,3 +230,85 @@ function seedUpstream(mock: PipelineV2Mock, stages: Array<'brainstorm' | 'resear
     mock.completeStageRun(s, { kind: payloadKindByStage[s], id: `${s}-seed` });
   }
 }
+
+// ─── Mock AI Provider smoke test (T1.13) ─────────────────────────────────────
+//
+// Verifies that the mock AI fixture can seed the in-process queue and that the
+// state endpoint confirms the entry was received. Requires the API server to be
+// running with MOCK_AI_PROVIDER=1 (set PLAYWRIGHT_API_URL=http://localhost:3001).
+//
+// Run with:
+//   MOCK_AI_PROVIDER=1 PLAYWRIGHT_NO_SERVER=1 PLAYWRIGHT_API_URL=http://localhost:3001 \
+//     npx playwright test --grep "mock-ai-provider smoke"
+//
+// The test is skipped when MOCK_AI_PROVIDER is not set so it does not break the
+// standard suite (which mocks all API calls via page.route()).
+
+testWithMockAI.describe('mock-ai-provider smoke', () => {
+  testWithMockAI.skip(
+    !process.env.MOCK_AI_PROVIDER,
+    'Requires MOCK_AI_PROVIDER=1 and the API dev server running with that flag',
+  );
+
+  testWithMockAI(
+    'fixture seeds brainstorm queue and state reflects the entry',
+    async ({ mockAI }) => {
+      const expectedPayload = {
+        ideas: [{ id: 'i-1', title: 'Why deep-sea creatures glow', isWinner: true }],
+      };
+
+      // Seed one brainstorm success response
+      await mockAI.expect('brainstorm').toReturn(expectedPayload);
+
+      // The state endpoint should show 1 pending entry for brainstorm
+      const state = await mockAI.state();
+      mockExpect(state['brainstorm']?.pending).toBe(1);
+
+      // Console log line emitted by the server-side mock interceptor is captured
+      // via the API server's stdout — verified indirectly through queue presence.
+      // Direct console capture requires browser-side events; server-side logs are
+      // visible in the dev-server terminal output (see [MOCK-AI][brainstorm][1]).
+    },
+  );
+
+  testWithMockAI(
+    'fixture seeds review scores queue in order',
+    async ({ mockAI }) => {
+      await mockAI.expect('review').toReturnScores([78, 92]);
+
+      const state = await mockAI.state();
+      mockExpect(state['review']?.pending).toBe(2);
+    },
+  );
+
+  testWithMockAI(
+    'fixture seeds research confidences queue in order',
+    async ({ mockAI }) => {
+      await mockAI.expect('research').toReturnConfidences([0.42, 0.62, 0.84]);
+
+      const state = await mockAI.state();
+      mockExpect(state['research']?.pending).toBe(3);
+    },
+  );
+
+  testWithMockAI(
+    'fixture seeds failure entry for quota_429',
+    async ({ mockAI }) => {
+      await mockAI.expect('production').toFail({ kind: 'quota_429', message: 'rate limit hit' });
+
+      const state = await mockAI.state();
+      mockExpect(state['production']?.pending).toBe(1);
+    },
+  );
+
+  testWithMockAI(
+    'fixture auto-resets between tests — queue is empty at test start',
+    async ({ mockAI }) => {
+      // No seeding — the fixture's beforeEach reset should have cleared any
+      // entries from the previous test. Queue must be empty.
+      const state = await mockAI.state();
+      const totalPending = Object.values(state).reduce((sum, s) => sum + s.pending, 0);
+      mockExpect(totalPending).toBe(0);
+    },
+  );
+});
