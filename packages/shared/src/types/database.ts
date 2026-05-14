@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -140,7 +160,7 @@ export type Database = {
             foreignKeyName: "affiliate_commissions_referral_id_fkey"
             columns: ["referral_id"]
             isOneToOne: false
-            referencedRelation: "affiliate_referrals_legacy"
+            referencedRelation: "affiliate_referrals"
             referencedColumns: ["id"]
           },
         ]
@@ -315,7 +335,7 @@ export type Database = {
             foreignKeyName: "affiliate_fraud_flags_referral_id_fkey"
             columns: ["referral_id"]
             isOneToOne: false
-            referencedRelation: "affiliate_referrals_legacy"
+            referencedRelation: "affiliate_referrals"
             referencedColumns: ["id"]
           },
         ]
@@ -430,66 +450,6 @@ export type Database = {
         ]
       }
       affiliate_referrals: {
-        Row: {
-          affiliate_code: string
-          affiliate_id: string
-          attribution_status: string
-          click_id: string | null
-          converted_at: string | null
-          created_at: string
-          id: string
-          platform: string | null
-          signup_date: string
-          signup_ip_hash: string | null
-          user_id: string
-          window_end: string
-        }
-        Insert: {
-          affiliate_code: string
-          affiliate_id: string
-          attribution_status?: string
-          click_id?: string | null
-          converted_at?: string | null
-          created_at?: string
-          id?: string
-          platform?: string | null
-          signup_date?: string
-          signup_ip_hash?: string | null
-          user_id: string
-          window_end?: string
-        }
-        Update: {
-          affiliate_code?: string
-          affiliate_id?: string
-          attribution_status?: string
-          click_id?: string | null
-          converted_at?: string | null
-          created_at?: string
-          id?: string
-          platform?: string | null
-          signup_date?: string
-          signup_ip_hash?: string | null
-          user_id?: string
-          window_end?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "affiliate_referrals_affiliate_id_fkey1"
-            columns: ["affiliate_id"]
-            isOneToOne: false
-            referencedRelation: "affiliates"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "affiliate_referrals_click_id_fkey1"
-            columns: ["click_id"]
-            isOneToOne: false
-            referencedRelation: "affiliate_clicks"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      affiliate_referrals_legacy: {
         Row: {
           affiliate_code: string
           affiliate_id: string
@@ -712,6 +672,7 @@ export type Database = {
           sections_json: Json | null
           slug: string
           stage: string
+          tools_json: Json
           updated_at: string
         }
         Insert: {
@@ -727,6 +688,7 @@ export type Database = {
           sections_json?: Json | null
           slug: string
           stage: string
+          tools_json?: Json
           updated_at?: string
         }
         Update: {
@@ -742,6 +704,7 @@ export type Database = {
           sections_json?: Json | null
           slug?: string
           stage?: string
+          tools_json?: Json
           updated_at?: string
         }
         Relationships: [
@@ -761,6 +724,7 @@ export type Database = {
           created_at: string
           id: string
           is_active: boolean
+          models_json: Json
           org_id: string | null
           provider: string
           updated_at: string
@@ -772,6 +736,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          models_json?: Json
           org_id?: string | null
           provider: string
           updated_at?: string
@@ -783,6 +748,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          models_json?: Json
           org_id?: string | null
           provider?: string
           updated_at?: string
@@ -865,6 +831,47 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      autopilot_templates: {
+        Row: {
+          channel_id: string | null
+          config_json: Json
+          created_at: string
+          id: string
+          is_default: boolean
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          channel_id?: string | null
+          config_json: Json
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          channel_id?: string | null
+          config_json?: Json
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "autopilot_templates_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
             referencedColumns: ["id"]
           },
         ]
@@ -1586,6 +1593,9 @@ export type Database = {
           cost_blog: number
           cost_canonical_core: number
           cost_podcast: number
+          cost_research_deep: number
+          cost_research_medium: number
+          cost_research_surface: number
           cost_review: number
           cost_shorts: number
           cost_video: number
@@ -1598,6 +1608,9 @@ export type Database = {
           cost_blog?: number
           cost_canonical_core?: number
           cost_podcast?: number
+          cost_research_deep?: number
+          cost_research_medium?: number
+          cost_research_surface?: number
           cost_review?: number
           cost_shorts?: number
           cost_video?: number
@@ -1610,6 +1623,9 @@ export type Database = {
           cost_blog?: number
           cost_canonical_core?: number
           cost_podcast?: number
+          cost_research_deep?: number
+          cost_research_medium?: number
+          cost_research_surface?: number
           cost_review?: number
           cost_shorts?: number
           cost_video?: number
@@ -1663,6 +1679,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      currency_rates: {
+        Row: {
+          currency: string
+          fetched_at: string
+          rate_to_usd: number
+          source: string
+        }
+        Insert: {
+          currency: string
+          fetched_at?: string
+          rate_to_usd: number
+          source?: string
+        }
+        Update: {
+          currency?: string
+          fetched_at?: string
+          rate_to_usd?: number
+          source?: string
+        }
+        Relationships: []
       }
       engine_logs: {
         Row: {
@@ -1908,6 +1945,7 @@ export type Database = {
           id: string
           message: string
           metadata: Json | null
+          project_id: string | null
           session_id: string
           session_type: string
           stage: string
@@ -1917,6 +1955,7 @@ export type Database = {
           id?: string
           message: string
           metadata?: Json | null
+          project_id?: string | null
           session_id: string
           session_type: string
           stage: string
@@ -1926,11 +1965,20 @@ export type Database = {
           id?: string
           message?: string
           metadata?: Json | null
+          project_id?: string | null
           session_id?: string
           session_type?: string
           stage?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "job_events_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       managers: {
         Row: {
@@ -2340,6 +2388,7 @@ export type Database = {
       pipeline_settings: {
         Row: {
           created_at: string
+          default_models_json: Json
           default_providers_json: Json
           id: string
           lock_key: string
@@ -2350,6 +2399,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          default_models_json?: Json
           default_providers_json?: Json
           id?: string
           lock_key?: string
@@ -2360,6 +2410,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          default_models_json?: Json
           default_providers_json?: Json
           id?: string
           lock_key?: string
@@ -2440,13 +2491,19 @@ export type Database = {
       }
       projects: {
         Row: {
+          abort_requested_at: string | null
           auto_advance: boolean
+          autopilot_config_json: Json | null
+          autopilot_template_id: string | null
           channel_id: string | null
           completed_stages: string[]
           created_at: string
           current_stage: string
           id: string
+          migrated_to_stage_runs_at: string | null
+          mode: string | null
           org_id: string | null
+          paused: boolean
           pipeline_state_json: Json | null
           research_id: string | null
           status: string
@@ -2457,13 +2514,19 @@ export type Database = {
           winner: boolean
         }
         Insert: {
+          abort_requested_at?: string | null
           auto_advance?: boolean
+          autopilot_config_json?: Json | null
+          autopilot_template_id?: string | null
           channel_id?: string | null
           completed_stages?: string[]
           created_at?: string
           current_stage: string
           id?: string
+          migrated_to_stage_runs_at?: string | null
+          mode?: string | null
           org_id?: string | null
+          paused?: boolean
           pipeline_state_json?: Json | null
           research_id?: string | null
           status: string
@@ -2474,13 +2537,19 @@ export type Database = {
           winner?: boolean
         }
         Update: {
+          abort_requested_at?: string | null
           auto_advance?: boolean
+          autopilot_config_json?: Json | null
+          autopilot_template_id?: string | null
           channel_id?: string | null
           completed_stages?: string[]
           created_at?: string
           current_stage?: string
           id?: string
+          migrated_to_stage_runs_at?: string | null
+          mode?: string | null
           org_id?: string | null
+          paused?: boolean
           pipeline_state_json?: Json | null
           research_id?: string | null
           status?: string
@@ -2491,6 +2560,13 @@ export type Database = {
           winner?: boolean
         }
         Relationships: [
+          {
+            foreignKeyName: "projects_autopilot_template_id_fkey"
+            columns: ["autopilot_template_id"]
+            isOneToOne: false
+            referencedRelation: "autopilot_templates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "projects_channel_id_fkey"
             columns: ["channel_id"]
@@ -2510,6 +2586,60 @@ export type Database = {
             columns: ["research_id"]
             isOneToOne: false
             referencedRelation: "research_archives"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      publish_targets: {
+        Row: {
+          channel_id: string | null
+          config_json: Json | null
+          created_at: string
+          credentials_encrypted: string | null
+          display_name: string
+          id: string
+          is_active: boolean
+          org_id: string | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          channel_id?: string | null
+          config_json?: Json | null
+          created_at?: string
+          credentials_encrypted?: string | null
+          display_name: string
+          id?: string
+          is_active?: boolean
+          org_id?: string | null
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          channel_id?: string | null
+          config_json?: Json | null
+          created_at?: string
+          credentials_encrypted?: string | null
+          display_name?: string
+          id?: string
+          is_active?: boolean
+          org_id?: string | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "publish_targets_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "publish_targets_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -2968,6 +3098,7 @@ export type Database = {
           project_id: string | null
           short_count: number
           shorts_json: string
+          source_content_draft_id: string | null
           status: string
           total_duration: string | null
           updated_at: string
@@ -2981,6 +3112,7 @@ export type Database = {
           project_id?: string | null
           short_count?: number
           shorts_json: string
+          source_content_draft_id?: string | null
           status?: string
           total_duration?: string | null
           updated_at?: string
@@ -2994,6 +3126,7 @@ export type Database = {
           project_id?: string | null
           short_count?: number
           shorts_json?: string
+          source_content_draft_id?: string | null
           status?: string
           total_duration?: string | null
           updated_at?: string
@@ -3005,6 +3138,72 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shorts_drafts_source_content_draft_id_fkey"
+            columns: ["source_content_draft_id"]
+            isOneToOne: false
+            referencedRelation: "content_drafts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stage_runs: {
+        Row: {
+          attempt_no: number
+          awaiting_reason: string | null
+          created_at: string
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          input_json: Json | null
+          outcome_json: Json | null
+          payload_ref: Json | null
+          project_id: string
+          stage: string
+          started_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_no?: number
+          awaiting_reason?: string | null
+          created_at?: string
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          input_json?: Json | null
+          outcome_json?: Json | null
+          payload_ref?: Json | null
+          project_id: string
+          stage: string
+          started_at?: string | null
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_no?: number
+          awaiting_reason?: string | null
+          created_at?: string
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          input_json?: Json | null
+          outcome_json?: Json | null
+          payload_ref?: Json | null
+          project_id?: string
+          stage?: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stage_runs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
@@ -3091,6 +3290,41 @@ export type Database = {
             columns: ["parent_template_id"]
             isOneToOne: false
             referencedRelation: "templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tracks: {
+        Row: {
+          created_at: string
+          id: string
+          medium: string
+          project_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          medium: string
+          project_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          medium?: string
+          project_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tracks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
@@ -3407,6 +3641,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      clear_autopilot_default: {
+        Args: { p_channel_id: string; p_user_id: string }
+        Returns: undefined
+      }
       increment_affiliate_clicks: {
         Args: { aff_id: string }
         Returns: undefined
@@ -3562,6 +3800,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       manager_role: ["owner", "admin", "support", "billing", "readonly"],
@@ -3576,3 +3817,4 @@ export const Constants = {
     },
   },
 } as const
+
