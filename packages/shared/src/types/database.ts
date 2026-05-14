@@ -3319,25 +3319,31 @@ export type Database = {
       }
       tracks: {
         Row: {
+          autopilot_config_json: Json | null
           created_at: string
           id: string
           medium: string
+          paused: boolean
           project_id: string
           status: string
           updated_at: string
         }
         Insert: {
+          autopilot_config_json?: Json | null
           created_at?: string
           id?: string
           medium: string
+          paused?: boolean
           project_id: string
           status?: string
           updated_at?: string
         }
         Update: {
+          autopilot_config_json?: Json | null
           created_at?: string
           id?: string
           medium?: string
+          paused?: boolean
           project_id?: string
           status?: string
           updated_at?: string
