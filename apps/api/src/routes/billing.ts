@@ -8,7 +8,7 @@ import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
 import { getStripe } from '../lib/billing/stripe.js';
-import { PLANS, getPlan, planFromPriceId, planFromPriceIdAsync, loadPlanConfigs, ADDON_PACKS, type PlanId, type BillingCycle } from '../lib/billing/plans.js';
+import { getPlan, planFromPriceIdAsync, loadPlanConfigs, ADDON_PACKS, type PlanId, type BillingCycle } from '../lib/billing/plans.js';
 import { buildAffiliateContainer } from '../lib/affiliate/container.js';
 
 type StripeClient = ReturnType<typeof getStripe>;
