@@ -124,8 +124,10 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // Block direct access to internal /zadmin path (must go through rewrite)
-  if (pathname.startsWith(ADMIN_INTERNAL)) {
+  // Block direct access to internal /zadmin path (must go through rewrite).
+  // Skip when the public slug IS 'zadmin' — in that case /zadmin is the
+  // legitimate public URL and the rewrite is an identity mapping.
+  if (pathname.startsWith(ADMIN_INTERNAL) && !adminPath().startsWith(ADMIN_INTERNAL)) {
     return new NextResponse(null, { status: 404 });
   }
 
