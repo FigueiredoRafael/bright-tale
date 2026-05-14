@@ -363,7 +363,7 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.post(
     '/webhook',
-    { config: { rawBody: true } },
+    { config: { rawBody: true } as Record<string, unknown> },
     async (request: FastifyRequest, reply) => {
       try {
         const sig = request.headers['stripe-signature'] as string | undefined;

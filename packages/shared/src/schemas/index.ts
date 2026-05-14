@@ -222,3 +222,14 @@ export {
   type UpdateCreditSettingsInput,
   type CreditSettingsResponse,
 } from "./pipeline-settings";
+
+// Autopilot Config schema (T1.7)
+export {
+  stageAutopilotEntrySchema,
+  autopilotConfigSchema,
+  resolvedStageAutopilotEntrySchema,
+  FALLBACK_BY_STAGE,
+  type StageAutopilotEntry,
+  type AutopilotConfig,
+  type ResolvedStageAutopilotEntry,
+} from "./autopilotConfig";
