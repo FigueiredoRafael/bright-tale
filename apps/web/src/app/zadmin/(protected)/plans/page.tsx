@@ -1,34 +1,186 @@
-/**
- * M-013 — Custom plans.
- *
- * Status: scaffold — custom_plans table available (migration applied).
- * Creating plans with custom Stripe Price IDs requires M-001.
- *
- * TODO when Stripe wired:
- *   1. Create price via stripe.prices.create()
- *   2. Link price_id to custom_plan row
- *   3. Owner: unlimited discount; Admin: ≤ 30%
- */
-import { createAdminClient } from '@/lib/supabase/admin';
-import { createClient } from '@/lib/supabase/server';
-import { isAdminUser } from '@/lib/admin-check';
-import { redirect } from 'next/navigation';
-import { adminPath } from '@/lib/admin-path';
-import { AlertTriangle, Package } from 'lucide-react';
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { Package, ToggleLeft, ToggleRight, Save, Loader2 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
-export default async function PlansPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user || !await isAdminUser(supabase, user.id)) redirect(adminPath('/login'));
+interface PlanConfigRow {
+  id: string;
+  plan_id: string;
+  display_name: string;
+  credits: number;
+  price_usd_monthly_cents: number;
+  price_usd_annual_cents: number;
+  display_price_brl_monthly: number;
+  display_price_brl_annual: number;
+  stripe_price_id_monthly_test: string | null;
+  stripe_price_id_annual_test: string | null;
+  stripe_price_id_monthly_live: string | null;
+  stripe_price_id_annual_live: string | null;
+  is_active: boolean;
+  sort_order: number;
+}
 
-  const db = createAdminClient();
+interface PlanState {
+  priceUsdMonthlyCents: string;
+  priceUsdAnnualCents: string;
+  displayPriceBrlMonthly: string;
+  displayPriceBrlAnnual: string;
+  stripePriceIdMonthlyTest: string;
+  stripePriceIdAnnualTest: string;
+  stripePriceIdMonthlyLive: string;
+  stripePriceIdAnnualLive: string;
+}
 
-  const { data: plans } = await db
-    .from('custom_plans')
-    .select('*')
-    .order('created_at', { ascending: false });
+function planToState(row: PlanConfigRow): PlanState {
+  return {
+    priceUsdMonthlyCents: String(row.price_usd_monthly_cents),
+    priceUsdAnnualCents: String(row.price_usd_annual_cents),
+    displayPriceBrlMonthly: String(row.display_price_brl_monthly),
+    displayPriceBrlAnnual: String(row.display_price_brl_annual),
+    stripePriceIdMonthlyTest: row.stripe_price_id_monthly_test ?? '',
+    stripePriceIdAnnualTest: row.stripe_price_id_annual_test ?? '',
+    stripePriceIdMonthlyLive: row.stripe_price_id_monthly_live ?? '',
+    stripePriceIdAnnualLive: row.stripe_price_id_annual_live ?? '',
+  };
+}
+
+function Field({ label, value, onChange, mono }: { label: string; value: string; onChange: (v: string) => void; mono?: boolean }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs text-slate-400 dark:text-v-dim">{label}</label>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`px-2.5 py-1.5 text-xs rounded-md bg-slate-50 dark:bg-dash-bg border border-slate-200 dark:border-dash-border text-slate-800 dark:text-v-primary focus:outline-none focus:ring-1 focus:ring-brand-500 ${mono ? 'font-mono' : ''}`}
+      />
+    </div>
+  );
+}
+
+function PlanCard({ row, onSaved }: { row: PlanConfigRow; onSaved: () => void }) {
+  const [state, setState] = useState<PlanState>(() => planToState(row));
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  const update = useCallback((key: keyof PlanState) => (v: string) => setState((prev) => ({ ...prev, [key]: v })), []);
+
+  const save = async () => {
+    setSaving(true);
+    setFeedback(null);
+    try {
+      const body = {
+        priceUsdMonthlyCents: parseInt(state.priceUsdMonthlyCents, 10) || 0,
+        priceUsdAnnualCents: parseInt(state.priceUsdAnnualCents, 10) || 0,
+        displayPriceBrlMonthly: parseInt(state.displayPriceBrlMonthly, 10) || 0,
+        displayPriceBrlAnnual: parseInt(state.displayPriceBrlAnnual, 10) || 0,
+        stripePriceIdMonthlyTest: state.stripePriceIdMonthlyTest || null,
+        stripePriceIdAnnualTest: state.stripePriceIdAnnualTest || null,
+        stripePriceIdMonthlyLive: state.stripePriceIdMonthlyLive || null,
+        stripePriceIdAnnualLive: state.stripePriceIdAnnualLive || null,
+      };
+      const res = await fetch(`/api/zadmin/plan-configs/${row.plan_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json() as { data: unknown; error: { message: string } | null };
+      if (json.error) { setFeedback(json.error.message); return; }
+      setFeedback('Saved');
+      onSaved();
+      setTimeout(() => setFeedback(null), 2000);
+    } catch {
+      setFeedback('Request failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-white dark:bg-dash-card border border-slate-200 dark:border-dash-border rounded-xl p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Package className="w-4 h-4 text-slate-400 dark:text-v-dim" />
+          <span className="text-sm font-semibold text-slate-800 dark:text-v-primary">{row.display_name}</span>
+          <span className="text-xs text-slate-400 dark:text-v-dim font-mono">{row.plan_id}</span>
+        </div>
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium disabled:opacity-50 transition-colors"
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+          Save
+        </button>
+      </div>
+      {feedback && (
+        <p className={`text-xs mb-3 ${feedback === 'Saved' ? 'text-emerald-500' : 'text-red-400'}`}>{feedback}</p>
+      )}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <Field label="USD Monthly (cents)" value={state.priceUsdMonthlyCents} onChange={update('priceUsdMonthlyCents')} />
+        <Field label="USD Annual /mo (cents)" value={state.priceUsdAnnualCents} onChange={update('priceUsdAnnualCents')} />
+        <Field label="BRL Display Monthly" value={state.displayPriceBrlMonthly} onChange={update('displayPriceBrlMonthly')} />
+        <Field label="BRL Display Annual" value={state.displayPriceBrlAnnual} onChange={update('displayPriceBrlAnnual')} />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="Stripe Price ID — Monthly (test)" value={state.stripePriceIdMonthlyTest} onChange={update('stripePriceIdMonthlyTest')} mono />
+        <Field label="Stripe Price ID — Annual (test)" value={state.stripePriceIdAnnualTest} onChange={update('stripePriceIdAnnualTest')} mono />
+        <Field label="Stripe Price ID — Monthly (live)" value={state.stripePriceIdMonthlyLive} onChange={update('stripePriceIdMonthlyLive')} mono />
+        <Field label="Stripe Price ID — Annual (live)" value={state.stripePriceIdAnnualLive} onChange={update('stripePriceIdAnnualLive')} mono />
+      </div>
+    </div>
+  );
+}
+
+export default function PlansPage() {
+  const router = useRouter();
+  const [plans, setPlans] = useState<PlanConfigRow[]>([]);
+  const [stripeMode, setStripeMode] = useState<'test' | 'live'>('test');
+  const [loading, setLoading] = useState(true);
+  const [modeUpdating, setModeUpdating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/zadmin/plan-configs');
+      const json = await res.json() as { data?: { plans: PlanConfigRow[]; stripeMode: string }; error: { message: string } | null };
+      if (json.error) { setError(json.error.message); return; }
+      setPlans(json.data?.plans ?? []);
+      setStripeMode((json.data?.stripeMode as 'test' | 'live') ?? 'test');
+    } catch {
+      setError('Failed to load plan configs');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const toggleMode = async () => {
+    const next = stripeMode === 'test' ? 'live' : 'test';
+    setModeUpdating(true);
+    try {
+      const res = await fetch('/api/zadmin/stripe-mode', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: next }),
+      });
+      const json = await res.json() as { data?: { mode: string }; error: { message: string } | null };
+      if (json.error) { setError(json.error.message); return; }
+      setStripeMode(next);
+      router.refresh();
+    } catch {
+      setError('Failed to update stripe mode');
+    } finally {
+      setModeUpdating(false);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -37,74 +189,43 @@ export default async function PlansPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-v-primary tracking-tight">Planos</h1>
           <p className="text-sm text-slate-500 dark:text-v-secondary mt-1">
-            Planos padrão + planos customizados por org. Criação de planos Stripe requer M-001.
+            Configure Stripe Price IDs, preços USD/BRL e toggle sandbox/live.
           </p>
         </div>
-        <span className="inline-flex items-center gap-1.5 text-xs bg-amber-500/10 text-amber-400 border border-amber-500/30 rounded-md px-2 py-1">
-          <AlertTriangle className="w-3 h-3" />
-          Requer Stripe (M-001)
-        </span>
+        <button
+          type="button"
+          onClick={toggleMode}
+          disabled={modeUpdating}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-dash-border bg-white dark:bg-dash-card text-sm font-medium text-slate-700 dark:text-v-primary hover:bg-slate-50 dark:hover:bg-dash-hover disabled:opacity-50 transition-colors"
+        >
+          {stripeMode === 'live'
+            ? <ToggleRight className="w-5 h-5 text-emerald-500" />
+            : <ToggleLeft className="w-5 h-5 text-amber-400" />}
+          <span>
+            Stripe:{' '}
+            <span className={stripeMode === 'live' ? 'text-emerald-500 font-semibold' : 'text-amber-400 font-semibold'}>
+              {stripeMode === 'live' ? 'Live' : 'Sandbox'}
+            </span>
+          </span>
+        </button>
       </div>
 
-      {/* Standard plans — read-only display */}
-      <div className="animate-fade-in-up-1 grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {[
-          { name: 'Starter', price: '$9/mo', tokens: '5.000' },
-          { name: 'Creator', price: '$29/mo', tokens: '15.000' },
-          { name: 'Pro', price: '$79/mo', tokens: 'TBD' },
-        ].map((p) => (
-          <div key={p.name} className="bg-white dark:bg-dash-card border border-slate-200 dark:border-dash-border rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Package className="w-4 h-4 text-slate-400 dark:text-v-dim" />
-              <p className="text-sm font-semibold text-slate-800 dark:text-v-primary">{p.name}</p>
-            </div>
-            <p className="text-2xl font-bold text-slate-900 dark:text-v-primary">{p.price}</p>
-            <p className="text-xs text-slate-400 dark:text-v-dim mt-1">{p.tokens} tokens / mês</p>
-          </div>
-        ))}
-      </div>
+      {error && (
+        <div className="rounded-lg bg-red-500/10 border border-red-500/30 px-4 py-3 text-sm text-red-400">{error}</div>
+      )}
 
-      {/* Custom plans table */}
-      <div className="animate-fade-in-up-2 bg-white dark:bg-dash-card border border-slate-200 dark:border-dash-border rounded-xl shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-100 dark:border-dash-border flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-800 dark:text-v-primary">Planos customizados</h2>
-          <span className="text-xs text-slate-400 dark:text-v-dim italic">Criação disponível após Stripe</span>
+      {loading ? (
+        <div className="flex items-center justify-center py-16 text-slate-400 dark:text-v-dim gap-2">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span>Carregando...</span>
         </div>
-        {(plans ?? []).length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-slate-400 dark:text-v-dim">
-            <Package className="w-8 h-8 mb-2 opacity-30" />
-            <p className="text-sm">Nenhum plano customizado.</p>
-            <p className="text-xs mt-1 text-center max-w-xs">
-              Owner pode dar até 100% de desconto, admin até 30%.
-              Disponível após M-001 (Stripe).
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="border-b border-slate-100 dark:border-dash-border">
-                  {['Nome', 'Org', 'Tokens/mês', 'Preço', 'Stripe Price ID', 'Status'].map((h) => (
-                    <th key={h} className="py-3 px-4 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-v-dim">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(plans ?? []).map((p) => (
-                  <tr key={p.id as string} className="border-b border-slate-50 dark:border-dash-border/50">
-                    <td className="py-3 px-4 text-sm font-medium">{String(p.name ?? '—')}</td>
-                    <td className="py-3 px-4 text-xs text-slate-400">{String(p.org_id ?? '—').slice(0, 8)}…</td>
-                    <td className="py-3 px-4 font-mono text-xs">{String(p.credits_per_month ?? '—')}</td>
-                    <td className="py-3 px-4 font-mono text-xs">${((Number(p.price_usd_cents) || 0) / 100).toFixed(2)}</td>
-                    <td className="py-3 px-4 font-mono text-xs text-slate-400">{String(p.stripe_price_id ?? 'pendente')}</td>
-                    <td className="py-3 px-4 text-xs">{p.is_active ? 'Ativo' : 'Inativo'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      ) : (
+        <div className="flex flex-col gap-4 animate-fade-in-up-1">
+          {plans.map((plan) => (
+            <PlanCard key={plan.plan_id} row={plan} onSaved={load} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

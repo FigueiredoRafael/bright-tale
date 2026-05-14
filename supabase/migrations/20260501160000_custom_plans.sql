@@ -62,11 +62,11 @@ DROP POLICY IF EXISTS "custom_plans_via_override" ON public.custom_plans;
 CREATE POLICY "custom_plans_via_override"
   ON public.custom_plans FOR SELECT
   USING (
-    EXISTS (SELECT 1 FROM public.user_plan_overrides WHERE custom_plan_id = id AND user_id = auth.uid())
+    EXISTS (SELECT 1 FROM public.user_plan_overrides WHERE custom_plan_id = custom_plans.id AND user_id = auth.uid())
     OR EXISTS (
       SELECT 1 FROM public.org_plan_overrides o
       JOIN public.org_memberships om ON om.org_id = o.org_id
-      WHERE o.custom_plan_id = id AND om.user_id = auth.uid()
+      WHERE o.custom_plan_id = custom_plans.id AND om.user_id = auth.uid()
     )
     OR EXISTS (
       SELECT 1 FROM public.managers
