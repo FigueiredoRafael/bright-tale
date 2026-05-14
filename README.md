@@ -39,57 +39,66 @@ npm install
 
 ### 2. Environment files
 
-Three env files (gitignored). Copy from someone on the team or create:
+Each workspace has a `.env.example` — copy to `.env.local` and fill in the values.
+All `.env.local` files are gitignored. Each `*.example` has the local Docker values pre-filled as defaults.
 
-**`.env.local`** (root)
 ```bash
-SUPABASE_ACCESS_TOKEN=sbp_...   # for `supabase` CLI
+cp .env.example .env.local
+cp apps/api/.env.example apps/api/.env.local
+cp apps/app/.env.example apps/app/.env.local
+cp apps/web/.env.example apps/web/.env.local
 ```
 
-**`apps/api/.env.local`**
+**Root `.env.local`** — Supabase CLI only (not read by any app at runtime):
 ```bash
-INTERNAL_API_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
-SUPABASE_URL=https://<project>.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=eyJ...
+SUPABASE_ACCESS_TOKEN=sbp_...   # only needed for remote commands (db:push:dev, db:types)
 
-# At least ONE of these — Gemini has a free tier, Ollama is fully local.
+# Google OAuth for local Supabase — get from console.cloud.google.com/apis/credentials
+# Also add http://127.0.0.1:54321/auth/v1/callback as an authorized redirect URI there
+SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=<your-client-id>.apps.googleusercontent.com
+SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=<your-client-secret>
+```
+
+**`apps/api/.env.local`** — see `apps/api/.env.example` for all vars. Minimum to start:
+```bash
+INTERNAL_API_KEY=<generate with: npm run generate:secret>
+# Local Docker Supabase (pre-filled in .env.example):
+SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_SERVICE_ROLE_KEY=sb_secret_N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz
+
+# At least ONE AI provider (Gemini has a free tier, Ollama is fully local):
 GOOGLE_AI_KEY=AIza...           # https://aistudio.google.com/app/apikey
-OPENAI_API_KEY=sk-...           # paid
-ANTHROPIC_API_KEY=sk-ant-...    # paid
-# Ollama needs no key, only a running server (see step 4).
-
-YOUTUBE_API_KEY=...             # https://console.cloud.google.com (YouTube Data API v3)
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-**`apps/app/.env.local`**
+**`apps/app/.env.local`** — see `apps/app/.env.example`. Minimum:
 ```bash
 INTERNAL_API_KEY=<same value as apps/api>
 API_URL=http://localhost:3001
-NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+# Local Docker Supabase values are pre-filled in .env.example
 ```
 
-### 3. Database
-
-Apply migrations to your dev Supabase project:
+### 3. Database (local Docker — recommended)
 
 ```bash
-npm run db:push:dev      # pushes supabase/migrations/* to dev
-npm run db:types         # regenerates packages/shared/src/types/database.ts
+npm run dev:local    # starts Supabase if not running, then starts all dev servers
 ```
 
-Local Supabase alternative (Docker required):
-
+Or manually:
 ```bash
-npm run db:start         # boots local Supabase on :54321
-npm run db:reset         # applies migrations + seed
-# Then point apps/api .env to http://localhost:54321 with local keys
+npm run db:start     # boots local Supabase on :54321 (Docker required)
+npm run db:reset     # applies all migrations + seed data
+npm run db:seed      # regenerates agent/persona seed from source files
+npm run db:types:local  # regenerates packages/shared/src/types/database.ts from local DB
 ```
 
-Seed agent prompts (idempotent):
+Supabase Studio (local): http://127.0.0.1:54323
 
+**Remote dev project** (when you need to test against staging data):
 ```bash
-npm run db:seed
+npm run db:push:dev  # requires SUPABASE_ACCESS_TOKEN in root .env.local
+npm run db:types     # regenerates types from remote project
 ```
 
 ### 4. Local AI (Ollama, optional but recommended)
@@ -137,7 +146,8 @@ locally — for real quality, hit Gemini/Claude.
 ## Running
 
 ```bash
-npm run dev       # app + api + web + docs + inngest + ollama in parallel
+npm run dev:local   # recommended: auto-starts local Supabase if needed, then starts everything
+npm run dev         # if Supabase is already running
 ```
 
 Or individually:
@@ -183,14 +193,17 @@ npm run test             # all workspaces
 npm run typecheck        # all workspaces
 npm run lint             # all workspaces
 
-# Database
-npm run db:push:dev      # apply migrations to dev Supabase
-npm run db:push:prod     # apply migrations to prod (with confirmation)
-npm run db:types         # regenerate database.ts types from remote
+# Database — local
 npm run db:start         # local Supabase up (Docker)
 npm run db:stop          # local Supabase down
 npm run db:reset         # local Supabase reset + reseed
 npm run db:seed          # regenerate seed.sql from agents/*.md and apply
+npm run db:types:local   # regenerate database.ts types from local DB
+
+# Database — remote
+npm run db:push:dev      # apply migrations to dev Supabase (needs SUPABASE_ACCESS_TOKEN)
+npm run db:push:prod     # apply migrations to prod (with confirmation)
+npm run db:types         # regenerate database.ts types from remote project
 
 # Utilities
 npm run generate:secret  # 32-byte hex (use for INTERNAL_API_KEY)
@@ -260,6 +273,10 @@ Full traceability: idea content_draft project published WordPress post. `project
 **Brainstorm/research returns 0 ideas** — the agent output shape didn't match the normalizer. Check `apps/api` logs for the raw response and adjust `normalizeIdeas` in `apps/api/src/routes/brainstorm.ts`.
 
 **Quota exceeded on Gemini** — free tier resets per minute and per day. Wait or switch to Ollama for unlimited dev usage.
+
+**Google login `Unsupported provider`** — add `[auth.external.google]` section to `supabase/config.toml` and set `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID` / `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` in root `.env.local`, then `npm run db:stop && npm run db:start`.
+
+**Google login `redirect_uri_mismatch`** — add `http://127.0.0.1:54321/auth/v1/callback` to the authorized redirect URIs of your OAuth app in [Google Cloud Console](https://console.cloud.google.com/apis/credentials).
 
 **`supabase: command not found`** — `brew install supabase/tap/supabase` (mac) or see https://supabase.com/docs/guides/cli.
 
