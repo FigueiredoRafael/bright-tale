@@ -10,6 +10,7 @@ import { ApiError } from '../lib/api/errors.js';
 import { getStripe } from '../lib/billing/stripe.js';
 import { getPlan, planFromPriceIdAsync, loadPlanConfigs, ADDON_PACKS, type PlanId, type BillingCycle } from '../lib/billing/plans.js';
 import { buildAffiliateContainer } from '../lib/affiliate/container.js';
+import { insertNotification } from '../lib/notifications.js';
 
 type StripeClient = ReturnType<typeof getStripe>;
 type StripeEvent = ReturnType<StripeClient['webhooks']['constructEvent']>;
@@ -577,6 +578,11 @@ async function handleStripeEvent(event: StripeEvent, fastify: FastifyInstance): 
       await __fireAffiliateCommissionHook(invoice, fastify);
       break;
     }
+    case 'invoice.payment_failed': {
+      const invoice = event.data.object as StripeInvoice;
+      await notifyPaymentFailed(invoice);
+      break;
+    }
     default:
       // Ignore other event types for now.
       break;
@@ -612,6 +618,18 @@ async function activateSubscriptionFromSession(session: StripeCheckoutSession): 
     typeof session.subscription === 'string' ? session.subscription : session.subscription.id,
   );
   await syncSubscription(subscription);
+
+  const userId = await __resolveOrgPrimaryUserId(orgId);
+  if (userId) {
+    const planId = session.metadata?.plan_id;
+    const planName = planId ? getPlan(planId as Parameters<typeof getPlan>[0]).displayName : 'novo';
+    const sb = createServiceClient();
+    await insertNotification(sb, userId, {
+      type: 'plan_renewed',
+      title: 'Plano ativado com sucesso!',
+      body: `Bem-vindo ao plano ${planName}. Seus créditos estão disponíveis.`,
+    });
+  }
 }
 
 async function syncSubscription(subscription: StripeSubscription): Promise<void> {
@@ -659,6 +677,15 @@ async function downgradeToFree(subscription: StripeSubscription): Promise<void> 
       credits_used: 0,
     })
     .eq('id', orgId);
+
+  const userId = await __resolveOrgPrimaryUserId(orgId);
+  if (userId) {
+    await insertNotification(sb, userId, {
+      type: 'plan_cancelled',
+      title: 'Assinatura cancelada',
+      body: 'Seu plano foi cancelado. Seus dados permanecem disponíveis.',
+    });
+  }
 }
 
 async function resetCreditsOnRenewal(invoice: StripeInvoice): Promise<void> {
@@ -689,4 +716,22 @@ async function resetCreditsOnRenewal(invoice: StripeInvoice): Promise<void> {
       plan_expires_at: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
     })
     .eq('id', orgId);
+}
+
+async function notifyPaymentFailed(invoice: StripeInvoice): Promise<void> {
+  const subscriptionId = (invoice as unknown as { subscription?: string }).subscription;
+  if (!subscriptionId) return;
+  const stripe = getStripe();
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const orgId = subscription.metadata?.org_id;
+  if (!orgId) return;
+  const userId = await __resolveOrgPrimaryUserId(orgId);
+  if (!userId) return;
+  const sb = createServiceClient();
+  await insertNotification(sb, userId, {
+    type: 'payment_failed',
+    title: 'Falha no pagamento',
+    body: 'Não conseguimos processar seu pagamento. Atualize seu método de pagamento.',
+    action_url: '/settings/billing',
+  });
 }

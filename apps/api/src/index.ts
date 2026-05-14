@@ -53,7 +53,11 @@ import { billingRoutes } from "./routes/billing.js";
 import { bulkRoutes } from "./routes/bulk.js";
 import { voiceRoutes } from "./routes/voice.js";
 import { publishingDestinationsRoutes } from "./routes/publishing-destinations.js";
-import { notificationsRoutes } from "./routes/notifications.js";
+import { notificationsRoutes, userNotificationsRoutes } from "./routes/notifications.js";
+import { supportRoutes } from "./routes/support.js";
+import { adminFinanceRoutes } from "./routes/admin-finance.js";
+import { refundsRoutes } from "./routes/refunds.js";
+import { couponsRoutes } from "./routes/coupons.js";
 import { personasRoutes } from "./routes/personas.js";
 import { channelPersonasRoutes } from "./routes/channel-personas.js";
 import { adminPersonaGuardrailsRoutes } from "./routes/admin-persona-guardrails.js";
@@ -326,6 +330,11 @@ server.register(aiProvidersRoutes, { prefix: "/ai-providers" });
 server.register(adminCreditSettingsRoutes, { prefix: "/admin/credit-settings" });
 server.register(autopilotTemplatesRoutes, { prefix: "/autopilot-templates" });
 server.register(currencyRefreshRoutes);
+server.register(userNotificationsRoutes, { prefix: "/notifications" });
+server.register(supportRoutes, { prefix: "/support" });
+server.register(adminFinanceRoutes, { prefix: "/admin/finance" });
+server.register(refundsRoutes);
+server.register(couponsRoutes, { prefix: "/coupons" });
 
 // Affiliate platform — @tn-figueiredo/affiliate@0.4.0 (Phase 2A.3 wires /ref + /internal)
 const affiliateContainer = buildAffiliateContainer();
