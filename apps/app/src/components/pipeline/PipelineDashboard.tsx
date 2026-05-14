@@ -46,6 +46,37 @@ export function PipelineDashboard({
     actor, (s) => s.context.autopilotConfig as AutopilotConfig | null,
   )
   const paused = useSelector(actor, (s) => s.context.paused as boolean)
+  const projectId = useSelector(actor, (s) => s.context.projectId as string)
+
+  // ── Fallback "stage_runs has completed this stage" set ────────────────────
+  // The xstate-driven `stageResults` can be empty (or sparse) while the DB
+  // `stage_runs` table has terminal rows — happens when the project advanced
+  // via v2/channel-page routes that write to stage_runs without round-tripping
+  // through the legacy machine, or when a "Redo from start" wiped stageResults
+  // but left stage_runs intact. Without this fallback the rail shows every
+  // stage as Queued, which is plainly wrong.
+  const [completedFromDb, setCompletedFromDb] = useState<Set<PipelineStage>>(new Set())
+  useEffect(() => {
+    if (!projectId) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/stages`)
+        if (!res.ok) return
+        const json = await res.json()
+        const items = (json?.data?.stageRuns ?? []) as Array<{ stage: PipelineStage; status: string }>
+        if (cancelled) return
+        const next = new Set<PipelineStage>()
+        for (const it of items) {
+          if (it.status === 'completed') next.add(it.stage)
+        }
+        setCompletedFromDb(next)
+      } catch {
+        // non-fatal — rail just falls back to xstate-only view
+      }
+    })()
+    return () => { cancelled = true }
+  }, [projectId])
 
   const currentStage = (
     typeof stateValue === 'string'
@@ -119,6 +150,7 @@ export function PipelineDashboard({
       selectedStage={selectedStage}
       activityLog={activityLog}
       onSelectStage={handleSelectStage}
+      completedFromStageRuns={completedFromDb}
     />
   )
 
@@ -138,6 +170,7 @@ export function PipelineDashboard({
       onBackToLive={handleBackToLive}
       onSkipAssets={onSkipAssets}
       onSwitchImageProvider={onSwitchImageProvider}
+      completedFromStageRuns={completedFromDb}
     />
   )
 

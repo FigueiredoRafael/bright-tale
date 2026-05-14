@@ -460,6 +460,8 @@ interface StagePanelDetailProps {
   onBackToLive: () => void
   onSkipAssets?: () => void
   onSwitchImageProvider?: (provider: 'openai' | 'gemini') => void
+  /** Stages with completed `stage_runs` rows — DB fallback for Done. */
+  completedFromStageRuns?: ReadonlySet<PipelineStage>
 }
 
 export function StagePanelDetail({
@@ -474,10 +476,12 @@ export function StagePanelDetail({
   onBackToLive,
   onSkipAssets,
   onSwitchImageProvider,
+  completedFromStageRuns,
 }: StagePanelDetailProps) {
   const Icon = STAGE_ICON[selectedStage]
   const status = deriveRailStatus(
     selectedStage, currentStage, stageResults, paused, subState, autopilotConfig,
+    completedFromStageRuns,
   )
   const isLive = selectedStage === currentStage
   const hasResult = !!(stageResults[selectedStage] as { completedAt?: string } | undefined)?.completedAt

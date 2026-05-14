@@ -86,6 +86,7 @@ export function deriveRailStatus(
   paused: boolean,
   subState: string,
   autopilotConfig: AutopilotConfig | null,
+  completedFromStageRuns?: ReadonlySet<PipelineStage>,
 ): RailStageStatus {
   const r = stageResults[stage] as { completedAt?: string; skipped?: boolean } | undefined
 
@@ -100,6 +101,11 @@ export function deriveRailStatus(
     if (paused || subState === 'paused') return 'paused'
     return 'running'
   }
+
+  // DB fallback: stageResults can be sparse/empty (Redo from start wipe, v2
+  // route writes, channel-page progress) while stage_runs reflects reality.
+  // If the DB says this stage completed, trust it over xstate's blank state.
+  if (completedFromStageRuns?.has(stage)) return 'done'
 
   // Gap-fill: downstream completed → this stage's work definitely happened
   // (Review/Publish can't pass without Research). It just wasn't tracked by
@@ -264,6 +270,8 @@ interface StageRailProps {
   selectedStage: PipelineStage
   activityLog: ActivityEntry[]
   onSelectStage: (stage: PipelineStage) => void
+  /** Stages with completed `stage_runs` rows — DB fallback for Done. */
+  completedFromStageRuns?: ReadonlySet<PipelineStage>
 }
 
 export function StageRail({
@@ -275,6 +283,7 @@ export function StageRail({
   selectedStage,
   activityLog,
   onSelectStage,
+  completedFromStageRuns,
 }: StageRailProps) {
   return (
     <div
@@ -289,6 +298,7 @@ export function StageRail({
         {PIPELINE_STAGES.map((stage) => {
           const status = deriveRailStatus(
             stage, currentStage, stageResults, paused, subState, autopilotConfig,
+            completedFromStageRuns,
           )
           const progressHint = status === 'running'
             ? deriveProgressHint(stage, stageResults, subState)
