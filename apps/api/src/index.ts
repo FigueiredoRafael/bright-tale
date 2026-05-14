@@ -64,6 +64,7 @@ import { adminPipelineSettingsRoutes } from "./routes/admin-pipeline-settings.js
 import { aiProvidersRoutes } from "./routes/ai-providers.js";
 import { adminCreditSettingsRoutes } from "./routes/admin-credit-settings.js";
 import { testMockAiRoutes } from "./routes/test-mock-ai.js";
+import { currencyRefreshRoutes } from "./routes/currency-refresh.js";
 import rateLimit from "@fastify/rate-limit";
 // Side-effect import: activates `rawBody?: boolean` on FastifyContextConfig
 // so routes/billing.ts can use `{ config: { rawBody: true } }` without a

@@ -453,7 +453,7 @@ export async function generateWithFallback(
   }
   // ── End mock intercept ──────────────────────────────────────────────────
 
-  const chain = getProviderChain(stage, tier, options);
+  const chain = await getProviderChain(stage, tier, options);
   if (chain.length === 0) {
     throw new Error(
       `No AI provider available for stage=${stage}, tier=${tier}. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_AI_KEY.`,
