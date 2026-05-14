@@ -46,7 +46,7 @@ const FULL_AUTOPILOT_CONFIG: AutopilotConfig = {
   canonicalCore: { providerOverride: null, personaId: 'p-tech-analyst' },
   draft: { providerOverride: null, format: 'video', wordCount: 800 },
   review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
-  assets: { providerOverride: null, mode: 'skip' },
+  assets: { providerOverride: null, mode: 'skip', imageScope: 'all' as const },
   preview: { enabled: false },
   publish: { status: 'draft' },
 }

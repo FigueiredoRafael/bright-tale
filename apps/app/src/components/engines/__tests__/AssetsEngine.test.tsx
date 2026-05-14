@@ -37,7 +37,7 @@ const BASE_AUTOPILOT: AutopilotConfig = {
   canonicalCore: { providerOverride: null, personaId: null },
   draft: { providerOverride: null, format: 'blog', wordCount: 1000 },
   review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
-  assets: { providerOverride: null, mode: 'briefs_only' },
+  assets: { providerOverride: null, mode: 'briefs_only', imageScope: 'all' as const },
   preview: { enabled: false },
   publish: { status: 'draft' },
 }
@@ -64,7 +64,7 @@ afterEach(() => {
 function makeActor(assetsMode: 'briefs_only' | 'auto_generate' | 'skip') {
   const config: AutopilotConfig = {
     ...BASE_AUTOPILOT,
-    assets: { providerOverride: null, mode: assetsMode },
+    assets: { providerOverride: null, mode: assetsMode, imageScope: 'all' as const },
   }
   const actor = createActor(pipelineMachine, {
     input: {
@@ -132,7 +132,7 @@ describe("assets mode='skip' handled by machine", () => {
     // when autopilotConfig.assets.mode === 'skip'. AssetsEngine never needs to mount.
     const config: AutopilotConfig = {
       ...BASE_AUTOPILOT,
-      assets: { providerOverride: null, mode: 'skip' },
+      assets: { providerOverride: null, mode: 'skip', imageScope: 'all' as const },
     }
     const actor = createActor(pipelineMachine, {
       input: {
@@ -162,7 +162,7 @@ describe("assets mode='skip' handled by machine", () => {
     const config: AutopilotConfig = {
       ...BASE_AUTOPILOT,
       review: { ...BASE_AUTOPILOT.review, maxIterations: 0 }, // skip review too
-      assets: { providerOverride: null, mode: 'skip' },
+      assets: { providerOverride: null, mode: 'skip', imageScope: 'all' as const },
     }
     const actor = createActor(pipelineMachine, {
       input: {

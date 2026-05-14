@@ -27,27 +27,29 @@ describe('admin-actions wrappers', () => {
     expect(lib.signInWithPassword).toHaveBeenCalledWith({ email: 'a@b.co', password: 'pw' })
   })
 
-  it('signInWithGoogle injects appUrl from env', async () => {
-    vi.mocked(lib.signInWithGoogle).mockResolvedValue({ ok: true, url: 'https://x' })
-    await actions.signInWithGoogle({})
-    expect(lib.signInWithGoogle).toHaveBeenCalledWith({
-      appUrl: 'https://brighttale.test',
-      redirectTo: '/admin',
+  // SEC-007: Google OAuth is removed from the admin surface. The Server
+  // Action is kept as a no-op that returns a disabled-feature error so
+  // older clients break loudly instead of silently creating accounts.
+  it('signInWithGoogle returns a disabled-feature error without calling the underlying lib', async () => {
+    const result = await actions.signInWithGoogle({})
+    expect(result).toEqual({
+      ok: false,
+      error: expect.stringMatching(/Google/i),
     })
+    expect(lib.signInWithGoogle).not.toHaveBeenCalled()
   })
 
-  it('signInWithGoogle respects caller-provided redirectTo', async () => {
-    vi.mocked(lib.signInWithGoogle).mockResolvedValue({ ok: true, url: 'https://x' })
-    await actions.signInWithGoogle({ redirectTo: '/admin/users' })
-    expect(lib.signInWithGoogle).toHaveBeenCalledWith({
-      appUrl: 'https://brighttale.test',
-      redirectTo: '/admin/users',
-    })
+  it('signInWithGoogle ignores caller-provided redirectTo (still disabled)', async () => {
+    const result = await actions.signInWithGoogle({ redirectTo: '/admin/users' })
+    expect(result.ok).toBe(false)
+    expect(lib.signInWithGoogle).not.toHaveBeenCalled()
   })
 
-  it('signInWithGoogle throws if NEXT_PUBLIC_APP_URL missing', async () => {
+  it('signInWithGoogle stays disabled even when NEXT_PUBLIC_APP_URL is unset', async () => {
     vi.stubEnv('NEXT_PUBLIC_APP_URL', '')
-    await expect(actions.signInWithGoogle({})).rejects.toThrow(/NEXT_PUBLIC_APP_URL/)
+    const result = await actions.signInWithGoogle({})
+    expect(result.ok).toBe(false)
+    expect(lib.signInWithGoogle).not.toHaveBeenCalled()
   })
 
   it('forgotPassword injects appUrl + resetPath', async () => {
