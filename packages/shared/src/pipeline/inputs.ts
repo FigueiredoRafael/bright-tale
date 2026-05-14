@@ -206,12 +206,20 @@ export const canonicalInputSchema = z.object({
 export type CanonicalInput = z.infer<typeof canonicalInputSchema>;
 
 /**
+ * Track medium — the distribution surface a Track produces for.
+ * Matches the `tracks.medium` column and the `productionInputSchema.type`
+ * field. The publish-target-resolver maps Medium → publish_targets.type.
+ */
+export const MEDIA = ['blog', 'video', 'shorts', 'podcast'] as const;
+export type Medium = (typeof MEDIA)[number];
+
+/**
  * Production Stage input — Track-scoped, medium-specific. Absorbs the
  * legacy DraftEngine "produce phase": renders the canonical core into a
  * concrete piece (blog/video/shorts/podcast).
  */
 export const productionInputSchema = z.object({
-  type: z.enum(['blog', 'video', 'shorts', 'podcast']),
+  type: z.enum(MEDIA),
   canonicalCoreId: z.string().optional(),
   productionParams: z.record(z.string(), z.unknown()).optional(),
   modelTier: z.string().optional(),
