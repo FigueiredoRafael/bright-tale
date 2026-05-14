@@ -92,6 +92,14 @@ export function deriveRailStatus(
 
   if (r?.completedAt) return 'done'
 
+  // DB fallback: stageResults can be sparse/empty (Redo from start wipe, v2
+  // route writes, channel-page progress) while stage_runs reflects reality.
+  // Checked BEFORE the currentStage→'running' branch on purpose: if xstate
+  // landed on a stage that the DB already marks completed, the xstate state
+  // is stale and DB wins. The `/stages` endpoint dedupes to the latest row
+  // per stage, so a genuine re-run (latest='running') won't be in the set.
+  if (completedFromStageRuns?.has(stage)) return 'done'
+
   // Explicitly skipped stages
   if (stage === 'review' && autopilotConfig?.review.maxIterations === 0) return 'skipped'
   if (stage === 'assets' && autopilotConfig?.assets.mode === 'skip') return 'skipped'
@@ -101,11 +109,6 @@ export function deriveRailStatus(
     if (paused || subState === 'paused') return 'paused'
     return 'running'
   }
-
-  // DB fallback: stageResults can be sparse/empty (Redo from start wipe, v2
-  // route writes, channel-page progress) while stage_runs reflects reality.
-  // If the DB says this stage completed, trust it over xstate's blank state.
-  if (completedFromStageRuns?.has(stage)) return 'done'
 
   // Gap-fill: downstream completed → this stage's work definitely happened
   // (Review/Publish can't pass without Research). It just wasn't tracked by
