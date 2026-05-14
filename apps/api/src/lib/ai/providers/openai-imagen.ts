@@ -11,6 +11,11 @@
 import OpenAI from "openai";
 import type { ImageProvider, GenerateImageParams, GeneratedImageResult } from "../imageProvider.js";
 
+// OpenAI's CJS declaration resolves as a namespace on Vercel (TS2709).
+// Use ReturnType<> off a factory to sidestep the type half — same fix as stripe.ts.
+function createOpenAIClient(apiKey: string) { return new OpenAI({ apiKey }); }
+type OpenAIClient = ReturnType<typeof createOpenAIClient>;
+
 type SupportedSize = "1024x1024" | "1024x1536" | "1536x1024" | "1024x1792" | "1792x1024";
 
 function mapAspectRatio(model: string, aspectRatio: string): SupportedSize {
@@ -38,14 +43,14 @@ function mapAspectRatio(model: string, aspectRatio: string): SupportedSize {
 
 export class OpenAIImageProvider implements ImageProvider {
   readonly name = "openai";
-  private client: OpenAI;
+  private client: OpenAIClient;
 
   constructor(
     apiKey: string,
     private model: string = "gpt-image-1",
     private config: Record<string, unknown> = {},
   ) {
-    this.client = new OpenAI({ apiKey });
+    this.client = createOpenAIClient(apiKey);
   }
 
   async generateImages(params: GenerateImageParams): Promise<GeneratedImageResult[]> {

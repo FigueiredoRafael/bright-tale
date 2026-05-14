@@ -1,10 +1,13 @@
-import { OpenAI } from "openai";
+import OpenAI from "openai";
 import type { AIProvider, GenerateContentParams, AgentType, TokenUsage, ToolCall } from "../provider.js";
+
+function createOpenAIClient(apiKey: string) { return new OpenAI({ apiKey }); }
+type OpenAIClient = ReturnType<typeof createOpenAIClient>;
 
 export class OpenAIProvider implements AIProvider {
   name = "openai";
   lastUsage?: TokenUsage;
-  private client: OpenAI;
+  private client: OpenAIClient;
   private model: string;
   private temperature: number;
 
@@ -12,7 +15,7 @@ export class OpenAIProvider implements AIProvider {
     apiKey: string,
     config?: { model?: string; temperature?: number },
   ) {
-    this.client = new OpenAI({ apiKey });
+    this.client = createOpenAIClient(apiKey);
     this.model = config?.model || "gpt-4o";
     this.temperature = config?.temperature ?? 0.7;
   }
