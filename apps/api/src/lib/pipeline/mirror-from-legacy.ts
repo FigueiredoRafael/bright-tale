@@ -170,7 +170,7 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
     return { kind: 'noop', mirrored: 0, reason: 'nothing new to mirror' };
   }
 
-  const mirrored = await upsertStageRuns(sb, desired, existingByStage);
+  const mirrored = await upsertStageRuns(sb, desired, existingByStage, projectId);
 
   if (mirrored > 0) {
     await (sb.from('projects') as unknown as {
@@ -296,6 +296,7 @@ async function upsertStageRuns(
   sb: Sb,
   desired: StageRunInsert[],
   byStage: Map<string, StageBucket>,
+  projectId: string,
 ): Promise<number> {
   let mirrored = 0;
   const now = new Date().toISOString();
@@ -304,6 +305,24 @@ async function upsertStageRuns(
 
     // The latest row is already terminal — view is correct, do nothing.
     if (bucket?.latest?.isTerminal) continue;
+
+    // Defense against cross-process concurrent mirrors: re-check the latest
+    // row right before INSERT/UPDATE. The bucket snapshot at function-start
+    // can be stale by 10s/100s of ms if another process raced in and
+    // inserted. Without this, both processes' buckets see "nothing terminal"
+    // and both insert, producing duplicate completed rows (the exact bug
+    // observed on 2026-05-14 for project 50cd4595).
+    const { data: fresh } = await sb
+      .from('stage_runs')
+      .select('id, status')
+      .eq('project_id', projectId)
+      .eq('stage', sr.stage)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (fresh && TERMINAL_STATUSES.includes((fresh as { status: string }).status)) {
+      continue;
+    }
 
     if (bucket?.nonTerminal) {
       const { error } = await (sb.from('stage_runs') as unknown as {

@@ -35,6 +35,18 @@ import { STAGES, type Stage, type StageRun } from '@brighttale/shared/pipeline/i
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Sb = any;
 
+/**
+ * Per-project in-flight mirror promises. Coalesces concurrent
+ * `mirror-from-legacy` calls (e.g. page-load + orchestrator PATCH firing
+ * within ms) so they share one execution + result instead of racing two
+ * reads-then-inserts that produce duplicate completed rows.
+ *
+ * Survives only within a single Node process — sufficient for dev and any
+ * single-instance deploy. Horizontal scale would need a Postgres advisory
+ * lock instead.
+ */
+const mirrorInFlight = new Map<string, Promise<unknown>>();
+
 const createStageRunBodySchema = z.object({
   stage: z.enum(STAGES),
   input: z.unknown(),
@@ -315,7 +327,14 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
         const sb: Sb = createServiceClient();
         await assertProjectOwner(projectId, userId, sb);
 
-        const outcome = await mirrorFromLegacy(sb, projectId);
+        // Coalesce concurrent calls for the same project — see
+        // `mirrorInFlight` comment above.
+        const existing = mirrorInFlight.get(projectId);
+        const promise = existing ?? mirrorFromLegacy(sb, projectId).finally(() => {
+          mirrorInFlight.delete(projectId);
+        });
+        if (!existing) mirrorInFlight.set(projectId, promise);
+        const outcome = await promise;
         return reply.send({ data: outcome, error: null });
       } catch (err) {
         return sendError(reply, err);
