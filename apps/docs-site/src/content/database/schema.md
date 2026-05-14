@@ -383,11 +383,12 @@ Log individual de débitos de crédito (diferente de `usage_events` que é sobre
 
 | Coluna | Tipo | Descrição |
 |---|---|---|
-| id | uuid PK | |
+| id | text PK | |
 | site_url | text | |
 | username | text | |
 | password | text | Encriptada |
-| user_id | uuid FK | |
+| channel_id | uuid FK (channels) NOT NULL UNIQUE | Escopo por canal |
+| publish_targets_id | uuid FK (publish_targets) | Forward pointer para a linha unificada em `publish_targets`; populado pela backfill T2.8 |
 
 ## user_profiles
 
