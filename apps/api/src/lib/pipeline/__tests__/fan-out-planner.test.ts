@@ -26,6 +26,7 @@ function track(overrides: Partial<Track> = {}): Track {
     projectId: 'proj-1',
     medium: 'blog',
     status: 'active',
+    paused: false,
     autopilotConfigJson: undefined,
     ...overrides,
   };
@@ -114,12 +115,13 @@ describe('planNext — canonical fan-out to Tracks', () => {
     expect(new Set(specs.map((s) => s.stage))).toEqual(new Set(['production']));
   });
 
-  it('canonical fan-out excludes aborted Tracks', () => {
+  it('canonical fan-out excludes aborted, completed, and paused Tracks', () => {
     const t1 = track({ id: 't1', status: 'active' });
     const aborted = track({ id: 't2', status: 'aborted' });
-    const paused = track({ id: 't3', status: 'paused' });
+    const completed = track({ id: 't3', status: 'completed' });
+    const paused = track({ id: 't4', status: 'active', paused: true });
     const specs = planNext(
-      input({ completedRun: run({ stage: 'canonical' }), tracks: [t1, aborted, paused] }),
+      input({ completedRun: run({ stage: 'canonical' }), tracks: [t1, aborted, completed, paused] }),
     );
     expect(specs.map((s) => s.trackId)).toEqual(['t1']);
   });
@@ -307,6 +309,69 @@ describe('planNext — preview → publish fan-out', () => {
       }),
     );
     expect(specs).toEqual([]);
+  });
+});
+
+describe('planNext — idempotency: failed/aborted prior runs do NOT block', () => {
+  it('failed prior research run does NOT suppress re-enqueue (retry path)', () => {
+    const completed = run({ stage: 'brainstorm' });
+    const failed = run({ stage: 'research', status: 'failed' });
+    const specs = planNext(input({ completedRun: completed, priorRuns: [completed, failed] }));
+    expect(specs).toEqual([
+      { stage: 'research', trackId: null, publishTargetId: null, status: 'queued' },
+    ]);
+  });
+
+  it('aborted prior production for a Track does NOT suppress re-fan-out', () => {
+    const t1 = track({ id: 't1' });
+    const completed = run({ stage: 'canonical' });
+    const aborted = run({ stage: 'production', trackId: 't1', status: 'aborted' });
+    const specs = planNext(
+      input({ completedRun: completed, tracks: [t1], priorRuns: [completed, aborted] }),
+    );
+    expect(specs.map((s) => s.trackId)).toEqual(['t1']);
+  });
+
+  it('aborted prior publish for one target does NOT suppress re-fan-out for that target', () => {
+    const t1 = track({ id: 't1' });
+    const ptA = pubTarget({ id: 'pt-a' });
+    const completedPreview = run({ stage: 'preview', trackId: 't1' });
+    const abortedPublish = run({
+      stage: 'publish',
+      trackId: 't1',
+      publishTargetId: 'pt-a',
+      status: 'aborted',
+    });
+    const specs = planNext(
+      input({
+        completedRun: completedPreview,
+        tracks: [t1],
+        publishTargets: [ptA],
+        priorRuns: [completedPreview, abortedPublish],
+      }),
+    );
+    expect(specs.map((s) => s.publishTargetId)).toEqual(['pt-a']);
+  });
+
+  it('collision key is per-(stage, trackId, publishTargetId): same stage on different track does not block', () => {
+    const t1 = track({ id: 't1' });
+    const t2 = track({ id: 't2' });
+    const completed = run({ stage: 'canonical' });
+    // Prior queued production exists only for t1
+    const existingT1 = run({
+      stage: 'production',
+      trackId: 't1',
+      publishTargetId: null,
+      status: 'queued',
+    });
+    const specs = planNext(
+      input({
+        completedRun: completed,
+        tracks: [t1, t2],
+        priorRuns: [completed, existingT1],
+      }),
+    );
+    expect(specs.map((s) => s.trackId)).toEqual(['t2']);
   });
 });
 

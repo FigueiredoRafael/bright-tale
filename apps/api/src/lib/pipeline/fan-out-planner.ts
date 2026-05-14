@@ -35,7 +35,8 @@ export interface Track {
   id: string;
   projectId: string;
   medium: Medium;
-  status: 'active' | 'paused' | 'aborted';
+  status: 'active' | 'aborted' | 'completed';
+  paused: boolean;
   autopilotConfigJson?: unknown;
 }
 
@@ -158,8 +159,8 @@ export function planNext(input: PlanInput): StageRunSpec[] {
     }
 
     case 'canonical': {
-      // Fan-out: one Production run per active Track. Aborted/paused excluded.
-      const activeTracks = tracks.filter((t) => t.status === 'active');
+      // Fan-out: one Production run per active Track. Aborted/completed/paused excluded.
+      const activeTracks = tracks.filter((t) => t.status === 'active' && !t.paused);
       const specs: StageRunSpec[] = [];
       for (const track of activeTracks) {
         if (alreadyHas(priorRuns, 'production', track.id, null)) continue;
@@ -172,7 +173,7 @@ export function planNext(input: PlanInput): StageRunSpec[] {
       const trackId = completedRun.trackId;
       if (!trackId) return [];
       const track = tracks.find((t) => t.id === trackId);
-      if (!track || track.status !== 'active') return [];
+      if (!track || track.status !== 'active' || track.paused) return [];
       if (alreadyHas(priorRuns, 'review', trackId, null)) return [];
       return [nextStageSpec('review', trackId, null, autopilotConfig)];
     }
@@ -181,7 +182,7 @@ export function planNext(input: PlanInput): StageRunSpec[] {
       const trackId = completedRun.trackId;
       if (!trackId) return [];
       const track = tracks.find((t) => t.id === trackId);
-      if (!track || track.status !== 'active') return [];
+      if (!track || track.status !== 'active' || track.paused) return [];
 
       // Revision loop: verdict='revision_required' → another production run for
       // the same Track. The dispatcher has already enforced the iteration cap.
@@ -196,7 +197,7 @@ export function planNext(input: PlanInput): StageRunSpec[] {
       const trackId = completedRun.trackId;
       if (!trackId) return [];
       const track = tracks.find((t) => t.id === trackId);
-      if (!track || track.status !== 'active') return [];
+      if (!track || track.status !== 'active' || track.paused) return [];
       if (alreadyHas(priorRuns, 'preview', trackId, null)) return [];
       return [nextStageSpec('preview', trackId, null, autopilotConfig)];
     }
@@ -205,7 +206,7 @@ export function planNext(input: PlanInput): StageRunSpec[] {
       const trackId = completedRun.trackId;
       if (!trackId) return [];
       const track = tracks.find((t) => t.id === trackId);
-      if (!track || track.status !== 'active') return [];
+      if (!track || track.status !== 'active' || track.paused) return [];
 
       // Fan-out: one Publish run per publish_target whose type is compatible
       // with this Track's medium. The caller (orchestrator) is expected to

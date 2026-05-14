@@ -28,8 +28,9 @@ function track(
   id: string,
   medium: Track['medium'] = 'blog',
   status: Track['status'] = 'active',
+  paused = false,
 ): Track {
-  return { id, projectId: 'p1', medium, status };
+  return { id, projectId: 'p1', medium, status, paused };
 }
 
 function target(
@@ -311,7 +312,7 @@ describe('buildGraph — aborted Tracks excluded', () => {
 describe('buildGraph — paused Tracks still appear', () => {
   it('paused Tracks are visible — only aborted are dropped', () => {
     const tBlog = track('tBlog', 'blog', 'active');
-    const tVid = track('tVid', 'video', 'paused');
+    const tVid = track('tVid', 'video', 'active', true);
     const { nodes, edges } = buildGraph({
       tracks: [tBlog, tVid],
       publishTargets: [],

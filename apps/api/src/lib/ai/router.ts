@@ -415,6 +415,18 @@ export async function generateWithFallback(
     const { dequeue, nextCallNumber } = await import('./__mocks__/queue.js');
     const mockStage = stage as import('./__mocks__/queue.js').MockStage;
     const callNo = nextCallNumber(mockStage);
+
+    // Input payload summary — keeps the trail visible for e2e diagnostics.
+    // Truncate so review/production prompts don't flood the log.
+    const inputSummary = JSON.stringify({
+      tier,
+      systemPrompt: params.systemPrompt?.slice(0, 120),
+      userMessage: params.userMessage?.slice(0, 120),
+      hasSchema: Boolean(params.schema),
+      toolCount: params.tools?.length ?? 0,
+    }).slice(0, 280);
+    console.log(`[MOCK-AI][${stage}][${callNo}] ← input: ${inputSummary}`);
+
     const entry = dequeue(mockStage);
 
     if (!entry) {
