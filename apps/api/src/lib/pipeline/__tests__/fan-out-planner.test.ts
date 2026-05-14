@@ -12,6 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   planNext,
+  attemptIsTerminal,
   MEDIUM_TO_TARGET_TYPES,
   type AutopilotConfig,
   type Medium,
@@ -1258,5 +1259,146 @@ describe('E2E scenario coverage (planner level)', () => {
       trackId: 'track-video',
       attemptNo: 1,
     });
+  });
+});
+
+// ─── 17. attemptIsTerminal helper ────────────────────────────────────────────
+
+describe('attemptIsTerminal', () => {
+  it('returns true when the specified attempt is completed', () => {
+    const priorRuns: StageRun[] = [
+      makeRun({ stage: 'research', trackId: null, attemptNo: 2, status: 'completed' }),
+    ];
+    expect(attemptIsTerminal(priorRuns, 'research', null, 2)).toBe(true);
+  });
+
+  it('returns true when the specified attempt is failed', () => {
+    const priorRuns: StageRun[] = [
+      makeRun({ stage: 'review', trackId: 'track-blog', attemptNo: 1, status: 'failed' }),
+    ];
+    expect(attemptIsTerminal(priorRuns, 'review', 'track-blog', 1)).toBe(true);
+  });
+
+  it('returns true when the specified attempt is aborted', () => {
+    const priorRuns: StageRun[] = [
+      makeRun({ stage: 'production', trackId: 'track-video', attemptNo: 3, status: 'aborted' }),
+    ];
+    expect(attemptIsTerminal(priorRuns, 'production', 'track-video', 3)).toBe(true);
+  });
+
+  it('returns true when the specified attempt is skipped', () => {
+    const priorRuns: StageRun[] = [
+      makeRun({ stage: 'assets', trackId: 'track-blog', attemptNo: 1, status: 'skipped' }),
+    ];
+    expect(attemptIsTerminal(priorRuns, 'assets', 'track-blog', 1)).toBe(true);
+  });
+
+  it('returns false when the attempt is running (non-terminal)', () => {
+    const priorRuns: StageRun[] = [
+      makeRun({ stage: 'research', trackId: null, attemptNo: 1, status: 'running' }),
+    ];
+    expect(attemptIsTerminal(priorRuns, 'research', null, 1)).toBe(false);
+  });
+
+  it('returns false when the attempt is queued (non-terminal)', () => {
+    const priorRuns: StageRun[] = [
+      makeRun({ stage: 'research', trackId: null, attemptNo: 1, status: 'queued' }),
+    ];
+    expect(attemptIsTerminal(priorRuns, 'research', null, 1)).toBe(false);
+  });
+
+  it('returns false when no matching attempt exists', () => {
+    const priorRuns: StageRun[] = [
+      makeRun({ stage: 'research', trackId: null, attemptNo: 1, status: 'completed' }),
+    ];
+    expect(attemptIsTerminal(priorRuns, 'research', null, 2)).toBe(false);
+  });
+
+  it('returns false when trackId does not match', () => {
+    const priorRuns: StageRun[] = [
+      makeRun({ stage: 'production', trackId: 'track-a', attemptNo: 1, status: 'completed' }),
+    ];
+    expect(attemptIsTerminal(priorRuns, 'production', 'track-b', 1)).toBe(false);
+  });
+
+  it('returns false for empty priorRuns', () => {
+    expect(attemptIsTerminal([], 'research', null, 1)).toBe(false);
+  });
+});
+
+// ─── 18. confidence score extraction edge cases ───────────────────────────────
+
+describe('confidence score extraction edge cases', () => {
+  it('advances to canonical when idea_validation is not an object (malformed outcome)', () => {
+    const run = makeRun({
+      stage: 'research',
+      status: 'completed',
+      outcomeJson: { idea_validation: 'invalid-string-value' },
+    });
+    // Non-object idea_validation → confidence = null → advance by default
+    const result = plan(run);
+    expect(result).toHaveLength(1);
+    expect(result[0].stage).toBe('canonical');
+  });
+
+  it('advances when confidence_score is a string (not a number)', () => {
+    const run = makeRun({
+      stage: 'research',
+      status: 'completed',
+      outcomeJson: { idea_validation: { confidence_score: 'high' } },
+    });
+    // Non-number confidence_score → null → advance by default
+    const result = plan(run);
+    expect(result).toHaveLength(1);
+    expect(result[0].stage).toBe('canonical');
+  });
+});
+
+// ─── 19. review score extraction edge cases ───────────────────────────────────
+
+describe('review score extraction edge cases', () => {
+  it('treats non-number overall_score as not-passing (revision loop)', () => {
+    const track = makeTrack({ id: 'track-blog', medium: 'blog' });
+    const run = makeRun({
+      stage: 'review',
+      status: 'completed',
+      trackId: 'track-blog',
+      attemptNo: 1,
+      outcomeJson: { overall_score: 'excellent' }, // string, not number
+    });
+    const result = plan(run, {
+      tracks: [track],
+      autopilotConfig: { review: { autoApproveThreshold: 90, maxIterations: 5 } },
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].stage).toBe('production');
+  });
+
+  it('treats null outcomeJson as not-passing for review', () => {
+    const track = makeTrack({ id: 'track-blog', medium: 'blog' });
+    const run = makeRun({
+      stage: 'review',
+      status: 'completed',
+      trackId: 'track-blog',
+      attemptNo: 1,
+      outcomeJson: null,
+    });
+    const result = plan(run, {
+      tracks: [track],
+      autopilotConfig: { review: { autoApproveThreshold: 90, maxIterations: 5 } },
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].stage).toBe('production');
+  });
+});
+
+// ─── 20. legacy draft stage is handled gracefully ────────────────────────────
+
+describe('legacy draft stage falls to default (no enqueue)', () => {
+  it('returns empty for a completed legacy draft stage_run', () => {
+    // stage='draft' is a legacy value — the planner's default case handles it.
+    const run = makeRun({ stage: 'draft' as unknown as typeof run.stage, status: 'completed' });
+    const result = plan(run);
+    expect(result).toHaveLength(0);
   });
 });
