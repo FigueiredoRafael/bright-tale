@@ -1275,6 +1275,7 @@ export type Database = {
           channel_type: string
           created_at: string
           custom_model_config_json: Json | null
+          default_media_config_json: Json | null
           estimated_revenue_brl: number | null
           id: string
           is_evergreen: boolean
@@ -1308,6 +1309,7 @@ export type Database = {
           channel_type?: string
           created_at?: string
           custom_model_config_json?: Json | null
+          default_media_config_json?: Json | null
           estimated_revenue_brl?: number | null
           id?: string
           is_evergreen?: boolean
@@ -1341,6 +1343,7 @@ export type Database = {
           channel_type?: string
           created_at?: string
           custom_model_config_json?: Json | null
+          default_media_config_json?: Json | null
           estimated_revenue_brl?: number | null
           id?: string
           is_evergreen?: boolean
