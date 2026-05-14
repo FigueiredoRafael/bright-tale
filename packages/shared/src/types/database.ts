@@ -3161,9 +3161,11 @@ export type Database = {
           outcome_json: Json | null
           payload_ref: Json | null
           project_id: string
+          publish_target_id: string | null
           stage: string
           started_at: string | null
           status: string
+          track_id: string | null
           updated_at: string
         }
         Insert: {
@@ -3177,9 +3179,11 @@ export type Database = {
           outcome_json?: Json | null
           payload_ref?: Json | null
           project_id: string
+          publish_target_id?: string | null
           stage: string
           started_at?: string | null
           status: string
+          track_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -3193,9 +3197,11 @@ export type Database = {
           outcome_json?: Json | null
           payload_ref?: Json | null
           project_id?: string
+          publish_target_id?: string | null
           stage?: string
           started_at?: string | null
           status?: string
+          track_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -3204,6 +3210,20 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_runs_publish_target_id_fkey"
+            columns: ["publish_target_id"]
+            isOneToOne: false
+            referencedRelation: "publish_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_runs_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
             referencedColumns: ["id"]
           },
         ]
