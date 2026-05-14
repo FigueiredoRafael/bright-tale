@@ -29,7 +29,7 @@ const fullConfig: AutopilotConfig = {
     autoApproveThreshold: 90,
     hardFailThreshold: 40,
   },
-  assets: { providerOverride: null, mode: 'skip' },
+  assets: { providerOverride: null, mode: 'skip', imageScope: 'all' as const },
   preview: { enabled: false },
   publish: { status: 'draft' },
 }

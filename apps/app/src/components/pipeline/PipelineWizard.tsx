@@ -173,6 +173,7 @@ function buildDefaultAutopilotConfig(pipelineSettings: {
       providerOverride: toProvider('assets'),
       modelOverride: toModel('assets'),
       mode: 'briefs_only',
+      imageScope: 'all',
     },
     preview: {
       enabled: false,
@@ -610,32 +611,61 @@ function ReviewFields() {
 }
 
 function AssetsFields() {
-  const { control } = useFormContext<WizardFormValues>()
+  const { control, watch } = useFormContext<WizardFormValues>()
+  const assetsMode = watch('autopilotConfig.assets.mode')
 
   return (
-    <div>
-      <Label className="text-xs font-medium text-muted-foreground mb-2 block">Assets mode</Label>
-      <Controller
-        control={control}
-        name="autopilotConfig.assets.mode"
-        render={({ field }) => (
-          <RadioGroup value={field.value} onValueChange={field.onChange} className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="skip" id="assets-skip" />
-              <Label htmlFor="assets-skip" className="text-sm font-normal cursor-pointer">Skip — go straight to preview (no images)</Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="auto_generate" id="assets-auto" />
-              <Label htmlFor="assets-auto" className="text-sm font-normal cursor-pointer">Auto-generate — AI generates images, no manual review</Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="briefs_only" id="assets-briefs" />
-              <Label htmlFor="assets-briefs" className="text-sm font-normal cursor-pointer">Briefs only — AI generates briefs, you finish in the engine</Label>
-            </div>
-          </RadioGroup>
-        )}
-      />
-      <ProviderModelFields stage="assets" />
+    <div className="space-y-4">
+      <div>
+        <Label className="text-xs font-medium text-muted-foreground mb-2 block">Assets mode</Label>
+        <Controller
+          control={control}
+          name="autopilotConfig.assets.mode"
+          render={({ field }) => (
+            <RadioGroup value={field.value} onValueChange={field.onChange} className="space-y-2">
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="skip" id="assets-skip" />
+                <Label htmlFor="assets-skip" className="text-sm font-normal cursor-pointer">Skip — go straight to preview (no images)</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="auto_generate" id="assets-auto" />
+                <Label htmlFor="assets-auto" className="text-sm font-normal cursor-pointer">Auto-generate — AI generates images, no manual review</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="briefs_only" id="assets-briefs" />
+                <Label htmlFor="assets-briefs" className="text-sm font-normal cursor-pointer">Briefs only — AI generates briefs, you finish in the engine</Label>
+              </div>
+            </RadioGroup>
+          )}
+        />
+        <ProviderModelFields stage="assets" />
+      </div>
+
+      {assetsMode === 'auto_generate' && (
+        <div>
+          <Label className="text-xs font-medium text-muted-foreground mb-2 block">Image scope</Label>
+          <Controller
+            control={control}
+            name="autopilotConfig.assets.imageScope"
+            render={({ field }) => (
+              <RadioGroup value={field.value ?? 'all'} onValueChange={field.onChange} className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="all" id="assets-scope-all" />
+                  <Label htmlFor="assets-scope-all" className="text-sm font-normal cursor-pointer">All sections — generate an image for every section</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="featured_and_conclusion" id="assets-scope-fc" />
+                  <Label htmlFor="assets-scope-fc" className="text-sm font-normal cursor-pointer">Featured + Conclusion — featured image and closing image only</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="featured_only" id="assets-scope-featured" />
+                  <Label htmlFor="assets-scope-featured" className="text-sm font-normal cursor-pointer">Featured only — featured image only</Label>
+                </div>
+              </RadioGroup>
+            )}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -714,8 +744,16 @@ function getStageSummary(stage: WizardStage, values: WizardFormValues): string {
       return `${cfg.review.maxIterations} iterations · threshold ${cfg.review.autoApproveThreshold}`
     case 'assets': {
       if (!cfg.assets) return ''
-      const map: Record<string, string> = { skip: 'Skip', auto_generate: 'Auto-generate', briefs_only: 'Briefs only' }
-      return map[cfg.assets.mode] ?? cfg.assets.mode
+      const modeMap: Record<string, string> = { skip: 'Skip', auto_generate: 'Auto-generate', briefs_only: 'Briefs only' }
+      const modeLabel = modeMap[cfg.assets.mode] ?? cfg.assets.mode
+      if (cfg.assets.mode === 'auto_generate' && cfg.assets.imageScope && cfg.assets.imageScope !== 'all') {
+        const scopeMap: Record<string, string> = {
+          featured_only: 'Featured only',
+          featured_and_conclusion: 'Featured + Conclusion',
+        }
+        return `${modeLabel} · ${scopeMap[cfg.assets.imageScope] ?? cfg.assets.imageScope}`
+      }
+      return modeLabel
     }
     case 'preview':
       if (!cfg.preview) return ''

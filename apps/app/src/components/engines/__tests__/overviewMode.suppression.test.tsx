@@ -133,7 +133,7 @@ const BASE_AUTOPILOT: AutopilotConfig = {
   canonicalCore: { providerOverride: null, personaId: null },
   draft: { providerOverride: null, format: 'blog', wordCount: 1000 },
   review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
-  assets: { providerOverride: null, mode: 'briefs_only' },
+  assets: { providerOverride: null, mode: 'briefs_only', imageScope: 'all' as const },
   preview: { enabled: false },
   publish: { status: 'draft' },
 }

@@ -168,6 +168,16 @@ function migrateAssetsMode(legacy: string | undefined): 'skip' | 'briefs_only' |
   }
 }
 
+function migrateImageScope(raw: unknown): AutopilotConfig['assets']['imageScope'] {
+  switch (raw) {
+    case 'featured_only':
+    case 'featured_and_conclusion':
+      return raw
+    default:
+      return 'all'
+  }
+}
+
 function migrateAutopilotConfig(raw: Record<string, unknown> | undefined): AutopilotConfig | null {
   if (!isPlainObject(raw)) return null
   const assets = isPlainObject(raw.assets) ? raw.assets : undefined
@@ -176,6 +186,7 @@ function migrateAutopilotConfig(raw: Record<string, unknown> | undefined): Autop
     assets: {
       providerOverride: (assets?.providerOverride ?? null) as AutopilotConfig['assets']['providerOverride'],
       mode: migrateAssetsMode(typeof assets?.mode === 'string' ? assets.mode : undefined),
+      imageScope: migrateImageScope(assets?.imageScope),
     },
     preview: isPlainObject(raw.preview)
       ? (raw.preview as AutopilotConfig['preview'])
