@@ -13,13 +13,22 @@ import { z } from 'zod';
 export const STAGES = [
   'brainstorm',
   'research',
-  'draft',
+  'canonical',
+  'production',
   'review',
   'assets',
   'preview',
   'publish',
 ] as const;
 export type Stage = (typeof STAGES)[number];
+
+/**
+ * Includes the legacy `draft` Stage that exists only in stage_runs rows
+ * created before the canonical/production split (M3 backfill). New code
+ * MUST NOT emit `'draft'`; it appears solely in legacy DB rows + the
+ * `mirror-from-legacy` translation layer.
+ */
+export type LegacyStage = Stage | 'draft';
 
 export const STAGE_RUN_STATUSES = [
   'queued',
@@ -52,6 +61,7 @@ export const PAYLOAD_KINDS = [
   'brainstorm_draft',
   'brainstorm_session',
   'research_session',
+  'canonical_core',
   'content_draft',
   'review_session',
   'assets_session',
@@ -161,10 +171,14 @@ export const reviewInputSchema = z.object({
 });
 export type ReviewInput = z.infer<typeof reviewInputSchema>;
 
+/**
+ * @deprecated Legacy single-Stage `draft` input. Retained for compatibility
+ * with `mirror-from-legacy` and pre-split `stage_runs` rows. New code must
+ * use `canonicalInputSchema` (project-level) and `productionInputSchema`
+ * (per-Track, medium-specific).
+ */
 export const draftInputSchema = z.object({
-  // content format; required so the dispatcher knows which production agent to call
   type: z.enum(['blog', 'video', 'shorts', 'podcast']),
-  // optional — dispatcher resolves these from prior stages if absent
   personaId: z.string().optional(),
   ideaId: z.string().optional(),
   researchSessionId: z.string().optional(),
@@ -176,6 +190,45 @@ export const draftInputSchema = z.object({
 export type DraftInput = z.infer<typeof draftInputSchema>;
 
 /**
+ * Canonical Stage input — project-scoped, shared across all Tracks.
+ * Absorbs the legacy DraftEngine "core phase": generates the
+ * canonical_core_json (thesis, audience, key points) that downstream
+ * Tracks consume as their shared foundation.
+ */
+export const canonicalInputSchema = z.object({
+  personaId: z.string().optional(),
+  ideaId: z.string().optional(),
+  researchSessionId: z.string().optional(),
+  modelTier: z.string().optional(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
+});
+export type CanonicalInput = z.infer<typeof canonicalInputSchema>;
+
+/**
+ * Track medium — the distribution surface a Track produces for.
+ * Matches the `tracks.medium` column and the `productionInputSchema.type`
+ * field. The publish-target-resolver maps Medium → publish_targets.type.
+ */
+export const MEDIA = ['blog', 'video', 'shorts', 'podcast'] as const;
+export type Medium = (typeof MEDIA)[number];
+
+/**
+ * Production Stage input — Track-scoped, medium-specific. Absorbs the
+ * legacy DraftEngine "produce phase": renders the canonical core into a
+ * concrete piece (blog/video/shorts/podcast).
+ */
+export const productionInputSchema = z.object({
+  type: z.enum(MEDIA),
+  canonicalCoreId: z.string().optional(),
+  productionParams: z.record(z.string(), z.unknown()).optional(),
+  modelTier: z.string().optional(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
+});
+export type ProductionInput = z.infer<typeof productionInputSchema>;
+
+/**
  * STAGE_INPUT_SCHEMAS maps every Stage to its Zod schema.
  * Stages not yet migrated map to `z.never()`; the orchestrator detects this
  * and rejects with STAGE_NOT_MIGRATED.
@@ -183,11 +236,21 @@ export type DraftInput = z.infer<typeof draftInputSchema>;
 export const STAGE_INPUT_SCHEMAS: Record<Stage, z.ZodTypeAny> = {
   brainstorm: brainstormInputSchema,
   research: researchInputSchema,
-  draft: draftInputSchema,
+  canonical: canonicalInputSchema,
+  production: productionInputSchema,
   review: reviewInputSchema,
   assets: assetsInputSchema,
   preview: previewInputSchema,
   publish: publishInputSchema,
+};
+
+/**
+ * Legacy schema lookup including the deprecated `draft` Stage. Used only
+ * by `mirror-from-legacy` and the pre-split orchestrator branches.
+ */
+export const LEGACY_STAGE_INPUT_SCHEMAS: Record<LegacyStage, z.ZodTypeAny> = {
+  ...STAGE_INPUT_SCHEMAS,
+  draft: draftInputSchema,
 };
 
 export function isStageMigrated(stage: Stage): boolean {

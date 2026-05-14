@@ -80,7 +80,7 @@ vi.mock('@brighttale/shared/schemas/projectSetup', async () => {
       mode: z.enum(['step-by-step', 'supervised', 'overview']),
       autopilotConfig: z.any().nullable(),
       templateId: z.string().nullable(),
-      startStage: z.enum(['brainstorm', 'research', 'draft', 'review', 'assets', 'preview', 'publish']),
+      startStage: z.enum(['brainstorm', 'research', 'canonical', 'production', 'review', 'assets', 'preview', 'publish']),
     }).superRefine((v, ctx) => {
       if (v.mode !== 'step-by-step' && !v.autopilotConfig) {
         ctx.addIssue({
@@ -277,7 +277,7 @@ describe('POST /projects/:id/setup', () => {
 
   it('does not reset pipeline_state_json when stages are already completed', async () => {
     (derivedFromStageResults as any).mockReturnValue('research');
-    (nextStageAfter as any).mockReturnValue('draft');
+    (nextStageAfter as any).mockReturnValue('canonical');
 
     const res = await app.inject({
       method: 'POST',
@@ -287,7 +287,7 @@ describe('POST /projects/:id/setup', () => {
         mode: 'step-by-step',
         autopilotConfig: null,
         templateId: null,
-        startStage: 'draft',
+        startStage: 'canonical',
       },
     });
 

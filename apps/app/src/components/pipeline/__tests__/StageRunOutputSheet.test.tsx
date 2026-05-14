@@ -18,7 +18,7 @@ function makeRun(overrides: Partial<StageRun> = {}): StageRun {
   return {
     id: 'sr-1',
     projectId: 'p-1',
-    stage: 'draft',
+    stage: 'production',
     status: 'completed',
     awaitingReason: null,
     payloadRef: { kind: 'content_draft', id: 'd-1' },

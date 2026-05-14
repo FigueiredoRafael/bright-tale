@@ -16,6 +16,7 @@ interface MockChain {
   insert: ReturnType<typeof vi.fn>;
   eq: ReturnType<typeof vi.fn>;
   in: ReturnType<typeof vi.fn>;
+  is: ReturnType<typeof vi.fn>;
   order: ReturnType<typeof vi.fn>;
   limit: ReturnType<typeof vi.fn>;
   maybeSingle: ReturnType<typeof vi.fn>;
@@ -23,7 +24,7 @@ interface MockChain {
 }
 
 const mockChain: MockChain = {} as MockChain;
-['from', 'select', 'insert', 'update', 'eq', 'in', 'order', 'limit'].forEach((m) => {
+['from', 'select', 'insert', 'update', 'eq', 'in', 'is', 'order', 'limit'].forEach((m) => {
   (mockChain as unknown as Record<string, unknown>)[m] = vi.fn().mockReturnValue(mockChain);
 });
 mockChain.maybeSingle = vi.fn();
@@ -46,7 +47,7 @@ const CHANNEL_ID = '00000000-0000-0000-0000-0000000000bb';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  ['from', 'select', 'insert', 'update', 'eq', 'in', 'order', 'limit'].forEach((m) => {
+  ['from', 'select', 'insert', 'update', 'eq', 'in', 'is', 'order', 'limit'].forEach((m) => {
     (mockChain as unknown as Record<string, ReturnType<typeof vi.fn>>)[m] = vi.fn().mockReturnValue(mockChain);
   });
   // Reset terminal mocks so per-test `mockResolvedValueOnce` queues start empty.
@@ -395,7 +396,7 @@ describe('advanceAfter', () => {
 
     // First advanceAfter call: finished draft → next is review → existingNext null → SKIP → insert skipped review
     mockChain.maybeSingle
-      .mockResolvedValueOnce(mockFinishedRun('completed', 'draft'))
+      .mockResolvedValueOnce(mockFinishedRun('completed', 'production'))
       .mockResolvedValueOnce(projectWithSkipReview)
       .mockResolvedValueOnce({ data: null, error: null }) // existingNext for review
       // Recurse: load just-inserted skipped review row, re-check project,
@@ -484,7 +485,7 @@ describe('advanceAfter', () => {
     };
 
     mockChain.maybeSingle
-      .mockResolvedValueOnce(mockFinishedRun('completed', 'draft'))
+      .mockResolvedValueOnce(mockFinishedRun('completed', 'production'))
       .mockResolvedValueOnce(projectWithSkipReview)
       .mockResolvedValueOnce({ data: null, error: null }) // existingNext review
       // Inner recurse: load the just-inserted skipped review row
@@ -606,7 +607,8 @@ describe('resumeProject', () => {
         { stage: 'preview', status: 'completed', attempt_no: 1, created_at: '2026-05-11T15:00:00Z' },
         { stage: 'assets', status: 'completed', attempt_no: 1, created_at: '2026-05-11T14:00:00Z' },
         { stage: 'review', status: 'completed', attempt_no: 1, created_at: '2026-05-11T13:00:00Z' },
-        { stage: 'draft', status: 'completed', attempt_no: 1, created_at: '2026-05-11T12:00:00Z' },
+        { stage: 'production', status: 'completed', attempt_no: 1, created_at: '2026-05-11T12:30:00Z' },
+        { stage: 'canonical', status: 'completed', attempt_no: 1, created_at: '2026-05-11T12:00:00Z' },
         { stage: 'research', status: 'completed', attempt_no: 1, created_at: '2026-05-11T11:00:00Z' },
         { stage: 'brainstorm', status: 'completed', attempt_no: 1, created_at: '2026-05-11T10:00:00Z' },
       ],
@@ -637,5 +639,425 @@ describe('resumeProject', () => {
       .map((c) => c[0])
       .find((e) => e.name === 'pipeline/stage.requested');
     expect(requested).toBeUndefined();
+  });
+});
+
+// ─── advanceAfter — per-Track pause + resolved config (T2.4) ────────────────
+
+describe('advanceAfter — per-Track pause + resolved config (T2.4)', () => {
+  const TRACK_ID = '00000000-0000-0000-0000-0000000000c1';
+
+  function mockFinishedPerTrackRun(stage: string) {
+    return {
+      data: {
+        id: 'sr-prod-1',
+        project_id: PROJECT_ID,
+        stage,
+        status: 'completed',
+        track_id: TRACK_ID,
+        publish_target_id: null,
+      },
+      error: null,
+    };
+  }
+
+  function mockProjectWithConfig(autopilotConfig: unknown) {
+    return {
+      data: {
+        id: PROJECT_ID,
+        mode: 'autopilot',
+        paused: false,
+        autopilot_config_json: autopilotConfig,
+      },
+      error: null,
+    };
+  }
+
+  it('skips dispatch when the finished run\'s Track is paused', async () => {
+    mockChain.maybeSingle
+      .mockResolvedValueOnce(mockFinishedPerTrackRun('production'))
+      .mockResolvedValueOnce(mockProjectWithConfig(null))
+      // Track lookup → paused
+      .mockResolvedValueOnce({ data: { id: TRACK_ID, paused: true, autopilot_config_json: null }, error: null });
+
+    await advanceAfter('sr-prod-1');
+
+    expect(mockChain.insert).not.toHaveBeenCalled();
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+
+  it('carries track_id forward and writes the resolved (project+track) slot to input_json', async () => {
+    // Project says maxIterations 3; Track override says 1.
+    const projectAutopilot = { review: { maxIterations: 3, autoApproveThreshold: 90 } };
+    const trackAutopilot = { review: { maxIterations: 1 } };
+
+    mockChain.maybeSingle
+      .mockResolvedValueOnce(mockFinishedPerTrackRun('production'))
+      .mockResolvedValueOnce(mockProjectWithConfig(projectAutopilot))
+      .mockResolvedValueOnce({
+        data: { id: TRACK_ID, paused: false, autopilot_config_json: trackAutopilot },
+        error: null,
+      })
+      // existingNext review lookup → no prior review for this Track
+      .mockResolvedValueOnce({ data: null, error: null });
+
+    mockChain.single.mockResolvedValueOnce({
+      data: {
+        id: 'sr-rev-1',
+        project_id: PROJECT_ID,
+        stage: 'review',
+        status: 'queued',
+        attempt_no: 1,
+        track_id: TRACK_ID,
+      },
+      error: null,
+    });
+
+    await advanceAfter('sr-prod-1');
+
+    expect(mockChain.insert).toHaveBeenCalledTimes(1);
+    const insertedRow = (mockChain.insert as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(insertedRow.stage).toBe('review');
+    expect(insertedRow.track_id).toBe(TRACK_ID);
+    expect(insertedRow.status).toBe('queued');
+    // Resolved slot: track maxIterations wins, project autoApproveThreshold survives.
+    expect(insertedRow.input_json).toMatchObject({
+      maxIterations: 1,
+      autoApproveThreshold: 90,
+    });
+  });
+
+  it('honors per-Track review.maxIterations=0 override by writing a skipped review and cascading to assets', async () => {
+    // Project default: review runs (maxIterations=3). Track override: skip review.
+    const projectAutopilot = { review: { maxIterations: 3 } };
+    const trackAutopilot = { review: { maxIterations: 0 } };
+
+    mockChain.maybeSingle
+      .mockResolvedValueOnce(mockFinishedPerTrackRun('production'))
+      .mockResolvedValueOnce(mockProjectWithConfig(projectAutopilot))
+      .mockResolvedValueOnce({
+        data: { id: TRACK_ID, paused: false, autopilot_config_json: trackAutopilot },
+        error: null,
+      })
+      // existingNext review → none, then planner inserts skipped, then recurse.
+      .mockResolvedValueOnce({ data: null, error: null })
+      // Recurse: load the just-inserted skipped review row (now finished)
+      .mockResolvedValueOnce({
+        data: {
+          id: 'sr-rev-skip',
+          project_id: PROJECT_ID,
+          stage: 'review',
+          status: 'skipped',
+          track_id: TRACK_ID,
+          publish_target_id: null,
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce(mockProjectWithConfig(projectAutopilot))
+      // Recursion enters the review branch and reads outcome_json (skipped → no verdict)
+      .mockResolvedValueOnce({ data: { outcome_json: null }, error: null })
+      // Recursed Track lookup
+      .mockResolvedValueOnce({
+        data: { id: TRACK_ID, paused: false, autopilot_config_json: trackAutopilot },
+        error: null,
+      })
+      // existingNext assets → none
+      .mockResolvedValueOnce({ data: null, error: null });
+
+    mockChain.single
+      .mockResolvedValueOnce({
+        data: {
+          id: 'sr-rev-skip',
+          project_id: PROJECT_ID,
+          stage: 'review',
+          status: 'skipped',
+          attempt_no: 1,
+          track_id: TRACK_ID,
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: {
+          id: 'sr-ass-1',
+          project_id: PROJECT_ID,
+          stage: 'assets',
+          status: 'queued',
+          attempt_no: 1,
+          track_id: TRACK_ID,
+        },
+        error: null,
+      });
+
+    await advanceAfter('sr-prod-1');
+
+    expect(mockChain.insert).toHaveBeenCalledTimes(2);
+    const inserts = (mockChain.insert as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(inserts[0].stage).toBe('review');
+    expect(inserts[0].status).toBe('skipped');
+    expect(inserts[0].track_id).toBe(TRACK_ID);
+    expect(inserts[1].stage).toBe('assets');
+    expect(inserts[1].status).toBe('queued');
+    expect(inserts[1].track_id).toBe(TRACK_ID);
+
+    // Only the queued assets emits a dispatch event — the skipped review does not.
+    const requested = (inngestSendMock as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0])
+      .filter((e) => e.name === 'pipeline/stage.requested');
+    expect(requested).toHaveLength(1);
+    expect(requested[0].data.stage).toBe('assets');
+  });
+
+  it('on review revision_required, the re-run draft carries the same track_id (paused track aborts the revision)', async () => {
+    // Review on Track T1 completes with revision_required → re-run draft for T1.
+    // First test: not paused — should insert a queued draft with track_id=T1.
+    mockChain.maybeSingle
+      .mockResolvedValueOnce({
+        data: {
+          id: 'sr-rev-final',
+          project_id: PROJECT_ID,
+          stage: 'review',
+          status: 'completed',
+          track_id: TRACK_ID,
+          publish_target_id: null,
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce(mockProjectWithConfig(null))
+      // outcome_json read for revision verdict
+      .mockResolvedValueOnce({
+        data: { outcome_json: { verdict: 'revision_required', draftType: 'blog', feedbackJson: { issues: [] } } },
+        error: null,
+      })
+      // Track lookup for pause check
+      .mockResolvedValueOnce({ data: { id: TRACK_ID, paused: false }, error: null })
+      // latestAttemptNo lookup for draft stage
+      .mockResolvedValueOnce({ data: { attempt_no: 1 }, error: null });
+
+    mockChain.single.mockResolvedValueOnce({
+      data: {
+        id: 'sr-draft-2',
+        project_id: PROJECT_ID,
+        stage: 'draft',
+        status: 'queued',
+        attempt_no: 2,
+        track_id: TRACK_ID,
+      },
+      error: null,
+    });
+
+    await advanceAfter('sr-rev-final');
+
+    expect(mockChain.insert).toHaveBeenCalledTimes(1);
+    const inserted = (mockChain.insert as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(inserted.stage).toBe('draft');
+    expect(inserted.track_id).toBe(TRACK_ID);
+    expect(inserted.input_json).toMatchObject({ type: 'blog' });
+  });
+
+  it('on review revision_required for a paused Track, no draft re-run is inserted', async () => {
+    mockChain.maybeSingle
+      .mockResolvedValueOnce({
+        data: {
+          id: 'sr-rev-final',
+          project_id: PROJECT_ID,
+          stage: 'review',
+          status: 'completed',
+          track_id: TRACK_ID,
+          publish_target_id: null,
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce(mockProjectWithConfig(null))
+      .mockResolvedValueOnce({
+        data: { outcome_json: { verdict: 'revision_required', draftType: 'blog', feedbackJson: null } },
+        error: null,
+      })
+      // Track is paused
+      .mockResolvedValueOnce({ data: { id: TRACK_ID, paused: true }, error: null });
+
+    await advanceAfter('sr-rev-final');
+
+    expect(mockChain.insert).not.toHaveBeenCalled();
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+});
+
+// ─── advanceAfter — canonical fan-out (T2.3) ─────────────────────────────────
+
+describe('advanceAfter — canonical fan-out (T2.3)', () => {
+  const T1 = 'track-1-blog';
+  const T2 = 'track-2-video';
+  const T3 = 'track-3-podcast';
+  const CANON_ID = 'sr-canon';
+
+  function mockFinishedCanonical() {
+    return {
+      data: { id: CANON_ID, project_id: PROJECT_ID, stage: 'canonical', status: 'completed' },
+      error: null,
+    };
+  }
+  function mockAutopilotProject() {
+    return {
+      data: { id: PROJECT_ID, mode: 'autopilot', paused: false, autopilot_config_json: null },
+      error: null,
+    };
+  }
+  function trackRow(id: string, medium: string, status = 'active', paused = false) {
+    return {
+      id,
+      project_id: PROJECT_ID,
+      medium,
+      status,
+      paused,
+      autopilot_config_json: null,
+    };
+  }
+  function canonicalPriorRun() {
+    return {
+      id: CANON_ID,
+      stage: 'canonical',
+      status: 'completed',
+      track_id: null,
+      publish_target_id: null,
+      attempt_no: 1,
+      outcome_json: null,
+    };
+  }
+  function insertedProductionRow(id: string, trackId: string) {
+    return {
+      data: {
+        id,
+        project_id: PROJECT_ID,
+        stage: 'production',
+        status: 'queued',
+        attempt_no: 1,
+        track_id: trackId,
+      },
+      error: null,
+    };
+  }
+
+  it('fans out to 3 parallel production stage_runs when 3 tracks are active', async () => {
+    mockChain.maybeSingle
+      .mockResolvedValueOnce(mockFinishedCanonical())
+      .mockResolvedValueOnce(mockAutopilotProject());
+
+    (mockChain.order as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        data: [trackRow(T1, 'blog'), trackRow(T2, 'video'), trackRow(T3, 'podcast')],
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: [canonicalPriorRun()], error: null });
+
+    mockChain.single
+      .mockResolvedValueOnce(insertedProductionRow('sr-p1', T1))
+      .mockResolvedValueOnce(insertedProductionRow('sr-p2', T2))
+      .mockResolvedValueOnce(insertedProductionRow('sr-p3', T3));
+
+    await advanceAfter(CANON_ID);
+
+    expect(mockChain.insert).toHaveBeenCalledTimes(3);
+    const inserts = (mockChain.insert as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(inserts.every((r) => r.stage === 'production')).toBe(true);
+    expect(inserts.every((r) => r.status === 'queued')).toBe(true);
+    expect(inserts.map((r) => r.track_id).sort()).toEqual([T1, T2, T3].sort());
+
+    const requested = (inngestSendMock as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0])
+      .filter((e) => e.name === 'pipeline/stage.requested');
+    expect(requested).toHaveLength(3);
+    expect(requested.every((e) => e.data.stage === 'production')).toBe(true);
+    expect(requested.map((e) => e.data.stageRunId).sort()).toEqual(['sr-p1', 'sr-p2', 'sr-p3'].sort());
+  });
+
+  it('excludes aborted tracks from fan-out (3 tracks, 1 aborted → 2 runs)', async () => {
+    mockChain.maybeSingle
+      .mockResolvedValueOnce(mockFinishedCanonical())
+      .mockResolvedValueOnce(mockAutopilotProject());
+
+    (mockChain.order as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        data: [trackRow(T1, 'blog'), trackRow(T2, 'video', 'aborted'), trackRow(T3, 'podcast')],
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: [canonicalPriorRun()], error: null });
+
+    mockChain.single
+      .mockResolvedValueOnce(insertedProductionRow('sr-p1', T1))
+      .mockResolvedValueOnce(insertedProductionRow('sr-p3', T3));
+
+    await advanceAfter(CANON_ID);
+
+    expect(mockChain.insert).toHaveBeenCalledTimes(2);
+    const inserts = (mockChain.insert as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(inserts.map((r) => r.track_id).sort()).toEqual([T1, T3].sort());
+  });
+
+  it('excludes paused tracks from fan-out (3 tracks, 1 paused → 2 runs)', async () => {
+    mockChain.maybeSingle
+      .mockResolvedValueOnce(mockFinishedCanonical())
+      .mockResolvedValueOnce(mockAutopilotProject());
+
+    (mockChain.order as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        data: [trackRow(T1, 'blog'), trackRow(T2, 'video', 'active', true), trackRow(T3, 'podcast')],
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: [canonicalPriorRun()], error: null });
+
+    mockChain.single
+      .mockResolvedValueOnce(insertedProductionRow('sr-p1', T1))
+      .mockResolvedValueOnce(insertedProductionRow('sr-p3', T3));
+
+    await advanceAfter(CANON_ID);
+
+    expect(mockChain.insert).toHaveBeenCalledTimes(2);
+    const inserts = (mockChain.insert as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(inserts.map((r) => r.track_id).sort()).toEqual([T1, T3].sort());
+  });
+
+  it('no-ops when canonical re-delivers and all tracks already have production runs', async () => {
+    // Prior runs already contain production rows for T1+T2 — planner suppresses.
+    mockChain.maybeSingle
+      .mockResolvedValueOnce(mockFinishedCanonical())
+      .mockResolvedValueOnce(mockAutopilotProject());
+
+    (mockChain.order as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        data: [trackRow(T1, 'blog'), trackRow(T2, 'video')],
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: [
+          canonicalPriorRun(),
+          {
+            id: 'sr-p1-existing',
+            stage: 'production',
+            status: 'queued',
+            track_id: T1,
+            publish_target_id: null,
+            attempt_no: 1,
+            outcome_json: null,
+          },
+          {
+            id: 'sr-p2-existing',
+            stage: 'production',
+            status: 'running',
+            track_id: T2,
+            publish_target_id: null,
+            attempt_no: 1,
+            outcome_json: null,
+          },
+        ],
+        error: null,
+      });
+
+    await advanceAfter(CANON_ID);
+
+    expect(mockChain.insert).not.toHaveBeenCalled();
+    const requested = (inngestSendMock as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0])
+      .filter((e) => e.name === 'pipeline/stage.requested');
+    expect(requested).toHaveLength(0);
   });
 });

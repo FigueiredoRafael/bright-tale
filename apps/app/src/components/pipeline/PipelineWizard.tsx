@@ -905,12 +905,20 @@ export function PipelineWizard() {
         return
       }
 
+      // Legacy actor machine only knows the pre-split 7-stage tuple. Map
+      // the new canonical+production Stages back onto `draft` so the legacy
+      // state machine can locate its corresponding state.
+      const legacyStartStage =
+        parsed.data.startStage === 'canonical' || parsed.data.startStage === 'production'
+          ? 'draft'
+          : parsed.data.startStage
+
       actor.send({
         type: 'SETUP_COMPLETE',
         mode: parsed.data.mode,
         autopilotConfig: parsed.data.autopilotConfig,
         templateId: parsed.data.templateId,
-        startStage: parsed.data.startStage,
+        startStage: legacyStartStage,
       })
 
       router.replace(`/projects/${projectId}?v=2&stage=${parsed.data.startStage}`)

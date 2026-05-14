@@ -125,7 +125,8 @@ interface StageViewProps {
 const STAGE_LABELS: Record<Stage, string> = {
   brainstorm: 'Brainstorm',
   research: 'Research',
-  draft: 'Draft',
+  canonical: 'Canonical',
+  production: 'Production',
   review: 'Review',
   assets: 'Assets',
   preview: 'Preview',
@@ -149,10 +150,15 @@ const STAGE_META: Record<Stage, StageMeta> = {
     action: 'Run Research',
     description: 'Gather sources, statistics, and expert quotes about the selected idea.',
   },
-  draft: {
+  canonical: {
     Icon: FileText,
-    action: 'Produce Draft',
-    description: 'Write a blog post, video script, podcast, or short from the research + idea.',
+    action: 'Generate Canonical Core',
+    description: 'Distil the idea + research into the canonical core (thesis, audience, key points) shared by every Track.',
+  },
+  production: {
+    Icon: FileText,
+    action: 'Produce Content',
+    description: 'Render the canonical core into a concrete deliverable (blog/video/short/podcast) for this Track.',
   },
   review: {
     Icon: FileCheck2,
@@ -198,7 +204,9 @@ function defaultInputForStage(stage: Stage): Record<string, unknown> {
   switch (stage) {
     case 'research':
       return { level: 'medium' };
-    case 'draft':
+    case 'canonical':
+      return {};
+    case 'production':
       return { type: 'blog' };
     case 'assets':
       return { mode: 'briefs_only' };

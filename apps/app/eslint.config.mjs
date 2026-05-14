@@ -1,6 +1,14 @@
 import nextConfig from 'eslint-config-next';
 
 export default [
+  {
+    ignores: [
+      'playwright-report/**',
+      'test-results/**',
+      '.next/**',
+      'node_modules/**',
+    ],
+  },
   ...nextConfig,
   {
     rules: {
