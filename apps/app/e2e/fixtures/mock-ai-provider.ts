@@ -7,8 +7,8 @@
  * The interception works via an environment flag (MOCK_AI_PROVIDER=1) that
  * is read in the API server process. The fixture communicates with the API
  * via HTTP to seed the in-process response queue
- * (POST /api/_test/mock-ai/queue) and to reset it between tests
- * (POST /api/_test/mock-ai/reset).
+ * (POST /_test/mock-ai/queue) and to reset it between tests
+ * (POST /_test/mock-ai/reset).
  *
  * The API server must be running with MOCK_AI_PROVIDER=1 for this fixture
  * to work. Set it in the process environment before starting the API dev
@@ -116,7 +116,7 @@ const API_URL = process.env.PLAYWRIGHT_API_URL ?? 'http://localhost:3001';
 
 function buildController(request: APIRequestContext): MockAIController {
   async function seedEntries(entries: QueueEntry[]): Promise<void> {
-    const res = await request.post(`${API_URL}/api/_test/mock-ai/queue`, {
+    const res = await request.post(`${API_URL}/_test/mock-ai/queue`, {
       data: { entries },
       headers: { 'Content-Type': 'application/json' },
     });
@@ -177,8 +177,9 @@ function buildController(request: APIRequestContext): MockAIController {
     expect: (stage: MockStage) => stageExpectation(stage),
 
     async reset(): Promise<void> {
-      const res = await request.post(`${API_URL}/api/_test/mock-ai/reset`, {
+      const res = await request.post(`${API_URL}/_test/mock-ai/reset`, {
         headers: { 'Content-Type': 'application/json' },
+        data: {},
       });
       if (!res.ok()) {
         const body = await res.text();
@@ -189,7 +190,7 @@ function buildController(request: APIRequestContext): MockAIController {
     },
 
     async state(): Promise<Record<string, { pending: number; totalCalls: number }>> {
-      const res = await request.get(`${API_URL}/api/_test/mock-ai/state`);
+      const res = await request.get(`${API_URL}/_test/mock-ai/state`);
       if (!res.ok()) {
         return {};
       }
