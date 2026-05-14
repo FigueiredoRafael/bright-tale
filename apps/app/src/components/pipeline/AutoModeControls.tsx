@@ -8,8 +8,15 @@ import { Pause, Play, Loader2 } from 'lucide-react';
 import type { PipelineState, PipelineStage } from '@/components/engines/types';
 
 const STAGE_LABELS: Record<PipelineStage, string> = {
-  brainstorm: 'Idea', research: 'Research', draft: 'Draft',
-  review: 'Review', assets: 'Assets', preview: 'Preview', publish: 'Publish',
+  brainstorm: 'Idea',
+  research: 'Research',
+  canonical: 'Canonical',
+  production: 'Production',
+  draft: 'Draft',  // legacy
+  review: 'Review',
+  assets: 'Assets',
+  preview: 'Preview',
+  publish: 'Publish',
 };
 
 interface AutoModeControlsProps {

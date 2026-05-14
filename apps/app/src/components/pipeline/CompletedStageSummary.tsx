@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-  Lightbulb, Search, FileText, CheckCircle, Image, Eye, Globe,
+  Lightbulb, Search, FileText, Layers, CheckCircle, Image, Eye, Globe,
   ChevronDown, ChevronUp, RotateCcw,
 } from 'lucide-react';
 import type { PipelineStage, PipelineState } from '@/components/engines/types';
@@ -14,7 +14,9 @@ import { deriveTier } from '@brighttale/shared';
 const STAGE_META: Record<PipelineStage, { icon: typeof Lightbulb; label: string; color: string }> = {
   brainstorm: { icon: Lightbulb, label: 'Idea', color: 'text-yellow-500' },
   research: { icon: Search, label: 'Research', color: 'text-blue-500' },
-  draft: { icon: FileText, label: 'Draft', color: 'text-purple-500' },
+  canonical: { icon: Layers, label: 'Canonical', color: 'text-violet-500' },
+  production: { icon: FileText, label: 'Production', color: 'text-purple-500' },
+  draft: { icon: FileText, label: 'Draft', color: 'text-purple-500' },  // legacy
   review: { icon: CheckCircle, label: 'Review', color: 'text-green-500' },
   assets: { icon: Image, label: 'Assets', color: 'text-pink-500' },
   preview: { icon: Eye, label: 'Preview', color: 'text-indigo-500' },
@@ -59,7 +61,16 @@ export function CompletedStageSummary({ stage, stageResults, currentStage, onNav
         const r = stageResults.research;
         return r ? `${r.approvedCardsCount} cards approved · ${r.researchLevel} depth` : '';
       }
+      case 'canonical': {
+        const r = stageResults.canonical;
+        return r ? r.draftTitle : '';
+      }
+      case 'production': {
+        const r = stageResults.production;
+        return r ? r.draftTitle : '';
+      }
       case 'draft': {
+        // legacy — pre-backfill projects
         const r = stageResults.draft;
         return r ? r.draftTitle : '';
       }

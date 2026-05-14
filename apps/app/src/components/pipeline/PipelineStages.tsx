@@ -3,13 +3,15 @@
 import { useRouter } from '@/i18n/navigation';
 import { Badge } from '@/components/ui/badge';
 import {
-  Lightbulb, Search, FileText, CheckCircle, Image, Eye, Globe, Check,
+  Lightbulb, Search, Layers, FileText, CheckCircle, Image, Eye, Globe, Check,
 } from 'lucide-react';
 
 export type PipelineStep =
   | 'brainstorm'
   | 'research'
-  | 'draft'
+  | 'canonical'
+  | 'production'
+  | 'draft'        // legacy — pre-backfill projects
   | 'review'
   | 'assets'
   | 'preview'
@@ -18,7 +20,8 @@ export type PipelineStep =
 const STEPS: { key: PipelineStep; label: string; icon: typeof Lightbulb }[] = [
   { key: 'brainstorm', label: 'Idea', icon: Lightbulb },
   { key: 'research', label: 'Research', icon: Search },
-  { key: 'draft', label: 'Draft', icon: FileText },
+  { key: 'canonical', label: 'Canonical', icon: Layers },
+  { key: 'production', label: 'Production', icon: FileText },
   { key: 'review', label: 'Review', icon: CheckCircle },
   { key: 'assets', label: 'Assets', icon: Image },
   { key: 'preview', label: 'Preview', icon: Eye },
@@ -55,7 +58,16 @@ function buildStepUrl(
       return researchSessionId
         ? `/channels/${channelId}/research/${researchSessionId}`
         : `/channels/${channelId}/research/new`;
+    case 'canonical':
+      return draftId
+        ? `/channels/${channelId}/drafts/${draftId}?tab=canonical`
+        : `/channels/${channelId}/drafts/new`;
+    case 'production':
+      return draftId
+        ? `/channels/${channelId}/drafts/${draftId}?tab=production`
+        : `/channels/${channelId}/drafts/new`;
     case 'draft':
+      // legacy — pre-backfill projects
       return draftId
         ? `/channels/${channelId}/drafts/${draftId}`
         : `/channels/${channelId}/drafts/new`;

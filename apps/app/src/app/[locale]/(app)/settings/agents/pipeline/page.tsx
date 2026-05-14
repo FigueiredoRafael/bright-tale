@@ -146,7 +146,7 @@ export default function PipelineSettingsPage() {
           <CardDescription>Used when the user has not overridden explicitly.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {(["brainstorm", "research", "draft", "review"] as const).map((stage) => (
+          {(["brainstorm", "research", "canonical", "production", "review"] as const).map((stage) => (
             <div key={stage} className="flex items-center justify-between">
               <Label className="capitalize">{stage}</Label>
               <Select

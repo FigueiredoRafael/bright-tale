@@ -1,14 +1,16 @@
 export type PipelineStage =
   | 'brainstorm'
   | 'research'
-  | 'draft'
+  | 'canonical'
+  | 'production'
+  | 'draft'      // legacy — kept until data backfill removes all 'draft' stage_runs
   | 'review'
   | 'assets'
   | 'preview'
   | 'publish';
 
 export const PIPELINE_STAGES: PipelineStage[] = [
-  'brainstorm', 'research', 'draft', 'review', 'assets', 'preview', 'publish',
+  'brainstorm', 'research', 'canonical', 'production', 'review', 'assets', 'preview', 'publish',
 ];
 
 export interface PipelineContext {
@@ -140,7 +142,9 @@ export const DEFAULT_PIPELINE_SETTINGS: PipelineSettings = {
   defaultProviders: {
     brainstorm: 'gemini',
     research: 'gemini',
-    draft: 'gemini',
+    canonical: 'gemini',
+    production: 'gemini',
+    draft: 'gemini',  // legacy
     review: 'gemini',
   },
 };
@@ -169,7 +173,9 @@ export interface PipelineState {
   stageResults: {
     brainstorm?: BrainstormResult & { completedAt: string };
     research?: ResearchResult & { completedAt: string };
-    draft?: DraftResult & { completedAt: string };
+    canonical?: DraftResult & { completedAt: string };
+    production?: DraftResult & { completedAt: string };
+    draft?: DraftResult & { completedAt: string };  // legacy — pre-backfill projects
     review?: ReviewResult & { completedAt: string };
     assets?: AssetsResult & { completedAt: string };
     preview?: PreviewResult & { completedAt: string };
