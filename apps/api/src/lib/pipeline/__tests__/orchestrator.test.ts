@@ -640,3 +640,183 @@ describe('resumeProject', () => {
     expect(requested).toBeUndefined();
   });
 });
+
+// ─── advanceAfter — canonical fan-out (T2.3) ─────────────────────────────────
+
+describe('advanceAfter — canonical fan-out (T2.3)', () => {
+  const T1 = 'track-1-blog';
+  const T2 = 'track-2-video';
+  const T3 = 'track-3-podcast';
+  const CANON_ID = 'sr-canon';
+
+  function mockFinishedCanonical() {
+    return {
+      data: { id: CANON_ID, project_id: PROJECT_ID, stage: 'canonical', status: 'completed' },
+      error: null,
+    };
+  }
+  function mockAutopilotProject() {
+    return {
+      data: { id: PROJECT_ID, mode: 'autopilot', paused: false, autopilot_config_json: null },
+      error: null,
+    };
+  }
+  function trackRow(id: string, medium: string, status = 'active', paused = false) {
+    return {
+      id,
+      project_id: PROJECT_ID,
+      medium,
+      status,
+      paused,
+      autopilot_config_json: null,
+    };
+  }
+  function canonicalPriorRun() {
+    return {
+      id: CANON_ID,
+      stage: 'canonical',
+      status: 'completed',
+      track_id: null,
+      publish_target_id: null,
+      attempt_no: 1,
+      outcome_json: null,
+    };
+  }
+  function insertedProductionRow(id: string, trackId: string) {
+    return {
+      data: {
+        id,
+        project_id: PROJECT_ID,
+        stage: 'production',
+        status: 'queued',
+        attempt_no: 1,
+        track_id: trackId,
+      },
+      error: null,
+    };
+  }
+
+  it('fans out to 3 parallel production stage_runs when 3 tracks are active', async () => {
+    mockChain.maybeSingle
+      .mockResolvedValueOnce(mockFinishedCanonical())
+      .mockResolvedValueOnce(mockAutopilotProject());
+
+    (mockChain.order as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        data: [trackRow(T1, 'blog'), trackRow(T2, 'video'), trackRow(T3, 'podcast')],
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: [canonicalPriorRun()], error: null });
+
+    mockChain.single
+      .mockResolvedValueOnce(insertedProductionRow('sr-p1', T1))
+      .mockResolvedValueOnce(insertedProductionRow('sr-p2', T2))
+      .mockResolvedValueOnce(insertedProductionRow('sr-p3', T3));
+
+    await advanceAfter(CANON_ID);
+
+    expect(mockChain.insert).toHaveBeenCalledTimes(3);
+    const inserts = (mockChain.insert as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(inserts.every((r) => r.stage === 'production')).toBe(true);
+    expect(inserts.every((r) => r.status === 'queued')).toBe(true);
+    expect(inserts.map((r) => r.track_id).sort()).toEqual([T1, T2, T3].sort());
+
+    const requested = (inngestSendMock as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0])
+      .filter((e) => e.name === 'pipeline/stage.requested');
+    expect(requested).toHaveLength(3);
+    expect(requested.every((e) => e.data.stage === 'production')).toBe(true);
+    expect(requested.map((e) => e.data.stageRunId).sort()).toEqual(['sr-p1', 'sr-p2', 'sr-p3'].sort());
+  });
+
+  it('excludes aborted tracks from fan-out (3 tracks, 1 aborted → 2 runs)', async () => {
+    mockChain.maybeSingle
+      .mockResolvedValueOnce(mockFinishedCanonical())
+      .mockResolvedValueOnce(mockAutopilotProject());
+
+    (mockChain.order as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        data: [trackRow(T1, 'blog'), trackRow(T2, 'video', 'aborted'), trackRow(T3, 'podcast')],
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: [canonicalPriorRun()], error: null });
+
+    mockChain.single
+      .mockResolvedValueOnce(insertedProductionRow('sr-p1', T1))
+      .mockResolvedValueOnce(insertedProductionRow('sr-p3', T3));
+
+    await advanceAfter(CANON_ID);
+
+    expect(mockChain.insert).toHaveBeenCalledTimes(2);
+    const inserts = (mockChain.insert as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(inserts.map((r) => r.track_id).sort()).toEqual([T1, T3].sort());
+  });
+
+  it('excludes paused tracks from fan-out (3 tracks, 1 paused → 2 runs)', async () => {
+    mockChain.maybeSingle
+      .mockResolvedValueOnce(mockFinishedCanonical())
+      .mockResolvedValueOnce(mockAutopilotProject());
+
+    (mockChain.order as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        data: [trackRow(T1, 'blog'), trackRow(T2, 'video', 'active', true), trackRow(T3, 'podcast')],
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: [canonicalPriorRun()], error: null });
+
+    mockChain.single
+      .mockResolvedValueOnce(insertedProductionRow('sr-p1', T1))
+      .mockResolvedValueOnce(insertedProductionRow('sr-p3', T3));
+
+    await advanceAfter(CANON_ID);
+
+    expect(mockChain.insert).toHaveBeenCalledTimes(2);
+    const inserts = (mockChain.insert as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(inserts.map((r) => r.track_id).sort()).toEqual([T1, T3].sort());
+  });
+
+  it('no-ops when canonical re-delivers and all tracks already have production runs', async () => {
+    // Prior runs already contain production rows for T1+T2 — planner suppresses.
+    mockChain.maybeSingle
+      .mockResolvedValueOnce(mockFinishedCanonical())
+      .mockResolvedValueOnce(mockAutopilotProject());
+
+    (mockChain.order as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        data: [trackRow(T1, 'blog'), trackRow(T2, 'video')],
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: [
+          canonicalPriorRun(),
+          {
+            id: 'sr-p1-existing',
+            stage: 'production',
+            status: 'queued',
+            track_id: T1,
+            publish_target_id: null,
+            attempt_no: 1,
+            outcome_json: null,
+          },
+          {
+            id: 'sr-p2-existing',
+            stage: 'production',
+            status: 'running',
+            track_id: T2,
+            publish_target_id: null,
+            attempt_no: 1,
+            outcome_json: null,
+          },
+        ],
+        error: null,
+      });
+
+    await advanceAfter(CANON_ID);
+
+    expect(mockChain.insert).not.toHaveBeenCalled();
+    const requested = (inngestSendMock as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0])
+      .filter((e) => e.name === 'pipeline/stage.requested');
+    expect(requested).toHaveLength(0);
+  });
+});

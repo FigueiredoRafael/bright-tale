@@ -21,6 +21,16 @@ import {
 import { createServiceClient } from '../supabase/index.js';
 import { assertProjectOwner } from '../projects/ownership.js';
 import { inngest } from '../../jobs/client.js';
+import {
+  planNext,
+  type PlanInput,
+  type RunLike,
+  type Track as PlannerTrack,
+  type StageRunSpec,
+} from './fan-out-planner.js';
+import { insertRun, StageRunUniquenessError } from './stage-run-writer.js';
+import { resolveAutopilotConfig } from './autopilot-config-resolver.js';
+import type { AutopilotConfig } from '@brighttale/shared/schemas/autopilotConfig';
 
 // The `stage_runs` table and the `projects.mode`/`paused`/`autopilot_config`
 // columns are introduced by the migration shipping with this slice. Until
@@ -601,6 +611,17 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
     }
   }
 
+  // 5a. Multi-track fan-out (T2.3): when Canonical completes, enqueue one
+  // Production stage_run per active+non-paused Track in parallel. The
+  // fan-out-planner owns the "what next" decision; insertRun owns the
+  // DB write + idempotency. The legacy successorOf path below stays for
+  // single-track stages (brainstorm→research, research→canonical, plus the
+  // per-Track stages production→review→assets→preview→publish until T2.7).
+  if ((finished.stage as Stage) === 'canonical') {
+    await fanOutFromCanonical(sb, projectId, project.autopilot_config_json, finished.id as string);
+    return;
+  }
+
   // 5. Determine next Stage
   const next = successorOf(finished.stage as Stage);
   if (!next) return;
@@ -689,4 +710,136 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
       },
     });
   }
+}
+
+// ─── Multi-track fan-out helpers (T2.3) ──────────────────────────────────────
+
+interface TrackRow {
+  id: string;
+  project_id: string;
+  medium: string;
+  status: string;
+  paused: boolean;
+  autopilot_config_json: unknown;
+}
+
+interface StageRunRow {
+  id: string;
+  stage: string;
+  status: string;
+  track_id: string | null;
+  publish_target_id: string | null;
+  attempt_no: number;
+  outcome_json: unknown;
+}
+
+async function loadTracks(sb: Sb, projectId: string): Promise<PlannerTrack[]> {
+  const { data } = await sb
+    .from('tracks')
+    .select('id, project_id, medium, status, paused, autopilot_config_json')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: true });
+  return ((data ?? []) as TrackRow[]).map((r) => ({
+    id: r.id,
+    projectId: r.project_id,
+    medium: r.medium as PlannerTrack['medium'],
+    status: r.status as PlannerTrack['status'],
+    paused: r.paused,
+    autopilotConfigJson: r.autopilot_config_json,
+  }));
+}
+
+async function loadPriorRuns(sb: Sb, projectId: string): Promise<RunLike[]> {
+  const { data } = await sb
+    .from('stage_runs')
+    .select('id, stage, status, track_id, publish_target_id, attempt_no, outcome_json')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: true });
+  return ((data ?? []) as StageRunRow[]).map((r) => ({
+    id: r.id,
+    stage: r.stage as Stage,
+    status: r.status as RunLike['status'],
+    trackId: r.track_id,
+    publishTargetId: r.publish_target_id,
+    attemptNo: r.attempt_no,
+    outcomeJson: r.outcome_json,
+  }));
+}
+
+function buildProjectAutopilotConfig(json: unknown): AutopilotConfig | null {
+  if (!json || typeof json !== 'object') return null;
+  return json as AutopilotConfig;
+}
+
+/**
+ * Insert one fan-out spec via stage-run-writer. Translates the planner's
+ * spec into the writer's insertRun shape, enriches inputJson with the
+ * resolved (project+track) autopilot slot, and emits
+ * `pipeline/stage.requested` for queued specs. Uniqueness collisions are
+ * swallowed — they mean another concurrent writer claimed the same slot,
+ * which is exactly what the partial unique index guarantees.
+ */
+async function writeFanOutSpec(
+  sb: Sb,
+  projectId: string,
+  spec: StageRunSpec,
+  tracks: PlannerTrack[],
+  projectAutopilotSource: { autopilotConfigJson: unknown },
+): Promise<void> {
+  const track = spec.trackId ? tracks.find((t) => t.id === spec.trackId) ?? null : null;
+  const trackSource = track ? { autopilotConfigJson: track.autopilotConfigJson } : null;
+  const resolvedSlot = resolveAutopilotConfig(projectAutopilotSource, trackSource, spec.stage);
+  const inputJson = resolvedSlot ?? undefined;
+  try {
+    const inserted = await insertRun(sb, {
+      projectId,
+      stage: spec.stage,
+      attemptNo: 1,
+      status: spec.status,
+      inputJson: spec.inputJson ?? inputJson,
+      trackId: spec.trackId,
+      publishTargetId: spec.publishTargetId,
+    });
+    if (spec.status === 'queued' && (inserted as { id?: string })?.id) {
+      await inngest.send({
+        name: 'pipeline/stage.requested',
+        data: {
+          stageRunId: (inserted as { id: string }).id,
+          stage: spec.stage,
+          projectId,
+        },
+      });
+    }
+  } catch (err) {
+    if (err instanceof StageRunUniquenessError) return;
+    throw err;
+  }
+}
+
+async function fanOutFromCanonical(
+  sb: Sb,
+  projectId: string,
+  projectAutopilotJson: unknown,
+  finishedRunId: string,
+): Promise<void> {
+  const [tracks, priorRuns] = await Promise.all([
+    loadTracks(sb, projectId),
+    loadPriorRuns(sb, projectId),
+  ]);
+  const completedRun = priorRuns.find((r) => r.id === finishedRunId);
+  if (!completedRun) return;
+
+  const planInput: PlanInput = {
+    completedRun,
+    tracks,
+    publishTargets: [],
+    priorRuns,
+    autopilotConfig: buildProjectAutopilotConfig(projectAutopilotJson),
+  };
+  const specs = planNext(planInput);
+  if (specs.length === 0) return;
+
+  await clearAbortFlag(sb, projectId);
+  const projectSource = { autopilotConfigJson: projectAutopilotJson };
+  await Promise.all(specs.map((spec) => writeFanOutSpec(sb, projectId, spec, tracks, projectSource)));
 }
