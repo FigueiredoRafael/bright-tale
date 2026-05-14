@@ -42,6 +42,7 @@ export const ADMIN_LAYOUT_CONFIG: AdminLayoutConfig = {
     {
       group: 'Sistema',
       items: [
+        { label: 'Segurança', path: adminPath('/security'), icon: 'Shield' },
         { label: 'Analytics', path: adminPath('/analytics'), icon: 'BarChart3' },
         { label: 'Settings', path: adminPath('/settings'), icon: 'Settings' },
       ],

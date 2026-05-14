@@ -416,6 +416,23 @@ const StarIcon = () => (
 
 const TRUSTED_LOGOS = ['TechBlog Pro', 'ContentScale', 'AffiliateHub', 'NicheForge', 'BlogEmpire', 'SEOCraft'];
 
+// ─── Plan prices ─────────────────────────────────────────────────────────────
+
+interface PlanPrice {
+  usdMonthly: number;
+  usdAnnual: number;
+  displayPriceBrlMonthly: number;
+  displayPriceBrlAnnual: number;
+}
+
+type PlanPrices = Record<string, PlanPrice>;
+
+const DEFAULT_PRICES: PlanPrices = {
+  starter: { usdMonthly: 9, usdAnnual: 7, displayPriceBrlMonthly: 49, displayPriceBrlAnnual: 39 },
+  creator: { usdMonthly: 29, usdAnnual: 23, displayPriceBrlMonthly: 149, displayPriceBrlAnnual: 119 },
+  pro: { usdMonthly: 99, usdAnnual: 79, displayPriceBrlMonthly: 499, displayPriceBrlAnnual: 399 },
+};
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Home() {
@@ -431,6 +448,7 @@ export default function Home() {
   const [formSubmitted, setFormSubmitted] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   const [researchVisible, setResearchVisible] = useState(false);
+  const [planPrices, setPlanPrices] = useState<PlanPrices>(DEFAULT_PRICES);
   const termBodyRef = useRef<HTMLDivElement>(null);
   const orb1Ref = useRef<HTMLDivElement>(null);
   const orb2Ref = useRef<HTMLDivElement>(null);
@@ -456,6 +474,29 @@ export default function Home() {
   useEffect(() => {
     const id = setTimeout(() => setPreloaderHidden(true), 400);
     return () => clearTimeout(id);
+  }, []);
+
+  // Fetch dynamic plan prices from API
+  useEffect(() => {
+    fetch('/api/plans')
+      .then((r) => r.json())
+      .then((json: { data?: { plans?: Array<{ id: string; usdMonthly: number; usdAnnual: number; displayPriceBrlMonthly: number; displayPriceBrlAnnual: number }> } }) => {
+        const plans = json.data?.plans;
+        if (!Array.isArray(plans)) return;
+        const updated: PlanPrices = { ...DEFAULT_PRICES };
+        for (const p of plans) {
+          if (p.id && typeof p.usdMonthly === 'number') {
+            updated[p.id] = {
+              usdMonthly: p.usdMonthly,
+              usdAnnual: p.usdAnnual,
+              displayPriceBrlMonthly: p.displayPriceBrlMonthly ?? 0,
+              displayPriceBrlAnnual: p.displayPriceBrlAnnual ?? 0,
+            };
+          }
+        }
+        setPlanPrices(updated);
+      })
+      .catch(() => {});
   }, []);
 
   // Scroll events + parallax
@@ -611,6 +652,9 @@ export default function Home() {
   };
 
   const pv = (mo: string, an: string) => (isAnnual ? an : mo);
+
+  const planVal = (planId: string, field: keyof PlanPrice): number =>
+    planPrices[planId]?.[field] ?? DEFAULT_PRICES[planId]?.[field] ?? 0;
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
@@ -1198,12 +1242,16 @@ export default function Home() {
                 <div className="pr-name">Starter</div>
                 <div className="pr-desc">{t('pr_starter_desc')}</div>
                 <div className="pr-price">
-                  <span className="pr-val" style={{ fontSize: '2.2rem' }}>{lang === 'pt' ? `R$ ${pv('49', '39')}` : `$${pv('9', '7')}`}</span>
+                  <span className="pr-val" style={{ fontSize: '2.2rem' }}>
+                    {lang === 'pt'
+                      ? `R$ ${isAnnual ? planVal('starter', 'displayPriceBrlAnnual') : planVal('starter', 'displayPriceBrlMonthly')}`
+                      : `$${isAnnual ? planVal('starter', 'usdAnnual') : planVal('starter', 'usdMonthly')}`}
+                  </span>
                   <span className="pr-per">{isAnnual ? t('pr_per_an') : t('pr_per_mo')}</span>
                 </div>
                 <div style={{ fontSize: '.78rem', opacity: .7, marginBottom: '.8rem' }}>
-                  {lang !== 'pt' && <span style={{ opacity: .5 }}>R$ {pv('49', '39')} · </span>}
-                  {lang === 'pt' && <span style={{ opacity: .5 }}>${pv('9', '7')} · </span>}
+                  {lang !== 'pt' && <span style={{ opacity: .5 }}>R$ {isAnnual ? planVal('starter', 'displayPriceBrlAnnual') : planVal('starter', 'displayPriceBrlMonthly')} · </span>}
+                  {lang === 'pt' && <span style={{ opacity: .5 }}>${isAnnual ? planVal('starter', 'usdAnnual') : planVal('starter', 'usdMonthly')} · </span>}
                   {t('pr_s1')}
                 </div>
                 <ul className="pr-feats">
@@ -1219,12 +1267,16 @@ export default function Home() {
                 <div className="pr-name">Creator</div>
                 <div className="pr-desc">{t('pr_creator_desc')}</div>
                 <div className="pr-price">
-                  <span className="pr-val" style={{ fontSize: '2.2rem' }}>{lang === 'pt' ? `R$ ${pv('149', '119')}` : `$${pv('29', '23')}`}</span>
+                  <span className="pr-val" style={{ fontSize: '2.2rem' }}>
+                    {lang === 'pt'
+                      ? `R$ ${isAnnual ? planVal('creator', 'displayPriceBrlAnnual') : planVal('creator', 'displayPriceBrlMonthly')}`
+                      : `$${isAnnual ? planVal('creator', 'usdAnnual') : planVal('creator', 'usdMonthly')}`}
+                  </span>
                   <span className="pr-per">{isAnnual ? t('pr_per_an') : t('pr_per_mo')}</span>
                 </div>
                 <div style={{ fontSize: '.78rem', opacity: .7, marginBottom: '.8rem' }}>
-                  {lang !== 'pt' && <span style={{ opacity: .5 }}>R$ {pv('149', '119')} · </span>}
-                  {lang === 'pt' && <span style={{ opacity: .5 }}>${pv('29', '23')} · </span>}
+                  {lang !== 'pt' && <span style={{ opacity: .5 }}>R$ {isAnnual ? planVal('creator', 'displayPriceBrlAnnual') : planVal('creator', 'displayPriceBrlMonthly')} · </span>}
+                  {lang === 'pt' && <span style={{ opacity: .5 }}>${isAnnual ? planVal('creator', 'usdAnnual') : planVal('creator', 'usdMonthly')} · </span>}
                   {t('pr_c1')}
                 </div>
                 <ul className="pr-feats">
@@ -1239,12 +1291,16 @@ export default function Home() {
                 <div className="pr-name">Pro</div>
                 <div className="pr-desc">{t('pr_pro_desc')}</div>
                 <div className="pr-price">
-                  <span className="pr-val" style={{ fontSize: '2.2rem' }}>{lang === 'pt' ? `R$ ${pv('499', '399')}` : `$${pv('99', '79')}`}</span>
+                  <span className="pr-val" style={{ fontSize: '2.2rem' }}>
+                    {lang === 'pt'
+                      ? `R$ ${isAnnual ? planVal('pro', 'displayPriceBrlAnnual') : planVal('pro', 'displayPriceBrlMonthly')}`
+                      : `$${isAnnual ? planVal('pro', 'usdAnnual') : planVal('pro', 'usdMonthly')}`}
+                  </span>
                   <span className="pr-per">{isAnnual ? t('pr_per_an') : t('pr_per_mo')}</span>
                 </div>
                 <div style={{ fontSize: '.78rem', opacity: .7, marginBottom: '.8rem' }}>
-                  {lang !== 'pt' && <span style={{ opacity: .5 }}>R$ {pv('499', '399')} · </span>}
-                  {lang === 'pt' && <span style={{ opacity: .5 }}>${pv('99', '79')} · </span>}
+                  {lang !== 'pt' && <span style={{ opacity: .5 }}>R$ {isAnnual ? planVal('pro', 'displayPriceBrlAnnual') : planVal('pro', 'displayPriceBrlMonthly')} · </span>}
+                  {lang === 'pt' && <span style={{ opacity: .5 }}>${isAnnual ? planVal('pro', 'usdAnnual') : planVal('pro', 'usdMonthly')} · </span>}
                   {t('pr_p1')}
                 </div>
                 <ul className="pr-feats">
@@ -1255,6 +1311,11 @@ export default function Home() {
                 <a href="https://app.brighttale.io" className="pr-btn ghost">{t('pr_pro_btn')}</a>
               </div>
             </div>
+            <p style={{ textAlign: 'center', fontSize: '.75rem', opacity: .45, marginTop: '1.2rem', lineHeight: 1.5 }}>
+              {lang === 'pt'
+                ? '*Preços em USD. Clientes brasileiros são cobrados em BRL pelo valor equivalente via Stripe Adaptive Pricing.'
+                : '*Prices in USD. Brazilian customers are charged the equivalent in BRL via Stripe Adaptive Pricing.'}
+            </p>
             <div className="trust-row anim">
               {[
                 { key: 'trust1', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg> },

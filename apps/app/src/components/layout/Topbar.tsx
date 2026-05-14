@@ -6,6 +6,7 @@ import { useTheme } from "next-themes";
 import StartWorkflowButton from "@/components/projects/StartWorkflowButton";
 import UserMenu from "@/components/layout/UserMenu";
 import LocaleSwitcher from "@/components/layout/LocaleSwitcher";
+import { Bell } from "@/components/notifications/Bell";
 import { Search, Moon, Sun } from "lucide-react";
 
 const PAGE_TITLE_KEYS: Record<string, { ns: string; key: string }> = {
@@ -70,6 +71,8 @@ export default function Topbar() {
                 </div>
 
                 <StartWorkflowButton className="bg-gradient-to-br from-[#FF6B35] to-[#E85D2C] text-white shadow-[0_2px_12px_rgba(255,107,53,0.25)] hover:shadow-[0_4px_20px_rgba(255,107,53,0.4)] hover:-translate-y-px" />
+
+                <Bell />
 
                 <LocaleSwitcher />
 
