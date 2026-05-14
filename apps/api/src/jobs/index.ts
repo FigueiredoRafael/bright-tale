@@ -15,6 +15,8 @@ export { pipelineAdvance } from './pipeline-advance.js';
 export { pipelineBrainstormDispatch } from './pipeline-brainstorm-dispatch.js';
 export { pipelineResearchDispatch } from './pipeline-research-dispatch.js';
 export { pipelineDraftDispatch } from './pipeline-draft-dispatch.js';
+export { pipelineCanonicalDispatch } from './pipeline-canonical-dispatch.js';
+export { pipelineProductionDispatch } from './pipeline-production-dispatch.js';
 export { pipelineReviewDispatch } from './pipeline-review-dispatch.js';
 export { pipelineAssetsDispatch } from './pipeline-assets-dispatch.js';
 export { pipelinePreviewDispatch } from './pipeline-preview-dispatch.js';

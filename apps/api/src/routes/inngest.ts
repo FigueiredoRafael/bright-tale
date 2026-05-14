@@ -9,12 +9,12 @@
 import type { FastifyInstance } from 'fastify';
 import { serve } from 'inngest/fastify';
 import { inngest } from '../jobs/client.js';
-import { contentGenerate, brainstormGenerate, researchGenerate, productionGenerate, productionProduce, referenceCheck, affiliateExpireReferrals, pipelineAdvance, pipelineBrainstormDispatch, pipelineResearchDispatch, pipelineDraftDispatch, pipelineReviewDispatch, pipelineAssetsDispatch, pipelinePreviewDispatch, pipelinePublishDispatch } from '../jobs/index.js';
+import { contentGenerate, brainstormGenerate, researchGenerate, productionGenerate, productionProduce, referenceCheck, affiliateExpireReferrals, pipelineAdvance, pipelineBrainstormDispatch, pipelineResearchDispatch, pipelineDraftDispatch, pipelineCanonicalDispatch, pipelineProductionDispatch, pipelineReviewDispatch, pipelineAssetsDispatch, pipelinePreviewDispatch, pipelinePublishDispatch } from '../jobs/index.js';
 
 export async function inngestRoutes(fastify: FastifyInstance): Promise<void> {
   const handler = serve({
     client: inngest,
-    functions: [contentGenerate, brainstormGenerate, researchGenerate, productionGenerate, productionProduce, referenceCheck, affiliateExpireReferrals, pipelineAdvance, pipelineBrainstormDispatch, pipelineResearchDispatch, pipelineDraftDispatch, pipelineReviewDispatch, pipelineAssetsDispatch, pipelinePreviewDispatch, pipelinePublishDispatch],
+    functions: [contentGenerate, brainstormGenerate, researchGenerate, productionGenerate, productionProduce, referenceCheck, affiliateExpireReferrals, pipelineAdvance, pipelineBrainstormDispatch, pipelineResearchDispatch, pipelineDraftDispatch, pipelineCanonicalDispatch, pipelineProductionDispatch, pipelineReviewDispatch, pipelineAssetsDispatch, pipelinePreviewDispatch, pipelinePublishDispatch],
   });
 
   // Inngest expects GET (introspection) + POST (events) + PUT (sync)
