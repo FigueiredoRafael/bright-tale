@@ -55,6 +55,7 @@ beforeEach(() => {
 });
 
 import {
+  insertRun,
   markRunning,
   markCompleted,
   markFailed,
@@ -63,6 +64,7 @@ import {
   bulkAbort,
   abortProject,
   isTerminal,
+  StageRunUniquenessError,
 } from '@/lib/pipeline/stage-run-writer';
 
 const PROJECT_ID = 'proj-1';
@@ -347,6 +349,232 @@ describe('abortProject', () => {
     await expect(abortProject(sb, PROJECT_ID)).rejects.toThrow(/abortProject/);
     // Caller throws before the projects update fires.
     expect(callCount).toBe(1);
+  });
+});
+
+// ─── Multi-track dims: trackId / publishTargetId propagation ────────────────
+
+describe('multi-track dimensions on update writers', () => {
+  beforeEach(() => {
+    // Default sb: capture every update payload + filters
+    sb.from = vi.fn(() => ({
+      update: vi.fn((payload: Record<string, unknown>) => {
+        lastChain = { payload, filters: [], errorToReturn: null };
+        return makeUpdateChain(null);
+      }),
+    }));
+  });
+
+  it('markRunning persists track_id + publish_target_id when provided', async () => {
+    await markRunning(sb, 'sr-1', {
+      projectId: PROJECT_ID,
+      stage: 'production',
+      trackId: 'track-A',
+      publishTargetId: 'target-B',
+    });
+    expect(lastChain?.payload).toMatchObject({
+      track_id: 'track-A',
+      publish_target_id: 'target-B',
+    });
+  });
+
+  it('markCompleted writes null when caller explicitly clears a dim', async () => {
+    await markCompleted(sb, 'sr-1', {
+      projectId: PROJECT_ID,
+      stage: 'canonical',
+      trackId: null,
+      publishTargetId: null,
+    });
+    expect(lastChain?.payload?.track_id).toBeNull();
+    expect(lastChain?.payload?.publish_target_id).toBeNull();
+  });
+
+  it('markFailed leaves dims untouched when omitted (backward compat)', async () => {
+    await markFailed(sb, 'sr-1', {
+      projectId: PROJECT_ID,
+      stage: 'research',
+      errorMessage: 'boom',
+    });
+    expect(lastChain?.payload).not.toHaveProperty('track_id');
+    expect(lastChain?.payload).not.toHaveProperty('publish_target_id');
+  });
+
+  it('markAwaitingUser persists trackId when provided', async () => {
+    await markAwaitingUser(sb, 'sr-1', {
+      projectId: PROJECT_ID,
+      stage: 'review',
+      awaitingReason: 'manual_review',
+      trackId: 'track-X',
+    });
+    expect(lastChain?.payload?.track_id).toBe('track-X');
+    expect(lastChain?.payload).not.toHaveProperty('publish_target_id');
+  });
+
+  it('markAborted persists publishTargetId when provided', async () => {
+    await markAborted(sb, 'sr-1', {
+      projectId: PROJECT_ID,
+      stage: 'publish',
+      errorMessage: 'target auth expired',
+      publishTargetId: 'target-Y',
+    });
+    expect(lastChain?.payload?.publish_target_id).toBe('target-Y');
+  });
+});
+
+// ─── insertRun ───────────────────────────────────────────────────────────────
+
+interface InsertCapture {
+  payload: Record<string, unknown>;
+}
+
+function mockSbInsert(
+  inserts: InsertCapture[],
+  result: { data?: Record<string, unknown>; error?: { code?: string; message: string } | null },
+): typeof sb {
+  return {
+    from: vi.fn(() => ({
+      insert: vi.fn((payload: Record<string, unknown>) => {
+        inserts.push({ payload });
+        const chain = {
+          select: vi.fn(() => ({
+            single: vi.fn(async () => ({
+              data: result.data ?? null,
+              error: result.error ?? null,
+            })),
+          })),
+        };
+        return chain;
+      }),
+    })),
+  } as unknown as typeof sb;
+}
+
+describe('insertRun', () => {
+  it('writes track_id + publish_target_id as null when omitted (shared/legacy slot)', async () => {
+    const inserts: InsertCapture[] = [];
+    const sbLocal = mockSbInsert(inserts, {
+      data: { id: 'sr-new', project_id: PROJECT_ID, stage: 'brainstorm' },
+    });
+
+    const row = await insertRun(sbLocal, {
+      projectId: PROJECT_ID,
+      stage: 'brainstorm',
+      attemptNo: 1,
+      status: 'queued',
+      inputJson: { topic: 'demo' },
+    });
+
+    expect(row.id).toBe('sr-new');
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0].payload).toMatchObject({
+      project_id: PROJECT_ID,
+      stage: 'brainstorm',
+      status: 'queued',
+      attempt_no: 1,
+      track_id: null,
+      publish_target_id: null,
+      input_json: { topic: 'demo' },
+    });
+  });
+
+  it('persists supplied trackId + publishTargetId on insert', async () => {
+    const inserts: InsertCapture[] = [];
+    const sbLocal = mockSbInsert(inserts, {
+      data: { id: 'sr-new' },
+    });
+
+    await insertRun(sbLocal, {
+      projectId: PROJECT_ID,
+      stage: 'publish',
+      attemptNo: 1,
+      status: 'queued',
+      trackId: 'track-A',
+      publishTargetId: 'target-1',
+    });
+
+    expect(inserts[0].payload).toMatchObject({
+      track_id: 'track-A',
+      publish_target_id: 'target-1',
+    });
+  });
+
+  it('allows same (project, stage) with DIFFERENT track_id (no collision)', async () => {
+    const inserts: InsertCapture[] = [];
+    const sbLocal = mockSbInsert(inserts, { data: { id: 'sr-new' } });
+
+    await insertRun(sbLocal, {
+      projectId: PROJECT_ID,
+      stage: 'production',
+      attemptNo: 1,
+      status: 'queued',
+      trackId: 'track-A',
+    });
+    await insertRun(sbLocal, {
+      projectId: PROJECT_ID,
+      stage: 'production',
+      attemptNo: 1,
+      status: 'queued',
+      trackId: 'track-B',
+    });
+
+    expect(inserts).toHaveLength(2);
+    expect(inserts[0].payload.track_id).toBe('track-A');
+    expect(inserts[1].payload.track_id).toBe('track-B');
+  });
+
+  it('publish fan-out: N publish_targets writes N rows with distinct publish_target_id', async () => {
+    const inserts: InsertCapture[] = [];
+    const sbLocal = mockSbInsert(inserts, { data: { id: 'sr-new' } });
+    const targets = ['t-1', 't-2', 't-3'];
+
+    for (const targetId of targets) {
+      await insertRun(sbLocal, {
+        projectId: PROJECT_ID,
+        stage: 'publish',
+        attemptNo: 1,
+        status: 'queued',
+        trackId: 'track-A',
+        publishTargetId: targetId,
+      });
+    }
+
+    expect(inserts).toHaveLength(targets.length);
+    expect(inserts.map((i) => i.payload.publish_target_id)).toEqual(targets);
+    // All share the same Track but each owns its own publish_target slot.
+    expect(new Set(inserts.map((i) => i.payload.track_id)).size).toBe(1);
+  });
+
+  it('translates Postgres 23505 (unique_violation) into StageRunUniquenessError', async () => {
+    const inserts: InsertCapture[] = [];
+    const sbLocal = mockSbInsert(inserts, {
+      error: { code: '23505', message: 'duplicate key value violates unique constraint' },
+    });
+
+    await expect(
+      insertRun(sbLocal, {
+        projectId: PROJECT_ID,
+        stage: 'review',
+        attemptNo: 1,
+        status: 'queued',
+        trackId: 'track-A',
+      }),
+    ).rejects.toBeInstanceOf(StageRunUniquenessError);
+  });
+
+  it('rethrows non-uniqueness errors as plain Error', async () => {
+    const inserts: InsertCapture[] = [];
+    const sbLocal = mockSbInsert(inserts, {
+      error: { code: '57P03', message: 'connection lost' },
+    });
+
+    await expect(
+      insertRun(sbLocal, {
+        projectId: PROJECT_ID,
+        stage: 'review',
+        attemptNo: 1,
+        status: 'queued',
+      }),
+    ).rejects.toThrow(/insertRun/);
   });
 });
 

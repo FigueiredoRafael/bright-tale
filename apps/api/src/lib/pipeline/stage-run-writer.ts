@@ -57,7 +57,26 @@ interface TransitionContext {
   stage?: string;
 }
 
-interface BaseOptions extends TransitionContext {
+/**
+ * Multi-track dimensions persisted on the Stage Run row.
+ *
+ * Both are `null` for shared stages (brainstorm/research/canonical) and the
+ * pre-Track legacy rows. `trackId` becomes non-null at and after the per-Track
+ * fan-out (production/review/assets/preview/publish). `publishTargetId` only
+ * becomes non-null on the publish fan-out (one row per active target).
+ *
+ * The DB-side idempotency key (the `one_non_terminal_per_stage` partial unique
+ * index) hashes `(project_id, stage, COALESCE(track_id, '00..0'),
+ * COALESCE(publish_target_id, '00..0'))`, so omitting either dimension at
+ * insert time is equivalent to writing the sentinel UUID — pre-multi-track
+ * call sites keep working unchanged.
+ */
+export interface MultiTrackDims {
+  trackId?: string | null;
+  publishTargetId?: string | null;
+}
+
+interface BaseOptions extends TransitionContext, MultiTrackDims {
   /**
    * When true, suppress the `pipeline/stage.run.finished` event even if the
    * status is terminal. Used by callers that batch multiple transitions and
@@ -75,6 +94,50 @@ interface BaseOptions extends TransitionContext {
    * had to dereference `payload_ref → content_drafts` to read the verdict.
    */
   outcome?: Record<string, unknown>;
+}
+
+/**
+ * Apply optional multi-track dimensions to an update patch. We only write the
+ * column when the caller supplied it (including explicit `null`) — undefined
+ * leaves the existing row value untouched, which matters for the typical case
+ * where the dimensions were already set at insert time.
+ */
+function applyDims(patch: Record<string, unknown>, opts: MultiTrackDims): void {
+  if (Object.prototype.hasOwnProperty.call(opts, 'trackId')) {
+    patch.track_id = opts.trackId ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(opts, 'publishTargetId')) {
+    patch.publish_target_id = opts.publishTargetId ?? null;
+  }
+}
+
+/**
+ * Postgres unique_violation. Surfaced when an insert collides with the
+ * `one_non_terminal_per_stage` partial unique index — i.e. another
+ * non-terminal Stage Run already owns the same (project, stage, track,
+ * publish_target) slot.
+ */
+const PG_UNIQUE_VIOLATION = '23505';
+
+/**
+ * Thrown by `insertRun` when the DB partial unique index rejects the row
+ * because another non-terminal Stage Run already owns the slot. The
+ * orchestrator (and HTTP handlers) catch this to translate into the
+ * top-level `CONCURRENT_STAGE_RUN` error envelope without leaking the raw
+ * Postgres error code to clients.
+ */
+export class StageRunUniquenessError extends Error {
+  code = 'CONCURRENT_STAGE_RUN';
+  constructor(
+    public projectId: string,
+    public stage: string,
+    public trackId: string | null,
+    public publishTargetId: string | null,
+  ) {
+    super(
+      `Stage Run slot already taken: project=${projectId} stage=${stage} track=${trackId ?? 'null'} publishTarget=${publishTargetId ?? 'null'}`,
+    );
+  }
 }
 
 /**
@@ -114,6 +177,80 @@ async function emitFinished(stageRunId: string, ctx: TransitionContext): Promise
 }
 
 /**
+ * Insert a new Stage Run row with the multi-track dimensions baked into the
+ * idempotency slot. Replaces the per-call-site `sb.from('stage_runs').insert`
+ * scattered across the orchestrator so the partial-unique-index collision is
+ * translated into a typed `StageRunUniquenessError` exactly once.
+ *
+ * Idempotency: the DB `one_non_terminal_per_stage` index uniques over
+ * `(project_id, stage, COALESCE(track_id, '00..0'), COALESCE(publish_target_id, '00..0'))`
+ * restricted to non-terminal statuses. Two concurrent inserts collapse to one
+ * winner; the loser surfaces as `StageRunUniquenessError`.
+ */
+export async function insertRun(
+  sb: Sb,
+  opts: {
+    projectId: string;
+    stage: string;
+    attemptNo: number;
+    status: StageRunStatus;
+    inputJson?: unknown;
+    payloadRef?: PayloadRef;
+    outcome?: Record<string, unknown>;
+  } & MultiTrackDims,
+): Promise<Record<string, unknown>> {
+  const row: Record<string, unknown> = {
+    project_id: opts.projectId,
+    stage: opts.stage,
+    status: opts.status,
+    attempt_no: opts.attemptNo,
+  };
+  if (opts.inputJson !== undefined) row.input_json = opts.inputJson;
+  if (opts.payloadRef) row.payload_ref = opts.payloadRef;
+  if (opts.outcome) row.outcome_json = opts.outcome;
+  applyDims(row, opts);
+  // Always write the dimensions on insert (even as null) so the partial
+  // unique index hashes the sentinel UUID — keeps the legacy single-Track
+  // call sites colliding against each other exactly like before.
+  if (!('track_id' in row)) row.track_id = null;
+  if (!('publish_target_id' in row)) row.publish_target_id = null;
+
+  const { data, error } = await sb.from('stage_runs').insert(row).select().single();
+  if (error) {
+    if (error.code === PG_UNIQUE_VIOLATION) {
+      logTransition('warn', 'insertRun rejected by uniqueness index', {
+        projectId: opts.projectId,
+        stage: opts.stage,
+        trackId: row.track_id as string | null,
+        publishTargetId: row.publish_target_id as string | null,
+      });
+      throw new StageRunUniquenessError(
+        opts.projectId,
+        opts.stage,
+        (row.track_id as string | null) ?? null,
+        (row.publish_target_id as string | null) ?? null,
+      );
+    }
+    logTransition('error', 'insertRun failed', {
+      projectId: opts.projectId,
+      stage: opts.stage,
+      err: error.message,
+    });
+    throw new Error(`insertRun project=${opts.projectId} stage=${opts.stage}: ${error.message}`);
+  }
+  logTransition('info', 'stage-run inserted', {
+    stageRunId: (data as { id?: string })?.id,
+    projectId: opts.projectId,
+    stage: opts.stage,
+    attemptNo: opts.attemptNo,
+    status: opts.status,
+    trackId: row.track_id as string | null,
+    publishTargetId: row.publish_target_id as string | null,
+  });
+  return data as Record<string, unknown>;
+}
+
+/**
  * queued → running. Non-terminal — no advance event.
  *
  * `payloadRef` is optional: dispatchers that know the payload up front (e.g.
@@ -123,7 +260,7 @@ async function emitFinished(stageRunId: string, ctx: TransitionContext): Promise
 export async function markRunning(
   sb: Sb,
   stageRunId: string,
-  ctx: TransitionContext & { payloadRef?: PayloadRef },
+  ctx: TransitionContext & MultiTrackDims & { payloadRef?: PayloadRef },
 ): Promise<void> {
   const now = new Date().toISOString();
   const patch: Record<string, unknown> = {
@@ -132,6 +269,7 @@ export async function markRunning(
     updated_at: now,
   };
   if (ctx.payloadRef) patch.payload_ref = ctx.payloadRef;
+  applyDims(patch, ctx);
   const { error } = await sb.from('stage_runs').update(patch).eq('id', stageRunId);
   if (error) {
     logTransition('error', 'markRunning failed', { stageRunId, ...ctx, err: error.message });
@@ -154,6 +292,7 @@ export async function markCompleted(
   };
   if (opts.payloadRef) patch.payload_ref = opts.payloadRef;
   if (opts.outcome) patch.outcome_json = opts.outcome;
+  applyDims(patch, opts);
   const { error } = await sb.from('stage_runs').update(patch).eq('id', stageRunId);
   if (error) {
     logTransition('error', 'markCompleted failed', {
@@ -191,6 +330,7 @@ export async function markFailed(
   };
   if (opts.payloadRef) patch.payload_ref = opts.payloadRef;
   if (opts.outcome) patch.outcome_json = opts.outcome;
+  applyDims(patch, opts);
   const { error } = await sb.from('stage_runs').update(patch).eq('id', stageRunId);
   if (error) {
     logTransition('error', 'markFailed write failed (double fault)', {
@@ -239,6 +379,7 @@ export async function markAwaitingUser(
   if (opts.payloadRef) patch.payload_ref = opts.payloadRef;
   if (opts.outcome) patch.outcome_json = opts.outcome;
   if (opts.markStarted) patch.started_at = now;
+  applyDims(patch, opts);
   const { error } = await sb.from('stage_runs').update(patch).eq('id', stageRunId);
   if (error) {
     logTransition('error', 'markAwaitingUser failed', {
@@ -284,6 +425,7 @@ export async function markAborted(
     updated_at: now,
   };
   if (opts.errorMessage) patch.error_message = opts.errorMessage.slice(0, ERROR_MESSAGE_MAX_LENGTH);
+  applyDims(patch, opts);
   const { error } = await sb.from('stage_runs').update(patch).eq('id', stageRunId);
   if (error) {
     logTransition('error', 'markAborted failed', {
