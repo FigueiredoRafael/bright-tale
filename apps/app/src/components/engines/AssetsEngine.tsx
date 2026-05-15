@@ -24,7 +24,9 @@ import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
 import { getPersonaTheme } from './utils/personaTheme';
+import { writeStageRunOutcome } from '@/lib/api/stageRuns';
 import type { AssetsResult, PipelineContext, PipelineStage } from './types';
+import type { StageRun } from '@brighttale/shared/pipeline/inputs';
 
 /* ── Types ── */
 
@@ -81,6 +83,7 @@ interface AssetsEngineProps {
   imageProviderOverride?: ImageProvider;
   /** Bumped by orchestrator to re-arm autopilot after a quota error recovery. */
   retrySignal?: number;
+  stageRun?: StageRun;
 }
 
 interface NoBriefSection {
@@ -196,7 +199,7 @@ interface PendingUpload {
 
 /* ── Component ── */
 
-export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProviderOverride, retrySignal = 0 }: AssetsEngineProps) {
+export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProviderOverride, retrySignal = 0, stageRun }: AssetsEngineProps) {
   const actor = usePipelineActor();
   const abortController = usePipelineAbort();
   const channelId = useSelector(actor, (s) => s.context.channelId);
@@ -797,7 +800,16 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
         const assetIds = existingAssets.map((a) => a.id);
         const featuredUrl = existingAssets.find((a) => a.role === 'featured_image')?.url;
         tracker.trackCompleted({ draftId, assetCount: existingAssets.length, assetIds, featuredImageUrl: featuredUrl });
-        actor.send({ type: 'ASSETS_COMPLETE', result: { assetIds, featuredImageUrl: featuredUrl } as AssetsResult });
+        const noUploadResult: AssetsResult = { assetIds, featuredImageUrl: featuredUrl };
+        // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
+        actor.send({ type: 'ASSETS_COMPLETE', result: noUploadResult });
+        if (stageRun && projectId) {
+          void writeStageRunOutcome({
+            projectId,
+            stageRunId: stageRun.id,
+            outcome: noUploadResult as unknown as Record<string, unknown>,
+          }).catch(() => {});
+        }
         return;
       }
 
@@ -902,7 +914,16 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
         assetIds,
         featuredImageUrl: featuredUrl,
       });
-      actor.send({ type: 'ASSETS_COMPLETE', result: { assetIds, featuredImageUrl: featuredUrl } as AssetsResult });
+      const uploadResult: AssetsResult = { assetIds, featuredImageUrl: featuredUrl };
+      // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
+      actor.send({ type: 'ASSETS_COMPLETE', result: uploadResult });
+      if (stageRun && projectId) {
+        void writeStageRunOutcome({
+          projectId,
+          stageRunId: stageRun.id,
+          outcome: uploadResult as unknown as Record<string, unknown>,
+        }).catch(() => {});
+      }
     } catch (e) {
       tracker.trackFailed(e instanceof Error ? e.message : 'Failed to save images');
       toast.error('Failed to save images');
@@ -973,13 +994,19 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
               );
             }}
             onSelect={(item) => {
-              actor.send({
-                type: 'ASSETS_COMPLETE',
-                result: {
-                  assetIds: [item.id as string],
-                  featuredImageUrl: (item.url as string | undefined) || undefined,
-                } as AssetsResult,
-              });
+              const importResult: AssetsResult = {
+                assetIds: [item.id as string],
+                featuredImageUrl: (item.url as string | undefined) || undefined,
+              };
+              // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
+              actor.send({ type: 'ASSETS_COMPLETE', result: importResult });
+              if (stageRun && projectId) {
+                void writeStageRunOutcome({
+                  projectId,
+                  stageRunId: stageRun.id,
+                  outcome: importResult as unknown as Record<string, unknown>,
+                }).catch(() => {});
+              }
             }}
           />
         </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, waitFor } from '@testing-library/react'
 import { createActor } from 'xstate'
 import React from 'react'
 import { pipelineMachine } from '@/lib/pipeline/machine'
@@ -7,6 +7,14 @@ import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
 import { AssetsEngine } from '../AssetsEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
 import type { AutopilotConfig } from '@brighttale/shared'
+import type { StageRun } from '@brighttale/shared/pipeline/inputs'
+
+const mockWriteStageRunOutcome = vi.fn(async () => ({ ok: true }))
+vi.mock('@/lib/api/stageRuns', () => ({
+  get writeStageRunOutcome() {
+    return mockWriteStageRunOutcome
+  },
+}))
 
 vi.mock('@/hooks/use-analytics', () => ({
   useAnalytics: () => ({ track: vi.fn() }),
@@ -239,5 +247,98 @@ describe('AssetsEngine STAGE_PROGRESS', () => {
     await new Promise((r) => setTimeout(r, 100))
 
     expect(sentEvents.some((e) => e.type === 'STAGE_PROGRESS' && e.partial?.status === 'Generating images')).toBe(true)
+  })
+})
+
+describe('AssetsEngine — stageRun binding (T3.5)', () => {
+  const stageRun: StageRun = {
+    id: 'sr-assets-1',
+    projectId: 'proj-1',
+    stage: 'assets',
+    status: 'queued',
+    attemptNo: 1,
+    awaitingReason: null,
+    payloadRef: null,
+    inputJson: null,
+    errorMessage: null,
+    startedAt: null,
+    finishedAt: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+
+  beforeEach(() => {
+    mockWriteStageRunOutcome.mockClear()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        if (String(url).includes('/api/assets') || String(url).includes('/asset-prompts')) {
+          return { ok: true, json: async () => ({ data: { assets: [] }, error: null }) } as Response
+        }
+        return { ok: true, json: async () => ({ data: null, error: null }) } as Response
+      }),
+    )
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('writes outcome via stage-run-writer when stageRun prop is provided and import-mode selects an asset', async () => {
+    const userEvent = (await import('@testing-library/user-event')).default
+    const user = userEvent.setup()
+    const { screen } = await import('@testing-library/react')
+
+    const actor = createActor(pipelineMachine, {
+      input: {
+        projectId: 'proj-1',
+        channelId: 'ch-1',
+        projectTitle: 'T',
+        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+        creditSettings: DEFAULT_CREDIT_SETTINGS,
+      },
+    }).start()
+    actor.send({
+      type: 'SETUP_COMPLETE',
+      mode: 'step-by-step',
+      autopilotConfig: null,
+      templateId: null,
+      startStage: 'assets',
+    })
+
+    // Mock fetch: return an asset so ImportPicker shows it
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        if (String(url).includes('/api/assets')) {
+          return {
+            ok: true,
+            json: async () => ({ data: { assets: [{ id: 'lib-asset-1', url: 'https://x/1.jpg', alt_text: 'lib alt', role: 'featured_image' }] }, error: null }),
+          } as Response
+        }
+        return { ok: true, json: async () => ({ data: null, error: null }) } as Response
+      }),
+    )
+
+    // Pass a non-null draft but NO draftId in actor context → import mode renders
+    render(
+      <PipelineActorProvider value={actor}>
+        <AssetsEngine mode="import" draft={{ id: 'd-1', status: 'approved', draft_json: {} }} stageRun={stageRun} />
+      </PipelineActorProvider>,
+    )
+
+    // The ImportPicker loads library assets and shows them
+    const libItem = await screen.findByText('lib alt', {}, { timeout: 3000 })
+    await user.click(libItem)
+
+    await waitFor(() => {
+      expect(mockWriteStageRunOutcome).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: 'proj-1',
+          stageRunId: 'sr-assets-1',
+          outcome: expect.objectContaining({ assetIds: expect.any(Array) }),
+        }),
+      )
+    })
   })
 })
