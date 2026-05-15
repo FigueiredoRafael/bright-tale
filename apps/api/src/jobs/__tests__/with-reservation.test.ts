@@ -1,5 +1,5 @@
 /**
- * V2-006.3 — Unit tests for withReservation wrapper.
+ * V2-006.3 — Unit tests for withReservation wrapper (cleaned V2-006.7).
  *
  * Uses vi.hoisted + chainable mock pattern.
  * Category A — no DB dependency.
@@ -10,6 +10,9 @@
  *   (c) assertNotAborted throws JobAborted → release called, no commit
  *   (d) success but actualCost > estimatedCost → commit is called
  *       (the RPC enforces cap; wrapper surfaces whatever commit throws)
+ *
+ * NOTE: the legacy-path (flag OFF) tests have been removed in V2-006.7.
+ * The wrapper no longer consults the feature flag; it always uses reservations.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -20,39 +23,14 @@ const mocks = vi.hoisted(() => {
   const reserve = vi.fn<(orgId: string, userId: string, cost: number) => Promise<string>>()
   const commit = vi.fn<(token: string, actualCost: number, action: string, category: string, metadata?: Record<string, unknown>) => Promise<void>>()
   const release = vi.fn<(token: string) => Promise<void>>()
-  const checkCredits = vi.fn<(orgId: string, userId: string, cost: number) => Promise<void>>()
-  const debitCredits = vi.fn<(orgId: string, userId: string, action: string, category: string, cost: number, metadata?: Record<string, unknown>) => Promise<void>>()
 
-  return { reserve, commit, release, checkCredits, debitCredits }
+  return { reserve, commit, release }
 })
 
 vi.mock('../../lib/credits/reservations.js', () => ({
   reserve: mocks.reserve,
   commit: mocks.commit,
   release: mocks.release,
-}))
-
-vi.mock('../../lib/credits.js', () => ({
-  checkCredits: mocks.checkCredits,
-  debitCredits: mocks.debitCredits,
-}))
-
-// Mock createServiceClient to return a pipeline_settings with feature flag
-let featureFlagEnabled = false
-
-vi.mock('../../lib/supabase/index.js', () => ({
-  createServiceClient: vi.fn(() => ({
-    from: vi.fn((table: string) => ({
-      select: vi.fn(() => ({
-        maybeSingle: vi.fn(async () => {
-          if (table === 'pipeline_settings') {
-            return { data: { use_credit_reservations: featureFlagEnabled }, error: null }
-          }
-          return { data: null, error: null }
-        }),
-      })),
-    })),
-  })),
 }))
 
 import { withReservation } from '../utils/with-reservation.js'
@@ -69,7 +47,6 @@ describe('withReservation', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    featureFlagEnabled = true
   })
 
   // ── (a) success path → commit at actualCost ────────────────────────────
@@ -210,59 +187,5 @@ describe('withReservation', () => {
     // release is NOT called when commit itself throws (the reservation is committed/failed at RPC level)
     // per design: commit failure = RPC-level; release would double-touch the row
     expect(mocks.release).not.toHaveBeenCalled()
-  })
-
-  // ── feature flag OFF → legacy path ────────────────────────────────────
-
-  describe('feature flag OFF', () => {
-    beforeEach(() => {
-      featureFlagEnabled = false
-    })
-
-    it('flag OFF: calls checkCredits + debitCredits, skips reserve/commit/release', async () => {
-      mocks.checkCredits.mockResolvedValue(undefined)
-      mocks.debitCredits.mockResolvedValue(undefined)
-
-      const result = await withReservation(
-        orgId,
-        userId,
-        estimatedCost,
-        'brainstorm',
-        'text',
-        { channelId: 'ch-2' },
-        async () => 'legacy-result',
-      )
-
-      expect(result).toBe('legacy-result')
-      expect(mocks.checkCredits).toHaveBeenCalledOnce()
-      expect(mocks.checkCredits).toHaveBeenCalledWith(orgId, userId, estimatedCost)
-      expect(mocks.debitCredits).toHaveBeenCalledOnce()
-      expect(mocks.debitCredits).toHaveBeenCalledWith(orgId, userId, 'brainstorm', 'text', estimatedCost, { channelId: 'ch-2' })
-      expect(mocks.reserve).not.toHaveBeenCalled()
-      expect(mocks.commit).not.toHaveBeenCalled()
-      expect(mocks.release).not.toHaveBeenCalled()
-    })
-
-    it('flag OFF: fn throw → error re-thrown, no debit', async () => {
-      mocks.checkCredits.mockResolvedValue(undefined)
-
-      const err = new Error('AI error legacy')
-
-      await expect(
-        withReservation(
-          orgId,
-          userId,
-          estimatedCost,
-          'brainstorm',
-          'text',
-          undefined,
-          async () => {
-            throw err
-          },
-        ),
-      ).rejects.toThrow('AI error legacy')
-
-      expect(mocks.debitCredits).not.toHaveBeenCalled()
-    })
   })
 })

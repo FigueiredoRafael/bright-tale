@@ -29,9 +29,10 @@ vi.mock('../../lib/ai/promptLoader.js', () => ({
   loadAgentPrompt: vi.fn(() => Promise.resolve('test prompt')),
 }))
 
-vi.mock('../../lib/credits.js', () => ({
-  checkCredits: vi.fn(),
-  debitCredits: vi.fn(),
+vi.mock('../../lib/credits/reservations.js', () => ({
+  reserve: vi.fn(async () => 'mock-token'),
+  commit: vi.fn(async () => undefined),
+  release: vi.fn(async () => undefined),
 }))
 
 vi.mock('../../lib/supabase/index.js', () => ({

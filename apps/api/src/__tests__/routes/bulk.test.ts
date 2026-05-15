@@ -32,9 +32,8 @@ vi.mock('@/lib/api/fastify-errors', () => ({
     return reply.status(500).send({ data: null, error: { message: 'Server error', code: 'INTERNAL' } });
   }),
 }));
-vi.mock('@/lib/credits', () => ({
-  checkCredits: vi.fn(async () => true),
-}));
+// bulk.ts no longer calls checkCredits/debitCredits directly;
+// credit validation happens inside each production/generate job via withReservation.
 vi.mock('@/jobs/client', () => ({
   inngest: { send: vi.fn(async () => ({ ids: ['evt'] })) },
 }));

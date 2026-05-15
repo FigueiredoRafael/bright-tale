@@ -27,8 +27,10 @@ vi.mock('../../lib/ai/loadIdeaContext.js', () => ({
   loadIdeaContext: vi.fn(() => Promise.resolve(null)),
 }))
 
-vi.mock('../../lib/credits.js', () => ({
-  debitCredits: vi.fn(),
+vi.mock('../../lib/credits/reservations.js', () => ({
+  reserve: vi.fn(async () => 'mock-token'),
+  commit: vi.fn(async () => undefined),
+  release: vi.fn(async () => undefined),
 }))
 
 vi.mock('../../lib/calculate-draft-cost.js', () => ({

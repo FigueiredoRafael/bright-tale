@@ -1,16 +1,13 @@
 /**
- * withReservation — credit lifecycle wrapper (V2-006.3)
+ * withReservation — credit lifecycle wrapper (V2-006.3, cleaned V2-006.7)
  *
- * Wraps a job's AI-generation step with either:
- *   (A) Reservation path (when pipeline_settings.use_credit_reservations = true):
- *       reserve → fn → commit  (on success)
- *                  → release  (on throw)
+ * Wraps a job's AI-generation step with the reservation lifecycle:
+ *   reserve → fn → commit  (on success)
+ *               → release  (on throw)
  *
- *   (B) Legacy path (when flag = false):
- *       checkCredits → fn → debitCredits  (on success)
- *                       → (no debit)     (on throw)
- *
- * The flag is read ONCE at entry — behavior never flips mid-run.
+ * The legacy checkCredits + debitCredits path has been removed as of V2-006.7.
+ * pipeline_settings.use_credit_reservations is always true after migration
+ * 20260515130000_pipeline_settings_use_reservations_default_on.sql.
  *
  * Public interface:
  *   withReservation(
@@ -31,21 +28,6 @@
  */
 
 import { reserve, commit, release } from '../../lib/credits/reservations.js';
-import { checkCredits, debitCredits } from '../../lib/credits.js';
-import { createServiceClient } from '../../lib/supabase/index.js';
-
-// ---------------------------------------------------------------------------
-// readFeatureFlag
-// ---------------------------------------------------------------------------
-
-async function readFeatureFlag(): Promise<boolean> {
-  const sb = createServiceClient();
-  const { data } = await sb
-    .from('pipeline_settings')
-    .select('use_credit_reservations')
-    .maybeSingle();
-  return (data as { use_credit_reservations?: boolean } | null)?.use_credit_reservations ?? false;
-}
 
 // ---------------------------------------------------------------------------
 // Context passed to fn
@@ -71,21 +53,7 @@ export async function withReservation<T>(
   metadata: Record<string, unknown> | undefined,
   fn: (ctx: ReservationContext) => Promise<T>,
 ): Promise<T> {
-  const useReservations = await readFeatureFlag();
-
-  // ── Legacy path ────────────────────────────────────────────────────────
-  if (!useReservations) {
-    await checkCredits(orgId, userId, estimatedCost);
-    const result = await fn({
-      // Provide a no-op token/setActualCost so fn signatures are compatible
-      token: '',
-      setActualCost: () => { /* no-op in legacy path */ },
-    });
-    await debitCredits(orgId, userId, action, category, estimatedCost, metadata);
-    return result;
-  }
-
-  // ── Reservation path ───────────────────────────────────────────────────
+  // Always use the reservation path (flag permanently on after V2-006.7 migration)
   const token = await reserve(orgId, userId, estimatedCost);
 
   let actualCost = estimatedCost;

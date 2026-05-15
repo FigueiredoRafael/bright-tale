@@ -12,7 +12,7 @@ import { ApiError } from '../lib/api/errors.js';
 import { STAGE_COSTS, generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
 import { buildChannelContext } from '../lib/ai/channelContext.js';
-import { checkCredits, debitCredits } from '../lib/credits.js';
+import { reserve, commit, release } from '../lib/credits/reservations.js';
 import { inngest } from '../jobs/client.js';
 import { emitJobEvent } from '../jobs/emitter.js';
 import { buildBrainstormMessage } from '../lib/ai/prompts/brainstorm.js';
@@ -331,8 +331,9 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       const sb = createServiceClient();
 
       // Manual provider + Ollama: no internal credit charge.
+      // Credit reservation is handled by the brainstorm/generate job via withReservation.
       const cost = body.provider === 'ollama' || body.provider === 'manual' ? 0 : STAGE_COSTS.brainstorm;
-      if (cost > 0) await checkCredits(orgId, request.userId, cost);
+      void cost; // declared for clarity; debit handled in job
 
       const inputJson: Record<string, unknown> = {
         topic: body.topic ?? null,
@@ -585,7 +586,8 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
 
       const orig = original as Record<string, unknown>;
       const orgId = await getOrgId(request.userId);
-      await checkCredits(orgId, request.userId, STAGE_COSTS.brainstorm);
+      // Reserve credits upfront; commit on success, release on error.
+      const regenToken = await reserve(orgId, request.userId, STAGE_COSTS.brainstorm);
 
       const inputJson = orig.input_json as Record<string, unknown>;
 
@@ -698,10 +700,11 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         }).update({ status: 'completed', ...(recommendation ? { recommendation_json: recommendation } : {}) }).eq('id', session.id);
 
-        await debitCredits(orgId, request.userId, 'brainstorm', 'text', STAGE_COSTS.brainstorm, { regeneratedFrom: id });
+        await commit(regenToken, STAGE_COSTS.brainstorm, 'brainstorm', 'text', { regeneratedFrom: id });
 
         return reply.send({ data: { sessionId: session.id, ideas: ideaRows }, error: null });
       } catch (err) {
+        await release(regenToken).catch(() => { /* best-effort */ });
         await (sb.from('brainstorm_sessions') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         }).update({ status: 'failed', error_message: (err as Error)?.message?.slice(0, 500) }).eq('id', session.id);
