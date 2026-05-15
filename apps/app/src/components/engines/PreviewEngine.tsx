@@ -25,7 +25,9 @@ import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { ContextBanner } from './ContextBanner';
 import { markdownToHtml } from '@/lib/utils';
 import { derivePreview } from '@/lib/pipeline/derivePreview';
+import { writeStageRunOutcome } from '@/lib/api/stageRuns';
 import type { PipelineContext, PipelineStage, PreviewResult } from './types';
+import type { StageRun } from '@brighttale/shared/pipeline/inputs';
 
 interface ContentAsset {
   id: string;
@@ -183,7 +185,11 @@ function composedHtmlFromMarkdown(
 /* PreviewEngine reads everything from the pipeline actor — no pipeline-state props.
  * The component is rendered by PipelineOrchestrator only; standalone usage would
  * require <StandaloneEngineHost stage="preview"> like ReviewEngine/AssetsEngine. */
-export function PreviewEngine() {
+interface PreviewEngineProps {
+  stageRun?: StageRun;
+}
+
+export function PreviewEngine({ stageRun }: PreviewEngineProps = {}) {
   const actor = usePipelineActor();
   const abortController = usePipelineAbort();
   const channelId = useSelector(actor, (s) => s.context.channelId);
@@ -419,8 +425,16 @@ export function PreviewEngine() {
       autoDerived: true,
     };
 
+    // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
     actor.send({ type: 'PREVIEW_COMPLETE', result });
-  }, [overviewMode, previewEnabled, busy, draft, actor, assets, reviewResult, draftResult]);
+    if (stageRun && projectId) {
+      void writeStageRunOutcome({
+        projectId,
+        stageRunId: stageRun.id,
+        outcome: result as unknown as Record<string, unknown>,
+      }).catch(() => {});
+    }
+  }, [overviewMode, previewEnabled, busy, draft, actor, assets, reviewResult, draftResult, stageRun, projectId]);
 
   // Build asset map for quick lookup
   const assetMap = useMemo(() => {
@@ -497,7 +511,15 @@ export function PreviewEngine() {
       seoOverrides: result.seoOverrides,
     });
 
+    // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
     actor.send({ type: 'PREVIEW_COMPLETE', result });
+    if (stageRun && projectId) {
+      void writeStageRunOutcome({
+        projectId,
+        stageRunId: stageRun.id,
+        outcome: result as unknown as Record<string, unknown>,
+      }).catch(() => {});
+    }
   };
 
   /* ── Render ── */
