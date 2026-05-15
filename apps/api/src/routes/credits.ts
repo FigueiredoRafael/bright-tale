@@ -8,7 +8,7 @@ import { authenticateWithUser } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
-import { getBalance } from '../lib/credits.js';
+import { getBalance } from '../lib/credits/index.js';
 
 /** Helper: get user's org_id */
 async function getOrgId(userId: string): Promise<string> {
