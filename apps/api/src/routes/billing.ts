@@ -12,6 +12,7 @@ import { getPlan, planFromPriceIdAsync, loadPlanConfigs, ADDON_PACKS, type PlanI
 import { buildAffiliateContainer } from '../lib/affiliate/container.js';
 import { insertNotification } from '../lib/notifications.js';
 import { buildBillingStatus } from './billing/status.js';
+import * as creditReservations from '../lib/credits/reservations.js';
 
 type StripeClient = ReturnType<typeof getStripe>;
 type StripeEvent = ReturnType<StripeClient['webhooks']['constructEvent']>;
@@ -534,18 +535,18 @@ export async function handleStripeEvent(event: StripeEvent, fastify: FastifyInst
         await grantAddonCredits(session);
         break;
       }
-      await activateSubscriptionFromSession(session);
+      await activateSubscriptionFromSession(session, fastify);
       break;
     }
     case 'customer.subscription.created':
     case 'customer.subscription.updated': {
       const sub = event.data.object as StripeSubscription;
-      await syncSubscription(sub);
+      await syncSubscription(sub, fastify);
       break;
     }
     case 'customer.subscription.deleted': {
       const sub = event.data.object as StripeSubscription;
-      await downgradeToFree(sub);
+      await downgradeToFree(sub, fastify);
       break;
     }
     case 'invoice.paid': {
@@ -586,14 +587,17 @@ export async function grantAddonCredits(session: StripeCheckoutSession): Promise
     .eq('id', orgId);
 }
 
-export async function activateSubscriptionFromSession(session: StripeCheckoutSession): Promise<void> {
+export async function activateSubscriptionFromSession(
+  session: StripeCheckoutSession,
+  fastify: FastifyInstance,
+): Promise<void> {
   const orgId = session.metadata?.org_id;
   if (!orgId || session.mode !== 'subscription' || !session.subscription) return;
   const stripe = getStripe();
   const subscription = await stripe.subscriptions.retrieve(
     typeof session.subscription === 'string' ? session.subscription : session.subscription.id,
   );
-  await syncSubscription(subscription);
+  await syncSubscription(subscription, fastify);
 
   const userId = await __resolveOrgPrimaryUserId(orgId);
   if (userId) {
@@ -608,7 +612,10 @@ export async function activateSubscriptionFromSession(session: StripeCheckoutSes
   }
 }
 
-export async function syncSubscription(subscription: StripeSubscription): Promise<void> {
+export async function syncSubscription(
+  subscription: StripeSubscription,
+  fastify: FastifyInstance,
+): Promise<void> {
   const orgId = subscription.metadata?.org_id;
   const priceId = subscription.items.data[0]?.price.id;
   if (!orgId || !priceId) return;
@@ -635,9 +642,30 @@ export async function syncSubscription(subscription: StripeSubscription): Promis
       credits_reset_at: currentPeriodEnd ? new Date(currentPeriodEnd * 1000).toISOString() : null,
     })
     .eq('id', orgId);
+
+  // V2-006.6: release all held reservations for this org on plan change.
+  const { data: heldRows } = await sb
+    .from('credit_reservations')
+    .select('token')
+    .eq('org_id', orgId)
+    .eq('status', 'held') as { data: Array<{ token: string }> | null; error: unknown };
+
+  let releasedReservationCount = 0;
+  for (const row of heldRows ?? []) {
+    await creditReservations.release(row.token);
+    releasedReservationCount++;
+  }
+
+  fastify.log.info(
+    { orgId, planId: mapping.planId, releasedReservationCount },
+    '[stripe] syncSubscription: plan updated, held reservations released',
+  );
 }
 
-export async function downgradeToFree(subscription: StripeSubscription): Promise<void> {
+export async function downgradeToFree(
+  subscription: StripeSubscription,
+  fastify: FastifyInstance,
+): Promise<void> {
   const orgId = subscription.metadata?.org_id;
   if (!orgId) return;
   const freePlan = getPlan('free');
@@ -653,6 +681,24 @@ export async function downgradeToFree(subscription: StripeSubscription): Promise
       credits_used: 0,
     })
     .eq('id', orgId);
+
+  // V2-006.6: release all held reservations for this org on cancellation.
+  const { data: heldRows } = await sb
+    .from('credit_reservations')
+    .select('token')
+    .eq('org_id', orgId)
+    .eq('status', 'held') as { data: Array<{ token: string }> | null; error: unknown };
+
+  let releasedReservationCount = 0;
+  for (const row of heldRows ?? []) {
+    await creditReservations.release(row.token);
+    releasedReservationCount++;
+  }
+
+  fastify.log.info(
+    { orgId, releasedReservationCount },
+    '[stripe] downgradeToFree: plan cancelled, held reservations released',
+  );
 
   const userId = await __resolveOrgPrimaryUserId(orgId);
   if (userId) {
