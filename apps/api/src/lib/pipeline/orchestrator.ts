@@ -929,3 +929,49 @@ async function fanOutFromCanonical(
   const projectSource = { autopilotConfigJson: projectAutopilotJson };
   await Promise.all(specs.map((spec) => writeFanOutSpec(sb, projectId, spec, tracks, projectSource)));
 }
+
+/**
+ * T2.10 — replay canonical fan-out after a Track is added mid-flight.
+ *
+ * Called by `POST /projects/:id/tracks` when the project is in autopilot mode.
+ * Loads the latest completed canonical Stage Run; if none exists yet, the new
+ * Track will pick up Production naturally when canonical finishes (no-op).
+ * Otherwise replays the canonical fan-out — `fan-out-planner.planNext` uses
+ * its `alreadyHas` dedupe to enqueue ONE Production spec for the newly added
+ * Track without duplicating existing tracks' rows.
+ */
+export async function enqueueProductionForNewTrack(
+  projectId: string,
+  trackId: string,
+): Promise<void> {
+  const sb: Sb = createServiceClient();
+
+  const { data: project } = await sb
+    .from('projects')
+    .select('id, mode, autopilot_config_json')
+    .eq('id', projectId)
+    .maybeSingle();
+  if (!project) return;
+  if (!isAutopilotMode(project.mode as string | null)) return;
+
+  const { data: canonicalRun } = await sb
+    .from('stage_runs')
+    .select('id, status')
+    .eq('project_id', projectId)
+    .eq('stage', 'canonical')
+    .eq('status', 'completed')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!canonicalRun?.id) return;
+
+  await fanOutFromCanonical(
+    sb,
+    projectId,
+    project.autopilot_config_json,
+    canonicalRun.id as string,
+  );
+  // Silence "unused" lint: trackId is captured by the route's audit/log path
+  // (planner dedupe makes the actual track selection itself implicit).
+  void trackId;
+}
