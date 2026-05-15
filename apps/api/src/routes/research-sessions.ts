@@ -11,7 +11,7 @@ import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
 import { generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
-import { checkCredits, debitCredits } from '../lib/credits.js';
+import { reserve, commit, release } from '../lib/credits/reservations.js';
 import { inngest } from '../jobs/client.js';
 import { emitJobEvent } from '../jobs/emitter.js';
 import { fetchTrends } from '../lib/signals/trends.js';
@@ -255,8 +255,9 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       const orgId = await getOrgId(request.userId);
       const sb = createServiceClient();
       // Local Ollama and Manual provider cost us nothing → no internal credit charge.
+      // Credit reservation is handled by the research/generate job via withReservation.
       const cost = body.provider === 'ollama' || body.provider === 'manual' ? 0 : LEVEL_COSTS[body.level];
-      if (cost > 0) await checkCredits(orgId, request.userId, cost);
+      void cost; // declared for clarity; debit handled in job
 
       const inputJson = {
         topic: body.topic ?? null,
@@ -801,7 +802,8 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       const orgId = await getOrgId(request.userId);
       const level = (orig.level as 'surface' | 'medium' | 'deep') ?? 'medium';
       const cost = LEVEL_COSTS[level];
-      await checkCredits(orgId, request.userId, cost);
+      // Reserve credits upfront; commit on success, release on error.
+      const regenToken = await reserve(orgId, request.userId, cost);
 
       const focusTags = (orig.focus_tags as string[]) ?? [];
       const instruction = buildLevelInstruction(level, focusTags);
@@ -904,10 +906,11 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         }).update(updateData).eq('id', sessionData2.id);
 
-        await debitCredits(orgId, request.userId, `research-${level}`, 'text', cost, { regeneratedFrom: id });
+        await commit(regenToken, cost, `research-${level}`, 'text', { regeneratedFrom: id });
 
         return reply.send({ data: { sessionId: sessionData2.id, level, findings, refinedAngle }, error: null });
       } catch (err) {
+        await release(regenToken).catch(() => { /* best-effort */ });
         await (sb.from('research_sessions') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         }).update({ status: 'failed', error_message: (err as Error)?.message?.slice(0, 500) }).eq('id', sessionData2.id);

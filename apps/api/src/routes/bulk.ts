@@ -11,7 +11,6 @@ import { authenticate } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
-import { checkCredits } from '../lib/credits.js';
 import { calculateDraftCost } from '../lib/calculate-draft-cost.js';
 import { loadCreditSettings } from '../lib/credit-settings.js';
 import { inngest } from '../jobs/client.js';
@@ -55,13 +54,13 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
       const orgId = await getOrgId(request.userId);
       const sb = createServiceClient();
 
-      // Pre-flight cost check (skip se ollama).
+      // Cost is validated per-job via withReservation inside production/generate.
+      // Calculate perDraft for the response metadata.
       const creditSettings = await loadCreditSettings(sb);
       const perDraft = body.provider === 'ollama'
         ? 0
         : calculateDraftCost(body.type, creditSettings) + creditSettings.costCanonicalCore;
       const totalCost = perDraft * body.titles.length;
-      if (totalCost > 0) await checkCredits(orgId, request.userId, totalCost);
 
       // Criar drafts + disparar jobs em paralelo.
       const created: Array<{ id: string; title: string }> = [];

@@ -8,8 +8,8 @@ import { generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
 import { loadIdeaContext } from '../lib/ai/loadIdeaContext.js';
-import { debitCredits } from '../lib/credits.js';
 import { createServiceClient } from '../lib/supabase/index.js';
+import { withReservation } from './utils/with-reservation.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
 import { buildProduceMessage } from '../lib/ai/prompts/production.js';
@@ -159,85 +159,97 @@ export const productionProduce = inngest.createFunction(
 
       await assertNotAborted(projectId, draftId, sb);
 
-      const draftJson = await step.run('generate-produce', async () => {
-        const approvedCardsObj =
-          approvedCards && typeof approvedCards === 'object' && !Array.isArray(approvedCards)
-            ? (approvedCards as Record<string, unknown>)
-            : null;
-        const researchSources =
-          type === 'blog' && approvedCardsObj?.sources ? (approvedCardsObj.sources as unknown[]) : undefined;
+      // ── Credit reservation lifecycle ─────────────────────────────────────
+      // withReservation reserves credits up front, commits on success,
+      // releases (returns to pool) if fn throws.
+      await withReservation(
+        orgId,
+        userId,
+        cost,
+        `production-${type}`,
+        'text',
+        { draftId, type },
+        async () => {
+          const draftJson = await step.run('generate-produce', async () => {
+            const approvedCardsObj =
+              approvedCards && typeof approvedCards === 'object' && !Array.isArray(approvedCards)
+                ? (approvedCards as Record<string, unknown>)
+                : null;
+            const researchSources =
+              type === 'blog' && approvedCardsObj?.sources ? (approvedCardsObj.sources as unknown[]) : undefined;
 
-        const userMessage = buildProduceMessage({
-          type: type as string,
-          title: draft.title as string,
-          canonicalCore,
-          idea: ideaContext,
-          productionParams: productionParams ?? undefined,
-          sources: researchSources,
-          persona: layeredPersona?.voice ?? null,
-          channel: channelContext as
-            | { name?: string; niche?: string; language?: string; tone?: string }
-            | undefined,
-        });
-        const enabledTools = resolveTools(produceAgentConfig.tools).filter(
-          () => resolvedProvider !== 'ollama',
-        );
-        const call = await generateWithFallback(
-          'production',
-          modelTier,
-          {
-            agentType: 'production',
-            systemPrompt: layeredPersona?.constraints.length
-              ? `${formatConstraintsBlock(layeredPersona.constraints)}${produceAgentConfig.instructions}`
-              : produceAgentConfig.instructions,
-            userMessage,
-            tools: enabledTools.length > 0 ? enabledTools : undefined,
-            toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
-          },
-          {
-            provider: resolvedProvider,
-            model: resolvedModel,
-            logContext: {
-              userId,
+            const userMessage = buildProduceMessage({
+              type: type as string,
+              title: draft.title as string,
+              canonicalCore,
+              idea: ideaContext,
+              productionParams: productionParams ?? undefined,
+              sources: researchSources,
+              persona: layeredPersona?.voice ?? null,
+              channel: channelContext as
+                | { name?: string; niche?: string; language?: string; tone?: string }
+                | undefined,
+            });
+            const enabledTools = resolveTools(produceAgentConfig.tools).filter(
+              () => resolvedProvider !== 'ollama',
+            );
+            const call = await generateWithFallback(
+              'production',
+              modelTier,
+              {
+                agentType: 'production',
+                systemPrompt: layeredPersona?.constraints.length
+                  ? `${formatConstraintsBlock(layeredPersona.constraints)}${produceAgentConfig.instructions}`
+                  : produceAgentConfig.instructions,
+                userMessage,
+                tools: enabledTools.length > 0 ? enabledTools : undefined,
+                toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
+              },
+              {
+                provider: resolvedProvider,
+                model: resolvedModel,
+                logContext: {
+                  userId,
+                  orgId,
+                  projectId: undefined,
+                  channelId: (draft.channel_id as string | null) ?? undefined,
+                  sessionId: draftId,
+                  sessionType: 'production',
+                },
+              },
+            );
+            await logUsage({
               orgId,
-              projectId: undefined,
-              channelId: (draft.channel_id as string | null) ?? undefined,
+              userId,
+              channelId: (draft.channel_id as string | null) ?? null,
+              stage: 'production',
+              subStage: `produce-${type}`,
               sessionId: draftId,
               sessionType: 'production',
-            },
-          },
-        );
-        await logUsage({
-          orgId,
-          userId,
-          channelId: (draft.channel_id as string | null) ?? null,
-          stage: 'production',
-          subStage: `produce-${type}`,
-          sessionId: draftId,
-          sessionType: 'production',
-          provider: call.providerName,
-          model: call.model,
-          usage: call.usage,
-        });
-        return call.result;
-      });
+              provider: call.providerName,
+              model: call.model,
+              usage: call.usage,
+            });
+            return call.result;
+          });
 
-      await assertNotAborted(projectId, draftId, sb);
+          await assertNotAborted(projectId, draftId, sb);
 
-      await step.run('emit-saving', async () => {
-        await emitJobEvent(draftId, 'production', 'saving', 'Salvando rascunho…');
-      });
+          await step.run('emit-saving', async () => {
+            await emitJobEvent(draftId, 'production', 'saving', 'Salvando rascunho…');
+          });
 
-      await assertNotAborted(projectId, draftId, sb);
+          await assertNotAborted(projectId, draftId, sb);
 
-      await step.run('save-produce', async () => {
-        await (sb.from('content_drafts') as unknown as {
-          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        })
-          .update({ draft_json: draftJson, status: 'draft' })
-          .eq('id', draftId);
-        await debitCredits(orgId, userId, `production-${type}`, 'text', cost, { draftId, type });
-      });
+          await step.run('save-produce', async () => {
+            await (sb.from('content_drafts') as unknown as {
+              update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+            })
+              .update({ draft_json: draftJson, status: 'draft' })
+              .eq('id', draftId);
+          });
+        },
+      );
 
       await emitJobEvent(
         draftId,
