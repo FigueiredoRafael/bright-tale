@@ -89,6 +89,8 @@ export interface StageRun {
   errorMessage: string | null;
   startedAt: string | null;
   finishedAt: string | null;
+  trackId?: string | null;
+  publishTargetId?: string | null;
   /**
    * Per-stage opaque outcome blob (see ADR-0003). Written by the dispatcher
    * on terminal/awaiting transitions; read by the orchestrator to decide
