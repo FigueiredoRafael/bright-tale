@@ -239,3 +239,11 @@ export {
   type AddTrackInput,
   type UpdateTrackInput,
 } from "./tracks";
+
+// Publish-target schemas
+export {
+  PUBLISH_TARGET_TYPES,
+  publishTargetSchema,
+  type PublishTargetType,
+  type PublishTarget,
+} from "./publishTargets";

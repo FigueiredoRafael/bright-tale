@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useSelector } from '@xstate/react';
 import { usePipelineActor } from '@/hooks/usePipelineActor';
@@ -9,19 +9,27 @@ import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { PublishPanel } from '@/components/preview/PublishPanel';
 import { PublishProgress } from '@/components/publish/PublishProgress';
 import { ContextBanner } from './ContextBanner';
+import { WordPressPublishForm } from './publish-drivers/WordPressPublishForm';
+import { YouTubePublishForm } from './publish-drivers/YouTubePublishForm';
+import { SpotifyPublishForm } from './publish-drivers/SpotifyPublishForm';
+import { ApplePodcastsPublishForm } from './publish-drivers/ApplePodcastsPublishForm';
+import { RssPublishForm } from './publish-drivers/RssPublishForm';
+import { fetchPublishTarget } from '@/lib/api/publishTargets';
 import type { PipelineContext, PipelineStage, PublishResult } from './types';
+import type { PublishTarget } from '@brighttale/shared';
 
 interface PublishEngineProps {
   draft: {
     id: string;
     title: string | null;
     status: string;
-    wordpress_post_id: number | null;
-    published_url: string | null;
+    wordpress_post_id?: number | null;
+    published_url?: string | null;
   };
+  publishTargetId?: string;
 }
 
-export function PublishEngine({ draft }: PublishEngineProps) {
+export function PublishEngine({ draft, publishTargetId }: PublishEngineProps) {
   const actor = usePipelineActor();
   const channelId = useSelector(actor, (s) => s.context.channelId);
   const projectId = useSelector(actor, (s) => s.context.projectId);
@@ -77,6 +85,17 @@ export function PublishEngine({ draft }: PublishEngineProps) {
 
   const assetCount = assetsResult?.assetIds?.length ?? 0;
 
+  const [publishTarget, setPublishTarget] = useState<PublishTarget | null>(null);
+
+  useEffect(() => {
+    if (!publishTargetId) return;
+    let active = true;
+    fetchPublishTarget(publishTargetId)
+      .then((target) => { if (active) setPublishTarget(target); })
+      .catch(() => { /* errors handled by rendering null target */ });
+    return () => { active = false; };
+  }, [publishTargetId]);
+
   function handlePublish(params: { mode: string; scheduledDate?: string }) {
     if (publishing) return;
 
@@ -114,7 +133,7 @@ export function PublishEngine({ draft }: PublishEngineProps) {
       !publishBody &&
       !!channelId &&
       !!draftId &&
-      draft.published_url == null,
+      (draft.published_url ?? null) == null,
     fire: () => handlePublish({ mode: publishConfigStatus === 'published' ? 'publish' : 'draft' }),
     rearmKey: draftId,
   });
@@ -154,41 +173,66 @@ export function PublishEngine({ draft }: PublishEngineProps) {
           <p>Channel ID is missing. Cannot proceed with publishing.</p>
         </div>
       </div>
-    )
+    );
   }
 
-  return (
-    <div className="space-y-6">
-      <ContextBanner stage="publish" context={trackerContext} onBack={navigate} />
+  const panelProps = {
+    draftId,
+    channelId,
+    draftStatus: draft.status,
+    hasAssets: assetCount > 0,
+    wordpressPostId: draft.wordpress_post_id ?? null,
+    publishedUrl: draft.published_url ?? null,
+    onPublish: handlePublish,
+    isPublishing: publishing,
+    previewData: previewResult?.seoOverrides ? {
+      categories: previewResult.categories ?? [],
+      tags: previewResult.tags ?? [],
+      seo: previewResult.seoOverrides,
+      featuredImageUrl: assetsResult?.featuredImageUrl,
+      imageCount: assetsResult?.assetIds?.length ?? 0,
+      suggestedDate: previewResult.suggestedPublishDate,
+    } : undefined,
+  };
 
-      {publishing && publishBody ? (
+  function renderDriverSection() {
+    if (publishing && publishBody) {
+      return (
         <PublishProgress
           publishBody={publishBody}
           onComplete={handleStreamComplete}
           onError={handleStreamError}
         />
-      ) : (
-        <div>
-          <PublishPanel
-            draftId={draftId}
-            channelId={channelId}
-            draftStatus={draft.status}
-            hasAssets={assetCount > 0}
-            wordpressPostId={draft.wordpress_post_id}
-            publishedUrl={draft.published_url}
-            onPublish={handlePublish}
-            isPublishing={publishing}
-            previewData={previewResult?.seoOverrides ? {
-              categories: previewResult.categories ?? [],
-              tags: previewResult.tags ?? [],
-              seo: previewResult.seoOverrides,
-              featuredImageUrl: assetsResult?.featuredImageUrl,
-              imageCount: assetsResult?.assetIds?.length ?? 0,
-              suggestedDate: previewResult.suggestedPublishDate,
-            } : undefined}
-          />
-        </div>
-      )}
+      );
+    }
+
+    if (publishTargetId && publishTarget) {
+      switch (publishTarget.type) {
+        case 'wordpress':
+          return <WordPressPublishForm publishTarget={publishTarget} panelProps={panelProps} />;
+        case 'youtube':
+          return <YouTubePublishForm publishTarget={publishTarget} draft={{ id: draft.id, title: draft.title, status: draft.status }} />;
+        case 'spotify':
+          return <SpotifyPublishForm publishTarget={publishTarget} draft={{ id: draft.id, title: draft.title, status: draft.status }} />;
+        case 'apple_podcasts':
+          return <ApplePodcastsPublishForm publishTarget={publishTarget} draft={{ id: draft.id, title: draft.title, status: draft.status }} />;
+        case 'rss':
+          return <RssPublishForm publishTarget={publishTarget} draft={{ id: draft.id, title: draft.title, status: draft.status }} />;
+      }
+    }
+
+    // Legacy WordPress-only flow: used when publishTargetId is absent (backward compat)
+    return (
+      <div>
+        <PublishPanel {...panelProps} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <ContextBanner stage="publish" context={trackerContext} onBack={navigate} />
+      {renderDriverSection()}
     </div>
   );
 }
