@@ -2,6 +2,12 @@
 -- Source of truth: scripts/agents/*.ts
 -- Run: npm run db:seed:agents
 
+-- Ensure tools_json exists before the seed inserts reference it.
+-- The dedicated column migration (20260430100000) re-runs the same
+-- `add column if not exists` and is a no-op when this has already run.
+alter table public.agent_prompts
+  add column if not exists tools_json jsonb not null default '[]'::jsonb;
+
 insert into public.agent_prompts (id, name, slug, stage, instructions, sections_json, recommended_provider, recommended_model, tools_json, created_at, updated_at)
 values (
   $bt$agent-brainstorm$bt$,

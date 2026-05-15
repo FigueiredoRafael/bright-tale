@@ -1,11 +1,14 @@
+-- projects.channel_id was first added by 20260412234959_channels.sql; guard
+-- with `if not exists` so this migration is idempotent across environments
+-- that already received the earlier column add.
 alter table projects
-  add column channel_id              uuid references channels(id) on delete set null,
-  add column mode                    text,
-  add column autopilot_config_json   jsonb,
-  add column autopilot_template_id   text references autopilot_templates(id) on delete set null,
-  add column abort_requested_at      timestamptz;
+  add column if not exists channel_id              uuid references channels(id) on delete set null,
+  add column if not exists mode                    text,
+  add column if not exists autopilot_config_json   jsonb,
+  add column if not exists autopilot_template_id   text references autopilot_templates(id) on delete set null,
+  add column if not exists abort_requested_at      timestamptz;
 
-create index idx_projects_channel_id on projects(channel_id);
+create index if not exists idx_projects_channel_id on projects(channel_id);
 
 -- Note: projects.channel_id is intentionally NOT backfilled. Legacy projects
 -- with NULL channel_id surface a one-time PickChannelModal on first reopen
