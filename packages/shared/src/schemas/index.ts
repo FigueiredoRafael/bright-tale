@@ -233,4 +233,9 @@ export * from "./autopilotTemplates";
 export * from "./projectSetup";
 
 // Tracks API schemas
-export { addTrackSchema, type AddTrackInput } from "./tracks";
+export {
+  addTrackSchema,
+  updateTrackSchema,
+  type AddTrackInput,
+  type UpdateTrackInput,
+} from "./tracks";
