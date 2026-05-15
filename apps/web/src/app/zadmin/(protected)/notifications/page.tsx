@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition, useCallback, useEffect } from 'react';
+import { useState, useTransition, useCallback, useEffect, useRef } from 'react';
 import {
   Bell,
   Send,
@@ -11,6 +11,9 @@ import {
   AlertCircle,
   Users,
   User,
+  FileText,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { adminApi } from '@/lib/admin-path';
 import { searchUser, UserSearchResult } from './actions';
@@ -30,6 +33,18 @@ interface NotifHistoryItem {
   recipientCount: number;
   readCount: number;
   isGlobal: boolean;
+}
+
+interface NotificationTemplate {
+  type: string;
+  label: string;
+  titleTemplate: string;
+  bodyTemplate: string | null;
+  defaultActionUrl: string | null;
+  availableVariables: string[];
+  isSystem: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -96,10 +111,57 @@ function StatusBanner({
 }
 
 // ---------------------------------------------------------------------------
+// Template preview info box (shown in Send tab when a type is selected)
+// ---------------------------------------------------------------------------
+
+function TemplatePreview({ template }: { template: NotificationTemplate | null }) {
+  if (!template) return null;
+  return (
+    <div className="rounded-lg border border-[var(--border,#263146)] bg-[var(--background,#0a0e1a)]/40 px-4 py-3 text-xs space-y-1">
+      <p className="font-semibold text-[var(--muted-foreground,#8b98b0)] uppercase tracking-wider mb-2">
+        Template padrão
+      </p>
+      <p className="text-[var(--muted-foreground,#8b98b0)]">
+        <span className="font-medium text-[var(--foreground,#e6edf7)]">Título: </span>
+        {template.titleTemplate}
+      </p>
+      {template.bodyTemplate && (
+        <p className="text-[var(--muted-foreground,#8b98b0)]">
+          <span className="font-medium text-[var(--foreground,#e6edf7)]">Corpo: </span>
+          {template.bodyTemplate}
+        </p>
+      )}
+      {template.availableVariables.length > 0 && (
+        <div className="flex flex-wrap gap-1 pt-1">
+          <span className="font-medium text-[var(--foreground,#e6edf7)]">Variáveis: </span>
+          {template.availableVariables.map((v) => (
+            <span
+              key={v}
+              className="rounded bg-[var(--primary,#2DD4A8)]/10 px-1.5 py-0.5 font-mono text-[var(--primary,#2DD4A8)]"
+            >
+              {`{${v}}`}
+            </span>
+          ))}
+        </div>
+      )}
+      <p className="mt-2 text-[var(--muted-foreground,#8b98b0)] opacity-70">
+        Se deixar título/corpo em branco, o template acima será usado automaticamente.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Tab: Enviar (Send)
 // ---------------------------------------------------------------------------
 
-function SendTab({ isOwner }: { isOwner: boolean }) {
+function SendTab({
+  isOwner,
+  templates,
+}: {
+  isOwner: boolean;
+  templates: NotificationTemplate[];
+}) {
   const [target, setTarget] = useState<'user' | 'all'>('user');
   const [emailQuery, setEmailQuery] = useState('');
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
@@ -113,6 +175,8 @@ function SendTab({ isOwner }: { isOwner: boolean }) {
   const [status, setStatus] = useState<
     { kind: 'success'; message: string } | { kind: 'error'; message: string } | null
   >(null);
+
+  const activeTemplate = templates.find((t) => t.type === type) ?? null;
 
   const handleSearch = useCallback(
     (q: string) => {
@@ -144,10 +208,12 @@ function SendTab({ isOwner }: { isOwner: boolean }) {
       const payload: Record<string, unknown> = {
         target,
         type,
-        title,
         body: body || undefined,
         actionUrl: actionUrl || undefined,
       };
+      // Only include title when explicitly filled — omitting lets the API use the template
+      if (title.trim()) payload.title = title.trim();
+
       if (target === 'user') {
         if (!selectedUser) {
           setStatus({ kind: 'error', message: 'Selecione um usuário antes de enviar.' });
@@ -301,6 +367,9 @@ function SendTab({ isOwner }: { isOwner: boolean }) {
             </option>
           ))}
         </select>
+
+        {/* Template preview for selected type */}
+        {activeTemplate && <TemplatePreview template={activeTemplate} />}
       </div>
 
       {/* Title */}
@@ -309,16 +378,18 @@ function SendTab({ isOwner }: { isOwner: boolean }) {
           htmlFor="notif-title"
           className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground,#8b98b0)]"
         >
-          Título <span className="text-red-400">*</span>
+          Título{' '}
+          <span className="text-[var(--muted-foreground,#8b98b0)] normal-case font-normal">
+            (opcional — usa template se vazio)
+          </span>
         </label>
         <input
           id="notif-title"
           type="text"
-          required
           maxLength={120}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Ex: Novidade importante para você!"
+          placeholder="Deixe vazio para usar o template padrão"
           className="w-full rounded-lg border border-[var(--border,#263146)] bg-[var(--card,#121826)] px-3 py-2 text-sm text-[var(--foreground,#e6edf7)] placeholder:text-[var(--muted-foreground,#8b98b0)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#2DD4A8)]/50"
         />
         <p className="text-right text-xs text-[var(--muted-foreground,#8b98b0)]">{title.length}/120</p>
@@ -500,37 +571,320 @@ function HistoryTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Template editor row (accordion item)
+// ---------------------------------------------------------------------------
+
+interface TemplateRowProps {
+  template: NotificationTemplate;
+  isOwnerOrAdmin: boolean;
+  onSaved: (updated: NotificationTemplate) => void;
+}
+
+function TemplateRow({ template, isOwnerOrAdmin, onSaved }: TemplateRowProps) {
+  const [expanded, setExpanded] = useState(false);
+  const [titleTemplate, setTitleTemplate] = useState(template.titleTemplate);
+  const [bodyTemplate, setBodyTemplate] = useState(template.bodyTemplate ?? '');
+  const [defaultActionUrl, setDefaultActionUrl] = useState(template.defaultActionUrl ?? '');
+  const [isSaving, startSave] = useTransition();
+  const [rowStatus, setRowStatus] = useState<
+    { kind: 'success'; message: string } | { kind: 'error'; message: string } | null
+  >(null);
+
+  const titleRef = useRef<HTMLInputElement>(null);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+
+  function insertVar(v: string, field: 'title' | 'body') {
+    const placeholder = `{${v}}`;
+    if (field === 'title' && titleRef.current) {
+      const el = titleRef.current;
+      const start = el.selectionStart ?? titleTemplate.length;
+      const end = el.selectionEnd ?? titleTemplate.length;
+      const next = titleTemplate.slice(0, start) + placeholder + titleTemplate.slice(end);
+      setTitleTemplate(next);
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(start + placeholder.length, start + placeholder.length);
+      });
+    } else if (field === 'body' && bodyRef.current) {
+      const el = bodyRef.current;
+      const start = el.selectionStart ?? bodyTemplate.length;
+      const end = el.selectionEnd ?? bodyTemplate.length;
+      const next = bodyTemplate.slice(0, start) + placeholder + bodyTemplate.slice(end);
+      setBodyTemplate(next);
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(start + placeholder.length, start + placeholder.length);
+      });
+    }
+  }
+
+  function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setRowStatus(null);
+    startSave(async () => {
+      const res = await fetch(adminApi(`/notification-templates/${template.type}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          titleTemplate,
+          bodyTemplate: bodyTemplate || null,
+          defaultActionUrl: defaultActionUrl || null,
+        }),
+      });
+      const json = (await res.json()) as {
+        data: NotificationTemplate | null;
+        error: { message: string } | null;
+      };
+      if (!res.ok || json.error) {
+        setRowStatus({ kind: 'error', message: json.error?.message ?? 'Erro ao salvar.' });
+        return;
+      }
+      setRowStatus({ kind: 'success', message: 'Template salvo com sucesso.' });
+      if (json.data) onSaved(json.data);
+    });
+  }
+
+  return (
+    <div className="border-b border-[var(--border,#263146)] last:border-0">
+      {/* Accordion header */}
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-[var(--background,#0a0e1a)]/30 transition-colors"
+      >
+        <span className="rounded-md border border-[var(--border,#263146)] px-2 py-0.5 text-[11px] font-medium text-[var(--primary,#2DD4A8)]">
+          {template.label}
+        </span>
+        <span className="font-mono text-xs text-[var(--muted-foreground,#8b98b0)]">{template.type}</span>
+        <span className="flex-1" />
+        {template.availableVariables.map((v) => (
+          <span
+            key={v}
+            className="hidden sm:inline-block rounded bg-[var(--background,#0a0e1a)]/60 px-1.5 py-0.5 font-mono text-[10px] text-[var(--muted-foreground,#8b98b0)]"
+          >
+            {`{${v}}`}
+          </span>
+        ))}
+        {expanded ? (
+          <ChevronUp className="h-4 w-4 shrink-0 text-[var(--muted-foreground,#8b98b0)]" />
+        ) : (
+          <ChevronDown className="h-4 w-4 shrink-0 text-[var(--muted-foreground,#8b98b0)]" />
+        )}
+      </button>
+
+      {/* Accordion body */}
+      {expanded && (
+        <form onSubmit={handleSave} className="px-5 pb-5 space-y-4">
+          <StatusBanner status={rowStatus} />
+
+          {/* Available variables as chips */}
+          {template.availableVariables.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground,#8b98b0)]">
+                Variáveis disponíveis — clique para inserir
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                <span className="text-xs text-[var(--muted-foreground,#8b98b0)]">Título:</span>
+                {template.availableVariables.map((v) => (
+                  <button
+                    key={`title-${v}`}
+                    type="button"
+                    onClick={() => insertVar(v, 'title')}
+                    className="rounded bg-[var(--primary,#2DD4A8)]/10 px-1.5 py-0.5 font-mono text-xs text-[var(--primary,#2DD4A8)] hover:bg-[var(--primary,#2DD4A8)]/20 transition-colors"
+                  >
+                    {`{${v}}`}
+                  </button>
+                ))}
+                {template.bodyTemplate !== undefined && (
+                  <>
+                    <span className="ml-2 text-xs text-[var(--muted-foreground,#8b98b0)]">Corpo:</span>
+                    {template.availableVariables.map((v) => (
+                      <button
+                        key={`body-${v}`}
+                        type="button"
+                        onClick={() => insertVar(v, 'body')}
+                        className="rounded bg-[var(--background,#0a0e1a)]/60 px-1.5 py-0.5 font-mono text-xs text-[var(--muted-foreground,#8b98b0)] hover:bg-[var(--background,#0a0e1a)] transition-colors"
+                      >
+                        {`{${v}}`}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Title template */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground,#8b98b0)]">
+              Título template
+            </label>
+            <input
+              ref={titleRef}
+              type="text"
+              maxLength={300}
+              required
+              disabled={!isOwnerOrAdmin}
+              value={titleTemplate}
+              onChange={(e) => setTitleTemplate(e.target.value)}
+              className="w-full rounded-lg border border-[var(--border,#263146)] bg-[var(--background,#0a0e1a)] px-3 py-2 text-sm text-[var(--foreground,#e6edf7)] placeholder:text-[var(--muted-foreground,#8b98b0)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#2DD4A8)]/50 disabled:opacity-50"
+            />
+          </div>
+
+          {/* Body template */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground,#8b98b0)]">
+              Corpo template <span className="normal-case font-normal">(opcional)</span>
+            </label>
+            <textarea
+              ref={bodyRef}
+              maxLength={1000}
+              rows={3}
+              disabled={!isOwnerOrAdmin}
+              value={bodyTemplate}
+              onChange={(e) => setBodyTemplate(e.target.value)}
+              className="w-full resize-none rounded-lg border border-[var(--border,#263146)] bg-[var(--background,#0a0e1a)] px-3 py-2 text-sm text-[var(--foreground,#e6edf7)] placeholder:text-[var(--muted-foreground,#8b98b0)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#2DD4A8)]/50 disabled:opacity-50"
+            />
+          </div>
+
+          {/* Default action URL */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground,#8b98b0)]">
+              URL de ação padrão <span className="normal-case font-normal">(opcional)</span>
+            </label>
+            <input
+              type="text"
+              maxLength={500}
+              disabled={!isOwnerOrAdmin}
+              value={defaultActionUrl}
+              onChange={(e) => setDefaultActionUrl(e.target.value)}
+              placeholder="/settings/usage"
+              className="w-full rounded-lg border border-[var(--border,#263146)] bg-[var(--background,#0a0e1a)] px-3 py-2 text-sm text-[var(--foreground,#e6edf7)] placeholder:text-[var(--muted-foreground,#8b98b0)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#2DD4A8)]/50 disabled:opacity-50"
+            />
+          </div>
+
+          {isOwnerOrAdmin && (
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="flex items-center gap-2 rounded-lg bg-[var(--primary,#2DD4A8)] px-4 py-2 text-sm font-semibold text-[var(--background,#0a0e1a)] transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Salvar
+            </button>
+          )}
+        </form>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tab: Templates
+// ---------------------------------------------------------------------------
+
+function TemplatesTab({ isOwnerOrAdmin }: { isOwnerOrAdmin: boolean }) {
+  const [templates, setTemplates] = useState<NotificationTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchTemplates = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(adminApi('/notification-templates'));
+      const json = (await res.json()) as {
+        data: NotificationTemplate[] | null;
+        error: { message: string } | null;
+      };
+      if (!res.ok || json.error) {
+        setError(json.error?.message ?? 'Erro ao carregar templates.');
+        return;
+      }
+      setTemplates(json.data ?? []);
+    } catch {
+      setError('Falha de rede ao carregar templates.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchTemplates();
+  }, [fetchTemplates]);
+
+  function handleSaved(updated: NotificationTemplate) {
+    setTemplates((prev) => prev.map((t) => (t.type === updated.type ? updated : t)));
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16 text-[var(--muted-foreground,#8b98b0)]">
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+        <AlertCircle className="h-4 w-4 shrink-0" />
+        {error}
+      </div>
+    );
+  }
+
+  if (templates.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-[var(--muted-foreground,#8b98b0)]">
+        <FileText className="mb-3 h-8 w-8 opacity-30" />
+        <p className="text-sm">Nenhum template encontrado.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-[var(--border,#263146)] bg-[var(--card,#121826)]">
+      {templates.map((t) => (
+        <TemplateRow
+          key={t.type}
+          template={t}
+          isOwnerOrAdmin={isOwnerOrAdmin}
+          onSaved={handleSaved}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
 export default function NotificationsPage() {
-  const [tab, setTab] = useState<'send' | 'history'>('send');
-
-  // We can't easily check the role here without a server round-trip in a
-  // client component, so we use a simple trick: attempt the GET and check the
-  // returned role in a useEffect — but for simplicity we rely on the API to
-  // guard broadcast and show the button only after we learn the role.
-  const [isOwner, setIsOwner] = useState<boolean | null>(null);
+  const [tab, setTab] = useState<'send' | 'history' | 'templates'>('send');
+  const [isOwner, setIsOwner] = useState<boolean>(false);
+  const [isOwnerOrAdmin, setIsOwnerOrAdmin] = useState<boolean>(false);
+  const [templates, setTemplates] = useState<NotificationTemplate[]>([]);
 
   useEffect(() => {
-    // Piggyback on the session cookie — just check /api/zadmin/notifications
-    // with method GET to see if we get a 403 (non-manager) or succeed.
-    // For the ownership check we call a tiny separate check against the manager table.
     void (async () => {
       try {
-        const res = await fetch(adminApi('/notifications'));
-        if (!res.ok) {
-          setIsOwner(false);
-          return;
-        }
-        // We don't know the role from the GET response, so we do a dummy POST
-        // to all with an empty payload to detect 403 FORBIDDEN_BROADCAST.
-        // Instead, let's just try a HEAD-like check using an obviously invalid body —
-        // actually the simpler approach: default isOwner=true and let the API guard it.
-        // The broadcast button is only a UX convenience; the API guards it hard.
+        // Fetch templates so the Send tab can show previews immediately.
+        const res = await fetch(adminApi('/notification-templates'));
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          data: NotificationTemplate[] | null;
+          error: { message: string } | null;
+        };
+        setTemplates(json.data ?? []);
+        // If we could fetch templates we are at least a manager.
+        // Default to treating the user as owner/admin for Send tab optimistically;
+        // the API guards broadcast and template edits hard.
         setIsOwner(true);
+        setIsOwnerOrAdmin(true);
       } catch {
-        setIsOwner(false);
+        // No access — leave defaults (false).
       }
     })();
   }, []);
@@ -571,15 +925,25 @@ export default function NotificationsPage() {
           <History className="h-4 w-4" />
           Histórico
         </button>
+        <button
+          type="button"
+          onClick={() => setTab('templates')}
+          className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+            tab === 'templates'
+              ? 'bg-[var(--card,#121826)] text-[var(--foreground,#e6edf7)] shadow-sm'
+              : 'text-[var(--muted-foreground,#8b98b0)] hover:text-[var(--foreground,#e6edf7)]'
+          }`}
+        >
+          <FileText className="h-4 w-4" />
+          Templates
+        </button>
       </div>
 
       {/* Tab content */}
       <div className="rounded-xl border border-[var(--border,#263146)] bg-[var(--card,#121826)] p-6">
-        {tab === 'send' ? (
-          <SendTab isOwner={isOwner ?? false} />
-        ) : (
-          <HistoryTab />
-        )}
+        {tab === 'send' && <SendTab isOwner={isOwner} templates={templates} />}
+        {tab === 'history' && <HistoryTab />}
+        {tab === 'templates' && <TemplatesTab isOwnerOrAdmin={isOwnerOrAdmin} />}
       </div>
     </div>
   );

@@ -131,9 +131,10 @@ const notifySchema = z.object({
     'coupon_redeemed',
     'security',
   ] as [NotificationType, ...NotificationType[]]),
-  title: z.string().min(1).max(120),
+  title: z.string().min(1).max(120).optional(),
   body: z.string().max(500).optional(),
   actionUrl: z.string().url().optional().or(z.literal('')),
+  variables: z.record(z.string(), z.string()).optional(),
 });
 
 /** POST /api/zadmin/notifications — send notification */
@@ -159,7 +160,7 @@ export async function POST(req: NextRequest) {
   const parsed = notifySchema.safeParse(body);
   if (!parsed.success) return jsonError(parsed.error.message, 'VALIDATION_ERROR', 422);
 
-  const { target, userId, type, title, body: msgBody, actionUrl } = parsed.data;
+  const { target, userId, type, title, body: msgBody, actionUrl, variables } = parsed.data;
 
   if (target === 'user') {
     if (!userId) {
@@ -171,6 +172,7 @@ export async function POST(req: NextRequest) {
       title,
       body: msgBody,
       actionUrl: actionUrl || undefined,
+      variables,
       sentBy: user.id,
     });
 
@@ -203,6 +205,7 @@ export async function POST(req: NextRequest) {
     title,
     body: msgBody,
     actionUrl: actionUrl || undefined,
+    variables,
     sentBy: user.id,
   });
 
