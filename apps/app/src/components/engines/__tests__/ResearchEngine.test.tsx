@@ -7,6 +7,14 @@ import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
 import { ResearchEngine } from '../ResearchEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
 import type { AutopilotConfig } from '@brighttale/shared'
+import type { StageRun } from '@brighttale/shared/pipeline/inputs'
+
+const mockWriteStageRunOutcome = vi.fn(async () => ({ ok: true }))
+vi.mock('@/lib/api/stageRuns', () => ({
+  get writeStageRunOutcome() {
+    return mockWriteStageRunOutcome
+  },
+}))
 
 vi.mock('@/hooks/use-analytics', () => ({
   useAnalytics: () => ({ track: vi.fn() }),
@@ -263,5 +271,128 @@ describe('ResearchEngine', () => {
 
     const partial = actor.getSnapshot().context.stageResults.research as { status?: string } | undefined
     expect(partial?.status).toBe('Researching topic')
+  })
+})
+
+describe('ResearchEngine — stageRun binding (T3.5)', () => {
+  const STUB_CARDS_SHORT = [
+    { type: 'source', title: 'Source 1', url: 'https://a.com', relevance: 9 },
+    { type: 'statistic', title: 'Stat A', claim: 'Stat claim', relevance: 8 },
+  ]
+
+  const stageRun: StageRun = {
+    id: 'sr-research-1',
+    projectId: 'proj-1',
+    stage: 'research',
+    status: 'queued',
+    attemptNo: 1,
+    awaitingReason: null,
+    payloadRef: null,
+    inputJson: null,
+    errorMessage: null,
+    startedAt: null,
+    finishedAt: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+
+  const FULL_AUTOPILOT_CONFIG_OVERVIEW: AutopilotConfig = {
+    defaultProvider: 'recommended',
+    brainstorm: {
+      providerOverride: null,
+      mode: 'topic_driven',
+      topic: 'AI agents in 2026',
+      referenceUrl: null,
+      niche: 'enterprise',
+      tone: '',
+      audience: '',
+      goal: '',
+      constraints: '',
+    },
+    research: { providerOverride: null, depth: 'medium' },
+    canonicalCore: { providerOverride: null, personaId: null },
+    draft: { providerOverride: null, format: 'blog', wordCount: 1500 },
+    review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
+    assets: { providerOverride: null, mode: 'skip' },
+    preview: { enabled: false },
+    publish: { status: 'draft' },
+  }
+
+  beforeEach(() => {
+    mockWriteStageRunOutcome.mockClear()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        const s = String(url)
+        if (s.includes('/api/agents')) {
+          return {
+            ok: true,
+            json: async () => ({
+              data: { agents: [{ slug: 'research', recommended_provider: 'gemini', recommended_model: 'gemini-2.5-flash' }] },
+              error: null,
+            }),
+          } as Response
+        }
+        if (s.includes('/api/research-sessions')) {
+          return {
+            ok: true,
+            json: async () => ({
+              data: { sessionId: 'sess-sr-1', cards: STUB_CARDS_SHORT },
+              error: null,
+            }),
+          } as Response
+        }
+        return { ok: true, json: async () => ({ data: null, error: null }) } as Response
+      }),
+    )
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('writes outcome via stage-run-writer when stageRun prop is provided and research auto-completes', async () => {
+    const actor = createActor(pipelineMachine, {
+      input: {
+        projectId: 'proj-1',
+        channelId: 'ch-1',
+        projectTitle: 'T',
+        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+        creditSettings: DEFAULT_CREDIT_SETTINGS,
+        initialStageResults: {
+          brainstorm: {
+            ideaId: 'idea-1',
+            ideaTitle: 'AI agents in 2026',
+            ideaVerdict: 'viable',
+            ideaCoreTension: 'tension',
+            completedAt: new Date().toISOString(),
+          },
+        },
+      },
+    }).start()
+
+    actor.send({
+      type: 'SETUP_COMPLETE',
+      mode: 'overview',
+      autopilotConfig: FULL_AUTOPILOT_CONFIG_OVERVIEW,
+      templateId: null,
+      startStage: 'research',
+    })
+
+    render(
+      <PipelineActorProvider value={actor}>
+        <ResearchEngine mode="generate" stageRun={stageRun} />
+      </PipelineActorProvider>,
+    )
+
+    await waitFor(() => {
+      expect(mockWriteStageRunOutcome).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: 'proj-1',
+          stageRunId: 'sr-research-1',
+          outcome: expect.objectContaining({ researchSessionId: expect.any(String) }),
+        }),
+      )
+    }, { timeout: 3000 })
   })
 })
