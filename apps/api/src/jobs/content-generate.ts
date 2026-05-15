@@ -9,7 +9,7 @@ import { inngest } from './client.js';
 import { STAGE_COSTS, generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
-import { checkCredits, debitCredits } from '../lib/credits.js';
+import { withReservation } from './utils/with-reservation.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { buildBrainstormMessage } from '../lib/ai/prompts/brainstorm.js';
 import { buildResearchMessage } from '../lib/ai/prompts/research.js';
@@ -52,227 +52,235 @@ export const contentGenerate = inngest.createFunction(
     const tier = modelTier ?? 'standard';
 
     try {
-      // Step 1: Check credits
-    const totalCost = STAGE_COSTS.brainstorm + STAGE_COSTS.research + STAGE_COSTS.production + STAGE_COSTS.review;
-    await step.run('check-credits', async () => {
-      await checkCredits(orgId, userId, totalCost);
-    });
-
-    // Note: content-generate does not have a projectId upfront, so we pass undefined
-    // to assertNotAborted. Projects are created after all generation is complete.
-    await assertNotAborted(undefined, undefined, sb);
-
-    // Step 2: Brainstorm
-    const brainstormResult = await step.run('brainstorm', async () => {
-      const agentConfig = await loadAgentConfig('brainstorm');
-      const { provider: rp, model: rm } = resolveProviderOverride(
-        providerOverrides?.brainstorm?.provider,
-        providerOverrides?.brainstorm?.model,
-        agentConfig,
-      );
-      const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
-      const userMessage = buildBrainstormMessage({ topic });
-      const { result } = await generateWithFallback('brainstorm', tier, {
-        agentType: 'brainstorm',
-        systemPrompt: agentConfig.instructions,
-        userMessage,
-        schema: null,
-        tools: enabledTools.length > 0 ? enabledTools : undefined,
-        toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
-      }, {
-        provider: rp,
-        model: rm,
-        logContext: {
-          userId,
-          orgId,
-          channelId,
-          sessionId: undefined,
-          sessionType: 'brainstorm',
-        },
-      });
-      await debitCredits(orgId, userId, 'brainstorm', 'text', STAGE_COSTS.brainstorm, { channelId, topic });
-      return result;
-    });
-
-    await assertNotAborted(undefined, undefined, sb);
-
-    // Step 3: Research
-    const researchResult = await step.run('research', async () => {
-      const agentConfig = await loadAgentConfig('research');
-      const { provider: rp, model: rm } = resolveProviderOverride(
-        providerOverrides?.research?.provider,
-        providerOverrides?.research?.model,
-        agentConfig,
-      );
-      const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
-      const userMessage = buildResearchMessage({ ideaTitle: topic });
-      const { result } = await generateWithFallback('research', tier, {
-        agentType: 'research',
-        systemPrompt: agentConfig.instructions,
-        userMessage,
-        schema: null,
-        tools: enabledTools.length > 0 ? enabledTools : undefined,
-        toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
-      }, {
-        provider: rp,
-        model: rm,
-        logContext: {
-          userId,
-          orgId,
-          channelId,
-          sessionId: undefined,
-          sessionType: 'research',
-        },
-      });
-      await debitCredits(orgId, userId, 'research', 'text', STAGE_COSTS.research, { channelId, topic });
-      return result;
-    });
-
-    await assertNotAborted(undefined, undefined, sb);
-
-    // Step 4: Production — canonical core first, then per-format output
-    const canonicalCore = await step.run('canonical-core', async () => {
-      const coreConfig = await loadAgentConfig('content-core');
-      const agentConfig = coreConfig.instructions ? coreConfig : await loadAgentConfig('production');
-      const { provider: rp, model: rm } = resolveProviderOverride(
-        providerOverrides?.production?.provider,
-        providerOverrides?.production?.model,
-        agentConfig,
-      );
-      const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
-      const userMessage = buildCanonicalCoreMessage({
-        type: 'blog',
-        title: topic ?? 'Untitled',
-        researchCards: Array.isArray(researchResult) ? researchResult : undefined,
-      });
-      const { result } = await generateWithFallback('production', tier, {
-        agentType: 'production',
-        systemPrompt: agentConfig.instructions,
-        userMessage,
-        schema: null,
-        tools: enabledTools.length > 0 ? enabledTools : undefined,
-        toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
-      }, {
-        provider: rp,
-        model: rm,
-        logContext: {
-          userId,
-          orgId,
-          channelId,
-          sessionId: undefined,
-          sessionType: 'production',
-        },
-      });
-      return result;
-    });
-
-    const productionResults: Record<string, unknown> = {};
-    for (const format of formats) {
+      // Note: content-generate does not have a projectId upfront, so we pass undefined
+      // to assertNotAborted. Projects are created after all generation is complete.
       await assertNotAborted(undefined, undefined, sb);
 
-      productionResults[format] = await step.run(`production-${format}`, async () => {
-        const fmtConfig = await loadAgentConfig(format);
-        const agentConfig = fmtConfig.instructions ? fmtConfig : await loadAgentConfig('production');
-        const { provider: rp, model: rm } = resolveProviderOverride(
-          providerOverrides?.production?.provider,
-          providerOverrides?.production?.model,
-          agentConfig,
-        );
-        const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
-        const userMessage = buildProduceMessage({
-          type: format,
-          title: topic ?? 'Untitled',
-          canonicalCore,
-        });
-        const { result } = await generateWithFallback('production', tier, {
-          agentType: 'production',
-          systemPrompt: agentConfig.instructions,
-          userMessage,
-          schema: null,
-          tools: enabledTools.length > 0 ? enabledTools : undefined,
-          toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
-        }, {
-          provider: rp,
-          model: rm,
-          logContext: {
-            userId,
-            orgId,
-            channelId,
-            sessionId: undefined,
-            sessionType: 'production',
-          },
-        });
-        await debitCredits(orgId, userId, `production-${format}`, 'text', STAGE_COSTS.production, { channelId, format });
-        return result;
-      });
-    }
+      // ── Credit reservation lifecycle ─────────────────────────────────────
+      // Reserve the total pipeline cost upfront. withReservation reads the
+      // feature flag: when ON it uses reserve/commit/release; when OFF it falls
+      // back to checkCredits + debitCredits (legacy). The single reservation
+      // covers all four stages (brainstorm + research + production + review).
+      const totalCost = STAGE_COSTS.brainstorm + STAGE_COSTS.research + STAGE_COSTS.production + STAGE_COSTS.review;
 
-    // Step 5: Review
-    await assertNotAborted(undefined, undefined, sb);
+      await withReservation(
+        orgId,
+        userId,
+        totalCost,
+        'content-generate',
+        'text',
+        { channelId, topic },
+        async () => {
+          // Step 2: Brainstorm
+          const brainstormResult = await step.run('brainstorm', async () => {
+            const agentConfig = await loadAgentConfig('brainstorm');
+            const { provider: rp, model: rm } = resolveProviderOverride(
+              providerOverrides?.brainstorm?.provider,
+              providerOverrides?.brainstorm?.model,
+              agentConfig,
+            );
+            const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
+            const userMessage = buildBrainstormMessage({ topic });
+            const { result } = await generateWithFallback('brainstorm', tier, {
+              agentType: 'brainstorm',
+              systemPrompt: agentConfig.instructions,
+              userMessage,
+              schema: null,
+              tools: enabledTools.length > 0 ? enabledTools : undefined,
+              toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
+            }, {
+              provider: rp,
+              model: rm,
+              logContext: {
+                userId,
+                orgId,
+                channelId,
+                sessionId: undefined,
+                sessionType: 'brainstorm',
+              },
+            });
+            // Debit handled by withReservation on success.
+            return result;
+          });
 
-    await step.run('review', async () => {
-      const agentConfig = await loadAgentConfig('review');
-      const { provider: rp, model: rm } = resolveProviderOverride(
-        providerOverrides?.review?.provider,
-        providerOverrides?.review?.model,
-        agentConfig,
-      );
-      const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
-      const userMessage = buildReviewMessage({
-        type: 'blog',
-        title: topic ?? 'Untitled',
-        draftJson: productionResults,
-      });
-      const { result } = await generateWithFallback('review', tier, {
-        agentType: 'review',
-        systemPrompt: agentConfig.instructions,
-        userMessage,
-        schema: null,
-        tools: enabledTools.length > 0 ? enabledTools : undefined,
-        toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
-      }, {
-        provider: rp,
-        model: rm,
-        logContext: {
-          userId,
-          orgId,
-          channelId,
-          sessionId: undefined,
-          sessionType: 'brainstorm',
+          await assertNotAborted(undefined, undefined, sb);
+
+          // Step 3: Research
+          const researchResult = await step.run('research', async () => {
+            const agentConfig = await loadAgentConfig('research');
+            const { provider: rp, model: rm } = resolveProviderOverride(
+              providerOverrides?.research?.provider,
+              providerOverrides?.research?.model,
+              agentConfig,
+            );
+            const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
+            const userMessage = buildResearchMessage({ ideaTitle: topic });
+            const { result } = await generateWithFallback('research', tier, {
+              agentType: 'research',
+              systemPrompt: agentConfig.instructions,
+              userMessage,
+              schema: null,
+              tools: enabledTools.length > 0 ? enabledTools : undefined,
+              toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
+            }, {
+              provider: rp,
+              model: rm,
+              logContext: {
+                userId,
+                orgId,
+                channelId,
+                sessionId: undefined,
+                sessionType: 'research',
+              },
+            });
+            return result;
+          });
+
+          await assertNotAborted(undefined, undefined, sb);
+
+          // Step 4: Production — canonical core first, then per-format output
+          const canonicalCore = await step.run('canonical-core', async () => {
+            const coreConfig = await loadAgentConfig('content-core');
+            const agentConfig = coreConfig.instructions ? coreConfig : await loadAgentConfig('production');
+            const { provider: rp, model: rm } = resolveProviderOverride(
+              providerOverrides?.production?.provider,
+              providerOverrides?.production?.model,
+              agentConfig,
+            );
+            const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
+            const userMessage = buildCanonicalCoreMessage({
+              type: 'blog',
+              title: topic ?? 'Untitled',
+              researchCards: Array.isArray(researchResult) ? researchResult : undefined,
+            });
+            const { result } = await generateWithFallback('production', tier, {
+              agentType: 'production',
+              systemPrompt: agentConfig.instructions,
+              userMessage,
+              schema: null,
+              tools: enabledTools.length > 0 ? enabledTools : undefined,
+              toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
+            }, {
+              provider: rp,
+              model: rm,
+              logContext: {
+                userId,
+                orgId,
+                channelId,
+                sessionId: undefined,
+                sessionType: 'production',
+              },
+            });
+            return result;
+          });
+
+          const productionResults: Record<string, unknown> = {};
+          for (const format of formats) {
+            await assertNotAborted(undefined, undefined, sb);
+
+            productionResults[format] = await step.run(`production-${format}`, async () => {
+              const fmtConfig = await loadAgentConfig(format);
+              const agentConfig = fmtConfig.instructions ? fmtConfig : await loadAgentConfig('production');
+              const { provider: rp, model: rm } = resolveProviderOverride(
+                providerOverrides?.production?.provider,
+                providerOverrides?.production?.model,
+                agentConfig,
+              );
+              const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
+              const userMessage = buildProduceMessage({
+                type: format,
+                title: topic ?? 'Untitled',
+                canonicalCore,
+              });
+              const { result } = await generateWithFallback('production', tier, {
+                agentType: 'production',
+                systemPrompt: agentConfig.instructions,
+                userMessage,
+                schema: null,
+                tools: enabledTools.length > 0 ? enabledTools : undefined,
+                toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
+              }, {
+                provider: rp,
+                model: rm,
+                logContext: {
+                  userId,
+                  orgId,
+                  channelId,
+                  sessionId: undefined,
+                  sessionType: 'production',
+                },
+              });
+              return result;
+            });
+          }
+
+          // Step 5: Review
+          await assertNotAborted(undefined, undefined, sb);
+
+          await step.run('review', async () => {
+            const agentConfig = await loadAgentConfig('review');
+            const { provider: rp, model: rm } = resolveProviderOverride(
+              providerOverrides?.review?.provider,
+              providerOverrides?.review?.model,
+              agentConfig,
+            );
+            const enabledTools = resolveTools(agentConfig.tools).filter(() => rp !== 'ollama');
+            const userMessage = buildReviewMessage({
+              type: 'blog',
+              title: topic ?? 'Untitled',
+              draftJson: productionResults,
+            });
+            const { result } = await generateWithFallback('review', tier, {
+              agentType: 'review',
+              systemPrompt: agentConfig.instructions,
+              userMessage,
+              schema: null,
+              tools: enabledTools.length > 0 ? enabledTools : undefined,
+              toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
+            }, {
+              provider: rp,
+              model: rm,
+              logContext: {
+                userId,
+                orgId,
+                channelId,
+                sessionId: undefined,
+                sessionType: 'brainstorm',
+              },
+            });
+            return result;
+          });
+
+          // Step 6: Save results
+          await assertNotAborted(undefined, undefined, sb);
+
+          await step.run('save-results', async () => {
+            // Use rpc-style insert to avoid strict type checking on new columns
+            const { data: project } = await (sb.from('projects') as unknown as { insert: (row: Record<string, unknown>) => { select: () => { single: () => Promise<{ data: { id: string } | null }> } } })
+              .insert({ title: topic, channel_id: channelId, org_id: orgId, user_id: userId, status: 'active', current_stage: 'review' })
+              .select()
+              .single();
+
+            if (!project) return;
+
+            for (const format of formats) {
+              if (format === 'blog') {
+                await sb.from('blog_drafts').insert({
+                  title: topic, project_id: project.id, status: 'draft', user_id: userId,
+                  full_draft: '', meta_description: '', slug: topic.toLowerCase().replace(/\s+/g, '-'),
+                });
+              } else if (format === 'video') {
+                await sb.from('video_drafts').insert({
+                  title: topic, project_id: project.id, status: 'draft', user_id: userId,
+                  title_options: [topic],
+                });
+              }
+            }
+          });
         },
-      });
-      await debitCredits(orgId, userId, 'review', 'text', STAGE_COSTS.review, { channelId });
-      return result;
-    });
+      );
 
-    // Step 6: Save results
-    await assertNotAborted(undefined, undefined, sb);
-
-    await step.run('save-results', async () => {
-      // Use rpc-style insert to avoid strict type checking on new columns
-      const { data: project } = await (sb.from('projects') as unknown as { insert: (row: Record<string, unknown>) => { select: () => { single: () => Promise<{ data: { id: string } | null }> } } })
-        .insert({ title: topic, channel_id: channelId, org_id: orgId, user_id: userId, status: 'active', current_stage: 'review' })
-        .select()
-        .single();
-
-      if (!project) return;
-
-      for (const format of formats) {
-        if (format === 'blog') {
-          await sb.from('blog_drafts').insert({
-            title: topic, project_id: project.id, status: 'draft', user_id: userId,
-            full_draft: '', meta_description: '', slug: topic.toLowerCase().replace(/\s+/g, '-'),
-          });
-        } else if (format === 'video') {
-          await sb.from('video_drafts').insert({
-            title: topic, project_id: project.id, status: 'draft', user_id: userId,
-            title_options: [topic],
-          });
-        }
-      }
-    });
-
-    return { success: true, formats, topic };
+      return { success: true, formats, topic };
     } catch (err) {
       if (err instanceof JobAborted) {
         // content-generate doesn't have a session to mark paused yet;
