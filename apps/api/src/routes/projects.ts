@@ -11,6 +11,11 @@ import { ApiError } from '../lib/api/errors.js';
 import { createKey, getKeyByToken, consumeKey } from '../lib/idempotency.js';
 import { ENABLE_BULK_LIMITS, MAX_BULK_CREATE } from '../lib/config.js';
 import { createProjectsFromDiscovery } from '../lib/queries/discovery.js';
+import { assertProjectOwner } from '../lib/projects/ownership.js';
+import { buildGraph } from '../lib/pipeline/graph-builder.js';
+import type { RunNode } from '../lib/pipeline/graph-builder.js';
+import type { Track } from '../lib/pipeline/fan-out-planner.js';
+import type { PublishTarget } from '../lib/pipeline/publish-target-resolver.js';
 import {
   createProjectSchema,
   listProjectsQuerySchema,
@@ -18,9 +23,78 @@ import {
   bulkOperationSchema,
   markWinnerSchema,
 } from '@brighttale/shared/schemas/projects';
+import type { MediaConfig } from '@brighttale/shared/schemas/projects';
 import { bulkCreateSchema } from '@brighttale/shared/schemas/discovery';
 import type { Json } from '@brighttale/shared/types/database';
+import type { Medium } from '@brighttale/shared/pipeline/inputs';
 import { isAutopilotMode, resumeProject } from '../lib/pipeline/orchestrator.js';
+
+// ─── Track shape returned from the DB ────────────────────────────────────────
+interface TrackRow {
+  id: string;
+  project_id: string;
+  medium: Medium;
+  status: 'active' | 'aborted' | 'completed';
+  paused: boolean;
+  autopilot_config_json: unknown;
+  created_at: string;
+  updated_at: string;
+}
+
+function rowToTrack(row: TrackRow) {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    medium: row.medium,
+    status: row.status,
+    paused: Boolean(row.paused),
+    autopilotConfigJson: row.autopilot_config_json ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/**
+ * Insert one track per medium under projectId.
+ * Uses a compensating delete on the project if any track insert fails
+ * (Supabase JS client does not expose true transactions).
+ *
+ * Returns the inserted track objects or throws ApiError.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function insertTracksForProject(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sb: any,
+  projectId: string,
+  media: Medium[],
+  mediaConfig: Record<string, MediaConfig> | undefined,
+): Promise<ReturnType<typeof rowToTrack>[]> {
+  const tracks: ReturnType<typeof rowToTrack>[] = [];
+
+  for (const medium of media) {
+    const config = mediaConfig?.[medium];
+    const { data: inserted, error: insertErr } = await sb
+      .from('tracks')
+      .insert({
+        project_id: projectId,
+        medium,
+        autopilot_config_json: (config?.autopilotConfigJson as Json | undefined) ?? null,
+      })
+      .select('*')
+      .single();
+
+    if (insertErr ?? !inserted) {
+      // Compensating rollback: delete the project (cascades to any tracks
+      // already inserted since tracks.project_id has ON DELETE CASCADE).
+      await sb.from('projects').delete().eq('id', projectId);
+      throw new ApiError(500, 'Failed to create track', 'TRACK_INSERT_FAILED');
+    }
+
+    tracks.push(rowToTrack(inserted as TrackRow));
+  }
+
+  return tracks;
+}
 
 export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
   /**
@@ -125,7 +199,11 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
         }
       }
 
-      return reply.status(201).send({ data: project, error: null });
+      // T2.14: Insert one track per medium. Defaults to ['blog'] for backward compat.
+      const media: Medium[] = (data.media as Medium[] | undefined) ?? ['blog'];
+      const tracks = await insertTracksForProject(sb, project.id, media, data.mediaConfig as Record<string, MediaConfig> | undefined);
+
+      return reply.status(201).send({ data: { ...project, tracks }, error: null });
     } catch (error) {
       return sendError(reply, error);
     }
@@ -1002,6 +1080,120 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
         },
         error: null,
       });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * GET /:id/graph — Full DAG (nodes + edges) for the Graph view (T2.12).
+   *
+   * Loads all stage_runs, tracks, and publish_targets for the project in
+   * parallel, passes them through `buildGraph`, and returns the result in the
+   * standard `{ data, error }` envelope.
+   *
+   * The ETag is derived from the node and edge counts so the client can skip
+   * a re-render when the graph shape hasn't changed (lightweight; a
+   * content-hash would require serialisation on every request).
+   */
+  fastify.get('/:id/graph', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      const { id } = request.params as { id: string };
+
+      // 1. Ownership guard — must precede any data reads.
+      await assertProjectOwner(id, request.userId ?? '', sb);
+
+      // 2. Verify project exists (assertProjectOwner already throws 404, but
+      //    we need the row to confirm it's a real project before fetching runs).
+      const { data: project, error: projErr } = await sb
+        .from('projects')
+        .select('id')
+        .eq('id', id)
+        .maybeSingle();
+      if (projErr) throw projErr;
+      if (!project) throw new ApiError(404, 'Project not found', 'NOT_FOUND');
+
+      // 3. Load stage_runs and tracks in parallel.
+      const [stageRunsResult, tracksResult] = await Promise.all([
+        sb
+          .from('stage_runs')
+          .select('id, stage, status, track_id, publish_target_id, attempt_no')
+          .eq('project_id', id)
+          .order('created_at', { ascending: true }),
+        sb
+          .from('tracks')
+          .select('id, project_id, medium, status, paused, autopilot_config_json')
+          .eq('project_id', id)
+          .order('created_at', { ascending: true }),
+      ]);
+
+      if (stageRunsResult.error) throw stageRunsResult.error;
+      if (tracksResult.error) throw tracksResult.error;
+
+      // 4. Map DB rows to graph-builder input types.
+      const stageRuns: RunNode[] = (stageRunsResult.data ?? []).map(
+        (r: Record<string, unknown>) => ({
+          id: r.id as string,
+          stage: r.stage as RunNode['stage'],
+          status: r.status as RunNode['status'],
+          trackId: (r.track_id as string | null) ?? null,
+          publishTargetId: (r.publish_target_id as string | null) ?? null,
+          attemptNo: r.attempt_no as number,
+        }),
+      );
+
+      const tracks: Track[] = (tracksResult.data ?? []).map(
+        (r: Record<string, unknown>) => ({
+          id: r.id as string,
+          projectId: r.project_id as string,
+          medium: r.medium as Track['medium'],
+          status: r.status as Track['status'],
+          paused: Boolean(r.paused),
+          autopilotConfigJson: r.autopilot_config_json ?? undefined,
+        }),
+      );
+
+      // 5. Load publish_targets referenced by stage_runs. The publish_targets
+      //    table has no project_id column — it is scoped by channel/org.
+      //    We collect the distinct IDs referenced in stage_runs and load only
+      //    those rows so the graph-builder can group fan-out edges correctly.
+      const publishTargetIds = [
+        ...new Set(
+          stageRuns
+            .map((r) => r.publishTargetId)
+            .filter((tid): tid is string => tid !== null),
+        ),
+      ];
+
+      let publishTargets: PublishTarget[] = [];
+      if (publishTargetIds.length > 0) {
+        const { data: ptRows, error: ptErr } = await sb
+          .from('publish_targets')
+          .select('id, channel_id, org_id, type, display_name, config_json, is_active, created_at, updated_at')
+          .in('id', publishTargetIds);
+        if (ptErr) throw ptErr;
+        publishTargets = (ptRows ?? []).map((r: Record<string, unknown>) => ({
+          id: r.id as string,
+          channelId: (r.channel_id as string | null) ?? null,
+          orgId: (r.org_id as string | null) ?? null,
+          type: r.type as PublishTarget['type'],
+          displayName: r.display_name as string,
+          configJson: (r.config_json as Record<string, unknown> | null) ?? null,
+          isActive: Boolean(r.is_active),
+          createdAt: r.created_at as string,
+          updatedAt: r.updated_at as string,
+        }));
+      }
+
+      // 6. Build the DAG.
+      const graph = buildGraph({ stageRuns, tracks, publishTargets });
+
+      // 7. ETag — lightweight fingerprint; avoids re-serialisation on no-change.
+      const etag = `"${graph.nodes.length}n${graph.edges.length}e"`;
+      reply.header('ETag', etag);
+
+      return reply.send({ data: graph, error: null });
     } catch (error) {
       return sendError(reply, error);
     }

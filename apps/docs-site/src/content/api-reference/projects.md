@@ -14,6 +14,7 @@ Container principal de conteúdo. Um projeto contém stages, drafts e assets.
 | POST | `/api/projects/bulk-create` | Criar em massa (discovery) |
 | POST | `/api/projects/bulk` | Operações em massa |
 | POST | `/api/projects/:id/winner` | Marcar como winner |
+| GET | `/api/projects/:id/graph` | DAG completo do pipeline (nodes + edges) |
 
 ## GET `/api/projects`
 
@@ -65,6 +66,46 @@ Container principal de conteúdo. Um projeto contém stages, drafts e assets.
   "researchId": "uuid"  // opcional
 }
 ```
+
+## GET `/api/projects/:id/graph`
+
+Retorna o DAG completo do pipeline de um projeto no formato compatível com `@xyflow/react`.
+Requer ownership guard (mesmo usuário que criou o projeto ou canal vinculado).
+
+Seta o header `ETag` para caching no cliente.
+
+**Response:**
+```json
+{
+  "data": {
+    "nodes": [
+      {
+        "id": "sr-uuid",
+        "stage": "brainstorm",
+        "status": "completed",
+        "attemptNo": 1,
+        "trackId": null,
+        "publishTargetId": null,
+        "lane": "shared",
+        "label": "brainstorm #1"
+      }
+    ],
+    "edges": [
+      {
+        "id": "sequence:sr-uuid1->sr-uuid2",
+        "from": "sr-uuid1",
+        "to": "sr-uuid2",
+        "kind": "sequence"
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+**Tipos de nó (`lane`):** `shared` | `track` | `publish`
+
+**Tipos de aresta (`kind`):** `sequence` | `loop-confidence` | `loop-revision` | `fanout-canonical` | `fanout-publish`
 
 ## POST `/api/projects/bulk`
 
