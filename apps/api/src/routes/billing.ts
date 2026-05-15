@@ -11,6 +11,7 @@ import { getStripe } from '../lib/billing/stripe.js';
 import { getPlan, planFromPriceIdAsync, loadPlanConfigs, ADDON_PACKS, type PlanId, type BillingCycle } from '../lib/billing/plans.js';
 import { buildAffiliateContainer } from '../lib/affiliate/container.js';
 import { insertNotification } from '../lib/notifications.js';
+import { buildBillingStatus } from './billing/status.js';
 
 type StripeClient = ReturnType<typeof getStripe>;
 type StripeEvent = ReturnType<StripeClient['webhooks']['constructEvent']>;
@@ -37,7 +38,7 @@ async function getOrg(userId: string) {
   return org as Record<string, unknown>;
 }
 
-async function ensureStripeCustomer(orgId: string, email: string | null): Promise<string> {
+export async function ensureStripeCustomer(orgId: string, email: string | null): Promise<string> {
   const sb = createServiceClient();
   const { data: org } = await sb
     .from('organizations')
@@ -187,38 +188,13 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
 
   /**
    * GET /status — current org's plan, credits, next reset.
+   * Thin delegate to buildBillingStatus (V2-006.4).
    */
   fastify.get('/status', { preHandler: [authenticateWithUser] }, async (request, reply) => {
     try {
       if (!request.userId) throw new ApiError(401, 'Not authenticated', 'UNAUTHORIZED');
-      const org = await getOrg(request.userId);
-      const planId = (org.plan as PlanId) ?? 'free';
-      const plan = getPlan(planId);
-      return reply.send({
-        data: {
-          plan: {
-            id: planId,
-            displayName: plan.displayName,
-            credits: plan.credits,
-            usdMonthly: plan.usdMonthly,
-            billingCycle: org.billing_cycle,
-          },
-          credits: {
-            total: org.credits_total,
-            used: org.credits_used,
-            addon: org.credits_addon,
-            remaining: Math.max(0, (org.credits_total as number) - (org.credits_used as number)) + (org.credits_addon as number),
-            resetAt: org.credits_reset_at,
-          },
-          subscription: {
-            stripeCustomerId: org.stripe_customer_id,
-            stripeSubscriptionId: org.stripe_subscription_id,
-            planStartedAt: org.plan_started_at,
-            planExpiresAt: org.plan_expires_at,
-          },
-        },
-        error: null,
-      });
+      const data = await buildBillingStatus(request.userId);
+      return reply.send({ data, error: null });
     } catch (error) {
       return sendError(reply, error);
     }
@@ -547,7 +523,7 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
 
 /* ─── Webhook event dispatch ──────────────────────────────────────────────── */
 
-async function handleStripeEvent(event: StripeEvent, fastify: FastifyInstance): Promise<void> {
+export async function handleStripeEvent(event: StripeEvent, fastify: FastifyInstance): Promise<void> {
   fastify.log.info({ type: event.type, id: event.id }, '[stripe] event');
 
   switch (event.type) {
@@ -589,7 +565,7 @@ async function handleStripeEvent(event: StripeEvent, fastify: FastifyInstance): 
   }
 }
 
-async function grantAddonCredits(session: StripeCheckoutSession): Promise<void> {
+export async function grantAddonCredits(session: StripeCheckoutSession): Promise<void> {
   const orgId = session.metadata?.org_id;
   const creditsStr = session.metadata?.credits;
   if (!orgId || !creditsStr) return;
@@ -610,7 +586,7 @@ async function grantAddonCredits(session: StripeCheckoutSession): Promise<void> 
     .eq('id', orgId);
 }
 
-async function activateSubscriptionFromSession(session: StripeCheckoutSession): Promise<void> {
+export async function activateSubscriptionFromSession(session: StripeCheckoutSession): Promise<void> {
   const orgId = session.metadata?.org_id;
   if (!orgId || session.mode !== 'subscription' || !session.subscription) return;
   const stripe = getStripe();
@@ -632,7 +608,7 @@ async function activateSubscriptionFromSession(session: StripeCheckoutSession): 
   }
 }
 
-async function syncSubscription(subscription: StripeSubscription): Promise<void> {
+export async function syncSubscription(subscription: StripeSubscription): Promise<void> {
   const orgId = subscription.metadata?.org_id;
   const priceId = subscription.items.data[0]?.price.id;
   if (!orgId || !priceId) return;
@@ -661,7 +637,7 @@ async function syncSubscription(subscription: StripeSubscription): Promise<void>
     .eq('id', orgId);
 }
 
-async function downgradeToFree(subscription: StripeSubscription): Promise<void> {
+export async function downgradeToFree(subscription: StripeSubscription): Promise<void> {
   const orgId = subscription.metadata?.org_id;
   if (!orgId) return;
   const freePlan = getPlan('free');
@@ -688,7 +664,7 @@ async function downgradeToFree(subscription: StripeSubscription): Promise<void> 
   }
 }
 
-async function resetCreditsOnRenewal(invoice: StripeInvoice): Promise<void> {
+export async function resetCreditsOnRenewal(invoice: StripeInvoice): Promise<void> {
   // Only reset on recurring cycle renewals (not the first invoice, which
   // syncSubscription already handled).
   if (invoice.billing_reason !== 'subscription_cycle') return;
@@ -718,7 +694,7 @@ async function resetCreditsOnRenewal(invoice: StripeInvoice): Promise<void> {
     .eq('id', orgId);
 }
 
-async function notifyPaymentFailed(invoice: StripeInvoice): Promise<void> {
+export async function notifyPaymentFailed(invoice: StripeInvoice): Promise<void> {
   const subscriptionId = (invoice as unknown as { subscription?: string }).subscription;
   if (!subscriptionId) return;
   const stripe = getStripe();
