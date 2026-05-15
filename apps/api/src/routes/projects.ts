@@ -18,9 +18,77 @@ import {
   bulkOperationSchema,
   markWinnerSchema,
 } from '@brighttale/shared/schemas/projects';
+import type { MediaConfig } from '@brighttale/shared/schemas/projects';
 import { bulkCreateSchema } from '@brighttale/shared/schemas/discovery';
 import type { Json } from '@brighttale/shared/types/database';
+import type { Medium } from '@brighttale/shared/pipeline/inputs';
 import { isAutopilotMode, resumeProject } from '../lib/pipeline/orchestrator.js';
+
+// ─── Track shape returned from the DB ────────────────────────────────────────
+interface TrackRow {
+  id: string;
+  project_id: string;
+  medium: Medium;
+  status: 'active' | 'aborted' | 'completed';
+  paused: boolean;
+  autopilot_config_json: unknown;
+  created_at: string;
+  updated_at: string;
+}
+
+function rowToTrack(row: TrackRow) {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    medium: row.medium,
+    status: row.status,
+    paused: Boolean(row.paused),
+    autopilotConfigJson: row.autopilot_config_json ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/**
+ * Insert one track per medium under projectId.
+ * Uses a compensating delete on the project if any track insert fails
+ * (Supabase JS client does not expose true transactions).
+ *
+ * Returns the inserted track objects or throws ApiError.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function insertTracksForProject(
+  sb: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  projectId: string,
+  media: Medium[],
+  mediaConfig: Record<string, MediaConfig> | undefined,
+): Promise<ReturnType<typeof rowToTrack>[]> {
+  const tracks: ReturnType<typeof rowToTrack>[] = [];
+
+  for (const medium of media) {
+    const config = mediaConfig?.[medium];
+    const { data: inserted, error: insertErr } = await sb
+      .from('tracks')
+      .insert({
+        project_id: projectId,
+        medium,
+        autopilot_config_json: (config?.autopilotConfigJson as Json | undefined) ?? null,
+      })
+      .select('*')
+      .single();
+
+    if (insertErr ?? !inserted) {
+      // Compensating rollback: delete the project (cascades to any tracks
+      // already inserted since tracks.project_id has ON DELETE CASCADE).
+      await sb.from('projects').delete().eq('id', projectId);
+      throw new ApiError(500, 'Failed to create track', 'TRACK_INSERT_FAILED');
+    }
+
+    tracks.push(rowToTrack(inserted as TrackRow));
+  }
+
+  return tracks;
+}
 
 export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
   /**
@@ -125,7 +193,16 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
         }
       }
 
-      return reply.status(201).send({ data: project, error: null });
+      // T2.14: Insert one track per medium. Defaults to ['blog'] for backward compat.
+      const media: Medium[] = (data.media as Medium[] | undefined) ?? ['blog'];
+      const tracks = await insertTracksForProject(
+        sb,
+        project.id,
+        media,
+        data.mediaConfig as Record<string, MediaConfig> | undefined,
+      );
+
+      return reply.status(201).send({ data: { ...project, tracks }, error: null });
     } catch (error) {
       return sendError(reply, error);
     }

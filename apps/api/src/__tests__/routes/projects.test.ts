@@ -571,3 +571,143 @@ describe('PATCH /projects/:id — Mode + Paused (Slice 12)', () => {
     expect(res.json().error.code).toBe('DEPRECATED_FIELD');
   });
 });
+
+// ─── T2.14: POST /projects with media[] + per-medium config ─────────────────
+
+describe('POST /projects — T2.14 media[] + per-medium config', () => {
+  const baseBody = {
+    title: 'Multi-Track Project',
+    current_stage: 'brainstorm',
+    status: 'active',
+    winner: false,
+  };
+
+  beforeEach(() => {
+    // Default: project insert succeeds
+    mockChain.single.mockResolvedValue({
+      data: { id: 'p-new', title: 'Multi-Track Project' },
+      error: null,
+    });
+  });
+
+  it('creates project + 3 tracks when media has 3 media', async () => {
+    // First insert (project) → single
+    mockChain.single
+      .mockResolvedValueOnce({ data: { id: 'p-new', title: 'Multi-Track Project' }, error: null })
+      // track inserts (one per medium) → each calls single
+      .mockResolvedValueOnce({ data: { id: 't-1', project_id: 'p-new', medium: 'blog' }, error: null })
+      .mockResolvedValueOnce({ data: { id: 't-2', project_id: 'p-new', medium: 'video' }, error: null })
+      .mockResolvedValueOnce({ data: { id: 't-3', project_id: 'p-new', medium: 'podcast' }, error: null });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/projects',
+      headers: AUTH_USER,
+      payload: {
+        ...baseBody,
+        media: ['blog', 'video', 'podcast'],
+        mediaConfig: {
+          blog: { autopilotConfigJson: { maxReviewIterations: 3 } },
+          video: { autopilotConfigJson: { maxReviewIterations: 5 } },
+          podcast: { autopilotConfigJson: {} },
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.error).toBeNull();
+    expect(body.data.tracks).toHaveLength(3);
+    expect(body.data.tracks.map((t: { medium: string }) => t.medium)).toEqual(
+      expect.arrayContaining(['blog', 'video', 'podcast']),
+    );
+  });
+
+  it('defaults to blog track when media is omitted (backward compat)', async () => {
+    mockChain.single
+      .mockResolvedValueOnce({ data: { id: 'p-new', title: 'Solo Project' }, error: null })
+      .mockResolvedValueOnce({ data: { id: 't-1', project_id: 'p-new', medium: 'blog' }, error: null });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/projects',
+      headers: AUTH,
+      payload: baseBody,
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.error).toBeNull();
+    expect(body.data.tracks).toHaveLength(1);
+    expect(body.data.tracks[0].medium).toBe('blog');
+  });
+
+  it('rejects empty media array with 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/projects',
+      headers: AUTH,
+      payload: {
+        ...baseBody,
+        media: [],
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects mediaConfig with keys not in media array with 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/projects',
+      headers: AUTH,
+      payload: {
+        ...baseBody,
+        media: ['blog'],
+        mediaConfig: {
+          blog: { autopilotConfigJson: {} },
+          video: { autopilotConfigJson: {} }, // extra key not in media
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rolls back (deletes project) when a track insert fails', async () => {
+    // Project insert succeeds
+    mockChain.single
+      .mockResolvedValueOnce({ data: { id: 'p-new', title: 'Multi-Track Project' }, error: null })
+      // First track insert fails
+      .mockResolvedValueOnce({ data: null, error: { message: 'unique violation', code: '23505' } });
+
+    // Set up a fresh delete mock to track compensating rollback
+    const deleteMock = vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ error: null }),
+    });
+    const origDelete = mockChain.delete;
+    mockChain.delete = deleteMock;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/projects',
+      headers: AUTH,
+      payload: {
+        ...baseBody,
+        media: ['blog', 'video'],
+        mediaConfig: {
+          blog: { autopilotConfigJson: {} },
+          video: { autopilotConfigJson: {} },
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(500);
+    // Compensating delete must have been called with the new project id
+    expect(deleteMock).toHaveBeenCalled();
+    const deleteEqFn = deleteMock.mock.results[0].value.eq;
+    expect(deleteEqFn).toHaveBeenCalledWith('id', 'p-new');
+
+    mockChain.delete = origDelete;
+  });
+});

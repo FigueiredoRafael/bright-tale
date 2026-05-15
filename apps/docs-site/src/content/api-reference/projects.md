@@ -58,11 +58,41 @@ Container principal de conteúdo. Um projeto contém stages, drafts e assets.
 
 ## POST `/api/projects`
 
+Creates a project and one track per medium in a single atomic operation (T2.14). If the track inserts fail, the project is deleted (compensating rollback).
+
 **Body:**
 ```json
 {
   "title": "How Caffeine Actually Works",
-  "researchId": "uuid"  // opcional
+  "current_stage": "brainstorm",
+  "status": "active",
+  "winner": false,
+  "researchId": "uuid",
+  "media": ["blog", "video", "podcast"],
+  "mediaConfig": {
+    "blog": { "autopilotConfigJson": { "maxReviewIterations": 3 } },
+    "video": { "autopilotConfigJson": {} },
+    "podcast": { "autopilotConfigJson": {} }
+  }
+}
+```
+
+- `media` — optional array of `blog | video | shorts | podcast`. Defaults to `["blog"]` when omitted (backward compat).
+- `mediaConfig` — optional per-medium config. Keys must be a subset of `media`. Each value is stored as `tracks.autopilot_config_json`.
+
+**Response:**
+```json
+{
+  "data": {
+    "id": "uuid",
+    "title": "How Caffeine Actually Works",
+    "tracks": [
+      { "id": "uuid", "medium": "blog", "status": "active" },
+      { "id": "uuid", "medium": "video", "status": "active" },
+      { "id": "uuid", "medium": "podcast", "status": "active" }
+    ]
+  },
+  "error": null
 }
 ```
 
