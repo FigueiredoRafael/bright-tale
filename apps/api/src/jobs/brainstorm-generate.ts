@@ -9,7 +9,7 @@ import { inngest } from './client.js';
 import { STAGE_COSTS, generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
-import { debitCredits } from '../lib/credits.js';
+import { withReservation } from './utils/with-reservation.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
@@ -129,137 +129,147 @@ export const brainstormGenerate = inngest.createFunction(
 
       await assertNotAborted(projectId, undefined, sb);
 
-      const result = (await step.run('call-provider', async () => {
-        const userMessage = buildBrainstormMessage({
-          topic: (inputJson.topic as string) ?? undefined,
-          ideasRequested: (inputJson.ideasRequested as number) ?? undefined,
-          fineTuning: inputJson.fineTuning as BrainstormInput['fineTuning'],
-          referenceUrl: (inputJson.referenceUrl as string) ?? undefined,
-          channel: channelContext as BrainstormInput['channel'],
-        });
+      // ── Credit reservation lifecycle ─────────────────────────────────────
+      // withReservation reads the feature flag once. When ON it reserves credits
+      // up front and commits (or releases on throw) after fn completes.
+      // When OFF it falls back to checkCredits + debitCredits inline.
+      const charge = provider === 'ollama' ? 0 : STAGE_COSTS.brainstorm;
+      const creditMeta = { channelId, mode: event.data.inputMode, provider };
 
-        const enabledTools = resolveTools(agentConfig.tools).filter(
-          () => resolvedProvider !== 'ollama',
-        );
-        const call = await generateWithFallback(
-          'brainstorm',
-          modelTier,
-          {
-            agentType: 'brainstorm',
-            systemPrompt: systemPrompt ?? '',
-            userMessage,
-            tools: enabledTools.length > 0 ? enabledTools : undefined,
-            toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
-          },
-          {
-            provider: resolvedProvider,
-            model: resolvedModel,
-            logContext: {
-              userId,
-              orgId,
-              channelId,
-              sessionId,
-              sessionType: 'brainstorm',
-            },
-          },
-        );
-        await logUsage({
-          orgId, userId, channelId,
-          stage: 'brainstorm',
-          sessionId, sessionType: 'brainstorm',
-          provider: call.providerName, model: call.model,
-          usage: call.usage,
-        });
-        return call.result;
-      })) as unknown;
+      const persisted = await withReservation(
+        orgId,
+        userId,
+        charge,
+        'brainstorm',
+        'text',
+        creditMeta,
+        async () => {
+          const result = (await step.run('call-provider', async () => {
+            const userMessage = buildBrainstormMessage({
+              topic: (inputJson.topic as string) ?? undefined,
+              ideasRequested: (inputJson.ideasRequested as number) ?? undefined,
+              fineTuning: inputJson.fineTuning as BrainstormInput['fineTuning'],
+              referenceUrl: (inputJson.referenceUrl as string) ?? undefined,
+              channel: channelContext as BrainstormInput['channel'],
+            });
 
-      await assertNotAborted(projectId, undefined, sb);
+            const enabledTools = resolveTools(agentConfig.tools).filter(
+              () => resolvedProvider !== 'ollama',
+            );
+            const call = await generateWithFallback(
+              'brainstorm',
+              modelTier,
+              {
+                agentType: 'brainstorm',
+                systemPrompt: systemPrompt ?? '',
+                userMessage,
+                tools: enabledTools.length > 0 ? enabledTools : undefined,
+                toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
+              },
+              {
+                provider: resolvedProvider,
+                model: resolvedModel,
+                logContext: {
+                  userId,
+                  orgId,
+                  channelId,
+                  sessionId,
+                  sessionType: 'brainstorm',
+                },
+              },
+            );
+            await logUsage({
+              orgId, userId, channelId,
+              stage: 'brainstorm',
+              sessionId, sessionType: 'brainstorm',
+              provider: call.providerName, model: call.model,
+              usage: call.usage,
+            });
+            return call.result;
+          })) as unknown;
 
-      await step.run('emit-parsing', async () => {
-        await emitJobEvent(sessionId, 'brainstorm', 'parsing_output', 'Processando resposta da IA…');
-      });
+          await assertNotAborted(projectId, undefined, sb);
 
-      const ideas = normalizeIdeas(result);
-
-      if (ideas.length === 0) {
-        throw new Error('AI returned a response but no ideas could be parsed from the output. Try a different model or re-run.');
-      }
-
-      // Extract recommendation from AI output
-      let recommendation: { pick?: string; rationale?: string } | null = null;
-      if (result && typeof result === 'object' && 'recommendation' in (result as Record<string, unknown>)) {
-        recommendation = (result as Record<string, unknown>).recommendation as { pick?: string; rationale?: string } | null;
-      }
-
-      // F2-037: enforce target_count at the job level as a safety net in
-      // case the model ignored the prompt directive.
-      const capped = typeof targetCount === 'number' ? ideas.slice(0, targetCount) : ideas;
-
-      await assertNotAborted(projectId, undefined, sb);
-
-      await step.run('emit-saving', async () => {
-        await emitJobEvent(sessionId, 'brainstorm', 'saving', `Salvando ${capped.length} ideias em draft…`, { count: capped.length });
-      });
-
-      await assertNotAborted(projectId, undefined, sb);
-
-      const persisted = await step.run('persist-ideas', async () => {
-        // F2-037: stage ideas in brainstorm_drafts instead of idea_archives.
-        // The user picks which to keep via POST /drafts/save.
-        const draftRows = capped.map((idea, i) => ({
-          session_id: sessionId,
-          org_id: orgId,
-          user_id: userId,
-          channel_id: channelId,
-          title: idea.title ?? `Untitled ${i + 1}`,
-          core_tension: idea.core_tension ?? '',
-          target_audience: idea.target_audience ?? '',
-          verdict:
-            idea.verdict === 'viable' || idea.verdict === 'weak' || idea.verdict === 'experimental'
-              ? idea.verdict
-              : 'experimental',
-          discovery_data: JSON.stringify({
-            angle: idea.angle,
-            search_intent: idea.search_intent,
-            primary_keyword: idea.primary_keyword,
-            scroll_stopper: idea.scroll_stopper,
-            curiosity_gap: idea.curiosity_gap,
-            monetization: idea.monetization,
-            monetization_hypothesis: idea.monetization_hypothesis,
-            repurpose_potential: idea.repurpose_potential,
-            repurposing: idea.repurposing,
-            risk_flags: idea.risk_flags,
-            verdict_rationale: idea.verdict_rationale,
-          }),
-          position: i,
-        }));
-
-        if (draftRows.length > 0) {
-          // Clear any previous drafts from this session (shouldn't happen with
-          // idempotent inngest, but defensive) then insert fresh ones.
-          await sb.from('brainstorm_drafts').delete().eq('session_id', sessionId);
-          await (sb.from('brainstorm_drafts') as unknown as {
-            insert: (rows: Record<string, unknown>[]) => Promise<{ error: unknown }>;
-          }).insert(draftRows);
-        }
-
-        await (sb.from('brainstorm_sessions') as unknown as {
-          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        })
-          .update({ status: 'completed', ...(recommendation ? { recommendation_json: recommendation } : {}) })
-          .eq('id', sessionId);
-
-        const charge = provider === 'ollama' ? 0 : STAGE_COSTS.brainstorm;
-        if (charge > 0) {
-          await debitCredits(orgId, userId, 'brainstorm', 'text', charge, {
-            channelId,
-            mode: event.data.inputMode,
-            provider,
+          await step.run('emit-parsing', async () => {
+            await emitJobEvent(sessionId, 'brainstorm', 'parsing_output', 'Processando resposta da IA…');
           });
-        }
 
-        return draftRows.length;
-      });
+          const ideas = normalizeIdeas(result);
+
+          if (ideas.length === 0) {
+            throw new Error('AI returned a response but no ideas could be parsed from the output. Try a different model or re-run.');
+          }
+
+          // Extract recommendation from AI output
+          let recommendation: { pick?: string; rationale?: string } | null = null;
+          if (result && typeof result === 'object' && 'recommendation' in (result as Record<string, unknown>)) {
+            recommendation = (result as Record<string, unknown>).recommendation as { pick?: string; rationale?: string } | null;
+          }
+
+          // F2-037: enforce target_count at the job level as a safety net in
+          // case the model ignored the prompt directive.
+          const capped = typeof targetCount === 'number' ? ideas.slice(0, targetCount) : ideas;
+
+          await assertNotAborted(projectId, undefined, sb);
+
+          await step.run('emit-saving', async () => {
+            await emitJobEvent(sessionId, 'brainstorm', 'saving', `Salvando ${capped.length} ideias em draft…`, { count: capped.length });
+          });
+
+          await assertNotAborted(projectId, undefined, sb);
+
+          return step.run('persist-ideas', async () => {
+            // F2-037: stage ideas in brainstorm_drafts instead of idea_archives.
+            // The user picks which to keep via POST /drafts/save.
+            const draftRows = capped.map((idea, i) => ({
+              session_id: sessionId,
+              org_id: orgId,
+              user_id: userId,
+              channel_id: channelId,
+              title: idea.title ?? `Untitled ${i + 1}`,
+              core_tension: idea.core_tension ?? '',
+              target_audience: idea.target_audience ?? '',
+              verdict:
+                idea.verdict === 'viable' || idea.verdict === 'weak' || idea.verdict === 'experimental'
+                  ? idea.verdict
+                  : 'experimental',
+              discovery_data: JSON.stringify({
+                angle: idea.angle,
+                search_intent: idea.search_intent,
+                primary_keyword: idea.primary_keyword,
+                scroll_stopper: idea.scroll_stopper,
+                curiosity_gap: idea.curiosity_gap,
+                monetization: idea.monetization,
+                monetization_hypothesis: idea.monetization_hypothesis,
+                repurpose_potential: idea.repurpose_potential,
+                repurposing: idea.repurposing,
+                risk_flags: idea.risk_flags,
+                verdict_rationale: idea.verdict_rationale,
+              }),
+              position: i,
+            }));
+
+            if (draftRows.length > 0) {
+              // Clear any previous drafts from this session (shouldn't happen with
+              // idempotent inngest, but defensive) then insert fresh ones.
+              await sb.from('brainstorm_drafts').delete().eq('session_id', sessionId);
+              await (sb.from('brainstorm_drafts') as unknown as {
+                insert: (rows: Record<string, unknown>[]) => Promise<{ error: unknown }>;
+              }).insert(draftRows);
+            }
+
+            await (sb.from('brainstorm_sessions') as unknown as {
+              update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+            })
+              .update({ status: 'completed', ...(recommendation ? { recommendation_json: recommendation } : {}) })
+              .eq('id', sessionId);
+
+            // Credit debit is now handled by withReservation (commit on success,
+            // release on throw). No inline debitCredits call here.
+            return draftRows.length;
+          });
+        },
+      );
 
       await emitJobEvent(
         sessionId,

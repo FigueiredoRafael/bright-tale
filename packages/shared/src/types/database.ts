@@ -1665,6 +1665,63 @@ export type Database = {
         }
         Relationships: []
       }
+      credit_reservations: {
+        Row: {
+          actual_amount: number | null
+          amount: number
+          committed_at: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          org_id: string
+          status: string
+          token: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          actual_amount?: number | null
+          amount: number
+          committed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          org_id: string
+          status?: string
+          token?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          actual_amount?: number | null
+          amount?: number
+          committed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          org_id?: string
+          status?: string
+          token?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_reservations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_reservations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       credit_usage: {
         Row: {
           action: string
@@ -2555,6 +2612,7 @@ export type Database = {
           billing_cycle: string | null
           created_at: string
           credits_addon: number
+          credits_reserved: number
           credits_reset_at: string | null
           credits_total: number
           credits_used: number
@@ -2580,6 +2638,7 @@ export type Database = {
           billing_cycle?: string | null
           created_at?: string
           credits_addon?: number
+          credits_reserved?: number
           credits_reset_at?: string | null
           credits_total?: number
           credits_used?: number
@@ -2605,6 +2664,7 @@ export type Database = {
           billing_cycle?: string | null
           created_at?: string
           credits_addon?: number
+          credits_reserved?: number
           credits_reset_at?: string | null
           credits_total?: number
           credits_used?: number
@@ -2777,6 +2837,8 @@ export type Database = {
           review_max_iterations: number
           review_reject_threshold: number
           updated_at: string
+          /** V2-006.3: feature flag — when true jobs use reserve/commit/release lifecycle */
+          use_credit_reservations: boolean
         }
         Insert: {
           created_at?: string
@@ -2788,6 +2850,7 @@ export type Database = {
           review_max_iterations?: number
           review_reject_threshold?: number
           updated_at?: string
+          use_credit_reservations?: boolean
         }
         Update: {
           created_at?: string
@@ -2799,6 +2862,7 @@ export type Database = {
           review_max_iterations?: number
           review_reject_threshold?: number
           updated_at?: string
+          use_credit_reservations?: boolean
         }
         Relationships: []
       }
