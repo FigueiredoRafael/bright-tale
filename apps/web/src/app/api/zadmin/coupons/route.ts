@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getManager } from '@/lib/admin-check';
+import { logAudit } from '@/lib/audit-log';
 import { z } from 'zod';
 
 function jsonError(message: string, code: string, status: number) {
@@ -79,6 +80,14 @@ export async function POST(req: NextRequest) {
     if (error.code === '23505') return jsonError('Código já existe', 'DUPLICATE_CODE', 409);
     return jsonError(error.message, 'DB_ERROR', 500);
   }
+
+  void logAudit({
+    actorId: user.id,
+    action: 'coupon_created',
+    amount: creditsAmount,
+    amountUnit: 'tokens',
+    metadata: { code, maxUsesTotal: maxUsesTotal ?? null, validUntil: validUntil ?? null },
+  });
 
   return NextResponse.json({ data: coupon, error: null }, { status: 201 });
 }

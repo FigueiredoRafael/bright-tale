@@ -24,6 +24,8 @@ interface NotifyOptions {
   actionUrl?: string;
   /** How many days until this notification expires. Default: 90 */
   ttlDays?: number;
+  /** auth.users.id of the admin/manager who triggered this notification. */
+  sentBy?: string;
 }
 
 export async function notify(opts: NotifyOptions): Promise<void> {
@@ -40,6 +42,7 @@ export async function notify(opts: NotifyOptions): Promise<void> {
     expires_at: expiresAt.toISOString(),
     sent_via_email: false,
     sent_via_push: false,
+    sent_by: opts.sentBy ?? null,
   });
 }
 
@@ -60,6 +63,7 @@ export async function notifyMany(userIds: string[], opts: Omit<NotifyOptions, 'u
       expires_at: expiresAt.toISOString(),
       sent_via_email: false,
       sent_via_push: false,
+      sent_by: opts.sentBy ?? null,
     })),
   );
 }
