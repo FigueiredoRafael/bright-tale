@@ -421,3 +421,29 @@ Log individual de débitos de crédito (diferente de `usage_events` que é sobre
 | response | jsonb | |
 | consumed | boolean | |
 | expires_at | timestamptz | |
+
+## credit_reservations (V2-006)
+
+Holds in-flight credit reservations created by background jobs. A reservation transitions: `held` → `committed` (job succeeded) or `released` / `expired` (job failed or timed out). The `reserve_credits`, `commit_reservation`, `release_reservation`, and `expire_stale_reservations` Postgres RPCs use `SELECT FOR UPDATE` on `organizations` to prevent race conditions.
+
+**Architectural boundary:** The TS façade (`apps/api/src/lib/credits/reservations.ts`) is intentionally thin — it calls the RPCs and maps error codes. All locking logic lives in SQL.
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| id | uuid PK | |
+| token | uuid unique | Opaque handle returned to caller; used in commit/release calls |
+| org_id | uuid FK → organizations | Org holding the reservation |
+| user_id | uuid FK → auth.users | Member who triggered the job |
+| amount | integer | Credits reserved (estimated job cost) |
+| actual_amount | integer | Credits actually charged on commit (may be less than amount) |
+| status | text | `held` \| `committed` \| `released` \| `expired` |
+| created_at | timestamptz | |
+| expires_at | timestamptz | Stale threshold: `created_at + 15 minutes` |
+
+Índice: `(org_id, status)`, `(expires_at)` (para sweep do cron). RLS deny-all (só service_role).
+
+The companion column `organizations.credits_reserved` is kept in sync by the RPCs (incremented on reserve, decremented on commit/release/expire) so that the balance formula can subtract it without a JOIN:
+
+```
+available = (credits_total − credits_used − credits_reserved) + credits_addon + signup_bonus_remaining
+```
