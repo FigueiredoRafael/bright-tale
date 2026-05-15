@@ -16,6 +16,11 @@ import {
 import { ensureOrgId } from '../lib/orgs.js';
 import { uploadFile } from '../lib/storage.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
+import {
+  resolvePublishTargets,
+  type PublishTarget,
+} from '../lib/pipeline/publish-target-resolver.js';
+import { MEDIA, type Medium } from '@brighttale/shared/pipeline/inputs';
 
 /** Helper: get user's org_id */
 async function getOrgId(userId: string): Promise<string> {
@@ -270,6 +275,105 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
       return sendError(reply, error);
     }
   });
+
+  /**
+   * GET /:id/publish-targets — List publish targets for a channel.
+   * Optional ?medium= (blog | video | shorts | podcast) filter.
+   * Excludes credentials_encrypted from the response.
+   */
+  fastify.get<{ Params: { id: string }; Querystring: { medium?: string } }>(
+    '/:id/publish-targets',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        const sb = createServiceClient();
+        if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
+
+        const orgId = await getOrgId(request.userId);
+        const { id } = request.params;
+        const { medium: mediumRaw } = request.query;
+
+        // Validate ?medium= if provided
+        if (mediumRaw !== undefined && !(MEDIA as readonly string[]).includes(mediumRaw)) {
+          throw new ApiError(
+            400,
+            `Invalid medium "${mediumRaw}". Must be one of: ${MEDIA.join(', ')}`,
+            'VALIDATION_ERROR',
+          );
+        }
+
+        // Verify the channel belongs to the caller's org (ownership guard)
+        const { data: channel } = await sb
+          .from('channels')
+          .select('id')
+          .eq('id', id)
+          .eq('org_id', orgId)
+          .single();
+
+        if (!channel) throw new ApiError(404, 'Channel not found', 'CHANNEL_NOT_FOUND');
+
+        // Resolved items before stripping secrets (loose type; secrets stripped below)
+        let rawItems: Array<Record<string, unknown>>;
+
+        if (mediumRaw !== undefined) {
+          // Medium-filtered resolution via resolver
+          const resolved: PublishTarget[] = await resolvePublishTargets(
+            sb,
+            id,
+            orgId,
+            mediumRaw as Medium,
+          );
+          rawItems = resolved as unknown as Array<Record<string, unknown>>;
+        } else {
+          // No medium filter — return all active targets for this channel/org
+          const scopeFilter = `channel_id.eq.${id},and(org_id.eq.${orgId},channel_id.is.null)`;
+          const { data: rows, error: rowsError } = await sb
+            .from('publish_targets')
+            .select(
+              'id, channel_id, org_id, type, display_name, config_json, is_active, created_at, updated_at',
+            )
+            .or(scopeFilter)
+            .eq('is_active', true);
+
+          if (rowsError) throw rowsError;
+          rawItems = (rows ?? []).map(
+            (r: {
+              id: string;
+              channel_id: string | null;
+              org_id: string | null;
+              type: string;
+              display_name: string;
+              config_json: unknown;
+              is_active: boolean;
+              created_at: string;
+              updated_at: string;
+            }) => ({
+              id: r.id,
+              channelId: r.channel_id,
+              orgId: r.org_id,
+              type: r.type,
+              displayName: r.display_name,
+              configJson: r.config_json,
+              isActive: r.is_active,
+              createdAt: r.created_at,
+              updatedAt: r.updated_at,
+            }),
+          );
+        }
+
+        // Explicitly strip credentials_encrypted (security: never expose ciphertext)
+        const safeItems = rawItems.map((target) => {
+          const t = { ...target };
+          delete t['credentials_encrypted'];
+          return t;
+        });
+
+        return reply.send({ data: { items: safeItems }, error: null });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
 
   /**
    * DELETE /:id — Delete a channel
