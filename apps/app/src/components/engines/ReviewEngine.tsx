@@ -19,7 +19,9 @@ import { friendlyAiError } from '@/lib/ai/error-message';
 import { useUpgrade } from '@/components/billing/UpgradeProvider';
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
+import { writeStageRunOutcome } from '@/lib/api/stageRuns';
 import type { PipelineContext, PipelineStage, ReviewResult } from './types';
+import type { StageRun } from '@brighttale/shared/pipeline/inputs';
 import { deriveTier, isApprovedTier } from '@brighttale/shared';
 
 /**
@@ -28,6 +30,7 @@ import { deriveTier, isApprovedTier } from '@brighttale/shared';
  */
 interface ReviewEngineProps {
   draft: Record<string, unknown> | null;
+  stageRun?: StageRun;
 }
 
 const REVIEW_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
@@ -48,7 +51,7 @@ const TIER_COLOR: Record<string, string> = {
   not_requested: 'bg-gray-500/20 text-gray-700 border-gray-500/50',
 };
 
-export function ReviewEngine({ draft }: ReviewEngineProps) {
+export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
   const actor = usePipelineActor();
   const abortController = usePipelineAbort();
   const channelId = useSelector(actor, (s) => s.context.channelId);
@@ -737,7 +740,15 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
                         feedbackJson: fb,
                         iterationCount: draftView.iteration_count,
                       };
+                      // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
                       actor.send({ type: 'REVIEW_COMPLETE', result });
+                      if (stageRun && projectId) {
+                        void writeStageRunOutcome({
+                          projectId,
+                          stageRunId: stageRun.id,
+                          outcome: result as unknown as Record<string, unknown>,
+                        }).catch(() => {});
+                      }
                     }}
                     className="gap-2"
                   >
@@ -900,10 +911,18 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
               const verdict = (fresh.review_verdict as string | null) ?? 'pending';
               const tier = deriveTier(fmt ?? fb);
               const iterationCount = (fresh.iteration_count as number | null) ?? 1;
+              // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
               actor.send({
                 type: 'REVIEW_COMPLETE',
                 result: { score, qualityTier: tier, verdict, feedbackJson: fb, iterationCount },
               });
+              if (stageRun && projectId) {
+                void writeStageRunOutcome({
+                  projectId,
+                  stageRunId: stageRun.id,
+                  outcome: { score, qualityTier: tier, verdict, feedbackJson: fb, iterationCount } as Record<string, unknown>,
+                }).catch(() => {});
+              }
             }
           }}
           onFailed={(msg) => {
@@ -930,10 +949,18 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
                 const verdict = (fresh.review_verdict as string | null) ?? 'pending';
                 const tier = deriveTier(fmt ?? fb);
                 const iterationCount = (fresh.iteration_count as number | null) ?? 1;
+                // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
                 actor.send({
                   type: 'REVIEW_COMPLETE',
                   result: { score, qualityTier: tier, verdict, feedbackJson: fb, iterationCount },
                 });
+                if (stageRun && projectId) {
+                  void writeStageRunOutcome({
+                    projectId,
+                    stageRunId: stageRun.id,
+                    outcome: { score, qualityTier: tier, verdict, feedbackJson: fb, iterationCount } as Record<string, unknown>,
+                  }).catch(() => {});
+                }
               }
             } else {
               setReviewing(false);

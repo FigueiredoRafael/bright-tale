@@ -46,7 +46,9 @@ import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { hydrateResearchFromConfig } from '@/lib/pipeline/hydrateEngineFromConfig';
+import { writeStageRunOutcome } from '@/lib/api/stageRuns';
 import type { ResearchResult, PipelineContext } from './types';
+import type { StageRun } from '@brighttale/shared/pipeline/inputs';
 
 type Level = 'surface' | 'medium' | 'deep';
 
@@ -69,6 +71,7 @@ interface ResearchEngineProps {
   initialCards?: Record<string, unknown>[];
   initialApproved?: number[];
   initialIdeaId?: string;
+  stageRun?: StageRun;
 }
 
 const FOCUS_OPTIONS = [
@@ -88,6 +91,7 @@ export function ResearchEngine({
   initialCards,
   initialApproved,
   initialIdeaId,
+  stageRun,
 }: ResearchEngineProps) {
   const actor = usePipelineActor();
   const abortController = usePipelineAbort();
@@ -659,7 +663,15 @@ export function ResearchEngine({
       pivotRecommendation: signals.pivotRecommendation,
     };
     tracker.trackAction('findings.auto_approved', { sessionId });
+    // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
     actor.send({ type: 'RESEARCH_COMPLETE', result });
+    if (stageRun && projectId) {
+      void writeStageRunOutcome({
+        projectId,
+        stageRunId: stageRun.id,
+        outcome: result as unknown as Record<string, unknown>,
+      }).catch(() => {});
+    }
   }, [
     autoMode,
     autoPaused,
@@ -671,6 +683,8 @@ export function ResearchEngine({
     level,
     actor,
     tracker,
+    stageRun,
+    projectId,
   ]);
 
   // Auto-pilot (overview mode, legacy-cards path): handles sessions where the API returned a
@@ -693,7 +707,15 @@ export function ResearchEngine({
       researchLevel: level,
     };
     tracker.trackAction('cards.auto_approved', { cardCount: cards.length });
+    // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
     actor.send({ type: 'RESEARCH_COMPLETE', result });
+    if (stageRun && projectId) {
+      void writeStageRunOutcome({
+        projectId,
+        stageRunId: stageRun.id,
+        outcome: result as unknown as Record<string, unknown>,
+      }).catch(() => {});
+    }
   }, [
     autoMode,
     autoPaused,
@@ -706,6 +728,8 @@ export function ResearchEngine({
     level,
     actor,
     tracker,
+    stageRun,
+    projectId,
   ]);
 
   useAutoPilotTrigger({
@@ -862,7 +886,15 @@ export function ResearchEngine({
         researchSummary: signals.researchSummary,
         pivotRecommendation: signals.pivotRecommendation,
       };
+      // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
       actor.send({ type: 'RESEARCH_COMPLETE', result });
+      if (stageRun && projectId) {
+        void writeStageRunOutcome({
+          projectId,
+          stageRunId: stageRun.id,
+          outcome: result as unknown as Record<string, unknown>,
+        }).catch(() => {});
+      }
       onComplete?.();
       return;
     }
@@ -905,7 +937,15 @@ export function ResearchEngine({
       approvedCardsCount: approvedCards.length,
       researchLevel: level,
     };
+    // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
     actor.send({ type: 'RESEARCH_COMPLETE', result });
+    if (stageRun && projectId) {
+      void writeStageRunOutcome({
+        projectId,
+        stageRunId: stageRun.id,
+        outcome: result as unknown as Record<string, unknown>,
+      }).catch(() => {});
+    }
     onComplete?.();
   }
 
@@ -957,15 +997,21 @@ export function ResearchEngine({
             </div>
           )}
           onSelect={(item) => {
-            const cards = (item.approved_cards_json ?? item.cards_json ?? []) as unknown[];
-            actor.send({
-              type: 'RESEARCH_COMPLETE',
-              result: {
-                researchSessionId: item.id as string,
-                approvedCardsCount: cards.length,
-                researchLevel: (item.level as string) ?? 'medium',
-              } as ResearchResult,
-            });
+            const importedCards = (item.approved_cards_json ?? item.cards_json ?? []) as unknown[];
+            const importResult: ResearchResult = {
+              researchSessionId: item.id as string,
+              approvedCardsCount: importedCards.length,
+              researchLevel: (item.level as string) ?? 'medium',
+            };
+            // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
+            actor.send({ type: 'RESEARCH_COMPLETE', result: importResult });
+            if (stageRun && projectId) {
+              void writeStageRunOutcome({
+                projectId,
+                stageRunId: stageRun.id,
+                outcome: importResult as unknown as Record<string, unknown>,
+              }).catch(() => {});
+            }
           }}
         />
       </div>

@@ -8,6 +8,14 @@ import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
 import { PreviewEngine } from '../PreviewEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
 import type { AutopilotConfig } from '@brighttale/shared'
+import type { StageRun } from '@brighttale/shared/pipeline/inputs'
+
+const mockWriteStageRunOutcome = vi.fn(async () => ({ ok: true }))
+vi.mock('@/lib/api/stageRuns', () => ({
+  get writeStageRunOutcome() {
+    return mockWriteStageRunOutcome
+  },
+}))
 
 vi.mock('@/hooks/use-analytics', () => ({
   useAnalytics: () => ({ track: vi.fn() }),
@@ -223,5 +231,87 @@ describe('PreviewEngine', () => {
 
     const partial = actor.getSnapshot().context.stageResults.preview as { status?: string } | undefined
     expect(partial?.status).toBe('Awaiting your review')
+  })
+})
+
+describe('PreviewEngine — stageRun binding (T3.5)', () => {
+  const stageRun: StageRun = {
+    id: 'sr-preview-1',
+    projectId: 'proj-1',
+    stage: 'preview',
+    status: 'queued',
+    attemptNo: 1,
+    awaitingReason: null,
+    payloadRef: null,
+    inputJson: null,
+    errorMessage: null,
+    startedAt: null,
+    finishedAt: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+
+  beforeEach(() => {
+    mockWriteStageRunOutcome.mockClear()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        if (String(url).includes('/api/content-drafts/draft-1')) {
+          return { ok: true, json: async () => ({ data: STUB_DRAFT, error: null }) } as Response
+        }
+        if (String(url).includes('/api/assets?content_id=draft-1')) {
+          return { ok: true, json: async () => ({ data: { assets: STUB_ASSETS }, error: null }) } as Response
+        }
+        return { ok: true, json: async () => ({ data: null, error: null }) } as Response
+      }),
+    )
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('writes outcome via stage-run-writer when stageRun prop is provided and user approves', async () => {
+    const user = userEvent.setup()
+
+    const actor = createActor(pipelineMachine, {
+      input: {
+        projectId: 'proj-1',
+        channelId: 'ch-1',
+        projectTitle: 'T',
+        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+        creditSettings: DEFAULT_CREDIT_SETTINGS,
+        mode: null,
+        autopilotConfig: null,
+        initialStageResults: {
+          brainstorm: { ideaId: 'idea-1', ideaTitle: 'Idea T', ideaVerdict: 'viable', ideaCoreTension: 'tension', completedAt: new Date().toISOString() },
+          research:   { researchSessionId: 'rs-1', approvedCardsCount: 3, researchLevel: 'medium', completedAt: new Date().toISOString() },
+          draft:      { draftId: 'draft-1', draftTitle: 'Stub Draft', draftContent: '', completedAt: new Date().toISOString() },
+          review:     { score: 92, verdict: 'approved', feedbackJson: STUB_DRAFT.review_feedback_json, iterationCount: 1, completedAt: new Date().toISOString() },
+          assets:     { assetIds: ['asset-feat', 'asset-1', 'asset-2'], featuredImageUrl: 'https://x/f.jpg', completedAt: new Date().toISOString() },
+        },
+      },
+    }).start()
+
+    actor.send({ type: 'NAVIGATE', toStage: 'preview' })
+
+    render(
+      <PipelineActorProvider value={actor}>
+        <PreviewEngine stageRun={stageRun} />
+      </PipelineActorProvider>,
+    )
+
+    const approveBtn = await screen.findByRole('button', { name: /approve.*publish/i })
+    await user.click(approveBtn)
+
+    await waitFor(() => {
+      expect(mockWriteStageRunOutcome).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: 'proj-1',
+          stageRunId: 'sr-preview-1',
+          outcome: expect.objectContaining({ imageMap: expect.any(Object) }),
+        }),
+      )
+    })
   })
 })
