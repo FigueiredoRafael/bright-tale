@@ -5,7 +5,7 @@
 import { inngest } from './client.js';
 import { generateWithFallback } from '../lib/ai/router.js';
 
-import { debitCredits } from '../lib/credits.js';
+import { withReservation } from './utils/with-reservation.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
@@ -121,84 +121,92 @@ export const researchGenerate = inngest.createFunction(
 
       await assertNotAborted(projectId, undefined, sb);
 
-      const result = (await step.run('call-provider', async () => {
-        const userMessage = buildResearchMessage({
-          ideaId: (inputJson.ideaId as string) ?? undefined,
-          ideaTitle: (inputJson.topic as string) ?? undefined,
-          coreTension: undefined,
-          targetAudience: undefined,
-          level: (inputJson.level as string) ?? undefined,
-          instruction: (inputJson.instruction as string) ?? undefined,
-          channel: channelContext as ResearchInput['channel'],
-        });
+      // ── Credit reservation lifecycle ─────────────────────────────────────
+      const charge = provider === 'ollama' ? 0 : LEVEL_COSTS[level];
+      const creditMeta = { channelId, ideaId, provider };
 
-        const enabledTools = resolveTools(agentConfig.tools).filter(
-          () => resolvedProvider !== 'ollama',
-        );
-        const call = await generateWithFallback(
-          'research',
-          modelTier,
-          {
-            agentType: 'research',
-            systemPrompt: systemPrompt ?? '',
-            userMessage,
-            tools: enabledTools.length > 0 ? enabledTools : undefined,
-            toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
-          },
-          {
-            provider: resolvedProvider,
-            model: resolvedModel,
-            logContext: {
-              userId,
-              orgId,
-              channelId,
-              sessionId,
-              sessionType: 'research',
-            },
-          },
-        );
-        await logUsage({
-          orgId, userId, channelId,
-          stage: 'research', subStage: level,
-          sessionId, sessionType: 'research',
-          provider: call.providerName, model: call.model,
-          usage: call.usage,
-        });
-        return call.result;
-      })) as unknown;
+      const cardCount = await withReservation(
+        orgId,
+        userId,
+        charge,
+        `research-${level}`,
+        'text',
+        creditMeta,
+        async () => {
+          const result = (await step.run('call-provider', async () => {
+            const userMessage = buildResearchMessage({
+              ideaId: (inputJson.ideaId as string) ?? undefined,
+              ideaTitle: (inputJson.topic as string) ?? undefined,
+              coreTension: undefined,
+              targetAudience: undefined,
+              level: (inputJson.level as string) ?? undefined,
+              instruction: (inputJson.instruction as string) ?? undefined,
+              channel: channelContext as ResearchInput['channel'],
+            });
 
-      await assertNotAborted(projectId, undefined, sb);
+            const enabledTools = resolveTools(agentConfig.tools).filter(
+              () => resolvedProvider !== 'ollama',
+            );
+            const call = await generateWithFallback(
+              'research',
+              modelTier,
+              {
+                agentType: 'research',
+                systemPrompt: systemPrompt ?? '',
+                userMessage,
+                tools: enabledTools.length > 0 ? enabledTools : undefined,
+                toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
+              },
+              {
+                provider: resolvedProvider,
+                model: resolvedModel,
+                logContext: {
+                  userId,
+                  orgId,
+                  channelId,
+                  sessionId,
+                  sessionType: 'research',
+                },
+              },
+            );
+            await logUsage({
+              orgId, userId, channelId,
+              stage: 'research', subStage: level,
+              sessionId, sessionType: 'research',
+              provider: call.providerName, model: call.model,
+              usage: call.usage,
+            });
+            return call.result;
+          })) as unknown;
 
-      await step.run('emit-parsing', async () => {
-        await emitJobEvent(sessionId, 'research', 'parsing_output', 'Organizando fontes e citações…');
-      });
+          await assertNotAborted(projectId, undefined, sb);
 
-      const { findings, cardCount } = extractFindings(result);
-
-      await assertNotAborted(projectId, undefined, sb);
-
-      await step.run('emit-saving', async () => {
-        await emitJobEvent(sessionId, 'research', 'saving', `Salvando ${cardCount} cards de pesquisa…`, { count: cardCount });
-      });
-
-      await assertNotAborted(projectId, undefined, sb);
-
-      await step.run('persist', async () => {
-        await (sb.from('research_sessions') as unknown as {
-          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        })
-          .update({ status: 'completed', cards_json: findings })
-          .eq('id', sessionId);
-
-        const charge = provider === 'ollama' ? 0 : LEVEL_COSTS[level];
-        if (charge > 0) {
-          await debitCredits(orgId, userId, `research-${level}`, 'text', charge, {
-            channelId,
-            ideaId,
-            provider,
+          await step.run('emit-parsing', async () => {
+            await emitJobEvent(sessionId, 'research', 'parsing_output', 'Organizando fontes e citações…');
           });
-        }
-      });
+
+          const { findings, cardCount: count } = extractFindings(result);
+
+          await assertNotAborted(projectId, undefined, sb);
+
+          await step.run('emit-saving', async () => {
+            await emitJobEvent(sessionId, 'research', 'saving', `Salvando ${count} cards de pesquisa…`, { count });
+          });
+
+          await assertNotAborted(projectId, undefined, sb);
+
+          await step.run('persist', async () => {
+            await (sb.from('research_sessions') as unknown as {
+              update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+            })
+              .update({ status: 'completed', cards_json: findings })
+              .eq('id', sessionId);
+            // Credit debit handled by withReservation (commit on success, release on throw).
+          });
+
+          return count;
+        },
+      );
 
       await emitJobEvent(
         sessionId,
