@@ -101,6 +101,28 @@ npm run db:push:dev  # requires SUPABASE_ACCESS_TOKEN in root .env.local
 npm run db:types     # regenerates types from remote project
 ```
 
+### Switching env between local and remote dev
+
+`apps/*/.env.local` is the active env. To keep multiple presets side-by-side
+(local Docker, remote dev, etc.), store each as `apps/<api|app>/.env.local.<variant>`
+and swap with:
+
+```bash
+npm run env:switch local         # local Docker Supabase (default)
+npm run env:switch remote-dev    # whatever you saved as .env.local.remote-dev
+```
+
+First-time setup for a variant — copy the active files then edit:
+```bash
+cp apps/api/.env.local apps/api/.env.local.remote-dev
+cp apps/app/.env.local apps/app/.env.local.remote-dev
+# edit those copies to point at the remote project
+```
+
+Convention: `.env.local` mirrors the local Docker variant on feature branches.
+Only swap to `remote-dev` for explicit remote testing, and switch back before
+running tests or merging.
+
 ### 4. Local AI (Ollama, optional but recommended)
 
 **Recommended for testing the full pipeline locally without burning API quota:**

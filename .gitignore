@@ -11,6 +11,7 @@ out/
 # Env — NEVER commit
 .env
 .env.local
+.env.local.*
 .env.*.local
 .env.development
 .env.production
