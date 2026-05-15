@@ -2837,6 +2837,8 @@ export type Database = {
           review_max_iterations: number
           review_reject_threshold: number
           updated_at: string
+          /** V2-006.3: feature flag — when true jobs use reserve/commit/release lifecycle */
+          use_credit_reservations: boolean
         }
         Insert: {
           created_at?: string
@@ -2848,6 +2850,7 @@ export type Database = {
           review_max_iterations?: number
           review_reject_threshold?: number
           updated_at?: string
+          use_credit_reservations?: boolean
         }
         Update: {
           created_at?: string
@@ -2859,6 +2862,7 @@ export type Database = {
           review_max_iterations?: number
           review_reject_threshold?: number
           updated_at?: string
+          use_credit_reservations?: boolean
         }
         Relationships: []
       }

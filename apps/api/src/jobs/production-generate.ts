@@ -7,7 +7,7 @@ import { generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentConfig, loadAgentPrompt, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
 import { loadIdeaContext } from '../lib/ai/loadIdeaContext.js';
-import { debitCredits } from '../lib/credits.js';
+import { withReservation } from './utils/with-reservation.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
@@ -159,68 +159,82 @@ export const productionGenerate = inngest.createFunction(
 
       await assertNotAborted(projectId, draftId, sb);
 
-      const canonicalCore = await step.run('generate-core', async () => {
-        const userMessage = buildCanonicalCoreMessage({
-          type: type as string,
-          title: draft.title as string,
-          ideaId: draft.idea_id as string | undefined,
-          idea: ideaContext,
-          researchCards: approvedCards ?? undefined,
-          productionParams,
-          personaContext: layeredPersona?.context ?? null,
-          channel: channelContext as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
-        });
-        const enabledTools = resolveTools(coreAgentConfig.tools).filter(
-          () => resolvedProvider !== 'ollama',
-        );
-        const call = await generateWithFallback(
-          'production',
-          modelTier,
-          {
-            agentType: 'production',
-            systemPrompt: layeredPersona?.constraints.length
-              ? `${formatConstraintsBlock(layeredPersona.constraints)}${coreSystemPrompt ?? ''}`
-              : coreSystemPrompt ?? '',
-            userMessage,
-            tools: enabledTools.length > 0 ? enabledTools : undefined,
-            toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
-          },
-          {
-            provider: resolvedProvider,
-            model: resolvedModel,
-            logContext: {
-              userId,
-              orgId,
-              projectId: undefined,
-              channelId: (draft.channel_id as string | null) ?? undefined,
-              sessionId: draftId,
-              sessionType: 'production',
-            },
-          },
-        );
-        await logUsage({
-          orgId, userId, channelId: (draft.channel_id as string | null) ?? null,
-          stage: 'production', subStage: 'canonical-core',
-          sessionId: draftId, sessionType: 'production',
-          provider: call.providerName, model: call.model,
-          usage: call.usage,
-        });
-        return call.result;
-      });
+      // ── Credit reservation lifecycle ─────────────────────────────────────
+      // withReservation wraps the AI call + save-core step. The feature flag
+      // is read once at entry. Persona context and assertNotAborted calls are
+      // preserved inside the fn callback.
+      await withReservation(
+        orgId,
+        userId,
+        coreCost,
+        'canonical-core',
+        'text',
+        { draftId, type, provider },
+        async () => {
+          const canonicalCore = await step.run('generate-core', async () => {
+            const userMessage = buildCanonicalCoreMessage({
+              type: type as string,
+              title: draft.title as string,
+              ideaId: draft.idea_id as string | undefined,
+              idea: ideaContext,
+              researchCards: approvedCards ?? undefined,
+              productionParams,
+              personaContext: layeredPersona?.context ?? null,
+              channel: channelContext as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
+            });
+            const enabledTools = resolveTools(coreAgentConfig.tools).filter(
+              () => resolvedProvider !== 'ollama',
+            );
+            const call = await generateWithFallback(
+              'production',
+              modelTier,
+              {
+                agentType: 'production',
+                systemPrompt: layeredPersona?.constraints.length
+                  ? `${formatConstraintsBlock(layeredPersona.constraints)}${coreSystemPrompt ?? ''}`
+                  : coreSystemPrompt ?? '',
+                userMessage,
+                tools: enabledTools.length > 0 ? enabledTools : undefined,
+                toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
+              },
+              {
+                provider: resolvedProvider,
+                model: resolvedModel,
+                logContext: {
+                  userId,
+                  orgId,
+                  projectId: undefined,
+                  channelId: (draft.channel_id as string | null) ?? undefined,
+                  sessionId: draftId,
+                  sessionType: 'production',
+                },
+              },
+            );
+            await logUsage({
+              orgId, userId, channelId: (draft.channel_id as string | null) ?? null,
+              stage: 'production', subStage: 'canonical-core',
+              sessionId: draftId, sessionType: 'production',
+              provider: call.providerName, model: call.model,
+              usage: call.usage,
+            });
+            return call.result;
+          });
 
-      await assertNotAborted(projectId, draftId, sb);
+          await assertNotAborted(projectId, draftId, sb);
 
-      await step.run('save-core', async () => {
-        const coreToSave = draft.idea_id && canonicalCore && typeof canonicalCore === 'object' && !Array.isArray(canonicalCore)
-          ? { ...(canonicalCore as Record<string, unknown>), idea_id: draft.idea_id }
-          : canonicalCore;
-        await (sb.from('content_drafts') as unknown as {
-          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        })
-          .update({ canonical_core_json: coreToSave })
-          .eq('id', draftId);
-        await debitCredits(orgId, userId, 'canonical-core', 'text', coreCost, { draftId, type, provider });
-      });
+          await step.run('save-core', async () => {
+            const coreToSave = draft.idea_id && canonicalCore && typeof canonicalCore === 'object' && !Array.isArray(canonicalCore)
+              ? { ...(canonicalCore as Record<string, unknown>), idea_id: draft.idea_id }
+              : canonicalCore;
+            await (sb.from('content_drafts') as unknown as {
+              update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+            })
+              .update({ canonical_core_json: coreToSave })
+              .eq('id', draftId);
+            // Credit debit handled by withReservation (commit on success, release on throw).
+          });
+        },
+      );
 
       // Produce + Review are explicit subsequent stages so the user can
       // approve the canonical core, choose the produce model, and view the
