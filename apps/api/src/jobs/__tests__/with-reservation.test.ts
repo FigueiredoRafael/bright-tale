@@ -16,11 +16,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ── Hoisted mock factories ─────────────────────────────────────────────────
 const mocks = vi.hoisted(() => {
-  const reserve = vi.fn<[string, string, number], Promise<string>>()
-  const commit = vi.fn<[string, number, string, string, Record<string, unknown> | undefined], Promise<void>>()
-  const release = vi.fn<[string], Promise<void>>()
-  const checkCredits = vi.fn<[string, string, number], Promise<void>>()
-  const debitCredits = vi.fn<[string, string, string, string, number, Record<string, unknown> | undefined], Promise<void>>()
+  // Vitest v4 uses a single function-type generic for vi.fn
+  const reserve = vi.fn<(orgId: string, userId: string, cost: number) => Promise<string>>()
+  const commit = vi.fn<(token: string, actualCost: number, action: string, category: string, metadata?: Record<string, unknown>) => Promise<void>>()
+  const release = vi.fn<(token: string) => Promise<void>>()
+  const checkCredits = vi.fn<(orgId: string, userId: string, cost: number) => Promise<void>>()
+  const debitCredits = vi.fn<(orgId: string, userId: string, action: string, category: string, cost: number, metadata?: Record<string, unknown>) => Promise<void>>()
 
   return { reserve, commit, release, checkCredits, debitCredits }
 })
