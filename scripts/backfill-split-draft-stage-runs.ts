@@ -34,8 +34,11 @@ async function main(): Promise<void> {
   console.log(`[backfill-split] apply=${APPLY}`);
   const summary = await backfillSplitDraftStageRuns(sb, { dryRun: !APPLY });
   console.log(
-    `[backfill-split summary] scanned=${summary.scanned} split=${summary.split} alreadySplit=${summary.alreadySplit}`,
+    `[backfill-split summary] scanned=${summary.scanned} split=${summary.split} alreadySplit=${summary.alreadySplit} failures=${summary.failures.length}`,
   );
+  for (const f of summary.failures) {
+    console.log(`[backfill-split failure] ${f.projectId} — ${f.error}`);
+  }
 }
 
 main().catch((err) => {

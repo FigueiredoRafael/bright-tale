@@ -187,7 +187,7 @@ describe('backfillSplitDraftStageRuns — tracer', () => {
 
     const result = await backfillSplitDraftStageRuns(sb as unknown as never);
 
-    expect(result).toEqual({ scanned: 0, split: 0, alreadySplit: 0 });
+    expect(result).toEqual({ scanned: 0, split: 0, alreadySplit: 0, failures: [] });
     expect(sb.stage_runs).toHaveLength(0);
   });
 });
@@ -201,7 +201,7 @@ describe('backfillSplitDraftStageRuns — single legacy project', () => {
 
     const result = await backfillSplitDraftStageRuns(sb as unknown as never);
 
-    expect(result).toEqual({ scanned: 1, split: 1, alreadySplit: 0 });
+    expect(result).toEqual({ scanned: 1, split: 1, alreadySplit: 0, failures: [] });
     const stages = sb.stage_runs.map((r) => r.stage).sort();
     expect(stages).toEqual(['canonical', 'draft', 'production']);
   });
@@ -219,7 +219,7 @@ describe('backfillSplitDraftStageRuns — multiple projects', () => {
 
     const result = await backfillSplitDraftStageRuns(sb as unknown as never);
 
-    expect(result).toEqual({ scanned: 2, split: 2, alreadySplit: 0 });
+    expect(result).toEqual({ scanned: 2, split: 2, alreadySplit: 0, failures: [] });
     const byProject = (pid: string) =>
       sb.stage_runs.filter((r) => r.project_id === pid).map((r) => r.stage).sort();
     expect(byProject(PROJECT_A)).toEqual(['canonical', 'draft', 'production']);
@@ -254,7 +254,7 @@ describe('backfillSplitDraftStageRuns — dry-run', () => {
 
     const result = await backfillSplitDraftStageRuns(sb as unknown as never, { dryRun: true });
 
-    expect(result).toEqual({ scanned: 2, split: 2, alreadySplit: 0 });
+    expect(result).toEqual({ scanned: 2, split: 2, alreadySplit: 0, failures: [] });
     expect(sb.stage_runs.filter((r) => r.stage !== 'draft')).toHaveLength(0);
   });
 
@@ -270,7 +270,7 @@ describe('backfillSplitDraftStageRuns — dry-run', () => {
 
     const result = await backfillSplitDraftStageRuns(sb as unknown as never, { dryRun: true });
 
-    expect(result).toEqual({ scanned: 1, split: 0, alreadySplit: 1 });
+    expect(result).toEqual({ scanned: 1, split: 0, alreadySplit: 1, failures: [] });
     expect(sb.stage_runs).toHaveLength(3);
   });
 });
@@ -297,7 +297,7 @@ describe('backfillSplitDraftStageRuns — idempotency', () => {
 
     const result = await backfillSplitDraftStageRuns(sb as unknown as never);
 
-    expect(result).toEqual({ scanned: 1, split: 0, alreadySplit: 1 });
+    expect(result).toEqual({ scanned: 1, split: 0, alreadySplit: 1, failures: [] });
     expect(sb.stage_runs).toHaveLength(3);
   });
 });

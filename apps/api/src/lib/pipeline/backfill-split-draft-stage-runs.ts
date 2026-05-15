@@ -14,10 +14,16 @@ import { splitDraftStageRuns } from './legacy-track-migrator';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Sb = SupabaseClient<any, any, any>;
 
+export interface BackfillFailure {
+  projectId: string;
+  error: string;
+}
+
 export interface BackfillSummary {
   scanned: number;
   split: number;
   alreadySplit: number;
+  failures: BackfillFailure[];
 }
 
 export interface BackfillOptions {
@@ -39,6 +45,7 @@ export async function backfillSplitDraftStageRuns(
 
   let split = 0;
   let alreadySplit = 0;
+  const failures: Array<{ projectId: string; error: string }> = [];
   for (const projectId of projectIds) {
     if (opts.dryRun) {
       const { data: existing } = await sb
@@ -53,10 +60,14 @@ export async function backfillSplitDraftStageRuns(
       else split += 1;
       continue;
     }
-    const result = await splitDraftStageRuns(sb, projectId);
-    if (result === null) alreadySplit += 1;
-    else split += 1;
+    try {
+      const result = await splitDraftStageRuns(sb, projectId);
+      if (result === null) alreadySplit += 1;
+      else split += 1;
+    } catch (err) {
+      failures.push({ projectId, error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
-  return { scanned: projectIds.length, split, alreadySplit };
+  return { scanned: projectIds.length, split, alreadySplit, failures };
 }
