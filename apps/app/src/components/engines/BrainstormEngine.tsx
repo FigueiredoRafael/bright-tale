@@ -36,7 +36,9 @@ import { friendlyAiError } from '@/lib/ai/error-message';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { hydrateBrainstormFromConfig } from '@/lib/pipeline/hydrateEngineFromConfig';
 import { IdeaCard } from '@/components/brainstorm/IdeaCard';
+import { writeStageRunOutcome } from '@/lib/api/stageRuns';
 import type { BrainstormResult, PipelineContext } from './types';
+import type { StageRun } from '@brighttale/shared/pipeline/inputs';
 
 const BRAINSTORM_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
 
@@ -58,6 +60,7 @@ interface BrainstormEngineProps {
   initialSession?: Record<string, unknown>;
   initialIdeas?: Record<string, unknown>[];
   preSelectedIdeaId?: string;
+  stageRun?: StageRun;
 }
 
 const MODES: { id: Mode; label: string; description: string }[] = [
@@ -85,6 +88,7 @@ export function BrainstormEngine({
   initialSession,
   initialIdeas,
   preSelectedIdeaId,
+  stageRun,
 }: BrainstormEngineProps) {
   const actor = usePipelineActor();
   const abortController = usePipelineAbort();
@@ -471,7 +475,15 @@ export function BrainstormEngine({
         body: JSON.stringify({ title: chosen.title }),
       }).catch(() => {});
     }
+    // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
     actor.send({ type: 'BRAINSTORM_COMPLETE', result });
+    if (stageRun && projectId) {
+      void writeStageRunOutcome({
+        projectId,
+        stageRunId: stageRun.id,
+        outcome: result as unknown as Record<string, unknown>,
+      }).catch(() => {});
+    }
   }, [
     autoMode,
     autoPaused,
@@ -484,6 +496,7 @@ export function BrainstormEngine({
     actor,
     tracker,
     projectId,
+    stageRun,
   ]);
 
   async function handleRun() {
@@ -791,7 +804,15 @@ export function BrainstormEngine({
       });
     }
 
+    // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
     actor.send({ type: 'BRAINSTORM_COMPLETE', result });
+    if (stageRun && projectId) {
+      void writeStageRunOutcome({
+        projectId,
+        stageRunId: stageRun.id,
+        outcome: result as unknown as Record<string, unknown>,
+      }).catch(() => {});
+    }
   }
 
   const selectedIdea = ideas.find(
@@ -852,15 +873,21 @@ export function BrainstormEngine({
               ideaCount: 1,
               source: 'library',
             });
-            actor.send({
-              type: 'BRAINSTORM_COMPLETE',
-              result: {
-                ideaId: (item.id ?? item.idea_id) as string,
-                ideaTitle: item.title as string,
-                ideaVerdict: (item.verdict as string) ?? 'experimental',
-                ideaCoreTension: (item.core_tension as string) ?? '',
-              } as BrainstormResult,
-            });
+            const importResult: BrainstormResult = {
+              ideaId: (item.id ?? item.idea_id) as string,
+              ideaTitle: item.title as string,
+              ideaVerdict: (item.verdict as string) ?? 'experimental',
+              ideaCoreTension: (item.core_tension as string) ?? '',
+            };
+            // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
+            actor.send({ type: 'BRAINSTORM_COMPLETE', result: importResult });
+            if (stageRun && projectId) {
+              void writeStageRunOutcome({
+                projectId,
+                stageRunId: stageRun.id,
+                outcome: importResult as unknown as Record<string, unknown>,
+              }).catch(() => {});
+            }
           }}
         />
       </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createActor } from 'xstate'
 import React from 'react'
@@ -8,6 +8,14 @@ import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
 import { BrainstormEngine } from '../BrainstormEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
 import type { AutopilotConfig } from '@brighttale/shared'
+import type { StageRun } from '@brighttale/shared/pipeline/inputs'
+
+const mockWriteStageRunOutcome = vi.fn(async () => ({ ok: true }))
+vi.mock('@/lib/api/stageRuns', () => ({
+  get writeStageRunOutcome() {
+    return mockWriteStageRunOutcome
+  },
+}))
 
 vi.mock('@/hooks/use-analytics', () => ({
   useAnalytics: () => ({ track: vi.fn() }),
@@ -179,5 +187,91 @@ describe('BrainstormEngine', () => {
 
     const partial = actor.getSnapshot().context.stageResults.brainstorm as { status?: string } | undefined
     expect(partial?.status).toBe('Generating ideas')
+  })
+})
+
+describe('BrainstormEngine — stageRun binding (T3.5)', () => {
+  beforeEach(() => {
+    mockWriteStageRunOutcome.mockClear()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        if (String(url).includes('/api/ideas/library')) {
+          return {
+            ok: true,
+            json: async () => ({
+              data: { ideas: [] },
+              error: null,
+            }),
+          } as Response
+        }
+        return { ok: true, json: async () => ({ data: null, error: null }) } as Response
+      }),
+    )
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('writes outcome via stage-run-writer when stageRun prop is provided and user confirms idea', async () => {
+    const user = userEvent.setup()
+    const stageRun = {
+      id: 'sr-1',
+      projectId: 'proj-1',
+      stage: 'brainstorm',
+      status: 'queued',
+      attemptNo: 1,
+      awaitingReason: null,
+      payloadRef: null,
+      inputJson: null,
+      errorMessage: null,
+      startedAt: null,
+      finishedAt: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as StageRun
+
+    const actor = createActor(pipelineMachine, {
+      input: {
+        projectId: 'proj-1',
+        channelId: 'ch-1',
+        projectTitle: 'T',
+        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+        creditSettings: DEFAULT_CREDIT_SETTINGS,
+      },
+    }).start()
+    actor.send({
+      type: 'SETUP_COMPLETE',
+      mode: 'step-by-step',
+      autopilotConfig: null,
+      templateId: null,
+      startStage: 'brainstorm',
+    })
+
+    render(
+      <PipelineActorProvider value={actor}>
+        <BrainstormEngine
+          mode="generate"
+          stageRun={stageRun}
+          initialIdeas={[{ id: 'idea-1', idea_id: 'BC-IDEA-001', title: 'Test Idea', verdict: 'viable', target_audience: 'devs', core_tension: 'tension' }]}
+          initialSession={{ id: 'bs-1', input_json: { topic: 'test topic' } }}
+          preSelectedIdeaId="idea-1"
+        />
+      </PipelineActorProvider>,
+    )
+
+    const confirmBtn = await screen.findByRole('button', { name: /next.*research/i })
+    await user.click(confirmBtn)
+
+    await waitFor(() => {
+      expect(mockWriteStageRunOutcome).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: 'proj-1',
+          stageRunId: 'sr-1',
+          outcome: expect.objectContaining({ ideaId: 'idea-1' }),
+        }),
+      )
+    })
   })
 })
