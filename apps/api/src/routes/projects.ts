@@ -61,10 +61,8 @@ function rowToTrack(row: TrackRow) {
  *
  * Returns the inserted track objects or throws ApiError.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function insertTracksForProject(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sb: any,
+  sb: any, // eslint-disable-line @typescript-eslint/no-explicit-any
   projectId: string,
   media: Medium[],
   mediaConfig: Record<string, MediaConfig> | undefined,
@@ -201,7 +199,12 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
 
       // T2.14: Insert one track per medium. Defaults to ['blog'] for backward compat.
       const media: Medium[] = (data.media as Medium[] | undefined) ?? ['blog'];
-      const tracks = await insertTracksForProject(sb, project.id, media, data.mediaConfig as Record<string, MediaConfig> | undefined);
+      const tracks = await insertTracksForProject(
+        sb,
+        project.id,
+        media,
+        data.mediaConfig as Record<string, MediaConfig> | undefined,
+      );
 
       return reply.status(201).send({ data: { ...project, tracks }, error: null });
     } catch (error) {
