@@ -193,6 +193,7 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
           ...(body.modelTier !== undefined && { model_tier: body.modelTier }),
           ...(body.tone !== undefined && { tone: body.tone }),
           ...(body.templateId !== undefined && { template_id: body.templateId }),
+          ...(body.defaultMediaConfig !== undefined && { default_media_config_json: body.defaultMediaConfig as unknown as import('@brighttale/shared/types/database').Json }),
         })
         .eq('id', id)
         .eq('org_id', orgId)

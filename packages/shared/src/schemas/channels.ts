@@ -77,6 +77,7 @@ export const updateChannelSchema = z.object({
   modelTier: modelTierSchema.optional(),
   tone: z.string().optional(),
   templateId: z.string().uuid().optional(),
+  defaultMediaConfig: z.record(z.unknown()).optional(),
 });
 
 export type UpdateChannel = z.infer<typeof updateChannelSchema>;
