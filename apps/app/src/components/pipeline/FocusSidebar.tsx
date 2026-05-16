@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { CheckCircle, Circle, Loader2, XCircle, AlertCircle, MinusCircle, SkipForward, Pause, Play } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -157,6 +157,12 @@ const MEDIUM_LABELS: Record<string, string> = {
   podcast: 'Podcast',
 };
 
+interface TrackCostEntry {
+  trackId: string;
+  medium: string;
+  totalCost: number;
+}
+
 interface TrackSectionProps {
   track: Track;
   searchParams: URLSearchParams;
@@ -164,9 +170,11 @@ interface TrackSectionProps {
   /** Optional — called after the optimistic PATCH resolves; triggers a stream refresh. */
   onPauseToggle?: (trackId: string, paused: boolean) => Promise<void>;
   projectId?: string;
+  /** Per-track credit spend, fetched asynchronously by FocusSidebar. */
+  costByTrack?: Record<string, number>;
 }
 
-function TrackSection({ track, searchParams, onSelect, onPauseToggle, projectId }: TrackSectionProps) {
+function TrackSection({ track, searchParams, onSelect, onPauseToggle, projectId, costByTrack }: TrackSectionProps) {
   async function handlePauseToggle(e: React.MouseEvent) {
     e.stopPropagation();
     const newPaused = !track.paused;
@@ -183,6 +191,8 @@ function TrackSection({ track, searchParams, onSelect, onPauseToggle, projectId 
     });
   }
 
+  const trackCost = costByTrack?.[track.id] ?? 0;
+
   return (
     <div
       data-testid={`sidebar-track-${track.id}`}
@@ -190,6 +200,15 @@ function TrackSection({ track, searchParams, onSelect, onPauseToggle, projectId 
     >
       <div className="px-3 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
         <span className="flex-1">{MEDIUM_LABELS[track.medium] ?? track.medium}</span>
+        {trackCost > 0 && (
+          <Badge
+            data-testid={`sidebar-track-cost-${track.id}`}
+            variant="secondary"
+            className="text-xs px-1 py-0 h-4 font-normal"
+          >
+            {trackCost} cr
+          </Badge>
+        )}
         {track.paused && (
           <Badge
             data-testid={`sidebar-track-paused-badge-${track.id}`}
@@ -299,13 +318,40 @@ export function FocusSidebar({ projectId, channelId }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [costByTrack, setCostByTrack] = useState<Record<string, number>>({});
 
-  const { stageRuns, tracks: rawTracks, refresh } = useProjectStream(projectId) as ProjectStreamResult;
+  const { stageRuns, tracks: rawTracks, liveEvent, refresh } = useProjectStream(projectId) as ProjectStreamResult;
 
   // Only show active (non-aborted) tracks
   const tracks: Track[] = (rawTracks ?? []).filter((t) => t.status !== 'aborted');
 
   const canonicalCompleted = stageRuns['canonical']?.status === 'completed';
+
+  // Fetch per-track cost on mount and whenever a liveEvent arrives
+  const prevLiveEvent = useRef<unknown>(undefined);
+  useEffect(() => {
+    if (liveEvent === prevLiveEvent.current) return;
+    prevLiveEvent.current = liveEvent;
+
+    void (async () => {
+      try {
+        const res = await fetch(`/api/credits/usage/by-track?projectId=${projectId}`);
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          data: { byTrack: TrackCostEntry[] } | null;
+          error: unknown;
+        };
+        if (json.error !== null || json.data === null) return;
+        const map: Record<string, number> = {};
+        for (const entry of json.data.byTrack) {
+          map[entry.trackId] = entry.totalCost;
+        }
+        setCostByTrack(map);
+      } catch {
+        // Network error — silently ignore; badge simply won't update
+      }
+    })();
+  }, [projectId, liveEvent]);
 
   function handleSharedSelect(stage: string) {
     const url = buildUrl(pathname, searchParams, { stage });
@@ -373,6 +419,7 @@ export function FocusSidebar({ projectId, channelId }: Props) {
           onSelect={handleTrackSelect}
           onPauseToggle={handlePauseToggle}
           projectId={projectId}
+          costByTrack={costByTrack}
         />
       ))}
 
