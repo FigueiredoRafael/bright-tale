@@ -1648,7 +1648,9 @@ export type Database = {
           id: string
           metadata_json: Json | null
           org_id: string
+          publish_target_id: string | null
           source: string
+          track_id: string | null
           user_id: string
         }
         Insert: {
@@ -1659,7 +1661,9 @@ export type Database = {
           id?: string
           metadata_json?: Json | null
           org_id: string
+          publish_target_id?: string | null
           source?: string
+          track_id?: string | null
           user_id: string
         }
         Update: {
@@ -1670,7 +1674,9 @@ export type Database = {
           id?: string
           metadata_json?: Json | null
           org_id?: string
+          publish_target_id?: string | null
           source?: string
+          track_id?: string | null
           user_id?: string
         }
         Relationships: [
@@ -1679,6 +1685,20 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_usage_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_usage_publish_target_id_fkey"
+            columns: ["publish_target_id"]
+            isOneToOne: false
+            referencedRelation: "publish_targets"
             referencedColumns: ["id"]
           },
         ]
