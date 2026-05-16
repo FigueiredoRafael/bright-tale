@@ -108,12 +108,15 @@ export function ChatWidget() {
     }
   }, []);
 
+  // Load threads on mount (for badge) and whenever widget opens
   useEffect(() => {
     setLastReadMap(getLastReadMap());
+    void loadThreads();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (open) loadThreads();
+    if (open) void loadThreads();
   }, [open, loadThreads]);
 
 
@@ -125,6 +128,36 @@ export function ChatWidget() {
   useEffect(() => {
     if (open && view === 'chat') inputRef.current?.focus();
   }, [open, view]);
+
+  // Realtime background subscriptions: listen to ALL active threads for badge updates
+  useEffect(() => {
+    const activeThreads = threads.filter(
+      (t) => t.status === 'escalated' || t.status === 'in_progress',
+    );
+    if (activeThreads.length === 0) return;
+
+    const channels = activeThreads
+      .filter((t) => t.id !== threadId) // skip the one already subscribed by the chat view
+      .map((t) =>
+        supabase
+          .channel(`support-bg-${t.id}`)
+          .on('broadcast', { event: 'new_message' }, (payload) => {
+            const row = payload.payload as { id: string; thread_id: string; role: string };
+            if (row.role === 'human_agent') {
+              // Force lastReadMap refresh so badge appears
+              setLastReadMap(getLastReadMap());
+              // Also refresh thread list so updated_at is current
+              void loadThreads();
+            }
+          })
+          .subscribe(),
+      );
+
+    return () => {
+      channels.forEach((ch) => { void supabase.removeChannel(ch); });
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threads, threadId]);
 
   // Realtime: new messages + admin typing presence — single shared channel
   useEffect(() => {
