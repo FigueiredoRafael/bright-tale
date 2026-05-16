@@ -321,19 +321,21 @@ export function ChatWidget() {
   return (
     <>
       {/* Floating button */}
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-label="Suporte"
-        className="fixed bottom-6 right-6 z-50 w-12 h-12 rounded-full bg-primary text-background shadow-lg flex items-center justify-center hover:bg-primary/90 transition-all hover:scale-105 active:scale-95 relative"
-      >
-        {open ? <ChevronDown className="w-5 h-5" /> : <MessageCircle className="w-5 h-5" />}
-        {!open && totalUnread > 0 && (
-          <span className="absolute -top-1 -right-1 inline-flex items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white min-w-[18px] leading-none">
-            {totalUnread}
-          </span>
-        )}
-      </button>
+      <div className="fixed bottom-6 right-6 z-50">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Suporte"
+          className="relative w-12 h-12 rounded-full bg-primary text-background shadow-lg flex items-center justify-center hover:bg-primary/90 transition-all hover:scale-105 active:scale-95"
+        >
+          {open ? <ChevronDown className="w-5 h-5" /> : <MessageCircle className="w-5 h-5" />}
+          {!open && totalUnread > 0 && (
+            <span className="absolute -top-1 -right-1 inline-flex items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white min-w-[18px] leading-none">
+              {totalUnread}
+            </span>
+          )}
+        </button>
+      </div>
 
       {/* Panel */}
       {open && (
