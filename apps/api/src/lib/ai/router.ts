@@ -187,7 +187,10 @@ function resolveApiKey(
   providerName: string,
   activeEntries: ActiveProviderEntry[] | null,
 ): { key: string; fromDb: boolean } | null {
-  if (activeEntries !== null) {
+  // Only enforce the DB allow-list when there is at least one configured
+  // provider. An empty table means "nothing set up yet" — fall through to
+  // env vars so a fresh install still works.
+  if (activeEntries !== null && activeEntries.length > 0) {
     const dbRow = activeEntries.find((e) => e.provider === providerName);
     if (dbRow === undefined) {
       // Provider not in active set — admin has disabled it (or it was never
