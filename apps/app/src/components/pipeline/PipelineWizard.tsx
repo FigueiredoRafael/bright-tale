@@ -809,6 +809,29 @@ export function PipelineWizard() {
   const [wizardNiche, setWizardNiche] = useState('')
   const [wizardAudience, setWizardAudience] = useState('')
 
+  // T5.2: channel defaults pre-fill
+  const [channelDefaults, setChannelDefaults] = useState<Record<string, Record<string, unknown>> | null>(null)
+  const initializedMedia = useRef<Set<Medium>>(new Set())
+  const [mediaFieldValues, setMediaFieldValues] = useState<Partial<Record<Medium, { durationSeconds: string }>>>({})
+
+  useEffect(() => {
+    if (!channelId) return
+    const ac = new AbortController()
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/channels/${channelId}`, { signal: ac.signal })
+        const json = (await res.json()) as { data: { default_media_config_json: Record<string, Record<string, unknown>> | null } | null; error: unknown }
+        if (!json.error && json.data) {
+          setChannelDefaults(json.data.default_media_config_json ?? null)
+        }
+      } catch {
+        // best-effort: fall back to wizard defaults
+      }
+    })()
+    initializedMedia.current = new Set()
+    return () => ac.abort()
+  }, [channelId])
+
   interface TemplateRow {
     id: string
     name: string
@@ -1219,22 +1242,66 @@ export function PipelineWizard() {
               {wizardStep === 3 && (
                 <div data-testid="wizard-step-3" className="space-y-4">
                   <p className="text-sm font-medium">Configure your media formats</p>
-                  {selectedMedia.map((m) => (
-                    <div
-                      key={m}
-                      data-testid={`wizard-medium-panel-${m}`}
-                      className="rounded-md border p-3 space-y-2"
+                  {selectedMedia.map((m) => {
+                    // Pre-fill from channel defaults on first mount of this panel
+                    if (!initializedMedia.current.has(m)) {
+                      initializedMedia.current.add(m)
+                      if (!mediaFieldValues[m]) {
+                        const defaultDuration = channelDefaults?.[m]?.durationSeconds
+                        const durationStr = typeof defaultDuration === 'number' ? String(defaultDuration) : ''
+                        if (durationStr) {
+                          setMediaFieldValues((prev) => ({ ...prev, [m]: { durationSeconds: durationStr } }))
+                        }
+                      }
+                    }
+                    const showDuration = m === 'video' || m === 'shorts' || m === 'podcast'
+                    return (
+                      <div
+                        key={m}
+                        data-testid={`wizard-medium-panel-${m}`}
+                        className="rounded-md border p-3 space-y-2"
+                      >
+                        <p className="text-sm font-medium capitalize">{m}</p>
+                        {showDuration && (
+                          <div className="space-y-1">
+                            <Label htmlFor={`wizard-panel-${m}-durationSeconds`}>
+                              Duration (seconds)
+                            </Label>
+                            <input
+                              id={`wizard-panel-${m}-durationSeconds`}
+                              data-testid={`wizard-panel-${m}-durationSeconds`}
+                              type="number"
+                              className="w-full rounded-md border px-3 py-2 text-sm"
+                              value={mediaFieldValues[m]?.durationSeconds ?? ''}
+                              onChange={(e) =>
+                                setMediaFieldValues((prev) => ({
+                                  ...prev,
+                                  [m]: { ...prev[m], durationSeconds: e.target.value },
+                                }))
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      data-testid="wizard-step-3-back"
+                      className="rounded-md border px-4 py-2 text-sm"
+                      onClick={() => setWizardStep(2)}
                     >
-                      <p className="text-sm font-medium capitalize">{m}</p>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground"
-                    onClick={() => setWizardStep(4)}
-                  >
-                    Next
-                  </button>
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground"
+                      onClick={() => setWizardStep(4)}
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
               )}
 

@@ -932,3 +932,211 @@ describe('T5.1: 4-step multi-select wizard', () => {
     })
   })
 })
+
+describe('T5.2: channel defaults pre-fill', () => {
+  // T5.2-1: Mounting wizard with channelId fetches GET /api/channels/:id
+  it('fetches GET /api/channels/c1 on mount when channelId is set', async () => {
+    const fetchSpy = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === 'string' && url === '/api/channels/c1') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            data: {
+              id: 'c1',
+              default_media_config_json: { video: { durationSeconds: 600 } },
+            },
+            error: null,
+          }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: { items: [] }, error: null }),
+      })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    renderWizard()
+
+    await waitFor(() => {
+      const channelCall = (fetchSpy.mock.calls as [string][]).find(
+        ([url]) => typeof url === 'string' && url === '/api/channels/c1',
+      )
+      expect(channelCall).toBeDefined()
+    })
+  })
+
+  // T5.2-2: Checking Video first time pre-fills durationSeconds from channel defaults
+  it('pre-fills durationSeconds from channel defaults when video panel first mounts in step 3', async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === 'string' && url === '/api/channels/c1') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            data: {
+              id: 'c1',
+              default_media_config_json: { video: { durationSeconds: 600 } },
+            },
+            error: null,
+          }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: { items: [] }, error: null }),
+      })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    renderWizard()
+
+    // Wait for channel defaults to load
+    await waitFor(() => {
+      const channelCall = (fetchSpy.mock.calls as [string][]).find(
+        ([url]) => typeof url === 'string' && url === '/api/channels/c1',
+      )
+      expect(channelCall).toBeDefined()
+    })
+
+    // Step 1 → 2
+    await user.click(screen.getByRole('button', { name: /next/i }))
+
+    // Select only Video
+    const blogCheckbox = screen.getByRole('checkbox', { name: /blog/i })
+    const videoCheckbox = screen.getByRole('checkbox', { name: /video/i })
+    if ((blogCheckbox as HTMLInputElement).checked) await user.click(blogCheckbox)
+    if (!(videoCheckbox as HTMLInputElement).checked) await user.click(videoCheckbox)
+
+    // Step 2 → 3
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+
+    // Video panel must show durationSeconds input pre-filled with 600
+    const videoPanel = screen.getByTestId('wizard-medium-panel-video')
+    const durationInput = videoPanel.querySelector(
+      'input[data-testid="wizard-panel-video-durationSeconds"]',
+    ) as HTMLInputElement | null
+    expect(durationInput).not.toBeNull()
+    expect(durationInput?.value).toBe('600')
+  })
+
+  // T5.2-3: User edits value → unchecks medium → rechecks medium: keeps user value
+  it('preserves user-edited durationSeconds when medium is unchecked and rechecked', async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === 'string' && url === '/api/channels/c1') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            data: {
+              id: 'c1',
+              default_media_config_json: { video: { durationSeconds: 600 } },
+            },
+            error: null,
+          }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: { items: [] }, error: null }),
+      })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    renderWizard()
+
+    // Wait for channel defaults to load
+    await waitFor(() => {
+      const channelCall = (fetchSpy.mock.calls as [string][]).find(
+        ([url]) => typeof url === 'string' && url === '/api/channels/c1',
+      )
+      expect(channelCall).toBeDefined()
+    })
+
+    // Step 1 → 2
+    await user.click(screen.getByRole('button', { name: /next/i }))
+
+    // Select only Video
+    const blogCheckbox = screen.getByRole('checkbox', { name: /blog/i })
+    const videoCheckbox = screen.getByRole('checkbox', { name: /video/i })
+    if ((blogCheckbox as HTMLInputElement).checked) await user.click(blogCheckbox)
+    if (!(videoCheckbox as HTMLInputElement).checked) await user.click(videoCheckbox)
+
+    // Step 2 → 3
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+
+    // Video panel pre-filled with 600 — user changes it to 900
+    const videoPanel = screen.getByTestId('wizard-medium-panel-video')
+    const durationInput = videoPanel.querySelector(
+      'input[data-testid="wizard-panel-video-durationSeconds"]',
+    ) as HTMLInputElement
+    await user.clear(durationInput)
+    await user.type(durationInput, '900')
+    expect(durationInput.value).toBe('900')
+
+    // Go back to step 2, uncheck Video, re-check Video, go to step 3 again
+    await user.click(screen.getByTestId('wizard-step-3-back'))
+    await user.click(screen.getByRole('checkbox', { name: /video/i })) // uncheck
+    await user.click(screen.getByRole('checkbox', { name: /video/i })) // re-check
+
+    // Step 2 → 3 again
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+
+    // durationSeconds must still be 900 (user value), not reset to 600 from defaults
+    const videoPanelAgain = screen.getByTestId('wizard-medium-panel-video')
+    const durationInputAgain = videoPanelAgain.querySelector(
+      'input[data-testid="wizard-panel-video-durationSeconds"]',
+    ) as HTMLInputElement
+    expect(durationInputAgain.value).toBe('900')
+  })
+
+  // T5.2-4: null defaultMediaConfig falls back gracefully (no crash, empty input)
+  it('falls back gracefully when channel defaultMediaConfig is null', async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === 'string' && url === '/api/channels/c1') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            data: { id: 'c1', default_media_config_json: null },
+            error: null,
+          }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: { items: [] }, error: null }),
+      })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    renderWizard()
+
+    // Wait for fetch attempt
+    await waitFor(() => {
+      const channelCall = (fetchSpy.mock.calls as [string][]).find(
+        ([url]) => typeof url === 'string' && url === '/api/channels/c1',
+      )
+      expect(channelCall).toBeDefined()
+    })
+
+    // Step 1 → 2
+    await user.click(screen.getByRole('button', { name: /next/i }))
+
+    // Select Video
+    const blogCheckbox = screen.getByRole('checkbox', { name: /blog/i })
+    const videoCheckbox = screen.getByRole('checkbox', { name: /video/i })
+    if ((blogCheckbox as HTMLInputElement).checked) await user.click(blogCheckbox)
+    if (!(videoCheckbox as HTMLInputElement).checked) await user.click(videoCheckbox)
+
+    // Step 2 → 3 — must not crash
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+
+    expect(screen.getByTestId('wizard-step-3')).toBeDefined()
+    // Video panel renders; durationSeconds input exists with empty/default value (no crash)
+    const videoPanel = screen.getByTestId('wizard-medium-panel-video')
+    const durationInput = videoPanel.querySelector(
+      'input[data-testid="wizard-panel-video-durationSeconds"]',
+    ) as HTMLInputElement | null
+    expect(durationInput).not.toBeNull()
+    // Value should be empty or a neutral default — not 'null' or 'undefined' as a string
+    expect(durationInput?.value).not.toBe('null')
+    expect(durationInput?.value).not.toBe('undefined')
+  })
+})
