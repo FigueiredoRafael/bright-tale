@@ -3628,44 +3628,6 @@ export type Database = {
           },
         ]
       }
-      wordpress_configs: {
-        Row: {
-          channel_id: string
-          created_at: string
-          id: string
-          password: string
-          site_url: string
-          updated_at: string
-          username: string
-        }
-        Insert: {
-          channel_id: string
-          created_at?: string
-          id?: string
-          password: string
-          site_url: string
-          updated_at?: string
-          username: string
-        }
-        Update: {
-          channel_id?: string
-          created_at?: string
-          id?: string
-          password?: string
-          site_url?: string
-          updated_at?: string
-          username?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "wordpress_configs_channel_id_fkey"
-            columns: ["channel_id"]
-            isOneToOne: false
-            referencedRelation: "channels"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       youtube_niche_analyses: {
         Row: {
           analyzed_at: string
