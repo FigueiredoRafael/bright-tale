@@ -620,6 +620,165 @@ describe('FocusSidebar — AC7: abort button + aborted-state styling', () => {
   });
 });
 
+// ── AC8 (T9.F156): per-publish-target status chip ────────────────────────────
+
+describe('FocusSidebar — AC8: per-publish-target status chip', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({ data: null, error: 'not found' }),
+    }));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function mockStreamWithAllAttempts(tracks: TrackStub[], allAttempts: StageRun[] = []) {
+    useProjectStreamMock.mockReturnValue({
+      stageRuns: EMPTY_STAGE_RUNS,
+      liveEvent: null,
+      isConnected: true,
+      project: { mode: 'manual', paused: false },
+      refresh: vi.fn(async () => undefined),
+      tracks,
+      allAttempts,
+    });
+  }
+
+  it('shows a completed status icon on a publish target whose latest run is completed', () => {
+    const ptRun = makeRun({
+      stage: 'publish',
+      status: 'completed',
+      trackId: 'track-1',
+      publishTargetId: 'pt-1',
+      attemptNo: 1,
+    } as Partial<StageRun>);
+    mockStreamWithAllAttempts(
+      [
+        {
+          id: 'track-1',
+          medium: 'blog',
+          status: 'active',
+          paused: false,
+          publishTargets: [{ id: 'pt-1', displayName: 'My WordPress' }],
+        },
+      ],
+      [ptRun],
+    );
+    render(<FocusSidebar projectId="proj-1" />);
+    const row = screen.getByTestId('sidebar-item-track-1-publish-target-pt-1');
+    expect(row).toHaveAttribute('data-status', 'completed');
+    const chip = row.querySelector('[data-testid="publish-target-status-track-1-pt-1"]');
+    expect(chip).toBeTruthy();
+    expect(chip).toHaveAttribute('data-status', 'completed');
+  });
+
+  it('shows a failed status icon on a publish target whose latest run is failed', () => {
+    const ptRun = makeRun({
+      stage: 'publish',
+      status: 'failed',
+      trackId: 'track-1',
+      publishTargetId: 'pt-2',
+      attemptNo: 1,
+    } as Partial<StageRun>);
+    mockStreamWithAllAttempts(
+      [
+        {
+          id: 'track-1',
+          medium: 'blog',
+          status: 'active',
+          paused: false,
+          publishTargets: [{ id: 'pt-2', displayName: 'Dev Blog' }],
+        },
+      ],
+      [ptRun],
+    );
+    render(<FocusSidebar projectId="proj-1" />);
+    const row = screen.getByTestId('sidebar-item-track-1-publish-target-pt-2');
+    expect(row).toHaveAttribute('data-status', 'failed');
+    const chip = row.querySelector('[data-testid="publish-target-status-track-1-pt-2"]');
+    expect(chip).toBeTruthy();
+    expect(chip).toHaveAttribute('data-status', 'failed');
+  });
+
+  it('shows a running status icon on a publish target whose latest run is running', () => {
+    const ptRun = makeRun({
+      stage: 'publish',
+      status: 'running',
+      trackId: 'track-1',
+      publishTargetId: 'pt-3',
+      attemptNo: 1,
+    } as Partial<StageRun>);
+    mockStreamWithAllAttempts(
+      [
+        {
+          id: 'track-1',
+          medium: 'blog',
+          status: 'active',
+          paused: false,
+          publishTargets: [{ id: 'pt-3', displayName: 'Medium' }],
+        },
+      ],
+      [ptRun],
+    );
+    render(<FocusSidebar projectId="proj-1" />);
+    const row = screen.getByTestId('sidebar-item-track-1-publish-target-pt-3');
+    expect(row).toHaveAttribute('data-status', 'running');
+  });
+
+  it('shows neutral (no-run) status icon when no stage_run exists for that publish target', () => {
+    mockStreamWithAllAttempts(
+      [
+        {
+          id: 'track-1',
+          medium: 'blog',
+          status: 'active',
+          paused: false,
+          publishTargets: [{ id: 'pt-none', displayName: 'Unpublished' }],
+        },
+      ],
+      [],
+    );
+    render(<FocusSidebar projectId="proj-1" />);
+    const row = screen.getByTestId('sidebar-item-track-1-publish-target-pt-none');
+    expect(row).toHaveAttribute('data-status', 'none');
+  });
+
+  it('uses the latest attempt (highest attemptNo) when multiple runs exist for the same target', () => {
+    const run1 = makeRun({
+      stage: 'publish',
+      status: 'failed',
+      trackId: 'track-1',
+      publishTargetId: 'pt-1',
+      attemptNo: 1,
+    } as Partial<StageRun>);
+    const run2 = makeRun({
+      stage: 'publish',
+      status: 'running',
+      trackId: 'track-1',
+      publishTargetId: 'pt-1',
+      attemptNo: 2,
+    } as Partial<StageRun>);
+    mockStreamWithAllAttempts(
+      [
+        {
+          id: 'track-1',
+          medium: 'blog',
+          status: 'active',
+          paused: false,
+          publishTargets: [{ id: 'pt-1', displayName: 'My WordPress' }],
+        },
+      ],
+      [run1, run2],
+    );
+    render(<FocusSidebar projectId="proj-1" />);
+    const row = screen.getByTestId('sidebar-item-track-1-publish-target-pt-1');
+    // Latest run is running (attempt 2)
+    expect(row).toHaveAttribute('data-status', 'running');
+  });
+});
+
 // ── AC6 (T7.2): live cost badges per track ───────────────────────────────────
 
 describe('FocusSidebar — AC6 (T7.2): live cost badges per track', () => {

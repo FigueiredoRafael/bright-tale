@@ -1,9 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { EngineHost } from './EngineHost';
 import { useProjectStream } from '@/hooks/useProjectStream';
 import type { Stage, StageRun, StageRunStatus } from '@brighttale/shared/pipeline/inputs';
+import { Button } from '@/components/ui/button';
 
 // ─── Extended stream result — allAttempts added by T4 stream ─────────────────
 
@@ -209,8 +211,9 @@ export function FocusPanel({ projectId }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [retrying, setRetrying] = useState(false);
 
-  const { stageRuns, allAttempts: rawAllAttempts } = useProjectStream(projectId) as ProjectStreamResult;
+  const { stageRuns, allAttempts: rawAllAttempts, refresh } = useProjectStream(projectId) as ProjectStreamResult;
 
   // Read URL state
   const stage = searchParams.get('stage') as Stage | null;
@@ -244,6 +247,31 @@ export function FocusPanel({ projectId }: Props) {
   function handleAttemptSelect(newAttemptNo: number) {
     const url = buildUrl(pathname, searchParams, { attempt: String(newAttemptNo) });
     router.replace(url);
+  }
+
+  // Derive the latest run for the current publish target (for Retry button)
+  const latestTargetRun: StageRun | null =
+    attemptsToShow.length > 0
+      ? attemptsToShow.reduce((best, r) => (r.attemptNo > best.attemptNo ? r : best))
+      : null;
+
+  async function handleRetry() {
+    if (!stage || !targetId || !trackId) return;
+    setRetrying(true);
+    try {
+      await fetch(`/api/projects/${projectId}/stage-runs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stage,
+          track_id: trackId,
+          publish_target_id: targetId,
+        }),
+      });
+      await refresh();
+    } finally {
+      setRetrying(false);
+    }
   }
 
   // Empty state — no stage selected
@@ -292,6 +320,21 @@ export function FocusPanel({ projectId }: Props) {
             currentAttemptNo={attemptNo}
             priorAttempts={priorAttempts}
           />
+        )}
+
+        {/* Per-publish-target Retry button (F3) */}
+        {stage === 'publish' && targetId !== undefined && latestTargetRun?.status === 'failed' && (
+          <div className="mb-4">
+            <Button
+              data-testid={`retry-publish-target-${targetId}`}
+              variant="outline"
+              size="sm"
+              disabled={retrying}
+              onClick={() => { void handleRetry(); }}
+            >
+              {retrying ? 'Retrying…' : 'Retry'}
+            </Button>
+          </div>
         )}
 
         {/* Engine Host */}
