@@ -213,7 +213,7 @@ export function SupportThreadDrawer({
       <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 z-50 h-full w-[480px] max-w-full flex flex-col bg-[var(--card,#121826)] border-l border-[var(--border,#263146)] shadow-2xl">
+      <div className="fixed right-0 top-0 z-50 h-full w-full sm:w-[480px] flex flex-col bg-[var(--card,#121826)] border-l border-[var(--border,#263146)] shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border,#263146)] shrink-0">
           <div>

@@ -187,7 +187,7 @@ export default async function SupportPage({ searchParams }: Props) {
 
       {/* KPIs — only on active tab */}
       {!isClosedTab && (
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-xl border border-[var(--border,#263146)] bg-[var(--card,#121826)] p-4">
             <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-[var(--muted-foreground,#8b98b0)]">
               <AlertTriangle className="h-3.5 w-3.5" />Escaladas
@@ -224,31 +224,88 @@ export default async function SupportPage({ searchParams }: Props) {
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-[var(--border,#263146)] bg-[var(--card,#121826)]">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--border,#263146)] bg-[var(--background,#0a0e1a)]/50 text-left text-xs uppercase tracking-wider text-[var(--muted-foreground,#8b98b0)]">
-                <th className="px-4 py-3 font-semibold">Thread</th>
-                <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="px-4 py-3 font-semibold">Prioridade</th>
-                <th className="px-4 py-3 font-semibold">Msgs</th>
-                <th className="px-4 py-3 font-semibold">Resumo / Última msg</th>
-                <th className="px-4 py-3 font-semibold">Atualizado</th>
-                <th className="px-4 py-3 font-semibold text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((thread) => (
-                <tr
-                  key={thread.id}
-                  className={`border-b border-[var(--border,#263146)] last:border-0 transition-colors ${
-                    thread.user_unread_count > 0
-                      ? 'bg-blue-500/8 hover:bg-blue-500/12 border-l-2 border-l-blue-500'
-                      : 'hover:bg-[var(--background,#0a0e1a)]/30'
-                  }`}
-                >
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
+        <>
+          {/* Desktop: table */}
+          <div className="hidden md:block overflow-hidden rounded-xl border border-[var(--border,#263146)] bg-[var(--card,#121826)]">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border,#263146)] bg-[var(--background,#0a0e1a)]/50 text-left text-xs uppercase tracking-wider text-[var(--muted-foreground,#8b98b0)]">
+                  <th className="px-4 py-3 font-semibold">Thread</th>
+                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 font-semibold">Prior.</th>
+                  <th className="px-4 py-3 font-semibold">Msgs</th>
+                  <th className="px-4 py-3 font-semibold">Resumo / Última msg</th>
+                  <th className="px-4 py-3 font-semibold">Atualizado</th>
+                  <th className="px-4 py-3 font-semibold text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((thread) => (
+                  <tr
+                    key={thread.id}
+                    className={`border-b border-[var(--border,#263146)] last:border-0 transition-colors ${
+                      thread.user_unread_count > 0
+                        ? 'bg-blue-500/8 hover:bg-blue-500/12 border-l-2 border-l-blue-500'
+                        : 'hover:bg-[var(--background,#0a0e1a)]/30'
+                    }`}
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <HeadphonesIcon className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground,#8b98b0)]" />
+                        <span className="font-mono text-xs text-[var(--foreground,#e6edf7)]">{thread.id.slice(-8)}</span>
+                        {thread.user_unread_count > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                            {thread.user_unread_count} nova{thread.user_unread_count > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-[var(--muted-foreground,#8b98b0)]">
+                        uid: {thread.user_id.slice(-8)}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3"><StatusBadge status={thread.status} /></td>
+                    <td className="px-4 py-3"><PriorityBadge priority={thread.priority} /></td>
+                    <td className="px-4 py-3 text-center text-[var(--muted-foreground,#8b98b0)]">{thread.message_count}</td>
+                    <td className="max-w-xs px-4 py-3">
+                      {thread.escalation_summary ? (
+                        <p className="truncate text-xs text-[var(--foreground,#e6edf7)]">{thread.escalation_summary}</p>
+                      ) : thread.last_message ? (
+                        <p className="truncate text-xs text-[var(--muted-foreground,#8b98b0)]">{thread.last_message}</p>
+                      ) : (
+                        <span className="text-xs text-[var(--muted-foreground,#8b98b0)]">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-[var(--muted-foreground,#8b98b0)]">{formatDate(thread.updated_at)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <SupportThreadActions
+                        threadId={thread.id}
+                        userId={thread.user_id}
+                        escalationSummary={thread.escalation_summary}
+                        currentStatus={thread.status}
+                        userUnreadCount={thread.user_unread_count}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile: cards */}
+          <div className="flex flex-col gap-3 md:hidden">
+            {sorted.map((thread) => (
+              <div
+                key={thread.id}
+                className={`rounded-xl border bg-[var(--card,#121826)] p-4 transition-colors ${
+                  thread.user_unread_count > 0
+                    ? 'border-blue-500/60 border-l-4 border-l-blue-500'
+                    : 'border-[var(--border,#263146)]'
+                }`}
+              >
+                {/* Card header */}
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <HeadphonesIcon className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground,#8b98b0)]" />
                       <span className="font-mono text-xs text-[var(--foreground,#e6edf7)]">{thread.id.slice(-8)}</span>
                       {thread.user_unread_count > 0 && (
@@ -260,36 +317,36 @@ export default async function SupportPage({ searchParams }: Props) {
                     <div className="mt-0.5 text-[11px] text-[var(--muted-foreground,#8b98b0)]">
                       uid: {thread.user_id.slice(-8)}
                     </div>
-                  </td>
-                  <td className="px-4 py-3"><StatusBadge status={thread.status} /></td>
-                  <td className="px-4 py-3"><PriorityBadge priority={thread.priority} /></td>
-                  <td className="px-4 py-3 text-center text-[var(--muted-foreground,#8b98b0)]">
-                    {thread.message_count}
-                  </td>
-                  <td className="max-w-xs px-4 py-3">
-                    {thread.escalation_summary ? (
-                      <p className="truncate text-xs text-[var(--foreground,#e6edf7)]">{thread.escalation_summary}</p>
-                    ) : thread.last_message ? (
-                      <p className="truncate text-xs text-[var(--muted-foreground,#8b98b0)]">{thread.last_message}</p>
-                    ) : (
-                      <span className="text-xs text-[var(--muted-foreground,#8b98b0)]">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-[var(--muted-foreground,#8b98b0)]">{formatDate(thread.updated_at)}</td>
-                  <td className="px-4 py-3 text-right">
-                    <SupportThreadActions
-                      threadId={thread.id}
-                      userId={thread.user_id}
-                      escalationSummary={thread.escalation_summary}
-                      currentStatus={thread.status}
-                      userUnreadCount={thread.user_unread_count}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </div>
+                  <span className="text-[11px] text-[var(--muted-foreground,#8b98b0)] shrink-0">{formatDate(thread.updated_at)}</span>
+                </div>
+
+                {/* Badges row */}
+                <div className="flex items-center gap-2 flex-wrap mb-3">
+                  <StatusBadge status={thread.status} />
+                  <PriorityBadge priority={thread.priority} />
+                  <span className="text-[11px] text-[var(--muted-foreground,#8b98b0)]">{thread.message_count} msgs</span>
+                </div>
+
+                {/* Summary */}
+                {(thread.escalation_summary ?? thread.last_message) && (
+                  <p className="truncate text-xs text-[var(--muted-foreground,#8b98b0)] mb-3">
+                    {thread.escalation_summary ?? thread.last_message}
+                  </p>
+                )}
+
+                {/* Actions */}
+                <SupportThreadActions
+                  threadId={thread.id}
+                  userId={thread.user_id}
+                  escalationSummary={thread.escalation_summary}
+                  currentStatus={thread.status}
+                  userUnreadCount={thread.user_unread_count}
+                />
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

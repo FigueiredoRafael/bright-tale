@@ -26,10 +26,15 @@ export async function GET(
     .eq('thread_id', id)
     .order('created_at', { ascending: true });
 
-  if (error) return jsonError(error.message, 'DB_ERROR', 500);
+  if (error) {
+    console.error('[zadmin/messages] DB error:', JSON.stringify(error));
+    return jsonError(error.message, 'DB_ERROR', 500);
+  }
 
-  // Reset unread counter now that admin is viewing the thread
-  void db.from('support_threads').update({ user_unread_count: 0 }).eq('id', id);
+  // Reset unread counter — best-effort, don't block the response
+  db.from('support_threads').update({ user_unread_count: 0 } as Record<string, unknown>).eq('id', id).then(
+    ({ error: e }) => { if (e) console.error('[zadmin/messages] reset unread error:', e.message); },
+  );
 
   return NextResponse.json({ data: { messages: messages ?? [] }, error: null });
 }
