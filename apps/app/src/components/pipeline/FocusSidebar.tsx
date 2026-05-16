@@ -1,11 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { CheckCircle, Circle, Loader2, XCircle, AlertCircle, MinusCircle, SkipForward, Pause, Play } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useProjectStream } from '@/hooks/useProjectStream';
 import type { StageRun, StageRunStatus } from '@brighttale/shared/pipeline/inputs';
+import { AddMediumDialog } from './AddMediumDialog';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +37,7 @@ interface ProjectStreamResult {
 
 interface Props {
   projectId: string;
+  channelId?: string;
 }
 
 // ─── Status icon ─────────────────────────────────────────────────────────────
@@ -291,10 +294,11 @@ const SHARED_STAGES: Array<{ stage: string; label: string }> = [
   { stage: 'canonical', label: 'Canonical' },
 ];
 
-export function FocusSidebar({ projectId }: Props) {
+export function FocusSidebar({ projectId, channelId }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const { stageRuns, tracks: rawTracks, refresh } = useProjectStream(projectId) as ProjectStreamResult;
 
@@ -336,6 +340,7 @@ export function FocusSidebar({ projectId }: Props) {
   }
 
   return (
+    <>
     <nav className="flex flex-col gap-1 py-2 select-none" aria-label="Pipeline navigation">
       {/* ── Shared zone ─────────────────────────────────────────────────── */}
       <div data-testid="sidebar-section-shared">
@@ -379,11 +384,21 @@ export function FocusSidebar({ projectId }: Props) {
             variant="outline"
             size="sm"
             className="w-full text-xs"
+            onClick={() => setDialogOpen(true)}
           >
             + Add medium
           </Button>
         </div>
       )}
     </nav>
+    <AddMediumDialog
+      open={dialogOpen}
+      projectId={projectId}
+      channelId={channelId ?? ''}
+      existingMedia={tracks.map((t) => t.medium)}
+      onClose={() => setDialogOpen(false)}
+      onTrackAdded={() => { void refresh(); }}
+    />
+  </>
   );
 }
