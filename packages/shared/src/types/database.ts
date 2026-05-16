@@ -2424,6 +2424,79 @@ export type Database = {
         }
         Relationships: []
       }
+      podcast_episodes: {
+        Row: {
+          id: string
+          publish_target_id: string
+          channel_id: string
+          stage_run_id: string | null
+          title: string
+          description: string
+          audio_url: string
+          duration_sec: number | null
+          guid: string
+          published_at: string
+          itunes_explicit: boolean
+          itunes_image_url: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          publish_target_id: string
+          channel_id: string
+          stage_run_id?: string | null
+          title: string
+          description: string
+          audio_url: string
+          duration_sec?: number | null
+          guid: string
+          published_at?: string
+          itunes_explicit?: boolean
+          itunes_image_url?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          publish_target_id?: string
+          channel_id?: string
+          stage_run_id?: string | null
+          title?: string
+          description?: string
+          audio_url?: string
+          duration_sec?: number | null
+          guid?: string
+          published_at?: string
+          itunes_explicit?: boolean
+          itunes_image_url?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "podcast_episodes_publish_target_id_fkey"
+            columns: ["publish_target_id"]
+            isOneToOne: false
+            referencedRelation: "publish_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "podcast_episodes_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "podcast_episodes_stage_run_id_fkey"
+            columns: ["stage_run_id"]
+            isOneToOne: false
+            referencedRelation: "stage_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       podcast_drafts: {
         Row: {
           created_at: string

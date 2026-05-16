@@ -55,6 +55,7 @@ import { billingRoutes } from "./routes/billing.js";
 import { bulkRoutes } from "./routes/bulk.js";
 import { voiceRoutes } from "./routes/voice.js";
 import { publishingDestinationsRoutes } from "./routes/publishing-destinations.js";
+import { feedsRoutes } from "./routes/feeds.js";
 import { notificationsRoutes } from "./routes/notifications.js";
 import { personasRoutes } from "./routes/personas.js";
 import { channelPersonasRoutes } from "./routes/channel-personas.js";
@@ -321,6 +322,7 @@ server.register(voiceRoutes, { prefix: "/voice" });
 server.register(publishingDestinationsRoutes, {
   prefix: "/publishing-destinations",
 });
+server.register(feedsRoutes, { prefix: "/feeds" });
 server.register(notificationsRoutes, { prefix: "/channels" });
 server.register(personasRoutes, { prefix: "/personas" });
 server.register(channelPersonasRoutes, { prefix: "/channels" });
