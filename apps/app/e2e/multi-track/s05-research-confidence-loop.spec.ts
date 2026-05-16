@@ -20,14 +20,12 @@
  *   9.  Canonical advance: navigate to Canonical stage, assert completed + 1 attempt
  *  10.  Graph view: loop-confidence edges present
  *
- * NOTE on allAttempts / multi-tab rendering:
- *   useProjectStream does not currently expose `allAttempts` — FocusPanel casts
- *   the hook result to ProjectStreamResult (which adds `allAttempts?: StageRun[]`)
- *   but the cast returns undefined. The panel therefore falls back to a single-run
- *   array derived from stageRuns[stage] (the latest attempt). This means only one
- *   attempt tab is rendered (the latest). The sidebar badge is the correct place to
- *   observe the attempt count (it reads stageRun.attemptNo from the snapshot).
- *   Tabs for attempts 1 and 2 would appear once useProjectStream surfaces allAttempts.
+ * NOTE on allAttempts / multi-tab rendering (T9.F152):
+ *   allAttempts is now embedded per stage_run in the snapshot response.
+ *   The mock puts allAttempts: [attempt1, attempt2, attempt3] on the research
+ *   stage_run. ResearchEngine renders one tab per allAttempts entry (3 tabs).
+ *   Selecting a tab shows that attempt's outcomeJson. The default active tab is
+ *   the latest (attempt 3, confidence 0.84).
  *
  * All API calls are mocked via page.route — no API server / DB required.
  * Console output of the form [E2E][s05][step] <action> is forwarded to the
@@ -128,14 +126,18 @@ function buildResearchAttempts() {
  * stageRuns['research'] points to the latest attempt (attempt 3, confidence 0.84).
  * Canonical and downstream exist as completed.
  *
- * allAttempts includes all 3 research runs so FocusPanel can render them
- * once useProjectStream surfaces allAttempts (T4 stream ticket).
+ * T9.F152: allAttempts is now embedded on each stage_run (not at the project level).
+ * The research stage_run carries all 3 attempts so ResearchEngine renders 3 tabs.
  */
 function buildLatestStageRuns() {
-  const [, , research3] = buildResearchAttempts();
+  const [research1, research2, research3] = buildResearchAttempts();
   return [
     makeStageRunRow('brainstorm', 'sr-s05-brainstorm-1', { status: 'completed' }),
-    research3, // Latest research attempt (attempt 3, confidence 0.84)
+    // Latest research attempt embeds full attempt history (T9.F152)
+    {
+      ...research3,
+      allAttempts: [research1, research2, research3],
+    },
     makeStageRunRow('canonical', 'sr-s05-canonical-1', { status: 'completed' }),
     makeStageRunRow('production', 'sr-s05-production-1', { status: 'completed', trackId: TRACK_ID }),
     makeStageRunRow('review', 'sr-s05-review-1', {
@@ -241,13 +243,8 @@ async function mockS05Apis(page: Page): Promise<void> {
 
     // No ?stage= param — return snapshot (for useProjectStream initial load).
     // stageRuns is the latest-per-stage map (research = attempt 3).
-    // allAttempts includes all 3 research attempts for future multi-tab support.
+    // T9.F152: allAttempts is now embedded per stage_run (on the research row).
     const latestRuns = buildLatestStageRuns();
-    const allAttempts = [
-      ...buildResearchAttempts(),
-      // All other stages have only 1 attempt
-      ...latestRuns.filter((r) => r.stage !== 'research'),
-    ];
 
     return route.fulfill({
       status: 200,
@@ -274,7 +271,6 @@ async function mockS05Apis(page: Page): Promise<void> {
               ],
             },
           ],
-          allAttempts,
         },
         error: null,
       }),
@@ -442,16 +438,16 @@ test.describe('s05 — research confidence loop', () => {
     await expect(breadcrumb).toContainText(/confidence loop/i);
     await expect(breadcrumb).toContainText(/attempt 3/i);
 
-    // ── Attempt tab #3 is the only tab (fallback from stageRuns[stage]) ───
-    // Because useProjectStream does not return allAttempts, FocusPanel falls
-    // back to attemptsToShow = [stageRuns['research']] = [research-3].
-    // Tab #3 is rendered with confidence 0.84 and is active.
-    console.log('[E2E][s05][8] asserting single active attempt tab showing confidence 0.84');
+    // ── All 3 attempt tabs are visible (T9.F152: allAttempts per stage_run) ──
+    // ResearchEngine renders one tab per stageRun.allAttempts entry.
+    console.log('[E2E][s05][8] asserting all 3 attempt tabs visible with confidence scores');
+    await expect(page.getByTestId('attempt-tab-1')).toBeVisible();
+    await expect(page.getByTestId('attempt-tab-2')).toBeVisible();
     await expect(page.getByTestId('attempt-tab-3')).toBeVisible();
-    await expect(page.getByTestId('attempt-tab-3')).toHaveAttribute('data-active', 'true');
-    await expect(page.getByTestId('attempt-tab-3')).toContainText('0.84');
+    // Latest tab (#3) is the active/default tab and shows confidence 0.84
+    await expect(page.getByTestId('attempt-tab-3')).toContainText('84');
 
-    console.log('[E2E][s05][done] Research confidence loop verified: badge=3, 0.84 in tab, confidence loop breadcrumb, Canonical completed');
+    console.log('[E2E][s05][done] Research confidence loop verified: badge=3, all 3 attempt tabs, 84% confidence in latest tab, confidence loop breadcrumb, Canonical completed');
   });
 
   /**

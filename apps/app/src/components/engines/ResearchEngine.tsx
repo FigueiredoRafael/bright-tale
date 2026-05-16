@@ -143,6 +143,11 @@ export function ResearchEngine({
   // Manual provider — open dialog when API responds with awaiting_manual
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
 
+  // T9.F152: selected attempt tab (defaults to the canonical/latest attempt id)
+  const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(
+    stageRun?.id ?? null,
+  );
+
   // Background generation tracking (Inngest job + SSE events)
   const [activeGenerationId, setActiveGenerationId] = useState<string | null>(null);
 
@@ -1049,6 +1054,63 @@ export function ResearchEngine({
 
       {/* Always-rendered sr-only span for test queries (must live outside the isSessionDetail guard). */}
       <span data-testid="research-depth" className="sr-only">{level}</span>
+
+      {/* T9.F152: Attempt history tabs — rendered when this stage_run has multiple attempts */}
+      {stageRun?.allAttempts && stageRun.allAttempts.length > 1 && (
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+            Attempt history ({stageRun.allAttempts.length} attempts)
+          </p>
+          <Tabs
+            value={selectedAttemptId ?? stageRun.id}
+            onValueChange={setSelectedAttemptId}
+          >
+            <TabsList className="flex-wrap h-auto gap-1">
+              {stageRun.allAttempts.map((attempt) => {
+                const confidence =
+                  attempt.outcomeJson != null &&
+                  typeof attempt.outcomeJson === 'object' &&
+                  'confidence' in (attempt.outcomeJson as Record<string, unknown>)
+                    ? ((attempt.outcomeJson as Record<string, unknown>).confidence as number)
+                    : null;
+                return (
+                  <TabsTrigger
+                    key={attempt.id}
+                    value={attempt.id}
+                    data-testid={`attempt-tab-${attempt.attemptNo}`}
+                    className="gap-1.5 text-xs"
+                  >
+                    #{attempt.attemptNo}
+                    {confidence !== null && (
+                      <span className="text-muted-foreground">
+                        {Math.round(confidence * 100)}%
+                      </span>
+                    )}
+                    {attempt.finishedAt && (
+                      <span className="text-muted-foreground hidden sm:inline">
+                        · {new Date(attempt.finishedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+            {stageRun.allAttempts.map((attempt) => (
+              <TabsContent key={attempt.id} value={attempt.id}>
+                <Card>
+                  <CardContent className="pt-4 text-sm text-muted-foreground">
+                    <pre className="whitespace-pre-wrap break-words font-mono text-xs">
+                      {attempt.outcomeJson != null
+                        ? JSON.stringify(attempt.outcomeJson, null, 2)
+                        : 'No outcome data for this attempt.'}
+                    </pre>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            ))}
+          </Tabs>
+        </div>
+      )}
 
       {/* Show form only if not in session detail mode */}
       {!isSessionDetail && (

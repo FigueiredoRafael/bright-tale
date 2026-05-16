@@ -274,6 +274,135 @@ describe('ResearchEngine', () => {
   })
 })
 
+// ─── T9.F152: attempt history tabs ───────────────────────────────────────────
+
+describe('ResearchEngine — allAttempts tabs (T9.F152)', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        if (String(url).includes('/api/agents')) {
+          return {
+            ok: true,
+            json: async () => ({
+              data: { agents: [{ slug: 'research', recommended_provider: 'gemini', recommended_model: 'gemini-2.5-flash' }] },
+              error: null,
+            }),
+          } as Response
+        }
+        return { ok: true, json: async () => ({ data: null, error: null }) } as Response
+      }),
+    )
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('renders one tab per attempt when stageRun.allAttempts has multiple entries', async () => {
+    const baseAttempt = {
+      id: 'sr-res-1',
+      projectId: 'proj-1',
+      stage: 'research' as const,
+      status: 'failed' as const,
+      awaitingReason: null,
+      payloadRef: null,
+      inputJson: null,
+      errorMessage: null,
+      startedAt: '2026-05-16T01:00:00Z',
+      finishedAt: '2026-05-16T01:10:00Z',
+      trackId: null,
+      publishTargetId: null,
+      createdAt: '2026-05-16T01:00:00Z',
+      updatedAt: '2026-05-16T01:10:00Z',
+    }
+    const stageRunWithAttempts: StageRun = {
+      ...baseAttempt,
+      id: 'sr-res-3',
+      status: 'completed',
+      attemptNo: 3,
+      outcomeJson: { confidence: 0.84 },
+      allAttempts: [
+        { ...baseAttempt, id: 'sr-res-1', attemptNo: 1, outcomeJson: { confidence: 0.42 } },
+        { ...baseAttempt, id: 'sr-res-2', attemptNo: 2, status: 'failed', outcomeJson: { confidence: 0.62 } },
+        { ...baseAttempt, id: 'sr-res-3', attemptNo: 3, status: 'completed', outcomeJson: { confidence: 0.84 } },
+      ],
+    }
+
+    const actor = createActor(pipelineMachine, {
+      input: {
+        projectId: 'proj-1',
+        channelId: 'ch-1',
+        projectTitle: 'T',
+        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+        creditSettings: DEFAULT_CREDIT_SETTINGS,
+      },
+    }).start()
+    actor.send({
+      type: 'SETUP_COMPLETE',
+      mode: 'step-by-step',
+      autopilotConfig: null,
+      templateId: null,
+      startStage: 'research',
+    })
+
+    render(
+      <PipelineActorProvider value={actor}>
+        <ResearchEngine mode="generate" stageRun={stageRunWithAttempts} />
+      </PipelineActorProvider>,
+    )
+
+    // Three attempt tabs should be visible
+    expect(screen.getByTestId('attempt-tab-1')).toBeInTheDocument()
+    expect(screen.getByTestId('attempt-tab-2')).toBeInTheDocument()
+    expect(screen.getByTestId('attempt-tab-3')).toBeInTheDocument()
+  })
+
+  it('renders no attempt tabs when stageRun.allAttempts is empty or absent', async () => {
+    const stageRunNoAttempts: StageRun = {
+      id: 'sr-res-1',
+      projectId: 'proj-1',
+      stage: 'research',
+      status: 'completed',
+      attemptNo: 1,
+      awaitingReason: null,
+      payloadRef: null,
+      inputJson: null,
+      errorMessage: null,
+      startedAt: null,
+      finishedAt: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      allAttempts: [],
+    }
+
+    const actor = createActor(pipelineMachine, {
+      input: {
+        projectId: 'proj-1',
+        channelId: 'ch-1',
+        projectTitle: 'T',
+        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
+        creditSettings: DEFAULT_CREDIT_SETTINGS,
+      },
+    }).start()
+    actor.send({
+      type: 'SETUP_COMPLETE',
+      mode: 'step-by-step',
+      autopilotConfig: null,
+      templateId: null,
+      startStage: 'research',
+    })
+
+    render(
+      <PipelineActorProvider value={actor}>
+        <ResearchEngine mode="generate" stageRun={stageRunNoAttempts} />
+      </PipelineActorProvider>,
+    )
+
+    expect(screen.queryByTestId('attempt-tab-1')).not.toBeInTheDocument()
+  })
+})
+
 describe('ResearchEngine — stageRun binding (T3.5)', () => {
   const STUB_CARDS_SHORT = [
     { type: 'source', title: 'Source 1', url: 'https://a.com', relevance: 9 },

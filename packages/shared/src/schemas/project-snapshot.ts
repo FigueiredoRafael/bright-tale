@@ -16,6 +16,34 @@
 import { z } from 'zod';
 import { MEDIA, STAGES, STAGE_RUN_STATUSES } from '../pipeline/inputs';
 
+// ─── StageRunAttemptSchema (T9.F152) ─────────────────────────────────────────
+//
+// Flat (no allAttempts) to avoid infinite Zod recursion.
+// Used as the element type for StageRunSnapshotSchema.allAttempts[].
+
+export const StageRunAttemptSchema = z
+  .object({
+    id: z.string(),
+    projectId: z.string(),
+    stage: z.enum(STAGES),
+    status: z.enum(STAGE_RUN_STATUSES),
+    awaitingReason: z.string().nullable(),
+    payloadRef: z.unknown().nullable(),
+    attemptNo: z.number(),
+    inputJson: z.unknown().nullable(),
+    errorMessage: z.string().nullable(),
+    startedAt: z.string().nullable(),
+    finishedAt: z.string().nullable(),
+    trackId: z.string().nullable().optional(),
+    publishTargetId: z.string().nullable().optional(),
+    outcomeJson: z.unknown().nullable().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .strict();
+
+export type StageRunAttempt = z.infer<typeof StageRunAttemptSchema>;
+
 // ─── StageRunSnapshot ────────────────────────────────────────────────────────
 
 export const StageRunSnapshotSchema = z.object({
@@ -35,6 +63,8 @@ export const StageRunSnapshotSchema = z.object({
   outcomeJson: z.unknown().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /** Full attempt history for this stage, ordered by attempt_no ASC (T9.F152) */
+  allAttempts: z.array(StageRunAttemptSchema).default([]),
 });
 
 export type StageRunSnapshot = z.infer<typeof StageRunSnapshotSchema>;

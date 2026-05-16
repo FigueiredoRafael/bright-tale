@@ -12,6 +12,8 @@ import {
   ProjectSnapshotSchema,
   TrackSnapshotSchema,
   PublishTargetSnapshotSchema,
+  StageRunSnapshotSchema,
+  StageRunAttemptSchema,
 } from '../project-snapshot';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -238,5 +240,65 @@ describe('ProjectSnapshotSchema', () => {
     expect(typeof snapshot.project.mode).toBe('string');
     expect(Array.isArray(snapshot.tracks)).toBe(true);
     expect(Array.isArray(snapshot.stageRuns)).toBe(true);
+  });
+});
+
+// ─── StageRunAttemptSchema (T9.F152) ─────────────────────────────────────────
+
+describe('StageRunAttemptSchema', () => {
+  it('parses a valid attempt (flat, no allAttempts field)', () => {
+    const result = StageRunAttemptSchema.safeParse(makeStageRun({ stage: 'research', attemptNo: 2 }));
+    expect(result.success).toBe(true);
+  });
+
+  it('does NOT accept an allAttempts field (flat schema guard)', () => {
+    // StageRunAttemptSchema must use .strict() so that allAttempts on the
+    // inner item is rejected, preventing infinite recursion.
+    const result = StageRunAttemptSchema.safeParse({
+      ...makeStageRun({ stage: 'research', attemptNo: 1 }),
+      allAttempts: [],
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ─── StageRunSnapshotSchema.allAttempts (T9.F152) ────────────────────────────
+
+describe('StageRunSnapshotSchema — allAttempts field', () => {
+  it('defaults allAttempts to [] when not provided', () => {
+    const result = StageRunSnapshotSchema.safeParse(makeStageRun({ stage: 'research' }));
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.allAttempts).toEqual([]);
+    }
+  });
+
+  it('parses allAttempts with multiple StageRunAttempt entries', () => {
+    const run = {
+      ...makeStageRun({ stage: 'research', attemptNo: 3 }),
+      allAttempts: [
+        makeStageRun({ stage: 'research', attemptNo: 1, id: 'sr-r1' }),
+        makeStageRun({ stage: 'research', attemptNo: 2, id: 'sr-r2' }),
+        makeStageRun({ stage: 'research', attemptNo: 3, id: 'sr-r3' }),
+      ],
+    };
+    const result = StageRunSnapshotSchema.safeParse(run);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.allAttempts).toHaveLength(3);
+      expect(result.data.allAttempts[0].attemptNo).toBe(1);
+      expect(result.data.allAttempts[2].attemptNo).toBe(3);
+    }
+  });
+
+  it('rejects allAttempts items that carry their own allAttempts (no infinite nesting)', () => {
+    const run = {
+      ...makeStageRun({ stage: 'research', attemptNo: 1 }),
+      allAttempts: [
+        { ...makeStageRun({ stage: 'research', attemptNo: 1 }), allAttempts: [] },
+      ],
+    };
+    const result = StageRunSnapshotSchema.safeParse(run);
+    expect(result.success).toBe(false);
   });
 });
