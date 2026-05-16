@@ -77,10 +77,20 @@ export async function checkCredits(orgId: string, userId: string, cost: number):
   }
 }
 
+interface DebitOptions {
+  /** Track to attribute this credit spend to (T7.1). */
+  trackId?: string;
+  /** Publish target to attribute this credit spend to (T7.1). */
+  publishTargetId?: string;
+}
+
 /**
  * Debits credits after an action completes.
  * Uses addon credits first, then plan credits.
  * Records the usage in credit_usage table.
+ *
+ * @param options - Optional attribution context (trackId, publishTargetId).
+ *                  Pass `undefined` or omit to leave columns NULL (backward-compatible).
  */
 export async function debitCredits(
   orgId: string,
@@ -89,6 +99,7 @@ export async function debitCredits(
   category: string,
   cost: number,
   metadata?: Record<string, unknown>,
+  options?: DebitOptions,
 ): Promise<void> {
   const sb = createServiceClient();
 
@@ -154,5 +165,7 @@ export async function debitCredits(
     cost,
     source,
     metadata_json: (metadata ?? null) as never,
+    ...(options?.trackId !== undefined && { track_id: options.trackId }),
+    ...(options?.publishTargetId !== undefined && { publish_target_id: options.publishTargetId }),
   });
 }
