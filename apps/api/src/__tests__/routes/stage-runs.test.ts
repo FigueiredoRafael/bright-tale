@@ -28,7 +28,7 @@ vi.mock('@/lib/pipeline/orchestrator', async () => {
 
 // Snapshot endpoint reads stage_runs through supabase directly. Provide a chain.
 const sbChain: Record<string, any> = {};
-['from', 'select', 'eq', 'order', 'update'].forEach((m) => {
+['from', 'select', 'eq', 'in', 'order', 'update'].forEach((m) => {
   sbChain[m] = vi.fn().mockReturnValue(sbChain);
 });
 sbChain.maybeSingle = vi.fn();
@@ -78,7 +78,7 @@ beforeEach(async () => {
   process.env.INTERNAL_API_KEY = 'test-key';
   vi.clearAllMocks();
   // Reset chain methods (preserve self-return semantics)
-  ['from', 'select', 'eq', 'order', 'update'].forEach((m) => {
+  ['from', 'select', 'eq', 'in', 'order', 'update'].forEach((m) => {
     sbChain[m] = vi.fn().mockReturnValue(sbChain);
   });
   sbChain.maybeSingle = vi.fn();
@@ -312,6 +312,105 @@ describe('GET /projects/:projectId/stages', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json().data.stageRuns).toEqual([]);
+  });
+
+  // ── T9.F157: tracks[] in snapshot response ───────────────────────────────
+
+  it('includes tracks[] in the snapshot response (T9.F157)', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { mode: 'autopilot', paused: false },
+      error: null,
+    });
+    // stage_runs query (order call 1) then tracks query (order call 2)
+    sbChain.order = vi.fn()
+      .mockResolvedValueOnce({
+        data: [
+          {
+            id: 'sr-prod-1',
+            project_id: PROJECT_ID,
+            stage: 'production',
+            status: 'completed',
+            awaiting_reason: null,
+            payload_ref: null,
+            attempt_no: 1,
+            input_json: null,
+            error_message: null,
+            started_at: null,
+            finished_at: null,
+            track_id: 'track-blog-1',
+            publish_target_id: null,
+            created_at: '2026-05-16T00:00:00Z',
+            updated_at: '2026-05-16T00:00:00Z',
+          },
+          {
+            id: 'sr-pub-1',
+            project_id: PROJECT_ID,
+            stage: 'publish',
+            status: 'completed',
+            awaiting_reason: null,
+            payload_ref: null,
+            attempt_no: 1,
+            input_json: null,
+            error_message: null,
+            started_at: null,
+            finished_at: null,
+            track_id: 'track-blog-1',
+            publish_target_id: 'pt-wp-1',
+            created_at: '2026-05-16T00:01:00Z',
+            updated_at: '2026-05-16T00:01:00Z',
+          },
+        ],
+        error: null,
+      })
+      // tracks query
+      .mockResolvedValueOnce({
+        data: [
+          { id: 'track-blog-1', medium: 'blog', status: 'active', paused: false },
+        ],
+        error: null,
+      })
+      // publish_targets query (via in/order or similar)
+      .mockResolvedValueOnce({
+        data: [
+          { id: 'pt-wp-1', display_name: 'WordPress (Test)' },
+        ],
+        error: null,
+      });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${PROJECT_ID}/stages`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const { data } = res.json();
+    expect(data.tracks).toBeDefined();
+    expect(Array.isArray(data.tracks)).toBe(true);
+    expect(data.tracks).toHaveLength(1);
+    expect(data.tracks[0].id).toBe('track-blog-1');
+    expect(data.tracks[0].publishTargets).toHaveLength(1);
+    expect(data.tracks[0].publishTargets[0].displayName).toBe('WordPress (Test)');
+  });
+
+  it('includes tracks=[] for legacy project with no tracks (T9.F157 backward compat)', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { mode: 'manual', paused: false },
+      error: null,
+    });
+    sbChain.order = vi.fn()
+      .mockResolvedValueOnce({ data: [], error: null }) // stage_runs
+      .mockResolvedValueOnce({ data: [], error: null }); // tracks
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${PROJECT_ID}/stages`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const { data } = res.json();
+    expect(data.tracks).toEqual([]);
   });
 });
 

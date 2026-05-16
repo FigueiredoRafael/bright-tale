@@ -195,7 +195,7 @@ function TrackSection({ track, searchParams, onSelect, onPauseToggle, projectId,
 
   return (
     <div
-      data-testid={`sidebar-track-${track.id}`}
+      data-testid={`sidebar-section-${track.id}`}
       className={['mt-2', track.paused ? 'opacity-60' : ''].join(' ').trim()}
     >
       <div className="px-3 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">

@@ -212,4 +212,70 @@ describe('useProjectStream', () => {
 
     expect(supabaseMock.removeChannel).toHaveBeenCalledWith(channelMock);
   });
+
+  // ── T9.F157: tracks[] exposure ────────────────────────────────────────────
+
+  it('exposes tracks[] from the snapshot response (multi-track snapshot)', async () => {
+    const tracks = [
+      { id: 'track-blog-1', medium: 'blog', status: 'active', paused: false, stageRuns: {}, publishTargets: [] },
+      { id: 'track-video-1', medium: 'video', status: 'active', paused: false, stageRuns: {}, publishTargets: [] },
+    ];
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { stageRuns: [], tracks }, error: null }),
+    });
+
+    const { result } = renderHook(() => useProjectStream(PROJECT_ID));
+
+    await waitFor(() => {
+      expect(result.current.tracks).toHaveLength(2);
+    });
+
+    expect(result.current.tracks[0].id).toBe('track-blog-1');
+    expect(result.current.tracks[1].id).toBe('track-video-1');
+  });
+
+  it('exposes tracks=[] when snapshot has no tracks field (backward compat)', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { stageRuns: [] }, error: null }),
+    });
+
+    const { result } = renderHook(() => useProjectStream(PROJECT_ID));
+
+    await waitFor(() => {
+      expect(result.current.tracks).toBeDefined();
+    });
+
+    expect(result.current.tracks).toEqual([]);
+  });
+
+  it('exposes podcast track with 3 publishTargets (fan-out)', async () => {
+    const tracks = [
+      {
+        id: 'track-podcast-1',
+        medium: 'podcast',
+        status: 'active',
+        paused: false,
+        stageRuns: {},
+        publishTargets: [
+          { id: 'pt-spotify-1', displayName: 'Spotify' },
+          { id: 'pt-yt-pod-1', displayName: 'YouTube Podcast' },
+          { id: 'pt-apple-1', displayName: 'Apple Podcasts' },
+        ],
+      },
+    ];
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { stageRuns: [], tracks }, error: null }),
+    });
+
+    const { result } = renderHook(() => useProjectStream(PROJECT_ID));
+
+    await waitFor(() => {
+      expect(result.current.tracks).toHaveLength(1);
+    });
+
+    expect(result.current.tracks[0].publishTargets).toHaveLength(3);
+  });
 });

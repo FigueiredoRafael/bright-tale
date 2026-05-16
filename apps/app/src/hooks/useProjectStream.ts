@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useId, useReducer, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { Stage, StageRun } from '@brighttale/shared/pipeline/inputs';
+import type { TrackSnapshot } from '@brighttale/shared/schemas/project-snapshot';
 
 export interface JobEvent {
   id: string;
@@ -102,12 +103,14 @@ export function useProjectStream(projectId: string): {
   liveEvent: JobEvent | null;
   isConnected: boolean;
   project: ProjectMeta;
+  tracks: TrackSnapshot[];
   refresh: () => Promise<void>;
 } {
   const [state, dispatch] = useReducer(reducer, { stageRuns: EMPTY_STAGE_RUNS });
   const [liveEvent, setLiveEvent] = useState<JobEvent | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [project, setProject] = useState<ProjectMeta>({ mode: 'autopilot', paused: false });
+  const [tracks, setTracks] = useState<TrackSnapshot[]>([]);
   const cancelledRef = useRef(false);
   // Per-instance suffix so multiple consumers of useProjectStream on the
   // same page don't collide on a single shared Supabase Realtime channel
@@ -129,6 +132,10 @@ export function useProjectStream(projectId: string): {
       const mode: 'autopilot' | 'manual' =
         rawMode === 'manual' || rawMode === 'step-by-step' ? 'manual' : 'autopilot';
       setProject({ mode, paused: Boolean(proj?.paused ?? false) });
+      // Snapshot also carries per-track data (T9.F157). Default to [] for
+      // legacy projects that have no tracks rows yet.
+      const snapshotTracks = (body?.data?.tracks ?? []) as TrackSnapshot[];
+      setTracks(snapshotTracks);
     } catch {
       // ignored — caller can retry
     }
@@ -195,5 +202,5 @@ export function useProjectStream(projectId: string): {
     };
   }, [projectId, instanceId, refresh]);
 
-  return { stageRuns: state.stageRuns, liveEvent, isConnected, project, refresh };
+  return { stageRuns: state.stageRuns, liveEvent, isConnected, project, tracks, refresh };
 }
