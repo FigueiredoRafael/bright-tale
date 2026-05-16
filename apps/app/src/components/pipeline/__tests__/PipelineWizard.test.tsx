@@ -772,3 +772,163 @@ describe('entry-point startStage derivation', () => {
     // Will be enabled when POST /api/projects/from-blog is added.
   })
 })
+
+// ────────────────────────────────────────────────────────────────────
+// T5.1: 4-step multi-select wizard tests
+// ────────────────────────────────────────────────────────────────────
+
+describe('T5.1: 4-step multi-select wizard', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { items: [] }, error: null }),
+      }),
+    )
+  })
+
+  // Test 1: Step 1 renders niche/audience/mode fields
+  it('renders step 1 by default, showing niche/audience/mode fields', () => {
+    renderWizard()
+    // Step 1 indicator must be visible
+    expect(screen.getByTestId('wizard-step-1')).toBeDefined()
+    // Step 1 fields: niche input, audience input, mode cards
+    expect(screen.getByTestId('wizard-step-1-niche')).toBeDefined()
+    expect(screen.getByTestId('wizard-step-1-audience')).toBeDefined()
+    // Mode cards (step-by-step, supervised, overview)
+    expect(screen.getByRole('radio', { name: /step-by-step/i })).toBeDefined()
+    expect(screen.getByRole('radio', { name: /supervised/i })).toBeDefined()
+    expect(screen.getByRole('radio', { name: /overview/i })).toBeDefined()
+  })
+
+  // Test 2: Step 2 shows 4 media checkboxes; Next is disabled when none checked
+  it('step 2 shows 4 media checkboxes, Next is disabled when zero are checked', async () => {
+    const user = userEvent.setup()
+    renderWizard()
+
+    // Navigate to step 2
+    await user.click(screen.getByRole('button', { name: /next/i }))
+
+    expect(screen.getByTestId('wizard-step-2')).toBeDefined()
+    // 4 media checkboxes
+    expect(screen.getByRole('checkbox', { name: /blog/i })).toBeDefined()
+    expect(screen.getByRole('checkbox', { name: /video/i })).toBeDefined()
+    expect(screen.getByRole('checkbox', { name: /shorts/i })).toBeDefined()
+    expect(screen.getByRole('checkbox', { name: /podcast/i })).toBeDefined()
+
+    // Uncheck all — Next should be disabled
+    const blogCheckbox = screen.getByRole('checkbox', { name: /blog/i })
+    // Blog is checked by default; uncheck it
+    if ((blogCheckbox as HTMLInputElement).checked) {
+      await user.click(blogCheckbox)
+    }
+    const nextButton = screen.getByRole('button', { name: /^next$/i })
+    expect(nextButton).toHaveProperty('disabled', true)
+
+    // Check one — Next should become enabled
+    await user.click(screen.getByRole('checkbox', { name: /video/i }))
+    expect(nextButton).toHaveProperty('disabled', false)
+  })
+
+  // Test 3: Step 3 renders only panels for checked media
+  it('step 3 renders only the panels for checked media', async () => {
+    const user = userEvent.setup()
+    renderWizard()
+
+    // Step 1 → 2
+    await user.click(screen.getByRole('button', { name: /next/i }))
+
+    // Check only Blog and Video
+    const blogCheckbox = screen.getByRole('checkbox', { name: /blog/i })
+    const videoCheckbox = screen.getByRole('checkbox', { name: /video/i })
+    const shortsCheckbox = screen.getByRole('checkbox', { name: /shorts/i })
+    const podcastCheckbox = screen.getByRole('checkbox', { name: /podcast/i })
+
+    // Ensure blog is checked, video is checked, shorts + podcast are unchecked
+    if (!(blogCheckbox as HTMLInputElement).checked) await user.click(blogCheckbox)
+    if (!(videoCheckbox as HTMLInputElement).checked) await user.click(videoCheckbox)
+    if ((shortsCheckbox as HTMLInputElement).checked) await user.click(shortsCheckbox)
+    if ((podcastCheckbox as HTMLInputElement).checked) await user.click(podcastCheckbox)
+
+    // Step 2 → 3
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+
+    expect(screen.getByTestId('wizard-step-3')).toBeDefined()
+
+    // Only blog and video panels should render
+    expect(screen.getByTestId('wizard-medium-panel-blog')).toBeDefined()
+    expect(screen.getByTestId('wizard-medium-panel-video')).toBeDefined()
+    expect(screen.queryByTestId('wizard-medium-panel-shorts')).toBeNull()
+    expect(screen.queryByTestId('wizard-medium-panel-podcast')).toBeNull()
+  })
+
+  // Test 4: Step 4 shows review + Start button + cost-preview slot
+  it('step 4 shows review screen, Start button, and cost-preview slot', async () => {
+    const user = userEvent.setup()
+    renderWizard()
+
+    // Navigate through all steps
+    // Step 1 → 2
+    await user.click(screen.getByRole('button', { name: /next/i }))
+    // Step 2 → 3 (blog is checked by default)
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+    // Step 3 → 4
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+
+    expect(screen.getByTestId('wizard-step-4')).toBeDefined()
+    // Cost preview placeholder
+    expect(screen.getByTestId('wizard-cost-preview')).toBeDefined()
+    // Start button
+    expect(screen.getByRole('button', { name: /start/i })).toBeDefined()
+  })
+
+  // Test 5: Submit posts media + mediaConfig matching createProjectSchema
+  it('submit posts media and mediaConfig in the payload', async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (typeof url === 'string' && url.includes('/setup')) {
+        return Promise.resolve({ ok: true, json: async () => ({ data: {}, error: null }) })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ data: { items: [] }, error: null }) })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    renderWizard()
+
+    // Step 1: fill niche field and proceed
+    const nicheInput = screen.getByTestId('wizard-step-1-niche')
+    await user.type(nicheInput, 'AI Technology')
+
+    await user.click(screen.getByRole('button', { name: /next/i }))
+
+    // Step 2: select Blog + Video
+    const blogCheckbox = screen.getByRole('checkbox', { name: /blog/i })
+    const videoCheckbox = screen.getByRole('checkbox', { name: /video/i })
+    if (!(blogCheckbox as HTMLInputElement).checked) await user.click(blogCheckbox)
+    if (!(videoCheckbox as HTMLInputElement).checked) await user.click(videoCheckbox)
+
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+
+    // Step 3: proceed past config panels
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+
+    // Step 4: click Start
+    await user.click(screen.getByRole('button', { name: /start/i }))
+
+    await waitFor(() => {
+      const setupCall = (fetchSpy.mock.calls as [string, RequestInit | undefined][]).find(
+        ([url]) => typeof url === 'string' && url.includes('/setup'),
+      )
+      expect(setupCall).toBeDefined()
+      const body = JSON.parse(setupCall?.[1]?.body as string) as {
+        media: string[]
+        mediaConfig: Record<string, unknown>
+      }
+      expect(body.media).toContain('blog')
+      expect(body.media).toContain('video')
+      expect(body.mediaConfig).toBeDefined()
+      expect(Object.keys(body.mediaConfig)).toContain('blog')
+      expect(Object.keys(body.mediaConfig)).toContain('video')
+    })
+  })
+})

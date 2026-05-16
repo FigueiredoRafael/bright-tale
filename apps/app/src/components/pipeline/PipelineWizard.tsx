@@ -38,6 +38,8 @@ import { MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker
 import type { AutopilotConfig } from '@brighttale/shared'
 import { autopilotConfigSchema, setupProjectSchema } from '@brighttale/shared'
 import type { StartStage } from '@brighttale/shared'
+import { MEDIA } from '@brighttale/shared/pipeline/inputs'
+import type { Medium } from '@brighttale/shared/pipeline/inputs'
 import type { StageResultMap } from '@/lib/pipeline/machine.types'
 import { WizardModeCards } from './WizardModeCards'
 import { WizardSectionCard } from './WizardSectionCard'
@@ -801,6 +803,12 @@ export function PipelineWizard() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
+  // T5.1: 4-step wizard state
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1)
+  const [selectedMedia, setSelectedMedia] = useState<Medium[]>(['blog'])
+  const [wizardNiche, setWizardNiche] = useState('')
+  const [wizardAudience, setWizardAudience] = useState('')
+
   interface TemplateRow {
     id: string
     name: string
@@ -877,11 +885,16 @@ export function PipelineWizard() {
     // Always persist autopilotConfig — mode controls auto-advance, but the wizard's
     // brainstorm/research/draft/review inputs should hydrate engines in step-by-step
     // mode too (otherwise users lose what they typed in the wizard).
+    const mediaConfig = Object.fromEntries(
+      selectedMedia.map((m) => [m, {}]),
+    ) as Record<Medium, Record<string, never>>
     const payload = {
       mode: data.mode,
       autopilotConfig: data.autopilotConfig,
       templateId: data.templateId,
       startStage,
+      media: selectedMedia,
+      mediaConfig,
     }
 
     const parsed = setupProjectSchema.safeParse(payload)
@@ -1120,6 +1133,130 @@ export function PipelineWizard() {
             )}
 
             <div className="flex-1 overflow-y-auto px-5 pb-6 space-y-6">
+
+              {/* ── T5.1: 4-step wizard sections ─────────────── */}
+
+              {/* Step 1: niche / audience (mode radio buttons come from WizardModeCards below) */}
+              {wizardStep === 1 && (
+                <div data-testid="wizard-step-1" className="space-y-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="wizard-niche">Niche</Label>
+                    <input
+                      id="wizard-niche"
+                      data-testid="wizard-step-1-niche"
+                      type="text"
+                      value={wizardNiche}
+                      onChange={(e) => setWizardNiche(e.target.value)}
+                      className="w-full rounded-md border px-3 py-2 text-sm"
+                      placeholder="e.g. AI Technology"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="wizard-audience">Audience</Label>
+                    <input
+                      id="wizard-audience"
+                      data-testid="wizard-step-1-audience"
+                      type="text"
+                      value={wizardAudience}
+                      onChange={(e) => setWizardAudience(e.target.value)}
+                      className="w-full rounded-md border px-3 py-2 text-sm"
+                      placeholder="e.g. Small business owners"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground"
+                    onClick={() => {
+                      // Sync niche into form topic if brainstorm slot is active
+                      if (wizardNiche) {
+                        methods.setValue('autopilotConfig.brainstorm.topic', wizardNiche, { shouldValidate: false })
+                      }
+                      if (wizardAudience) {
+                        methods.setValue('autopilotConfig.brainstorm.audience', wizardAudience, { shouldValidate: false })
+                      }
+                      setWizardStep(2)
+                    }}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+
+              {/* Step 2: media checkboxes */}
+              {wizardStep === 2 && (
+                <div data-testid="wizard-step-2" className="space-y-4">
+                  <p className="text-sm font-medium">Select media formats</p>
+                  {MEDIA.map((m) => (
+                    <div key={m} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id={`media-${m}`}
+                        aria-label={m.charAt(0).toUpperCase() + m.slice(1)}
+                        checked={selectedMedia.includes(m)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedMedia((prev) => [...prev, m])
+                          } else {
+                            setSelectedMedia((prev) => prev.filter((x) => x !== m))
+                          }
+                        }}
+                      />
+                      <Label htmlFor={`media-${m}`}>{m.charAt(0).toUpperCase() + m.slice(1)}</Label>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
+                    disabled={selectedMedia.length === 0}
+                    onClick={() => setWizardStep(3)}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+
+              {/* Step 3: progressive disclosure panels */}
+              {wizardStep === 3 && (
+                <div data-testid="wizard-step-3" className="space-y-4">
+                  <p className="text-sm font-medium">Configure your media formats</p>
+                  {selectedMedia.map((m) => (
+                    <div
+                      key={m}
+                      data-testid={`wizard-medium-panel-${m}`}
+                      className="rounded-md border p-3 space-y-2"
+                    >
+                      <p className="text-sm font-medium capitalize">{m}</p>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground"
+                    onClick={() => setWizardStep(4)}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+
+              {/* Step 4: review + cost preview + Start */}
+              {wizardStep === 4 && (
+                <div data-testid="wizard-step-4" className="space-y-4">
+                  <p className="text-sm font-medium">Review your setup</p>
+                  <div data-testid="wizard-cost-preview" className="rounded-md border p-3 text-sm text-muted-foreground">
+                    Cost preview coming soon
+                  </div>
+                  <Button
+                    type="submit"
+                    form="pipeline-wizard-form"
+                    disabled={submitting}
+                  >
+                    {submitting ? 'Saving…' : 'Start'}
+                  </Button>
+                </div>
+              )}
+
+              {/* ── End T5.1 wizard sections ──────────────────── */}
+
               {/* Mode cards */}
               <section>
                 <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
@@ -1333,16 +1470,22 @@ export function PipelineWizard() {
             Preview
           </button>
 
-          <Button
-            type="submit"
-            form="pipeline-wizard-form"
-            disabled={submitting}
-          >
-            {submitting ? 'Saving…' : submitLabel}
-          </Button>
+          {wizardStep !== 4 && (
+            <Button
+              type="submit"
+              form="pipeline-wizard-form"
+              disabled={submitting}
+            >
+              {submitting ? 'Saving…' : submitLabel}
+            </Button>
+          )}
         </div>
       </div>
     </FormProvider>
   )
 }
 
+// T5.1: CostPreviewSlot — placeholder for T5.3 cost preview engine
+export function CostPreviewSlot(): null {
+  return null
+}
