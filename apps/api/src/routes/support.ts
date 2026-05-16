@@ -372,6 +372,7 @@ export async function supportRoutes(fastify: FastifyInstance): Promise<void> {
     });
 
     // Update thread timestamp so admin sees it at top of queue
+    // (user_unread_count is incremented by a DB trigger on support_messages INSERT)
     await supportThreads(sb)
       .update({ updated_at: new Date().toISOString() } as unknown as Partial<SupportThreadRow>)
       .eq('id', threadId);

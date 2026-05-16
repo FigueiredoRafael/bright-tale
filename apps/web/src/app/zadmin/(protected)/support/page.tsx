@@ -20,6 +20,7 @@ interface SupportThread {
   updated_at: string;
   last_message: string | null;
   message_count: number;
+  user_unread_count: number;
 }
 
 const ACTIVE_STATUSES: ThreadStatus[] = ['open', 'escalated', 'in_progress'];
@@ -30,7 +31,7 @@ async function fetchThreads(statuses: ThreadStatus[], ownerId?: string): Promise
 
   let query = db
     .from('support_threads')
-    .select('id, user_id, status, priority, escalation_summary, created_at, updated_at')
+    .select('id, user_id, status, priority, escalation_summary, created_at, updated_at, user_unread_count')
     .in('status', statuses)
     .order('updated_at', { ascending: false })
     .limit(100);
@@ -68,6 +69,7 @@ async function fetchThreads(statuses: ThreadStatus[], ownerId?: string): Promise
     updated_at: t.updated_at as string,
     last_message: lastMsgMap.get(t.id as string) ?? null,
     message_count: msgCountMap.get(t.id as string) ?? 0,
+    user_unread_count: (t.user_unread_count as number) ?? 0,
   }));
 }
 
@@ -252,7 +254,16 @@ export default async function SupportPage({ searchParams }: Props) {
                   </td>
                   <td className="px-4 py-3"><StatusBadge status={thread.status} /></td>
                   <td className="px-4 py-3"><PriorityBadge priority={thread.priority} /></td>
-                  <td className="px-4 py-3 text-center text-[var(--muted-foreground,#8b98b0)]">{thread.message_count}</td>
+                  <td className="px-4 py-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <span className="text-[var(--muted-foreground,#8b98b0)]">{thread.message_count}</span>
+                      {thread.user_unread_count > 0 && (
+                        <span className="inline-flex items-center justify-center rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-bold text-white min-w-[18px]">
+                          {thread.user_unread_count}
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="max-w-xs px-4 py-3">
                     {thread.escalation_summary ? (
                       <p className="truncate text-xs text-[var(--foreground,#e6edf7)]">{thread.escalation_summary}</p>
@@ -269,6 +280,7 @@ export default async function SupportPage({ searchParams }: Props) {
                       userId={thread.user_id}
                       escalationSummary={thread.escalation_summary}
                       currentStatus={thread.status}
+                      userUnreadCount={thread.user_unread_count}
                     />
                   </td>
                 </tr>

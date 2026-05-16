@@ -47,6 +47,30 @@ const STATUS_COLOR: Record<string, string> = {
   closed: 'text-slate-500',
 };
 
+const LAST_READ_KEY = 'bt_support_last_read';
+
+function getLastReadMap(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(LAST_READ_KEY) ?? '{}') as Record<string, number>;
+  } catch { return {}; }
+}
+
+function markThreadRead(tid: string) {
+  const map = getLastReadMap();
+  map[tid] = Date.now();
+  localStorage.setItem(LAST_READ_KEY, JSON.stringify(map));
+}
+
+function countUnread(thread: Thread, lastReadMap: Record<string, number>): number {
+  if (thread.status === 'in_progress' || thread.status === 'escalated') {
+    const lastRead = lastReadMap[thread.id] ?? 0;
+    // We don't have per-message timestamps in the thread list, use updated_at as signal
+    const updatedMs = new Date(thread.updated_at).getTime();
+    return updatedMs > lastRead ? 1 : 0;
+  }
+  return 0;
+}
+
 export function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<'list' | 'chat'>('list');
@@ -54,6 +78,7 @@ export function ChatWidget() {
   // Thread list
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loadingThreads, setLoadingThreads] = useState(false);
+  const [lastReadMap, setLastReadMap] = useState<Record<string, number>>({});
 
   // Active chat
   const [messages, setMessages] = useState<Message[]>([]);
@@ -81,6 +106,10 @@ export function ChatWidget() {
     } finally {
       setLoadingThreads(false);
     }
+  }, []);
+
+  useEffect(() => {
+    setLastReadMap(getLastReadMap());
   }, []);
 
   useEffect(() => {
@@ -116,6 +145,11 @@ export function ChatWidget() {
             setThreadStatus('in_progress');
             setEscalated(false);
             setAdminTyping(false);
+            // User is actively viewing — mark as read immediately
+            if (row.thread_id) {
+              markThreadRead(row.thread_id);
+              setLastReadMap(getLastReadMap());
+            }
           }
         },
       )
@@ -156,6 +190,8 @@ export function ChatWidget() {
     setEscalated(thread.status === 'escalated');
     setMessages([]);
     setView('chat');
+    markThreadRead(thread.id);
+    setLastReadMap(getLastReadMap());
 
     // Load existing messages
     try {
@@ -280,6 +316,7 @@ export function ChatWidget() {
   };
 
   const isResolved = threadStatus === 'resolved' || threadStatus === 'closed';
+  const totalUnread = threads.reduce((sum, t) => sum + countUnread(t, lastReadMap), 0);
 
   return (
     <>
@@ -288,9 +325,14 @@ export function ChatWidget() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="Suporte"
-        className="fixed bottom-6 right-6 z-50 w-12 h-12 rounded-full bg-primary text-background shadow-lg flex items-center justify-center hover:bg-primary/90 transition-all hover:scale-105 active:scale-95"
+        className="fixed bottom-6 right-6 z-50 w-12 h-12 rounded-full bg-primary text-background shadow-lg flex items-center justify-center hover:bg-primary/90 transition-all hover:scale-105 active:scale-95 relative"
       >
         {open ? <ChevronDown className="w-5 h-5" /> : <MessageCircle className="w-5 h-5" />}
+        {!open && totalUnread > 0 && (
+          <span className="absolute -top-1 -right-1 inline-flex items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white min-w-[18px] leading-none">
+            {totalUnread}
+          </span>
+        )}
       </button>
 
       {/* Panel */}
@@ -357,9 +399,16 @@ export function ChatWidget() {
                         className="text-left flex flex-col gap-1 p-3 rounded-xl border border-border bg-background hover:border-primary/30 hover:bg-primary/5 transition-colors"
                       >
                         <div className="flex items-center justify-between">
-                          <span className={`text-xs font-medium ${STATUS_COLOR[t.status] ?? 'text-muted-foreground'}`}>
-                            {STATUS_LABEL[t.status] ?? t.status}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-xs font-medium ${STATUS_COLOR[t.status] ?? 'text-muted-foreground'}`}>
+                              {STATUS_LABEL[t.status] ?? t.status}
+                            </span>
+                            {countUnread(t, lastReadMap) > 0 && (
+                              <span className="inline-flex items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-bold text-white min-w-[16px] leading-none">
+                                novo
+                              </span>
+                            )}
+                          </div>
                           <span className="text-[10px] text-muted-foreground/50 flex items-center gap-1">
                             <Clock className="w-2.5 h-2.5" />
                             {timeAgo(t.updated_at)}

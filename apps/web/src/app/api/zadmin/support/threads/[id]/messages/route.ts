@@ -28,5 +28,8 @@ export async function GET(
 
   if (error) return jsonError(error.message, 'DB_ERROR', 500);
 
+  // Reset unread counter now that admin is viewing the thread
+  void db.from('support_threads').update({ user_unread_count: 0 }).eq('id', id);
+
   return NextResponse.json({ data: { messages: messages ?? [] }, error: null });
 }

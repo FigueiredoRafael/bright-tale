@@ -10,6 +10,7 @@ interface SupportThreadActionsProps {
   userId: string;
   escalationSummary: string | null;
   currentStatus: string;
+  userUnreadCount: number;
 }
 
 const STATUS_OPTIONS = [
@@ -31,6 +32,7 @@ export function SupportThreadActions({
   userId,
   escalationSummary,
   currentStatus,
+  userUnreadCount,
 }: SupportThreadActionsProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -68,10 +70,15 @@ export function SupportThreadActions({
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
-          className="flex items-center gap-1 rounded border border-[var(--border,#263146)] bg-[var(--background,#0a0e1a)] px-2 py-1 text-xs text-[var(--muted-foreground,#8b98b0)] hover:text-[var(--foreground,#e6edf7)] hover:border-blue-500/50 transition-colors"
+          className="relative flex items-center gap-1 rounded border border-[var(--border,#263146)] bg-[var(--background,#0a0e1a)] px-2 py-1 text-xs text-[var(--muted-foreground,#8b98b0)] hover:text-[var(--foreground,#e6edf7)] hover:border-blue-500/50 transition-colors"
         >
           <MessageSquare className="w-3.5 h-3.5" />
           Ver conversa
+          {userUnreadCount > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 inline-flex items-center justify-center rounded-full bg-blue-500 px-1 py-0.5 text-[9px] font-bold text-white min-w-[16px] leading-none">
+              {userUnreadCount}
+            </span>
+          )}
         </button>
         <select
           disabled={loading}
