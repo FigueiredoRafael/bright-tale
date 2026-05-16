@@ -11,6 +11,7 @@
     "test": "vitest run --reporter verbose",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:e2e:regression": "playwright test e2e/multi-track/s01-single-track-blog-manual.spec.ts e2e/multi-track/s02-single-track-blog-autopilot.spec.ts e2e/multi-track/s03-multi-track-autopilot-parallel.spec.ts e2e/multi-track/s04-review-loop-iteration.spec.ts e2e/multi-track/s09-publish-fan-out-mixed-results.spec.ts e2e/multi-track/s13-page-refresh-resilience.spec.ts",
     "test:e2e:watch": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",

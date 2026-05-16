@@ -26,6 +26,7 @@
     "test:app": "npm run test --workspace=@brighttale/app",
     "test:api": "npm run test --workspace=@brighttale/api",
     "test:shared": "npm run test --workspace=@brighttale/shared",
+    "test:e2e:regression": "npm run test:e2e:regression --workspace=@brighttale/app",
     "smoke:affiliate": "tsx scripts/smoke-affiliate.ts",
     "test:smoke:unit": "vitest run --config vitest.smoke.config.ts",
     "typecheck": "npm run typecheck --workspaces --if-present",
