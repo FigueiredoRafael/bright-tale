@@ -1,5 +1,6 @@
 'use client';
 import type React from 'react';
+import { Component } from 'react';
 import { useStageRun } from '@/hooks/useStageRun';
 import { BrainstormEngine } from '@/components/engines/BrainstormEngine';
 import { ResearchEngine } from '@/components/engines/ResearchEngine';
@@ -27,6 +28,38 @@ const ENGINE_BY_STAGE: Record<Stage, AnyEngine> = {
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'aborted', 'skipped']);
 
+// ─── EngineErrorBoundary ──────────────────────────────────────────────────────
+// Catches engine runtime errors (e.g. missing context providers) and shows a
+// contained error state rather than crashing the entire pipeline view.
+
+interface EBState {
+  error: Error | null;
+}
+
+class EngineErrorBoundary extends Component<{ children: React.ReactNode }, EBState> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): EBState {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div data-testid="engine-host-error" className="p-4 text-sm text-destructive">
+          {this.state.error.message}
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ─── EngineHost ───────────────────────────────────────────────────────────────
+
 interface Props {
   projectId: string;
   stage: Stage;
@@ -46,15 +79,17 @@ export function EngineHost({ projectId, stage, trackId, publishTargetId, attempt
   const Engine = ENGINE_BY_STAGE[stage];
 
   return (
-    <div data-testid="engine-host" data-readonly={isReadOnly}>
-      {isReadOnly && <div data-testid="engine-host-readonly" />}
-      <Engine
-        projectId={projectId}
-        stageRun={data as StageRun}
-        trackId={trackId}
-        publishTargetId={publishTargetId}
-        readOnly={isReadOnly}
-      />
-    </div>
+    <EngineErrorBoundary>
+      <div data-testid="engine-host" data-readonly={isReadOnly}>
+        {isReadOnly && <div data-testid="engine-host-readonly" />}
+        <Engine
+          projectId={projectId}
+          stageRun={data as StageRun}
+          trackId={trackId}
+          publishTargetId={publishTargetId}
+          readOnly={isReadOnly}
+        />
+      </div>
+    </EngineErrorBoundary>
   );
 }
