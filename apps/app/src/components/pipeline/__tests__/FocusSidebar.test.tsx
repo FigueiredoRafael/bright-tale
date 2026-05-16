@@ -56,7 +56,7 @@ function makeRun(overrides: Partial<StageRun> = {}): StageRun {
   };
 }
 
-const EMPTY_STAGE_RUNS = {
+const EMPTY_STAGE_RUNS: Record<string, StageRun | null> = {
   brainstorm: null,
   research: null,
   canonical: null,
