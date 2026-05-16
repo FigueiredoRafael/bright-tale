@@ -158,12 +158,13 @@ describe('FocusSidebar — AC1: renders full tree from stream', () => {
     expect(screen.getByTestId('sidebar-item-track-1-publish-target-pt-2')).toBeInTheDocument();
   });
 
-  it('does not render aborted tracks', () => {
+  it('renders aborted tracks with a dedicated section (sidebar-section-<id>)', () => {
     mockStream(EMPTY_STAGE_RUNS, [
       { id: 'track-aborted', medium: 'blog', status: 'aborted', paused: false },
     ]);
     render(<FocusSidebar projectId="proj-1" />);
-    expect(screen.queryByTestId('sidebar-section-track-aborted')).not.toBeInTheDocument();
+    // Aborted tracks are visible but styled differently (data-status="aborted")
+    expect(screen.getByTestId('sidebar-section-track-aborted')).toBeInTheDocument();
   });
 });
 
@@ -471,6 +472,151 @@ describe('FocusSidebar — AC4 (T5.4): sidebar-add-medium button opens AddMedium
     const btn = screen.getByTestId('sidebar-add-medium');
     await ue.setup().click(btn);
     expect(screen.getByTestId('add-medium-dialog')).toBeInTheDocument();
+  });
+});
+
+// ── AC7 (T9.F154): abort button + aborted-state lane styling ─────────────────
+
+describe('FocusSidebar — AC7: abort button + aborted-state styling', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // ── Abort button visibility ──────────────────────────────────────────────
+
+  it('renders an abort button for a running track', () => {
+    mockStream(EMPTY_STAGE_RUNS, [
+      { id: 'track-run', medium: 'video', status: 'active', paused: false,
+        stageRuns: { production: null, review: { id: 'sr-1', projectId: 'proj-1', stage: 'review', status: 'running', attemptNo: 1, awaitingReason: null, payloadRef: null, inputJson: null, errorMessage: null, startedAt: null, finishedAt: null, createdAt: '2026-05-16T00:00:00Z', updatedAt: '2026-05-16T00:00:00Z' }, assets: null, preview: null, publish: null } },
+    ]);
+    render(<FocusSidebar projectId="proj-1" />);
+    expect(screen.getByTestId('track-abort-btn-track-run')).toBeInTheDocument();
+  });
+
+  it('does NOT render the abort button when track status is active but no stage_run is running', () => {
+    mockStream(EMPTY_STAGE_RUNS, [
+      { id: 'track-idle', medium: 'blog', status: 'active', paused: false,
+        stageRuns: { production: null, review: null, assets: null, preview: null, publish: null } },
+    ]);
+    render(<FocusSidebar projectId="proj-1" />);
+    expect(screen.queryByTestId('track-abort-btn-track-idle')).not.toBeInTheDocument();
+  });
+
+  it('renders the abort button when a track stage_run is awaiting_user', () => {
+    mockStream(EMPTY_STAGE_RUNS, [
+      { id: 'track-await', medium: 'podcast', status: 'active', paused: false,
+        stageRuns: { production: { id: 'sr-2', projectId: 'proj-1', stage: 'production', status: 'awaiting_user', attemptNo: 1, awaitingReason: 'manual_paste', payloadRef: null, inputJson: null, errorMessage: null, startedAt: null, finishedAt: null, createdAt: '2026-05-16T00:00:00Z', updatedAt: '2026-05-16T00:00:00Z' }, review: null, assets: null, preview: null, publish: null } },
+    ]);
+    render(<FocusSidebar projectId="proj-1" />);
+    expect(screen.getByTestId('track-abort-btn-track-await')).toBeInTheDocument();
+  });
+
+  // ── Abort confirmation flow ──────────────────────────────────────────────
+
+  it('clicking abort button opens a confirmation modal', async () => {
+    mockStream(EMPTY_STAGE_RUNS, [
+      { id: 'track-run', medium: 'video', status: 'active', paused: false,
+        stageRuns: { production: null, review: { id: 'sr-1', projectId: 'proj-1', stage: 'review', status: 'running', attemptNo: 1, awaitingReason: null, payloadRef: null, inputJson: null, errorMessage: null, startedAt: null, finishedAt: null, createdAt: '2026-05-16T00:00:00Z', updatedAt: '2026-05-16T00:00:00Z' }, assets: null, preview: null, publish: null } },
+    ]);
+    render(<FocusSidebar projectId="proj-1" />);
+    fireEvent.click(screen.getByTestId('track-abort-btn-track-run'));
+    expect(screen.getByTestId('track-abort-confirm-dialog')).toBeInTheDocument();
+  });
+
+  it('confirming the abort dialog sends PATCH { status: "aborted" } to the tracks endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { track: { id: 'track-run', status: 'aborted' } }, error: null }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const refreshMock = vi.fn(async () => undefined);
+    useProjectStreamMock.mockReturnValue({
+      stageRuns: EMPTY_STAGE_RUNS,
+      liveEvent: null,
+      isConnected: true,
+      project: { mode: 'autopilot', paused: false },
+      refresh: refreshMock,
+      tracks: [
+        { id: 'track-run', medium: 'video', status: 'active', paused: false,
+          stageRuns: { production: null, review: { id: 'sr-1', projectId: 'proj-1', stage: 'review', status: 'running', attemptNo: 1, awaitingReason: null, payloadRef: null, inputJson: null, errorMessage: null, startedAt: null, finishedAt: null, createdAt: '2026-05-16T00:00:00Z', updatedAt: '2026-05-16T00:00:00Z' }, assets: null, preview: null, publish: null } },
+      ],
+    });
+
+    render(<FocusSidebar projectId="proj-1" />);
+    fireEvent.click(screen.getByTestId('track-abort-btn-track-run'));
+    fireEvent.click(screen.getByTestId('track-abort-confirm-btn'));
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/proj-1/tracks/track-run',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'aborted' }),
+      }),
+    );
+  });
+
+  it('cancelling the abort dialog closes it without firing a request', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    mockStream(EMPTY_STAGE_RUNS, [
+      { id: 'track-run', medium: 'video', status: 'active', paused: false,
+        stageRuns: { production: null, review: { id: 'sr-1', projectId: 'proj-1', stage: 'review', status: 'running', attemptNo: 1, awaitingReason: null, payloadRef: null, inputJson: null, errorMessage: null, startedAt: null, finishedAt: null, createdAt: '2026-05-16T00:00:00Z', updatedAt: '2026-05-16T00:00:00Z' }, assets: null, preview: null, publish: null } },
+    ]);
+    render(<FocusSidebar projectId="proj-1" />);
+    fireEvent.click(screen.getByTestId('track-abort-btn-track-run'));
+    expect(screen.getByTestId('track-abort-confirm-dialog')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('track-abort-cancel-btn'));
+    expect(screen.queryByTestId('track-abort-confirm-dialog')).not.toBeInTheDocument();
+    // Only the cost-by-track fetch should have been called, not a PATCH
+    const patchCalls = (fetchMock as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c: unknown[]) => (c[1] as Record<string, unknown>)?.method === 'PATCH',
+    );
+    expect(patchCalls).toHaveLength(0);
+  });
+
+  // ── Aborted-state lane styling ───────────────────────────────────────────
+
+  it('shows aborted tracks with data-status="aborted" and opacity-50', () => {
+    mockStream(EMPTY_STAGE_RUNS, [
+      { id: 'track-aborted', medium: 'blog', status: 'aborted', paused: false },
+    ]);
+    render(<FocusSidebar projectId="proj-1" />);
+    const section = screen.getByTestId('sidebar-section-track-aborted');
+    expect(section).toHaveAttribute('data-status', 'aborted');
+    expect(section.className).toContain('opacity-50');
+  });
+
+  it('shows an "Aborted" badge in the aborted track header', () => {
+    mockStream(EMPTY_STAGE_RUNS, [
+      { id: 'track-aborted', medium: 'podcast', status: 'aborted', paused: false },
+    ]);
+    render(<FocusSidebar projectId="proj-1" />);
+    expect(screen.getByTestId('sidebar-track-aborted-badge-track-aborted')).toBeInTheDocument();
+    expect(screen.getByTestId('sidebar-track-aborted-badge-track-aborted').textContent).toBe('Aborted');
+  });
+
+  it('does NOT show the abort button for an already-aborted track', () => {
+    mockStream(EMPTY_STAGE_RUNS, [
+      { id: 'track-aborted', medium: 'blog', status: 'aborted', paused: false },
+    ]);
+    render(<FocusSidebar projectId="proj-1" />);
+    expect(screen.queryByTestId('track-abort-btn-track-aborted')).not.toBeInTheDocument();
+  });
+
+  it('does NOT show the abort button for a completed track', () => {
+    mockStream(EMPTY_STAGE_RUNS, [
+      { id: 'track-done', medium: 'video', status: 'completed', paused: false },
+    ]);
+    render(<FocusSidebar projectId="proj-1" />);
+    expect(screen.queryByTestId('track-abort-btn-track-done')).not.toBeInTheDocument();
   });
 });
 

@@ -181,14 +181,18 @@ const STATUS_COLOR: Record<StageRunStatus, string> = {
   awaiting_user: 'bg-yellow-50 text-yellow-700 border-yellow-400',
   completed: 'bg-green-50 text-green-700 border-green-400',
   failed: 'bg-red-50 text-red-700 border-red-400',
-  aborted: 'bg-gray-200 text-gray-500 border-gray-400',
+  aborted: 'bg-gray-100 text-gray-400 border-dashed border-gray-300 opacity-60',
   skipped: 'bg-gray-100 text-gray-400 border-dashed border-gray-300',
 };
 
-function StageNode({ data }: { data: GraphNodeData }) {
+// Exported for testing (T9.F154 — aborted node visual assertions)
+export function StageNode({ data }: { data: GraphNodeData }) {
   const color = STATUS_COLOR[data.status] ?? 'bg-gray-100 text-gray-600 border-gray-300';
+  const isAborted = data.status === 'aborted';
   return (
     <div
+      data-status={isAborted ? 'aborted' : undefined}
+      data-testid={isAborted ? `graph-node-aborted-${data.trackId ?? 'shared'}` : undefined}
       className={`rounded border px-3 py-2 text-xs font-medium shadow-sm ${color}`}
       style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
     >
