@@ -16,6 +16,7 @@ import { getImageProvider } from '../lib/ai/imageIndex.js'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { getWordPressCredentials } from '../lib/publishing/wordpress-config.js'
 
 type SupabaseClient = ReturnType<typeof createServiceClient>
 
@@ -36,17 +37,11 @@ async function getWpCreds(sb: SupabaseClient, personaId: string): Promise<{ auth
   if (cpErr) return { error: `channel_personas query failed: ${cpErr.message}` }
   if (!cp?.channel_id) return { error: `persona ${personaId} has no channel_personas row` }
 
-  const { decrypt } = await import('../lib/crypto.js')
-  const { data: cfg, error: cfgErr } = await sb
-    .from('wordpress_configs')
-    .select('site_url, username, password')
-    .eq('channel_id', cp.channel_id)
-    .maybeSingle()
-  if (cfgErr) return { error: `wordpress_configs query failed: ${cfgErr.message}` }
-  if (!cfg) return { error: `channel ${cp.channel_id} has no wordpress_configs row` }
+  const creds = await getWordPressCredentials(cp.channel_id as string, sb)
+  if (!creds) return { error: `channel ${cp.channel_id} has no WordPress config` }
 
-  const auth = Buffer.from(`${cfg.username}:${decrypt(cfg.password)}`).toString('base64')
-  const wpBase = cfg.site_url.replace(/\/$/, '')
+  const auth = Buffer.from(`${creds.username}:${creds.password}`).toString('base64')
+  const wpBase = creds.siteUrl.replace(/\/$/, '')
   return { auth, wpBase }
 }
 
@@ -439,16 +434,11 @@ Return ONLY valid JSON, no explanation.`
       .maybeSingle()
     if (!channelCheck) throw new ApiError(404, 'Channel not found', 'CHANNEL_NOT_FOUND')
 
-    const { decrypt } = await import('../lib/crypto.js')
-    const { data: wpConfig } = await sb
-      .from('wordpress_configs')
-      .select('site_url, username, password')
-      .eq('channel_id', body.channelId)
-      .maybeSingle()
-    if (!wpConfig) throw new ApiError(400, 'Channel has no WordPress config', 'NO_WP_CONFIG')
+    const wpCreds = await getWordPressCredentials(body.channelId as string, sb)
+    if (!wpCreds) throw new ApiError(400, 'Channel has no WordPress config', 'NO_WP_CONFIG')
 
-    const auth = Buffer.from(`${wpConfig.username}:${decrypt(wpConfig.password)}`).toString('base64')
-    const wpBase = wpConfig.site_url.replace(/\/$/, '')
+    const auth = Buffer.from(`${wpCreds.username}:${wpCreds.password}`).toString('base64')
+    const wpBase = wpCreds.siteUrl.replace(/\/$/, '')
 
     let wpUserId: number
 
