@@ -348,3 +348,102 @@ describe('FocusSidebar — AC4: Add Medium button gated on Canonical completion'
     expect(screen.getByTestId('sidebar-add-medium')).toBeInTheDocument();
   });
 });
+
+// ── AC5: Per-track pause toggle (T5.6) ───────────────────────────────────────
+
+describe('FocusSidebar — AC5: per-track pause toggle', () => {
+  beforeEach(() => {
+    // Reset fetch mock before each test
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('renders a pause button in each track section header', () => {
+    mockStream(EMPTY_STAGE_RUNS, [
+      { id: 'track-1', medium: 'blog', status: 'active', paused: false },
+      { id: 'track-2', medium: 'video', status: 'active', paused: false },
+    ]);
+    render(<FocusSidebar projectId="proj-1" />);
+    expect(screen.getByTestId('sidebar-track-pause-track-1')).toBeInTheDocument();
+    expect(screen.getByTestId('sidebar-track-pause-track-2')).toBeInTheDocument();
+  });
+
+  it('clicking the pause button fires PATCH with { paused: true } when track is active', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { track: { id: 'track-1', paused: true } }, error: null }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const refreshMock = vi.fn(async () => undefined);
+    useProjectStreamMock.mockReturnValue({
+      stageRuns: EMPTY_STAGE_RUNS,
+      liveEvent: null,
+      isConnected: true,
+      project: { mode: 'autopilot', paused: false },
+      refresh: refreshMock,
+      tracks: [{ id: 'track-1', medium: 'blog', status: 'active', paused: false }],
+    });
+
+    render(<FocusSidebar projectId="proj-1" />);
+    fireEvent.click(screen.getByTestId('sidebar-track-pause-track-1'));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/proj-1/tracks/track-1',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ paused: true }),
+      }),
+    );
+  });
+
+  it('applies muted treatment and aria-pressed=true when track is paused', () => {
+    mockStream(EMPTY_STAGE_RUNS, [
+      { id: 'track-1', medium: 'blog', status: 'active', paused: true },
+    ]);
+    render(<FocusSidebar projectId="proj-1" />);
+
+    const trackSection = screen.getByTestId('sidebar-track-track-1');
+    // muted opacity class on the section
+    expect(trackSection.className).toContain('opacity-60');
+
+    // Paused badge visible in header
+    expect(screen.getByTestId('sidebar-track-paused-badge-track-1')).toBeInTheDocument();
+
+    // aria-pressed on the button
+    const pauseBtn = screen.getByTestId('sidebar-track-pause-track-1');
+    expect(pauseBtn).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('clicking the pause button fires PATCH with { paused: false } when track is already paused', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { track: { id: 'track-1', paused: false } }, error: null }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const refreshMock = vi.fn(async () => undefined);
+    useProjectStreamMock.mockReturnValue({
+      stageRuns: EMPTY_STAGE_RUNS,
+      liveEvent: null,
+      isConnected: true,
+      project: { mode: 'autopilot', paused: false },
+      refresh: refreshMock,
+      tracks: [{ id: 'track-1', medium: 'blog', status: 'active', paused: true }],
+    });
+
+    render(<FocusSidebar projectId="proj-1" />);
+    fireEvent.click(screen.getByTestId('sidebar-track-pause-track-1'));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/proj-1/tracks/track-1',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ paused: false }),
+      }),
+    );
+  });
+});
