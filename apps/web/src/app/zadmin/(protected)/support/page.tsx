@@ -21,6 +21,7 @@ interface SupportThread {
   last_message: string | null;
   message_count: number;
   user_unread_count: number;
+  user_rating: number | null;
 }
 
 const ACTIVE_STATUSES: ThreadStatus[] = ['open', 'escalated', 'in_progress'];
@@ -31,7 +32,7 @@ async function fetchThreads(statuses: ThreadStatus[], ownerId?: string): Promise
 
   let query = db
     .from('support_threads')
-    .select('id, user_id, status, priority, escalation_summary, created_at, updated_at, user_unread_count')
+    .select('id, user_id, status, priority, escalation_summary, created_at, updated_at, user_unread_count, user_rating')
     .in('status', statuses)
     .order('updated_at', { ascending: false })
     .limit(100);
@@ -70,6 +71,7 @@ async function fetchThreads(statuses: ThreadStatus[], ownerId?: string): Promise
     last_message: lastMsgMap.get(t.id as string) ?? null,
     message_count: msgCountMap.get(t.id as string) ?? 0,
     user_unread_count: (t.user_unread_count as number) ?? 0,
+    user_rating: (t.user_rating as number | null) ?? null,
   }));
 }
 
@@ -113,6 +115,16 @@ function PriorityBadge({ priority }: { priority: Priority }) {
   return (
     <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-bold ${PRIORITY_COLORS[priority]}`}>
       {priority}
+    </span>
+  );
+}
+
+function StarRating({ rating }: { rating: number | null }) {
+  if (rating === null) return <span className="text-xs text-[var(--muted-foreground,#8b98b0)]">—</span>;
+  const color = rating <= 2 ? 'text-red-400' : rating >= 4 ? 'text-emerald-400' : 'text-yellow-400';
+  return (
+    <span className={`text-xs font-medium ${color}`} title={`${rating}/5`}>
+      {'★'.repeat(rating)}{'☆'.repeat(5 - rating)}
     </span>
   );
 }
@@ -236,6 +248,7 @@ export default async function SupportPage({ searchParams }: Props) {
                   <th className="px-4 py-3 font-semibold">Msgs</th>
                   <th className="px-4 py-3 font-semibold">Resumo / Última msg</th>
                   <th className="px-4 py-3 font-semibold">Atualizado</th>
+                  {isClosedTab && <th className="px-4 py-3 font-semibold">Avaliação</th>}
                   <th className="px-4 py-3 font-semibold text-right">Ações</th>
                 </tr>
               </thead>
@@ -276,6 +289,7 @@ export default async function SupportPage({ searchParams }: Props) {
                       )}
                     </td>
                     <td className="px-4 py-3 text-xs text-[var(--muted-foreground,#8b98b0)]">{formatDate(thread.updated_at)}</td>
+                    {isClosedTab && <td className="px-4 py-3"><StarRating rating={thread.user_rating} /></td>}
                     <td className="px-4 py-3 text-right">
                       <SupportThreadActions
                         threadId={thread.id}
@@ -333,6 +347,13 @@ export default async function SupportPage({ searchParams }: Props) {
                   <p className="truncate text-xs text-[var(--muted-foreground,#8b98b0)] mb-3">
                     {thread.escalation_summary ?? thread.last_message}
                   </p>
+                )}
+
+                {/* Rating (closed tab) */}
+                {isClosedTab && thread.user_rating !== null && (
+                  <div className="mb-2">
+                    <StarRating rating={thread.user_rating} />
+                  </div>
                 )}
 
                 {/* Actions */}

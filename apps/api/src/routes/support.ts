@@ -25,6 +25,9 @@ interface SupportThreadRow {
   priority: string | null;
   escalation_summary: string | null;
   assigned_to: string | null;
+  user_rating: number | null;
+  rating_comment: string | null;
+  rated_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -707,6 +710,16 @@ export async function supportRoutes(fastify: FastifyInstance): Promise<void> {
         throw new ApiError(404, 'Thread not found', 'NOT_FOUND');
       }
 
+      // Notify user via broadcast when thread is resolved/closed
+      if (body.status === 'resolved' || body.status === 'closed') {
+        await supportMessages(sb).insert({
+          thread_id: id,
+          role: 'system',
+          content: `thread_${body.status}`,
+          agent_user_id: request.userId,
+        } as unknown as Partial<SupportMessageRow>);
+      }
+
       return reply.send({ data: { thread: updated }, error: null });
     },
   );
@@ -721,7 +734,7 @@ export async function supportRoutes(fastify: FastifyInstance): Promise<void> {
     const sb = createServiceClient();
 
     const { data: threads, error } = await (supportThreads(sb)
-      .select('id, status, priority, escalation_summary, created_at, updated_at')
+      .select('id, status, priority, escalation_summary, created_at, updated_at, user_rating')
       .eq('user_id', request.userId)
       .order('updated_at', { ascending: false })
       .limit(20) as unknown as Promise<{ data: SupportThreadRow[] | null; error: unknown }>);
@@ -759,6 +772,49 @@ export async function supportRoutes(fastify: FastifyInstance): Promise<void> {
       error: null,
     });
   });
+
+  // ── POST /support/threads/:threadId/rate ─────────────────────────────────
+  fastify.post(
+    '/threads/:threadId/rate',
+    { preHandler: [authenticateWithUser] },
+    async (request, reply) => {
+      if (!request.userId) {
+        return reply.status(401).send({ data: null, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } });
+      }
+
+      const { threadId } = request.params as { threadId: string };
+      const body = z.object({
+        rating: z.number().int().min(1).max(5),
+        comment: z.string().max(500).optional(),
+      }).parse(request.body);
+
+      const sb = createServiceClient();
+
+      const { data: thread } = await (supportThreads(sb)
+        .select('id, user_id, status, user_rating')
+        .eq('id', threadId)
+        .eq('user_id', request.userId)
+        .maybeSingle() as unknown as Promise<{ data: SupportThreadRow | null }>);
+
+      if (!thread) throw new ApiError(404, 'Thread not found', 'NOT_FOUND');
+      if (thread.status !== 'resolved' && thread.status !== 'closed') {
+        throw new ApiError(400, 'Thread must be resolved to rate', 'INVALID_STATE');
+      }
+      if (thread.user_rating !== null) {
+        throw new ApiError(409, 'Thread already rated', 'ALREADY_RATED');
+      }
+
+      await supportThreads(sb)
+        .update({
+          user_rating: body.rating,
+          rating_comment: body.comment ?? null,
+          rated_at: new Date().toISOString(),
+        } as unknown as Partial<SupportThreadRow>)
+        .eq('id', threadId);
+
+      return reply.send({ data: { ok: true }, error: null });
+    },
+  );
 
   // ── POST /support/threads/:threadId/human-reply ───────────────────────────
   // Admin sends a message as human_agent. Used by the admin drawer.

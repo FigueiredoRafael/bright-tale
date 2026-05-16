@@ -19,6 +19,7 @@ interface Thread {
   last_message: string | null;
   message_count: number;
   updated_at: string;
+  user_rating: number | null;
 }
 
 function timeAgo(iso: string) {
@@ -87,6 +88,13 @@ export function ChatWidget() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [escalated, setEscalated] = useState(false);
+
+  // Rating
+  const [userRating, setUserRating] = useState<number | null>(null);
+  const [ratingHover, setRatingHover] = useState<number | null>(null);
+  const [ratingComment, setRatingComment] = useState('');
+  const [ratingSending, setRatingSending] = useState(false);
+  const [ratingDone, setRatingDone] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -180,6 +188,14 @@ export function ChatWidget() {
               markThreadRead(row.thread_id);
               setLastReadMap(getLastReadMap());
             }
+          } else if (row.role === 'system' && (row.content === 'thread_resolved' || row.content === 'thread_closed')) {
+            setThreadStatus('resolved');
+            setEscalated(false);
+            if (row.thread_id) {
+              markThreadRead(row.thread_id);
+              setLastReadMap(getLastReadMap());
+            }
+            void loadThreads();
           }
         },
       )
@@ -211,6 +227,10 @@ export function ChatWidget() {
     setEscalated(thread.status === 'escalated');
     setMessages([]);
     setView('chat');
+    setUserRating(thread.user_rating ?? null);
+    setRatingDone(thread.user_rating !== null);
+    setRatingComment('');
+    setRatingHover(null);
     markThreadRead(thread.id);
     setLastReadMap(getLastReadMap());
 
@@ -234,6 +254,10 @@ export function ChatWidget() {
     setThreadId(null);
     setThreadStatus('open');
     setEscalated(false);
+    setUserRating(null);
+    setRatingDone(false);
+    setRatingComment('');
+    setRatingHover(null);
     setMessages([{
       role: 'assistant',
       content: 'Olá! Sou o suporte da BrightTale. Como posso ajudar você hoje?',
@@ -337,6 +361,22 @@ export function ChatWidget() {
   };
 
   const isResolved = threadStatus === 'resolved' || threadStatus === 'closed';
+
+  const submitRating = useCallback(async () => {
+    if (!threadId || !userRating || ratingSending) return;
+    setRatingSending(true);
+    try {
+      await fetch(`/api/support/threads/${threadId}/rate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating: userRating, comment: ratingComment || undefined }),
+      });
+      setRatingDone(true);
+      void loadThreads();
+    } catch { /* ignore */ } finally {
+      setRatingSending(false);
+    }
+  }, [threadId, userRating, ratingComment, ratingSending, loadThreads]);
   const totalUnread = threads.reduce((sum, t) => sum + countUnread(t, lastReadMap), 0);
 
   return (
@@ -493,13 +533,60 @@ export function ChatWidget() {
                 <div ref={bottomRef} />
               </div>
 
-              {/* Input */}
+              {/* Input / rating / closed */}
               {isResolved ? (
-                <div className="px-4 py-3 border-t border-border text-center shrink-0">
-                  <p className="text-xs text-muted-foreground mb-2">Esta conversa foi encerrada.</p>
-                  <button type="button" onClick={startNewChat} className="text-xs text-primary hover:underline">
-                    Iniciar nova conversa
-                  </button>
+                <div className="border-t border-border px-4 py-4 shrink-0 space-y-3">
+                  <p className="text-xs text-muted-foreground text-center font-medium">Atendimento encerrado</p>
+                  {ratingDone ? (
+                    <div className="text-center">
+                      <p className="text-xs text-emerald-400">
+                        {'★'.repeat(userRating ?? 0)}{'☆'.repeat(5 - (userRating ?? 0))}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-1">Obrigado pelo seu feedback!</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-[11px] text-muted-foreground text-center">Como foi seu atendimento?</p>
+                      <div className="flex justify-center gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setUserRating(star)}
+                            onMouseEnter={() => setRatingHover(star)}
+                            onMouseLeave={() => setRatingHover(null)}
+                            className="text-xl transition-colors"
+                          >
+                            {star <= (ratingHover ?? userRating ?? 0) ? '★' : '☆'}
+                          </button>
+                        ))}
+                      </div>
+                      {userRating !== null && (
+                        <>
+                          <textarea
+                            value={ratingComment}
+                            onChange={(e) => setRatingComment(e.target.value)}
+                            placeholder="Comentário opcional..."
+                            rows={2}
+                            className="w-full resize-none rounded-lg border border-border bg-background px-2 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                          <button
+                            type="button"
+                            onClick={submitRating}
+                            disabled={ratingSending}
+                            className="w-full rounded-lg bg-primary text-background py-1.5 text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                          >
+                            {ratingSending ? 'Enviando...' : 'Avaliar'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <div className="text-center">
+                    <button type="button" onClick={startNewChat} className="text-[10px] text-muted-foreground hover:text-primary underline">
+                      Iniciar nova conversa
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="px-3 py-3 border-t border-border shrink-0">
