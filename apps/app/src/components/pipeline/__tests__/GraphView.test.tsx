@@ -180,7 +180,7 @@ function mockFetchNetworkError() {
 }
 
 // ── Import after mocks ───────────────────────────────────────────────────────
-import { GraphView } from '../GraphView';
+import { GraphView, StageNode } from '../GraphView';
 
 const PROJECT_ID = 'proj-abc';
 
@@ -510,6 +510,44 @@ describe('GraphView — node click → Focus URL', () => {
     capturedOnNodeClick?.({}, node);
 
     expect(pushMock).toHaveBeenCalledWith(expect.stringContaining('attempt=3'));
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Slice 7 (T9.F154) — Aborted node distinct visual
+// ────────────────────────────────────────────────────────────────────────────
+describe('GraphView — aborted node distinct visual (T9.F154)', () => {
+  // These tests render StageNode directly (it's exported for testing)
+  // rather than going through the ReactFlow mock which skips component rendering.
+
+  it('renders an aborted StageNode with data-status="aborted"', () => {
+    const data = {
+      stage: 'production' as const,
+      status: 'aborted' as const,
+      attemptNo: 1,
+      trackId: 'track-video',
+      publishTargetId: null,
+      lane: 'track' as const,
+      label: 'production #1',
+    };
+    render(<StageNode data={data} />);
+    const abortedNode = screen.getByTestId('graph-node-aborted-track-video');
+    expect(abortedNode).toHaveAttribute('data-status', 'aborted');
+  });
+
+  it('applies border-dashed class to aborted StageNode', () => {
+    const data = {
+      stage: 'review' as const,
+      status: 'aborted' as const,
+      attemptNo: 1,
+      trackId: 'track-blog',
+      publishTargetId: null,
+      lane: 'track' as const,
+      label: 'review #1',
+    };
+    render(<StageNode data={data} />);
+    const abortedNode = screen.getByTestId('graph-node-aborted-track-blog');
+    expect(abortedNode.className).toContain('border-dashed');
   });
 });
 

@@ -2,9 +2,19 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { CheckCircle, Circle, Loader2, XCircle, AlertCircle, MinusCircle, SkipForward, Pause, Play } from 'lucide-react';
+import { CheckCircle, Circle, Loader2, XCircle, AlertCircle, MinusCircle, SkipForward, Pause, Play, OctagonX } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useProjectStream } from '@/hooks/useProjectStream';
 import type { StageRun, StageRunStatus } from '@brighttale/shared/pipeline/inputs';
 import { AddMediumDialog } from './AddMediumDialog';
@@ -169,12 +179,15 @@ interface TrackSectionProps {
   onSelect: (stage: string, trackId: string, targetId?: string) => void;
   /** Optional — called after the optimistic PATCH resolves; triggers a stream refresh. */
   onPauseToggle?: (trackId: string, paused: boolean) => Promise<void>;
+  onAbort?: (trackId: string) => Promise<void>;
   projectId?: string;
   /** Per-track credit spend, fetched asynchronously by FocusSidebar. */
   costByTrack?: Record<string, number>;
 }
 
-function TrackSection({ track, searchParams, onSelect, onPauseToggle, projectId, costByTrack }: TrackSectionProps) {
+function TrackSection({ track, searchParams, onSelect, onPauseToggle, onAbort, projectId, costByTrack }: TrackSectionProps) {
+  const [abortDialogOpen, setAbortDialogOpen] = useState(false);
+
   async function handlePauseToggle(e: React.MouseEvent) {
     e.stopPropagation();
     const newPaused = !track.paused;
@@ -191,12 +204,37 @@ function TrackSection({ track, searchParams, onSelect, onPauseToggle, projectId,
     });
   }
 
+  async function handleAbortConfirm() {
+    setAbortDialogOpen(false);
+    if (onAbort) {
+      await onAbort(track.id);
+      return;
+    }
+    // Fallback: fire PATCH directly
+    if (!projectId) return;
+    await fetch(`/api/projects/${projectId}/tracks/${track.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'aborted' }),
+    });
+  }
+
   const trackCost = costByTrack?.[track.id] ?? 0;
+  const isAborted = track.status === 'aborted';
+  const isCompleted = track.status === 'completed';
+
+  // Abort button is visible when any stage_run is running or awaiting_user
+  const hasActiveStageRun = Object.values(track.stageRuns ?? {}).some(
+    (sr) => sr?.status === 'running' || sr?.status === 'awaiting_user',
+  );
+  const showAbortButton = !isAborted && !isCompleted && hasActiveStageRun;
 
   return (
+    <>
     <div
       data-testid={`sidebar-section-${track.id}`}
-      className={['mt-2', track.paused ? 'opacity-60' : ''].join(' ').trim()}
+      data-status={isAborted ? 'aborted' : undefined}
+      className={['mt-2', track.paused ? 'opacity-60' : '', isAborted ? 'opacity-50' : ''].filter(Boolean).join(' ')}
     >
       <div className="px-3 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
         <span className="flex-1">{MEDIUM_LABELS[track.medium] ?? track.medium}</span>
@@ -209,7 +247,16 @@ function TrackSection({ track, searchParams, onSelect, onPauseToggle, projectId,
             {trackCost} cr
           </Badge>
         )}
-        {track.paused && (
+        {isAborted && (
+          <Badge
+            data-testid={`sidebar-track-aborted-badge-${track.id}`}
+            variant="secondary"
+            className="text-xs px-1 py-0 h-4"
+          >
+            Aborted
+          </Badge>
+        )}
+        {track.paused && !isAborted && (
           <Badge
             data-testid={`sidebar-track-paused-badge-${track.id}`}
             variant="secondary"
@@ -218,17 +265,31 @@ function TrackSection({ track, searchParams, onSelect, onPauseToggle, projectId,
             Paused
           </Badge>
         )}
-        <Button
-          data-testid={`sidebar-track-pause-${track.id}`}
-          variant="ghost"
-          size="icon"
-          aria-pressed={track.paused}
-          aria-label={`${track.paused ? 'Resume' : 'Pause'} ${MEDIUM_LABELS[track.medium] ?? track.medium} track`}
-          className="h-4 w-4 shrink-0"
-          onClick={handlePauseToggle}
-        >
-          {track.paused ? <Play size={10} /> : <Pause size={10} />}
-        </Button>
+        {!isAborted && (
+          <Button
+            data-testid={`sidebar-track-pause-${track.id}`}
+            variant="ghost"
+            size="icon"
+            aria-pressed={track.paused}
+            aria-label={`${track.paused ? 'Resume' : 'Pause'} ${MEDIUM_LABELS[track.medium] ?? track.medium} track`}
+            className="h-4 w-4 shrink-0"
+            onClick={handlePauseToggle}
+          >
+            {track.paused ? <Play size={10} /> : <Pause size={10} />}
+          </Button>
+        )}
+        {showAbortButton && (
+          <Button
+            data-testid={`track-abort-btn-${track.id}`}
+            variant="ghost"
+            size="icon"
+            aria-label={`Abort ${MEDIUM_LABELS[track.medium] ?? track.medium} track`}
+            className="h-4 w-4 shrink-0 text-destructive hover:text-destructive"
+            onClick={(e) => { e.stopPropagation(); setAbortDialogOpen(true); }}
+          >
+            <OctagonX size={10} />
+          </Button>
+        )}
       </div>
       {TRACK_STAGES.map((stage) => {
         const stageRun = track.stageRuns?.[stage] ?? null;
@@ -302,6 +363,29 @@ function TrackSection({ track, searchParams, onSelect, onPauseToggle, projectId,
         );
       })}
     </div>
+
+    {/* ── Abort confirmation dialog ─────────────────────────────────────── */}
+    <AlertDialog open={abortDialogOpen} onOpenChange={setAbortDialogOpen}>
+      <AlertDialogContent data-testid="track-abort-confirm-dialog">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Abort track?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Cancels in-flight stage runs for the {MEDIUM_LABELS[track.medium] ?? track.medium} track. This cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel data-testid="track-abort-cancel-btn">Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            data-testid="track-abort-confirm-btn"
+            onClick={() => { void handleAbortConfirm(); }}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            Abort track
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }
 
@@ -322,8 +406,8 @@ export function FocusSidebar({ projectId, channelId }: Props) {
 
   const { stageRuns, tracks: rawTracks, liveEvent, refresh } = useProjectStream(projectId) as ProjectStreamResult;
 
-  // Only show active (non-aborted) tracks
-  const tracks: Track[] = (rawTracks ?? []).filter((t) => t.status !== 'aborted');
+  // Show all tracks — aborted ones are styled differently (opacity-50, "Aborted" badge)
+  const tracks: Track[] = rawTracks ?? [];
 
   const canonicalCompleted = stageRuns['canonical']?.status === 'completed';
 
@@ -385,6 +469,19 @@ export function FocusSidebar({ projectId, channelId }: Props) {
     await refresh();
   }
 
+  async function handleAbortTrack(trackId: string) {
+    try {
+      await fetch(`/api/projects/${projectId}/tracks/${trackId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'aborted' }),
+      });
+    } catch {
+      // Network error — refresh to get authoritative state
+    }
+    await refresh();
+  }
+
   return (
     <>
     <nav className="flex flex-col gap-1 py-2 select-none" aria-label="Pipeline navigation">
@@ -418,6 +515,7 @@ export function FocusSidebar({ projectId, channelId }: Props) {
           searchParams={searchParams}
           onSelect={handleTrackSelect}
           onPauseToggle={handlePauseToggle}
+          onAbort={handleAbortTrack}
           projectId={projectId}
           costByTrack={costByTrack}
         />
@@ -442,7 +540,7 @@ export function FocusSidebar({ projectId, channelId }: Props) {
       open={dialogOpen}
       projectId={projectId}
       channelId={channelId ?? ''}
-      existingMedia={tracks.map((t) => t.medium)}
+      existingMedia={tracks.filter((t) => t.status !== 'aborted').map((t) => t.medium)}
       onClose={() => setDialogOpen(false)}
       onTrackAdded={() => { void refresh(); }}
     />

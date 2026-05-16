@@ -19,15 +19,14 @@
  *   9.  Assert Video node in Graph view shows aborted visual (red border or distinct class).
  *  10.  Assert Blog and Podcast lanes are unchanged (still running).
  *
- * Findings surfaced (no product code changed):
- *   F1: Abort button per-track absent — no data-testid="track-abort-btn-<trackId>" or
- *       aria-label="Abort Video track" found in FocusSidebar track header today.
- *       The track header renders a pause toggle (data-testid="track-pause-toggle-<trackId>")
- *       but not a dedicated abort CTA. Abort likely requires a context menu or
- *       confirmation dialog not yet implemented.
- *   F2: Aborted-state dim styling absent — sidebar track lane has no opacity-50 class
- *       or data-status="aborted" attribute applied when a track's latest stage_run
- *       carries status="aborted". The lane renders identically to active state.
+ * Implementation notes (T9.F154 — Track abort UI):
+ *   F1 resolved: Abort button implemented at data-testid="track-abort-btn-<trackId>".
+ *       Visible when track has a running or awaiting_user stage_run. Opens confirmation
+ *       dialog (AlertDialog) before firing PATCH /api/projects/:id/tracks/:trackId
+ *       with { status: 'aborted' }.
+ *   F2 resolved: Aborted-state dim styling implemented — sidebar track section carries
+ *       data-status="aborted" + opacity-50 class when track.status === 'aborted'.
+ *       An "Aborted" badge is also shown (data-testid="sidebar-track-aborted-badge-<trackId>").
  *
  * All API calls are mocked via page.route — no API server / DB required.
  * Console output of the form [E2E][s10][step] is forwarded to the terminal.
@@ -433,6 +432,29 @@ async function mockS10Apis(page: Page): Promise<void> {
     },
   );
 
+  // Pattern 3 (T9.F154): PATCH /api/projects/:id/tracks/:trackId — the actual abort
+  // endpoint used by FocusSidebar after confirmation dialog. Body: { status: 'aborted' }.
+  await page.route(
+    `**/api/projects/${PROJECT_ID}/tracks/${TRACK_VIDEO_ID}`,
+    async (route: Route) => {
+      const method = route.request().method();
+      if (method !== 'PATCH') return route.fallback();
+      videoAbortCalled = true;
+      abortApiUrl = route.request().url();
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: TRACK_VIDEO_ID,
+            status: 'aborted',
+          },
+          error: null,
+        }),
+      });
+    },
+  );
+
   // ── /api/projects/:id/stages snapshot (useProjectStream) ─────────────────
   await page.route(`**/api/projects/${PROJECT_ID}/stages*`, async (route: Route) => {
     if (route.request().method() !== 'GET') return route.fallback();
@@ -601,17 +623,15 @@ test.describe('s10 — track abort mid-flight', () => {
   });
 
   /**
-   * Abort UI: Locate and assert the abort CTA for the Video track.
+   * Abort UI: Abort button for Video track is present and opens confirmation dialog.
    *
-   * This test documents whether the abort button exists (finding F1 if absent).
-   * The abort button is expected at:
-   *   data-testid="track-abort-btn-<trackId>"  OR
-   *   aria-label="Abort Video track"
+   * The abort button is at data-testid="track-abort-btn-<trackId>".
+   * It is visible when the track has a running or awaiting_user stage_run.
+   * Clicking it opens an AlertDialog; confirming fires PATCH with { status: 'aborted' }.
    *
-   * Per finding F1, if the button is absent, the test gracefully documents the
-   * gap without failing — it asserts the absence and logs the finding.
+   * T9.F154 — resolves finding F1.
    */
-  test('FINDING F1: Abort button for Video track (expected absent — not yet implemented)', async ({
+  test('Abort button for Video track is visible and opens confirmation dialog', async ({
     page,
   }) => {
     await mockS10Apis(page);
@@ -620,50 +640,39 @@ test.describe('s10 — track abort mid-flight', () => {
     await page.goto(PROJECT_URL);
     await expect(page.getByTestId('pipeline-workspace')).toBeVisible({ timeout: 15_000 });
 
-    // Check for abort button via common test-id patterns
-    const abortByTestId = page.getByTestId(`track-abort-btn-${TRACK_VIDEO_ID}`);
-    const abortByLabel = page.getByRole('button', { name: /abort.*video/i });
-    const abortByGenericTestId = page.getByTestId('track-abort-btn');
+    // Track section must be visible (Video track has a running review stage_run)
+    const videoSection = page.getByTestId(`sidebar-section-${TRACK_VIDEO_ID}`);
+    await expect(videoSection).toBeVisible({ timeout: 10_000 });
+    console.log('[E2E][s10][abort-2] Video track section visible');
 
-    const abortFoundByTestId = await abortByTestId.isVisible().catch(() => false);
-    const abortFoundByLabel = await abortByLabel.isVisible().catch(() => false);
-    const abortFoundByGeneric = await abortByGenericTestId.isVisible().catch(() => false);
+    // Abort button must be present (Video has running stage_run)
+    const abortBtn = page.getByTestId(`track-abort-btn-${TRACK_VIDEO_ID}`);
+    await expect(abortBtn).toBeVisible({ timeout: 5_000 });
+    console.log('[E2E][s10][abort-3] Abort button visible for Video track');
 
-    if (abortFoundByTestId || abortFoundByLabel || abortFoundByGeneric) {
-      console.log('[E2E][s10][abort-2] Abort button found for Video track — clicking');
+    // Clicking abort button opens confirmation dialog
+    await abortBtn.click();
+    const confirmDialog = page.getByTestId('track-abort-confirm-dialog');
+    await expect(confirmDialog).toBeVisible({ timeout: 5_000 });
+    console.log('[E2E][s10][abort-4] Confirmation dialog opened after clicking abort button');
 
-      // Click whichever abort button was found
-      if (abortFoundByTestId) {
-        await abortByTestId.click();
-      } else if (abortFoundByLabel) {
-        await abortByLabel.click();
-      } else {
-        await abortByGenericTestId.first().click();
-      }
+    // Cancel closes dialog without calling API
+    const cancelBtn = page.getByTestId('track-abort-cancel-btn');
+    await expect(cancelBtn).toBeVisible();
+    await cancelBtn.click();
+    await expect(confirmDialog).not.toBeVisible({ timeout: 3_000 });
+    console.log('[E2E][s10][abort-5] Cancel closes dialog — no abort fired');
 
-      // Abort button was present — not finding F1
-      console.log('[E2E][s10][abort-3] Abort button clicked; F1 NOT triggered (button exists)');
-    } else {
-      // FINDING F1: No abort button found for Video track.
-      // The track header today only has a pause toggle; abort is not implemented.
-      console.log('[E2E][s10][abort-2] FINDING F1: no abort button (data-testid="track-abort-btn-<trackId>" or aria-label=abort) found for Video track in FocusSidebar track header');
+    // Re-open dialog and confirm to trigger PATCH
+    await abortBtn.click();
+    await expect(page.getByTestId('track-abort-confirm-dialog')).toBeVisible();
+    const confirmBtn = page.getByTestId('track-abort-confirm-btn');
+    await confirmBtn.click();
+    console.log('[E2E][s10][abort-6] Confirmed abort — PATCH /api/projects/:id/tracks/:trackId expected');
 
-      // Assert that the pause toggle IS present (to confirm track section rendered correctly
-      // if wired — if not wired, this may also be absent)
-      const pauseToggle = page.getByTestId(`track-pause-toggle-${TRACK_VIDEO_ID}`);
-      const pauseToggleVisible = await pauseToggle.isVisible().catch(() => false);
-
-      if (pauseToggleVisible) {
-        console.log('[E2E][s10][abort-3] pause toggle found for Video track but no abort button — confirms F1');
-        await expect(pauseToggle).toBeVisible();
-      } else {
-        console.log('[E2E][s10][abort-3] neither abort button nor pause toggle found — track section not wired (useProjectStream gap)');
-      }
-
-      // Document the finding: abort button absent
-      await expect(abortByTestId).toHaveCount(0);
-      console.log('[E2E][s10][abort-done] FINDING F1 documented: Abort button per-track absent in FocusSidebar');
-    }
+    // videoAbortCalled is set by the PATCH mock — page will reload with aborted snapshot
+    await expect(page.getByTestId('pipeline-workspace')).toBeVisible({ timeout: 15_000 });
+    console.log('[E2E][s10][abort-done] Abort button + confirmation dialog verified (F1 resolved)');
   });
 
   /**
@@ -795,15 +804,19 @@ test.describe('s10 — track abort mid-flight', () => {
   });
 
   /**
-   * Focus sidebar: aborted Video lane shows dim/aborted styling (finding F2 if absent).
+   * Focus sidebar: aborted Video lane shows dim/aborted styling.
    *
-   * After abort, the Video track lane in Focus sidebar should:
-   * - Show data-status="aborted" on the track section.
-   * - Apply opacity-50 or a visual "Aborted" label.
+   * After abort, the Video track lane in Focus sidebar must:
+   * - Show data-status="aborted" on the track section (sidebar-section-<trackId>).
+   * - Apply opacity-50 class.
+   * - Show "Aborted" badge (sidebar-track-aborted-badge-<trackId>).
+   * - NOT show the abort button (already aborted).
    *
-   * Per finding F2, this styling is likely absent today.
+   * Blog and Podcast sections must NOT carry aborted styling.
+   *
+   * T9.F154 — resolves finding F2.
    */
-  test('FINDING F2: Video lane dim/aborted styling in Focus sidebar (expected absent — not yet implemented)', async ({
+  test('Video lane shows dim/aborted styling in Focus sidebar after abort', async ({
     page,
   }) => {
     await mockS10Apis(page);
@@ -815,55 +828,47 @@ test.describe('s10 — track abort mid-flight', () => {
     await page.goto(PROJECT_URL);
     await expect(page.getByTestId('pipeline-workspace')).toBeVisible({ timeout: 15_000 });
 
-    // Check track section for Video
+    // Video track section must be visible (aborted tracks are shown, not hidden)
     const videoSection = page.getByTestId(`sidebar-section-${TRACK_VIDEO_ID}`);
-    const videoSectionVisible = await videoSection.isVisible().catch(() => false);
+    await expect(videoSection).toBeVisible({ timeout: 10_000 });
+    console.log('[E2E][s10][dim-2] Video track section visible (aborted tracks rendered)');
 
-    if (videoSectionVisible) {
-      // Check for dim/aborted styling
-      const hasDimClass = await videoSection.evaluate((el) =>
-        el.classList.contains('opacity-50') ||
-        el.getAttribute('data-status') === 'aborted' ||
-        el.textContent?.toLowerCase().includes('aborted') === true,
-      );
+    // Must carry data-status="aborted"
+    await expect(videoSection).toHaveAttribute('data-status', 'aborted');
+    console.log('[E2E][s10][dim-3] data-status="aborted" present on Video track section');
 
-      if (hasDimClass) {
-        console.log('[E2E][s10][dim-2] Video lane shows aborted styling — F2 NOT triggered');
-        await expect(videoSection).toBeVisible();
-      } else {
-        // FINDING F2: Video lane does not show aborted styling.
-        // The track lane renders identically to active state even when all
-        // in-flight stage_runs have status=aborted.
-        console.log('[E2E][s10][dim-2] FINDING F2: Video track lane has no dim/aborted styling (no opacity-50 class or data-status="aborted")');
+    // Must carry opacity-50 class
+    const hasOpacity50 = await videoSection.evaluate((el) => el.classList.contains('opacity-50'));
+    expect(hasOpacity50).toBe(true);
+    console.log('[E2E][s10][dim-4] opacity-50 class present on Video track section');
 
-        // Assert the Video section IS present but lacks aborted attribute
-        await expect(videoSection).toBeVisible();
-        await expect(videoSection).not.toHaveAttribute('data-status', 'aborted');
-        console.log('[E2E][s10][dim-3] FINDING F2 confirmed: data-status="aborted" absent on Video track section');
-      }
+    // "Aborted" badge must be visible
+    const abortedBadge = page.getByTestId(`sidebar-track-aborted-badge-${TRACK_VIDEO_ID}`);
+    await expect(abortedBadge).toBeVisible({ timeout: 5_000 });
+    console.log('[E2E][s10][dim-5] Aborted badge visible for Video track');
 
-      // Blog and Podcast sections must NOT show aborted styling (they are still running)
-      const blogSection = page.getByTestId(`sidebar-section-${TRACK_BLOG_ID}`);
-      const podcastSection = page.getByTestId(`sidebar-section-${TRACK_PODCAST_ID}`);
+    // Abort button must NOT be present (track already aborted)
+    const abortBtn = page.getByTestId(`track-abort-btn-${TRACK_VIDEO_ID}`);
+    await expect(abortBtn).toHaveCount(0);
+    console.log('[E2E][s10][dim-6] Abort button absent for already-aborted Video track');
 
-      const blogVisible = await blogSection.isVisible().catch(() => false);
-      const podcastVisible = await podcastSection.isVisible().catch(() => false);
+    // Blog and Podcast sections must NOT show aborted styling (they are still running)
+    const blogSection = page.getByTestId(`sidebar-section-${TRACK_BLOG_ID}`);
+    const podcastSection = page.getByTestId(`sidebar-section-${TRACK_PODCAST_ID}`);
 
-      if (blogVisible) {
-        await expect(blogSection).not.toHaveAttribute('data-status', 'aborted');
-        console.log('[E2E][s10][dim-4] Blog lane correctly NOT aborted');
-      }
-      if (podcastVisible) {
-        await expect(podcastSection).not.toHaveAttribute('data-status', 'aborted');
-        console.log('[E2E][s10][dim-5] Podcast lane correctly NOT aborted');
-      }
-    } else {
-      // Track sections not visible — useProjectStream gap.
-      console.log('[E2E][s10][dim-2-skip] Video track section not visible — tracks not wired in useProjectStream (supersedes F2 check)');
-      await expect(page.getByTestId('sidebar-section-shared')).toBeVisible();
+    const blogVisible = await blogSection.isVisible().catch(() => false);
+    const podcastVisible = await podcastSection.isVisible().catch(() => false);
+
+    if (blogVisible) {
+      await expect(blogSection).not.toHaveAttribute('data-status', 'aborted');
+      console.log('[E2E][s10][dim-7] Blog lane correctly NOT aborted');
+    }
+    if (podcastVisible) {
+      await expect(podcastSection).not.toHaveAttribute('data-status', 'aborted');
+      console.log('[E2E][s10][dim-8] Podcast lane correctly NOT aborted');
     }
 
-    console.log('[E2E][s10][dim-done] Focus sidebar aborted-state styling documented');
+    console.log('[E2E][s10][dim-done] Focus sidebar aborted-state styling verified (F2 resolved)');
   });
 
   /**
@@ -955,11 +960,14 @@ test.describe('s10 — track abort mid-flight', () => {
    *
    * Steps:
    * 1. Load page in mid-flight state.
-   * 2. Attempt to find and click the Abort button (F1 finding if absent).
-   * 3. If button absent: simulate abort via API directly.
-   * 4. Verify Blog + Podcast unaffected via page refetch.
-   * 5. Switch to Graph view: Video node should reflect aborted state.
-   * 6. Return to Focus: Blog + Podcast lanes are not aborted.
+   * 2. Click the Abort button for Video track.
+   * 3. Confirm in the AlertDialog.
+   * 4. Reload — verify Video section shows aborted styling.
+   * 5. Blog + Podcast sections are NOT aborted.
+   * 6. Switch to Graph view — no loop edges from abort.
+   * 7. Return to Focus — shared stages intact.
+   *
+   * T9.F154 — F1 and F2 resolved; no fallback paths needed.
    */
   test('Full abort flow: Video aborted, Blog + Podcast unaffected across Focus and Graph views', async ({
     page,
@@ -972,51 +980,34 @@ test.describe('s10 — track abort mid-flight', () => {
     await expect(page.getByTestId('sidebar-section-shared')).toBeVisible();
     console.log('[E2E][s10][full-2] workspace mounted with 3 tracks');
 
-    // Attempt to locate and click Abort button for Video track
-    const abortByTestId = page.getByTestId(`track-abort-btn-${TRACK_VIDEO_ID}`);
-    const abortByLabel = page.getByRole('button', { name: /abort.*video/i });
-    const abortFoundByTestId = await abortByTestId.isVisible().catch(() => false);
-    const abortFoundByLabel = await abortByLabel.isVisible().catch(() => false);
+    // Video track section must be visible (has running stage_run)
+    const videoSectionPre = page.getByTestId(`sidebar-section-${TRACK_VIDEO_ID}`);
+    await expect(videoSectionPre).toBeVisible({ timeout: 10_000 });
 
-    if (abortFoundByTestId) {
-      console.log('[E2E][s10][full-3] Abort button found via testid — clicking');
-      await abortByTestId.click();
-    } else if (abortFoundByLabel) {
-      console.log('[E2E][s10][full-3] Abort button found via aria-label — clicking');
-      await abortByLabel.click();
-    } else {
-      // F1 confirmed: no abort button. Simulate via direct API call.
-      console.log('[E2E][s10][full-3] FINDING F1: no Abort button — simulating via direct API');
-      const abortResult = await page.evaluate(
-        async (args: { projectId: string; trackId: string }) => {
-          const res = await fetch(
-            `/api/projects/${args.projectId}/tracks/${args.trackId}/abort`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ intent: 'abort' }),
-            },
-          );
-          return res.json() as Promise<{ data: unknown; error: unknown }>;
-        },
-        { projectId: PROJECT_ID, trackId: TRACK_VIDEO_ID },
-      );
-      expect(abortResult.error).toBeNull();
-      console.log('[E2E][s10][full-4] abort API call successful');
-    }
+    // Click Abort button for Video track
+    const abortBtn = page.getByTestId(`track-abort-btn-${TRACK_VIDEO_ID}`);
+    await expect(abortBtn).toBeVisible({ timeout: 5_000 });
+    console.log('[E2E][s10][full-3] Abort button visible — clicking');
+    await abortBtn.click();
+
+    // Confirm in AlertDialog
+    const confirmDialog = page.getByTestId('track-abort-confirm-dialog');
+    await expect(confirmDialog).toBeVisible({ timeout: 5_000 });
+    const confirmBtn = page.getByTestId('track-abort-confirm-btn');
+    await confirmBtn.click();
+    console.log('[E2E][s10][full-4] Abort confirmed via dialog — PATCH fired');
 
     // Navigate to post-abort state
     console.log('[E2E][s10][full-5] reloading page to pick up post-abort snapshot');
     await page.goto(PROJECT_URL);
     await expect(page.getByTestId('pipeline-workspace')).toBeVisible({ timeout: 15_000 });
 
-    // Check sidebar tracks (if wired)
+    // Check sidebar tracks
     const blogSection = page.getByTestId(`sidebar-section-${TRACK_BLOG_ID}`);
     const videoSection = page.getByTestId(`sidebar-section-${TRACK_VIDEO_ID}`);
     const podcastSection = page.getByTestId(`sidebar-section-${TRACK_PODCAST_ID}`);
 
     const blogVisible = await blogSection.isVisible().catch(() => false);
-    const videoVisible = await videoSection.isVisible().catch(() => false);
     const podcastVisible = await podcastSection.isVisible().catch(() => false);
 
     if (blogVisible && podcastVisible) {
@@ -1028,17 +1019,13 @@ test.describe('s10 — track abort mid-flight', () => {
       console.log('[E2E][s10][full-6-skip] track sections not visible — useProjectStream gap');
     }
 
+    // Video must show aborted styling
+    const videoVisible = await videoSection.isVisible().catch(() => false);
     if (videoVisible) {
-      // Video may or may not show aborted styling (F2)
-      const videoAbortedStyle = await videoSection.evaluate((el) =>
-        el.getAttribute('data-status') === 'aborted' ||
-        el.classList.contains('opacity-50'),
-      );
-      if (!videoAbortedStyle) {
-        console.log('[E2E][s10][full-7] FINDING F2: Video lane absent aborted styling');
-      } else {
-        console.log('[E2E][s10][full-7] Video lane shows aborted styling');
-      }
+      await expect(videoSection).toHaveAttribute('data-status', 'aborted');
+      const hasOpacity = await videoSection.evaluate((el) => el.classList.contains('opacity-50'));
+      expect(hasOpacity).toBe(true);
+      console.log('[E2E][s10][full-7] Video lane shows data-status=aborted + opacity-50 (F2 resolved)');
     }
 
     // Switch to Graph view and verify node states
@@ -1073,6 +1060,6 @@ test.describe('s10 — track abort mid-flight', () => {
       await expect(page.getByTestId(`sidebar-item-${stage}`)).toBeVisible();
     }
 
-    console.log('[E2E][s10][full-done] Full abort flow complete: Video aborted (F1/F2 documented), Blog + Podcast unaffected');
+    console.log('[E2E][s10][full-done] Full abort flow complete: Video aborted via UI, Blog + Podcast unaffected');
   });
 });
