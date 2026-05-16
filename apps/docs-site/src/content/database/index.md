@@ -16,7 +16,8 @@
 |---|---|
 | **Conteúdo** | projects, stages, revisions, research_archives, research_sources, idea_archives, canonical_core |
 | **Drafts** | blog_drafts, video_drafts, shorts_drafts, podcast_drafts |
-| **Config** | templates, agent_prompts, ai_provider_configs, image_generator_configs, assets, wordpress_configs |
+| **Config** | templates, agent_prompts, ai_provider_configs, image_generator_configs, assets |
+| **Publishing** | publish_targets |
 | **Usuários** | user_profiles, user_roles |
 | **Sistema** | idempotency_keys |
 
