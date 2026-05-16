@@ -15,7 +15,13 @@ import { describe, it, expect, vi } from 'vitest';
 import { YouTubePublishForm } from '../publish-drivers/YouTubePublishForm';
 
 const minimalProps = {
-  publishTarget: { id: 'pt-1', type: 'youtube', displayName: 'My Channel', configJson: {} },
+  publishTarget: {
+    id: 'pt-1',
+    type: 'youtube' as const,
+    channelId: 'ch-1',
+    displayName: 'My Channel',
+    configJson: {},
+  },
   draft: {},
 };
 
