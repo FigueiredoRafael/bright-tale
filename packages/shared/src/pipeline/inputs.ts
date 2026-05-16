@@ -41,7 +41,7 @@ export const STAGE_RUN_STATUSES = [
 ] as const;
 export type StageRunStatus = (typeof STAGE_RUN_STATUSES)[number];
 
-export const AWAITING_REASONS = ['manual_paste', 'manual_advance'] as const;
+export const AWAITING_REASONS = ['manual_paste', 'manual_advance', 'provider_quota_exhausted'] as const;
 export type AwaitingReason = (typeof AWAITING_REASONS)[number];
 
 export const TERMINAL_STATUSES: ReadonlySet<StageRunStatus> = new Set([

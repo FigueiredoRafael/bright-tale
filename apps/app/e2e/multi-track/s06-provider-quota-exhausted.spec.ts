@@ -2,37 +2,18 @@
  * E2E Scenario s06 — Provider quota exhausted (HITL simulation)
  *
  * Spec: docs/specs/2026-05-14-multi-track-pipeline.md (scenario #6)
- * Issue: #82 (E6)
+ * Issue: #153 (F1/F2/F3 all resolved)
  *
  * Steps covered:
  *   1.  Load project page — awaiting_user state on Production stage_run #1
- *       (awaitingReason='manual_advance', errorMessage references 429).
- *       NOTE: 'provider_quota_exhausted' is not yet a valid AwaitingReason in
- *       the shared type (AWAITING_REASONS = ['manual_paste','manual_advance']).
- *       We use 'manual_advance' to represent the quota-exhausted state, and
- *       set errorMessage to a 429 reference. See findings section in report.
+ *       (awaitingReason='provider_quota_exhausted' — now a valid AwaitingReason, F1 resolved).
  *   2.  Assert sidebar shows awaiting_user indicator for production stage.
- *   3.  Assert sidebar shows "advance" badge (the awaiting CTA badge).
- *   4.  Assert FocusPanel content shell mounts when production is selected.
- *   5.  Assert attempt_no=1 is the active tab with awaiting_user status.
- *   6.  Assert no Resume button exists in FocusPanel today (finding: missing).
- *   7.  Assert the POST /api/projects/:id/resume endpoint is mockable and
- *       responds with success (infrastructure is ready even if UI button absent).
- *   8.  After simulating resume (direct API call via mock), re-snapshot shows
- *       Production #1 as failed and #2 as completed (attempt_no=2).
- *   9.  Assert attempt tab #2 appears after the refetch.
- *
- * Findings surfaced (no product code changed):
- *   F1: AwaitingReason type does not include 'provider_quota_exhausted';
- *       only 'manual_paste' | 'manual_advance' are valid.
- *   F2: FocusPanel has no awaiting-user banner for quota-exhausted state.
- *   F3: FocusPanel has no "Swap provider" or "Resume" button; the resume
- *       endpoint (POST /:id/resume) exists in the API but has no UI entry point
- *       in FocusPanel today.
+ *   3.  Assert FocusPanel shows awaiting-user banner with data-testid="awaiting-banner" (F2 resolved).
+ *   4.  Assert FocusPanel shows Resume button with data-testid="resume-track-btn" (F3 resolved).
+ *   5.  Click Resume button — assert POST /api/projects/:id/resume is called.
+ *   6.  After resume, snapshot returns Production #2 (completed) — assert attempt tab #2 appears.
  *
  * All API calls are mocked via page.route — no API server / DB required.
- * Console output of the form [E2E][s06][step] <action> is forwarded to the
- * terminal so you can watch transitions live during a headed run.
  *
  * To run individually:
  *   npx playwright test e2e/multi-track/s06-provider-quota-exhausted.spec.ts
@@ -101,17 +82,13 @@ function makeStageRunRow(
 
 /**
  * Build the "awaiting_user" snapshot: shared stages completed, production
- * stage_run #1 is awaiting_user with errorMessage referencing 429.
- *
- * This represents the state immediately after provider quota was exhausted.
- * NOTE: awaitingReason='manual_advance' is used because 'provider_quota_exhausted'
- * does not exist in the AwaitingReason union yet (finding F1).
+ * stage_run #1 is awaiting_user with awaitingReason='provider_quota_exhausted' (F1 resolved).
  */
 function buildAwaitingSnapshot() {
   const productionAwaiting = makeStageRunRow('production', {
     id: STAGE_RUN_ID_PRODUCTION_1,
     status: 'awaiting_user',
-    awaitingReason: 'manual_advance',
+    awaitingReason: 'provider_quota_exhausted',
     errorMessage: 'Provider returned 429 Too Many Requests (rate limit / quota exhausted). Please swap provider or wait before resuming.',
     trackId: TRACK_ID,
     attemptNo: 1,
@@ -215,12 +192,6 @@ let resumeCalled = false;
 /**
  * Register all page.route intercepts needed for the s06 scenario.
  * Call BEFORE page.goto().
- *
- * Playwright resolves routes LAST-registered-first. We register the broad
- * catch-all first (lowest priority) and the specific endpoints last.
- *
- * The stages snapshot toggles after the resume endpoint is called, simulating
- * the pipeline re-fetching after the user resumes.
  */
 async function mockS06Apis(page: Page): Promise<void> {
   resumeCalled = false;
@@ -272,8 +243,6 @@ async function mockS06Apis(page: Page): Promise<void> {
   );
 
   // ── POST /api/projects/:id/resume ─────────────────────────────────────────
-  // The "Resume pipeline" endpoint. Returns success and sets resumeCalled=true
-  // so the stages snapshot handler can return the post-resume snapshot.
   await page.route(`**/api/projects/${PROJECT_ID}/resume`, async (route: Route) => {
     if (route.request().method() !== 'POST') return route.fallback();
     resumeCalled = true;
@@ -283,28 +252,6 @@ async function mockS06Apis(page: Page): Promise<void> {
       body: JSON.stringify({ data: { ok: true }, error: null }),
     });
   });
-
-  // ── POST /api/projects/:id/stage-runs/:id/continue ────────────────────────
-  // The "continue" endpoint for advancing an awaiting_user stage run.
-  await page.route(
-    `**/api/projects/${PROJECT_ID}/stage-runs/${STAGE_RUN_ID_PRODUCTION_1}/continue`,
-    async (route: Route) => {
-      if (route.request().method() !== 'POST') return route.fallback();
-      resumeCalled = true;
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          data: {
-            stageRunId: STAGE_RUN_ID_PRODUCTION_1,
-            status: 'queued',
-            stage: 'production',
-          },
-          error: null,
-        }),
-      });
-    },
-  );
 
   // ── /api/projects/:id/stages?stage=... (useStageRun) ─────────────────────
   await page.route(`**/api/projects/${PROJECT_ID}/stages*`, async (route: Route) => {
@@ -423,17 +370,6 @@ test.beforeEach(async ({ page }) => {
 test.describe('s06 — provider quota exhausted (HITL sim)', () => {
   /**
    * Core test: sidebar surfaces awaiting_user state for production stage.
-   *
-   * Asserts:
-   * - Workspace mounts correctly.
-   * - Sidebar shared-stage items are visible and show completed status.
-   * - Production stage in sidebar (via track section if visible) shows
-   *   awaiting_user indicator (AlertCircle icon).
-   * - Shared-stage sidebar items show no awaiting badge (they are completed).
-   *
-   * NOTE: Per-track sidebar items require useProjectStream to expose `tracks`.
-   * If the track section is not present (stream not wired), the test asserts
-   * only on shared-stage sidebar items and documents the gap.
    */
   test('awaiting_user state: sidebar shows correct status for production stage', async ({
     page,
@@ -463,26 +399,16 @@ test.describe('s06 — provider quota exhausted (HITL sim)', () => {
     console.log('[E2E][s06][4] shared stages confirmed: no awaiting badges on completed stages');
 
     // ── Track section: production awaiting_user ───────────────────────────
-    // If the tracks array is wired into useProjectStream and FocusSidebar,
-    // the track section will render with the production item showing
-    // awaiting_user (AlertCircle icon + "advance" badge).
     const trackSection = page.getByTestId(`sidebar-section-${TRACK_ID}`);
     const trackSectionPresent = await trackSection.isVisible().catch(() => false);
 
     if (trackSectionPresent) {
       console.log('[E2E][s06][5] track section visible — asserting production awaiting_user badge');
-
-      // Production sidebar item awaiting badge should show
       await expect(page.getByTestId(`sidebar-awaiting-${TRACK_ID}-production`)).toBeVisible();
-
-      // Status icon should be AlertCircle (awaiting_user) — check via test-id
       await expect(page.getByTestId(`sidebar-status-${TRACK_ID}-production`)).toBeVisible();
-
       console.log('[E2E][s06][6] production awaiting badge confirmed in track section');
     } else {
-      // Track section not yet rendered — known gap (requires T4 stream ticket).
-      // Assert the shared section is present and log the gap.
-      console.log('[E2E][s06][5-skip] track section not visible — tracks not yet wired in useProjectStream (T4 gap)');
+      console.log('[E2E][s06][5-skip] track section not visible — tracks not yet wired in useProjectStream');
       await expect(page.getByTestId('sidebar-section-shared')).toBeVisible();
     }
 
@@ -490,15 +416,9 @@ test.describe('s06 — provider quota exhausted (HITL sim)', () => {
   });
 
   /**
-   * FocusPanel: production stage selected, attempt_no=1 shows awaiting_user tab.
-   *
-   * Asserts:
-   * - FocusPanel content shell mounts.
-   * - Attempt tab #1 is active with data-status="awaiting_user".
-   * - No "Resume" or "Swap provider" button in FocusPanel (finding F3).
-   * - No awaiting-user banner in FocusPanel (finding F2).
+   * FocusPanel: production stage selected, shows awaiting-banner and Resume button (F2/F3 resolved).
    */
-  test('FocusPanel: production stage shows awaiting_user attempt tab; no Resume button (finding F2/F3)', async ({
+  test('FocusPanel: production stage shows awaiting-banner and Resume button', async ({
     page,
   }) => {
     await mockS06Apis(page);
@@ -516,49 +436,29 @@ test.describe('s06 — provider quota exhausted (HITL sim)', () => {
     // Attempt tab #1 should be present and active
     await expect(page.getByTestId('attempt-tab-1')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('attempt-tab-1')).toHaveAttribute('data-active', 'true');
-
-    // Attempt tab #1 data-status should be awaiting_user
     await expect(page.getByTestId('attempt-tab-1')).toHaveAttribute('data-status', 'awaiting_user');
     console.log('[E2E][s06][fp-4] attempt-tab-1 active and shows awaiting_user status');
 
-    // Finding F2: No awaiting-user banner in FocusPanel today
-    // The banner with data-testid="awaiting-user-banner" does not exist.
-    await expect(page.getByTestId('awaiting-user-banner')).toHaveCount(0);
-    console.log('[E2E][s06][fp-5] FINDING F2 confirmed: no awaiting-user banner in FocusPanel');
+    // F2 resolved: awaiting-banner is now visible
+    await expect(page.getByTestId('awaiting-banner')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('awaiting-banner')).toHaveAttribute('data-reason', 'provider_quota_exhausted');
+    console.log('[E2E][s06][fp-5] F2 resolved: awaiting-banner visible with provider_quota_exhausted reason');
 
-    // Finding F3: No Resume button in FocusPanel today
-    // The resume button with data-testid="resume-pipeline-btn" does not exist.
-    await expect(page.getByTestId('resume-pipeline-btn')).toHaveCount(0);
-    console.log('[E2E][s06][fp-6] FINDING F3 confirmed: no Resume button in FocusPanel');
+    // F3 resolved: Resume button is now visible inside the banner
+    await expect(page.getByTestId('resume-track-btn')).toBeVisible({ timeout: 10_000 });
+    console.log('[E2E][s06][fp-6] F3 resolved: resume-track-btn visible in FocusPanel');
 
     // Only attempt #1 — no #2 tab yet (pipeline not resumed)
     await expect(page.getByTestId('attempt-tab-2')).toHaveCount(0);
 
-    console.log('[E2E][s06][fp-done] FocusPanel awaiting_user state verified; findings F2+F3 documented');
+    console.log('[E2E][s06][fp-done] FocusPanel awaiting_user state verified; F2+F3 resolved');
   });
 
   /**
-   * Resume endpoint: mock infrastructure is ready; post-resume snapshot shows
-   * attempt_no=2 as the latest run for production.
-   *
-   * Asserts:
-   * - POST /api/projects/:id/resume returns success (mock confirms endpoint exists).
-   * - After calling resume (simulated by direct fetch mock via page.evaluate),
-   *   the stages snapshot refetch returns production stage_run as attempt_no=2
-   *   with status=completed.
-   * - Attempt tab #2 appears after navigating to ?attempt=2.
-   *
-   * NOTE (finding F3): Since no Resume button exists in FocusPanel, we simulate
-   * the resume action by calling the endpoint directly via page.evaluate, then
-   * navigate to ?attempt=2 to show the post-resume state.
-   *
-   * NOTE (useProjectStream gap): useProjectStream does not yet return `allAttempts`
-   * from the snapshot (only the latest stageRun per stage). FocusPanel falls back
-   * to the single stageRun[stage] entry. After resume the mock returns production
-   * with attemptNo=2/completed, so exactly one attempt tab (#2) is visible.
-   * Dual-attempt display (#1 failed + #2 completed) requires allAttempts wiring.
+   * Resume button click: clicking resume-track-btn calls POST /api/projects/:id/resume,
+   * then snapshot switches to post-resume state and attempt_no=2 appears.
    */
-  test('Resume endpoint: infrastructure ready; after resume snapshot shows attempt_no=2', async ({
+  test('Resume button click: calls /resume endpoint; post-resume snapshot shows attempt_no=2', async ({
     page,
   }) => {
     await mockS06Apis(page);
@@ -569,90 +469,56 @@ test.describe('s06 — provider quota exhausted (HITL sim)', () => {
     await expect(page.getByTestId('pipeline-workspace')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('focus-panel-content')).toBeVisible({ timeout: 10_000 });
 
-    // Verify we start in awaiting_user state (attempt 1 active)
+    // Confirm awaiting state
     await expect(page.getByTestId('attempt-tab-1')).toHaveAttribute('data-active', 'true');
     await expect(page.getByTestId('attempt-tab-1')).toHaveAttribute('data-status', 'awaiting_user');
     console.log('[E2E][s06][res-2] confirmed awaiting_user on attempt #1');
 
-    // Simulate resume: call the mock resume endpoint via page.evaluate.
-    // (This tests the mock infrastructure responds correctly, proving the
-    //  API endpoint shape is correct even though no UI button triggers it yet.)
-    console.log('[E2E][s06][res-3] simulating POST /api/projects/:id/resume');
-    const resumeResponse = await page.evaluate(async (projectId: string) => {
-      const res = await fetch(`/api/projects/${projectId}/resume`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      return res.json() as Promise<{ data: { ok: boolean } | null; error: unknown }>;
-    }, PROJECT_ID);
+    // Banner and Resume button visible (F2/F3 resolved)
+    await expect(page.getByTestId('awaiting-banner')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('resume-track-btn')).toBeVisible({ timeout: 10_000 });
 
-    expect(resumeResponse.data).toEqual({ ok: true });
-    expect(resumeResponse.error).toBeNull();
-    console.log('[E2E][s06][res-4] resume endpoint returned { ok: true }');
+    // Click the Resume button (F3)
+    console.log('[E2E][s06][res-3] clicking resume-track-btn');
+    await page.getByTestId('resume-track-btn').click();
 
-    // resumeCalled is now true — the stages snapshot returns post-resume state.
-    // Navigate to ?attempt=2 to trigger a fresh page load with the post-resume
-    // mock snapshot (production now has attemptNo=2, status=completed).
-    console.log('[E2E][s06][res-5] navigating to attempt=2 (post-resume snapshot)');
+    // After resume, navigate to ?attempt=2 to see post-resume state
+    // (resumeCalled is now true — stages snapshot returns production #2)
+    console.log('[E2E][s06][res-4] navigating to attempt=2 (post-resume snapshot)');
     await page.goto(`${PROJECT_URL}?stage=production&track=${TRACK_ID}&attempt=2`);
 
     await expect(page.getByTestId('pipeline-workspace')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('focus-panel-content')).toBeVisible({ timeout: 10_000 });
 
-    // Post-resume: useProjectStream's stageRuns[production] is now attempt_no=2.
-    // FocusPanel falls back to [stageRuns[stage]] (1 item) since allAttempts is
-    // not yet wired. So only attempt-tab-2 is visible (not attempt-tab-1 too).
+    // Post-resume: attempt #2 is visible and active
     await expect(page.getByTestId('attempt-tab-2')).toBeVisible({ timeout: 10_000 });
-
-    // Attempt #2 should now be active (we navigated to ?attempt=2)
     await expect(page.getByTestId('attempt-tab-2')).toHaveAttribute('data-active', 'true');
     await expect(page.getByTestId('attempt-tab-2')).toHaveAttribute('data-status', 'completed');
 
-    // Attempt #1 tab not shown (allAttempts not wired in useProjectStream — known gap)
-    // When allAttempts is wired, this count will change from 0 to 1.
-    await expect(page.getByTestId('attempt-tab-1')).toHaveCount(0);
-
-    console.log('[E2E][s06][res-6] post-resume: attempt #2 active (completed); attempt #1 not shown (allAttempts gap)');
-    console.log('[E2E][s06][res-done] Resume infrastructure verified; attempt_no=2 pipeline continuation confirmed');
+    console.log('[E2E][s06][res-done] Resume flow confirmed: attempt #2 active (completed)');
   });
 
   /**
-   * Finding F1: AwaitingReason type does not include 'provider_quota_exhausted'.
-   *
-   * This test documents the type-level gap. It verifies that the sidebar
-   * "advance" badge text is displayed (because 'manual_advance' is used as a
-   * proxy for quota-exhausted), and that the errorMessage carrying the 429
-   * reference is captured in the stage run row (visible in API mock output).
+   * F1 resolved: awaitingReason='provider_quota_exhausted' is now a valid AwaitingReason.
+   * Banner shows quota-specific copy instead of a generic message.
    */
-  test('FINDING F1: awaiting sidebar badge shows "advance" (proxy for quota-exhausted; no dedicated reason type)', async ({
+  test('F1 resolved: provider_quota_exhausted is a valid AwaitingReason; banner shows quota copy', async ({
     page,
   }) => {
     await mockS06Apis(page);
 
-    console.log('[E2E][s06][f1-1] navigating to project — asserting sidebar awaiting badge text');
-    await page.goto(PROJECT_URL);
+    console.log('[E2E][s06][f1-1] navigating to production stage');
+    await page.goto(`${PROJECT_URL}?stage=production&track=${TRACK_ID}`);
     await expect(page.getByTestId('pipeline-workspace')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId('sidebar-section-shared')).toBeVisible();
+    await expect(page.getByTestId('focus-panel-content')).toBeVisible({ timeout: 10_000 });
 
-    // The shared-stage items have no awaiting badge (they are completed)
-    for (const stage of ['brainstorm', 'research', 'canonical']) {
-      await expect(page.getByTestId(`sidebar-awaiting-${stage}`)).toHaveCount(0);
-    }
+    // Banner must be visible and carry the correct reason attribute
+    await expect(page.getByTestId('awaiting-banner')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('awaiting-banner')).toHaveAttribute('data-reason', 'provider_quota_exhausted');
 
-    // Track section with production awaiting badge (if wired)
-    const trackSection = page.getByTestId(`sidebar-section-${TRACK_ID}`);
-    const trackSectionPresent = await trackSection.isVisible().catch(() => false);
+    // Banner must show the quota-specific copy string
+    await expect(page.getByTestId('awaiting-banner')).toContainText('Provider quota exhausted');
 
-    if (trackSectionPresent) {
-      const awaitingBadge = page.getByTestId(`sidebar-awaiting-${TRACK_ID}-production`);
-      await expect(awaitingBadge).toBeVisible();
-      // Badge should show "advance" (the proxy text for quota-exhausted)
-      await expect(awaitingBadge).toContainText('advance');
-      console.log('[E2E][s06][f1-2] sidebar awaiting badge shows "advance" (manual_advance proxy) — F1 confirmed');
-    } else {
-      console.log('[E2E][s06][f1-2-skip] track section not visible — asserting shared stages only');
-    }
-
-    console.log('[E2E][s06][f1-done] FINDING F1 documented: provider_quota_exhausted is not in AwaitingReason type; manual_advance used as proxy');
+    console.log('[E2E][s06][f1-done] F1 resolved: provider_quota_exhausted reason + quota copy confirmed');
   });
 });
