@@ -379,16 +379,20 @@ Log individual de débitos de crédito (diferente de `usage_events` que é sobre
 | content_id | uuid | ID do draft vinculado |
 | user_id | uuid FK | |
 
-## wordpress_configs
+## publish_targets
+
+Tabela canônica unificada de destinos de publicação (WordPress, YouTube, Spotify, Apple Podcasts, RSS). Substitui `wordpress_configs` (removida em T6.5b).
 
 | Coluna | Tipo | Descrição |
 |---|---|---|
-| id | text PK | |
-| site_url | text | |
-| username | text | |
-| password | text | Encriptada |
-| channel_id | uuid FK (channels) NOT NULL UNIQUE | Escopo por canal |
-| publish_targets_id | uuid FK (publish_targets) | Forward pointer para a linha unificada em `publish_targets`; populado pela backfill T2.8 |
+| id | uuid PK | |
+| channel_id | uuid FK (channels) | XOR com `org_id` — exatamente um deve estar setado |
+| org_id | uuid FK (organizations) | XOR com `channel_id` |
+| type | text | `wordpress`, `youtube`, `spotify`, `apple_podcasts`, `rss` |
+| display_name | text | Nome amigável (ex.: "Blog principal", "Canal YouTube X") |
+| credentials_encrypted | text | Credenciais AES-256-GCM (refresh tokens, app passwords) |
+| config_json | jsonb | Config específica por tipo (ex.: `{ site_url, username }` para WP) |
+| is_active | boolean | |
 
 ## user_profiles
 
