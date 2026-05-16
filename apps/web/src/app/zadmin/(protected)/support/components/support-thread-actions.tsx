@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { MessageSquare } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 import { SupportThreadDrawer } from './support-thread-drawer';
 
 interface SupportThreadActionsProps {
@@ -16,6 +17,7 @@ interface SupportThreadActionsProps {
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Aberta' },
   { value: 'escalated', label: 'Escalada' },
+  { value: 'in_progress', label: 'Em atendimento' },
   { value: 'resolved', label: 'Resolvida' },
   { value: 'closed', label: 'Fechada' },
 ];
@@ -32,12 +34,38 @@ export function SupportThreadActions({
   userId,
   escalationSummary,
   currentStatus,
-  userUnreadCount,
+  userUnreadCount: initialUnread,
 }: SupportThreadActionsProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [liveUnread, setLiveUnread] = useState(initialUnread);
+  const supabaseRef = useRef(createClient());
+
+  // Keep in sync if server re-renders with a new value
+  useEffect(() => { setLiveUnread(initialUnread); }, [initialUnread]);
+
+  // Realtime: increment badge when user sends a message
+  useEffect(() => {
+    const supabase = supabaseRef.current;
+    const channel = supabase
+      .channel(`admin-thread-${threadId}`)
+      .on('broadcast', { event: 'new_message' }, (payload) => {
+        const row = payload.payload as { role: string };
+        if (row.role === 'user') {
+          setLiveUnread((n) => n + 1);
+        }
+      })
+      .subscribe();
+
+    return () => { void supabase.removeChannel(channel); };
+  }, [threadId]);
+
+  function handleOpenDrawer() {
+    setLiveUnread(0); // optimistic reset — GET /messages will reset in DB too
+    setDrawerOpen(true);
+  }
 
   async function updateThread(updates: { status?: string; priority?: string }) {
     setLoading(true);
@@ -69,16 +97,15 @@ export function SupportThreadActions({
         )}
         <button
           type="button"
-          onClick={() => setDrawerOpen(true)}
-          className="relative flex items-center gap-1 rounded border border-[var(--border,#263146)] bg-[var(--background,#0a0e1a)] px-2 py-1 text-xs text-[var(--muted-foreground,#8b98b0)] hover:text-[var(--foreground,#e6edf7)] hover:border-blue-500/50 transition-colors"
+          onClick={handleOpenDrawer}
+          className={`relative flex items-center gap-1 rounded border px-2 py-1 text-xs transition-colors ${
+            liveUnread > 0
+              ? 'border-blue-500/60 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20'
+              : 'border-[var(--border,#263146)] bg-[var(--background,#0a0e1a)] text-[var(--muted-foreground,#8b98b0)] hover:text-[var(--foreground,#e6edf7)] hover:border-blue-500/50'
+          }`}
         >
           <MessageSquare className="w-3.5 h-3.5" />
-          Ver conversa
-          {userUnreadCount > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 inline-flex items-center justify-center rounded-full bg-blue-500 px-1 py-0.5 text-[9px] font-bold text-white min-w-[16px] leading-none">
-              {userUnreadCount}
-            </span>
-          )}
+          {liveUnread > 0 ? `${liveUnread} nova${liveUnread > 1 ? 's' : ''}` : 'Ver conversa'}
         </button>
         <select
           disabled={loading}

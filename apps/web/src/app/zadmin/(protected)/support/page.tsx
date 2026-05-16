@@ -241,12 +241,21 @@ export default async function SupportPage({ searchParams }: Props) {
               {sorted.map((thread) => (
                 <tr
                   key={thread.id}
-                  className="border-b border-[var(--border,#263146)] last:border-0 hover:bg-[var(--background,#0a0e1a)]/30"
+                  className={`border-b border-[var(--border,#263146)] last:border-0 transition-colors ${
+                    thread.user_unread_count > 0
+                      ? 'bg-blue-500/8 hover:bg-blue-500/12 border-l-2 border-l-blue-500'
+                      : 'hover:bg-[var(--background,#0a0e1a)]/30'
+                  }`}
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5">
                       <HeadphonesIcon className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground,#8b98b0)]" />
                       <span className="font-mono text-xs text-[var(--foreground,#e6edf7)]">{thread.id.slice(-8)}</span>
+                      {thread.user_unread_count > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                          {thread.user_unread_count} nova{thread.user_unread_count > 1 ? 's' : ''}
+                        </span>
+                      )}
                     </div>
                     <div className="mt-0.5 text-[11px] text-[var(--muted-foreground,#8b98b0)]">
                       uid: {thread.user_id.slice(-8)}
@@ -254,15 +263,8 @@ export default async function SupportPage({ searchParams }: Props) {
                   </td>
                   <td className="px-4 py-3"><StatusBadge status={thread.status} /></td>
                   <td className="px-4 py-3"><PriorityBadge priority={thread.priority} /></td>
-                  <td className="px-4 py-3 text-center">
-                    <div className="flex items-center justify-center gap-1.5">
-                      <span className="text-[var(--muted-foreground,#8b98b0)]">{thread.message_count}</span>
-                      {thread.user_unread_count > 0 && (
-                        <span className="inline-flex items-center justify-center rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-bold text-white min-w-[18px]">
-                          {thread.user_unread_count}
-                        </span>
-                      )}
-                    </div>
+                  <td className="px-4 py-3 text-center text-[var(--muted-foreground,#8b98b0)]">
+                    {thread.message_count}
                   </td>
                   <td className="max-w-xs px-4 py-3">
                     {thread.escalation_summary ? (
