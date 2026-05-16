@@ -604,3 +604,116 @@ describe('FocusPanel — AC4: URL state preserved on refresh', () => {
     expect(url).toContain('attempt=1');
   });
 });
+
+// ── F2: awaiting-user banner ──────────────────────────────────────────────────
+
+describe('FocusPanel — F2: awaiting-user banner', () => {
+  it('renders the awaiting-banner when currentRun.status is awaiting_user', () => {
+    searchParamsStub = new URLSearchParams('stage=research&attempt=1');
+    const run = makeRun({ stage: 'research', attemptNo: 1, status: 'awaiting_user', awaitingReason: 'manual_advance' });
+    mockStream({ ...EMPTY_STAGE_RUNS, research: run }, [run]);
+    render(<FocusPanel projectId="proj-1" />);
+    expect(screen.getByTestId('awaiting-banner')).toBeInTheDocument();
+  });
+
+  it('does NOT render the awaiting-banner when status is not awaiting_user', () => {
+    searchParamsStub = new URLSearchParams('stage=research&attempt=1');
+    const run = makeRun({ stage: 'research', attemptNo: 1, status: 'running' });
+    mockStream({ ...EMPTY_STAGE_RUNS, research: run }, [run]);
+    render(<FocusPanel projectId="proj-1" />);
+    expect(screen.queryByTestId('awaiting-banner')).not.toBeInTheDocument();
+  });
+
+  it('sets data-reason attribute on the banner to the awaitingReason value', () => {
+    searchParamsStub = new URLSearchParams('stage=research&attempt=1');
+    const run = makeRun({ stage: 'research', attemptNo: 1, status: 'awaiting_user', awaitingReason: 'provider_quota_exhausted' });
+    mockStream({ ...EMPTY_STAGE_RUNS, research: run }, [run]);
+    render(<FocusPanel projectId="proj-1" />);
+    expect(screen.getByTestId('awaiting-banner')).toHaveAttribute('data-reason', 'provider_quota_exhausted');
+  });
+
+  it('shows quota-specific copy for provider_quota_exhausted reason', () => {
+    searchParamsStub = new URLSearchParams('stage=research&attempt=1');
+    const run = makeRun({ stage: 'research', attemptNo: 1, status: 'awaiting_user', awaitingReason: 'provider_quota_exhausted' });
+    mockStream({ ...EMPTY_STAGE_RUNS, research: run }, [run]);
+    render(<FocusPanel projectId="proj-1" />);
+    expect(screen.getByTestId('awaiting-banner').textContent).toContain('Provider quota exhausted');
+  });
+
+  it('shows generic copy for manual_advance reason', () => {
+    searchParamsStub = new URLSearchParams('stage=research&attempt=1');
+    const run = makeRun({ stage: 'research', attemptNo: 1, status: 'awaiting_user', awaitingReason: 'manual_advance' });
+    mockStream({ ...EMPTY_STAGE_RUNS, research: run }, [run]);
+    render(<FocusPanel projectId="proj-1" />);
+    expect(screen.getByTestId('awaiting-banner').textContent).toContain('manual_advance');
+  });
+});
+
+// ── F3: Resume button in awaiting banner ──────────────────────────────────────
+
+describe('FocusPanel — F3: Resume button in awaiting banner', () => {
+  it('renders the resume-track-btn inside the awaiting-banner', () => {
+    searchParamsStub = new URLSearchParams('stage=research&attempt=1');
+    const run = makeRun({ stage: 'research', attemptNo: 1, status: 'awaiting_user', awaitingReason: 'manual_advance' });
+    mockStream({ ...EMPTY_STAGE_RUNS, research: run }, [run]);
+    render(<FocusPanel projectId="proj-1" />);
+    expect(screen.getByTestId('resume-track-btn')).toBeInTheDocument();
+  });
+
+  it('clicking resume-track-btn calls the resume endpoint and then calls refresh', async () => {
+    const refreshMock = vi.fn(async () => undefined);
+    useProjectStreamMock.mockReturnValue({
+      stageRuns: EMPTY_STAGE_RUNS,
+      liveEvent: null,
+      isConnected: true,
+      project: { mode: 'autopilot', paused: false },
+      refresh: refreshMock,
+      allAttempts: [makeRun({ stage: 'research', attemptNo: 1, status: 'awaiting_user', awaitingReason: 'provider_quota_exhausted' })],
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { ok: true }, error: null }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    searchParamsStub = new URLSearchParams('stage=research&attempt=1');
+    render(<FocusPanel projectId="proj-1" />);
+
+    fireEvent.click(screen.getByTestId('resume-track-btn'));
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/api/projects/proj-1/resume'),
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(refreshMock).toHaveBeenCalled();
+    });
+
+    vi.unstubAllGlobals();
+  });
+
+  it('resume-track-btn is disabled while fetch is in flight', async () => {
+    let resolveResume!: (value: unknown) => void;
+    const inflightFetch = vi.fn().mockReturnValue(
+      new Promise((res) => { resolveResume = res; }),
+    );
+    vi.stubGlobal('fetch', inflightFetch);
+
+    searchParamsStub = new URLSearchParams('stage=research&attempt=1');
+    const run = makeRun({ stage: 'research', attemptNo: 1, status: 'awaiting_user', awaitingReason: 'manual_advance' });
+    mockStream({ ...EMPTY_STAGE_RUNS, research: run }, [run]);
+    render(<FocusPanel projectId="proj-1" />);
+
+    const btn = screen.getByTestId('resume-track-btn');
+    fireEvent.click(btn);
+
+    expect(btn).toBeDisabled();
+
+    resolveResume({ ok: true, json: async () => ({}) });
+    vi.unstubAllGlobals();
+  });
+});
