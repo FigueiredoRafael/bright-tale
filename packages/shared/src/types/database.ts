@@ -7,30 +7,10 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -160,7 +140,7 @@ export type Database = {
             foreignKeyName: "affiliate_commissions_referral_id_fkey"
             columns: ["referral_id"]
             isOneToOne: false
-            referencedRelation: "affiliate_referrals"
+            referencedRelation: "affiliate_referrals_legacy"
             referencedColumns: ["id"]
           },
         ]
@@ -335,7 +315,7 @@ export type Database = {
             foreignKeyName: "affiliate_fraud_flags_referral_id_fkey"
             columns: ["referral_id"]
             isOneToOne: false
-            referencedRelation: "affiliate_referrals"
+            referencedRelation: "affiliate_referrals_legacy"
             referencedColumns: ["id"]
           },
         ]
@@ -450,6 +430,66 @@ export type Database = {
         ]
       }
       affiliate_referrals: {
+        Row: {
+          affiliate_code: string
+          affiliate_id: string
+          attribution_status: string
+          click_id: string | null
+          converted_at: string | null
+          created_at: string
+          id: string
+          platform: string | null
+          signup_date: string
+          signup_ip_hash: string | null
+          user_id: string
+          window_end: string
+        }
+        Insert: {
+          affiliate_code: string
+          affiliate_id: string
+          attribution_status?: string
+          click_id?: string | null
+          converted_at?: string | null
+          created_at?: string
+          id?: string
+          platform?: string | null
+          signup_date?: string
+          signup_ip_hash?: string | null
+          user_id: string
+          window_end?: string
+        }
+        Update: {
+          affiliate_code?: string
+          affiliate_id?: string
+          attribution_status?: string
+          click_id?: string | null
+          converted_at?: string | null
+          created_at?: string
+          id?: string
+          platform?: string | null
+          signup_date?: string
+          signup_ip_hash?: string | null
+          user_id?: string
+          window_end?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_referrals_affiliate_id_fkey1"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "affiliates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_referrals_click_id_fkey1"
+            columns: ["click_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_clicks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      affiliate_referrals_legacy: {
         Row: {
           affiliate_code: string
           affiliate_id: string
@@ -1688,17 +1728,17 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "credit_usage_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
-            referencedRelation: "tracks"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "credit_usage_publish_target_id_fkey"
             columns: ["publish_target_id"]
             isOneToOne: false
             referencedRelation: "publish_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_usage_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
             referencedColumns: ["id"]
           },
         ]
@@ -2444,79 +2484,6 @@ export type Database = {
         }
         Relationships: []
       }
-      podcast_episodes: {
-        Row: {
-          id: string
-          publish_target_id: string
-          channel_id: string
-          stage_run_id: string | null
-          title: string
-          description: string
-          audio_url: string
-          duration_sec: number | null
-          guid: string
-          published_at: string
-          itunes_explicit: boolean
-          itunes_image_url: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          publish_target_id: string
-          channel_id: string
-          stage_run_id?: string | null
-          title: string
-          description: string
-          audio_url: string
-          duration_sec?: number | null
-          guid: string
-          published_at?: string
-          itunes_explicit?: boolean
-          itunes_image_url?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          publish_target_id?: string
-          channel_id?: string
-          stage_run_id?: string | null
-          title?: string
-          description?: string
-          audio_url?: string
-          duration_sec?: number | null
-          guid?: string
-          published_at?: string
-          itunes_explicit?: boolean
-          itunes_image_url?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "podcast_episodes_publish_target_id_fkey"
-            columns: ["publish_target_id"]
-            isOneToOne: false
-            referencedRelation: "publish_targets"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "podcast_episodes_channel_id_fkey"
-            columns: ["channel_id"]
-            isOneToOne: false
-            referencedRelation: "channels"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "podcast_episodes_stage_run_id_fkey"
-            columns: ["stage_run_id"]
-            isOneToOne: false
-            referencedRelation: "stage_runs"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       podcast_drafts: {
         Row: {
           created_at: string
@@ -2585,10 +2552,82 @@ export type Database = {
           },
         ]
       }
+      podcast_episodes: {
+        Row: {
+          audio_url: string
+          channel_id: string
+          created_at: string
+          description: string
+          duration_sec: number | null
+          guid: string
+          id: string
+          itunes_explicit: boolean
+          itunes_image_url: string | null
+          publish_target_id: string
+          published_at: string
+          stage_run_id: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          audio_url: string
+          channel_id: string
+          created_at?: string
+          description: string
+          duration_sec?: number | null
+          guid: string
+          id?: string
+          itunes_explicit?: boolean
+          itunes_image_url?: string | null
+          publish_target_id: string
+          published_at?: string
+          stage_run_id?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          audio_url?: string
+          channel_id?: string
+          created_at?: string
+          description?: string
+          duration_sec?: number | null
+          guid?: string
+          id?: string
+          itunes_explicit?: boolean
+          itunes_image_url?: string | null
+          publish_target_id?: string
+          published_at?: string
+          stage_run_id?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "podcast_episodes_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "podcast_episodes_publish_target_id_fkey"
+            columns: ["publish_target_id"]
+            isOneToOne: false
+            referencedRelation: "publish_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "podcast_episodes_stage_run_id_fkey"
+            columns: ["stage_run_id"]
+            isOneToOne: false
+            referencedRelation: "stage_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           abort_requested_at: string | null
-          auto_advance: boolean
           autopilot_config_json: Json | null
           autopilot_template_id: string | null
           channel_id: string | null
@@ -2611,7 +2650,6 @@ export type Database = {
         }
         Insert: {
           abort_requested_at?: string | null
-          auto_advance?: boolean
           autopilot_config_json?: Json | null
           autopilot_template_id?: string | null
           channel_id?: string | null
@@ -2634,7 +2672,6 @@ export type Database = {
         }
         Update: {
           abort_requested_at?: string | null
-          auto_advance?: boolean
           autopilot_config_json?: Json | null
           autopilot_template_id?: string | null
           channel_id?: string | null
@@ -3741,6 +3778,10 @@ export type Database = {
         Args: { aff_id: string }
         Returns: undefined
       }
+      recompute_project_status: {
+        Args: { p_project_id: string }
+        Returns: undefined
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       users_page_growth: {
@@ -3884,9 +3925,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       manager_role: ["owner", "admin", "support", "billing", "readonly"],
@@ -3901,4 +3939,3 @@ export const Constants = {
     },
   },
 } as const
-
