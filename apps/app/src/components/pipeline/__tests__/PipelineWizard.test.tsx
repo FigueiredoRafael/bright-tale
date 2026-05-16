@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
+import { CostPreviewSlot } from '../CostPreviewSlot'
 
 // The wizard exercises long userEvent click chains. In parallel suite runs
 // fork scheduling makes those chains slower than vitest's 5s default. Bump
@@ -1138,5 +1139,85 @@ describe('T5.2: channel defaults pre-fill', () => {
     // Value should be empty or a neutral default — not 'null' or 'undefined' as a string
     expect(durationInput?.value).not.toBe('null')
     expect(durationInput?.value).not.toBe('undefined')
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────
+// T5.3: CostPreviewSlot tests
+// ────────────────────────────────────────────────────────────────────
+
+describe('T5.3: CostPreviewSlot', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { items: [] }, error: null }),
+      }),
+    )
+  })
+
+  // Test 1: renders $0.00 when no media checked
+  // Render CostPreviewSlot directly — wizard Next is disabled with zero selections,
+  // so we cannot reach step 4 via navigation with an empty list.
+  it('renders $0.00 when no media are checked', () => {
+    render(<CostPreviewSlot selectedMedia={[]} wordCount={1000} />)
+    const costPreview = screen.getByTestId('wizard-cost-preview')
+    expect(costPreview.textContent).toMatch(/\$0\.00/)
+  })
+
+  // Test 2: checking Blog shows a non-zero total
+  it('shows a non-zero cost total when Blog is checked', async () => {
+    const user = userEvent.setup()
+    renderWizard()
+
+    // Navigate through steps with blog checked (default)
+    await user.click(screen.getByRole('button', { name: /next/i }))
+    // Blog is checked by default
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+
+    const costPreview = screen.getByTestId('wizard-cost-preview')
+    // Should show a dollar amount greater than $0.00
+    expect(costPreview.textContent).toMatch(/\$\d+\.\d{2}/)
+    expect(costPreview.textContent).not.toMatch(/\$0\.00/)
+  })
+
+  // Test 3: per-Track row appears per checked medium
+  it('renders one per-Track cost row per checked medium', async () => {
+    const user = userEvent.setup()
+    renderWizard()
+
+    // Navigate to step 2
+    await user.click(screen.getByRole('button', { name: /next/i }))
+
+    // Check Blog and Video
+    const blogCheckbox = screen.getByRole('checkbox', { name: /blog/i })
+    const videoCheckbox = screen.getByRole('checkbox', { name: /video/i })
+    if (!(blogCheckbox as HTMLInputElement).checked) await user.click(blogCheckbox)
+    if (!(videoCheckbox as HTMLInputElement).checked) await user.click(videoCheckbox)
+
+    // Navigate to step 3 then 4
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+
+    // Should have a track row for blog and video
+    expect(screen.getByTestId('cost-track-blog')).toBeDefined()
+    expect(screen.getByTestId('cost-track-video')).toBeDefined()
+  })
+
+  // Test 4: changing wordCount updates the displayed Blog cost
+  // Render CostPreviewSlot directly with two different wordCounts and assert the
+  // displayed total changes — proves useMemo re-computes on prop change.
+  it('updates Blog cost when wordCount changes', () => {
+    const { rerender } = render(
+      <CostPreviewSlot selectedMedia={['blog']} wordCount={1000} />,
+    )
+    const textAt1000 = screen.getByTestId('wizard-cost-preview').textContent ?? ''
+
+    rerender(<CostPreviewSlot selectedMedia={['blog']} wordCount={5000} />)
+    const textAt5000 = screen.getByTestId('wizard-cost-preview').textContent ?? ''
+
+    expect(textAt5000).not.toBe(textAt1000)
   })
 })
