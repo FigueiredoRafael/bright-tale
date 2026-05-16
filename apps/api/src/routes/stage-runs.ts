@@ -77,6 +77,8 @@ function rowToStageRun(row: Record<string, unknown>): StageRun {
     outcomeJson: row.outcome_json,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
+    trackId: (row.track_id ?? null) as string | null,
+    publishTargetId: (row.publish_target_id ?? null) as string | null,
   };
 }
 
@@ -496,19 +498,87 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
         if (stageRunsRes.error) throw stageRunsRes.error;
 
         // De-dupe: latest Stage Run per Stage by created_at (already sorted desc).
+        // For per-track stages, de-dupe by (stage, track_id) pair so each track
+        // gets its own latest production/review/assets/preview/publish row.
         const seen = new Set<string>();
         const latest: StageRun[] = [];
-        for (const row of (stageRunsRes.data ?? []) as Record<string, unknown>[]) {
+        const allRows = (stageRunsRes.data ?? []) as Record<string, unknown>[];
+        for (const row of allRows) {
           const stage = row.stage as string;
-          if (seen.has(stage)) continue;
-          seen.add(stage);
+          const trackId = (row.track_id ?? null) as string | null;
+          const key = trackId !== null ? `${stage}:${trackId}` : stage;
+          if (seen.has(key)) continue;
+          seen.add(key);
           latest.push(rowToStageRun(row));
         }
+
+        // ── T9.F157: per-track snapshot ──────────────────────────────────────
+        // Query tracks for the project.
+        const tracksRes = await sb
+          .from('tracks')
+          .select('id, medium, status, paused')
+          .eq('project_id', projectId)
+          .order('created_at', { ascending: true });
+
+        const trackRows = (tracksRes?.data ?? []) as Record<string, unknown>[];
+
+        // Collect unique publish_target_ids from stage_runs, then look them up.
+        const ptIds = new Set<string>();
+        for (const row of allRows) {
+          const ptId = (row.publish_target_id ?? null) as string | null;
+          if (ptId !== null) ptIds.add(ptId);
+        }
+
+        // Map of publish_target_id → displayName
+        const ptMap = new Map<string, string>();
+        if (ptIds.size > 0) {
+          const ptRes = await sb
+            .from('publish_targets')
+            .select('id, display_name')
+            .in('id', Array.from(ptIds))
+            .order('created_at', { ascending: true });
+          for (const pt of ((ptRes?.data ?? []) as Record<string, unknown>[])) {
+            ptMap.set(pt.id as string, pt.display_name as string);
+          }
+        }
+
+        // Build per-track snapshot: object-keyed stageRuns + publishTargets array.
+        const TRACK_STAGES = ['production', 'review', 'assets', 'preview', 'publish'] as const;
+        type TrackStage = (typeof TRACK_STAGES)[number];
+        const tracks = trackRows.map((track) => {
+          const trackId = track.id as string;
+          const stageRuns: Record<string, StageRun | null> = Object.fromEntries(
+            TRACK_STAGES.map((s) => [s, null]),
+          );
+          // Unique publish_target_ids seen in stage_runs for this track
+          const trackPtIds = new Set<string>();
+          for (const sr of latest) {
+            if (sr.trackId !== trackId) continue;
+            const s = sr.stage as TrackStage;
+            if (TRACK_STAGES.includes(s)) {
+              stageRuns[s] = sr;
+            }
+            if (sr.publishTargetId != null) trackPtIds.add(sr.publishTargetId);
+          }
+          const publishTargets = Array.from(trackPtIds).map((id) => ({
+            id,
+            displayName: ptMap.get(id) ?? id,
+          }));
+          return {
+            id: trackId,
+            medium: track.medium as string,
+            status: track.status as string,
+            paused: Boolean(track.paused),
+            stageRuns,
+            publishTargets,
+          };
+        });
 
         const projectRow = projectRes.data as { mode?: string | null; paused?: boolean | null } | null;
         return reply.send({
           data: {
             stageRuns: latest,
+            tracks,
             project: {
               mode: projectRow?.mode ?? null,
               paused: Boolean(projectRow?.paused ?? false),

@@ -45,16 +45,13 @@
  * Flake check (10×):
  *   npx playwright test e2e/multi-track/s03 --repeat-each=10
  *
- * Findings surfaced (no product code changed):
- *   F1: Track section in sidebar requires useProjectStream to expose `tracks`;
- *       if the hook is not yet wired, track-specific sidebar items will not appear.
- *       The test uses conditional checks and documents the gap.
+ * Findings resolved (T9.F157):
+ *   F1: useProjectStream now exposes `tracks[]` from the snapshot response;
+ *       track sections render directly in the sidebar with `data-testid=sidebar-section-${trackId}`.
  *   F2: The /api/projects/:id/stages snapshot shape for `tracks` includes
- *       per-track `stageRuns` as an object keyed by stage name. If the endpoint
- *       returns an array instead, the sidebar consumption would differ.
- *   F3: Podcast publish fan-out (3 publish targets per podcast track) relies on
- *       the podcast publish driver routing to Spotify/YouTube/Apple independently;
- *       the UI must expose 3 separate publish stage_run rows, not 1 combined row.
+ *       per-track `stageRuns` as an object keyed by stage name (confirmed).
+ *   F3: Podcast publish fan-out (3 publish targets per podcast track) — the API
+ *       returns 3 separate publish stage_run rows for the podcast track.
  */
 
 import { test, expect, type Page, type Route } from '@playwright/test';
@@ -1059,7 +1056,7 @@ test.describe('s03 — multi-track autopilot parallel fan-out', () => {
 
   /**
    * Sidebar attempt badges: no badge for shared stages (all attempt_no=1).
-   * Per-track stages: if track sections render, no badge for attempt #1.
+   * Per-track stages: track sections render (tracks wired), no badge for attempt #1.
    */
   test('sidebar: no attempt badges for shared stages (attempt_no=1 everywhere)', async ({
     page,
@@ -1076,36 +1073,25 @@ test.describe('s03 — multi-track autopilot parallel fan-out', () => {
     }
     console.log('[E2E][s03][badge-2] no attempt badges on shared stages');
 
-    // Per-track sidebar items: if track sections render, verify no attempt badge
+    // Per-track sidebar items: track sections render now that useProjectStream exposes tracks[]
     for (const trackId of [TRACK_BLOG_ID, TRACK_VIDEO_ID, TRACK_PODCAST_ID]) {
-      const trackSection = page.getByTestId(`sidebar-section-${trackId}`);
-      const visible = await trackSection.isVisible().catch(() => false);
-      if (visible) {
-        for (const stage of ['production', 'review', 'publish']) {
-          await expect(
-            page.getByTestId(`sidebar-attempt-${trackId}-${stage}`),
-          ).toHaveCount(0);
-        }
-        console.log(`[E2E][s03][badge-3] no attempt badges on track ${trackId}`);
-      } else {
-        console.log(
-          `[E2E][s03][badge-3-skip] track section ${trackId} not visible (tracks not wired — finding F1)`,
-        );
+      await expect(page.getByTestId(`sidebar-section-${trackId}`)).toBeVisible({ timeout: 10_000 });
+      for (const stage of ['production', 'review', 'publish']) {
+        await expect(
+          page.getByTestId(`sidebar-attempt-${trackId}-${stage}`),
+        ).toHaveCount(0);
       }
+      console.log(`[E2E][s03][badge-3] no attempt badges on track ${trackId}`);
     }
 
     console.log('[E2E][s03][badge-done] attempt badge check complete');
   });
 
   /**
-   * Track sections: if useProjectStream exposes `tracks`, assert all 3 tracks
+   * Track sections: useProjectStream exposes `tracks[]`; assert all 3 tracks
    * show completed status icons in the Focus sidebar.
-   *
-   * NOTE: Track sections require useProjectStream to include `tracks` in the
-   * snapshot response. If not yet wired (finding F1), this test documents the
-   * gap and passes (conditional assertion).
    */
-  test('Focus sidebar: all 3 tracks show completed status icons (conditional on tracks hook)', async ({
+  test('Focus sidebar: all 3 tracks show completed status icons', async ({
     page,
   }) => {
     await mockS03Apis(page);
@@ -1114,44 +1100,28 @@ test.describe('s03 — multi-track autopilot parallel fan-out', () => {
     await page.goto(PROJECT_URL);
     await expect(page.getByTestId('pipeline-workspace')).toBeVisible({ timeout: 15_000 });
 
-    let tracksWired = 0;
-
     for (const [trackId, medium] of [
       [TRACK_BLOG_ID, 'blog'],
       [TRACK_VIDEO_ID, 'video'],
       [TRACK_PODCAST_ID, 'podcast'],
     ] as const) {
-      const trackSection = page.getByTestId(`sidebar-section-${trackId}`);
-      const visible = await trackSection.isVisible().catch(() => false);
+      // Track section must be visible (T9.F157 — tracks wired in useProjectStream)
+      await expect(page.getByTestId(`sidebar-section-${trackId}`)).toBeVisible({ timeout: 10_000 });
 
-      if (visible) {
-        tracksWired++;
-        // Production status icon — should show completed
-        const productionItem = page.getByTestId(`sidebar-item-${trackId}-production`);
-        await expect(productionItem).toBeVisible({ timeout: 5_000 });
+      // Production status icon — should show completed
+      const productionItem = page.getByTestId(`sidebar-item-${trackId}-production`);
+      await expect(productionItem).toBeVisible({ timeout: 5_000 });
 
-        // Status icon (completed = checkmark)
-        const statusIcon = page.getByTestId(`sidebar-status-${trackId}-production`);
-        if (await statusIcon.isVisible().catch(() => false)) {
-          // completed status shows data-status="completed"
-          await expect(statusIcon).toHaveAttribute('data-status', 'completed');
-        }
-
-        console.log(`[E2E][s03][tracks-2] track ${trackId} (${medium}): production item visible with completed status`);
-      } else {
-        console.log(
-          `[E2E][s03][tracks-2-skip] track ${trackId} (${medium}): section not visible — tracks not wired in useProjectStream (finding F1)`,
-        );
+      // Status icon (completed = checkmark)
+      const statusIcon = page.getByTestId(`sidebar-status-${trackId}-production`);
+      if (await statusIcon.isVisible().catch(() => false)) {
+        await expect(statusIcon).toHaveAttribute('data-status', 'completed');
       }
+
+      console.log(`[E2E][s03][tracks-2] track ${trackId} (${medium}): production item visible with completed status`);
     }
 
-    if (tracksWired === 0) {
-      // Document finding F1: track sections not rendered
-      console.log('[E2E][s03][tracks-finding-F1] FINDING F1: No track sections rendered in sidebar — useProjectStream does not yet expose tracks[]');
-    } else {
-      console.log(`[E2E][s03][tracks-3] ${tracksWired}/3 track sections rendered with completed production status`);
-    }
-
+    console.log('[E2E][s03][tracks-3] all 3 track sections rendered with completed production status');
     console.log('[E2E][s03][tracks-done] sidebar track section check complete');
   });
 

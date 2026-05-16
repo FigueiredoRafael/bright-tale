@@ -124,8 +124,8 @@ describe('FocusSidebar — AC1: renders full tree from stream', () => {
       { id: 'track-2', medium: 'video', status: 'active', paused: false },
     ]);
     render(<FocusSidebar projectId="proj-1" />);
-    expect(screen.getByTestId('sidebar-track-track-1')).toBeInTheDocument();
-    expect(screen.getByTestId('sidebar-track-track-2')).toBeInTheDocument();
+    expect(screen.getByTestId('sidebar-section-track-1')).toBeInTheDocument();
+    expect(screen.getByTestId('sidebar-section-track-2')).toBeInTheDocument();
   });
 
   it('renders per-Track stage items: Production, Review, Assets, Preview, Publish', () => {
@@ -163,7 +163,7 @@ describe('FocusSidebar — AC1: renders full tree from stream', () => {
       { id: 'track-aborted', medium: 'blog', status: 'aborted', paused: false },
     ]);
     render(<FocusSidebar projectId="proj-1" />);
-    expect(screen.queryByTestId('sidebar-track-track-aborted')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('sidebar-section-track-aborted')).not.toBeInTheDocument();
   });
 });
 
@@ -405,7 +405,7 @@ describe('FocusSidebar — AC5: per-track pause toggle', () => {
     ]);
     render(<FocusSidebar projectId="proj-1" />);
 
-    const trackSection = screen.getByTestId('sidebar-track-track-1');
+    const trackSection = screen.getByTestId('sidebar-section-track-1');
     expect(trackSection.className).toContain('opacity-60');
 
     expect(screen.getByTestId('sidebar-track-paused-badge-track-1')).toBeInTheDocument();
