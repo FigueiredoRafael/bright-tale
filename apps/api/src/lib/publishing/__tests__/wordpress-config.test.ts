@@ -1,19 +1,22 @@
 /**
- * Unit tests for the WordPress config helper (T6.5a).
+ * Unit tests for the WordPress config helper (T6.5b).
  *
  * Category A/B — no real DB; Supabase client is fully mocked.
  *
  * Coverage:
- * 1. getWordPressConfig — primary path: publish_targets row found
- * 2. getWordPressConfig — fallback path: publish_targets empty → wordpress_configs hit
- * 3. getWordPressConfig — legacy flag (PUBLISH_TARGETS_PRIMARY=false): only reads wordpress_configs
- * 4. getWordPressConfig — returns null when both tables have no row
- * 5. getWordPressCredentials — decrypts password and returns plain struct
- * 6. upsertWordPressConfig — writes both tables
- * 7. deleteWordPressConfig — deletes from both tables
+ * 1. getWordPressConfig — returns config from publish_targets when row exists
+ * 2. getWordPressConfig — returns null when no row exists
+ * 3. getWordPressCredentials — decrypts password and returns plain struct
+ * 4. getWordPressCredentials — returns null when no config exists
+ * 5. upsertWordPressConfig — inserts into publish_targets when no existing row
+ * 6. upsertWordPressConfig — updates existing publish_targets row
+ * 7. upsertWordPressConfig — strips trailing slash from siteUrl
+ * 8. upsertWordPressConfig — throws when publish_targets insert fails
+ * 9. deleteWordPressConfig — deletes from publish_targets
+ * 10. deleteWordPressConfig — throws when publish_targets delete fails
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ── Env setup (must happen before module import) ─────────────────────────────
 const TEST_SECRET = 'a'.repeat(64);
@@ -54,28 +57,15 @@ const PT_ROW = {
   updated_at: '2026-01-01T00:00:00Z',
 };
 
-const WC_ROW = {
-  id: 'wc-id-1',
-  channel_id: CHANNEL_ID,
-  site_url: 'https://wc.test',
-  username: 'wc-admin',
-  password: 'enc:wc-secret',
-  created_at: '2026-01-01T00:00:00Z',
-  updated_at: '2026-01-01T00:00:00Z',
-};
-
 // ── Chain builder ─────────────────────────────────────────────────────────────
-// Mirrors the pattern from personas.test.ts.
 
 function buildChain(finalValue: { data: unknown; error: unknown }) {
   const chain: Record<string, unknown> = {};
-  const self = () => chain;
   chain.select = vi.fn().mockReturnValue(chain);
   chain.eq = vi.fn().mockReturnValue(chain);
   chain.delete = vi.fn().mockReturnValue(chain);
   chain.upsert = vi.fn().mockResolvedValue(finalValue);
   chain.maybeSingle = vi.fn().mockResolvedValue(finalValue);
-  // Allow further eq() chaining after delete()
   (chain.delete as ReturnType<typeof vi.fn>).mockReturnValue(chain);
   return chain;
 }
@@ -85,78 +75,38 @@ function buildChain(finalValue: { data: unknown; error: unknown }) {
 describe('getWordPressConfig', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    delete process.env.PUBLISH_TARGETS_PRIMARY;
   });
 
-  afterEach(() => {
-    delete process.env.PUBLISH_TARGETS_PRIMARY;
-  });
-
-  it('returns config from publish_targets when row exists (primary path)', async () => {
+  it('returns config from publish_targets when row exists', async () => {
     const ptChain = buildChain({ data: PT_ROW, error: null });
     mockFrom.mockReturnValueOnce(ptChain);
 
     const result = await getWordPressConfig(CHANNEL_ID, { from: mockFrom } as never);
 
     expect(result).not.toBeNull();
-    expect(result?.source).toBe('publish_targets');
     expect(result?.siteUrl).toBe('https://wp.test');
     expect(result?.username).toBe('admin');
     expect(result?.id).toBe('pt-id-1');
-    // wordpress_configs should NOT be queried when publish_targets has a row
+    expect(result?.channelId).toBe(CHANNEL_ID);
     expect(mockFrom).toHaveBeenCalledTimes(1);
     expect(mockFrom).toHaveBeenCalledWith('publish_targets');
   });
 
-  it('falls back to wordpress_configs when publish_targets has no row', async () => {
+  it('returns null when publish_targets has no row', async () => {
     const ptChain = buildChain({ data: null, error: null });
-    const wcChain = buildChain({ data: WC_ROW, error: null });
-    mockFrom
-      .mockReturnValueOnce(ptChain)
-      .mockReturnValueOnce(wcChain);
-
-    const result = await getWordPressConfig(CHANNEL_ID, { from: mockFrom } as never);
-
-    expect(result).not.toBeNull();
-    expect(result?.source).toBe('wordpress_configs');
-    expect(result?.siteUrl).toBe('https://wc.test');
-    expect(mockFrom).toHaveBeenCalledTimes(2);
-    expect(mockFrom).toHaveBeenNthCalledWith(1, 'publish_targets');
-    expect(mockFrom).toHaveBeenNthCalledWith(2, 'wordpress_configs');
-  });
-
-  it('returns null when both tables have no row', async () => {
-    const ptChain = buildChain({ data: null, error: null });
-    const wcChain = buildChain({ data: null, error: null });
-    mockFrom
-      .mockReturnValueOnce(ptChain)
-      .mockReturnValueOnce(wcChain);
+    mockFrom.mockReturnValueOnce(ptChain);
 
     const result = await getWordPressConfig(CHANNEL_ID, { from: mockFrom } as never);
 
     expect(result).toBeNull();
-  });
-
-  it('reads only wordpress_configs when PUBLISH_TARGETS_PRIMARY=false (legacy mode)', async () => {
-    process.env.PUBLISH_TARGETS_PRIMARY = 'false';
-
-    const wcChain = buildChain({ data: WC_ROW, error: null });
-    mockFrom.mockReturnValueOnce(wcChain);
-
-    const result = await getWordPressConfig(CHANNEL_ID, { from: mockFrom } as never);
-
-    expect(result).not.toBeNull();
-    expect(result?.source).toBe('wordpress_configs');
-    // publish_targets must NOT be queried
     expect(mockFrom).toHaveBeenCalledTimes(1);
-    expect(mockFrom).toHaveBeenCalledWith('wordpress_configs');
+    expect(mockFrom).toHaveBeenCalledWith('publish_targets');
   });
 });
 
 describe('getWordPressCredentials', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    delete process.env.PUBLISH_TARGETS_PRIMARY;
   });
 
   it('returns decrypted credentials from publish_targets', async () => {
@@ -174,10 +124,7 @@ describe('getWordPressCredentials', () => {
 
   it('returns null when no config exists', async () => {
     const ptChain = buildChain({ data: null, error: null });
-    const wcChain = buildChain({ data: null, error: null });
-    mockFrom
-      .mockReturnValueOnce(ptChain)
-      .mockReturnValueOnce(wcChain);
+    mockFrom.mockReturnValueOnce(ptChain);
 
     const creds = await getWordPressCredentials(CHANNEL_ID, { from: mockFrom } as never);
 
@@ -190,13 +137,12 @@ describe('upsertWordPressConfig', () => {
     vi.clearAllMocks();
   });
 
-  // Helper: build a chain that handles the select-then-insert flow for publish_targets
   function buildPtInsertChain() {
     const insertFn = vi.fn().mockResolvedValue({ data: null, error: null });
     const chain: Record<string, unknown> = {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
-      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }), // no existing row
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
       insert: insertFn,
     };
     (chain.select as ReturnType<typeof vi.fn>).mockReturnValue(chain);
@@ -204,13 +150,11 @@ describe('upsertWordPressConfig', () => {
     return chain;
   }
 
-  it('inserts into publish_targets and upserts wordpress_configs (no existing pt row)', async () => {
+  it('inserts into publish_targets when no existing row', async () => {
     const ptChain = buildPtInsertChain();
-    const wcChain = buildChain({ data: null, error: null });
     mockFrom
       .mockReturnValueOnce(ptChain)   // select existing publish_targets
-      .mockReturnValueOnce(ptChain)   // insert into publish_targets
-      .mockReturnValueOnce(wcChain);  // upsert wordpress_configs
+      .mockReturnValueOnce(ptChain);  // insert into publish_targets
 
     await upsertWordPressConfig(
       CHANNEL_ID,
@@ -218,23 +162,15 @@ describe('upsertWordPressConfig', () => {
       { from: mockFrom } as never,
     );
 
-    expect(mockFrom).toHaveBeenCalledTimes(3);
+    expect(mockFrom).toHaveBeenCalledTimes(2);
     expect(mockFrom).toHaveBeenNthCalledWith(1, 'publish_targets');
     expect(mockFrom).toHaveBeenNthCalledWith(2, 'publish_targets');
-    expect(mockFrom).toHaveBeenNthCalledWith(3, 'wordpress_configs');
 
-    // publish_targets insert args
     const ptInsertArgs = (ptChain.insert as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(ptInsertArgs[0].type).toBe('wordpress');
     expect(ptInsertArgs[0].channel_id).toBe(CHANNEL_ID);
     expect(ptInsertArgs[0].credentials_encrypted).toBe('enc:plain');
     expect((ptInsertArgs[0].config_json as Record<string, unknown>).siteUrl).toBe('https://new.site');
-
-    // wordpress_configs upsert args
-    const wcUpsertArgs = (wcChain.upsert as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(wcUpsertArgs[0].channel_id).toBe(CHANNEL_ID);
-    expect(wcUpsertArgs[0].site_url).toBe('https://new.site');
-    expect(wcUpsertArgs[0].password).toBe('enc:plain');
   });
 
   it('updates existing publish_targets row when one already exists', async () => {
@@ -256,12 +192,9 @@ describe('upsertWordPressConfig', () => {
     };
     updateFn.mockReturnValue({ eq: eqFn });
 
-    const wcChain = buildChain({ data: null, error: null });
-
     mockFrom
       .mockReturnValueOnce(ptSelectChain)   // select existing publish_targets
-      .mockReturnValueOnce(ptUpdateChain)   // update publish_targets
-      .mockReturnValueOnce(wcChain);        // upsert wordpress_configs
+      .mockReturnValueOnce(ptUpdateChain);  // update publish_targets
 
     await upsertWordPressConfig(
       CHANNEL_ID,
@@ -272,15 +205,14 @@ describe('upsertWordPressConfig', () => {
     expect(updateFn).toHaveBeenCalledWith(
       expect.objectContaining({ credentials_encrypted: 'enc:newpw' }),
     );
+    expect(mockFrom).toHaveBeenCalledTimes(2);
   });
 
   it('strips trailing slash from siteUrl before writing', async () => {
     const ptChain = buildPtInsertChain();
-    const wcChain = buildChain({ data: null, error: null });
     mockFrom
       .mockReturnValueOnce(ptChain)
-      .mockReturnValueOnce(ptChain)
-      .mockReturnValueOnce(wcChain);
+      .mockReturnValueOnce(ptChain);
 
     await upsertWordPressConfig(
       CHANNEL_ID,
@@ -288,8 +220,8 @@ describe('upsertWordPressConfig', () => {
       { from: mockFrom } as never,
     );
 
-    const wcUpsertArgs = (wcChain.upsert as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(wcUpsertArgs[0].site_url).toBe('https://trailing.slash');
+    const ptInsertArgs = (ptChain.insert as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect((ptInsertArgs[0].config_json as Record<string, unknown>).siteUrl).toBe('https://trailing.slash');
   });
 
   it('throws when publish_targets insert fails', async () => {
@@ -322,32 +254,19 @@ describe('deleteWordPressConfig', () => {
     vi.clearAllMocks();
   });
 
-  it('deletes from both publish_targets and wordpress_configs', async () => {
-    // Each table needs its own chain since delete chains independently
-    const ptChain = buildChain({ data: null, error: null });
-    const wcChain = buildChain({ data: null, error: null });
-    // delete returns chain; chain awaits to { data, error }
+  it('deletes from publish_targets by channel_id and type', async () => {
     const ptDeleteChain = {
-      ...ptChain,
       eq: vi.fn().mockReturnValue({
         eq: vi.fn().mockResolvedValue({ data: null, error: null }),
       }),
     };
-    const wcDeleteChain = {
-      ...wcChain,
-      eq: vi.fn().mockResolvedValue({ data: null, error: null }),
-    };
 
-    // mockFrom: first call publish_targets delete, second call wordpress_configs delete
-    mockFrom
-      .mockReturnValueOnce({ delete: vi.fn().mockReturnValue(ptDeleteChain) })
-      .mockReturnValueOnce({ delete: vi.fn().mockReturnValue(wcDeleteChain) });
+    mockFrom.mockReturnValueOnce({ delete: vi.fn().mockReturnValue(ptDeleteChain) });
 
     await deleteWordPressConfig(CHANNEL_ID, { from: mockFrom } as never);
 
-    expect(mockFrom).toHaveBeenCalledTimes(2);
-    expect(mockFrom).toHaveBeenNthCalledWith(1, 'publish_targets');
-    expect(mockFrom).toHaveBeenNthCalledWith(2, 'wordpress_configs');
+    expect(mockFrom).toHaveBeenCalledTimes(1);
+    expect(mockFrom).toHaveBeenCalledWith('publish_targets');
   });
 
   it('throws when publish_targets delete fails', async () => {
