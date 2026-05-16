@@ -353,7 +353,6 @@ describe('FocusSidebar — AC4: Add Medium button gated on Canonical completion'
 
 describe('FocusSidebar — AC5: per-track pause toggle', () => {
   beforeEach(() => {
-    // Reset fetch mock before each test
     vi.stubGlobal('fetch', vi.fn());
   });
 
@@ -407,13 +406,10 @@ describe('FocusSidebar — AC5: per-track pause toggle', () => {
     render(<FocusSidebar projectId="proj-1" />);
 
     const trackSection = screen.getByTestId('sidebar-track-track-1');
-    // muted opacity class on the section
     expect(trackSection.className).toContain('opacity-60');
 
-    // Paused badge visible in header
     expect(screen.getByTestId('sidebar-track-paused-badge-track-1')).toBeInTheDocument();
 
-    // aria-pressed on the button
     const pauseBtn = screen.getByTestId('sidebar-track-pause-track-1');
     expect(pauseBtn).toHaveAttribute('aria-pressed', 'true');
   });
@@ -445,5 +441,35 @@ describe('FocusSidebar — AC5: per-track pause toggle', () => {
         body: JSON.stringify({ paused: false }),
       }),
     );
+  });
+});
+
+// ── AC4 (T5.4): sidebar-add-medium button opens the AddMediumDialog ──────────
+
+describe('FocusSidebar — AC4 (T5.4): sidebar-add-medium button opens AddMediumDialog', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { id: 'ch-1', name: 'Tech Blog', defaultMediaConfigJson: {} }, error: null }),
+    }));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('clicking sidebar-add-medium renders the AddMediumDialog', async () => {
+    mockStream(
+      {
+        ...EMPTY_STAGE_RUNS,
+        canonical: makeRun({ stage: 'canonical', status: 'completed' }),
+      },
+      [],
+    );
+    const { userEvent: ue } = await import('@testing-library/user-event').then(m => ({ userEvent: m.default }));
+    render(<FocusSidebar projectId="proj-1" channelId="ch-1" />);
+    const btn = screen.getByTestId('sidebar-add-medium');
+    await ue.setup().click(btn);
+    expect(screen.getByTestId('add-medium-dialog')).toBeInTheDocument();
   });
 });
