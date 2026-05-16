@@ -59,6 +59,21 @@ const createStageRunBodySchema = z.object({
    * as "still owns the slot" — aborted/failed are free to be re-attempted.
    */
   cascade: z.boolean().optional(),
+  /**
+   * T9.F156 — per-publisher retry. When provided (publish stage only), the
+   * orchestrator scopes the concurrency check and attempt_no increment to
+   * this specific publish target. Other targets' runs are untouched.
+   * The DB partial unique index `one_non_terminal_per_stage` on
+   * (project_id, stage, COALESCE(track_id,'00..0'), COALESCE(publish_target_id,'00..0'))
+   * enforces per-target isolation at the DB level.
+   */
+  publish_target_id: z.string().optional(),
+  /**
+   * Multi-track dimension. Forwarded to the orchestrator so the Stage Run row
+   * is scoped to the correct Track. Optional — omitting it targets the shared
+   * (null) track slot, matching legacy single-track projects.
+   */
+  track_id: z.string().optional(),
 });
 
 function rowToStageRun(row: Record<string, unknown>): StageRun {
@@ -130,7 +145,20 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
           }
         }
 
-        const stageRun = await requestStageRun(projectId, body.stage, body.input, userId);
+        // Build optional multi-track dims. Only include when the client supplied
+        // at least one dimension so backward-compat callers (no dims) still call
+        // requestStageRun with exactly 4 args — matching the existing contract.
+        const hasDims = body.publish_target_id !== undefined || body.track_id !== undefined;
+        const dims = hasDims
+          ? {
+              publishTargetId: body.publish_target_id ?? null,
+              trackId: body.track_id ?? null,
+            }
+          : undefined;
+
+        const stageRun = dims
+          ? await requestStageRun(projectId, body.stage, body.input, userId, dims)
+          : await requestStageRun(projectId, body.stage, body.input, userId);
 
         return reply.status(201).send({ data: { stageRun }, error: null });
       } catch (err) {

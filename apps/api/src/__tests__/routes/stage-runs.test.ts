@@ -559,3 +559,100 @@ describe('POST /projects/:projectId/stage-runs/:stageRunId/manual-output', () =>
     expect(res.json().error.code).toBe('STAGE_NOT_SUPPORTED');
   });
 });
+
+// ─── T9.F156 — publish_target_id per-target retry ────────────────────────────
+// RED: route must accept publish_target_id and pass it through to requestStageRun
+// so the orchestrator can scope attempt_no to the specific publish target only.
+
+describe('POST /projects/:projectId/stage-runs — publish_target_id (T9.F156)', () => {
+  const TARGET_ID = 'target-apple-123';
+
+  it('accepts publish_target_id and forwards it to requestStageRun as a dims argument', async () => {
+    requestStageRunMock.mockResolvedValueOnce({
+      id: 'sr-pub',
+      projectId: PROJECT_ID,
+      stage: 'publish',
+      status: 'queued',
+      attemptNo: 1,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs`,
+      headers: AUTH,
+      payload: { stage: 'publish', input: {}, publish_target_id: TARGET_ID },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json().error).toBeNull();
+    // Orchestrator must receive dims as the 5th argument (or as an object)
+    expect(requestStageRunMock).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'publish',
+      {},
+      'user-1',
+      expect.objectContaining({ publishTargetId: TARGET_ID }),
+    );
+  });
+
+  it('accepts track_id together with publish_target_id', async () => {
+    const TRACK_ID = 'track-blog-456';
+    requestStageRunMock.mockResolvedValueOnce({
+      id: 'sr-pub-2',
+      projectId: PROJECT_ID,
+      stage: 'publish',
+      status: 'queued',
+      attemptNo: 2,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs`,
+      headers: AUTH,
+      payload: {
+        stage: 'publish',
+        input: {},
+        track_id: TRACK_ID,
+        publish_target_id: TARGET_ID,
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(requestStageRunMock).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'publish',
+      {},
+      'user-1',
+      expect.objectContaining({ trackId: TRACK_ID, publishTargetId: TARGET_ID }),
+    );
+  });
+
+  it('omits dims when neither track_id nor publish_target_id are supplied (backward compat)', async () => {
+    requestStageRunMock.mockResolvedValueOnce({
+      id: 'sr-brainstorm',
+      projectId: PROJECT_ID,
+      stage: 'brainstorm',
+      status: 'queued',
+      attemptNo: 1,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs`,
+      headers: AUTH,
+      payload: { stage: 'brainstorm', input: { mode: 'topic_driven', topic: 'ai' } },
+    });
+
+    expect(res.statusCode).toBe(201);
+    // Without dims, orchestrator called with exactly 4 args (no 5th dims arg)
+    expect(requestStageRunMock).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'brainstorm',
+      { mode: 'topic_driven', topic: 'ai' },
+      'user-1',
+    );
+    // Ensure the mock was NOT called with 5 args
+    const callArgs = (requestStageRunMock as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(callArgs).toHaveLength(4);
+  });
+});
