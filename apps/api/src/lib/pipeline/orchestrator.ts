@@ -28,7 +28,7 @@ import {
   type Track as PlannerTrack,
   type StageRunSpec,
 } from './fan-out-planner.js';
-import { insertRun, StageRunUniquenessError } from './stage-run-writer.js';
+import { insertRun, StageRunUniquenessError, type MultiTrackDims } from './stage-run-writer.js';
 import { resolveAutopilotConfig } from './autopilot-config-resolver.js';
 import type { AutopilotConfig } from '@brighttale/shared/schemas/autopilotConfig';
 
@@ -176,27 +176,66 @@ async function predecessorIsDone(sb: Sb, projectId: string, predecessor: Stage):
   return !!data;
 }
 
-async function findNonTerminal(sb: Sb, projectId: string, stage: Stage): Promise<boolean> {
-  const { data } = await sb
+async function findNonTerminal(
+  sb: Sb,
+  projectId: string,
+  stage: Stage,
+  dims?: MultiTrackDims,
+): Promise<boolean> {
+  let query = sb
     .from('stage_runs')
     .select('id')
     .eq('project_id', projectId)
     .eq('stage', stage)
-    .in('status', ['queued', 'running', 'awaiting_user'])
-    .limit(1)
-    .maybeSingle();
+    .in('status', ['queued', 'running', 'awaiting_user']);
+  // Scope by multi-track dims when provided. `undefined` = skip filter
+  // (legacy callers without dims); `null` = explicitly target the null slot.
+  if (dims && Object.prototype.hasOwnProperty.call(dims, 'publishTargetId')) {
+    if (dims.publishTargetId === null) {
+      query = query.is('publish_target_id', null);
+    } else {
+      query = query.eq('publish_target_id', dims.publishTargetId);
+    }
+  }
+  if (dims && Object.prototype.hasOwnProperty.call(dims, 'trackId')) {
+    if (dims.trackId === null) {
+      query = query.is('track_id', null);
+    } else {
+      query = query.eq('track_id', dims.trackId);
+    }
+  }
+  const { data } = await query.limit(1).maybeSingle();
   return !!data;
 }
 
-async function latestAttemptNo(sb: Sb, projectId: string, stage: Stage): Promise<number> {
-  const { data } = await sb
+async function latestAttemptNo(
+  sb: Sb,
+  projectId: string,
+  stage: Stage,
+  dims?: MultiTrackDims,
+): Promise<number> {
+  let query = sb
     .from('stage_runs')
     .select('attempt_no')
     .eq('project_id', projectId)
-    .eq('stage', stage)
-    .order('attempt_no', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .eq('stage', stage);
+  // Scope by dims for per-target retry: only count attempts for this specific
+  // (stage, track, publish_target) slot so sibling targets keep independent counters.
+  if (dims && Object.prototype.hasOwnProperty.call(dims, 'publishTargetId')) {
+    if (dims.publishTargetId === null) {
+      query = query.is('publish_target_id', null);
+    } else {
+      query = query.eq('publish_target_id', dims.publishTargetId);
+    }
+  }
+  if (dims && Object.prototype.hasOwnProperty.call(dims, 'trackId')) {
+    if (dims.trackId === null) {
+      query = query.is('track_id', null);
+    } else {
+      query = query.eq('track_id', dims.trackId);
+    }
+  }
+  const { data } = await query.order('attempt_no', { ascending: false }).limit(1).maybeSingle();
   return (data?.attempt_no as number | undefined) ?? 0;
 }
 
@@ -290,6 +329,7 @@ export async function requestStageRun(
   stage: Stage,
   input: unknown,
   userId: string,
+  dims?: MultiTrackDims,
 ): Promise<StageRun> {
   const sb: Sb = createServiceClient();
 
@@ -317,12 +357,15 @@ export async function requestStageRun(
   // enrichment (advanceAfter) here so manual reruns also act on the feedback.
   const enrichedInput = await enrichWithReviewFeedback(sb, projectId, stage, parsed.data);
 
-  // 5. Concurrent (UNIQUE) check — one non-terminal Stage Run per (project, stage)
-  const conflict = await findNonTerminal(sb, projectId, stage);
+  // 5. Concurrent (UNIQUE) check — one non-terminal Stage Run per (project, stage[, dims])
+  // When dims are supplied (publish retry), scope to the specific target slot so
+  // a sibling target's running publish doesn't block THIS target's retry.
+  const conflict = await findNonTerminal(sb, projectId, stage, dims);
   if (conflict) throw new ConcurrentStageRunError(stage);
 
-  // 6. Determine attempt_no (1 if no prior attempt; previous + 1 otherwise)
-  const attemptNo = (await latestAttemptNo(sb, projectId, stage)) + 1;
+  // 6. Determine attempt_no — scoped to the same (stage[, dims]) slot so per-target
+  // retries increment independently from other publish targets.
+  const attemptNo = (await latestAttemptNo(sb, projectId, stage, dims)) + 1;
 
   // 7. Insert. Clear the abort flag first so the new attempt isn't killed
   // by a stale abort_requested_at left over from the prior run.
@@ -333,6 +376,8 @@ export async function requestStageRun(
     status: 'queued',
     input_json: enrichedInput,
     attempt_no: attemptNo,
+    ...(dims?.trackId !== undefined ? { track_id: dims.trackId } : {}),
+    ...(dims?.publishTargetId !== undefined ? { publish_target_id: dims.publishTargetId } : {}),
   });
   if (!inserted) throw new Error('Failed to insert stage_runs row');
 
