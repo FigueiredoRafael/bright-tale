@@ -70,13 +70,20 @@ const PERSONA_DB = {
   updated_at: '2026-04-23T00:00:00Z',
 }
 
-const WP_CONFIG = {
-  site_url: 'https://wp.test',
-  username: 'admin',
-  password: 'encrypted-pw',
-}
-
 const CHANNEL_ID = '11111111-1111-1111-1111-111111111111'
+
+// WP_CONFIG fixture — publish_targets row shape (primary source after T6.5a).
+// The helper reads publish_targets first; config_json holds siteUrl+username,
+// credentials_encrypted holds the encrypted password.
+const WP_CONFIG = {
+  id: 'pt-id-1',
+  channel_id: CHANNEL_ID,
+  config_json: { siteUrl: 'https://wp.test', username: 'admin' },
+  credentials_encrypted: 'encrypted-pw',
+  display_name: 'https://wp.test',
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+}
 
 // ── Mock chain factory ────────────────────────────────────────────────────────
 // The chain is thenable: awaiting it directly resolves to `chainValue`.
