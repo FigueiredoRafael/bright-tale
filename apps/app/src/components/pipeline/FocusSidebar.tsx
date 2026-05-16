@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { CheckCircle, Circle, Loader2, XCircle, AlertCircle, MinusCircle, SkipForward } from 'lucide-react';
+import { CheckCircle, Circle, Loader2, XCircle, AlertCircle, MinusCircle, SkipForward, Pause, Play } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useProjectStream } from '@/hooks/useProjectStream';
@@ -158,13 +158,55 @@ interface TrackSectionProps {
   track: Track;
   searchParams: URLSearchParams;
   onSelect: (stage: string, trackId: string, targetId?: string) => void;
+  /** Optional — called after the optimistic PATCH resolves; triggers a stream refresh. */
+  onPauseToggle?: (trackId: string, paused: boolean) => Promise<void>;
+  projectId?: string;
 }
 
-function TrackSection({ track, searchParams, onSelect }: TrackSectionProps) {
+function TrackSection({ track, searchParams, onSelect, onPauseToggle, projectId }: TrackSectionProps) {
+  async function handlePauseToggle(e: React.MouseEvent) {
+    e.stopPropagation();
+    const newPaused = !track.paused;
+    if (onPauseToggle) {
+      await onPauseToggle(track.id, newPaused);
+      return;
+    }
+    // Fallback: fire PATCH directly (used when no callback is provided)
+    if (!projectId) return;
+    await fetch(`/api/projects/${projectId}/tracks/${track.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paused: newPaused }),
+    });
+  }
+
   return (
-    <div data-testid={`sidebar-track-${track.id}`} className="mt-2">
-      <div className="px-3 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-        {MEDIUM_LABELS[track.medium] ?? track.medium}
+    <div
+      data-testid={`sidebar-track-${track.id}`}
+      className={['mt-2', track.paused ? 'opacity-60' : ''].join(' ').trim()}
+    >
+      <div className="px-3 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+        <span className="flex-1">{MEDIUM_LABELS[track.medium] ?? track.medium}</span>
+        {track.paused && (
+          <Badge
+            data-testid={`sidebar-track-paused-badge-${track.id}`}
+            variant="secondary"
+            className="text-xs px-1 py-0 h-4"
+          >
+            Paused
+          </Badge>
+        )}
+        <Button
+          data-testid={`sidebar-track-pause-${track.id}`}
+          variant="ghost"
+          size="icon"
+          aria-pressed={track.paused}
+          aria-label={`${track.paused ? 'Resume' : 'Pause'} ${MEDIUM_LABELS[track.medium] ?? track.medium} track`}
+          className="h-4 w-4 shrink-0"
+          onClick={handlePauseToggle}
+        >
+          {track.paused ? <Play size={10} /> : <Pause size={10} />}
+        </Button>
       </div>
       {TRACK_STAGES.map((stage) => {
         const stageRun = track.stageRuns?.[stage] ?? null;
@@ -254,7 +296,7 @@ export function FocusSidebar({ projectId }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const { stageRuns, tracks: rawTracks } = useProjectStream(projectId) as ProjectStreamResult;
+  const { stageRuns, tracks: rawTracks, refresh } = useProjectStream(projectId) as ProjectStreamResult;
 
   // Only show active (non-aborted) tracks
   const tracks: Track[] = (rawTracks ?? []).filter((t) => t.status !== 'aborted');
@@ -271,6 +313,26 @@ export function FocusSidebar({ projectId }: Props) {
     if (targetId !== undefined) overrides.target = targetId;
     const url = buildUrl(pathname, searchParams, overrides);
     router.replace(url);
+  }
+
+  async function handlePauseToggle(trackId: string, paused: boolean) {
+    // Optimistic: fire PATCH then refresh stream
+    try {
+      const res = await fetch(`/api/projects/${projectId}/tracks/${trackId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paused }),
+      });
+      if (!res.ok) {
+        // Rollback via refresh — server state is authoritative
+        await refresh();
+        return;
+      }
+    } catch {
+      await refresh();
+      return;
+    }
+    await refresh();
   }
 
   return (
@@ -304,6 +366,8 @@ export function FocusSidebar({ projectId }: Props) {
           track={track}
           searchParams={searchParams}
           onSelect={handleTrackSelect}
+          onPauseToggle={handlePauseToggle}
+          projectId={projectId}
         />
       ))}
 
