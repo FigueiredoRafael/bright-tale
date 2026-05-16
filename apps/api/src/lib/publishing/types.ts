@@ -38,9 +38,19 @@ export interface PublishAwaitingOutcome {
   details?: string;
 }
 
+/**
+ * Outcome for a hard validation / insert failure that the orchestrator can
+ * surface to the user without requiring re-authentication.
+ */
+export interface PublishFailedOutcome {
+  code: string;
+  message: string;
+}
+
 export type PublishDriverOutcome =
   | { status: 'published'; result: PublishResult }
-  | { status: 'awaiting_user'; outcome: PublishAwaitingOutcome };
+  | { status: 'awaiting_user'; outcome: PublishAwaitingOutcome }
+  | { status: 'failed'; error: PublishFailedOutcome };
 
 export interface PublishDriver {
   publishTo(target: PublishTargetRow, stageRun: StageRun): Promise<PublishDriverOutcome>;
