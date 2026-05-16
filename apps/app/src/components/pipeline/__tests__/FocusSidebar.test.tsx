@@ -473,3 +473,118 @@ describe('FocusSidebar — AC4 (T5.4): sidebar-add-medium button opens AddMedium
     expect(screen.getByTestId('add-medium-dialog')).toBeInTheDocument();
   });
 });
+
+// ── AC6 (T7.2): live cost badges per track ───────────────────────────────────
+
+describe('FocusSidebar — AC6 (T7.2): live cost badges per track', () => {
+  const TRACK_1_ID = 'track-cost-1';
+  const TRACK_2_ID = 'track-cost-2';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    searchParamsStub = new URLSearchParams();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('shows a cost badge for a track with non-zero spend', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          byTrack: [
+            { trackId: TRACK_1_ID, medium: 'blog', totalCost: 18 },
+          ],
+        },
+        error: null,
+      }),
+    }));
+
+    mockStream(EMPTY_STAGE_RUNS, [
+      { id: TRACK_1_ID, medium: 'blog', status: 'active', paused: false },
+    ]);
+
+    render(<FocusSidebar projectId="proj-1" />);
+
+    // Wait for the async fetch to complete and badge to render
+    const badge = await screen.findByTestId(`sidebar-track-cost-${TRACK_1_ID}`);
+    expect(badge).toBeInTheDocument();
+    expect(badge.textContent).toContain('18');
+  });
+
+  it('does NOT show a cost badge when totalCost is 0', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          byTrack: [
+            { trackId: TRACK_2_ID, medium: 'video', totalCost: 0 },
+          ],
+        },
+        error: null,
+      }),
+    }));
+
+    mockStream(EMPTY_STAGE_RUNS, [
+      { id: TRACK_2_ID, medium: 'video', status: 'active', paused: false },
+    ]);
+
+    render(<FocusSidebar projectId="proj-1" />);
+
+    // Give time for the fetch to resolve
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(screen.queryByTestId(`sidebar-track-cost-${TRACK_2_ID}`)).not.toBeInTheDocument();
+  });
+
+  it('refetches cost data when liveEvent changes', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          byTrack: [{ trackId: TRACK_1_ID, medium: 'blog', totalCost: 5 }],
+        },
+        error: null,
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    // Initial render: liveEvent = null
+    useProjectStreamMock.mockReturnValue({
+      stageRuns: EMPTY_STAGE_RUNS,
+      liveEvent: null,
+      isConnected: true,
+      project: { mode: 'autopilot', paused: false },
+      refresh: vi.fn(async () => undefined),
+      tracks: [{ id: TRACK_1_ID, medium: 'blog', status: 'active', paused: false }],
+    });
+
+    const { rerender } = render(<FocusSidebar projectId="proj-1" />);
+
+    // Wait for initial fetch
+    await new Promise((r) => setTimeout(r, 50));
+    const callCountAfterMount = fetchMock.mock.calls.filter((c: unknown[]) =>
+      (c[0] as string).includes('by-track'),
+    ).length;
+
+    // Simulate a liveEvent (stage_run completed)
+    useProjectStreamMock.mockReturnValue({
+      stageRuns: EMPTY_STAGE_RUNS,
+      liveEvent: { type: 'stage_run_completed', stageRunId: 'sr-99' },
+      isConnected: true,
+      project: { mode: 'autopilot', paused: false },
+      refresh: vi.fn(async () => undefined),
+      tracks: [{ id: TRACK_1_ID, medium: 'blog', status: 'active', paused: false }],
+    });
+    rerender(<FocusSidebar projectId="proj-1" />);
+
+    await new Promise((r) => setTimeout(r, 50));
+    const callCountAfterEvent = fetchMock.mock.calls.filter((c: unknown[]) =>
+      (c[0] as string).includes('by-track'),
+    ).length;
+
+    expect(callCountAfterEvent).toBeGreaterThan(callCountAfterMount);
+  });
+});
