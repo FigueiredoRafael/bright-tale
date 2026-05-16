@@ -77,6 +77,30 @@ export interface PayloadRef {
 
 // ─── Stage Run record (matches the stage_runs table) ────────────────────────
 
+/**
+ * Flat (no allAttempts) stage run shape used as elements in StageRun.allAttempts.
+ * Kept in inputs.ts (not project-snapshot.ts) to avoid circular imports.
+ * Must stay structurally identical to StageRun minus the allAttempts field.
+ */
+export interface StageRunAttempt {
+  id: string;
+  projectId: string;
+  stage: Stage;
+  status: StageRunStatus;
+  awaitingReason: AwaitingReason | null;
+  payloadRef: PayloadRef | null;
+  attemptNo: number;
+  inputJson: unknown;
+  errorMessage: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  trackId?: string | null;
+  publishTargetId?: string | null;
+  outcomeJson?: unknown;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface StageRun {
   id: string;
   projectId: string;
@@ -102,6 +126,11 @@ export interface StageRun {
   outcomeJson?: unknown;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Full attempt history for this stage, ordered by attempt_no ASC (T9.F152).
+   * Populated by GET /api/projects/:id/stages; not present on Realtime upserts.
+   */
+  allAttempts?: StageRunAttempt[];
 }
 
 // ─── Per-Stage input schemas ────────────────────────────────────────────────

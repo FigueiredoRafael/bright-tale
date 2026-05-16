@@ -278,4 +278,57 @@ describe('useProjectStream', () => {
 
     expect(result.current.tracks[0].publishTargets).toHaveLength(3);
   });
+
+  // ── T9.F152: allAttempts[] pass-through via stageRuns ─────────────────────
+
+  it('surfaces allAttempts on each stage_run from the snapshot (T9.F152)', async () => {
+    const baseRun = {
+      id: 'sr-res-3',
+      projectId: PROJECT_ID,
+      stage: 'research',
+      status: 'completed',
+      awaitingReason: null,
+      payloadRef: null,
+      attemptNo: 3,
+      inputJson: null,
+      errorMessage: null,
+      startedAt: null,
+      finishedAt: null,
+      trackId: null,
+      publishTargetId: null,
+      outcomeJson: { confidence: 0.84 },
+      createdAt: '2026-05-16T03:00:00Z',
+      updatedAt: '2026-05-16T03:10:00Z',
+    };
+    const attempt1 = { ...baseRun, id: 'sr-res-1', attemptNo: 1, outcomeJson: { confidence: 0.42 } };
+    const attempt2 = { ...baseRun, id: 'sr-res-2', attemptNo: 2, outcomeJson: { confidence: 0.62 } };
+    const attempt3 = { ...baseRun, id: 'sr-res-3', attemptNo: 3, outcomeJson: { confidence: 0.84 } };
+
+    const stageRunWithAttempts = {
+      ...baseRun,
+      allAttempts: [attempt1, attempt2, attempt3],
+    };
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: { stageRuns: [stageRunWithAttempts], tracks: [] },
+        error: null,
+      }),
+    });
+
+    const { result } = renderHook(() => useProjectStream(PROJECT_ID));
+
+    await waitFor(() => {
+      expect(result.current.stageRuns.research).not.toBeNull();
+    });
+
+    const researchRun = result.current.stageRuns.research;
+    expect(researchRun).not.toBeNull();
+    expect(researchRun?.allAttempts).toHaveLength(3);
+    expect(researchRun?.allAttempts?.[0].id).toBe('sr-res-1');
+    expect(researchRun?.allAttempts?.[0].attemptNo).toBe(1);
+    expect(researchRun?.allAttempts?.[2].id).toBe('sr-res-3');
+    expect(researchRun?.allAttempts?.[2].attemptNo).toBe(3);
+  });
 });

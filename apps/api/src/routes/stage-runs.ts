@@ -528,16 +528,39 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
         // De-dupe: latest Stage Run per Stage by created_at (already sorted desc).
         // For per-track stages, de-dupe by (stage, track_id) pair so each track
         // gets its own latest production/review/assets/preview/publish row.
+        const allRows = (stageRunsRes.data ?? []) as Record<string, unknown>[];
+
+        // T9.F152: group all rows by (stage, trackId) key for allAttempts population.
+        const attemptsByKey = new Map<string, StageRun[]>();
+        for (const row of allRows) {
+          const stage = row.stage as string;
+          const trackId = (row.track_id ?? null) as string | null;
+          const key = trackId !== null ? `${stage}:${trackId}` : stage;
+          const existing = attemptsByKey.get(key);
+          const sr = rowToStageRun(row);
+          if (existing) {
+            existing.push(sr);
+          } else {
+            attemptsByKey.set(key, [sr]);
+          }
+        }
+        // Sort each group ascending by attempt_no for deterministic tab order.
+        for (const group of attemptsByKey.values()) {
+          group.sort((a, b) => a.attemptNo - b.attemptNo);
+        }
+
         const seen = new Set<string>();
         const latest: StageRun[] = [];
-        const allRows = (stageRunsRes.data ?? []) as Record<string, unknown>[];
         for (const row of allRows) {
           const stage = row.stage as string;
           const trackId = (row.track_id ?? null) as string | null;
           const key = trackId !== null ? `${stage}:${trackId}` : stage;
           if (seen.has(key)) continue;
           seen.add(key);
-          latest.push(rowToStageRun(row));
+          const sr = rowToStageRun(row);
+          // Attach the full attempt history (T9.F152).
+          sr.allAttempts = attemptsByKey.get(key) ?? [];
+          latest.push(sr);
         }
 
         // ── T9.F157: per-track snapshot ──────────────────────────────────────

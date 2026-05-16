@@ -412,6 +412,131 @@ describe('GET /projects/:projectId/stages', () => {
     const { data } = res.json();
     expect(data.tracks).toEqual([]);
   });
+
+  // ── T9.F152: allAttempts[] per stage_run in snapshot response ────────────
+
+  it('populates allAttempts on each stage_run with full history ordered by attempt_no ASC (T9.F152)', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { mode: 'autopilot', paused: false },
+      error: null,
+    });
+    // 3 research attempts + 1 brainstorm attempt
+    sbChain.order = vi.fn()
+      .mockResolvedValueOnce({
+        data: [
+          // research attempt 3 (latest → canonical)
+          {
+            id: 'sr-res-3',
+            project_id: PROJECT_ID,
+            stage: 'research',
+            status: 'completed',
+            awaiting_reason: null,
+            payload_ref: null,
+            attempt_no: 3,
+            input_json: null,
+            error_message: null,
+            started_at: '2026-05-16T03:00:00Z',
+            finished_at: '2026-05-16T03:10:00Z',
+            track_id: null,
+            publish_target_id: null,
+            outcome_json: { confidence: 0.84 },
+            created_at: '2026-05-16T03:00:00Z',
+            updated_at: '2026-05-16T03:10:00Z',
+          },
+          // research attempt 2
+          {
+            id: 'sr-res-2',
+            project_id: PROJECT_ID,
+            stage: 'research',
+            status: 'failed',
+            awaiting_reason: null,
+            payload_ref: null,
+            attempt_no: 2,
+            input_json: null,
+            error_message: null,
+            started_at: '2026-05-16T02:00:00Z',
+            finished_at: '2026-05-16T02:10:00Z',
+            track_id: null,
+            publish_target_id: null,
+            outcome_json: { confidence: 0.62 },
+            created_at: '2026-05-16T02:00:00Z',
+            updated_at: '2026-05-16T02:10:00Z',
+          },
+          // research attempt 1
+          {
+            id: 'sr-res-1',
+            project_id: PROJECT_ID,
+            stage: 'research',
+            status: 'failed',
+            awaiting_reason: null,
+            payload_ref: null,
+            attempt_no: 1,
+            input_json: null,
+            error_message: null,
+            started_at: '2026-05-16T01:00:00Z',
+            finished_at: '2026-05-16T01:10:00Z',
+            track_id: null,
+            publish_target_id: null,
+            outcome_json: { confidence: 0.42 },
+            created_at: '2026-05-16T01:00:00Z',
+            updated_at: '2026-05-16T01:10:00Z',
+          },
+          // brainstorm (only 1 attempt)
+          {
+            id: 'sr-brain-1',
+            project_id: PROJECT_ID,
+            stage: 'brainstorm',
+            status: 'completed',
+            awaiting_reason: null,
+            payload_ref: null,
+            attempt_no: 1,
+            input_json: null,
+            error_message: null,
+            started_at: '2026-05-16T00:00:00Z',
+            finished_at: '2026-05-16T00:05:00Z',
+            track_id: null,
+            publish_target_id: null,
+            outcome_json: null,
+            created_at: '2026-05-16T00:00:00Z',
+            updated_at: '2026-05-16T00:05:00Z',
+          },
+        ],
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: [], error: null }); // tracks
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${PROJECT_ID}/stages`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const { data, error } = res.json();
+    expect(error).toBeNull();
+
+    // De-duped to 2 stage_runs (research + brainstorm)
+    expect(data.stageRuns).toHaveLength(2);
+    const byStage = Object.fromEntries(data.stageRuns.map((r: { stage: string }) => [r.stage, r]));
+
+    // Research canonical run is attempt 3
+    expect(byStage.research.id).toBe('sr-res-3');
+    expect(byStage.research.attemptNo).toBe(3);
+
+    // allAttempts contains all 3 research attempts, ordered ASC
+    expect(byStage.research.allAttempts).toHaveLength(3);
+    expect(byStage.research.allAttempts[0].id).toBe('sr-res-1');
+    expect(byStage.research.allAttempts[0].attemptNo).toBe(1);
+    expect(byStage.research.allAttempts[1].id).toBe('sr-res-2');
+    expect(byStage.research.allAttempts[1].attemptNo).toBe(2);
+    expect(byStage.research.allAttempts[2].id).toBe('sr-res-3');
+    expect(byStage.research.allAttempts[2].attemptNo).toBe(3);
+
+    // Brainstorm canonical run has only 1 attempt
+    expect(byStage.brainstorm.id).toBe('sr-brain-1');
+    expect(byStage.brainstorm.allAttempts).toHaveLength(1);
+    expect(byStage.brainstorm.allAttempts[0].id).toBe('sr-brain-1');
+  });
 });
 
 // ─── POST /:projectId/stage-runs/:stageRunId/continue ────────────────────────
