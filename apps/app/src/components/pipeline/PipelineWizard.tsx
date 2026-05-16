@@ -44,6 +44,7 @@ import type { StageResultMap } from '@/lib/pipeline/machine.types'
 import { WizardModeCards } from './WizardModeCards'
 import { WizardSectionCard } from './WizardSectionCard'
 import { WizardRightSummary } from './WizardRightSummary'
+import { CostPreviewSlot } from './CostPreviewSlot'
 import { cn } from '@/lib/utils'
 
 // ─── Form schema ─────────────────────────────────────────────────────────────
@@ -1309,9 +1310,10 @@ export function PipelineWizard() {
               {wizardStep === 4 && (
                 <div data-testid="wizard-step-4" className="space-y-4">
                   <p className="text-sm font-medium">Review your setup</p>
-                  <div data-testid="wizard-cost-preview" className="rounded-md border p-3 text-sm text-muted-foreground">
-                    Cost preview coming soon
-                  </div>
+                  <CostPreviewSlot
+                    selectedMedia={selectedMedia}
+                    wordCount={watch('autopilotConfig.draft.wordCount') ?? 1500}
+                  />
                   <Button
                     type="submit"
                     form="pipeline-wizard-form"
@@ -1552,7 +1554,5 @@ export function PipelineWizard() {
   )
 }
 
-// T5.1: CostPreviewSlot — placeholder for T5.3 cost preview engine
-export function CostPreviewSlot(): null {
-  return null
-}
+// T5.3: CostPreviewSlot — re-exported from its own file for consumers who import from PipelineWizard
+export { CostPreviewSlot } from './CostPreviewSlot'
