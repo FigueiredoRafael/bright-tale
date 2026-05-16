@@ -5,12 +5,12 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { useRouter } from '@/i18n/navigation';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { PipelineOrchestrator } from '@/components/pipeline/PipelineOrchestrator';
-import { PipelineView } from '@/components/pipeline/PipelineView';
 import { ProjectModeControls } from '@/components/pipeline/ProjectModeControls';
 import { PipelineSettingsProvider } from '@/providers/PipelineSettingsProvider';
 import { PipelineAbortProvider } from '@/components/pipeline/PipelineAbortProvider';
+import { PipelineWorkspace } from '@/components/pipeline/PipelineWorkspace';
 import { ConnectChannelEmptyState } from '@/components/projects/ConnectChannelEmptyState';
-import { STAGES, type Stage } from '@brighttale/shared/pipeline/inputs';
+import { type Stage } from '@brighttale/shared/pipeline/inputs';
 
 /** Coerce legacy mode taxonomy to the canonical {autopilot, manual} pair. */
 function coerceMode(raw: unknown): 'autopilot' | 'manual' {
@@ -33,11 +33,6 @@ export default function ProjectPipelinePage() {
   // legacy code is deleted in Slice 14 (#22).
   const useV2 = searchParams?.get('v') === '2';
   const stageParam = searchParams?.get('stage') as Stage | null;
-  // When the URL pins ?stage=, honour it. Otherwise let PipelineView's
-  // supervised variant auto-focus the active/most-relevant stage.
-  const v2Stage: Stage | undefined = stageParam && (STAGES as readonly string[]).includes(stageParam)
-    ? stageParam
-    : undefined;
   const [project, setProject] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -186,33 +181,33 @@ export default function ProjectPipelinePage() {
     const initialMode = coerceMode(project.mode);
     const initialPaused = Boolean(project.paused);
     return (
-      <div>
-        <div className="flex items-center justify-between px-6 pt-4">
+      <div className="flex flex-col h-full">
+        <div className="flex items-center justify-between px-6 pt-4 shrink-0">
           <button
             onClick={() => router.push('/projects')}
             className="text-xs text-muted-foreground hover:underline flex items-center gap-1"
           >
             <ArrowLeft className="h-3 w-3" /> Back to projects
           </button>
-          <a
-            href={`?${stageParam ? `stage=${stageParam}` : ''}`}
-            className="text-xs text-muted-foreground hover:underline"
-            data-testid="v2-toggle-off"
-          >
-            ← Legacy view
-          </a>
-        </div>
-        <div className="space-y-4 p-6">
-          <div className="flex items-start justify-between gap-4">
-            <h1 className="text-lg font-semibold">{(project.title as string) ?? 'Untitled Project'}</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-sm font-semibold">{(project.title as string) ?? 'Untitled Project'}</h1>
             <ProjectModeControls
               projectId={projectId}
               initialMode={initialMode}
               initialPaused={initialPaused}
             />
+            <a
+              href={`?${stageParam ? `stage=${stageParam}` : ''}`}
+              className="text-xs text-muted-foreground hover:underline"
+              data-testid="v2-toggle-off"
+            >
+              ← Legacy view
+            </a>
           </div>
-          <PipelineView projectId={projectId} variant="overview" />
-          <PipelineView projectId={projectId} variant="supervised" stage={v2Stage} />
+        </div>
+        {/* T4.4: PipelineWorkspace — Focus↔Graph toggle + URL state */}
+        <div className="flex-1 min-h-0 mt-2">
+          <PipelineWorkspace projectId={projectId} />
         </div>
       </div>
     );
