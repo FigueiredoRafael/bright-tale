@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { PipelineView } from "@/components/pipeline/PipelineView";
 
 interface ProjectCardProps {
     project: {
@@ -76,9 +75,6 @@ export default function ProjectCard({ project, checked = false, onCheck, onDelet
                     </DropdownMenu>
                 </div>
             </CardHeader>
-            <CardContent>
-                <PipelineView projectId={project.id} variant="overview" />
-            </CardContent>
         </Card>
     );
 }
