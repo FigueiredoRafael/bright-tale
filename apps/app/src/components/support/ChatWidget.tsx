@@ -140,7 +140,7 @@ export function ChatWidget() {
       .filter((t) => t.id !== threadId) // skip the one already subscribed by the chat view
       .map((t) =>
         supabase
-          .channel(`support-bg-${t.id}`)
+          .channel(`support-thread-${t.id}`)
           .on('broadcast', { event: 'new_message' }, (payload) => {
             const row = payload.payload as { id: string; thread_id: string; role: string };
             if (row.role === 'human_agent') {

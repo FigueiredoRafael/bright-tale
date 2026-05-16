@@ -50,7 +50,7 @@ export function SupportThreadActions({
   useEffect(() => {
     const supabase = supabaseRef.current;
     const channel = supabase
-      .channel(`admin-thread-${threadId}`)
+      .channel(`support-thread-${threadId}`)
       .on('broadcast', { event: 'new_message' }, (payload) => {
         const row = payload.payload as { role: string };
         if (row.role === 'user') {
