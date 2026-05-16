@@ -16,11 +16,11 @@ export function AdminShell({
   return (
     <>
       {/* Mobile / tablet: custom hamburger shell */}
-      <div className="md:hidden h-screen">
+      <div className="lg:hidden h-screen">
         <MobileAdminShell userEmail={userEmail}>{children}</MobileAdminShell>
       </div>
       {/* Desktop: package layout */}
-      <div className="hidden md:block">
+      <div className="hidden lg:block">
         <AdminLayout userEmail={userEmail}>{children}</AdminLayout>
       </div>
     </>

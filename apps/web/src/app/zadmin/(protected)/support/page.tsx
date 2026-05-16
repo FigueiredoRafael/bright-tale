@@ -226,7 +226,7 @@ export default async function SupportPage({ searchParams }: Props) {
       ) : (
         <>
           {/* Desktop: table */}
-          <div className="hidden md:block overflow-hidden rounded-xl border border-[var(--border,#263146)] bg-[var(--card,#121826)]">
+          <div className="hidden lg:block overflow-x-auto rounded-xl border border-[var(--border,#263146)] bg-[var(--card,#121826)]">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border,#263146)] bg-[var(--background,#0a0e1a)]/50 text-left text-xs uppercase tracking-wider text-[var(--muted-foreground,#8b98b0)]">
@@ -291,8 +291,8 @@ export default async function SupportPage({ searchParams }: Props) {
             </table>
           </div>
 
-          {/* Mobile: cards */}
-          <div className="flex flex-col gap-3 md:hidden">
+          {/* Mobile / tablet: cards */}
+          <div className="flex flex-col gap-3 lg:hidden">
             {sorted.map((thread) => (
               <div
                 key={thread.id}

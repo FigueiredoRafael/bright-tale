@@ -87,14 +87,12 @@ export function ChatWidget() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [escalated, setEscalated] = useState(false);
-  const [adminTyping, setAdminTyping] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const channelRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null);
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
+  const lastMessageIdRef = useRef<string | null>(null);
 
   // Load thread list
   const loadThreads = useCallback(async () => {
@@ -159,7 +157,7 @@ export function ChatWidget() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threads, threadId]);
 
-  // Realtime: new messages + admin typing presence — single shared channel
+  // Realtime: new messages broadcast — no presence to avoid channel instability
   useEffect(() => {
     if (!threadId) return;
 
@@ -171,14 +169,13 @@ export function ChatWidget() {
         (payload) => {
           const row = payload.payload as { id: string; thread_id: string; role: string; content: string; created_at: string };
           if (row.role === 'human_agent') {
+            lastMessageIdRef.current = row.id;
             setMessages((prev) => {
               if (prev.some((m) => m.id === row.id)) return prev;
               return [...prev, { id: row.id, role: 'human_agent', content: row.content, created_at: row.created_at }];
             });
             setThreadStatus('in_progress');
             setEscalated(false);
-            setAdminTyping(false);
-            // User is actively viewing — mark as read immediately
             if (row.thread_id) {
               markThreadRead(row.thread_id);
               setLastReadMap(getLastReadMap());
@@ -186,35 +183,26 @@ export function ChatWidget() {
           }
         },
       )
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState<{ typing: boolean; who: string }>();
-        const isAdminTyping = Object.values(state).some(
-          (entries) => entries.some((e) => e.who === 'admin' && e.typing),
-        );
-        setAdminTyping(isAdminTyping);
-      })
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          channelRef.current = channel;
+      .subscribe(async (status) => {
+        // On reconnect, reload messages to catch anything missed while disconnected
+        if (status === 'SUBSCRIBED' && lastMessageIdRef.current !== null) {
+          try {
+            const res = await fetch(`/api/support/threads/${threadId}/messages`);
+            const json = await res.json() as { data: { messages: { id: string; role: string; content: string; created_at: string }[] } | null; error: unknown };
+            const rows = json.data?.messages ?? [];
+            setMessages(rows.map((m) => ({
+              id: m.id, role: m.role as Message['role'], content: m.content, created_at: m.created_at,
+            })));
+          } catch { /* ignore — reconnect fetch failure is non-critical */ }
         }
       });
 
-    return () => {
-      channelRef.current = null;
-      void supabase.removeChannel(channel);
-    };
+    return () => { void supabase.removeChannel(channel); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId]);
 
-  const broadcastUserTyping = useCallback((typing: boolean) => {
-    void channelRef.current?.track({ typing, who: 'user' });
-  }, []);
-
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
-    broadcastUserTyping(true);
-    clearTimeout(typingTimer.current ?? undefined);
-    typingTimer.current = setTimeout(() => broadcastUserTyping(false), 2000);
   };
 
   async function openThread(thread: Thread) {
@@ -502,19 +490,6 @@ export function ChatWidget() {
                     </div>
                   </div>
                 ))}
-                {/* Admin typing indicator */}
-                {adminTyping && (
-                  <div className="flex justify-start">
-                    <div className="bg-emerald-600/20 border border-emerald-600/30 rounded-xl rounded-bl-sm px-3 py-2">
-                      <p className="text-[10px] text-emerald-400 font-semibold mb-1">Agente BrightTale</p>
-                      <div className="flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-                      </div>
-                    </div>
-                  </div>
-                )}
                 <div ref={bottomRef} />
               </div>
 

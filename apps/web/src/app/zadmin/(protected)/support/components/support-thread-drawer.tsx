@@ -2,7 +2,13 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Loader2, Gift, CheckCircle, XCircle, Send } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+
+export interface IncomingMessage {
+  id: string;
+  role: string;
+  content: string;
+  created_at: string;
+}
 
 interface Message {
   id: string;
@@ -15,6 +21,7 @@ interface SupportThreadDrawerProps {
   threadId: string;
   userId: string;
   escalationSummary: string | null;
+  newMessages?: IncomingMessage[];
   onClose: () => void;
   onAction: () => void;
 }
@@ -29,19 +36,17 @@ export function SupportThreadDrawer({
   threadId,
   userId,
   escalationSummary,
+  newMessages = [],
   onClose,
   onAction,
 }: SupportThreadDrawerProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMsgs, setLoadingMsgs] = useState(true);
-  const [userTyping, setUserTyping] = useState(false);
-  const userTypingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Admin reply state
   const [replyText, setReplyText] = useState('');
   const [replySending, setReplySending] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
-  const [adminTyping, setAdminTyping] = useState(false);
 
   // Grant tokens state
   const [grantOpen, setGrantOpen] = useState(false);
@@ -56,17 +61,18 @@ export function SupportThreadDrawer({
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
-  const channelRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null);
-  const supabaseRef = useRef(createClient());
-  const supabase = supabaseRef.current;
 
   const loadMessages = useCallback(async () => {
     setLoadingMsgs(true);
     try {
       const res = await fetch(`/api/zadmin/support/threads/${threadId}/messages`);
-      const json = await res.json() as { data: { messages: Message[] } | null; error: unknown };
+      const json = await res.json() as { data: { messages: Message[] } | null; error: { message: string } | null };
+      if (!res.ok || json.error) {
+        console.error('[drawer/messages] error:', json.error?.message ?? res.status);
+      }
       setMessages(json.data?.messages ?? []);
-    } catch {
+    } catch (err) {
+      console.error('[drawer/messages] fetch error:', err);
       setMessages([]);
     } finally {
       setLoadingMsgs(false);
@@ -75,65 +81,26 @@ export function SupportThreadDrawer({
 
   useEffect(() => { void loadMessages(); }, [loadMessages]);
 
+  // Append new real-time messages pushed from parent's subscription
+  useEffect(() => {
+    if (newMessages.length === 0) return;
+    setMessages((prev) => {
+      const ids = new Set(prev.map((m) => m.id));
+      const fresh = newMessages.filter((m) => !ids.has(m.id));
+      return fresh.length > 0 ? [...prev, ...fresh] : prev;
+    });
+  }, [newMessages]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, userTyping]);
-
-  // Realtime: new messages + typing presence — same channel as user widget
-  useEffect(() => {
-    const channel = supabase
-      .channel(`support-thread-${threadId}`)
-      .on(
-        'broadcast',
-        { event: 'new_message' },
-        (payload) => {
-          const row = payload.payload as Message & { thread_id: string };
-          if (row.role === 'user') {
-            setMessages((prev) => {
-              if (prev.some((m) => m.id === row.id)) return prev;
-              return [...prev, row];
-            });
-            setUserTyping(false);
-          }
-        },
-      )
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState<{ typing: boolean; who: string }>();
-        const isUserTyping = Object.values(state).some(
-          (entries) => entries.some((e) => e.who === 'user' && e.typing),
-        );
-        setUserTyping(isUserTyping);
-      })
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          channelRef.current = channel;
-        }
-      });
-
-    return () => {
-      channelRef.current = null;
-      void supabase.removeChannel(channel);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [threadId]);
-
-  // Broadcast admin typing — only after channel is subscribed
-  const broadcastTyping = useCallback((typing: boolean) => {
-    void channelRef.current?.track({ typing, who: 'admin' });
-    setAdminTyping(typing);
-  }, []);
+  }, [messages]);
 
   const handleReplyChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setReplyText(e.target.value);
-    if (!adminTyping) broadcastTyping(true);
-    // Stop typing after 2s idle
-    clearTimeout(userTypingTimer.current ?? undefined);
-    userTypingTimer.current = setTimeout(() => broadcastTyping(false), 2000);
   };
 
   async function sendReply() {
     if (!replyText.trim() || replySending) return;
-    broadcastTyping(false);
     setReplySending(true);
     setReplyError(null);
     const content = replyText.trim();
@@ -262,19 +229,6 @@ export function SupportThreadDrawer({
                 </div>
               </div>
             ))
-          )}
-
-          {/* User typing indicator */}
-          {userTyping && (
-            <div className="flex justify-end">
-              <div className="bg-blue-600/20 border border-blue-600/30 rounded-xl rounded-br-sm px-3 py-2">
-                <div className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-                </div>
-              </div>
-            </div>
           )}
 
           <div ref={bottomRef} />

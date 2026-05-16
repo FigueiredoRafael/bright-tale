@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { MessageSquare } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { SupportThreadDrawer } from './support-thread-drawer';
+import { SupportThreadDrawer, type IncomingMessage } from './support-thread-drawer';
 
 interface SupportThreadActionsProps {
   threadId: string;
@@ -41,20 +41,30 @@ export function SupportThreadActions({
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [liveUnread, setLiveUnread] = useState(initialUnread);
+  const [incomingMessages, setIncomingMessages] = useState<IncomingMessage[]>([]);
   const supabaseRef = useRef(createClient());
+  const drawerOpenRef = useRef(drawerOpen);
+  drawerOpenRef.current = drawerOpen;
 
   // Keep in sync if server re-renders with a new value
   useEffect(() => { setLiveUnread(initialUnread); }, [initialUnread]);
 
-  // Realtime: increment badge when user sends a message
+  // Realtime: single subscription lives here — drawer inherits via props
   useEffect(() => {
     const supabase = supabaseRef.current;
     const channel = supabase
       .channel(`support-thread-${threadId}`)
       .on('broadcast', { event: 'new_message' }, (payload) => {
-        const row = payload.payload as { role: string };
+        const row = payload.payload as IncomingMessage & { thread_id: string };
         if (row.role === 'user') {
-          setLiveUnread((n) => n + 1);
+          if (drawerOpenRef.current) {
+            setIncomingMessages((prev) => {
+              if (prev.some((m) => m.id === row.id)) return prev;
+              return [...prev, row];
+            });
+          } else {
+            setLiveUnread((n) => n + 1);
+          }
         }
       })
       .subscribe();
@@ -64,7 +74,13 @@ export function SupportThreadActions({
 
   function handleOpenDrawer() {
     setLiveUnread(0); // optimistic reset — GET /messages will reset in DB too
+    setIncomingMessages([]);
     setDrawerOpen(true);
+  }
+
+  function handleCloseDrawer() {
+    setIncomingMessages([]);
+    setDrawerOpen(false);
   }
 
   async function updateThread(updates: { status?: string; priority?: string }) {
@@ -146,7 +162,8 @@ export function SupportThreadActions({
           threadId={threadId}
           userId={userId}
           escalationSummary={escalationSummary}
-          onClose={() => setDrawerOpen(false)}
+          newMessages={incomingMessages}
+          onClose={handleCloseDrawer}
           onAction={() => router.refresh()}
         />
       )}
