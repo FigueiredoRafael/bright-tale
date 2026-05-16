@@ -43,6 +43,7 @@ interface ProjectStreamResult {
   project: { mode: 'autopilot' | 'manual'; paused: boolean };
   refresh: () => Promise<void>;
   tracks?: Track[];
+  allAttempts?: StageRun[];
 }
 
 interface Props {
@@ -183,9 +184,11 @@ interface TrackSectionProps {
   projectId?: string;
   /** Per-track credit spend, fetched asynchronously by FocusSidebar. */
   costByTrack?: Record<string, number>;
+  /** All stage_run attempts from the stream — used to derive per-publish-target status. */
+  allAttempts?: StageRun[];
 }
 
-function TrackSection({ track, searchParams, onSelect, onPauseToggle, onAbort, projectId, costByTrack }: TrackSectionProps) {
+function TrackSection({ track, searchParams, onSelect, onPauseToggle, onAbort, projectId, costByTrack, allAttempts }: TrackSectionProps) {
   const [abortDialogOpen, setAbortDialogOpen] = useState(false);
 
   async function handlePauseToggle(e: React.MouseEvent) {
@@ -340,11 +343,26 @@ function TrackSection({ track, searchParams, onSelect, onPauseToggle, onAbort, p
               <div>
                 {(track.publishTargets ?? []).map((pt) => {
                   const ptActive = isActive(searchParams, 'publish', track.id, pt.id);
+
+                  // Derive per-target status from allAttempts (latest run by attemptNo)
+                  const ptRuns = (allAttempts ?? []).filter(
+                    (r) =>
+                      r.stage === 'publish' &&
+                      r.trackId === track.id &&
+                      r.publishTargetId === pt.id,
+                  );
+                  const ptLatestRun =
+                    ptRuns.length > 0
+                      ? ptRuns.reduce((best, r) => (r.attemptNo > best.attemptNo ? r : best))
+                      : null;
+                  const ptStatus = ptLatestRun?.status ?? null;
+
                   return (
                     <button
                       key={pt.id}
                       data-testid={`sidebar-item-${track.id}-publish-target-${pt.id}`}
                       data-active={ptActive}
+                      data-status={ptStatus ?? 'none'}
                       onClick={() => onSelect('publish', track.id, pt.id)}
                       className={[
                         'flex w-full items-center gap-2 pl-10 pr-3 py-1 rounded-md text-xs text-left',
@@ -352,7 +370,10 @@ function TrackSection({ track, searchParams, onSelect, onPauseToggle, onAbort, p
                         ptActive ? 'bg-accent font-medium' : 'text-muted-foreground',
                       ].join(' ')}
                     >
-                      <Circle size={10} className="shrink-0" />
+                      <StatusIcon
+                        status={ptStatus as StageRunStatus | null}
+                        testId={`publish-target-status-${track.id}-${pt.id}`}
+                      />
                       <span className="flex-1 truncate">{pt.displayName}</span>
                     </button>
                   );
@@ -404,7 +425,8 @@ export function FocusSidebar({ projectId, channelId }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [costByTrack, setCostByTrack] = useState<Record<string, number>>({});
 
-  const { stageRuns, tracks: rawTracks, liveEvent, refresh } = useProjectStream(projectId) as ProjectStreamResult;
+  const { stageRuns, tracks: rawTracks, liveEvent, refresh, allAttempts: rawAllAttempts } = useProjectStream(projectId) as ProjectStreamResult;
+  const allAttempts: StageRun[] = rawAllAttempts ?? [];
 
   // Show all tracks — aborted ones are styled differently (opacity-50, "Aborted" badge)
   const tracks: Track[] = rawTracks ?? [];
@@ -518,6 +540,7 @@ export function FocusSidebar({ projectId, channelId }: Props) {
           onAbort={handleAbortTrack}
           projectId={projectId}
           costByTrack={costByTrack}
+          allAttempts={allAttempts}
         />
       ))}
 

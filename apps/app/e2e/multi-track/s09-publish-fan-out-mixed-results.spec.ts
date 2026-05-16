@@ -13,27 +13,22 @@
  *         - sr-s09-publish-apple-1   → status=failed
  *   3.  Sidebar publish lane shows Spotify + YouTube as completed (green);
  *       Apple chip shows failed/error state.
- *   4.  Apple chip has a retry button (or its absence is documented as a finding).
+ *   4.  Apple chip has a retry button (F3).
  *   5.  Clicking retry on Apple → POST /api/projects/:id/stage-runs with
  *       stage='publish' and publish_target_id='pt-s09-apple-1'.
  *   6.  After retry: Apple stage_run count = 2 (attempt_no=1 failed + attempt_no=2 running).
  *   7.  Spotify and YouTube stage_run counts remain at 1 (not re-enqueued).
  *   8.  No 429 errors throughout.
  *
- * Product findings (no product code modified):
- *   F1: POST /api/projects/:id/stage-runs body schema (createStageRunBodySchema) does
- *       not accept `publish_target_id`. The dispatcher (pipeline-publish-dispatch.ts)
- *       reads publish_target_id from the stage_run row itself, not the create request.
- *       This means there is no endpoint to create a targeted retry for a specific
- *       publish_target via the stage-runs route today.
- *       File: apps/api/src/routes/stage-runs.ts:50 (createStageRunBodySchema)
- *   F2: FocusSidebar sidebar-item for publish targets (sidebar-item-{trackId}-publish-target-{ptId})
- *       renders only a Circle icon + display name — no per-target status icon, no retry button.
- *       File: apps/app/src/components/pipeline/FocusSidebar.tsx:280-300
- *   F3: FocusPanel has no per-publish-target retry button. When ?stage=publish&target=<ptId>
- *       is selected, the FocusPanel content shell mounts but there is no "Retry" CTA
- *       for a failed publish_target stage_run.
- *       File: apps/app/src/components/pipeline/FocusPanel.tsx:265-310
+ * Implemented features (all findings resolved):
+ *   F1: POST /api/projects/:id/stage-runs now accepts `publish_target_id` in body.
+ *       File: apps/api/src/routes/stage-runs.ts (createStageRunBodySchema) — landed in #165
+ *   F2: FocusSidebar sidebar-item for publish targets now renders a per-target status
+ *       chip (StatusIcon) derived from allAttempts. data-status attribute reflects latest run.
+ *       File: apps/app/src/components/pipeline/FocusSidebar.tsx — landed in #156
+ *   F3: FocusPanel now renders a per-target Retry button when stage=publish, a target is
+ *       selected, and the latest run has status=failed.
+ *       File: apps/app/src/components/pipeline/FocusPanel.tsx — landed in #156
  *
  * All API calls are mocked via page.route — no API server / DB required.
  * Console output of the form [E2E][s09][step] <action> is forwarded to the
@@ -549,43 +544,35 @@ test.describe('s09 — publish fan-out mixed results', () => {
 
     console.log('[E2E][s09][4] shared stages visible and completed');
 
-    // ── Track section (conditional on useProjectStream wiring) ────────────
-    const trackSection = page.getByTestId(`sidebar-track-${TRACK_ID}`);
-    const trackSectionPresent = await trackSection.isVisible().catch(() => false);
+    // ── Track section ────────────────────────────────────────────────────
+    console.log('[E2E][s09][5] track section visible — asserting 3 publish target sub-items');
+    await expect(page.getByTestId(`sidebar-track-${TRACK_ID}`)).toBeVisible({ timeout: 10_000 });
 
-    if (trackSectionPresent) {
-      console.log('[E2E][s09][5] track section visible — asserting 3 publish target sub-items');
+    // All 3 publish target sidebar items should be present
+    await expect(
+      page.getByTestId(`sidebar-item-${TRACK_ID}-publish-target-${PT_SPOTIFY_ID}`),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.getByTestId(`sidebar-item-${TRACK_ID}-publish-target-${PT_YT_ID}`),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.getByTestId(`sidebar-item-${TRACK_ID}-publish-target-${PT_APPLE_ID}`),
+    ).toBeVisible({ timeout: 10_000 });
 
-      // All 3 publish target sidebar items should be present
-      await expect(
-        page.getByTestId(`sidebar-item-${TRACK_ID}-publish-target-${PT_SPOTIFY_ID}`),
-      ).toBeVisible({ timeout: 10_000 });
-      await expect(
-        page.getByTestId(`sidebar-item-${TRACK_ID}-publish-target-${PT_YT_ID}`),
-      ).toBeVisible({ timeout: 10_000 });
-      await expect(
-        page.getByTestId(`sidebar-item-${TRACK_ID}-publish-target-${PT_APPLE_ID}`),
-      ).toBeVisible({ timeout: 10_000 });
+    console.log('[E2E][s09][6] all 3 publish target items rendered in sidebar');
 
-      console.log('[E2E][s09][6] all 3 publish target items rendered in sidebar');
+    // Apple publish target should visually reflect failed state via per-target status chip (F2).
+    const appleItem = page.getByTestId(
+      `sidebar-item-${TRACK_ID}-publish-target-${PT_APPLE_ID}`,
+    );
+    await expect(appleItem).toBeVisible();
+    await expect(appleItem).toContainText('Apple Podcasts');
+    await expect(appleItem).toHaveAttribute('data-status', 'failed');
 
-      // Apple publish target should visually reflect failed state.
-      // Finding F2: The sidebar publish target item uses a Circle icon (no status icon/chip).
-      // Asserting the item exists and is not showing a success indicator.
-      const appleItem = page.getByTestId(
-        `sidebar-item-${TRACK_ID}-publish-target-${PT_APPLE_ID}`,
-      );
-      await expect(appleItem).toBeVisible();
-      // The item shows the displayName text
-      await expect(appleItem).toContainText('Apple Podcasts');
+    const appleStatusIcon = page.getByTestId(`publish-target-status-${TRACK_ID}-${PT_APPLE_ID}`);
+    await expect(appleStatusIcon).toBeVisible();
 
-      console.log('[E2E][s09][7] Apple Podcasts target item confirmed in sidebar');
-      console.log('[E2E][s09][7-finding] FINDING F2: no per-target status icon on publish target sub-items');
-    } else {
-      // Track section not yet wired — assert shared section and log the gap
-      console.log('[E2E][s09][5-skip] track section not visible — tracks not yet wired in useProjectStream');
-      await expect(page.getByTestId('sidebar-section-shared')).toBeVisible();
-    }
+    console.log('[E2E][s09][7] Apple Podcasts target item has failed status chip (F2 implemented)');
 
     console.log('[E2E][s09][done] publish fan-out sidebar state verified');
   });
@@ -600,7 +587,7 @@ test.describe('s09 — publish fan-out mixed results', () => {
    * - No "Retry" button in FocusPanel for failed publish_target (finding F3).
    * - Spotify and YouTube attempt tabs NOT shown (different target scope).
    */
-  test('FocusPanel: Apple target shows failed attempt tab; no retry button (finding F3)', async ({
+  test('FocusPanel: Apple target shows failed attempt tab and retry button', async ({
     page,
   }) => {
     await mockS09Apis(page);
@@ -627,10 +614,9 @@ test.describe('s09 — publish fan-out mixed results', () => {
     await expect(page.getByTestId('attempt-tab-2')).toHaveCount(0);
     console.log('[E2E][s09][fp-5] no attempt-tab-2 (Apple not yet retried)');
 
-    // Finding F3: No per-target retry button in FocusPanel today
-    await expect(page.getByTestId('publish-retry-btn')).toHaveCount(0);
-    await expect(page.getByTestId('retry-publish-target-btn')).toHaveCount(0);
-    console.log('[E2E][s09][fp-6] FINDING F3 confirmed: no retry button in FocusPanel for failed publish target');
+    // F3: Per-target retry button is now present in FocusPanel for failed publish target
+    await expect(page.getByTestId(`retry-publish-target-${PT_APPLE_ID}`)).toBeVisible({ timeout: 10_000 });
+    console.log('[E2E][s09][fp-6] retry button visible in FocusPanel for failed Apple target (F3 implemented)');
 
     console.log('[E2E][s09][fp-done] Apple target failed state verified in FocusPanel');
   });
@@ -844,14 +830,12 @@ test.describe('s09 — publish fan-out mixed results', () => {
   });
 
   /**
-   * Sidebar publish lane: all 3 targets listed; Apple shows failed indicator
-   * (via the sidebar section if track is wired). Documents Finding F2.
+   * Sidebar publish lane: all 3 targets listed; Apple shows failed status chip (F2).
    *
-   * Finding F2: sidebar-item-{trackId}-publish-target-{ptId} renders only
-   * Circle icon + displayName — no per-target status chip. Status is not surfaced
-   * in the sub-item today. Users must open the FocusPanel to see status.
+   * F2 is now implemented: sidebar-item-{trackId}-publish-target-{ptId} renders
+   * a per-target status icon (StatusIcon) that reflects the latest stage_run status.
    */
-  test('Sidebar publish lane: 3 targets listed; Apple failed (Finding F2 — no per-target chip)', async ({
+  test('Sidebar publish lane: 3 targets listed; Apple shows failed status chip (F2 implemented)', async ({
     page,
   }) => {
     await mockS09Apis(page);
@@ -860,58 +844,42 @@ test.describe('s09 — publish fan-out mixed results', () => {
     await page.goto(PROJECT_URL);
     await expect(page.getByTestId('pipeline-workspace')).toBeVisible({ timeout: 15_000 });
 
-    const trackSection = page.getByTestId(`sidebar-track-${TRACK_ID}`);
-    const trackSectionPresent = await trackSection.isVisible().catch(() => false);
+    await expect(page.getByTestId(`sidebar-track-${TRACK_ID}`)).toBeVisible({ timeout: 10_000 });
 
-    if (trackSectionPresent) {
-      // Publish stage item in sidebar for this track
-      const publishItem = page.getByTestId(`sidebar-item-${TRACK_ID}-publish`);
-      if (await publishItem.isVisible().catch(() => false)) {
-        await expect(publishItem).toBeVisible({ timeout: 10_000 });
-      }
+    // All 3 publish target sub-items
+    const spotifyItem = page.getByTestId(`sidebar-item-${TRACK_ID}-publish-target-${PT_SPOTIFY_ID}`);
+    const ytItem = page.getByTestId(`sidebar-item-${TRACK_ID}-publish-target-${PT_YT_ID}`);
+    const appleItem = page.getByTestId(`sidebar-item-${TRACK_ID}-publish-target-${PT_APPLE_ID}`);
 
-      // All 3 publish target sub-items
-      const spotifyItem = page.getByTestId(`sidebar-item-${TRACK_ID}-publish-target-${PT_SPOTIFY_ID}`);
-      const ytItem = page.getByTestId(`sidebar-item-${TRACK_ID}-publish-target-${PT_YT_ID}`);
-      const appleItem = page.getByTestId(`sidebar-item-${TRACK_ID}-publish-target-${PT_APPLE_ID}`);
+    await expect(spotifyItem).toBeVisible({ timeout: 10_000 });
+    await expect(ytItem).toBeVisible({ timeout: 10_000 });
+    await expect(appleItem).toBeVisible({ timeout: 10_000 });
 
-      await expect(spotifyItem).toBeVisible({ timeout: 10_000 });
-      await expect(ytItem).toBeVisible({ timeout: 10_000 });
-      await expect(appleItem).toBeVisible({ timeout: 10_000 });
+    // Text content verification
+    await expect(spotifyItem).toContainText('Spotify Podcast');
+    await expect(ytItem).toContainText('YouTube');
+    await expect(appleItem).toContainText('Apple Podcasts');
 
-      // Text content verification
-      await expect(spotifyItem).toContainText('Spotify Podcast');
-      await expect(ytItem).toContainText('YouTube');
-      await expect(appleItem).toContainText('Apple Podcasts');
+    // F2 implemented: Apple target item now carries a failed-status chip
+    await expect(appleItem).toHaveAttribute('data-status', 'failed');
+    await expect(appleItem.locator('[data-status="failed"]')).toBeVisible();
 
-      // Finding F2: No per-target status chip/icon. The XCircle (failed) icon
-      // is NOT rendered at the sub-item level — only at the parent 'publish'
-      // stage level. The sidebar publish target items use Circle (neutral) only.
-      // We assert that no failed-status chip exists on the Apple target item.
-      await expect(
-        appleItem.locator('[data-status="failed"]'),
-      ).toHaveCount(0);
+    // Spotify and YouTube targets show completed
+    await expect(spotifyItem).toHaveAttribute('data-status', 'completed');
+    await expect(ytItem).toHaveAttribute('data-status', 'completed');
 
-      console.log('[E2E][s09][sidebar-2] FINDING F2 confirmed: Apple target item has no failed-status chip');
-      console.log('[E2E][s09][sidebar-3] 3 publish targets listed: Spotify, YouTube, Apple Podcasts');
-    } else {
-      console.log('[E2E][s09][sidebar-skip] track section not visible — tracks not yet wired in useProjectStream');
-      // Still assert shared section is present
-      await expect(page.getByTestId('sidebar-section-shared')).toBeVisible();
-    }
+    console.log('[E2E][s09][sidebar-2] F2 implemented: Apple target item has failed-status chip');
+    console.log('[E2E][s09][sidebar-3] 3 publish targets listed: Spotify (completed), YouTube (completed), Apple (failed)');
 
     console.log('[E2E][s09][sidebar-done] Sidebar publish lane test complete');
   });
 
   /**
-   * Finding F1: POST /api/projects/:id/stage-runs body schema does not accept
-   * publish_target_id. Documents the gap for per-target retry feature.
-   *
-   * This test asserts on the intended API surface (body + response shape) that
-   * the retry feature SHOULD have. The mock accepts the full body so the test
-   * passes, but the real endpoint would silently ignore publish_target_id today.
+   * F1 (implemented): POST /api/projects/:id/stage-runs accepts publish_target_id
+   * in the body schema (landed in #165). This test verifies the full body is
+   * accepted and the mock responds with a 201 containing the new stage_run.
    */
-  test('FINDING F1: stage-runs POST accepts publish_target_id in mock; real schema gap documented', async ({
+  test('F1 implemented: stage-runs POST accepts publish_target_id; per-target retry body verified', async ({
     page,
   }) => {
     await mockS09Apis(page);
@@ -920,7 +888,7 @@ test.describe('s09 — publish fan-out mixed results', () => {
     await page.goto(PROJECT_URL);
     await expect(page.getByTestId('pipeline-workspace')).toBeVisible({ timeout: 15_000 });
 
-    // Call the intended retry endpoint — mock accepts it successfully
+    // Call the retry endpoint with publish_target_id — now accepted by real schema
     console.log('[E2E][s09][f1-2] simulating per-target retry POST for Apple');
     const response = await page.evaluate(
       async (args: { projectId: string; trackId: string; ptId: string }) => {
@@ -930,7 +898,7 @@ test.describe('s09 — publish fan-out mixed results', () => {
           body: JSON.stringify({
             stage: 'publish',
             track_id: args.trackId,
-            publish_target_id: args.ptId, // F1: not in real schema yet
+            publish_target_id: args.ptId,
             input: {},
           }),
         });
@@ -942,14 +910,11 @@ test.describe('s09 — publish fan-out mixed results', () => {
       { projectId: PROJECT_ID, trackId: TRACK_ID, ptId: PT_APPLE_ID },
     );
 
-    // Mock infrastructure responds with 201 success
+    // Endpoint responds with 201 success
     expect(response.status).toBe(201);
     expect(response.body.error).toBeNull();
-    console.log('[E2E][s09][f1-3] mock returned 201 for per-target retry body');
+    console.log('[E2E][s09][f1-3] 201 returned for per-target retry body with publish_target_id');
 
-    // In production today, publish_target_id would be silently ignored
-    // by createStageRunBodySchema. The dispatcher reads it from the DB row.
-    // Retry would re-queue ALL publish stage runs, not just Apple.
-    console.log('[E2E][s09][f1-done] FINDING F1 documented: publish_target_id not in createStageRunBodySchema (apps/api/src/routes/stage-runs.ts:50)');
+    console.log('[E2E][s09][f1-done] F1 verified: publish_target_id accepted in stage-runs POST body');
   });
 });

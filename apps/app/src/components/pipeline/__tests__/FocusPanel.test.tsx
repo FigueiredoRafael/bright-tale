@@ -401,6 +401,169 @@ describe('FocusPanel — AC3: loop info card gated on attempt_no > 1', () => {
   });
 });
 
+// ── AC5 (T9.F156): per-publish-target Retry button ───────────────────────────
+
+describe('FocusPanel — AC5: per-publish-target Retry button', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { stageRun: { id: 'sr-new', status: 'queued' } }, error: null }),
+    }));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function mockStreamWithRefresh(allAttempts: StageRun[], refreshMock = vi.fn(async () => undefined)) {
+    useProjectStreamMock.mockReturnValue({
+      stageRuns: EMPTY_STAGE_RUNS,
+      liveEvent: null,
+      isConnected: true,
+      project: { mode: 'manual', paused: false },
+      refresh: refreshMock,
+      allAttempts,
+    });
+    return refreshMock;
+  }
+
+  it('renders a Retry button when stage=publish and the target run is failed', () => {
+    searchParamsStub = new URLSearchParams('stage=publish&track=track-1&target=pt-apple');
+    const failedRun = makeRun({
+      stage: 'publish',
+      status: 'failed',
+      trackId: 'track-1',
+      publishTargetId: 'pt-apple',
+      attemptNo: 1,
+    } as Partial<StageRun>);
+    mockStreamWithRefresh([failedRun]);
+    render(<FocusPanel projectId="proj-1" />);
+    expect(screen.getByTestId('retry-publish-target-pt-apple')).toBeInTheDocument();
+  });
+
+  it('does NOT render a Retry button when the target run is completed', () => {
+    searchParamsStub = new URLSearchParams('stage=publish&track=track-1&target=pt-spotify');
+    const completedRun = makeRun({
+      stage: 'publish',
+      status: 'completed',
+      trackId: 'track-1',
+      publishTargetId: 'pt-spotify',
+      attemptNo: 1,
+    } as Partial<StageRun>);
+    mockStreamWithRefresh([completedRun]);
+    render(<FocusPanel projectId="proj-1" />);
+    expect(screen.queryByTestId('retry-publish-target-pt-spotify')).not.toBeInTheDocument();
+  });
+
+  it('does NOT render a Retry button when no target is selected', () => {
+    searchParamsStub = new URLSearchParams('stage=publish&track=track-1');
+    const failedRun = makeRun({
+      stage: 'publish',
+      status: 'failed',
+      trackId: 'track-1',
+      publishTargetId: null,
+      attemptNo: 1,
+    } as Partial<StageRun>);
+    mockStreamWithRefresh([failedRun]);
+    render(<FocusPanel projectId="proj-1" />);
+    expect(screen.queryByTestId(/retry-publish-target/)).not.toBeInTheDocument();
+  });
+
+  it('clicking Retry POSTs to /api/projects/:id/stage-runs with correct body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { stageRun: { id: 'sr-new', status: 'queued' } }, error: null }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    searchParamsStub = new URLSearchParams('stage=publish&track=track-1&target=pt-apple');
+    const failedRun = makeRun({
+      stage: 'publish',
+      status: 'failed',
+      trackId: 'track-1',
+      publishTargetId: 'pt-apple',
+      attemptNo: 1,
+    } as Partial<StageRun>);
+    mockStreamWithRefresh([failedRun]);
+    render(<FocusPanel projectId="proj-1" />);
+
+    fireEvent.click(screen.getByTestId('retry-publish-target-pt-apple'));
+
+    // Wait for async fetch
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/proj-1/stage-runs',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          stage: 'publish',
+          track_id: 'track-1',
+          publish_target_id: 'pt-apple',
+        }),
+      }),
+    );
+  });
+
+  it('calls refresh after a successful retry POST', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { stageRun: { id: 'sr-new', status: 'queued' } }, error: null }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    searchParamsStub = new URLSearchParams('stage=publish&track=track-1&target=pt-apple');
+    const failedRun = makeRun({
+      stage: 'publish',
+      status: 'failed',
+      trackId: 'track-1',
+      publishTargetId: 'pt-apple',
+      attemptNo: 1,
+    } as Partial<StageRun>);
+    const refreshMock = vi.fn(async () => undefined);
+    mockStreamWithRefresh([failedRun], refreshMock);
+    render(<FocusPanel projectId="proj-1" />);
+
+    fireEvent.click(screen.getByTestId('retry-publish-target-pt-apple'));
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(refreshMock).toHaveBeenCalled();
+  });
+
+  it('Retry button is disabled while a retry is in flight', async () => {
+    let resolveRetry!: (value: unknown) => void;
+    const inflightFetch = vi.fn().mockReturnValue(
+      new Promise((res) => {
+        resolveRetry = res;
+      }),
+    );
+    vi.stubGlobal('fetch', inflightFetch);
+
+    searchParamsStub = new URLSearchParams('stage=publish&track=track-1&target=pt-apple');
+    const failedRun = makeRun({
+      stage: 'publish',
+      status: 'failed',
+      trackId: 'track-1',
+      publishTargetId: 'pt-apple',
+      attemptNo: 1,
+    } as Partial<StageRun>);
+    mockStreamWithRefresh([failedRun]);
+    render(<FocusPanel projectId="proj-1" />);
+
+    const btn = screen.getByTestId('retry-publish-target-pt-apple');
+    fireEvent.click(btn);
+
+    // Button should be disabled while in-flight
+    expect(btn).toBeDisabled();
+
+    // Resolve the fetch so we don't leave dangling promises
+    resolveRetry({
+      ok: true,
+      json: async () => ({ data: { stageRun: { id: 'sr-new', status: 'queued' } }, error: null }),
+    });
+  });
+});
+
 // ── AC4: URL state preservation on refresh ────────────────────────────────────
 
 describe('FocusPanel — AC4: URL state preserved on refresh', () => {
