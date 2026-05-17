@@ -8,7 +8,7 @@ import {
   PipelineSettingsProvider,
   usePipelineSettings,
 } from '@/providers/PipelineSettingsProvider'
-import type { PipelineStage, StageResultMap } from '@/lib/pipeline/machine.types'
+import type { PipelineStage, StageResultMap } from '@/lib/pipeline/types'
 
 interface StandaloneEngineHostProps {
   stage: PipelineStage
