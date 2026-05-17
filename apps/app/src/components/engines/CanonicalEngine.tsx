@@ -27,9 +27,7 @@ import { rankPersonas, type RankedPersona } from './utils/personaScoring';
 import { getPersonaTheme } from './utils/personaTheme';
 import { PersonaCarousel } from './PersonaCarousel';
 import type { Persona } from '@brighttale/shared/types/agents';
-import { useSelector } from '@xstate/react';
-import { useOptionalPipelineActor } from '@/hooks/usePipelineActor';
-import { useOptionalProjectContext } from '@/components/pipeline/ProjectContextProvider';
+import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { hydrateDraftFromConfig } from '@/lib/pipeline/hydrateEngineFromConfig';
@@ -53,22 +51,15 @@ interface CanonicalEngineProps {
 const DRAFT_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
 
 export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEngineProps) {
-  const projectCtx = useOptionalProjectContext();
-  const actor = useOptionalPipelineActor();
+  const ctx = useProjectContext();
   const abortController = usePipelineAbort();
 
-  const actorChannelId = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { channelId?: string | null } } | undefined)?.context?.channelId);
-  const actorProjectId = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { projectId?: string } } | undefined)?.context?.projectId);
-  const actorBrainstormResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { brainstorm?: unknown } } } | undefined)?.context?.stageResults?.brainstorm);
-  const actorResearchResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { research?: unknown } } } | undefined)?.context?.stageResults?.research);
-  const actorDraftResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { draft?: unknown } } } | undefined)?.context?.stageResults?.draft);
-
-  const channelId = projectCtx ? projectCtx.context.channelId : actorChannelId;
-  const ctxProjectId = projectCtx ? projectCtx.context.projectId : actorProjectId;
+  const channelId = ctx.context.channelId;
+  const ctxProjectId = ctx.context.projectId;
   const projectId = projectIdProp ?? ctxProjectId;
-  const brainstormResult = (projectCtx ? projectCtx.context.stageResults.brainstorm : actorBrainstormResult) as { ideaId?: string; ideaTitle?: string; ideaVerdict?: string; ideaCoreTension?: string; brainstormSessionId?: string } | undefined;
-  const researchResult = (projectCtx ? projectCtx.context.stageResults.research : actorResearchResult) as { researchSessionId?: string; approvedCardsCount?: number; researchLevel?: string; primaryKeyword?: string; secondaryKeywords?: string[]; searchIntent?: string } | undefined;
-  const draftResult = (projectCtx ? projectCtx.context.stageResults.draft : actorDraftResult) as { draftId?: string } | undefined;
+  const brainstormResult = ctx.context.stageResults.brainstorm as { ideaId?: string; ideaTitle?: string; ideaVerdict?: string; ideaCoreTension?: string; brainstormSessionId?: string } | undefined;
+  const researchResult = ctx.context.stageResults.research as { researchSessionId?: string; approvedCardsCount?: number; researchLevel?: string; primaryKeyword?: string; secondaryKeywords?: string[]; searchIntent?: string } | undefined;
+  const draftResult = ctx.context.stageResults.draft as { draftId?: string } | undefined;
 
   const trackerContext: PipelineContext = {
     channelId: channelId ?? undefined,
@@ -119,8 +110,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
 
   const tracker = usePipelineTracker('draft', trackerContext);
 
-  const actorAutopilotConfig = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { autopilotConfig?: AutopilotConfig | null } } | undefined)?.context?.autopilotConfig);
-  const autopilotConfig: AutopilotConfig | null | undefined = projectCtx ? projectCtx.context.autopilotConfig : actorAutopilotConfig;
+  const autopilotConfig: AutopilotConfig | null | undefined = ctx.context.autopilotConfig;
   useEffect(() => {
     const h = hydrateDraftFromConfig(autopilotConfig ?? null);
     if (h.selectedPersonaId !== undefined && h.selectedPersonaId !== null) {
@@ -257,11 +247,9 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
     })();
   }, [abortController?.signal, autopilotConfig?.draft?.providerOverride, autopilotConfig?.draft?.modelOverride]);
 
-  const actorAutoMode = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { mode?: string | null } } | undefined)?.context?.mode);
-  const actorAutoPaused = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { paused?: boolean } } | undefined)?.context?.paused);
-  const autoMode = projectCtx ? projectCtx.context.mode : actorAutoMode;
+  const autoMode = ctx.context.mode;
   const overviewMode = autoMode === 'overview';
-  const autoPaused = projectCtx ? projectCtx.context.paused : (actorAutoPaused ?? false);
+  const autoPaused = ctx.context.paused ?? false;
 
   useAutoPilotTrigger({
     stage: 'draft',
@@ -315,11 +303,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
     if (!title.trim()) { toast.error('Enter a title'); return; }
     if (!selectedPersonaId) { toast.error('Select a persona'); return; }
 
-    if (projectCtx) {
-      projectCtx.setStageStatus('draft', { status: 'Building outline' });
-    } else {
-      actor?.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { status: 'Building outline' } });
-    }
+    ctx.setStageStatus('draft', { status: 'Building outline' });
     tracker.trackStarted({
       draftId: draftId || '',
       phase: 'core',
@@ -348,15 +332,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
       newDraftId = (draft as { id: string }).id;
       setDraftId(newDraftId);
 
-      if (projectCtx) {
-        projectCtx.setStageStatus('draft', { status: 'Building outline' });
-      } else {
-        actor?.send({
-          type: 'STAGE_PROGRESS',
-          stage: 'draft',
-          partial: { draftId: newDraftId, draftTitle: title },
-        });
-      }
+      ctx.setStageStatus('draft', { status: 'Building outline' });
     }
 
     if (provider === 'manual') {
@@ -421,7 +397,6 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
       setCoreExpanded(true);
       if (!overviewMode) toast.success('Canonical core submitted — review before producing');
       setManualState(null);
-      actor?.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: manualState.draftId } });
     } catch (err) {
       toast.error('Submit failed', { description: err instanceof Error ? err.message : 'Unknown error' });
     } finally {
@@ -441,7 +416,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
     } finally {
       setBusy(false);
       setManualState(null);
-      actor?.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: undefined } });
+      // draftId reset is tracked locally; no actor send needed
     }
   }
 
@@ -473,14 +448,6 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
     if (!draft) return;
     const newDraftId = (draft as { id: string }).id;
     setDraftId(newDraftId);
-
-    if (!projectCtx) {
-      actor?.send({
-        type: 'STAGE_PROGRESS',
-        stage: 'draft',
-        partial: { draftId: newDraftId, draftTitle: title },
-      });
-    }
 
     const updated = await runStep('save canonical core', () =>
       fetch(`/api/content-drafts/${newDraftId}`, {

@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { createActor } from 'xstate';
 import React from 'react';
-import { pipelineMachine } from '@/lib/pipeline/machine';
-import { PipelineActorProvider } from '@/providers/PipelineActorProvider';
+import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider';
 import { DraftEngine } from '../DraftEngine';
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types';
 import {
@@ -18,6 +16,12 @@ vi.mock('@/hooks/use-analytics', () => ({ useAnalytics: () => ({ track: vi.fn() 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }));
+vi.mock('@/components/pipeline/PipelineAbortProvider', () => ({
+  usePipelineAbort: () => null,
+}));
+vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
+  useAutoPilotTrigger: vi.fn(),
+}));
 
 interface MountOpts {
   draftRow?: ReturnType<typeof makeDraftRow>;
@@ -29,50 +33,34 @@ function mountEngine(opts: MountOpts = {}) {
   const draftRow = opts.draftRow ?? makeDraftRow({});
   const autopilotConfig = opts.autopilotConfig ?? null;
 
-  const actor = createActor(pipelineMachine, {
-    input: {
-      projectId: 'proj-1',
-      channelId: 'ch-1',
-      projectTitle: 'Test',
-      pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-      creditSettings: DEFAULT_CREDIT_SETTINGS,
-    },
-  }).start();
-  actor.send({
-    type: 'SETUP_COMPLETE',
-    mode: 'step-by-step',
-    autopilotConfig,
-    templateId: null,
-    startStage: 'draft',
-  });
-  // Pre-populate downstream context so the engine fetches the draft.
+  // Build initialStageResults to give the engine the draftId + upstream context
+  const initialStageResults: Record<string, unknown> = {};
   if (opts.researchSessionId !== null) {
-    actor.send({
-      type: 'STAGE_PROGRESS',
-      stage: 'research',
-      partial: {
-        researchSessionId: opts.researchSessionId ?? 'rs-1',
-        approvedCardsCount: 5,
-        researchLevel: 'medium',
-      },
-    });
+    initialStageResults.research = {
+      researchSessionId: opts.researchSessionId ?? 'rs-1',
+      approvedCardsCount: 5,
+      researchLevel: 'medium',
+    };
   }
-  actor.send({
-    type: 'STAGE_PROGRESS',
-    stage: 'brainstorm',
-    partial: { ideaTitle: draftRow.title },
-  });
-  actor.send({
-    type: 'STAGE_PROGRESS',
-    stage: 'draft',
-    partial: { draftId: draftRow.id },
-  });
+  initialStageResults.brainstorm = { ideaTitle: draftRow.title };
+  initialStageResults.draft = { draftId: draftRow.id };
 
-  return { actor, draftRow, ...render(
-    <PipelineActorProvider value={actor}>
-      <DraftEngine mode="generate" />
-    </PipelineActorProvider>,
-  ) };
+  return {
+    draftRow,
+    ...render(
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        autopilotConfig={autopilotConfig}
+        initialStageResults={initialStageResults}
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
+        <DraftEngine mode="generate" />
+      </StandaloneProjectContextProvider>,
+    ),
+  };
 }
 
 function stubFetchForDraft(draftRow: ReturnType<typeof makeDraftRow>) {
@@ -232,27 +220,20 @@ describe('DraftEngine — visual feedback', () => {
   });
 
   it('does not crash and shows the generation form when there is no draftId in context', () => {
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start();
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'step-by-step',
-      autopilotConfig: null,
-      templateId: null,
-      startStage: 'draft',
-    });
+    // Mount with empty initialStageResults — no draftId provided
     expect(() =>
       render(
-        <PipelineActorProvider value={actor}>
+        <StandaloneProjectContextProvider
+          projectId="proj-1"
+          channelId="ch-1"
+          mode="step-by-step"
+          autopilotConfig={null}
+          initialStageResults={{}}
+          pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+          creditSettings={DEFAULT_CREDIT_SETTINGS}
+        >
           <DraftEngine mode="generate" />
-        </PipelineActorProvider>,
+        </StandaloneProjectContextProvider>,
       ),
     ).not.toThrow();
     expect(screen.queryByText(/^Preview$/)).toBeNull();

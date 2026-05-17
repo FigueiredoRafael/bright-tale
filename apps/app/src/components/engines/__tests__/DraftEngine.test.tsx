@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { createActor } from 'xstate'
 import React from 'react'
 import { pipelineMachine } from '@/lib/pipeline/machine'
-import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
+import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
 import { DraftEngine } from '../DraftEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
 import type { AutopilotConfig } from '@brighttale/shared'
@@ -14,6 +14,14 @@ vi.mock('@/hooks/use-analytics', () => ({
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}))
+
+vi.mock('@/components/pipeline/PipelineAbortProvider', () => ({
+  usePipelineAbort: () => null,
+}))
+
+vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
+  useAutoPilotTrigger: vi.fn(),
 }))
 
 const STUB_PERSONA = {
@@ -83,27 +91,17 @@ afterEach(() => {
 
 describe('DraftEngine', () => {
   it('hydrates format + wordCount + selectedPersonaId from autopilotConfig on mount', () => {
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start()
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'overview',
-      autopilotConfig: FULL_AUTOPILOT_CONFIG,
-      templateId: null,
-      startStage: 'draft',
-    })
-
     render(
-      <PipelineActorProvider value={actor}>
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="overview"
+        autopilotConfig={FULL_AUTOPILOT_CONFIG}
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
         <DraftEngine mode="generate" />
-      </PipelineActorProvider>,
+      </StandaloneProjectContextProvider>,
     )
 
     // sr-only spans carry the current state values for test queries.
@@ -113,27 +111,17 @@ describe('DraftEngine', () => {
   })
 
   it('defaults to blog format and no selectedPersonaId when no autopilotConfig is provided', () => {
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start()
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'step-by-step',
-      autopilotConfig: null,
-      templateId: null,
-      startStage: 'draft',
-    })
-
     render(
-      <PipelineActorProvider value={actor}>
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        autopilotConfig={null}
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
         <DraftEngine mode="generate" />
-      </PipelineActorProvider>,
+      </StandaloneProjectContextProvider>,
     )
 
     expect(screen.getByTestId('draft-type')).toHaveTextContent('blog')

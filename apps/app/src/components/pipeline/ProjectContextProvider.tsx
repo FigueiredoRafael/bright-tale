@@ -429,6 +429,7 @@ export interface StandaloneProjectContextProviderProps {
   channelId?: string | null;
   projectId?: string;
   mode?: 'step-by-step' | 'supervised' | 'overview' | null;
+  autopilotConfig?: AutopilotConfig | null;
   onStageComplete?: (stage: PipelineStage, result: Record<string, unknown>) => void;
   children: React.ReactNode;
 }
@@ -440,6 +441,7 @@ export function StandaloneProjectContextProvider({
   channelId = null,
   projectId = '',
   mode = null,
+  autopilotConfig = null,
   onStageComplete,
   children,
 }: StandaloneProjectContextProviderProps) {
@@ -457,7 +459,7 @@ export function StandaloneProjectContextProvider({
     channelId,
     projectTitle: '',
     mode,
-    autopilotConfig: null,
+    autopilotConfig,
     templateId: null,
     stageResults,
     stageStatus,

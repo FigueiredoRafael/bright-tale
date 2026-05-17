@@ -3,9 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Loader2, Sparkles, Check, AlertCircle, ArrowRight, ClipboardPaste, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
-import { useSelector } from '@xstate/react';
-import { useOptionalPipelineActor } from '@/hooks/usePipelineActor';
-import { useOptionalProjectContext } from '@/components/pipeline/ProjectContextProvider';
+import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -54,31 +52,20 @@ const TIER_COLOR: Record<string, string> = {
 };
 
 export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
-  const projectCtx = useOptionalProjectContext();
-  const actor = useOptionalPipelineActor();
+  const ctx = useProjectContext();
   const abortController = usePipelineAbort();
 
-  const actorChannelId = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { channelId?: string | null } } | undefined)?.context?.channelId);
-  const actorProjectId = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { projectId?: string } } | undefined)?.context?.projectId);
-  const actorBrainstormResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { brainstorm?: unknown } } } | undefined)?.context?.stageResults?.brainstorm);
-  const actorResearchResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { research?: unknown } } } | undefined)?.context?.stageResults?.research);
-  const actorDraftResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { draft?: unknown } } } | undefined)?.context?.stageResults?.draft);
-  const actorPipelineSettings = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { pipelineSettings?: { reviewMaxIterations?: number; reviewApproveScore?: number } } } | undefined)?.context?.pipelineSettings);
-  const actorIterationCount = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { iterationCount?: number } } | undefined)?.context?.iterationCount);
-  const actorAutopilotConfig = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { autopilotConfig?: AutopilotConfig | null } } | undefined)?.context?.autopilotConfig);
-  const actorAutoMode = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { mode?: string } } | undefined)?.context?.mode);
-
-  const channelId = projectCtx ? projectCtx.context.channelId : actorChannelId;
-  const projectId = projectCtx ? projectCtx.context.projectId : (actorProjectId ?? '');
-  const brainstormResult = (projectCtx ? projectCtx.context.stageResults.brainstorm : actorBrainstormResult) as { ideaId?: string; ideaTitle?: string; ideaVerdict?: string; ideaCoreTension?: string; brainstormSessionId?: string } | undefined;
-  const researchResult = (projectCtx ? projectCtx.context.stageResults.research : actorResearchResult) as { researchSessionId?: string; approvedCardsCount?: number; researchLevel?: string; primaryKeyword?: string; secondaryKeywords?: string[]; searchIntent?: string } | undefined;
-  const draftResult = (projectCtx ? projectCtx.context.stageResults.draft : actorDraftResult) as { draftId?: string; draftTitle?: string } | undefined;
-  const pipelineSettings = projectCtx ? projectCtx.context.pipelineSettings : actorPipelineSettings;
-  const machineIterationCount = projectCtx ? projectCtx.context.iterationCount : (actorIterationCount ?? 0);
-  const autopilotConfig: AutopilotConfig | null | undefined = projectCtx ? projectCtx.context.autopilotConfig : actorAutopilotConfig;
+  const channelId = ctx.context.channelId;
+  const projectId = ctx.context.projectId ?? '';
+  const brainstormResult = ctx.context.stageResults.brainstorm as { ideaId?: string; ideaTitle?: string; ideaVerdict?: string; ideaCoreTension?: string; brainstormSessionId?: string } | undefined;
+  const researchResult = ctx.context.stageResults.research as { researchSessionId?: string; approvedCardsCount?: number; researchLevel?: string; primaryKeyword?: string; secondaryKeywords?: string[]; searchIntent?: string } | undefined;
+  const draftResult = ctx.context.stageResults.draft as { draftId?: string; draftTitle?: string } | undefined;
+  const pipelineSettings = ctx.context.pipelineSettings;
+  const machineIterationCount = ctx.context.iterationCount ?? 0;
+  const autopilotConfig: AutopilotConfig | null | undefined = ctx.context.autopilotConfig;
   const maxIterations = autopilotConfig?.review?.maxIterations ?? pipelineSettings?.reviewMaxIterations ?? 5;
   const autoApproveThreshold = autopilotConfig?.review?.autoApproveThreshold ?? pipelineSettings?.reviewApproveScore ?? 90;
-  const autoMode = projectCtx ? projectCtx.context.mode : actorAutoMode;
+  const autoMode = ctx.context.mode;
   const overviewMode = autoMode === 'overview';
   const draftId = draftResult?.draftId ?? '';
 
@@ -223,8 +210,11 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
     rearmKey: (localDraft as { iteration_count?: number } | null)?.iteration_count ?? 0,
   });
 
-  function navigate(toStage?: PipelineStage) {
-    actor?.send({ type: 'NAVIGATE', toStage: toStage ?? 'draft' });
+  // navigate: no-op in context mode — orchestrator handles stage transitions
+  // via server state. Kept as a function signature so ContextBanner and
+  // revision buttons compile without change.
+  function navigate(_toStage?: PipelineStage) {
+    // no-op: orchestrator reads server state to decide next stage
   }
 
   // Defensive guard — orchestrator gates render until draft hydrates, but if a
@@ -287,23 +277,11 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
       try {
         tracker.trackStarted({ draftId, iterationCount: draftView.iteration_count });
 
-        if (projectCtx) {
-          projectCtx.setStageStatus('review', {
-            status: `Iteration ${machineIterationCount + 1}/${maxIterations}: scoring`,
-            current: machineIterationCount,
-            total: maxIterations,
-          });
-        } else {
-          actor?.send({
-            type: 'STAGE_PROGRESS',
-            stage: 'review',
-            partial: {
-              status: `Iteration ${machineIterationCount + 1}/${maxIterations}: scoring`,
-              current: machineIterationCount,
-              total: maxIterations,
-            },
-          });
-        }
+        ctx.setStageStatus('review', {
+          status: `Iteration ${machineIterationCount + 1}/${maxIterations}: scoring`,
+          current: machineIterationCount,
+          total: maxIterations,
+        });
 
         // First, set status to in_review
         const patchRes = await fetch(`/api/content-drafts/${draftId}`, {
@@ -381,7 +359,7 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
         // would unmount ReviewEngine immediately (orchestrator transitions
         // out of the review state on REVIEW_COMPLETE) and the user would
         // never see the modal's checkmark.
-        const mode = projectCtx ? projectCtx.context.mode : actor?.getSnapshot()?.context?.mode;
+        const mode = ctx.context.mode;
         if (mode === 'supervised' || mode === 'overview') {
           const fb = feedbackObj ?? {};
           const fmt = (fb.blog_review ?? fb.video_review ?? fb.podcast_review ?? fb.shorts_review) as Record<string, unknown> | undefined;
@@ -434,11 +412,7 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
       setManualState(null);
       await refetchDraft();
       if (!overviewMode) toast.success('Review submitted');
-      if (projectCtx) {
-        projectCtx.setStageStatus('review', { score, verdict });
-      } else {
-        actor?.send({ type: 'STAGE_PROGRESS', stage: 'review', partial: { score, verdict } as Record<string, unknown> });
-      }
+      ctx.setStageStatus('review', { score, verdict });
     } catch (err) {
       toast.error('Submit failed', { description: err instanceof Error ? err.message : 'Unknown error' });
     } finally {
@@ -460,11 +434,7 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
     } finally {
       setBusy(false);
       setManualState(null);
-      if (projectCtx) {
-        projectCtx.setStageStatus('review', { score: undefined, verdict: undefined });
-      } else {
-        actor?.send({ type: 'STAGE_PROGRESS', stage: 'review', partial: { score: undefined, verdict: undefined } as Record<string, unknown> });
-      }
+      ctx.setStageStatus('review', { score: undefined, verdict: undefined });
     }
   }
 
@@ -763,14 +733,12 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
                         feedbackJson: fb,
                         iterationCount: draftView.iteration_count,
                       };
-                      // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
-                      actor?.send({ type: 'REVIEW_COMPLETE', result });
                       if (stageRun && projectId) {
                         void writeStageRunOutcome({
                           projectId,
                           stageRunId: stageRun.id,
                           outcome: result as unknown as Record<string, unknown>,
-                        }).then(() => projectCtx?.refetch()).catch(() => {});
+                        }).then(() => ctx.refetch()).catch(() => {});
                       }
                     }}
                     className="gap-2"
@@ -922,7 +890,7 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
             // so json.data at POST-time had NULL score/verdict. Reading them now
             // from the DB gives the real results.
             const fresh = await refetchDraft();
-            const currentMode = projectCtx ? projectCtx.context.mode : actor?.getSnapshot()?.context?.mode;
+            const currentMode = ctx.context.mode;
             if (currentMode !== 'overview') toast.success('Review completed');
             pendingReviewResultRef.current = null; // no longer needed
             setReviewing(false);
@@ -934,17 +902,12 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
               const verdict = (fresh.review_verdict as string | null) ?? 'pending';
               const tier = deriveTier(fmt ?? fb);
               const iterationCount = (fresh.iteration_count as number | null) ?? 1;
-              // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
-              actor?.send({
-                type: 'REVIEW_COMPLETE',
-                result: { score, qualityTier: tier, verdict, feedbackJson: fb, iterationCount },
-              });
               if (stageRun && projectId) {
                 void writeStageRunOutcome({
                   projectId,
                   stageRunId: stageRun.id,
                   outcome: { score, qualityTier: tier, verdict, feedbackJson: fb, iterationCount } as Record<string, unknown>,
-                }).then(() => projectCtx?.refetch()).catch(() => {});
+                }).then(() => ctx.refetch()).catch(() => {});
               }
             }
           }}
@@ -959,7 +922,7 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
             // If the user dismisses the modal while autopilot is in flight,
             // still attempt to dispatch REVIEW_COMPLETE with fresh values so
             // the machine doesn't stall in the reviewing state.
-            const closeMode = projectCtx ? projectCtx.context.mode : actor?.getSnapshot()?.context?.mode;
+            const closeMode = ctx.context.mode;
             if (closeMode === 'supervised' || closeMode === 'overview') {
               const fresh = await refetchDraft();
               pendingReviewResultRef.current = null;
@@ -972,17 +935,12 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
                 const verdict = (fresh.review_verdict as string | null) ?? 'pending';
                 const tier = deriveTier(fmt ?? fb);
                 const iterationCount = (fresh.iteration_count as number | null) ?? 1;
-                // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
-                actor?.send({
-                  type: 'REVIEW_COMPLETE',
-                  result: { score, qualityTier: tier, verdict, feedbackJson: fb, iterationCount },
-                });
                 if (stageRun && projectId) {
                   void writeStageRunOutcome({
                     projectId,
                     stageRunId: stageRun.id,
                     outcome: { score, qualityTier: tier, verdict, feedbackJson: fb, iterationCount } as Record<string, unknown>,
-                  }).then(() => projectCtx?.refetch()).catch(() => {});
+                  }).then(() => ctx.refetch()).catch(() => {});
                 }
               }
             } else {

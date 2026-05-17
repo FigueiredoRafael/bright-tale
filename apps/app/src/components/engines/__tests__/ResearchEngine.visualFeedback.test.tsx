@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { createActor } from 'xstate';
 import React from 'react';
-import { pipelineMachine } from '@/lib/pipeline/machine';
-import { PipelineActorProvider } from '@/providers/PipelineActorProvider';
+import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider';
 import { ResearchEngine } from '../ResearchEngine';
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types';
 import { makeResearchFindings, makeResearchSession } from './fixtures/research';
@@ -12,33 +10,29 @@ vi.mock('@/hooks/use-analytics', () => ({ useAnalytics: () => ({ track: vi.fn() 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }));
+vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
+  useAutoPilotTrigger: vi.fn(),
+}));
+vi.mock('@/components/pipeline/PipelineAbortProvider', () => ({
+  usePipelineAbort: () => null,
+}));
 
 function mountEngine(opts: { session?: ReturnType<typeof makeResearchSession> } = {}) {
   const session = opts.session ?? makeResearchSession();
-  const actor = createActor(pipelineMachine, {
-    input: {
-      projectId: 'proj-1',
-      channelId: 'ch-1',
-      projectTitle: 'Test',
-      pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-      creditSettings: DEFAULT_CREDIT_SETTINGS,
-    },
-  }).start();
-  actor.send({
-    type: 'SETUP_COMPLETE',
-    mode: 'step-by-step',
-    autopilotConfig: null,
-    templateId: null,
-    startStage: 'research',
-  });
   return render(
-    <PipelineActorProvider value={actor}>
+    <StandaloneProjectContextProvider
+      projectId="proj-1"
+      channelId="ch-1"
+      mode="step-by-step"
+      pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+      creditSettings={DEFAULT_CREDIT_SETTINGS}
+    >
       <ResearchEngine
         mode="generate"
         initialSession={session as unknown as Record<string, unknown>}
         initialIdeaId="idea-1"
       />
-    </PipelineActorProvider>,
+    </StandaloneProjectContextProvider>,
   );
 }
 

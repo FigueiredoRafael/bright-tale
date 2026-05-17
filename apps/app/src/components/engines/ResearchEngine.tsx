@@ -40,9 +40,7 @@ import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
 import { friendlyAiError } from '@/lib/ai/error-message';
-import { useSelector } from '@xstate/react';
-import { useOptionalPipelineActor } from '@/hooks/usePipelineActor';
-import { useOptionalProjectContext } from '@/components/pipeline/ProjectContextProvider';
+import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
@@ -95,30 +93,15 @@ export function ResearchEngine({
   initialIdeaId,
   stageRun,
 }: ResearchEngineProps) {
-  const projectCtx = useOptionalProjectContext();
-  const actor = useOptionalPipelineActor();
+  const ctx = useProjectContext();
   const abortController = usePipelineAbort();
 
-  // Dual-path selectors: context takes precedence over actor
-  const actorChannelId = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { channelId?: string | null } } | undefined)?.context?.channelId);
-  const actorProjectId = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { projectId?: string } } | undefined)?.context?.projectId);
-  const actorBrainstormResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { brainstorm?: unknown } } } | undefined)?.context?.stageResults?.brainstorm);
-  const actorResearchResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { research?: unknown } } } | undefined)?.context?.stageResults?.research);
-  const actorResearchStatus = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageStatus?: { research?: unknown } } } | undefined)?.context?.stageStatus?.research);
-  const actorIsGenerating = useSelector(actor ?? undefined, (s: unknown) => {
-    if (!s || typeof s !== 'object') return false;
-    const snap = s as { matches?: (v: unknown) => boolean };
-    return snap.matches?.({ research: 'generating' }) ?? false;
-  });
-  const actorCreditSettings = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { creditSettings?: unknown } } | undefined)?.context?.creditSettings);
-
-  const channelId = projectCtx ? projectCtx.context.channelId : actorChannelId;
-  const projectId = projectCtx ? projectCtx.context.projectId : (actorProjectId ?? '');
-  const brainstormResult = (projectCtx ? projectCtx.context.stageResults.brainstorm : actorBrainstormResult) as { ideaId?: string; ideaTitle?: string } | undefined;
-  const researchResult = (projectCtx ? projectCtx.context.stageResults.research : actorResearchResult) as { researchSessionId?: string } | undefined;
-  const researchStatus = (projectCtx ? undefined : actorResearchStatus) as { isGenerating?: boolean; activeSessionId?: string } | undefined;
-  const isGenerating = projectCtx ? false : actorIsGenerating;
-  const creditSettings = (projectCtx ? projectCtx.context.creditSettings : actorCreditSettings) as { costResearchSurface?: number; costResearchMedium?: number; costResearchDeep?: number } | undefined;
+  const channelId = ctx.context.channelId;
+  const projectId = ctx.context.projectId ?? '';
+  const brainstormResult = ctx.context.stageResults.brainstorm as { ideaId?: string; ideaTitle?: string } | undefined;
+  const researchResult = ctx.context.stageResults.research as { researchSessionId?: string } | undefined;
+  const isGenerating = false;
+  const creditSettings = ctx.context.creditSettings as { costResearchSurface?: number; costResearchMedium?: number; costResearchDeep?: number } | undefined;
 
   const trackerContext: PipelineContext = {
     channelId: channelId ?? undefined,
@@ -174,8 +157,7 @@ export function ResearchEngine({
   const isSessionDetail = !!initialSession;
 
   // Hydrate depth from autopilotConfig once on mount (wizard inputs take precedence).
-  const actorAutopilotConfig = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { autopilotConfig?: AutopilotConfig | null } } | undefined)?.context?.autopilotConfig);
-  const autopilotConfig: AutopilotConfig | null | undefined = projectCtx ? projectCtx.context.autopilotConfig : actorAutopilotConfig;
+  const autopilotConfig: AutopilotConfig | null | undefined = ctx.context.autopilotConfig;
   useEffect(() => {
     const h = hydrateResearchFromConfig(autopilotConfig ?? null);
     if (h.researchDepth !== undefined) setLevel(h.researchDepth);
@@ -294,24 +276,7 @@ export function ResearchEngine({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [researchResult?.researchSessionId]);
 
-  // Restore in-flight generation state when re-mounting after back-navigation.
-  // stageStatus.research lives in XState's in-memory snapshot only — it is NOT
-  // serialized into pipeline_state_json, so this effect's restoration path runs
-  // exclusively on in-session remounts, not after page reloads. `isGenerating`
-  // is read at mount-time from the same actor snapshot as researchStatus, so
-  // the two values are temporally consistent. Do not add `isGenerating` to the
-  // dep array — the effect must stay mount-only.
-  useEffect(() => {
-    if (!researchStatus?.isGenerating) return;
-    const activeId = researchStatus.activeSessionId as string | undefined;
-    if (!activeId) return;
-    if (researchResult?.researchSessionId) return; // already completed
-    setActiveGenerationId(activeId);
-    setRunning(true);
-    // Ensure machine substate matches data state.
-    if (!isGenerating) actor?.send({ type: 'RESEARCH_STARTED' });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // intentionally mount-only — restoring snapshot from machine
+  // Restoration of in-flight generation state handled by server-driven context (stage_runs).
 
   // Fetch recommended agent
   useEffect(() => {
@@ -490,13 +455,7 @@ export function ResearchEngine({
       return;
     }
 
-    if (projectCtx) {
-      projectCtx.setStageStatus('research', { status: 'Researching topic' });
-    } else {
-      actor?.send({ type: 'STAGE_PROGRESS', stage: 'research', partial: { status: 'Researching topic' } });
-      actor?.send({ type: 'STAGE_STATUS', stage: 'research', status: { isGenerating: true } });
-      actor?.send({ type: 'RESEARCH_STARTED' });
-    }
+    ctx.setStageStatus('research', { status: 'Researching topic' });
     setRunning(true);
     setCards([]);
     setApproved(new Set());
@@ -568,8 +527,7 @@ export function ResearchEngine({
         // Background job — show progress float, hydrate on complete
         wentAsync = true;
         setActiveGenerationId(newSessionId);
-        // Persist session ID to machine so it survives component remounts.
-        actor?.send({ type: 'STAGE_STATUS', stage: 'research', status: { isGenerating: true, activeSessionId: newSessionId } });
+        // Session ID persisted via server-driven context (stage_runs).
         return;
       } else {
         if (!overviewMode) toast.warning('No research data recognized in output', {
@@ -591,7 +549,6 @@ export function ResearchEngine({
       // handleGenerationComplete / handleGenerationFailed clear it.
       if (!wentAsync) {
         setRunning(false);
-        actor?.send({ type: 'STAGE_STATUS', stage: 'research', status: { isGenerating: false } });
       }
     }
   }
@@ -633,37 +590,22 @@ export function ResearchEngine({
       toast.error('Failed to load research findings', { description: message });
     } finally {
       setRunning(false);
-      actor?.send({ type: 'STAGE_STATUS', stage: 'research', status: { isGenerating: false } });
     }
   }
 
   function handleGenerationFailed(message: string) {
     setActiveGenerationId(null);
     setRunning(false);
-    actor?.send({ type: 'STAGE_STATUS', stage: 'research', status: { isGenerating: false } });
     tracker.trackFailed(message);
     const friendly = friendlyAiError(message);
     toast.error(friendly.title, { description: friendly.hint });
   }
 
-  // Once results land, leave the `generating` substate so the Research button
-  // unlocks. RESEARCH_COMPLETE only fires in auto modes (auto-approve); in
-  // step-by-step the user reviews findings before advancing to draft, so we
-  // need an intermediate transition back to `idle`.
-  useEffect(() => {
-    if (running) return;
-    if (!isGenerating) return;
-    if (!findings && cards.length === 0) return;
-    actor?.send({ type: 'RESEARCH_GENERATED' });
-  }, [running, isGenerating, findings, cards.length, actor]);
-
   // Auto-pilot: when findings render, auto-approve and advance to draft.
   const autoApprovedRef = useRef<string | null>(null);
-  const actorAutoMode = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { mode?: string | null } } | undefined)?.context?.mode);
-  const actorAutoPaused = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { paused?: boolean } } | undefined)?.context?.paused);
-  const autoMode = projectCtx ? projectCtx.context.mode : actorAutoMode;
+  const autoMode = ctx.context.mode;
   const overviewMode = autoMode === 'overview';
-  const autoPaused = projectCtx ? projectCtx.context.paused : (actorAutoPaused ?? false);
+  const autoPaused = ctx.context.paused ?? false;
   useEffect(() => {
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (researchResult?.researchSessionId) return;
@@ -675,11 +617,7 @@ export function ResearchEngine({
     if (autoApprovedRef.current === key) return;
     autoApprovedRef.current = key;
 
-    if (projectCtx) {
-      projectCtx.setStageStatus('research', { status: 'Approving cards' });
-    } else {
-      actor?.send({ type: 'STAGE_PROGRESS', stage: 'research', partial: { status: 'Approving cards' } });
-    }
+    ctx.setStageStatus('research', { status: 'Approving cards' });
     const signals = extractResearchSignals(findings);
     const result: ResearchResult = {
       researchSessionId: sessionId ?? '',
@@ -696,22 +634,11 @@ export function ResearchEngine({
       pivotRecommendation: signals.pivotRecommendation,
     };
     tracker.trackAction('findings.auto_approved', { sessionId });
-    if (projectCtx) {
-      if (stageRun && projectId) {
-        void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> })
-          .then(() => projectCtx.refetch()).catch(() => {});
-      } else {
-        projectCtx.refetch();
-      }
+    if (stageRun && projectId) {
+      void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> })
+        .then(() => ctx.signalStageComplete('research', result as unknown as Record<string, unknown>)).catch(() => {});
     } else {
-      actor?.send({ type: 'RESEARCH_COMPLETE', result });
-      if (stageRun && projectId) {
-        void writeStageRunOutcome({
-          projectId,
-          stageRunId: stageRun.id,
-          outcome: result as unknown as Record<string, unknown>,
-        }).catch(() => {});
-      }
+      ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
     }
   }, [
     autoMode,
@@ -722,8 +649,7 @@ export function ResearchEngine({
     regenerating,
     researchResult?.researchSessionId,
     level,
-    projectCtx,
-    actor,
+    ctx,
     tracker,
     stageRun,
     projectId,
@@ -749,22 +675,11 @@ export function ResearchEngine({
       researchLevel: level,
     };
     tracker.trackAction('cards.auto_approved', { cardCount: cards.length });
-    if (projectCtx) {
-      if (stageRun && projectId) {
-        void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> })
-          .then(() => projectCtx.refetch()).catch(() => {});
-      } else {
-        projectCtx.refetch();
-      }
+    if (stageRun && projectId) {
+      void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> })
+        .then(() => ctx.signalStageComplete('research', result as unknown as Record<string, unknown>)).catch(() => {});
     } else {
-      actor?.send({ type: 'RESEARCH_COMPLETE', result });
-      if (stageRun && projectId) {
-        void writeStageRunOutcome({
-          projectId,
-          stageRunId: stageRun.id,
-          outcome: result as unknown as Record<string, unknown>,
-        }).catch(() => {});
-      }
+      ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
     }
   }, [
     autoMode,
@@ -776,8 +691,7 @@ export function ResearchEngine({
     regenerating,
     researchResult?.researchSessionId,
     level,
-    projectCtx,
-    actor,
+    ctx,
     tracker,
     stageRun,
     projectId,
@@ -889,7 +803,6 @@ export function ResearchEngine({
     }
 
     setManualSessionId(null);
-    actor?.send({ type: 'STAGE_PROGRESS', stage: 'research', partial: { researchSessionId: manualSessionId } });
   }
 
   async function handleManualAbandon() {
@@ -906,7 +819,6 @@ export function ResearchEngine({
     setManualSessionId(null);
     setCards([]);
     setSessionId(null);
-    actor?.send({ type: 'STAGE_PROGRESS', stage: 'research', partial: { researchSessionId: undefined } });
   }
 
   async function handleApprove() {
@@ -914,11 +826,7 @@ export function ResearchEngine({
     if (findings) {
       const isNewSession = sessionId !== null && sessionId !== researchResult?.researchSessionId;
 
-      // New research session with old result still in machine context: clear
-      // downstream stages so the pipeline reflects the fresh research.
-      if (isNewSession && researchResult?.researchSessionId) {
-        actor?.send({ type: 'REDO_FROM', fromStage: 'research' });
-      }
+      // New research session — downstream stages will reset on next context refetch.
 
       tracker.trackAction('findings.approved', { sessionId: sessionId || '' });
 
@@ -937,22 +845,11 @@ export function ResearchEngine({
         researchSummary: signals.researchSummary,
         pivotRecommendation: signals.pivotRecommendation,
       };
-      if (projectCtx) {
-        if (stageRun && projectId) {
-          void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> })
-            .then(() => projectCtx.refetch()).catch(() => {});
-        } else {
-          projectCtx.refetch();
-        }
+      if (stageRun && projectId) {
+        void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> })
+          .then(() => ctx.signalStageComplete('research', result as unknown as Record<string, unknown>)).catch(() => {});
       } else {
-        actor?.send({ type: 'RESEARCH_COMPLETE', result });
-        if (stageRun && projectId) {
-          void writeStageRunOutcome({
-            projectId,
-            stageRunId: stageRun.id,
-            outcome: result as unknown as Record<string, unknown>,
-          }).catch(() => {});
-        }
+        ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
       }
       onComplete?.();
       return;
@@ -960,7 +857,6 @@ export function ResearchEngine({
 
     // No new findings but old research is already done — just navigate forward.
     if (researchResult?.researchSessionId) {
-      actor?.send({ type: 'NAVIGATE', toStage: 'draft' });
       onComplete?.();
       return;
     }
@@ -996,22 +892,11 @@ export function ResearchEngine({
       approvedCardsCount: approvedCards.length,
       researchLevel: level,
     };
-    if (projectCtx) {
-      if (stageRun && projectId) {
-        void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> })
-          .then(() => projectCtx.refetch()).catch(() => {});
-      } else {
-        projectCtx.refetch();
-      }
+    if (stageRun && projectId) {
+      void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> })
+        .then(() => ctx.signalStageComplete('research', result as unknown as Record<string, unknown>)).catch(() => {});
     } else {
-      actor?.send({ type: 'RESEARCH_COMPLETE', result });
-      if (stageRun && projectId) {
-        void writeStageRunOutcome({
-          projectId,
-          stageRunId: stageRun.id,
-          outcome: result as unknown as Record<string, unknown>,
-        }).catch(() => {});
-      }
+      ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
     }
     onComplete?.();
   }
@@ -1070,22 +955,11 @@ export function ResearchEngine({
               approvedCardsCount: importedCards.length,
               researchLevel: (item.level as string) ?? 'medium',
             };
-            if (projectCtx) {
-              if (stageRun && projectId) {
-                void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: importResult as unknown as Record<string, unknown> })
-                  .then(() => projectCtx.refetch()).catch(() => {});
-              } else {
-                projectCtx.refetch();
-              }
+            if (stageRun && projectId) {
+              void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: importResult as unknown as Record<string, unknown> })
+                .then(() => ctx.refetch()).catch(() => {});
             } else {
-              actor?.send({ type: 'RESEARCH_COMPLETE', result: importResult });
-              if (stageRun && projectId) {
-                void writeStageRunOutcome({
-                  projectId,
-                  stageRunId: stageRun.id,
-                  outcome: importResult as unknown as Record<string, unknown>,
-                }).catch(() => {});
-              }
+              ctx.refetch();
             }
           }}
         />
