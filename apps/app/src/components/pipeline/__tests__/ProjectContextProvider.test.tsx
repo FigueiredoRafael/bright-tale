@@ -357,3 +357,100 @@ describe('useProjectContext — outside provider', () => {
     spy.mockRestore();
   });
 });
+
+// ── Slice 14.4: StandaloneProjectContextProvider + signalStageComplete ─────────
+
+import { StandaloneProjectContextProvider } from '../ProjectContextProvider';
+
+function StandaloneConsumer({
+  onSignal,
+}: {
+  onSignal?: (stage: string, result: Record<string, unknown>) => void;
+}) {
+  const { context, signalStageComplete, isLoading, error } = useProjectContext();
+  if (isLoading) return <div data-testid="loading">loading</div>;
+  if (error) return <div data-testid="ctx-error">{error.message}</div>;
+  return (
+    <div>
+      <div data-testid="ctx-projectId">{context.projectId}</div>
+      <div data-testid="ctx-channelId">{context.channelId ?? 'null'}</div>
+      <div data-testid="ctx-mode">{context.mode ?? 'null'}</div>
+      <div data-testid="ctx-brainstorm-ideaId">{context.stageResults.brainstorm?.ideaId ?? 'none'}</div>
+      <button
+        data-testid="btn-signal"
+        onClick={() => {
+          signalStageComplete('brainstorm', { ideaId: 'idea-42', ideaTitle: 'My Idea', ideaVerdict: 'viable', ideaCoreTension: 'tension' });
+          onSignal?.('brainstorm', { ideaId: 'idea-42' });
+        }}
+      />
+    </div>
+  );
+}
+
+describe('StandaloneProjectContextProvider — Slice 14.4', () => {
+  it('renders without server fetch (isLoading=false immediately)', () => {
+    render(
+      <StandaloneProjectContextProvider channelId="ch-standalone" projectId="proj-standalone">
+        <StandaloneConsumer />
+      </StandaloneProjectContextProvider>,
+    );
+    // Should NOT show loading
+    expect(screen.queryByTestId('loading')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ctx-projectId').textContent).toBe('proj-standalone');
+    expect(screen.getByTestId('ctx-channelId').textContent).toBe('ch-standalone');
+  });
+
+  it('seeds initialStageResults into context.stageResults', () => {
+    const initialStageResults = {
+      brainstorm: {
+        ideaId: 'idea-seed',
+        ideaTitle: 'Seeded Idea',
+        ideaVerdict: 'viable',
+        ideaCoreTension: 'tension',
+        completedAt: '2026-01-01T00:00:00Z',
+      },
+    };
+    render(
+      <StandaloneProjectContextProvider initialStageResults={initialStageResults}>
+        <StandaloneConsumer />
+      </StandaloneProjectContextProvider>,
+    );
+    expect(screen.getByTestId('ctx-brainstorm-ideaId').textContent).toBe('idea-seed');
+  });
+
+  it('signalStageComplete updates context.stageResults.brainstorm', async () => {
+    render(
+      <StandaloneProjectContextProvider>
+        <StandaloneConsumer />
+      </StandaloneProjectContextProvider>,
+    );
+    expect(screen.getByTestId('ctx-brainstorm-ideaId').textContent).toBe('none');
+    act(() => { screen.getByTestId('btn-signal').click(); });
+    await waitFor(() =>
+      expect(screen.getByTestId('ctx-brainstorm-ideaId').textContent).toBe('idea-42'),
+    );
+  });
+
+  it('signalStageComplete calls onStageComplete callback', () => {
+    const onStageComplete = vi.fn();
+    render(
+      <StandaloneProjectContextProvider onStageComplete={onStageComplete}>
+        <StandaloneConsumer />
+      </StandaloneProjectContextProvider>,
+    );
+    act(() => { screen.getByTestId('btn-signal').click(); });
+    expect(onStageComplete).toHaveBeenCalledWith(
+      'brainstorm',
+      expect.objectContaining({ ideaId: 'idea-42' }),
+    );
+  });
+
+  it('exposes mode from props', () => {
+    render(
+      <StandaloneProjectContextProvider mode="supervised">
+        <StandaloneConsumer />
+      </StandaloneProjectContextProvider>,
+    );
+    expect(screen.getByTestId('ctx-mode').textContent).toBe('supervised');
+  });
+});
