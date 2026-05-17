@@ -1005,6 +1005,10 @@ export function ResearchEngine({
           <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
             Attempt history ({stageRun.allAttempts.length} attempts)
           </p>
+          {/* T9.F172: disclose when server capped allAttempts[] at 20 */}
+          {stageRun.hasMoreAttempts === true && (
+            <p className="text-xs text-muted-foreground">Older attempts truncated</p>
+          )}
           <Tabs
             value={selectedAttemptId ?? stageRun.id}
             onValueChange={setSelectedAttemptId}

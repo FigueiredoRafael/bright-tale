@@ -545,6 +545,8 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
           }
         }
         // Sort each group ascending by attempt_no for deterministic tab order.
+        // T9.F172: cap each group at the last 20 attempts to prevent unbounded payload growth.
+        const ATTEMPTS_CAP = 20;
         for (const group of attemptsByKey.values()) {
           group.sort((a, b) => a.attemptNo - b.attemptNo);
         }
@@ -558,8 +560,11 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
           if (seen.has(key)) continue;
           seen.add(key);
           const sr = rowToStageRun(row);
-          // Attach the full attempt history (T9.F152).
-          sr.allAttempts = attemptsByKey.get(key) ?? [];
+          // Attach the attempt history (T9.F152), capped at last 20 (T9.F172).
+          const group = attemptsByKey.get(key) ?? [];
+          const hasMoreAttempts = group.length > ATTEMPTS_CAP;
+          sr.allAttempts = hasMoreAttempts ? group.slice(-ATTEMPTS_CAP) : group;
+          sr.hasMoreAttempts = hasMoreAttempts;
           latest.push(sr);
         }
 

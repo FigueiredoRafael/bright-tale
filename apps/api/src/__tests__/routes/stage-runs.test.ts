@@ -880,3 +880,113 @@ describe('POST /projects/:projectId/stage-runs — publish_target_id (T9.F156)',
     expect(callArgs).toHaveLength(4);
   });
 });
+
+// ─── T9.F172 — allAttempts[] cap at 20 ───────────────────────────────────────
+
+describe('GET /projects/:projectId/stages — allAttempts cap (T9.F172)', () => {
+  /**
+   * Build a minimal stage_run DB row for (stage='research', trackId=null)
+   * with the given attemptNo. created_at is set in descending order so the
+   * route's "latest first" ordering puts the highest attemptNo first.
+   */
+  function makeResearchRow(attemptNo: number): Record<string, unknown> {
+    // Descending created_at: attempt 21 is the newest, attempt 1 is the oldest.
+    const ts = new Date(2026, 0, 1, 0, attemptNo, 0).toISOString();
+    return {
+      id: `sr-res-${attemptNo}`,
+      project_id: PROJECT_ID,
+      stage: 'research',
+      status: 'completed',
+      awaiting_reason: null,
+      payload_ref: null,
+      attempt_no: attemptNo,
+      input_json: null,
+      error_message: null,
+      started_at: ts,
+      finished_at: ts,
+      track_id: null,
+      publish_target_id: null,
+      outcome_json: null,
+      created_at: ts,
+      updated_at: ts,
+    };
+  }
+
+  it('caps allAttempts at 20 and sets hasMoreAttempts=true when there are 21 rows', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { mode: 'manual', paused: false },
+      error: null,
+    });
+    // 21 rows — server returns them newest-first as Supabase order(created_at,desc) would
+    const rows = Array.from({ length: 21 }, (_, i) => makeResearchRow(21 - i));
+    sbChain.order = vi.fn()
+      .mockResolvedValueOnce({ data: rows, error: null }) // stage_runs
+      .mockResolvedValueOnce({ data: [], error: null });  // tracks
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${PROJECT_ID}/stages`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const { data, error } = res.json();
+    expect(error).toBeNull();
+    expect(data.stageRuns).toHaveLength(1);
+
+    const research = data.stageRuns[0];
+    expect(research.stage).toBe('research');
+    // Cap enforced
+    expect(research.allAttempts).toHaveLength(20);
+    expect(research.hasMoreAttempts).toBe(true);
+    // The 20 kept attempts are the highest 20 (2–21), ordered ASC by attemptNo
+    expect(research.allAttempts[0].attemptNo).toBe(2);
+    expect(research.allAttempts[19].attemptNo).toBe(21);
+  });
+
+  it('keeps all attempts and sets hasMoreAttempts=false when there are exactly 20 rows', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { mode: 'manual', paused: false },
+      error: null,
+    });
+    const rows = Array.from({ length: 20 }, (_, i) => makeResearchRow(20 - i));
+    sbChain.order = vi.fn()
+      .mockResolvedValueOnce({ data: rows, error: null }) // stage_runs
+      .mockResolvedValueOnce({ data: [], error: null });  // tracks
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${PROJECT_ID}/stages`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const { data } = res.json();
+    const research = data.stageRuns[0];
+    expect(research.allAttempts).toHaveLength(20);
+    expect(research.hasMoreAttempts).toBe(false);
+  });
+
+  it('keeps all attempts and sets hasMoreAttempts=false when there are fewer than 20 rows', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { mode: 'manual', paused: false },
+      error: null,
+    });
+    const rows = Array.from({ length: 3 }, (_, i) => makeResearchRow(3 - i));
+    sbChain.order = vi.fn()
+      .mockResolvedValueOnce({ data: rows, error: null }) // stage_runs
+      .mockResolvedValueOnce({ data: [], error: null });  // tracks
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${PROJECT_ID}/stages`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const { data } = res.json();
+    const research = data.stageRuns[0];
+    expect(research.allAttempts).toHaveLength(3);
+    expect(research.hasMoreAttempts).toBe(false);
+  });
+});
