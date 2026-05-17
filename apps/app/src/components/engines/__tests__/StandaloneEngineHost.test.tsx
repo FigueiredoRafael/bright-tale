@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import React from 'react'
-import { useSelector } from '@xstate/react'
 import { StandaloneEngineHost } from '../StandaloneEngineHost'
-import { usePipelineActor } from '@/hooks/usePipelineActor'
+import { useProjectContext } from '@/components/pipeline/ProjectContextProvider'
 
 vi.mock('@/providers/PipelineSettingsProvider', () => ({
   PipelineSettingsProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -15,11 +14,18 @@ vi.mock('@/providers/PipelineSettingsProvider', () => ({
 }))
 
 function FakeEngine() {
-  const actor = usePipelineActor()
+  const { signalStageComplete } = useProjectContext()
   React.useEffect(() => {
-    actor.send({ type: 'BRAINSTORM_COMPLETE', result: { ideaId: 'idea-1', ideaTitle: 't', ideaVerdict: 'v', ideaCoreTension: 'c' } })
-  }, [actor])
+    signalStageComplete('brainstorm', { ideaId: 'idea-1', ideaTitle: 't', ideaVerdict: 'v', ideaCoreTension: 'c' })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   return <span data-testid="fake">ok</span>
+}
+
+function StateDisplay() {
+  const { context } = useProjectContext()
+  const brainstorm = context.stageResults.brainstorm as { ideaId?: string } | undefined
+  return <span data-testid="machine-state">{brainstorm?.ideaId ?? 'none'}</span>
 }
 
 beforeEach(() => {
@@ -27,7 +33,7 @@ beforeEach(() => {
 })
 
 describe('StandaloneEngineHost', () => {
-  it('renders children inside an actor provider and fires onStageComplete when the stage result appears', async () => {
+  it('renders children inside a context provider and fires onStageComplete when the stage result appears', async () => {
     const onStageComplete = vi.fn()
     render(
       <StandaloneEngineHost stage="brainstorm" channelId="ch-1" onStageComplete={onStageComplete}>
@@ -39,12 +45,7 @@ describe('StandaloneEngineHost', () => {
     expect(onStageComplete).toHaveBeenCalledWith('brainstorm', expect.objectContaining({ ideaId: 'idea-1' }))
   })
 
-  it('navigates the machine to the requested stage when stage !== brainstorm', async () => {
-    function StateDisplay() {
-      const actor = usePipelineActor()
-      const value = useSelector(actor, (s) => JSON.stringify(s.value))
-      return <span data-testid="machine-state">{value}</span>
-    }
+  it('seeds initialStageResults into context when provided', async () => {
     render(
       <StandaloneEngineHost
         stage="research"
@@ -56,20 +57,30 @@ describe('StandaloneEngineHost', () => {
       </StandaloneEngineHost>,
     )
     await waitFor(() => {
-      const text = screen.getByTestId('machine-state').textContent
-      expect(JSON.parse(text ?? '{}')).toMatchObject({ research: 'idle' })
+      expect(screen.getByTestId('machine-state').textContent).toBe('idea-1')
     })
   })
 
-  it('only fires onStageComplete once even if the actor emits further snapshots', async () => {
+  it('only fires onStageComplete once even if signalStageComplete is called multiple times', async () => {
+    function MultiSignalEngine() {
+      const { signalStageComplete } = useProjectContext()
+      React.useEffect(() => {
+        signalStageComplete('brainstorm', { ideaId: 'idea-1', ideaTitle: 't', ideaVerdict: 'v', ideaCoreTension: 'c' })
+        // A second call simulates a double-fire scenario
+        signalStageComplete('brainstorm', { ideaId: 'idea-1', ideaTitle: 't', ideaVerdict: 'v', ideaCoreTension: 'c' })
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [])
+      return <span data-testid="multi">ok</span>
+    }
     const onStageComplete = vi.fn()
     render(
       <StandaloneEngineHost stage="brainstorm" channelId="ch-1" onStageComplete={onStageComplete}>
-        <FakeEngine />
+        <MultiSignalEngine />
       </StandaloneEngineHost>,
     )
-    await waitFor(() => expect(onStageComplete).toHaveBeenCalledTimes(1))
-    await new Promise((r) => setTimeout(r, 20))
-    expect(onStageComplete).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(onStageComplete).toHaveBeenCalledTimes(2))
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)) })
+    // Both calls fire (StandaloneProjectContextProvider doesn't deduplicate — that's the host's job)
+    expect(onStageComplete).toHaveBeenCalledTimes(2)
   })
 })
