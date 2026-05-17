@@ -3,7 +3,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
 import { useSelector } from '@xstate/react'
 import { StandaloneEngineHost } from '../StandaloneEngineHost'
-import { usePipelineActor } from '@/hooks/usePipelineActor'
+import { PipelineActorContext } from '@/providers/PipelineActorProvider'
+import { useOptionalProjectContext } from '@/components/pipeline/ProjectContextProvider'
 
 vi.mock('@/providers/PipelineSettingsProvider', () => ({
   PipelineSettingsProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -14,12 +15,26 @@ vi.mock('@/providers/PipelineSettingsProvider', () => ({
   }),
 }))
 
+/**
+ * Engine that sends a completion event via PipelineActorContext directly.
+ * Slice 14.4: tests no longer go through PipelineActorProvider component —
+ * they read from PipelineActorContext directly, matching how engines work.
+ */
 function FakeEngine() {
-  const actor = usePipelineActor()
+  const actor = React.useContext(PipelineActorContext)
   React.useEffect(() => {
-    actor.send({ type: 'BRAINSTORM_COMPLETE', result: { ideaId: 'idea-1', ideaTitle: 't', ideaVerdict: 'v', ideaCoreTension: 'c' } })
+    actor?.send({ type: 'BRAINSTORM_COMPLETE', result: { ideaId: 'idea-1', ideaTitle: 't', ideaVerdict: 'v', ideaCoreTension: 'c' } })
   }, [actor])
   return <span data-testid="fake">ok</span>
+}
+
+/**
+ * Detects whether a ProjectContextProvider is present in the tree.
+ * Standalone engines should NOT have one when no real projectId is supplied.
+ */
+function ProjectContextPresenceDetector() {
+  const ctx = useOptionalProjectContext()
+  return <span data-testid="has-project-ctx">{ctx ? 'yes' : 'no'}</span>
 }
 
 beforeEach(() => {
@@ -27,7 +42,7 @@ beforeEach(() => {
 })
 
 describe('StandaloneEngineHost', () => {
-  it('renders children inside an actor provider and fires onStageComplete when the stage result appears', async () => {
+  it('renders children inside an actor context and fires onStageComplete when the stage result appears', async () => {
     const onStageComplete = vi.fn()
     render(
       <StandaloneEngineHost stage="brainstorm" channelId="ch-1" onStageComplete={onStageComplete}>
@@ -41,8 +56,8 @@ describe('StandaloneEngineHost', () => {
 
   it('navigates the machine to the requested stage when stage !== brainstorm', async () => {
     function StateDisplay() {
-      const actor = usePipelineActor()
-      const value = useSelector(actor, (s) => JSON.stringify(s.value))
+      const actor = React.useContext(PipelineActorContext)
+      const value = useSelector(actor ?? undefined, (s) => JSON.stringify(s?.value))
       return <span data-testid="machine-state">{value}</span>
     }
     render(
@@ -71,5 +86,27 @@ describe('StandaloneEngineHost', () => {
     await waitFor(() => expect(onStageComplete).toHaveBeenCalledTimes(1))
     await new Promise((r) => setTimeout(r, 20))
     expect(onStageComplete).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not mount ProjectContextProvider for synthetic standalone projects (no real projectId)', async () => {
+    render(
+      <StandaloneEngineHost stage="brainstorm" channelId="ch-1" onStageComplete={() => {}}>
+        <ProjectContextPresenceDetector />
+      </StandaloneEngineHost>,
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId('has-project-ctx').textContent).toBe('no')
+    })
+  })
+
+  it('does not mount ProjectContextProvider when projectId is absent', async () => {
+    render(
+      <StandaloneEngineHost stage="research" channelId="ch-1" onStageComplete={() => {}}>
+        <ProjectContextPresenceDetector />
+      </StandaloneEngineHost>,
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId('has-project-ctx').textContent).toBe('no')
+    })
   })
 })

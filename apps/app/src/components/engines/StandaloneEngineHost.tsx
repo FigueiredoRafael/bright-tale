@@ -5,7 +5,7 @@ import { useMachine } from '@xstate/react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Loader2 } from 'lucide-react'
 import { pipelineMachine } from '@/lib/pipeline/machine'
-import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
+import { PipelineActorContext } from '@/providers/PipelineActorProvider'
 import { ProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
 import {
   PipelineSettingsProvider,
@@ -168,7 +168,7 @@ function ActorScope({
   // fetch by not mounting the provider (those engine instances don't need it).
   const isRealProjectId = Boolean(projectId && !projectId.startsWith('standalone-'));
 
-  const inner = <PipelineActorProvider value={actorRef}>{children}</PipelineActorProvider>;
+  const inner = <PipelineActorContext.Provider value={actorRef}>{children}</PipelineActorContext.Provider>;
 
   if (isRealProjectId && projectId) {
     return <ProjectContextProvider projectId={projectId}>{inner}</ProjectContextProvider>;
