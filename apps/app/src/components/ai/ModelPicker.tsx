@@ -63,14 +63,11 @@ interface Props {
 export function ModelPicker({ provider, model, recommended, onProviderChange, onModelChange, providers }: Props) {
     const { providers: activeProviders } = useActiveProviders();
 
-    // Filter the candidate list against DB-active providers.
-    // `manual` and `ollama` bypass the filter: manual is an admin-only mode,
-    // ollama is local and needs no DB entry.
-    const ALWAYS_SHOW = new Set<ProviderId>(['manual', 'ollama']);
+    // Only show providers that are is_active=true in the DB.
+    // Falls back to FALLBACK_PROVIDERS when the fetch hasn't resolved yet
+    // (activeProviders starts as the full list from the lazy initializer).
     const candidates = providers ?? FALLBACK_PROVIDERS;
-    const visibleProviders = candidates.filter(
-        (p) => ALWAYS_SHOW.has(p) || activeProviders.includes(p),
-    );
+    const visibleProviders = candidates.filter((p) => activeProviders.includes(p));
     const baseModels = MODELS_BY_PROVIDER[provider];
 
     // If the admin-recommended model for this provider isn't in the hardcoded list,

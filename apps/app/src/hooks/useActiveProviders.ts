@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import type { ProviderId } from '@/components/ai/ModelPicker';
 
-const CLOUD_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic'];
-const DEFAULT_PROVIDERS: ProviderId[] = [...CLOUD_PROVIDERS, 'ollama'];
+const ALL_KNOWN: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
+const DEFAULT_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama'];
 
 // Module-level cache shared across all hook instances (TTL: 60s)
 let _cache: { providers: ProviderId[]; fetchedAt: number } | null = null;
@@ -25,26 +25,23 @@ export function useActiveProviders(): { providers: ProviderId[]; ready: boolean 
       .then(({ data }: { data: { isActive: boolean; provider: string }[] | null }) => {
         const now = Date.now();
         if (!Array.isArray(data) || data.length === 0) {
+          // Nothing configured yet → show all as fallback
           _cache = { providers: DEFAULT_PROVIDERS, fetchedAt: now };
           setProviders(DEFAULT_PROVIDERS);
         } else {
-          const activeCloud = data
-            .filter((p) => p.isActive && CLOUD_PROVIDERS.includes(p.provider as ProviderId))
+          // Respect DB faithfully — only show what's is_active=true
+          const active = data
+            .filter((p) => p.isActive && ALL_KNOWN.includes(p.provider as ProviderId))
             .map((p) => p.provider as ProviderId);
 
-          // Ollama is local — always include alongside any active cloud provider
-          // Fall back to all providers when nothing is configured
-          const result: ProviderId[] = activeCloud.length > 0
-            ? [...activeCloud, 'ollama']
-            : DEFAULT_PROVIDERS;
-
+          const result = active.length > 0 ? active : DEFAULT_PROVIDERS;
           _cache = { providers: result, fetchedAt: now };
           setProviders(result);
         }
         setReady(true);
       })
       .catch(() => {
-        // On error keep showing all providers (graceful degradation)
+        // On error keep showing current (graceful degradation)
         setReady(true);
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
