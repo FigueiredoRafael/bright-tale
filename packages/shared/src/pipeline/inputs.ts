@@ -129,8 +129,15 @@ export interface StageRun {
   /**
    * Full attempt history for this stage, ordered by attempt_no ASC (T9.F152).
    * Populated by GET /api/projects/:id/stages; not present on Realtime upserts.
+   * Capped at 20 entries (T9.F172); check hasMoreAttempts for overflow.
    */
   allAttempts?: StageRunAttempt[];
+  /**
+   * True when the server capped allAttempts[] at 20 because there are more
+   * historical attempts. Undefined / false means all attempts are included.
+   * Server always sets an explicit boolean on snapshot responses (T9.F172).
+   */
+  hasMoreAttempts?: boolean;
 }
 
 // ─── Per-Stage input schemas ────────────────────────────────────────────────
