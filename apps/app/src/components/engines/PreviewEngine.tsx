@@ -19,7 +19,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSelector } from '@xstate/react';
-import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useOptionalPipelineActor } from '@/hooks/usePipelineActor';
+import { useOptionalProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { ContextBanner } from './ContextBanner';
@@ -190,20 +191,31 @@ interface PreviewEngineProps {
 }
 
 export function PreviewEngine({ stageRun }: PreviewEngineProps = {}) {
-  const actor = usePipelineActor();
+  const projectCtx = useOptionalProjectContext();
+  const actor = useOptionalPipelineActor();
   const abortController = usePipelineAbort();
-  const channelId = useSelector(actor, (s) => s.context.channelId);
-  const projectId = useSelector(actor, (s) => s.context.projectId);
-  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
-  const researchResult  = useSelector(actor, (s) => s.context.stageResults.research);
-  const draftResult     = useSelector(actor, (s) => s.context.stageResults.draft);
-  const reviewResult    = useSelector(actor, (s) => s.context.stageResults.review);
-  const assetsResult    = useSelector(actor, (s) => s.context.stageResults.assets);
+  const actorChannelId = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { channelId?: string | null } } | undefined)?.context?.channelId);
+  const actorProjectId = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { projectId?: string } } | undefined)?.context?.projectId);
+  const actorBrainstormResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { brainstorm?: Record<string, unknown> } } } | undefined)?.context?.stageResults?.brainstorm);
+  const actorResearchResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { research?: Record<string, unknown> } } } | undefined)?.context?.stageResults?.research);
+  const actorDraftResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { draft?: Record<string, unknown> } } } | undefined)?.context?.stageResults?.draft);
+  const actorReviewResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { review?: Record<string, unknown> } } } | undefined)?.context?.stageResults?.review);
+  const actorAssetsResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { assets?: Record<string, unknown> } } } | undefined)?.context?.stageResults?.assets);
+  const actorAutoMode = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { mode?: string } } | undefined)?.context?.mode);
+  const actorPreviewEnabled = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { autopilotConfig?: { preview?: { enabled?: boolean } } } } | undefined)?.context?.autopilotConfig?.preview?.enabled);
+
+  const channelId = projectCtx ? projectCtx.context.channelId : actorChannelId;
+  const projectId = projectCtx ? projectCtx.context.projectId : actorProjectId;
+  const brainstormResult = (projectCtx ? projectCtx.context.stageResults?.brainstorm : actorBrainstormResult) as { ideaId?: string; ideaTitle?: string; ideaVerdict?: string; ideaCoreTension?: string; brainstormSessionId?: string } | undefined;
+  const researchResult = (projectCtx ? projectCtx.context.stageResults?.research : actorResearchResult) as { researchSessionId?: string; researchLevel?: string; primaryKeyword?: string; secondaryKeywords?: string[]; searchIntent?: string } | undefined;
+  const draftResult = (projectCtx ? projectCtx.context.stageResults?.draft : actorDraftResult) as { draftId?: string; draftTitle?: string; personaId?: string; personaName?: string; personaSlug?: string; personaWpAuthorId?: number | null } | undefined;
+  const reviewResult = (projectCtx ? projectCtx.context.stageResults?.review : actorReviewResult) as { score?: number; verdict?: string; feedbackJson?: unknown } | undefined;
+  const assetsResult = (projectCtx ? projectCtx.context.stageResults?.assets : actorAssetsResult) as { assetIds?: string[]; featuredImageUrl?: string } | undefined;
   const draftId = draftResult?.draftId ?? '';
 
   // Overview-mode / autopilot selectors
-  const overviewMode = useSelector(actor, (s) => s.context.mode === 'overview');
-  const previewEnabled = useSelector(actor, (s) => s.context.autopilotConfig?.preview?.enabled);
+  const overviewMode = projectCtx ? projectCtx.context.mode === 'overview' : actorAutoMode === 'overview';
+  const previewEnabled = projectCtx ? (projectCtx.context.autopilotConfig as { preview?: { enabled?: boolean } } | null | undefined)?.preview?.enabled : actorPreviewEnabled;
 
   const trackerContext: PipelineContext = {
     channelId: channelId ?? undefined,
@@ -231,7 +243,7 @@ export function PreviewEngine({ stageRun }: PreviewEngineProps = {}) {
   };
 
   function navigate(toStage?: PipelineStage) {
-    actor.send({ type: 'NAVIGATE', toStage: toStage ?? 'assets' });
+    actor?.send({ type: 'NAVIGATE', toStage: toStage ?? 'assets' });
   }
 
   // Fetch state
@@ -389,14 +401,22 @@ export function PreviewEngine({ stageRun }: PreviewEngineProps = {}) {
     initialBehaviorRef.current = true;
 
     if (previewEnabled === true) {
-      actor.send({ type: 'STAGE_PROGRESS', stage: 'preview', partial: { status: 'Awaiting your review' } });
-      actor.send({ type: 'PREVIEW_GATE_TRIGGERED' });
+      if (projectCtx) {
+        projectCtx.setStageStatus('preview', { status: 'Awaiting your review' });
+      } else {
+        actor?.send({ type: 'STAGE_PROGRESS', stage: 'preview', partial: { status: 'Awaiting your review' } });
+      }
+      actor?.send({ type: 'PREVIEW_GATE_TRIGGERED' });
       return;
     }
 
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'preview', partial: { status: 'Composing preview' } });
+    if (projectCtx) {
+      projectCtx.setStageStatus('preview', { status: 'Composing preview' });
+    } else {
+      actor?.send({ type: 'STAGE_PROGRESS', stage: 'preview', partial: { status: 'Composing preview' } });
+    }
     // Auto-derive path: build a full PreviewResult from feedback + loaded assets.
-    const feedbackJson = reviewResult?.feedbackJson ?? null;
+    const feedbackJson = (reviewResult?.feedbackJson ?? null) as Record<string, unknown> | null;
     const derivedMeta = derivePreview(feedbackJson, assets);
 
     // Build imageMap and altTexts from auto-assigned assets (role → id).
@@ -426,15 +446,15 @@ export function PreviewEngine({ stageRun }: PreviewEngineProps = {}) {
     };
 
     // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
-    actor.send({ type: 'PREVIEW_COMPLETE', result });
+    actor?.send({ type: 'PREVIEW_COMPLETE', result });
     if (stageRun && projectId) {
       void writeStageRunOutcome({
         projectId,
         stageRunId: stageRun.id,
         outcome: result as unknown as Record<string, unknown>,
-      }).catch(() => {});
+      }).then(() => projectCtx?.refetch()).catch(() => {});
     }
-  }, [overviewMode, previewEnabled, busy, draft, actor, assets, reviewResult, draftResult, stageRun, projectId]);
+  }, [overviewMode, previewEnabled, busy, draft, actor, assets, reviewResult, draftResult, stageRun, projectId, projectCtx]);
 
   // Build asset map for quick lookup
   const assetMap = useMemo(() => {
@@ -512,13 +532,13 @@ export function PreviewEngine({ stageRun }: PreviewEngineProps = {}) {
     });
 
     // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
-    actor.send({ type: 'PREVIEW_COMPLETE', result });
+    actor?.send({ type: 'PREVIEW_COMPLETE', result });
     if (stageRun && projectId) {
       void writeStageRunOutcome({
         projectId,
         stageRunId: stageRun.id,
         outcome: result as unknown as Record<string, unknown>,
-      }).catch(() => {});
+      }).then(() => projectCtx?.refetch()).catch(() => {});
     }
   };
 
