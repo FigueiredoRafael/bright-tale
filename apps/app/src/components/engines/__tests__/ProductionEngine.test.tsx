@@ -2,30 +2,33 @@ import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { ProductionEngine } from '../ProductionEngine';
 
-vi.mock('@/hooks/usePipelineActor', () => ({
-  usePipelineActor: () => ({
-    send: vi.fn(),
-    getSnapshot: () => ({
-      context: {
-        channelId: 'c1',
-        projectId: 'p1',
-        stageResults: {
-          brainstorm: {},
-          research: {},
-          draft: { canonicalCoreReady: true },
-        },
-        autopilotConfig: { draft: {} },
-        mode: 'overview',
-        paused: false,
-        creditSettings: {
-          costBlog: 1,
-          costVideo: 2,
-          costShorts: 1,
-          costPodcast: 2,
-        },
+const mockActor = {
+  send: vi.fn(),
+  getSnapshot: () => ({
+    context: {
+      channelId: 'c1',
+      projectId: 'p1',
+      stageResults: {
+        brainstorm: {},
+        research: {},
+        draft: { canonicalCoreReady: true },
       },
-    }),
+      autopilotConfig: { draft: {} },
+      mode: 'overview',
+      paused: false,
+      creditSettings: {
+        costBlog: 1,
+        costVideo: 2,
+        costShorts: 1,
+        costPodcast: 2,
+      },
+    },
   }),
+};
+
+vi.mock('@/hooks/usePipelineActor', () => ({
+  usePipelineActor: () => mockActor,
+  useOptionalPipelineActor: () => mockActor,
 }));
 
 vi.mock('@xstate/react', () => ({

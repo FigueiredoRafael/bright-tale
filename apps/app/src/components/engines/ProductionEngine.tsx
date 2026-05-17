@@ -22,9 +22,11 @@ import { friendlyAiError } from '@/lib/ai/error-message';
 import { useUpgrade } from '@/components/billing/UpgradeProvider';
 import VideoStyleSelector from '@/components/production/VideoStyleSelector';
 import { useSelector } from '@xstate/react';
-import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useOptionalPipelineActor } from '@/hooks/usePipelineActor';
+import { useOptionalProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import type { VideoStyleConfig } from '@brighttale/shared/schemas/videoStyle';
+import type { AutopilotConfig } from '@brighttale/shared';
 import type { DraftResult } from './types';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 
@@ -40,16 +42,24 @@ interface ProductionEngineProps {
 const DRAFT_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
 
 export function ProductionEngine({ projectId: projectIdProp, trackId, medium }: ProductionEngineProps) {
-  const actor = usePipelineActor();
+  const projectCtx = useOptionalProjectContext();
+  const actor = useOptionalPipelineActor();
   const abortController = usePipelineAbort();
 
-  const channelId = useSelector(actor, (s) => s.context.channelId);
-  const ctxProjectId = useSelector(actor, (s) => s.context.projectId);
+  const actorChannelId = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { channelId?: string | null } } | undefined)?.context?.channelId);
+  const actorProjectId = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { projectId?: string } } | undefined)?.context?.projectId);
+  const actorDraftResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { draft?: unknown } } } | undefined)?.context?.stageResults?.draft);
+  const actorCreditSettings = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { creditSettings?: unknown } } | undefined)?.context?.creditSettings);
+  const actorAutopilotConfig = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { autopilotConfig?: AutopilotConfig | null } } | undefined)?.context?.autopilotConfig);
+  const actorAutoMode = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { mode?: string } } | undefined)?.context?.mode);
+
+  const channelId = projectCtx ? projectCtx.context.channelId : actorChannelId;
+  const ctxProjectId = projectCtx ? projectCtx.context.projectId : actorProjectId;
   const projectId = projectIdProp ?? ctxProjectId;
-  const draftResult = useSelector(actor, (s) => s.context.stageResults.draft);
-  const creditSettings = useSelector(actor, (s) => s.context.creditSettings);
-  const autopilotConfig = useSelector(actor, (s) => s.context.autopilotConfig);
-  const autoMode = useSelector(actor, (s) => s.context.mode);
+  const draftResult = (projectCtx ? projectCtx.context.stageResults.draft : actorDraftResult) as { draftId?: string } | undefined;
+  const creditSettings = (projectCtx ? projectCtx.context.creditSettings : actorCreditSettings) as { costBlog?: number; costVideo?: number; costShorts?: number; costPodcast?: number } | undefined;
+  const autopilotConfig: AutopilotConfig | null | undefined = projectCtx ? projectCtx.context.autopilotConfig : actorAutopilotConfig;
+  const autoMode = projectCtx ? projectCtx.context.mode : actorAutoMode;
   const overviewMode = autoMode === 'overview';
 
   const trackerContext = {
@@ -98,11 +108,11 @@ export function ProductionEngine({ projectId: projectIdProp, trackId, medium }: 
 
   const [derivingShorts, setDerivingShorts] = useState(false);
 
-  const TYPES: { id: Medium; label: string; icon: typeof FileText; cost: number }[] = [
-    { id: 'blog', label: 'Blog', icon: FileText, cost: creditSettings.costBlog },
-    { id: 'video', label: 'Video', icon: Video, cost: creditSettings.costVideo },
-    { id: 'shorts', label: 'Shorts', icon: Zap, cost: creditSettings.costShorts },
-    { id: 'podcast', label: 'Podcast', icon: Mic, cost: creditSettings.costPodcast },
+  const TYPES: { id: Medium; label: string; icon: typeof FileText; cost: number | undefined }[] = [
+    { id: 'blog', label: 'Blog', icon: FileText, cost: creditSettings?.costBlog },
+    { id: 'video', label: 'Video', icon: Video, cost: creditSettings?.costVideo },
+    { id: 'shorts', label: 'Shorts', icon: Zap, cost: creditSettings?.costShorts },
+    { id: 'podcast', label: 'Podcast', icon: Mic, cost: creditSettings?.costPodcast },
   ];
 
   async function runStep(label: string, fn: () => Promise<Response>) {
@@ -129,7 +139,11 @@ export function ProductionEngine({ projectId: projectIdProp, trackId, medium }: 
   async function handleProduce() {
     if (busy || !draftId) return;
 
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { status: 'Writing draft' } });
+    if (projectCtx) {
+      projectCtx.setStageStatus('draft', { status: 'Writing draft' });
+    } else {
+      actor?.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { status: 'Writing draft' } });
+    }
     const productionParams: Record<string, unknown> = {};
     if (medium === 'blog') productionParams.target_word_count = targetWords;
     if (medium === 'video' || medium === 'podcast') productionParams.target_duration_minutes = targetMinutes;
@@ -277,8 +291,13 @@ export function ProductionEngine({ projectId: projectIdProp, trackId, medium }: 
       );
       setPhase('done');
       if (!overviewMode) toast.success(`${manualState.phase.charAt(0).toUpperCase() + manualState.phase.slice(1)} content submitted`);
+      const submittedDraftId = manualState.draftId;
       setManualState(null);
-      actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: manualState.draftId } });
+      if (projectCtx) {
+        projectCtx.setStageStatus('draft', { draftId: submittedDraftId });
+      } else {
+        actor?.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: submittedDraftId } });
+      }
     } catch (err) {
       toast.error('Submit failed', { description: err instanceof Error ? err.message : 'Unknown error' });
     } finally {
@@ -674,7 +693,7 @@ export function ProductionEngine({ projectId: projectIdProp, trackId, medium }: 
                   draftTitle: '',
                   draftContent: producedContent,
                 };
-                actor.send({ type: 'DRAFT_COMPLETE', result });
+                actor?.send({ type: 'DRAFT_COMPLETE', result });
               }}>
                 <Check className="h-4 w-4 mr-2" /> Done <ArrowRight className="h-4 w-4 ml-2" />
               </Button>
