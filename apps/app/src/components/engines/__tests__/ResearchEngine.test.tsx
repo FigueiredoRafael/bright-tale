@@ -8,6 +8,7 @@ import { ResearchEngine } from '../ResearchEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
 import type { AutopilotConfig } from '@brighttale/shared'
 import type { StageRun } from '@brighttale/shared/pipeline/inputs'
+import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger'
 
 const mockWriteStageRunOutcome = vi.fn(async () => ({ ok: true }))
 vi.mock('@/lib/api/stageRuns', () => ({
@@ -22,6 +23,12 @@ vi.mock('@/hooks/use-analytics', () => ({
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}))
+
+// Slice 14.3: useAutoPilotTrigger no longer reads from xstate actor.
+// Tests that relied on the actor path now mock the hook to call fire() directly.
+vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
+  useAutoPilotTrigger: vi.fn(),
 }))
 
 // 5 legacy cards returned by the API (sync path: cards in body, no findings)
@@ -146,10 +153,14 @@ describe('ResearchEngine', () => {
   })
 
   it('auto-approves all legacy cards and dispatches RESEARCH_COMPLETE when mode === "overview"', async () => {
-    // Mock: POST /api/research-sessions returns 5 cards (legacy sync path, no findings key).
-    // The useAutoPilotTrigger fires handleRun because mode=overview, topic is seeded,
-    // and recommended provider resolves. handleRun sets cards (no findings), then
-    // the cards auto-approve effect dispatches RESEARCH_COMPLETE with approvedCardsCount=5.
+    // Slice 14.3: useAutoPilotTrigger no longer reads from xstate actor.
+    // We mock it to call fire() in a useEffect so it runs after mount (not during
+    // render), avoiding the "Too many re-renders" infinite loop.
+    vi.mocked(useAutoPilotTrigger).mockImplementation(({ fire }) => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      React.useEffect(() => { void fire() }, [])
+    })
+
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation(async (url: string) => {
@@ -481,6 +492,14 @@ describe('ResearchEngine — stageRun binding (T3.5)', () => {
   })
 
   it('writes outcome via stage-run-writer when stageRun prop is provided and research auto-completes', async () => {
+    // Slice 14.3: useAutoPilotTrigger no longer reads from xstate actor.
+    // We mock it to call fire() in a useEffect so it runs after mount (not during
+    // render), avoiding the "Too many re-renders" infinite loop.
+    vi.mocked(useAutoPilotTrigger).mockImplementation(({ fire }) => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      React.useEffect(() => { void fire() }, [])
+    })
+
     const actor = createActor(pipelineMachine, {
       input: {
         projectId: 'proj-1',

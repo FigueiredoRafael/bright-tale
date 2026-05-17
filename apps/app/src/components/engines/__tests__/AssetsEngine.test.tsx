@@ -8,6 +8,11 @@ import { AssetsEngine } from '../AssetsEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
 import type { AutopilotConfig } from '@brighttale/shared'
 import type { StageRun } from '@brighttale/shared/pipeline/inputs'
+import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger'
+
+vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
+  useAutoPilotTrigger: vi.fn(),
+}))
 
 const mockWriteStageRunOutcome = vi.fn(async () => ({ ok: true }))
 vi.mock('@/lib/api/stageRuns', () => ({
@@ -201,6 +206,14 @@ describe("assets mode='skip' handled by machine", () => {
 
 describe('AssetsEngine STAGE_PROGRESS', () => {
   it('dispatches STAGE_PROGRESS with status=Generating images when handleGenerateBriefs fires', async () => {
+    // Slice 14.3: useAutoPilotTrigger no longer reads from xstate actor.
+    // We mock it to call fire() in a useEffect so it runs after mount (not during
+    // render), avoiding the "Too many re-renders" infinite loop.
+    vi.mocked(useAutoPilotTrigger).mockImplementation(({ fire }) => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      React.useEffect(() => { void fire() }, [])
+    })
+
     const actor = makeActor('auto_generate')
 
     const sentEvents: Array<{ type: string; stage?: string; partial?: { status?: string } }> = []
