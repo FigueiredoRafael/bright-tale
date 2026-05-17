@@ -10,3 +10,12 @@ export function usePipelineActor(): PipelineActorRef {
   }
   return actor
 }
+
+/**
+ * Returns the actor ref when inside a PipelineActorProvider, or null otherwise.
+ * Use when a hook supports both the legacy actor path and the new server-driven
+ * context path (Slice 14.1+).
+ */
+export function useOptionalPipelineActor(): PipelineActorRef | null {
+  return useContext(PipelineActorContext)
+}

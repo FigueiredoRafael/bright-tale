@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Loader2 } from 'lucide-react'
 import { pipelineMachine } from '@/lib/pipeline/machine'
 import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
+import { ProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
 import {
   PipelineSettingsProvider,
   usePipelineSettings,
@@ -161,5 +162,16 @@ function ActorScope({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actorRef, stage, projectId])
 
-  return <PipelineActorProvider value={actorRef}>{children}</PipelineActorProvider>
+  // Slice 14.1: wrap children in ProjectContextProvider so engines that read
+  // useProjectContext() (e.g. PublishEngine) work under StandaloneEngineHost.
+  // When projectId is a synthetic standalone ID or absent, we skip the server
+  // fetch by not mounting the provider (those engine instances don't need it).
+  const isRealProjectId = Boolean(projectId && !projectId.startsWith('standalone-'));
+
+  const inner = <PipelineActorProvider value={actorRef}>{children}</PipelineActorProvider>;
+
+  if (isRealProjectId && projectId) {
+    return <ProjectContextProvider projectId={projectId}>{inner}</ProjectContextProvider>;
+  }
+  return inner;
 }
