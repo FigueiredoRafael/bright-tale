@@ -132,6 +132,7 @@ export function ProvidersClient({ initialProviders }: { initialProviders: Provid
           const card = cards[p.id]
           const color = PROVIDER_COLORS[p.provider] ?? 'text-muted-foreground bg-muted border-border'
           const isManual = p.provider === 'manual'
+          const isOllama = p.provider === 'ollama'
 
           return (
             <div key={p.id} className="rounded-xl border border-border bg-card">
@@ -196,8 +197,8 @@ export function ProvidersClient({ initialProviders }: { initialProviders: Provid
                   </button>
                 </div>
 
-                {/* API Key — not shown for manual provider */}
-                {!isManual && (
+                {/* API Key — not shown for manual or ollama (local, no key needed) */}
+                {!isManual && !isOllama && (
                   <div>
                     <p className="text-sm font-medium mb-1.5">API Key</p>
                     {card.hasApiKey && !card.apiKey && (
