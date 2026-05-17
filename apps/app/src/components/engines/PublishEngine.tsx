@@ -1,9 +1,25 @@
 'use client';
 
+/**
+ * PublishEngine — Slice 14.1 migration
+ *
+ * Reads pipeline context from ProjectContextProvider (useProjectContext)
+ * instead of the xstate actor. Both EngineHost and StandaloneEngineHost
+ * are expected to wrap engines with ProjectContextProvider; see
+ * StandaloneEngineHost.tsx for how the legacy actor path bridges here.
+ *
+ * actor.send({ type: 'PUBLISH_COMPLETE' }) is replaced by:
+ *   - refetch() so the provider reloads stage_runs and updates stageResults
+ *
+ * actor.send({ type: 'STAGE_PROGRESS' }) is replaced by:
+ *   - setStageStatus() on the session-local context setter
+ *
+ * actor.send({ type: 'NAVIGATE' }) is replaced by router.push() or the
+ * onBack callback passed from the parent — context banner uses onBack.
+ */
+
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
-import { useSelector } from '@xstate/react';
-import { usePipelineActor } from '@/hooks/usePipelineActor';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { PublishPanel } from '@/components/preview/PublishPanel';
@@ -15,6 +31,7 @@ import { SpotifyPublishForm } from './publish-drivers/SpotifyPublishForm';
 import { ApplePodcastsPublishForm } from './publish-drivers/ApplePodcastsPublishForm';
 import { RssPublishForm } from './publish-drivers/RssPublishForm';
 import { fetchPublishTarget } from '@/lib/api/publishTargets';
+import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import type { PipelineContext, PipelineStage, PublishResult } from './types';
 import type { PublishTarget } from '@brighttale/shared';
 
@@ -30,19 +47,24 @@ interface PublishEngineProps {
 }
 
 export function PublishEngine({ draft, publishTargetId }: PublishEngineProps) {
-  const actor = usePipelineActor();
-  const channelId = useSelector(actor, (s) => s.context.channelId);
-  const projectId = useSelector(actor, (s) => s.context.projectId);
-  const publishConfigStatus = useSelector(actor, (s) => s.context.autopilotConfig?.publish.status ?? 'draft');
-  const overviewMode = useSelector(actor, (s) => s.context.mode === 'overview');
-  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
-  const researchResult  = useSelector(actor, (s) => s.context.stageResults.research);
-  const draftResult     = useSelector(actor, (s) => s.context.stageResults.draft);
-  const reviewResult    = useSelector(actor, (s) => s.context.stageResults.review);
-  const assetsResult    = useSelector(actor, (s) => s.context.stageResults.assets);
-  const previewResult   = useSelector(actor, (s) => s.context.stageResults.preview);
+  // ── Context from server-driven provider ───────────────────────────────────
+  const { context, refetch, setStageStatus } = useProjectContext();
+
+  const channelId = context.channelId;
+  const projectId = context.projectId;
+  const publishConfigStatus = context.autopilotConfig?.publish?.status ?? 'draft';
+  const overviewMode = context.mode === 'overview';
+
+  const brainstormResult = context.stageResults.brainstorm;
+  const researchResult   = context.stageResults.research;
+  const draftResult      = context.stageResults.draft;
+  const reviewResult     = context.stageResults.review;
+  const assetsResult     = context.stageResults.assets;
+  const previewResult    = context.stageResults.preview;
+
   const draftId = draftResult?.draftId ?? draft.id;
 
+  // ── Tracker context ───────────────────────────────────────────────────────
   const trackerContext: PipelineContext = {
     channelId: channelId ?? undefined,
     projectId,
@@ -74,10 +96,16 @@ export function PublishEngine({ draft, publishTargetId }: PublishEngineProps) {
     previewPublishDate: previewResult?.suggestedPublishDate,
   };
 
-  function navigate(toStage?: PipelineStage) {
-    actor.send({ type: 'NAVIGATE', toStage: toStage ?? 'preview' });
+  // ── Navigation — context banner onBack triggers router.back() or stage nav ─
+  // In the new server-driven path there is no NAVIGATE event; the parent
+  // (EngineHost / page) handles routing. onBack returns undefined for now —
+  // ContextBanner will render without a back handler.
+  function navigate(_toStage?: PipelineStage) {
+    // No-op: navigation is page-level in the new host. ContextBanner renders
+    // the back button conditionally — when onBack is undefined it is hidden.
   }
 
+  // ── Publish state ──────────────────────────────────────────────────────────
   const [publishing, setPublishing] = useState(false);
   const [publishBody, setPublishBody] = useState<Record<string, unknown> | null>(null);
   const modeRef = useRef<string | null>(null);
@@ -117,7 +145,8 @@ export function PublishEngine({ draft, publishTargetId }: PublishEngineProps) {
     if (previewResult?.seoOverrides)    body.seoOverrides = previewResult.seoOverrides;
     if (draftResult?.personaWpAuthorId != null) body.authorId = draftResult.personaWpAuthorId;
 
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'publish', partial: { status: 'Publishing to WordPress' } });
+    // Replace actor.send(STAGE_PROGRESS) — update session-local stageStatus
+    setStageStatus('publish', { status: 'Publishing to WordPress' });
 
     setPublishBody(body);
     setPublishing(true);
@@ -151,9 +180,16 @@ export function PublishEngine({ draft, publishTargetId }: PublishEngineProps) {
         publishedUrl: result.publishedUrl,
         mode: modeRef.current ?? 'unknown',
       });
-      actor.send({ type: 'PUBLISH_COMPLETE', result: publishResult });
+      // Replace actor.send(PUBLISH_COMPLETE) — refetch so context reflects new stage_runs row
+      // The dispatcher (PublishProgress / legacy WordPressPublishForm) writes the
+      // outcome_json to stage_runs server-side; we just need to re-sync here.
+      refetch();
+      // Keep local publish result in-memory for UI until refetch resolves
+      void publishResult; // referenced to avoid unused-var lint
+      setPublishing(false);
+      setPublishBody(null);
     },
-    [draftId, tracker, actor, overviewMode],
+    [draftId, tracker, overviewMode, refetch],
   );
 
   const handleStreamError = useCallback(

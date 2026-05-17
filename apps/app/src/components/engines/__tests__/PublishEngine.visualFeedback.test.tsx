@@ -1,11 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { createActor } from 'xstate';
 import React from 'react';
-import { pipelineMachine } from '@/lib/pipeline/machine';
-import { PipelineActorProvider } from '@/providers/PipelineActorProvider';
+import { ProjectContextProvider } from '@/components/pipeline/ProjectContextProvider';
 import { PublishEngine } from '../PublishEngine';
-import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types';
 import {
   makePublishedDraftRow,
   makeUnpublishedDraftRow,
@@ -15,6 +12,15 @@ vi.mock('@/hooks/use-analytics', () => ({ useAnalytics: () => ({ track: vi.fn() 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }));
+vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
+  useAutoPilotTrigger: vi.fn(),
+}));
+vi.mock('@/hooks/use-pipeline-tracker', () => ({
+  usePipelineTracker: () => ({ trackStarted: vi.fn(), trackCompleted: vi.fn(), trackFailed: vi.fn() }),
+}));
+vi.mock('@/components/engines/ContextBanner', () => ({
+  ContextBanner: () => null,
+}));
 
 interface MountOpts {
   draft?: ReturnType<typeof makeUnpublishedDraftRow> | ReturnType<typeof makePublishedDraftRow>;
@@ -23,10 +29,33 @@ interface MountOpts {
 }
 
 function stubFetch(opts: MountOpts = {}) {
+  const channelId = opts.channelId === undefined ? 'ch-1' : opts.channelId;
   vi.stubGlobal(
     'fetch',
     vi.fn().mockImplementation(async (url: string) => {
       const u = String(url);
+      // ProjectContextProvider routes
+      if (u.match(/\/api\/projects\/proj-1\/stages/)) {
+        return { ok: true, json: async () => ({
+          data: { stageRuns: [], tracks: [], project: { mode: 'step-by-step', paused: false } },
+          error: null,
+        }) } as Response;
+      }
+      if (u.match(/\/api\/projects\/proj-1$/)) {
+        return { ok: true, json: async () => ({
+          data: {
+            id: 'proj-1',
+            channel_id: channelId,
+            title: 'Test',
+            mode: 'step-by-step',
+            autopilot_config_json: null,
+            template_id: null,
+            paused: false,
+            pipeline_state_json: null,
+          },
+          error: null,
+        }) } as Response;
+      }
       if (u.includes('/api/wordpress-configs')) {
         const configs = opts.wpConfigs ?? [
           { id: 'wp-1', channel_id: 'ch-1', site_url: 'https://blog.example.com', username: 'editor', is_active: true },
@@ -45,32 +74,10 @@ function mountEngine(opts: MountOpts = {}) {
   const draft = opts.draft ?? makeUnpublishedDraftRow();
   stubFetch(opts);
 
-  const actor = createActor(pipelineMachine, {
-    input: {
-      projectId: 'proj-1',
-      channelId: opts.channelId === undefined ? 'ch-1' : (opts.channelId ?? null),
-      projectTitle: 'Test',
-      pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-      creditSettings: DEFAULT_CREDIT_SETTINGS,
-    },
-  }).start();
-  actor.send({
-    type: 'SETUP_COMPLETE',
-    mode: 'step-by-step',
-    autopilotConfig: null,
-    templateId: null,
-    startStage: 'publish',
-  });
-  actor.send({
-    type: 'STAGE_PROGRESS',
-    stage: 'draft',
-    partial: { draftId: draft.id, draftTitle: draft.title },
-  });
-
-  return { actor, draft, ...render(
-    <PipelineActorProvider value={actor}>
+  return { draft, ...render(
+    <ProjectContextProvider projectId="proj-1">
       <PublishEngine draft={draft as unknown as Parameters<typeof PublishEngine>[0]['draft']} />
-    </PipelineActorProvider>,
+    </ProjectContextProvider>,
   ) };
 }
 

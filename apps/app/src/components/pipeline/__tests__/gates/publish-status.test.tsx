@@ -18,17 +18,20 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, waitFor } from '@testing-library/react'
-import { createActor } from 'xstate'
 import React from 'react'
-import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
+import { ProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
 import { PublishEngine } from '@/components/engines/PublishEngine'
-import { pipelineMachine } from '@/lib/pipeline/machine'
-import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '@/components/engines/types'
 import { BASE_AUTOPILOT_CONFIG } from './_helpers'
 import type { AutopilotConfig } from '@brighttale/shared'
 
 vi.mock('@/hooks/use-analytics', () => ({
   useAnalytics: () => ({ track: vi.fn() }),
+}))
+vi.mock('@/hooks/use-pipeline-tracker', () => ({
+  usePipelineTracker: () => ({ trackStarted: vi.fn(), trackCompleted: vi.fn(), trackFailed: vi.fn() }),
+}))
+vi.mock('@/components/engines/ContextBanner', () => ({
+  ContextBanner: () => null,
 }))
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
@@ -81,33 +84,47 @@ function mountWithPublishStatus(status: 'draft' | 'published') {
     publish: { status },
   }
 
-  const actor = createActor(pipelineMachine, {
-    input: {
-      projectId: 'p-pub',
-      channelId: 'c-pub',
-      projectTitle: 'T',
-      pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-      creditSettings: DEFAULT_CREDIT_SETTINGS,
-      initialStageResults: {
-        draft: { draftId: 'draft-1', draftTitle: 'Gate Draft', draftContent: '', completedAt: new Date().toISOString() },
-      },
-    },
-  }).start()
-
-  actor.send({
-    type: 'SETUP_COMPLETE',
-    mode: 'overview',
-    autopilotConfig: config,
-    templateId: null,
-    startStage: 'publish',
-  })
-
-  actor.send({ type: 'NAVIGATE', toStage: 'publish' })
+  // ProjectContextProvider (required by PublishEngine since Slice 14.1) fetches
+  // project + stages from the API. Stub fetch to return overview mode + config.
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => {
+    const u = String(url);
+    if (u.match(/\/api\/projects\/p-pub\/stages/)) {
+      return { ok: true, json: async () => ({
+        data: {
+          stageRuns: [
+            { id: 'sr-draft', projectId: 'p-pub', stage: 'draft', status: 'completed', attemptNo: 1,
+              finishedAt: new Date().toISOString(), errorMessage: null,
+              outcomeJson: { draftId: 'draft-1', draftTitle: 'Gate Draft', draftContent: '' },
+              trackId: null, publishTargetId: null },
+          ],
+          tracks: [],
+          project: { mode: 'overview', paused: false },
+        },
+        error: null,
+      }) };
+    }
+    if (u.match(/\/api\/projects\/p-pub$/)) {
+      return { ok: true, json: async () => ({
+        data: {
+          id: 'p-pub',
+          channel_id: 'c-pub',
+          title: 'T',
+          mode: 'overview',
+          autopilot_config_json: config,
+          template_id: null,
+          paused: false,
+          pipeline_state_json: null,
+        },
+        error: null,
+      }) };
+    }
+    return { ok: true, json: async () => ({ data: null, error: null }) };
+  }))
 
   return render(
-    <PipelineActorProvider value={actor}>
+    <ProjectContextProvider projectId="p-pub">
       <PublishEngine draft={STUB_DRAFT} />
-    </PipelineActorProvider>,
+    </ProjectContextProvider>,
   )
 }
 

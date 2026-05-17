@@ -18,6 +18,7 @@ import React from 'react'
 import { toast } from 'sonner'
 import { pipelineMachine } from '@/lib/pipeline/machine'
 import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
+import { ProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
 import { BrainstormEngine } from '../BrainstormEngine'
 import { ResearchEngine } from '../ResearchEngine'
 import { DraftEngine } from '../DraftEngine'
@@ -275,10 +276,39 @@ function mountPublish(mode: 'overview' | 'supervised' | 'step-by-step') {
   actor.send({ type: 'REVIEW_COMPLETE', result: { score: 92, verdict: 'approved', feedbackJson: {}, iterationCount: 1 } })
   actor.send({ type: 'ASSETS_COMPLETE', result: { assetIds: [], skipped: true } })
   actor.send({ type: 'NAVIGATE', toStage: 'publish' })
+  // ProjectContextProvider (required by PublishEngine since Slice 14.1) needs
+  // project + stages fetch responses. Stub fetch routes before rendering.
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => {
+    const u = String(url);
+    if (u.match(/\/api\/projects\/proj-1\/stages/)) {
+      return { ok: true, json: async () => ({
+        data: { stageRuns: [], tracks: [], project: { mode, paused: false } },
+        error: null,
+      }) };
+    }
+    if (u.match(/\/api\/projects\/proj-1$/)) {
+      return { ok: true, json: async () => ({
+        data: {
+          id: 'proj-1',
+          channel_id: 'ch-1',
+          title: 'T',
+          mode,
+          autopilot_config_json: null,
+          template_id: null,
+          paused: false,
+          pipeline_state_json: null,
+        },
+        error: null,
+      }) };
+    }
+    return { ok: true, json: async () => ({ data: null, error: null }) };
+  }))
   const utils = render(
-    <PipelineActorProvider value={actor}>
-      <PublishEngine draft={STUB_PUBLISH_DRAFT} />
-    </PipelineActorProvider>,
+    <ProjectContextProvider projectId="proj-1">
+      <PipelineActorProvider value={actor}>
+        <PublishEngine draft={STUB_PUBLISH_DRAFT} />
+      </PipelineActorProvider>
+    </ProjectContextProvider>,
   )
   return { actor, ...utils }
 }
