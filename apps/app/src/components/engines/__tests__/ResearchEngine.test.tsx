@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import { createActor } from 'xstate'
 import React from 'react'
-import { pipelineMachine } from '@/lib/pipeline/machine'
 import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
 import { ResearchEngine } from '../ResearchEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
@@ -223,32 +221,6 @@ describe('ResearchEngine', () => {
     expect(completedStages.some((e) => e.stage === 'research')).toBe(false)
   })
 
-  it('machine accepts STAGE_PROGRESS with status=Researching topic for research stage', () => {
-    // Verifies the actor wiring for the STAGE_PROGRESS dispatch that handleRun fires.
-    // Full UI click is skipped because clicking "Research" triggers EventSource (SSE)
-    // which is not available in jsdom. We test the machine contract directly.
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start()
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'step-by-step',
-      autopilotConfig: null,
-      templateId: null,
-      startStage: 'research',
-    })
-
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'research', partial: { status: 'Researching topic' } })
-
-    const partial = actor.getSnapshot().context.stageResults.research as { status?: string } | undefined
-    expect(partial?.status).toBe('Researching topic')
-  })
 })
 
 // ─── T9.F152: attempt history tabs ───────────────────────────────────────────

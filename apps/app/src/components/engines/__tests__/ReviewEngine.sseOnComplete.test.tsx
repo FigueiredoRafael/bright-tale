@@ -6,13 +6,10 @@
  *
  * Strategy: mount ReviewEngine in a provider seeded with all upstream stage results,
  * then invoke the mocked GenerationProgressModal's onComplete prop and assert that
- * the machine receives the real score/verdict from the fresh API fetch.
+ * the engine receives the real score/verdict from the fresh API fetch.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, waitFor } from '@testing-library/react'
-import { createActor } from 'xstate'
-import React from 'react'
-import { pipelineMachine } from '@/lib/pipeline/machine'
 import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
 import { ReviewEngine } from '../ReviewEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
@@ -86,7 +83,7 @@ vi.mock('@/components/preview/ReviewFeedbackPanel', () => ({
   ReviewFeedbackPanel: () => null,
 }))
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Constants ──────────────────────────────────────────────────────────────
 
 const DRAFT_ID = 'draft-sse-test'
 
@@ -125,48 +122,7 @@ const UPSTREAM_STAGE_RESULTS = {
   draft: { draftId: DRAFT_ID, draftTitle: 'Test Draft', draftContent: 'content', completedAt: new Date().toISOString() },
 }
 
-// ─── Pure machine helpers (no rendering) ─────────────────────────────────────
-// Tests 2 and 4 remain pure machine-level tests. They create actors directly
-// to verify dispatch contracts without mounting any engine.
-
-function makeReviewActor(mode: 'supervised' | 'overview') {
-  const actor = createActor(pipelineMachine, {
-    input: {
-      projectId: 'proj-sse',
-      channelId: 'ch-1',
-      projectTitle: 'SSE Test',
-      pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-      creditSettings: DEFAULT_CREDIT_SETTINGS,
-    },
-  }).start()
-
-  actor.send({
-    type: 'SETUP_COMPLETE',
-    mode,
-    autopilotConfig: {
-      defaultProvider: 'recommended',
-      brainstorm: null,
-      research: null,
-      canonicalCore: { providerOverride: null, personaId: null },
-      draft: { providerOverride: null, format: 'blog', wordCount: 1000 },
-      review: { providerOverride: null, maxIterations: 3, autoApproveThreshold: 90, hardFailThreshold: 40 },
-      assets: { providerOverride: null, mode: 'briefs_only' },
-      preview: { enabled: false },
-      publish: { status: 'draft' },
-    },
-    templateId: null,
-    startStage: 'brainstorm',
-  })
-
-  actor.send({ type: 'BRAINSTORM_COMPLETE', result: { ideaId: 'i-1', ideaTitle: 'Idea', ideaVerdict: 'viable', ideaCoreTension: 'tension' } })
-  actor.send({ type: 'RESEARCH_COMPLETE', result: { researchSessionId: 'rs-1', approvedCardsCount: 3, researchLevel: 'medium' } })
-  actor.send({ type: 'DRAFT_COMPLETE', result: { draftId: DRAFT_ID, draftTitle: 'Test Draft', draftContent: 'content' } })
-  actor.send({ type: 'RESUME' })
-
-  return actor
-}
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
+// ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe('ReviewEngine SSE onComplete — reads fresh values from API', () => {
   beforeEach(() => {
@@ -235,28 +191,6 @@ describe('ReviewEngine SSE onComplete — reads fresh values from API', () => {
     })
   })
 
-  it('REVIEW_COMPLETE with real score=60 is NOT treated as 0/pending (regression guard)', () => {
-    // Pure machine test — no engine rendering needed
-    const actor = makeReviewActor('supervised')
-    actor.send({
-      type: 'REVIEW_COMPLETE',
-      result: {
-        score: 60,
-        qualityTier: 'needs_revision',
-        verdict: 'needs_revision',
-        feedbackJson: FRESH_DRAFT.review_feedback_json,
-        iterationCount: 1,
-      },
-    })
-
-    const review = actor.getSnapshot().context.stageResults.review
-    // Stale defaults (score=0, verdict='pending') must NOT appear
-    expect(review?.score).not.toBe(0)
-    expect(review?.verdict).not.toBe('pending')
-    expect(review?.score).toBe(60)
-    expect(review?.verdict).toBe('needs_revision')
-  })
-
   it('refetchDraft returns fresh data and the machine accepts it via REVIEW_COMPLETE (overview)', async () => {
     const completedStages: Array<{ stage: string; result: Record<string, unknown> }> = []
 
@@ -291,24 +225,4 @@ describe('ReviewEngine SSE onComplete — reads fresh values from API', () => {
     })
   })
 
-  it('REVIEW_COMPLETE machine dispatch stores correct score + verdict + iterationCount', () => {
-    // Pure machine test — mirrors what refetchDraft produces
-    const actor = makeReviewActor('overview')
-
-    actor.send({
-      type: 'REVIEW_COMPLETE',
-      result: {
-        score: FRESH_DRAFT.review_score as number,
-        qualityTier: 'needs_revision',
-        verdict: FRESH_DRAFT.review_verdict as string,
-        feedbackJson: FRESH_DRAFT.review_feedback_json,
-        iterationCount: FRESH_DRAFT.iteration_count,
-      },
-    })
-
-    const review = actor.getSnapshot().context.stageResults.review
-    expect(review?.score).toBe(60)
-    expect(review?.verdict).toBe('needs_revision')
-    expect(review?.iterationCount).toBe(1)
-  })
 })

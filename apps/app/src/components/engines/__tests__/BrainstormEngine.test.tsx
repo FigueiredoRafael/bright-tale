@@ -1,18 +1,12 @@
 /**
- * BrainstormEngine tests — post slice-14.4 (no xstate actor).
- * Uses StandaloneProjectContextProvider instead of PipelineActorProvider.
- *
- * Tests that previously verified machine state transitions now verify UI
- * behaviour or are annotated as machine-level tests using the actor directly
- * (without rendering the engine).
+ * BrainstormEngine tests — post slice-14.6 (no xstate actor).
+ * Uses StandaloneProjectContextProvider.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { createActor } from 'xstate'
 import React from 'react'
-import { pipelineMachine } from '@/lib/pipeline/machine'
 import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
 import { BrainstormEngine } from '../BrainstormEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
@@ -180,30 +174,6 @@ describe('BrainstormEngine', () => {
       .toBe('enterprise')
   })
 
-  it('machine accepts STAGE_PROGRESS with status=Generating ideas for brainstorm stage', () => {
-    // Pure machine contract test — no engine rendering needed.
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start()
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'step-by-step',
-      autopilotConfig: null,
-      templateId: null,
-      startStage: 'brainstorm',
-    })
-
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'brainstorm', partial: { status: 'Generating ideas' } })
-
-    const partial = actor.getSnapshot().context.stageResults.brainstorm as { status?: string } | undefined
-    expect(partial?.status).toBe('Generating ideas')
-  })
 })
 
 describe('BrainstormEngine — stageRun binding (T3.5)', () => {
