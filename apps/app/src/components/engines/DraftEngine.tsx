@@ -34,11 +34,14 @@ import type { Persona } from '@brighttale/shared/types/agents';
 import type { VideoStyleConfig } from '@brighttale/shared/schemas/videoStyle';
 import VideoStyleSelector from '@/components/production/VideoStyleSelector';
 import { useSelector } from '@xstate/react';
-import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useOptionalPipelineActor } from '@/hooks/usePipelineActor';
+import { useOptionalProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { hydrateDraftFromConfig } from '@/lib/pipeline/hydrateEngineFromConfig';
-import type { DraftResult, PipelineContext } from './types';
+import type { DraftResult, PipelineContext, CreditSettings } from './types';
+import type { AutopilotConfig } from '@brighttale/shared';
+import { DEFAULT_CREDIT_SETTINGS } from './types';
 
 type DraftType = 'blog' | 'video' | 'shorts' | 'podcast';
 type DraftMode = 'ai' | 'manual';
@@ -71,14 +74,27 @@ export function DraftEngine({
   onModeChange,
   initialDraft,
 }: DraftEngineProps) {
-  const actor = usePipelineActor();
+  const projectCtx = useOptionalProjectContext();
+  const actor = useOptionalPipelineActor();
   const abortController = usePipelineAbort();
-  const channelId = useSelector(actor, (s) => s.context.channelId);
-  const projectId = useSelector(actor, (s) => s.context.projectId);
-  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
-  const researchResult = useSelector(actor, (s) => s.context.stageResults.research);
-  const draftResult = useSelector(actor, (s) => s.context.stageResults.draft);
-  const creditSettings = useSelector(actor, (s) => s.context.creditSettings);
+
+  // Dual-path selectors: context takes precedence over actor
+  const actorChannelId = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { channelId?: string | null } } | undefined)?.context?.channelId);
+  const actorProjectId = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { projectId?: string } } | undefined)?.context?.projectId);
+  const actorBrainstormResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { brainstorm?: unknown } } } | undefined)?.context?.stageResults?.brainstorm);
+  const actorResearchResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { research?: unknown } } } | undefined)?.context?.stageResults?.research);
+  const actorDraftResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { draft?: unknown } } } | undefined)?.context?.stageResults?.draft);
+  const actorCreditSettings = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { creditSettings?: unknown } } | undefined)?.context?.creditSettings);
+  const actorAutopilotConfig = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { autopilotConfig?: unknown } } | undefined)?.context?.autopilotConfig);
+  const actorAutoMode = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { mode?: unknown } } | undefined)?.context?.mode);
+  const actorAutoPaused = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { paused?: unknown } } | undefined)?.context?.paused);
+
+  const channelId = projectCtx ? projectCtx.context.channelId : actorChannelId;
+  const projectId = projectCtx ? (projectCtx.context.projectId ?? '') : (actorProjectId ?? '');
+  const brainstormResult = (projectCtx ? projectCtx.context.stageResults.brainstorm : actorBrainstormResult) as { ideaId?: string; ideaTitle?: string; ideaVerdict?: string; ideaCoreTension?: string; brainstormSessionId?: string } | undefined;
+  const researchResult = (projectCtx ? projectCtx.context.stageResults.research : actorResearchResult) as { researchSessionId?: string; approvedCardsCount?: number; researchLevel?: string; primaryKeyword?: string; secondaryKeywords?: string[]; searchIntent?: string } | undefined;
+  const draftResult = (projectCtx ? projectCtx.context.stageResults.draft : actorDraftResult) as { draftId?: string; draftContent?: string } | undefined;
+  const creditSettings: CreditSettings = ((projectCtx ? projectCtx.context.creditSettings : actorCreditSettings) as CreditSettings | undefined) ?? DEFAULT_CREDIT_SETTINGS;
 
   const trackerContext: PipelineContext = {
     channelId: channelId ?? undefined,
@@ -169,10 +185,10 @@ export function DraftEngine({
   // effect so wizard inputs take precedence over any stale restore. If
   // initialDraft is provided, the user is revisiting an existing draft — skip
   // hydration so the live draft values are not overwritten.
-  const autopilotConfig = useSelector(actor, (s) => s.context.autopilotConfig);
+  const autopilotConfig: AutopilotConfig | null | undefined = projectCtx ? (projectCtx.context.autopilotConfig as AutopilotConfig | null | undefined) : (actorAutopilotConfig as AutopilotConfig | null | undefined);
   useEffect(() => {
     if (initialDraft) return;
-    const h = hydrateDraftFromConfig(autopilotConfig);
+    const h = hydrateDraftFromConfig(autopilotConfig ?? null);
     if (h.format !== undefined) setType(h.format);
     if (h.wordCount !== undefined && h.wordCount !== null) setTargetWords(h.wordCount);
     if (h.selectedPersonaId !== undefined && h.selectedPersonaId !== null) {
@@ -349,9 +365,9 @@ export function DraftEngine({
   }, [abortController?.signal, autopilotConfig?.draft?.providerOverride, autopilotConfig?.draft?.modelOverride]);
 
   // ── Auto-pilot wiring ─────────────────────────────────────────────
-  const autoMode = useSelector(actor, (s) => s.context.mode);
+  const autoMode = (projectCtx ? projectCtx.context.mode : actorAutoMode) as string | null | undefined;
   const overviewMode = autoMode === 'overview';
-  const autoPaused = useSelector(actor, (s) => s.context.paused);
+  const autoPaused = (projectCtx ? projectCtx.context.paused : actorAutoPaused) as boolean | undefined;
 
   // Phase 1: auto-fire canonical core generation when prerequisites are ready
   useAutoPilotTrigger({
@@ -424,7 +440,11 @@ export function DraftEngine({
       personaSlug: selectedPersona?.slug,
       personaWpAuthorId: selectedPersona?.wpAuthorId ?? null,
     };
-    actor.send({ type: 'DRAFT_COMPLETE', result });
+    if (projectCtx) {
+      projectCtx.signalStageComplete('draft', result as unknown as Record<string, unknown>);
+    } else {
+      actor?.send({ type: 'DRAFT_COMPLETE', result });
+    }
   }, [
     autoMode,
     autoPaused,
@@ -437,6 +457,7 @@ export function DraftEngine({
     selectedPersona,
     draftResult?.draftId,
     draftResult?.draftContent,
+    projectCtx,
     actor,
     tracker,
   ]);
@@ -469,7 +490,7 @@ export function DraftEngine({
     if (!title.trim()) { toast.error('Enter a title'); return; }
     if (!selectedPersonaId) { toast.error('Select a persona'); return; }
 
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { status: 'Building outline' } });
+    actor?.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { status: 'Building outline' } });
     tracker.trackStarted({
       draftId: draftId || '',
       phase: 'core',
@@ -506,7 +527,7 @@ export function DraftEngine({
       // Persist the draftId on the project's pipeline state so a reload before
       // produce finishes can still rehydrate the canonical core. DraftEngine's
       // restore effect keys off draftResult.draftId.
-      actor.send({
+      actor?.send({
         type: 'STAGE_PROGRESS',
         stage: 'draft',
         partial: { draftId: newDraftId, draftTitle: title },
@@ -596,7 +617,7 @@ export function DraftEngine({
         if (!overviewMode) toast.success(`${manualState.phase.charAt(0).toUpperCase() + manualState.phase.slice(1)} content submitted`);
       }
       setManualState(null);
-      actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: manualState.draftId } });
+      actor?.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: manualState.draftId } });
     } catch (err) {
       toast.error('Submit failed', { description: err instanceof Error ? err.message : 'Unknown error' });
     } finally {
@@ -618,7 +639,7 @@ export function DraftEngine({
     } finally {
       setBusy(false);
       setManualState(null);
-      actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: undefined } });
+      actor?.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: undefined } });
     }
   }
 
@@ -657,7 +678,7 @@ export function DraftEngine({
 
     // Persist the draftId on the project's pipeline state so a reload before
     // produce finishes can still rehydrate the imported canonical core.
-    actor.send({
+    actor?.send({
       type: 'STAGE_PROGRESS',
       stage: 'draft',
       partial: { draftId: newDraftId, draftTitle: title },
@@ -773,7 +794,7 @@ export function DraftEngine({
   async function handleProduce() {
     if (busy || !draftId) return;
 
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { status: 'Writing draft' } });
+    actor?.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { status: 'Writing draft' } });
     const productionParams: Record<string, unknown> = {};
     if (type === 'blog') productionParams.target_word_count = targetWords;
     if (type === 'video' || type === 'podcast') productionParams.target_duration_minutes = targetMinutes;
@@ -1371,14 +1392,16 @@ export function DraftEngine({
           )}
           onSelect={(item) => {
             const draftJson = item.draft_json as Record<string, unknown> | null;
-            actor.send({
-              type: 'DRAFT_COMPLETE',
-              result: {
-                draftId: item.id as string,
-                draftTitle: (item.title as string) ?? 'Untitled',
-                draftContent: (draftJson?.full_draft as string) ?? '',
-              } as DraftResult,
-            });
+            const importResult: DraftResult = {
+              draftId: item.id as string,
+              draftTitle: (item.title as string) ?? 'Untitled',
+              draftContent: (draftJson?.full_draft as string) ?? '',
+            };
+            if (projectCtx) {
+              projectCtx.signalStageComplete('draft', importResult as unknown as Record<string, unknown>);
+            } else {
+              actor?.send({ type: 'DRAFT_COMPLETE', result: importResult });
+            }
           }}
         />
       </div>
@@ -1840,7 +1863,11 @@ export function DraftEngine({
                   personaSlug: selectedPersona?.slug,
                   personaWpAuthorId: selectedPersona?.wpAuthorId ?? null,
                 };
-                actor.send({ type: 'DRAFT_COMPLETE', result });
+                if (projectCtx) {
+                  projectCtx.signalStageComplete('draft', result as unknown as Record<string, unknown>);
+                } else {
+                  actor?.send({ type: 'DRAFT_COMPLETE', result });
+                }
               }}>
                 <Check className="h-4 w-4 mr-2" /> Done <ArrowRight className="h-4 w-4 ml-2" />
               </Button>
