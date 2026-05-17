@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, waitFor } from '@testing-library/react'
-import { createActor } from 'xstate'
 import React from 'react'
-import { pipelineMachine } from '@/lib/pipeline/machine'
 import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
 import { AssetsEngine } from '../AssetsEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
@@ -149,71 +147,6 @@ describe("AssetsEngine mode='auto_generate'", () => {
 
     await new Promise((r) => setTimeout(r, 50))
     expect(completedStages).not.toContain('assets')
-  })
-})
-
-describe("assets mode='skip' handled by machine", () => {
-  it('auto-skips assets state and transitions immediately to preview when mode=skip', () => {
-    // The machine transitions from assets.idle → preview immediately via the always guard
-    // when autopilotConfig.assets.mode === 'skip'. AssetsEngine never needs to mount.
-    const config: AutopilotConfig = {
-      ...BASE_AUTOPILOT,
-      assets: { providerOverride: null, mode: 'skip' },
-    }
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start()
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'overview',
-      autopilotConfig: config,
-      templateId: null,
-      startStage: 'assets',
-    })
-
-    // Machine should have skipped straight to preview
-    expect(actor.getSnapshot().value).toMatchObject({ preview: expect.anything() })
-    // stageResults.assets should be present with skipped=true
-    expect(actor.getSnapshot().context.stageResults.assets?.skipped).toBe(true)
-    expect(actor.getSnapshot().context.stageResults.assets?.assetIds).toEqual([])
-  })
-
-  it('skip also works when flowing through full pipeline from draft', () => {
-    const config: AutopilotConfig = {
-      ...BASE_AUTOPILOT,
-      review: { ...BASE_AUTOPILOT.review, maxIterations: 0 }, // skip review too
-      assets: { providerOverride: null, mode: 'skip' },
-    }
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start()
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'overview',
-      autopilotConfig: config,
-      templateId: null,
-      startStage: 'brainstorm',
-    })
-    actor.send({ type: 'BRAINSTORM_COMPLETE', result: { ideaId: 'i-1', ideaTitle: 'T', ideaVerdict: 'viable', ideaCoreTension: 'c' } })
-    actor.send({ type: 'RESEARCH_COMPLETE', result: { researchSessionId: 'rs-1', approvedCardsCount: 3, researchLevel: 'medium' } })
-    actor.send({ type: 'DRAFT_COMPLETE', result: { draftId: 'd-1', draftTitle: 'D', draftContent: 'body' } })
-
-    // After DRAFT_COMPLETE with skip-review config, machine goes to assets.idle which immediately
-    // transitions to preview via shouldSkipAssets guard.
-    expect(actor.getSnapshot().value).toMatchObject({ preview: expect.anything() })
-    expect(actor.getSnapshot().context.stageResults.assets?.skipped).toBe(true)
   })
 })
 

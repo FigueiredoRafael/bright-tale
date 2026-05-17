@@ -22,7 +22,7 @@ import type {
   PipelineMachineContext,
   StageResultMap,
   PauseReason,
-} from '@/lib/pipeline/machine.types';
+} from '@/lib/pipeline/types';
 import type { PipelineStage } from '@/components/engines/types';
 import type {
   BrainstormResult,

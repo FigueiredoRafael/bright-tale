@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { createActor } from 'xstate'
-import React from 'react'
-import { pipelineMachine } from '@/lib/pipeline/machine'
 import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
 import { PreviewEngine } from '../PreviewEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
@@ -213,43 +210,6 @@ describe('PreviewEngine', () => {
     expect(previewComplete).toBeUndefined()
   })
 
-  it('machine accepts STAGE_PROGRESS with status=Composing preview for preview stage', () => {
-    // Verifies the machine wiring for the STAGE_PROGRESS dispatch that
-    // PreviewEngine fires on the auto-derive path (preview.enabled=false).
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start()
-    actor.send({ type: 'NAVIGATE', toStage: 'preview' })
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'preview', partial: { status: 'Composing preview' } })
-
-    const partial = actor.getSnapshot().context.stageResults.preview as { status?: string } | undefined
-    expect(partial?.status).toBe('Composing preview')
-  })
-
-  it('machine accepts STAGE_PROGRESS with status=Awaiting your review for preview stage', () => {
-    // Verifies the machine wiring for the STAGE_PROGRESS dispatch that
-    // PreviewEngine fires on the gate path (preview.enabled=true).
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start()
-    actor.send({ type: 'NAVIGATE', toStage: 'preview' })
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'preview', partial: { status: 'Awaiting your review' } })
-
-    const partial = actor.getSnapshot().context.stageResults.preview as { status?: string } | undefined
-    expect(partial?.status).toBe('Awaiting your review')
-  })
 })
 
 describe('PreviewEngine — stageRun binding (T3.5)', () => {

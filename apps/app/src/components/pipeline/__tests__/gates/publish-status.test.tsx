@@ -8,10 +8,9 @@
  * suite at apps/app/src/components/engines/__tests__/PublishEngine.test.tsx:
  *   "publish.status='published' → POST body has wpStatus='publish'"
  *
- * We add a focused gate-suite entry here that:
- *  1. Exercises the same behaviour via the PipelineActorProvider pattern
- *     (PublishEngine + real actor configured with publish.status='published').
- *  2. Keeps the gate test suite self-contained.
+ * We add a focused gate-suite entry here that exercises the same behaviour
+ * via the ProjectContextProvider pattern (PublishEngine + real context configured
+ * with publish.status='published') and keeps the gate test suite self-contained.
  *
  * The implementation re-uses the PublishProgress mock approach from PublishEngine.test.tsx.
  */
@@ -21,8 +20,29 @@ import { render, waitFor } from '@testing-library/react'
 import React from 'react'
 import { ProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
 import { PublishEngine } from '@/components/engines/PublishEngine'
-import { BASE_AUTOPILOT_CONFIG } from './_helpers'
 import type { AutopilotConfig } from '@brighttale/shared'
+
+const BASE_AUTOPILOT_CONFIG: AutopilotConfig = {
+  defaultProvider: 'recommended',
+  brainstorm: {
+    providerOverride: null,
+    mode: 'topic_driven',
+    topic: 'AI in 2026',
+    referenceUrl: null,
+    niche: '',
+    tone: '',
+    audience: '',
+    goal: '',
+    constraints: '',
+  },
+  research: { providerOverride: null, depth: 'medium' },
+  canonicalCore: { providerOverride: null, personaId: null },
+  draft: { providerOverride: null, format: 'blog', wordCount: 1000 },
+  review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
+  assets: { providerOverride: null, mode: 'briefs_only' },
+  preview: { enabled: false },
+  publish: { status: 'draft' },
+}
 
 vi.mock('@/hooks/use-analytics', () => ({
   useAnalytics: () => ({ track: vi.fn() }),
