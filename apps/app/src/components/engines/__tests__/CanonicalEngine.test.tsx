@@ -2,21 +2,24 @@ import { render } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { CanonicalEngine } from '../CanonicalEngine';
 
+const mockActor = {
+  send: vi.fn(),
+  getSnapshot: vi.fn(() => ({
+    context: {
+      channelId: 'c1',
+      projectId: 'p1',
+      stageResults: { brainstorm: {}, research: {} },
+      creditSettings: {},
+      autopilotConfig: { draft: { agentSlug: null, modelKey: null } },
+      mode: 'overview',
+      paused: false,
+    },
+  })),
+};
+
 vi.mock('@/hooks/usePipelineActor', () => ({
-  usePipelineActor: () => ({
-    send: vi.fn(),
-    getSnapshot: vi.fn(() => ({
-      context: {
-        channelId: 'c1',
-        projectId: 'p1',
-        stageResults: { brainstorm: {}, research: {} },
-        creditSettings: {},
-        autopilotConfig: { draft: { agentSlug: null, modelKey: null } },
-        mode: 'overview',
-        paused: false,
-      },
-    })),
-  }),
+  usePipelineActor: () => mockActor,
+  useOptionalPipelineActor: () => mockActor,
 }));
 
 vi.mock('@xstate/react', () => ({

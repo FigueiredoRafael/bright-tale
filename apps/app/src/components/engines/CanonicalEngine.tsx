@@ -28,11 +28,13 @@ import { getPersonaTheme } from './utils/personaTheme';
 import { PersonaCarousel } from './PersonaCarousel';
 import type { Persona } from '@brighttale/shared/types/agents';
 import { useSelector } from '@xstate/react';
-import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useOptionalPipelineActor } from '@/hooks/usePipelineActor';
+import { useOptionalProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { hydrateDraftFromConfig } from '@/lib/pipeline/hydrateEngineFromConfig';
 import type { PipelineContext } from './types';
+import type { AutopilotConfig } from '@brighttale/shared';
 
 type Phase = 'core' | 'core-ready';
 
@@ -51,14 +53,22 @@ interface CanonicalEngineProps {
 const DRAFT_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
 
 export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEngineProps) {
-  const actor = usePipelineActor();
+  const projectCtx = useOptionalProjectContext();
+  const actor = useOptionalPipelineActor();
   const abortController = usePipelineAbort();
-  const channelId = useSelector(actor, (s) => s.context.channelId);
-  const ctxProjectId = useSelector(actor, (s) => s.context.projectId);
+
+  const actorChannelId = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { channelId?: string | null } } | undefined)?.context?.channelId);
+  const actorProjectId = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { projectId?: string } } | undefined)?.context?.projectId);
+  const actorBrainstormResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { brainstorm?: unknown } } } | undefined)?.context?.stageResults?.brainstorm);
+  const actorResearchResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { research?: unknown } } } | undefined)?.context?.stageResults?.research);
+  const actorDraftResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { draft?: unknown } } } | undefined)?.context?.stageResults?.draft);
+
+  const channelId = projectCtx ? projectCtx.context.channelId : actorChannelId;
+  const ctxProjectId = projectCtx ? projectCtx.context.projectId : actorProjectId;
   const projectId = projectIdProp ?? ctxProjectId;
-  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
-  const researchResult = useSelector(actor, (s) => s.context.stageResults.research);
-  const draftResult = useSelector(actor, (s) => s.context.stageResults.draft);
+  const brainstormResult = (projectCtx ? projectCtx.context.stageResults.brainstorm : actorBrainstormResult) as { ideaId?: string; ideaTitle?: string; ideaVerdict?: string; ideaCoreTension?: string; brainstormSessionId?: string } | undefined;
+  const researchResult = (projectCtx ? projectCtx.context.stageResults.research : actorResearchResult) as { researchSessionId?: string; approvedCardsCount?: number; researchLevel?: string; primaryKeyword?: string; secondaryKeywords?: string[]; searchIntent?: string } | undefined;
+  const draftResult = (projectCtx ? projectCtx.context.stageResults.draft : actorDraftResult) as { draftId?: string } | undefined;
 
   const trackerContext: PipelineContext = {
     channelId: channelId ?? undefined,
@@ -109,9 +119,10 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
 
   const tracker = usePipelineTracker('draft', trackerContext);
 
-  const autopilotConfig = useSelector(actor, (s) => s.context.autopilotConfig);
+  const actorAutopilotConfig = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { autopilotConfig?: AutopilotConfig | null } } | undefined)?.context?.autopilotConfig);
+  const autopilotConfig: AutopilotConfig | null | undefined = projectCtx ? projectCtx.context.autopilotConfig : actorAutopilotConfig;
   useEffect(() => {
-    const h = hydrateDraftFromConfig(autopilotConfig);
+    const h = hydrateDraftFromConfig(autopilotConfig ?? null);
     if (h.selectedPersonaId !== undefined && h.selectedPersonaId !== null) {
       setSelectedPersonaId(h.selectedPersonaId);
     }
@@ -246,9 +257,11 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
     })();
   }, [abortController?.signal, autopilotConfig?.draft?.providerOverride, autopilotConfig?.draft?.modelOverride]);
 
-  const autoMode = useSelector(actor, (s) => s.context.mode);
+  const actorAutoMode = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { mode?: string | null } } | undefined)?.context?.mode);
+  const actorAutoPaused = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { paused?: boolean } } | undefined)?.context?.paused);
+  const autoMode = projectCtx ? projectCtx.context.mode : actorAutoMode;
   const overviewMode = autoMode === 'overview';
-  const autoPaused = useSelector(actor, (s) => s.context.paused);
+  const autoPaused = projectCtx ? projectCtx.context.paused : (actorAutoPaused ?? false);
 
   useAutoPilotTrigger({
     stage: 'draft',
@@ -302,7 +315,11 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
     if (!title.trim()) { toast.error('Enter a title'); return; }
     if (!selectedPersonaId) { toast.error('Select a persona'); return; }
 
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { status: 'Building outline' } });
+    if (projectCtx) {
+      projectCtx.setStageStatus('draft', { status: 'Building outline' });
+    } else {
+      actor?.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { status: 'Building outline' } });
+    }
     tracker.trackStarted({
       draftId: draftId || '',
       phase: 'core',
@@ -331,11 +348,15 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
       newDraftId = (draft as { id: string }).id;
       setDraftId(newDraftId);
 
-      actor.send({
-        type: 'STAGE_PROGRESS',
-        stage: 'draft',
-        partial: { draftId: newDraftId, draftTitle: title },
-      });
+      if (projectCtx) {
+        projectCtx.setStageStatus('draft', { status: 'Building outline' });
+      } else {
+        actor?.send({
+          type: 'STAGE_PROGRESS',
+          stage: 'draft',
+          partial: { draftId: newDraftId, draftTitle: title },
+        });
+      }
     }
 
     if (provider === 'manual') {
@@ -400,7 +421,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
       setCoreExpanded(true);
       if (!overviewMode) toast.success('Canonical core submitted — review before producing');
       setManualState(null);
-      actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: manualState.draftId } });
+      actor?.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: manualState.draftId } });
     } catch (err) {
       toast.error('Submit failed', { description: err instanceof Error ? err.message : 'Unknown error' });
     } finally {
@@ -420,7 +441,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
     } finally {
       setBusy(false);
       setManualState(null);
-      actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: undefined } });
+      actor?.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: undefined } });
     }
   }
 
@@ -453,11 +474,13 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
     const newDraftId = (draft as { id: string }).id;
     setDraftId(newDraftId);
 
-    actor.send({
-      type: 'STAGE_PROGRESS',
-      stage: 'draft',
-      partial: { draftId: newDraftId, draftTitle: title },
-    });
+    if (!projectCtx) {
+      actor?.send({
+        type: 'STAGE_PROGRESS',
+        stage: 'draft',
+        partial: { draftId: newDraftId, draftTitle: title },
+      });
+    }
 
     const updated = await runStep('save canonical core', () =>
       fetch(`/api/content-drafts/${newDraftId}`, {
