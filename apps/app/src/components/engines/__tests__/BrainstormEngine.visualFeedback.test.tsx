@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
-import { createActor } from 'xstate';
 import React from 'react';
-import { pipelineMachine } from '@/lib/pipeline/machine';
-import { PipelineActorProvider } from '@/providers/PipelineActorProvider';
+import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider';
 import { BrainstormEngine } from '../BrainstormEngine';
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types';
 import {
@@ -15,6 +13,23 @@ import {
 vi.mock('@/hooks/use-analytics', () => ({ useAnalytics: () => ({ track: vi.fn() }) }));
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}));
+
+vi.mock('@/components/pipeline/PipelineAbortProvider', () => ({
+  usePipelineAbort: () => null,
+}));
+
+vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
+  useAutoPilotTrigger: vi.fn(),
+}));
+
+vi.mock('@/hooks/use-pipeline-tracker', () => ({
+  usePipelineTracker: () => ({
+    trackStarted: vi.fn(),
+    trackCompleted: vi.fn(),
+    trackFailed: vi.fn(),
+    trackAction: vi.fn(),
+  }),
 }));
 
 interface MountOpts {
@@ -30,38 +45,25 @@ function mountEngine(opts: MountOpts = {}) {
   const ideas = opts.ideas ?? makeBrainstormIdeas();
   const session = opts.session ?? makeBrainstormSession();
 
-  const actor = createActor(pipelineMachine, {
-    input: {
-      projectId: 'proj-1',
-      channelId: 'ch-1',
-      projectTitle: 'Test Project',
-      pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-      creditSettings: DEFAULT_CREDIT_SETTINGS,
-    },
-  }).start();
-  actor.send({
-    type: 'SETUP_COMPLETE',
-    mode: 'step-by-step',
-    autopilotConfig: null,
-    templateId: null,
-    startStage: 'brainstorm',
-  });
-  if (opts.hydrateViaFetch) {
-    actor.send({
-      type: 'STAGE_PROGRESS',
-      stage: 'brainstorm',
-      partial: { brainstormSessionId: session.id },
-    });
-  }
-
   return render(
-    <PipelineActorProvider value={actor}>
+    <StandaloneProjectContextProvider
+      projectId="proj-1"
+      channelId="ch-1"
+      mode="step-by-step"
+      pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+      creditSettings={DEFAULT_CREDIT_SETTINGS}
+      initialStageResults={
+        opts.hydrateViaFetch
+          ? { brainstorm: { ideaId: '', ideaTitle: '', ideaVerdict: '', ideaCoreTension: '', brainstormSessionId: session.id, completedAt: new Date().toISOString() } }
+          : {}
+      }
+    >
       <BrainstormEngine
         mode="generate"
         initialIdeas={opts.hydrateViaFetch ? undefined : (ideas as unknown as Record<string, unknown>[])}
         initialSession={opts.hydrateViaFetch ? undefined : session}
       />
-    </PipelineActorProvider>,
+    </StandaloneProjectContextProvider>,
   );
 }
 
@@ -200,31 +202,21 @@ describe('BrainstormEngine — visual feedback', () => {
 
   it('marks the pre-selected idea as visually selected (radio-style check)', () => {
     const ideas = makeBrainstormIdeas();
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start();
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'step-by-step',
-      autopilotConfig: null,
-      templateId: null,
-      startStage: 'brainstorm',
-    });
     render(
-      <PipelineActorProvider value={actor}>
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
         <BrainstormEngine
           mode="generate"
           initialIdeas={ideas as unknown as Record<string, unknown>[]}
           initialSession={makeBrainstormSession()}
           preSelectedIdeaId="idea-2"
         />
-      </PipelineActorProvider>,
+      </StandaloneProjectContextProvider>,
     );
     // "Previously selected" label appears on the preselected card
     expect(screen.getByText(/previously selected/i)).toBeInTheDocument();

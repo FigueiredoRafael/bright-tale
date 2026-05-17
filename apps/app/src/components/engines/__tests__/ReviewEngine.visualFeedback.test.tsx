@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { createActor } from 'xstate';
 import React from 'react';
-import { pipelineMachine } from '@/lib/pipeline/machine';
-import { PipelineActorProvider } from '@/providers/PipelineActorProvider';
+import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider';
 import { ReviewEngine } from '../ReviewEngine';
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types';
 import { makeReviewDraftRow, makeReviewFeedback } from './fixtures/review';
@@ -12,6 +10,12 @@ import { makeAutopilotConfig } from './fixtures/draft';
 vi.mock('@/hooks/use-analytics', () => ({ useAnalytics: () => ({ track: vi.fn() }) }));
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}));
+vi.mock('@/components/pipeline/PipelineAbortProvider', () => ({
+  usePipelineAbort: () => null,
+}));
+vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
+  useAutoPilotTrigger: vi.fn(),
 }));
 
 interface MountOpts {
@@ -29,34 +33,26 @@ function mountEngine(opts: MountOpts = {}) {
     config.review.autoApproveThreshold = opts.autoApproveThreshold;
   }
 
-  const actor = createActor(pipelineMachine, {
-    input: {
-      projectId: 'proj-1',
-      channelId: 'ch-1',
-      projectTitle: 'Test',
-      pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-      creditSettings: DEFAULT_CREDIT_SETTINGS,
-    },
-  }).start();
-  actor.send({
-    type: 'SETUP_COMPLETE',
-    mode: 'step-by-step',
-    autopilotConfig: config,
-    templateId: null,
-    startStage: 'review',
-  });
+  const initialStageResults: Record<string, unknown> = {};
   if (draft) {
-    actor.send({
-      type: 'STAGE_PROGRESS',
-      stage: 'draft',
-      partial: { draftId: (draft as { id: string }).id, draftTitle: 'T' },
-    });
+    initialStageResults.draft = {
+      draftId: (draft as { id: string }).id,
+      draftTitle: 'T',
+    };
   }
 
   return render(
-    <PipelineActorProvider value={actor}>
+    <StandaloneProjectContextProvider
+      projectId="proj-1"
+      channelId="ch-1"
+      mode="step-by-step"
+      autopilotConfig={config}
+      initialStageResults={initialStageResults}
+      pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+      creditSettings={DEFAULT_CREDIT_SETTINGS}
+    >
       <ReviewEngine draft={draft} />
-    </PipelineActorProvider>,
+    </StandaloneProjectContextProvider>,
   );
 }
 

@@ -33,12 +33,13 @@ import { PersonaCarousel } from './PersonaCarousel';
 import type { Persona } from '@brighttale/shared/types/agents';
 import type { VideoStyleConfig } from '@brighttale/shared/schemas/videoStyle';
 import VideoStyleSelector from '@/components/production/VideoStyleSelector';
-import { useSelector } from '@xstate/react';
-import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { hydrateDraftFromConfig } from '@/lib/pipeline/hydrateEngineFromConfig';
-import type { DraftResult, PipelineContext } from './types';
+import type { DraftResult, PipelineContext, CreditSettings } from './types';
+import type { AutopilotConfig } from '@brighttale/shared';
+import { DEFAULT_CREDIT_SETTINGS } from './types';
 
 type DraftType = 'blog' | 'video' | 'shorts' | 'podcast';
 type DraftMode = 'ai' | 'manual';
@@ -71,14 +72,15 @@ export function DraftEngine({
   onModeChange,
   initialDraft,
 }: DraftEngineProps) {
-  const actor = usePipelineActor();
+  const ctx = useProjectContext();
   const abortController = usePipelineAbort();
-  const channelId = useSelector(actor, (s) => s.context.channelId);
-  const projectId = useSelector(actor, (s) => s.context.projectId);
-  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
-  const researchResult = useSelector(actor, (s) => s.context.stageResults.research);
-  const draftResult = useSelector(actor, (s) => s.context.stageResults.draft);
-  const creditSettings = useSelector(actor, (s) => s.context.creditSettings);
+
+  const channelId = ctx.context.channelId;
+  const projectId = ctx.context.projectId ?? '';
+  const brainstormResult = ctx.context.stageResults.brainstorm as { ideaId?: string; ideaTitle?: string; ideaVerdict?: string; ideaCoreTension?: string; brainstormSessionId?: string } | undefined;
+  const researchResult = ctx.context.stageResults.research as { researchSessionId?: string; approvedCardsCount?: number; researchLevel?: string; primaryKeyword?: string; secondaryKeywords?: string[]; searchIntent?: string } | undefined;
+  const draftResult = ctx.context.stageResults.draft as { draftId?: string; draftContent?: string } | undefined;
+  const creditSettings: CreditSettings = (ctx.context.creditSettings as CreditSettings | undefined) ?? DEFAULT_CREDIT_SETTINGS;
 
   const trackerContext: PipelineContext = {
     channelId: channelId ?? undefined,
@@ -169,10 +171,10 @@ export function DraftEngine({
   // effect so wizard inputs take precedence over any stale restore. If
   // initialDraft is provided, the user is revisiting an existing draft — skip
   // hydration so the live draft values are not overwritten.
-  const autopilotConfig = useSelector(actor, (s) => s.context.autopilotConfig);
+  const autopilotConfig: AutopilotConfig | null | undefined = ctx.context.autopilotConfig as AutopilotConfig | null | undefined;
   useEffect(() => {
     if (initialDraft) return;
-    const h = hydrateDraftFromConfig(autopilotConfig);
+    const h = hydrateDraftFromConfig(autopilotConfig ?? null);
     if (h.format !== undefined) setType(h.format);
     if (h.wordCount !== undefined && h.wordCount !== null) setTargetWords(h.wordCount);
     if (h.selectedPersonaId !== undefined && h.selectedPersonaId !== null) {
@@ -349,9 +351,9 @@ export function DraftEngine({
   }, [abortController?.signal, autopilotConfig?.draft?.providerOverride, autopilotConfig?.draft?.modelOverride]);
 
   // ── Auto-pilot wiring ─────────────────────────────────────────────
-  const autoMode = useSelector(actor, (s) => s.context.mode);
+  const autoMode = ctx.context.mode as string | null | undefined;
   const overviewMode = autoMode === 'overview';
-  const autoPaused = useSelector(actor, (s) => s.context.paused);
+  const autoPaused = ctx.context.paused as boolean | undefined;
 
   // Phase 1: auto-fire canonical core generation when prerequisites are ready
   useAutoPilotTrigger({
@@ -424,7 +426,7 @@ export function DraftEngine({
       personaSlug: selectedPersona?.slug,
       personaWpAuthorId: selectedPersona?.wpAuthorId ?? null,
     };
-    actor.send({ type: 'DRAFT_COMPLETE', result });
+    ctx.signalStageComplete('draft', result as unknown as Record<string, unknown>);
   }, [
     autoMode,
     autoPaused,
@@ -437,7 +439,7 @@ export function DraftEngine({
     selectedPersona,
     draftResult?.draftId,
     draftResult?.draftContent,
-    actor,
+    ctx,
     tracker,
   ]);
 
@@ -469,7 +471,7 @@ export function DraftEngine({
     if (!title.trim()) { toast.error('Enter a title'); return; }
     if (!selectedPersonaId) { toast.error('Select a persona'); return; }
 
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { status: 'Building outline' } });
+    ctx.setStageStatus('draft', { status: 'Building outline' });
     tracker.trackStarted({
       draftId: draftId || '',
       phase: 'core',
@@ -506,11 +508,7 @@ export function DraftEngine({
       // Persist the draftId on the project's pipeline state so a reload before
       // produce finishes can still rehydrate the canonical core. DraftEngine's
       // restore effect keys off draftResult.draftId.
-      actor.send({
-        type: 'STAGE_PROGRESS',
-        stage: 'draft',
-        partial: { draftId: newDraftId, draftTitle: title },
-      });
+      ctx.setStageStatus('draft', { draftId: newDraftId, draftTitle: title });
     }
 
     // For manual provider, call canonical-core endpoint which will return awaiting_manual status
@@ -596,7 +594,7 @@ export function DraftEngine({
         if (!overviewMode) toast.success(`${manualState.phase.charAt(0).toUpperCase() + manualState.phase.slice(1)} content submitted`);
       }
       setManualState(null);
-      actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: manualState.draftId } });
+      ctx.setStageStatus('draft', { draftId: manualState.draftId });
     } catch (err) {
       toast.error('Submit failed', { description: err instanceof Error ? err.message : 'Unknown error' });
     } finally {
@@ -618,7 +616,7 @@ export function DraftEngine({
     } finally {
       setBusy(false);
       setManualState(null);
-      actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: undefined } });
+      ctx.setStageStatus('draft', { draftId: undefined });
     }
   }
 
@@ -657,11 +655,7 @@ export function DraftEngine({
 
     // Persist the draftId on the project's pipeline state so a reload before
     // produce finishes can still rehydrate the imported canonical core.
-    actor.send({
-      type: 'STAGE_PROGRESS',
-      stage: 'draft',
-      partial: { draftId: newDraftId, draftTitle: title },
-    });
+    ctx.setStageStatus('draft', { draftId: newDraftId, draftTitle: title });
 
     // Save canonical core to draft
     const updated = await runStep('save canonical core', () =>
@@ -773,7 +767,7 @@ export function DraftEngine({
   async function handleProduce() {
     if (busy || !draftId) return;
 
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { status: 'Writing draft' } });
+    ctx.setStageStatus('draft', { status: 'Writing draft' });
     const productionParams: Record<string, unknown> = {};
     if (type === 'blog') productionParams.target_word_count = targetWords;
     if (type === 'video' || type === 'podcast') productionParams.target_duration_minutes = targetMinutes;
@@ -1371,14 +1365,12 @@ export function DraftEngine({
           )}
           onSelect={(item) => {
             const draftJson = item.draft_json as Record<string, unknown> | null;
-            actor.send({
-              type: 'DRAFT_COMPLETE',
-              result: {
-                draftId: item.id as string,
-                draftTitle: (item.title as string) ?? 'Untitled',
-                draftContent: (draftJson?.full_draft as string) ?? '',
-              } as DraftResult,
-            });
+            const importResult: DraftResult = {
+              draftId: item.id as string,
+              draftTitle: (item.title as string) ?? 'Untitled',
+              draftContent: (draftJson?.full_draft as string) ?? '',
+            };
+            ctx.signalStageComplete('draft', importResult as unknown as Record<string, unknown>);
           }}
         />
       </div>
@@ -1840,7 +1832,7 @@ export function DraftEngine({
                   personaSlug: selectedPersona?.slug,
                   personaWpAuthorId: selectedPersona?.wpAuthorId ?? null,
                 };
-                actor.send({ type: 'DRAFT_COMPLETE', result });
+                ctx.signalStageComplete('draft', result as unknown as Record<string, unknown>);
               }}>
                 <Check className="h-4 w-4 mr-2" /> Done <ArrowRight className="h-4 w-4 ml-2" />
               </Button>

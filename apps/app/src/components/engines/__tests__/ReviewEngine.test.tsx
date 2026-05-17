@@ -10,7 +10,7 @@ import userEvent from '@testing-library/user-event'
 import { createActor } from 'xstate'
 import React from 'react'
 import { pipelineMachine } from '@/lib/pipeline/machine'
-import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
+import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
 import { ReviewEngine } from '@/components/engines/ReviewEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '@/components/engines/types'
 import { makeReviewDraftRow } from './fixtures/review'
@@ -32,6 +32,14 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }))
 
+vi.mock('@/components/pipeline/PipelineAbortProvider', () => ({
+  usePipelineAbort: () => null,
+}))
+
+vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
+  useAutoPilotTrigger: vi.fn(),
+}))
+
 const input: PipelineMachineInput = {
   projectId: 'proj-review-test',
   channelId: 'ch-1',
@@ -50,6 +58,8 @@ const draftResult = {
   draftId: 'd-1', draftTitle: 'Draft', draftContent: 'content',
 }
 
+// Pure machine helper — no engine rendering. Keeps all REVIEW_COMPLETE accumulation
+// tests in place exactly as they were (createActor only, no provider wrapping needed).
 function reachReviewIdle() {
   const actor = createActor(pipelineMachine, { input })
   actor.start()
@@ -207,33 +217,20 @@ describe('ReviewEngine — stageRun binding (T3.5)', () => {
     const user = userEvent.setup()
     const approvedDraft = makeReviewDraftRow({ verdict: 'approved', score: 92 })
 
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start()
-
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'step-by-step',
-      autopilotConfig: null,
-      templateId: null,
-      startStage: 'review',
-    })
-    actor.send({
-      type: 'STAGE_PROGRESS',
-      stage: 'draft',
-      partial: { draftId: approvedDraft.id, draftTitle: approvedDraft.title },
-    })
-
     render(
-      <PipelineActorProvider value={actor}>
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        autopilotConfig={null}
+        initialStageResults={{
+          draft: { draftId: approvedDraft.id, draftTitle: approvedDraft.title, draftContent: '', completedAt: new Date().toISOString() },
+        }}
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
         <ReviewEngine draft={approvedDraft} stageRun={stageRun} />
-      </PipelineActorProvider>,
+      </StandaloneProjectContextProvider>,
     )
 
     const approveBtn = await screen.findByRole('button', { name: /next.*assets/i })

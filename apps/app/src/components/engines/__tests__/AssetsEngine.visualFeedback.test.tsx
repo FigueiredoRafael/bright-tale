@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { createActor } from 'xstate';
 import React from 'react';
-import { pipelineMachine } from '@/lib/pipeline/machine';
-import { PipelineActorProvider } from '@/providers/PipelineActorProvider';
+import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider';
 import { AssetsEngine } from '../AssetsEngine';
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types';
 import {
@@ -17,6 +15,12 @@ import { makeAutopilotConfig } from './fixtures/draft';
 vi.mock('@/hooks/use-analytics', () => ({ useAnalytics: () => ({ track: vi.fn() }) }));
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}));
+vi.mock('@/components/pipeline/PipelineAbortProvider', () => ({
+  usePipelineAbort: () => null,
+}));
+vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
+  useAutoPilotTrigger: vi.fn(),
 }));
 
 interface MountOpts {
@@ -68,33 +72,22 @@ function mountEngine(opts: MountOpts = {}) {
     config.assets.mode = opts.assetsMode;
   }
 
-  const actor = createActor(pipelineMachine, {
-    input: {
-      projectId: 'proj-1',
-      channelId: 'ch-1',
-      projectTitle: 'Test',
-      pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-      creditSettings: DEFAULT_CREDIT_SETTINGS,
-    },
-  }).start();
-  actor.send({
-    type: 'SETUP_COMPLETE',
-    mode: 'step-by-step',
-    autopilotConfig: config,
-    templateId: null,
-    startStage: 'assets',
-  });
-  actor.send({
-    type: 'STAGE_PROGRESS',
-    stage: 'draft',
-    partial: { draftId: draft.id, draftTitle: draft.title },
-  });
-
-  return { actor, draft, ...render(
-    <PipelineActorProvider value={actor}>
-      <AssetsEngine mode="generate" draft={draft as unknown as Record<string, unknown>} />
-    </PipelineActorProvider>,
-  ) };
+  return {
+    draft,
+    ...render(
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        autopilotConfig={config}
+        initialStageResults={{ draft: { draftId: draft.id, draftTitle: draft.title, draftContent: '', completedAt: new Date().toISOString() } }}
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
+        <AssetsEngine mode="generate" draft={draft as unknown as Record<string, unknown>} />
+      </StandaloneProjectContextProvider>,
+    ),
+  };
 }
 
 beforeEach(() => {
@@ -231,27 +224,19 @@ describe('AssetsEngine — visual feedback', () => {
   });
 
   it('renders defensive fallback (does not crash) when draft is null', () => {
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start();
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'step-by-step',
-      autopilotConfig: null,
-      templateId: null,
-      startStage: 'assets',
-    });
     expect(() =>
       render(
-        <PipelineActorProvider value={actor}>
+        <StandaloneProjectContextProvider
+          projectId="proj-1"
+          channelId="ch-1"
+          mode="step-by-step"
+          autopilotConfig={null}
+          initialStageResults={{}}
+          pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+          creditSettings={DEFAULT_CREDIT_SETTINGS}
+        >
           <AssetsEngine mode="generate" draft={null} />
-        </PipelineActorProvider>,
+        </StandaloneProjectContextProvider>,
       ),
     ).not.toThrow();
   });

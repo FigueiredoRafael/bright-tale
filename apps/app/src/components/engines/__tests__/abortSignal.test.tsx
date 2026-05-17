@@ -14,10 +14,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
-import { createActor } from 'xstate'
 import React, { createContext, useContext } from 'react'
-import { pipelineMachine } from '@/lib/pipeline/machine'
-import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
+import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
 import { BrainstormEngine } from '../BrainstormEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
 
@@ -27,6 +25,19 @@ vi.mock('@/hooks/use-analytics', () => ({
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}))
+
+vi.mock('@/hooks/use-pipeline-tracker', () => ({
+  usePipelineTracker: () => ({
+    trackStarted: vi.fn(),
+    trackCompleted: vi.fn(),
+    trackFailed: vi.fn(),
+    trackAction: vi.fn(),
+  }),
+}))
+
+vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
+  useAutoPilotTrigger: vi.fn(),
 }))
 
 // Minimal AbortController context mock — mirrors the real PipelineAbortProvider's Ctx
@@ -52,29 +63,25 @@ function mountWithAbortedController() {
   const ctrl = new AbortController()
   ctrl.abort()
 
-  const actor = createActor(pipelineMachine, {
-    input: {
-      projectId: 'proj-abort',
-      channelId: 'ch-abort',
-      projectTitle: 'Abort Test',
-      pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-      creditSettings: DEFAULT_CREDIT_SETTINGS,
-    },
-  }).start()
-
   const utils = render(
     <AbortCtx.Provider value={ctrl}>
-      <PipelineActorProvider value={actor}>
+      <StandaloneProjectContextProvider
+        projectId="proj-abort"
+        channelId="ch-abort"
+        mode="step-by-step"
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
         <BrainstormEngine
           mode="generate"
           initialIdeas={STUB_IDEAS}
           initialSession={STUB_SESSION}
           preSelectedIdeaId="idea-1"
         />
-      </PipelineActorProvider>
+      </StandaloneProjectContextProvider>
     </AbortCtx.Provider>,
   )
-  return { actor, ctrl, ...utils }
+  return { ctrl, ...utils }
 }
 
 beforeEach(() => {

@@ -13,12 +13,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render } from '@testing-library/react'
-import { createActor } from 'xstate'
 import React from 'react'
 import { toast } from 'sonner'
-import { pipelineMachine } from '@/lib/pipeline/machine'
-import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
-import { ProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
+import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
 import { BrainstormEngine } from '../BrainstormEngine'
 import { ResearchEngine } from '../ResearchEngine'
 import { DraftEngine } from '../DraftEngine'
@@ -26,7 +23,6 @@ import { ReviewEngine } from '../ReviewEngine'
 import { AssetsEngine } from '../AssetsEngine'
 import { PublishEngine } from '../PublishEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
-import type { PipelineStage } from '../types'
 import type { AutopilotConfig } from '@brighttale/shared'
 
 // ─── Shared mocks ─────────────────────────────────────────────────────────────
@@ -139,74 +135,88 @@ const BASE_AUTOPILOT: AutopilotConfig = {
   publish: { status: 'draft' },
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Upstream stage result seeds ─────────────────────────────────────────────
 
-function makeActor(mode: 'overview' | 'supervised' | 'step-by-step', startStage: PipelineStage = 'brainstorm') {
-  const actor = createActor(pipelineMachine, {
-    input: {
-      projectId: 'proj-1',
-      channelId: 'ch-1',
-      projectTitle: 'T',
-      pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-      creditSettings: DEFAULT_CREDIT_SETTINGS,
-    },
-  }).start()
-
-  const autopilot = mode === 'step-by-step' ? null : BASE_AUTOPILOT
-
-  actor.send({
-    type: 'SETUP_COMPLETE',
-    mode,
-    autopilotConfig: autopilot,
-    templateId: null,
-    startStage,
-  })
-
-  if (startStage !== 'brainstorm') {
-    actor.send({ type: 'NAVIGATE', toStage: startStage })
-  }
-
-  return actor
+const BRAINSTORM_RESULT = {
+  ideaId: 'i-1', ideaTitle: 'T', ideaVerdict: 'viable', ideaCoreTension: 'c', completedAt: new Date().toISOString(),
 }
+
+const RESEARCH_RESULT = {
+  researchSessionId: 'rs-1', approvedCardsCount: 3, researchLevel: 'medium', completedAt: new Date().toISOString(),
+}
+
+const DRAFT_RESULT = {
+  draftId: 'd-1', draftTitle: 'T', draftContent: 'c', completedAt: new Date().toISOString(),
+}
+
+const REVIEW_RESULT = {
+  score: 92, verdict: 'approved', feedbackJson: {}, iterationCount: 1, completedAt: new Date().toISOString(),
+}
+
+const ASSETS_RESULT = {
+  assetIds: [], skipped: true, completedAt: new Date().toISOString(),
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function mountBrainstorm(mode: 'overview' | 'supervised' | 'step-by-step') {
   floatOpenValues.length = 0
   manualDialogOpenValues.length = 0
-  const actor = makeActor(mode)
-  const utils = render(
-    <PipelineActorProvider value={actor}>
+  const autopilotConfig = mode === 'step-by-step' ? null : BASE_AUTOPILOT
+  return render(
+    <StandaloneProjectContextProvider
+      projectId="proj-1"
+      channelId="ch-1"
+      mode={mode}
+      autopilotConfig={autopilotConfig}
+      initialStageResults={{}}
+      pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+      creditSettings={DEFAULT_CREDIT_SETTINGS}
+    >
       <BrainstormEngine mode="generate" />
-    </PipelineActorProvider>,
+    </StandaloneProjectContextProvider>,
   )
-  return { actor, ...utils }
 }
 
 function mountResearch(mode: 'overview' | 'supervised' | 'step-by-step') {
   floatOpenValues.length = 0
   manualDialogOpenValues.length = 0
-  const actor = makeActor(mode)
-  // Advance to research stage
-  actor.send({ type: 'BRAINSTORM_COMPLETE', result: { ideaId: 'i-1', ideaTitle: 'T', ideaVerdict: 'viable', ideaCoreTension: 'c' } })
-  const utils = render(
-    <PipelineActorProvider value={actor}>
+  const autopilotConfig = mode === 'step-by-step' ? null : BASE_AUTOPILOT
+  return render(
+    <StandaloneProjectContextProvider
+      projectId="proj-1"
+      channelId="ch-1"
+      mode={mode}
+      autopilotConfig={autopilotConfig}
+      initialStageResults={{ brainstorm: BRAINSTORM_RESULT }}
+      pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+      creditSettings={DEFAULT_CREDIT_SETTINGS}
+    >
       <ResearchEngine mode="generate" />
-    </PipelineActorProvider>,
+    </StandaloneProjectContextProvider>,
   )
-  return { actor, ...utils }
 }
 
 function mountDraft(mode: 'overview' | 'supervised' | 'step-by-step') {
   modalOpenValues.length = 0
   manualDialogOpenValues.length = 0
-  const actor = makeActor(mode)
-  actor.send({ type: 'BRAINSTORM_COMPLETE', result: { ideaId: 'i-1', ideaTitle: 'T', ideaVerdict: 'viable', ideaCoreTension: 'c' } })
-  actor.send({ type: 'RESEARCH_COMPLETE', result: { researchSessionId: 'rs-1', approvedCardsCount: 3, researchLevel: 'medium' } })
-  const utils = render(
-    <PipelineActorProvider value={actor}>
+  const autopilotConfig = mode === 'step-by-step' ? null : BASE_AUTOPILOT
+  return render(
+    <StandaloneProjectContextProvider
+      projectId="proj-1"
+      channelId="ch-1"
+      mode={mode}
+      autopilotConfig={autopilotConfig}
+      initialStageResults={{
+        brainstorm: BRAINSTORM_RESULT,
+        research: RESEARCH_RESULT,
+      }}
+      pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+      creditSettings={DEFAULT_CREDIT_SETTINGS}
+    >
       <DraftEngine mode="generate" />
-    </PipelineActorProvider>,
+    </StandaloneProjectContextProvider>,
   )
-  return { actor, ...utils }
 }
 
 const STUB_DRAFT = {
@@ -223,16 +233,24 @@ const STUB_DRAFT = {
 function mountReview(mode: 'overview' | 'supervised' | 'step-by-step') {
   modalOpenValues.length = 0
   manualDialogOpenValues.length = 0
-  const actor = makeActor(mode)
-  actor.send({ type: 'BRAINSTORM_COMPLETE', result: { ideaId: 'i-1', ideaTitle: 'T', ideaVerdict: 'viable', ideaCoreTension: 'c' } })
-  actor.send({ type: 'RESEARCH_COMPLETE', result: { researchSessionId: 'rs-1', approvedCardsCount: 3, researchLevel: 'medium' } })
-  actor.send({ type: 'DRAFT_COMPLETE', result: { draftId: 'd-1', draftTitle: 'T', draftContent: 'c' } })
-  const utils = render(
-    <PipelineActorProvider value={actor}>
+  const autopilotConfig = mode === 'step-by-step' ? null : BASE_AUTOPILOT
+  return render(
+    <StandaloneProjectContextProvider
+      projectId="proj-1"
+      channelId="ch-1"
+      mode={mode}
+      autopilotConfig={autopilotConfig}
+      initialStageResults={{
+        brainstorm: BRAINSTORM_RESULT,
+        research: RESEARCH_RESULT,
+        draft: DRAFT_RESULT,
+      }}
+      pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+      creditSettings={DEFAULT_CREDIT_SETTINGS}
+    >
       <ReviewEngine draft={STUB_DRAFT as any} />
-    </PipelineActorProvider>,
+    </StandaloneProjectContextProvider>,
   )
-  return { actor, ...utils }
 }
 
 const STUB_DRAFT_FOR_ASSETS = {
@@ -245,17 +263,25 @@ const STUB_DRAFT_FOR_ASSETS = {
 
 function mountAssets(mode: 'overview' | 'supervised' | 'step-by-step') {
   manualDialogOpenValues.length = 0
-  const actor = makeActor(mode)
-  actor.send({ type: 'BRAINSTORM_COMPLETE', result: { ideaId: 'i-1', ideaTitle: 'T', ideaVerdict: 'viable', ideaCoreTension: 'c' } })
-  actor.send({ type: 'RESEARCH_COMPLETE', result: { researchSessionId: 'rs-1', approvedCardsCount: 3, researchLevel: 'medium' } })
-  actor.send({ type: 'DRAFT_COMPLETE', result: { draftId: 'd-1', draftTitle: 'T', draftContent: 'c' } })
-  actor.send({ type: 'REVIEW_COMPLETE', result: { score: 92, verdict: 'approved', feedbackJson: {}, iterationCount: 1 } })
-  const utils = render(
-    <PipelineActorProvider value={actor}>
+  const autopilotConfig = mode === 'step-by-step' ? null : BASE_AUTOPILOT
+  return render(
+    <StandaloneProjectContextProvider
+      projectId="proj-1"
+      channelId="ch-1"
+      mode={mode}
+      autopilotConfig={autopilotConfig}
+      initialStageResults={{
+        brainstorm: BRAINSTORM_RESULT,
+        research: RESEARCH_RESULT,
+        draft: DRAFT_RESULT,
+        review: REVIEW_RESULT,
+      }}
+      pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+      creditSettings={DEFAULT_CREDIT_SETTINGS}
+    >
       <AssetsEngine mode="generate" draft={STUB_DRAFT_FOR_ASSETS as any} />
-    </PipelineActorProvider>,
+    </StandaloneProjectContextProvider>,
   )
-  return { actor, ...utils }
 }
 
 const STUB_PUBLISH_DRAFT = {
@@ -269,48 +295,26 @@ const STUB_PUBLISH_DRAFT = {
 function mountPublish(mode: 'overview' | 'supervised' | 'step-by-step') {
   vi.mocked(toast).success.mockClear()
   vi.mocked(toast).error.mockClear()
-  const actor = makeActor(mode)
-  actor.send({ type: 'BRAINSTORM_COMPLETE', result: { ideaId: 'i-1', ideaTitle: 'T', ideaVerdict: 'viable', ideaCoreTension: 'c' } })
-  actor.send({ type: 'RESEARCH_COMPLETE', result: { researchSessionId: 'rs-1', approvedCardsCount: 3, researchLevel: 'medium' } })
-  actor.send({ type: 'DRAFT_COMPLETE', result: { draftId: 'd-1', draftTitle: 'T', draftContent: 'c' } })
-  actor.send({ type: 'REVIEW_COMPLETE', result: { score: 92, verdict: 'approved', feedbackJson: {}, iterationCount: 1 } })
-  actor.send({ type: 'ASSETS_COMPLETE', result: { assetIds: [], skipped: true } })
-  actor.send({ type: 'NAVIGATE', toStage: 'publish' })
-  // ProjectContextProvider (required by PublishEngine since Slice 14.1) needs
-  // project + stages fetch responses. Stub fetch routes before rendering.
-  vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => {
-    const u = String(url);
-    if (u.match(/\/api\/projects\/proj-1\/stages/)) {
-      return { ok: true, json: async () => ({
-        data: { stageRuns: [], tracks: [], project: { mode, paused: false } },
-        error: null,
-      }) };
-    }
-    if (u.match(/\/api\/projects\/proj-1$/)) {
-      return { ok: true, json: async () => ({
-        data: {
-          id: 'proj-1',
-          channel_id: 'ch-1',
-          title: 'T',
-          mode,
-          autopilot_config_json: null,
-          template_id: null,
-          paused: false,
-          pipeline_state_json: null,
-        },
-        error: null,
-      }) };
-    }
-    return { ok: true, json: async () => ({ data: null, error: null }) };
-  }))
-  const utils = render(
-    <ProjectContextProvider projectId="proj-1">
-      <PipelineActorProvider value={actor}>
-        <PublishEngine draft={STUB_PUBLISH_DRAFT} />
-      </PipelineActorProvider>
-    </ProjectContextProvider>,
+  const autopilotConfig = mode === 'step-by-step' ? null : BASE_AUTOPILOT
+  return render(
+    <StandaloneProjectContextProvider
+      projectId="proj-1"
+      channelId="ch-1"
+      mode={mode}
+      autopilotConfig={autopilotConfig}
+      initialStageResults={{
+        brainstorm: BRAINSTORM_RESULT,
+        research: RESEARCH_RESULT,
+        draft: DRAFT_RESULT,
+        review: REVIEW_RESULT,
+        assets: ASSETS_RESULT,
+      }}
+      pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+      creditSettings={DEFAULT_CREDIT_SETTINGS}
+    >
+      <PublishEngine draft={STUB_PUBLISH_DRAFT} />
+    </StandaloneProjectContextProvider>,
   )
-  return { actor, ...utils }
 }
 
 // ─── BrainstormEngine ────────────────────────────────────────────────────────

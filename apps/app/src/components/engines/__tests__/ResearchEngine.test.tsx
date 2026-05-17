@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { createActor } from 'xstate'
 import React from 'react'
 import { pipelineMachine } from '@/lib/pipeline/machine'
-import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
+import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
 import { ResearchEngine } from '../ResearchEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
 import type { AutopilotConfig } from '@brighttale/shared'
@@ -23,6 +23,10 @@ vi.mock('@/hooks/use-analytics', () => ({
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}))
+
+vi.mock('@/components/pipeline/PipelineAbortProvider', () => ({
+  usePipelineAbort: () => null,
 }))
 
 // Slice 14.3: useAutoPilotTrigger no longer reads from xstate actor.
@@ -97,28 +101,17 @@ afterEach(() => {
 
 describe('ResearchEngine', () => {
   it('hydrates researchDepth from autopilotConfig.research.depth on mount', () => {
-    // Mount with a fresh actor (no brainstorm seed needed for hydration test)
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start()
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'overview',
-      autopilotConfig: FULL_AUTOPILOT_CONFIG,
-      templateId: null,
-      startStage: 'research',
-    })
-
     render(
-      <PipelineActorProvider value={actor}>
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="overview"
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+        autopilotConfig={FULL_AUTOPILOT_CONFIG}
+      >
         <ResearchEngine mode="generate" />
-      </PipelineActorProvider>,
+      </StandaloneProjectContextProvider>,
     )
 
     // The sr-only span carries the current depth value for testing.
@@ -126,27 +119,17 @@ describe('ResearchEngine', () => {
   })
 
   it('defaults to medium depth when no autopilotConfig is provided', () => {
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start()
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'step-by-step',
-      autopilotConfig: null,
-      templateId: null,
-      startStage: 'research',
-    })
-
     render(
-      <PipelineActorProvider value={actor}>
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+        autopilotConfig={null}
+      >
         <ResearchEngine mode="generate" />
-      </PipelineActorProvider>,
+      </StandaloneProjectContextProvider>,
     )
 
     expect(screen.getByTestId('research-depth')).toHaveTextContent('medium')
@@ -187,14 +170,17 @@ describe('ResearchEngine', () => {
       }),
     )
 
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-        initialStageResults: {
+    const completedStages: Array<{ stage: string; result: Record<string, unknown> }> = []
+
+    render(
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="overview"
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+        autopilotConfig={FULL_AUTOPILOT_CONFIG}
+        initialStageResults={{
           brainstorm: {
             ideaId: 'idea-1',
             ideaTitle: 'AI agents in 2026',
@@ -202,59 +188,39 @@ describe('ResearchEngine', () => {
             ideaCoreTension: 'tension',
             completedAt: new Date().toISOString(),
           },
-        },
-      },
-    }).start()
-
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'overview',
-      autopilotConfig: FULL_AUTOPILOT_CONFIG,
-      templateId: null,
-      startStage: 'research',
-    })
-
-    render(
-      <PipelineActorProvider value={actor}>
+        }}
+        onStageComplete={(stage, result) => completedStages.push({ stage, result })}
+      >
         <ResearchEngine mode="generate" />
-      </PipelineActorProvider>,
+      </StandaloneProjectContextProvider>,
     )
 
     // Wait for RESEARCH_COMPLETE to be dispatched with all 5 cards.
     await waitFor(() => {
-      const snap = actor.getSnapshot()
-      expect(snap.context.stageResults.research).toBeDefined()
-      expect(snap.context.stageResults.research?.approvedCardsCount).toBe(STUB_CARDS.length)
+      expect(completedStages.some((e) => e.stage === 'research' && (e.result as { approvedCardsCount?: number }).approvedCardsCount === STUB_CARDS.length)).toBe(true)
     }, { timeout: 3000 })
   })
 
   it('does not auto-approve cards when mode === "step-by-step"', async () => {
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start()
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'step-by-step',
-      autopilotConfig: null,
-      templateId: null,
-      startStage: 'research',
-    })
+    const completedStages: Array<{ stage: string; result: Record<string, unknown> }> = []
 
     render(
-      <PipelineActorProvider value={actor}>
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+        autopilotConfig={null}
+        onStageComplete={(stage, result) => completedStages.push({ stage, result })}
+      >
         <ResearchEngine mode="generate" />
-      </PipelineActorProvider>,
+      </StandaloneProjectContextProvider>,
     )
 
     // No auto-pilot trigger in step-by-step; research stays at idle.
     await new Promise((r) => setTimeout(r, 100))
-    expect(actor.getSnapshot().context.stageResults.research).toBeUndefined()
+    expect(completedStages.some((e) => e.stage === 'research')).toBe(false)
   })
 
   it('machine accepts STAGE_PROGRESS with status=Researching topic for research stage', () => {
@@ -340,27 +306,16 @@ describe('ResearchEngine — allAttempts tabs (T9.F152)', () => {
       ],
     }
 
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start()
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'step-by-step',
-      autopilotConfig: null,
-      templateId: null,
-      startStage: 'research',
-    })
-
     render(
-      <PipelineActorProvider value={actor}>
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
         <ResearchEngine mode="generate" stageRun={stageRunWithAttempts} />
-      </PipelineActorProvider>,
+      </StandaloneProjectContextProvider>,
     )
 
     // Three attempt tabs should be visible
@@ -387,27 +342,16 @@ describe('ResearchEngine — allAttempts tabs (T9.F152)', () => {
       allAttempts: [],
     }
 
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start()
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'step-by-step',
-      autopilotConfig: null,
-      templateId: null,
-      startStage: 'research',
-    })
-
     render(
-      <PipelineActorProvider value={actor}>
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
         <ResearchEngine mode="generate" stageRun={stageRunNoAttempts} />
-      </PipelineActorProvider>,
+      </StandaloneProjectContextProvider>,
     )
 
     expect(screen.queryByTestId('attempt-tab-1')).not.toBeInTheDocument()
@@ -500,14 +444,15 @@ describe('ResearchEngine — stageRun binding (T3.5)', () => {
       React.useEffect(() => { void fire() }, [])
     })
 
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-        initialStageResults: {
+    render(
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="overview"
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+        autopilotConfig={FULL_AUTOPILOT_CONFIG_OVERVIEW}
+        initialStageResults={{
           brainstorm: {
             ideaId: 'idea-1',
             ideaTitle: 'AI agents in 2026',
@@ -515,22 +460,10 @@ describe('ResearchEngine — stageRun binding (T3.5)', () => {
             ideaCoreTension: 'tension',
             completedAt: new Date().toISOString(),
           },
-        },
-      },
-    }).start()
-
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'overview',
-      autopilotConfig: FULL_AUTOPILOT_CONFIG_OVERVIEW,
-      templateId: null,
-      startStage: 'research',
-    })
-
-    render(
-      <PipelineActorProvider value={actor}>
+        }}
+      >
         <ResearchEngine mode="generate" stageRun={stageRun} />
-      </PipelineActorProvider>,
+      </StandaloneProjectContextProvider>,
     )
 
     await waitFor(() => {

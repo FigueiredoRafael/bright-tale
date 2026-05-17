@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { createActor } from 'xstate';
 import React from 'react';
-import { pipelineMachine } from '@/lib/pipeline/machine';
-import { PipelineActorProvider } from '@/providers/PipelineActorProvider';
+import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider';
 import { PreviewEngine } from '../PreviewEngine';
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types';
 import { makePreviewDraftRow, makePreviewAssets } from './fixtures/previewPublish';
@@ -11,6 +9,12 @@ import { makePreviewDraftRow, makePreviewAssets } from './fixtures/previewPublis
 vi.mock('@/hooks/use-analytics', () => ({ useAnalytics: () => ({ track: vi.fn() }) }));
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}));
+vi.mock('@/components/pipeline/PipelineAbortProvider', () => ({
+  usePipelineAbort: () => null,
+}));
+vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
+  useAutoPilotTrigger: vi.fn(),
 }));
 
 interface MountOpts {
@@ -50,32 +54,18 @@ function mountEngine(opts: MountOpts = {}) {
   const draft = opts.draftRow ?? makePreviewDraftRow();
   stubFetch({ ...opts, draftRow: draft });
 
-  const actor = createActor(pipelineMachine, {
-    input: {
-      projectId: 'proj-1',
-      channelId: 'ch-1',
-      projectTitle: 'Test',
-      pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-      creditSettings: DEFAULT_CREDIT_SETTINGS,
-    },
-  }).start();
-  actor.send({
-    type: 'SETUP_COMPLETE',
-    mode: 'step-by-step',
-    autopilotConfig: null,
-    templateId: null,
-    startStage: 'preview',
-  });
-  actor.send({
-    type: 'STAGE_PROGRESS',
-    stage: 'draft',
-    partial: { draftId: draft.id, draftTitle: draft.title },
-  });
-
   return render(
-    <PipelineActorProvider value={actor}>
+    <StandaloneProjectContextProvider
+      projectId="proj-1"
+      channelId="ch-1"
+      mode="step-by-step"
+      autopilotConfig={null}
+      initialStageResults={{ draft: { draftId: draft.id, draftTitle: draft.title, draftContent: '', completedAt: new Date().toISOString() } }}
+      pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+      creditSettings={DEFAULT_CREDIT_SETTINGS}
+    >
       <PreviewEngine />
-    </PipelineActorProvider>,
+    </StandaloneProjectContextProvider>,
   );
 }
 
@@ -138,31 +128,18 @@ describe('PreviewEngine — visual feedback', () => {
   it('shows the loading state while the draft fetch is in flight', () => {
     // Stub fetch with a pending promise so the engine stays in loading
     vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise(() => {})));
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start();
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'step-by-step',
-      autopilotConfig: null,
-      templateId: null,
-      startStage: 'preview',
-    });
-    actor.send({
-      type: 'STAGE_PROGRESS',
-      stage: 'draft',
-      partial: { draftId: 'd1', draftTitle: 'T' },
-    });
     render(
-      <PipelineActorProvider value={actor}>
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        autopilotConfig={null}
+        initialStageResults={{ draft: { draftId: 'd1', draftTitle: 'T', draftContent: '', completedAt: new Date().toISOString() } }}
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
         <PreviewEngine />
-      </PipelineActorProvider>,
+      </StandaloneProjectContextProvider>,
     );
     expect(screen.getByText(/Loading preview data/i)).toBeInTheDocument();
   });

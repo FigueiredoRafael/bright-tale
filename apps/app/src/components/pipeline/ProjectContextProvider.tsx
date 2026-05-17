@@ -1,19 +1,20 @@
 'use client';
 
 /**
- * Slice 14.1 — ProjectContextProvider
+ * Slice 14.1 — ProjectContextProvider (extended in 14.4)
  *
  * Server-driven replacement for the xstate actor context seam.
  * Fetches GET /api/projects/:id + GET /api/projects/:id/stages,
  * builds a PipelineMachineContext-shaped object, and exposes it
  * via useProjectContext().
  *
- * Session-local fields (stageStatus, pendingDrillIn, returnPromptOpen,
- * pauseReason) live in local useState — they have no server source yet.
- * Downstream slices (14.2-14.7) will decide persistence strategy.
- *
- * IMPORTANT: pipelineMachine, PipelineActorProvider, and
- * StandaloneEngineHost are NOT touched in this slice.
+ * Slice 14.4 adds:
+ * - `signalStageComplete(stage, result)` on the context value — in server-driven
+ *   mode this persists via PATCH + refetch; in standalone mode it updates local
+ *   React state and invokes the host-provided `onStageComplete` callback.
+ * - `StandaloneProjectContextProvider` — shares the same context value type but
+ *   skips the server fetch and seeds state from props. Used by StandaloneEngineHost
+ *   so engines can read from useProjectContext() without a real project.
  */
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
@@ -52,6 +53,16 @@ export interface ProjectContextValue {
   setPendingDrillIn: (value: 'assets' | 'preview' | null) => void;
   setReturnPromptOpen: (value: boolean) => void;
   setPauseReason: (value: PauseReason | null) => void;
+  /**
+   * Signal that a stage has completed and record its result.
+   *
+   * Server-driven mode: PATCH pipeline_state_json then refetch so the context
+   * reflects the new stageResults immediately.
+   *
+   * Standalone mode (StandaloneProjectContextProvider): updates local state and
+   * invokes the host-provided `onStageComplete` callback.
+   */
+  signalStageComplete: (stage: PipelineStage, result: Record<string, unknown>) => void;
 }
 
 const ProjectContext = createContext<ProjectContextValue | null>(null);
@@ -359,6 +370,30 @@ export function ProjectContextProvider({
   const setReturnPromptOpen = useCallback((value: boolean) => setReturnPromptOpenState(value), []);
   const setPauseReason = useCallback((value: PauseReason | null) => setPauseReasonState(value), []);
 
+  // Server-driven signalStageComplete: PATCH pipeline_state_json then refetch.
+  const signalStageComplete = useCallback(
+    (stage: PipelineStage, result: Record<string, unknown>) => {
+      const pid = context.projectId;
+      if (!pid || pid.startsWith('standalone-')) return;
+      // Fire-and-forget PATCH, then refetch to pick up the new stageResults.
+      fetch(`/api/projects/${pid}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pipelineStateJson: {
+            stageResults: { [stage]: { ...result, completedAt: new Date().toISOString() } },
+          },
+        }),
+      })
+        .then(() => refetch())
+        .catch(() => {
+          // Non-fatal — refetch anyway so UI state stays consistent.
+          refetch();
+        });
+    },
+    [context.projectId, refetch],
+  );
+
   const value: ProjectContextValue = {
     context,
     isLoading,
@@ -368,6 +403,110 @@ export function ProjectContextProvider({
     setPendingDrillIn,
     setReturnPromptOpen,
     setPauseReason,
+    signalStageComplete,
+  };
+
+  return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;
+}
+
+// ─── Standalone Provider ──────────────────────────────────────────────────────
+
+/**
+ * Slice 14.4 — StandaloneProjectContextProvider
+ *
+ * Provides the same ProjectContextValue as ProjectContextProvider but skips
+ * the server fetch. Used by StandaloneEngineHost to give engines a ctx seam
+ * without a real projectId or network round-trip.
+ *
+ * `signalStageComplete` updates local stageResults state and calls
+ * `onStageComplete` (provided by the host page).
+ */
+export interface StandaloneProjectContextProviderProps {
+  initialStage?: PipelineStage;
+  initialStageResults?: StageResultMap;
+  pipelineSettings?: PipelineSettings;
+  creditSettings?: CreditSettings;
+  channelId?: string | null;
+  projectId?: string;
+  mode?: 'step-by-step' | 'supervised' | 'overview' | null;
+  autopilotConfig?: AutopilotConfig | null;
+  onStageComplete?: (stage: PipelineStage, result: Record<string, unknown>) => void;
+  children: React.ReactNode;
+}
+
+export function StandaloneProjectContextProvider({
+  initialStageResults = {},
+  pipelineSettings = DEFAULT_PIPELINE_SETTINGS,
+  creditSettings = DEFAULT_CREDIT_SETTINGS,
+  channelId = null,
+  projectId = '',
+  mode = null,
+  autopilotConfig = null,
+  onStageComplete,
+  children,
+}: StandaloneProjectContextProviderProps) {
+  const [stageResults, setStageResults] = useState<StageResultMap>(initialStageResults);
+  const [stageStatus, setStageStatusState] = useState<Partial<Record<PipelineStage, Record<string, unknown>>>>({});
+  const [pendingDrillIn, setPendingDrillInState] = useState<'assets' | 'preview' | null>(null);
+  const [returnPromptOpen, setReturnPromptOpenState] = useState(false);
+  const [pauseReason, setPauseReasonState] = useState<PauseReason | null>(null);
+
+  const onStageCompleteRef = useRef(onStageComplete);
+  useEffect(() => { onStageCompleteRef.current = onStageComplete; }, [onStageComplete]);
+
+  const context: PipelineMachineContext = {
+    projectId: projectId || `standalone`,
+    channelId,
+    projectTitle: '',
+    mode,
+    autopilotConfig,
+    templateId: null,
+    stageResults,
+    stageStatus,
+    iterationCount: 0,
+    lastError: null,
+    pipelineSettings,
+    creditSettings,
+    paused: false,
+    pauseReason,
+    pendingDrillIn,
+    returnPromptOpen,
+  };
+
+  const standaloneSetStageStatus = useCallback(
+    (stage: PipelineStage, status: Record<string, unknown>) => {
+      setStageStatusState((prev) => ({ ...prev, [stage]: status }));
+    },
+    [],
+  );
+
+  const standaloneSetPendingDrillIn = useCallback((v: 'assets' | 'preview' | null) => setPendingDrillInState(v), []);
+  const standaloneSetReturnPromptOpen = useCallback((v: boolean) => setReturnPromptOpenState(v), []);
+  const standaloneSetPauseReason = useCallback((v: PauseReason | null) => setPauseReasonState(v), []);
+
+  const signalStageComplete = useCallback(
+    (stage: PipelineStage, result: Record<string, unknown>) => {
+      const resultWithTs = { ...result, completedAt: new Date().toISOString() };
+      setStageResults((prev) => ({ ...prev, [stage]: resultWithTs }));
+      onStageCompleteRef.current?.(stage, result);
+    },
+    [],
+  );
+
+  const standaloneRefetch = useCallback(() => {
+    // No-op in standalone mode — state is local.
+  }, []);
+
+  const value: ProjectContextValue = {
+    context,
+    isLoading: false,
+    error: null,
+    refetch: standaloneRefetch,
+    setStageStatus: standaloneSetStageStatus,
+    setPendingDrillIn: standaloneSetPendingDrillIn,
+    setReturnPromptOpen: standaloneSetReturnPromptOpen,
+    setPauseReason: standaloneSetPauseReason,
+    signalStageComplete,
   };
 
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;

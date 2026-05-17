@@ -1,9 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useSelector } from '@xstate/react';
-import { useOptionalPipelineActor } from '@/hooks/usePipelineActor';
-import { useOptionalProjectContext } from '@/components/pipeline/ProjectContextProvider';
+import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import {
   Loader2,
@@ -92,22 +90,14 @@ export function BrainstormEngine({
   preSelectedIdeaId,
   stageRun,
 }: BrainstormEngineProps) {
-  // Dual-path (Slice 14.2): context-first, actor fallback
-  const projectCtx = useOptionalProjectContext();
-  const actor = useOptionalPipelineActor();
+  const ctx = useProjectContext();
   const abortController = usePipelineAbort();
 
-  // Selectors — context path takes precedence
-  const actorChannelId = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { channelId?: string | null } } | undefined)?.context?.channelId);
-  const actorProjectId = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { projectId?: string } } | undefined)?.context?.projectId);
-  const actorBrainstormResult = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { stageResults?: { brainstorm?: unknown } } } | undefined)?.context?.stageResults?.brainstorm);
-
-  const channelId = projectCtx ? projectCtx.context.channelId : actorChannelId;
-  const projectId = projectCtx ? projectCtx.context.projectId : (actorProjectId ?? '');
-  const brainstormResult = (projectCtx ? projectCtx.context.stageResults.brainstorm : actorBrainstormResult) as import('./types').BrainstormResult | undefined;
+  const channelId = ctx.context.channelId;
+  const projectId = ctx.context.projectId ?? '';
+  const brainstormResult = ctx.context.stageResults.brainstorm as import('./types').BrainstormResult | undefined;
 
   // Build a legacy PipelineContext for usePipelineTracker and ContextBanner
-  // (both still expect this shape; brainstorm ContextBanner returns null anyway).
   const trackerContext: PipelineContext = {
     channelId: channelId ?? undefined,
     projectId,
@@ -168,8 +158,7 @@ export function BrainstormEngine({
   // restore so wizard inputs take precedence over stale localStorage state
   // for fresh autopilot runs. localStorage restore won't fire for fresh
   // autopilot because initialSession is undefined.
-  const actorAutopilotConfig = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { autopilotConfig?: AutopilotConfig | null } } | undefined)?.context?.autopilotConfig);
-  const autopilotConfig: AutopilotConfig | null | undefined = projectCtx ? projectCtx.context.autopilotConfig : actorAutopilotConfig;
+  const autopilotConfig: AutopilotConfig | null | undefined = ctx.context.autopilotConfig;
   useEffect(() => {
     const hydration = hydrateBrainstormFromConfig(autopilotConfig ?? null);
     if (Object.keys(hydration).length === 0) return;
@@ -443,22 +432,16 @@ export function BrainstormEngine({
   // select that idea and advance the machine. Falls back to the first 'viable'
   // verdict if no explicit pick is provided.
   const autoPickedRef = useRef<string | null>(null);
-  const actorAutoMode = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { mode?: string | null } } | undefined)?.context?.mode);
-  const actorAutoPaused = useSelector(actor ?? undefined, (s: unknown) => (s as { context?: { paused?: boolean } } | undefined)?.context?.paused);
-  const autoMode = projectCtx ? projectCtx.context.mode : actorAutoMode;
+  const autoMode = ctx.context.mode;
   const overviewMode = autoMode === 'overview';
-  const autoPaused = projectCtx ? projectCtx.context.paused : (actorAutoPaused ?? false);
+  const autoPaused = ctx.context.paused ?? false;
   useEffect(() => {
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (brainstormResult?.ideaId) return;
     if (!ideas.length) return;
     if (running || regenerating) return;
 
-    if (projectCtx) {
-      projectCtx.setStageStatus('brainstorm', { status: 'Selecting idea' });
-    } else {
-      actor?.send({ type: 'STAGE_PROGRESS', stage: 'brainstorm', partial: { status: 'Selecting idea' } });
-    }
+    ctx.setStageStatus('brainstorm', { status: 'Selecting idea' });
     const matchByPick = recommendation?.pick
       ? ideas.find(
           (i) =>
@@ -492,27 +475,14 @@ export function BrainstormEngine({
         body: JSON.stringify({ title: chosen.title }),
       }).catch(() => {});
     }
-    // Dual-path: context refetch or actor send
-    if (projectCtx) {
-      if (stageRun && projectId) {
-        void writeStageRunOutcome({
-          projectId,
-          stageRunId: stageRun.id,
-          outcome: result as unknown as Record<string, unknown>,
-        }).then(() => projectCtx.refetch()).catch(() => {});
-      } else {
-        projectCtx.refetch();
-      }
+    if (stageRun && projectId) {
+      void writeStageRunOutcome({
+        projectId,
+        stageRunId: stageRun.id,
+        outcome: result as unknown as Record<string, unknown>,
+      }).then(() => ctx.signalStageComplete('brainstorm', result as unknown as Record<string, unknown>)).catch(() => {});
     } else {
-      // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
-      actor?.send({ type: 'BRAINSTORM_COMPLETE', result });
-      if (stageRun && projectId) {
-        void writeStageRunOutcome({
-          projectId,
-          stageRunId: stageRun.id,
-          outcome: result as unknown as Record<string, unknown>,
-        }).catch(() => {});
-      }
+      ctx.signalStageComplete('brainstorm', result as unknown as Record<string, unknown>);
     }
   }, [
     autoMode,
@@ -523,8 +493,7 @@ export function BrainstormEngine({
     running,
     regenerating,
     sessionId,
-    projectCtx,
-    actor,
+    ctx,
     tracker,
     projectId,
     stageRun,
@@ -540,11 +509,7 @@ export function BrainstormEngine({
       return;
     }
 
-    if (projectCtx) {
-      projectCtx.setStageStatus('brainstorm', { status: 'Generating ideas' });
-    } else {
-      actor?.send({ type: 'STAGE_PROGRESS', stage: 'brainstorm', partial: { status: 'Generating ideas' } });
-    }
+    ctx.setStageStatus('brainstorm', { status: 'Generating ideas' });
     setRunning(true);
     setIdeas([]);
     setSelectedIdeaId(null);
@@ -664,11 +629,7 @@ export function BrainstormEngine({
         setRecommendation(json.data.recommendation as { pick?: string; rationale?: string });
       }
       if (sessionId && mapped.length > 0) {
-        if (projectCtx) {
-          projectCtx.setStageStatus('brainstorm', { brainstormSessionId: sessionId });
-        } else {
-          actor?.send({ type: 'STAGE_PROGRESS', stage: 'brainstorm', partial: { brainstormSessionId: sessionId } });
-        }
+        ctx.setStageStatus('brainstorm', { brainstormSessionId: sessionId });
       }
       tracker.trackCompleted({
         sessionId: sessionId || undefined,
@@ -732,11 +693,7 @@ export function BrainstormEngine({
       setRecommendation(json.data.recommendation as { pick?: string; rationale?: string });
     }
     if (newIdeas.length > 0) {
-      if (projectCtx) {
-        projectCtx.setStageStatus('brainstorm', { brainstormSessionId: manualSessionId });
-      } else {
-        actor?.send({ type: 'STAGE_PROGRESS', stage: 'brainstorm', partial: { brainstormSessionId: manualSessionId } });
-      }
+      ctx.setStageStatus('brainstorm', { brainstormSessionId: manualSessionId });
     }
     setManualSessionId(null);
     tracker.trackCompleted({
@@ -762,11 +719,7 @@ export function BrainstormEngine({
     setSessionId(null);
     setIdeas([]);
     setRecommendation(null);
-    if (projectCtx) {
-      projectCtx.setStageStatus('brainstorm', { brainstormSessionId: undefined });
-    } else {
-      actor?.send({ type: 'STAGE_PROGRESS', stage: 'brainstorm', partial: { brainstormSessionId: undefined } });
-    }
+    ctx.setStageStatus('brainstorm', { brainstormSessionId: undefined });
     if (!overviewMode) toast.success('Manual session abandoned');
   }
 
@@ -851,27 +804,14 @@ export function BrainstormEngine({
       });
     }
 
-    // Dual-path: context refetch or actor send
-    if (projectCtx) {
-      if (stageRun && projectId) {
-        void writeStageRunOutcome({
-          projectId,
-          stageRunId: stageRun.id,
-          outcome: result as unknown as Record<string, unknown>,
-        }).then(() => projectCtx.refetch()).catch(() => {});
-      } else {
-        projectCtx.refetch();
-      }
+    if (stageRun && projectId) {
+      void writeStageRunOutcome({
+        projectId,
+        stageRunId: stageRun.id,
+        outcome: result as unknown as Record<string, unknown>,
+      }).then(() => ctx.signalStageComplete('brainstorm', result as unknown as Record<string, unknown>)).catch(() => {});
     } else {
-      // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
-      actor?.send({ type: 'BRAINSTORM_COMPLETE', result });
-      if (stageRun && projectId) {
-        void writeStageRunOutcome({
-          projectId,
-          stageRunId: stageRun.id,
-          outcome: result as unknown as Record<string, unknown>,
-        }).catch(() => {});
-      }
+      ctx.signalStageComplete('brainstorm', result as unknown as Record<string, unknown>);
     }
   }
 
@@ -939,27 +879,14 @@ export function BrainstormEngine({
               ideaVerdict: (item.verdict as string) ?? 'experimental',
               ideaCoreTension: (item.core_tension as string) ?? '',
             };
-            // Dual-path: context refetch or actor send
-            if (projectCtx) {
-              if (stageRun && projectId) {
-                void writeStageRunOutcome({
-                  projectId,
-                  stageRunId: stageRun.id,
-                  outcome: importResult as unknown as Record<string, unknown>,
-                }).then(() => projectCtx.refetch()).catch(() => {});
-              } else {
-                projectCtx.refetch();
-              }
+            if (stageRun && projectId) {
+              void writeStageRunOutcome({
+                projectId,
+                stageRunId: stageRun.id,
+                outcome: importResult as unknown as Record<string, unknown>,
+              }).then(() => ctx.signalStageComplete('brainstorm', importResult as unknown as Record<string, unknown>)).catch(() => {});
             } else {
-              // removed: TODO T4.5 — actor.send stays until XState becomes UI-only
-              actor?.send({ type: 'BRAINSTORM_COMPLETE', result: importResult });
-              if (stageRun && projectId) {
-                void writeStageRunOutcome({
-                  projectId,
-                  stageRunId: stageRun.id,
-                  outcome: importResult as unknown as Record<string, unknown>,
-                }).catch(() => {});
-              }
+              ctx.signalStageComplete('brainstorm', importResult as unknown as Record<string, unknown>);
             }
           }}
         />
