@@ -6,7 +6,6 @@ import { EngineHost } from './EngineHost';
 import { useProjectStream } from '@/hooks/useProjectStream';
 import type { Stage, StageRun, StageRunStatus } from '@brighttale/shared/pipeline/inputs';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 // ─── Extended stream result — allAttempts added by T4 stream ─────────────────
 
@@ -207,53 +206,6 @@ function LoopInfoCard({ stage, currentAttemptNo, priorAttempts }: LoopInfoCardPr
   );
 }
 
-// ─── Awaiting banner (F2/F3) ─────────────────────────────────────────────────
-
-interface AwaitingBannerProps {
-  reason: string | null;
-  projectId: string;
-  onResumed: () => Promise<void>;
-}
-
-function AwaitingBanner({ reason, projectId, onResumed }: AwaitingBannerProps) {
-  const [loading, setLoading] = useState(false);
-  const copy =
-    reason === 'provider_quota_exhausted'
-      ? 'Provider quota exhausted. Retry when reset.'
-      : `Awaiting input: ${reason ?? 'unknown'}`;
-
-  async function handleResume() {
-    setLoading(true);
-    try {
-      await fetch(`/api/projects/${projectId}/resume`, { method: 'POST' });
-      await onResumed();
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <Alert
-      data-testid="awaiting-banner"
-      data-reason={reason ?? ''}
-      className="mb-4 border-amber-500/40 bg-amber-500/5"
-    >
-      <AlertTitle className="text-amber-300">Pipeline paused</AlertTitle>
-      <AlertDescription className="flex items-center justify-between gap-4">
-        <span className="text-amber-200/80">{copy}</span>
-        <button
-          data-testid="resume-track-btn"
-          onClick={() => { void handleResume(); }}
-          disabled={loading}
-          className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs text-amber-200 transition-colors hover:border-amber-500/70 hover:bg-amber-500/20 disabled:opacity-50"
-        >
-          {loading ? 'Resuming…' : 'Resume'}
-        </button>
-      </AlertDescription>
-    </Alert>
-  );
-}
-
 // ─── FocusPanel ───────────────────────────────────────────────────────────────
 
 export function FocusPanel({ projectId }: Props) {
@@ -289,10 +241,6 @@ export function FocusPanel({ projectId }: Props) {
 
   // Prior attempts = all attempts with attemptNo < current
   const priorAttempts = attemptsToShow.filter((r) => r.attemptNo < attemptNo);
-
-  // Current run for awaiting banner
-  const currentRun = attemptsToShow.find((r) => r.attemptNo === attemptNo) ?? null;
-  const isAwaitingUser = currentRun?.status === 'awaiting_user';
 
   // Track label (for breadcrumb) — in MVP no tracks lookup, just use trackId
   const trackLabel: string | null = trackId ? `Track ${trackId}` : null;
@@ -372,15 +320,6 @@ export function FocusPanel({ projectId }: Props) {
             stage={stage}
             currentAttemptNo={attemptNo}
             priorAttempts={priorAttempts}
-          />
-        )}
-
-        {/* Awaiting-user banner (F2/F3) */}
-        {isAwaitingUser && (
-          <AwaitingBanner
-            reason={currentRun?.awaitingReason ?? null}
-            projectId={projectId}
-            onResumed={refresh}
           />
         )}
 

@@ -1,23 +1,89 @@
 'use client';
 
+import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { FocusSidebar } from './FocusSidebar';
 import { FocusPanel } from './FocusPanel';
 import { GraphView } from './GraphView';
 import { ViewToggle } from './ViewToggle';
+import { useProjectStream } from '@/hooks/useProjectStream';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 // ─── PipelineWorkspace ────────────────────────────────────────────────────────
 // Layout host that reads ?view= and renders either the Focus layout
 // (FocusSidebar + FocusPanel) or the Graph layout (GraphView).
 // ViewToggle is always shown in the header.
+//
+// The project-scope awaiting banner lives here (not inside FocusPanel) so its
+// visual scope matches the endpoint it calls: POST /api/projects/:id/resume
+// resumes the entire project, not a single track.
 
 interface Props {
   projectId: string;
 }
 
+// ─── AwaitingBanner — project-scope resume banner ────────────────────────────
+
+interface AwaitingBannerProps {
+  reason: string | null;
+  projectId: string;
+  onResumed: () => Promise<void>;
+}
+
+function AwaitingBanner({ reason, projectId, onResumed }: AwaitingBannerProps) {
+  const [loading, setLoading] = useState(false);
+  const copy =
+    reason === 'provider_quota_exhausted'
+      ? 'Provider quota exhausted. Retry when reset.'
+      : `Awaiting input: ${reason ?? 'unknown'}`;
+
+  async function handleResume() {
+    setLoading(true);
+    try {
+      await fetch(`/api/projects/${projectId}/resume`, { method: 'POST' });
+      await onResumed();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Alert
+      data-testid="awaiting-banner"
+      data-reason={reason ?? ''}
+      className="mx-6 mt-3 mb-0 border-amber-500/40 bg-amber-500/5"
+    >
+      <AlertTitle className="text-amber-300">Pipeline paused</AlertTitle>
+      <AlertDescription className="flex items-center justify-between gap-4">
+        <span className="text-amber-200/80">{copy}</span>
+        <button
+          data-testid="resume-track-btn"
+          onClick={() => { void handleResume(); }}
+          disabled={loading}
+          className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs text-amber-200 transition-colors hover:border-amber-500/70 hover:bg-amber-500/20 disabled:opacity-50"
+        >
+          {loading ? 'Resuming…' : 'Resume'}
+        </button>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+// ─── PipelineWorkspace ────────────────────────────────────────────────────────
+
 export function PipelineWorkspace({ projectId }: Props) {
   const searchParams = useSearchParams();
   const isGraph = searchParams.get('view') === 'graph';
+
+  const { stageRuns, project, refresh } = useProjectStream(projectId);
+
+  // Project is awaiting if it is explicitly paused OR if any stage run is
+  // awaiting user input. Either condition warrants the project-scope banner.
+  const awaitingRun = Object.values(stageRuns).find(
+    (r) => r !== null && r.status === 'awaiting_user',
+  ) ?? null;
+  const isProjectAwaiting = project.paused || awaitingRun !== null;
+  const awaitingReason = awaitingRun?.awaitingReason ?? null;
 
   return (
     <div data-testid="pipeline-workspace" className="flex flex-col h-full min-h-0">
@@ -25,6 +91,15 @@ export function PipelineWorkspace({ projectId }: Props) {
       <div className="flex items-center justify-end px-6 py-2 border-b border-border shrink-0">
         <ViewToggle />
       </div>
+
+      {/* Project-scope awaiting banner — renders once regardless of track count */}
+      {isProjectAwaiting && (
+        <AwaitingBanner
+          reason={awaitingReason}
+          projectId={projectId}
+          onResumed={refresh}
+        />
+      )}
 
       {/* Body */}
       {isGraph ? (
