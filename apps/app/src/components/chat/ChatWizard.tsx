@@ -3,15 +3,15 @@
 import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Loader2, Send, RotateCcw, HistoryIcon } from "lucide-react"
+import { Loader2, Send, RotateCcw } from "lucide-react"
 import type { ChatMessage, ChatTurnResponse, ModuleId } from "./types"
 
 interface ChatWizardProps<T> {
   moduleId: ModuleId
+  messages: ChatMessage[]
+  onMessagesChange: (messages: ChatMessage[]) => void
   onComplete: (extracted: T) => void
   placeholder?: string
-  /** localStorage key for checkpoint persistence. Defaults to moduleId. */
-  sessionKey?: string
 }
 
 // ─── Bubble components ────────────────────────────────────────────────────────
@@ -104,110 +104,49 @@ function GeneratingOverlay({ progress }: { progress: number }) {
   )
 }
 
-// ─── Restore banner ───────────────────────────────────────────────────────────
-
-function RestoreBanner({ savedAt, onRestore, onDiscard }: { savedAt: number; onRestore: () => void; onDiscard: () => void }) {
-  const [ageLabel] = useState(() => {
-    const age = Date.now() - savedAt
-    if (age < 3_600_000) return `${Math.round(age / 60_000)} min atrás`
-    if (age < 86_400_000) return `${Math.round(age / 3_600_000)}h atrás`
-    return `${Math.round(age / 86_400_000)}d atrás`
-  })
-
-  return (
-    <div className="mx-4 mt-3 flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
-      <HistoryIcon className="h-4 w-4 shrink-0 text-primary" />
-      <span className="flex-1 text-muted-foreground">
-        Conversa salva <span className="text-foreground font-medium">{ageLabel}</span> — continuar de onde parou?
-      </span>
-      <button onClick={onRestore} className="rounded-lg bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-opacity">
-        Continuar
-      </button>
-      <button onClick={onDiscard} className="rounded-lg border px-3 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-        Descartar
-      </button>
-    </div>
-  )
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-interface SessionData {
-  messages: ChatMessage[]
-  savedAt: number
-}
-
-function loadSession(key: string): SessionData | null {
-  try {
-    const raw = localStorage.getItem(`bt_wizard_${key}`)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as SessionData
-    // Discard sessions older than 7 days
-    if (Date.now() - parsed.savedAt > 7 * 86_400_000) {
-      localStorage.removeItem(`bt_wizard_${key}`)
-      return null
-    }
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-function saveSession(key: string, messages: ChatMessage[]) {
-  try {
-    localStorage.setItem(`bt_wizard_${key}`, JSON.stringify({ messages, savedAt: Date.now() }))
-  } catch { /* quota exceeded — ignore */ }
-}
-
-function clearSession(key: string) {
-  try { localStorage.removeItem(`bt_wizard_${key}`) } catch { /* ignore */ }
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function ChatWizard<T extends Record<string, unknown>>({
   moduleId,
+  messages,
+  onMessagesChange,
   onComplete,
   placeholder = "Digite sua mensagem...",
-  sessionKey,
 }: ChatWizardProps<T>) {
-  const storageKey = sessionKey ?? moduleId
-  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [savedSession, setSavedSession] = useState<SessionData | null>(null)
   const [generating, setGenerating] = useState(false)
   const [progress, setProgress] = useState(0)
   const pendingExtracted = useRef<T | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const initialized = useRef(false)
+  const openingFetched = useRef(false)
 
-  // On mount: check for saved session
+  // On mount (or when messages becomes empty): fetch the opening message once
   useEffect(() => {
-    if (initialized.current) return
-    initialized.current = true
-    const saved = loadSession(storageKey)
-    if (saved && saved.messages.length > 1) {
-      setSavedSession(saved)
-    } else {
-      startOpening()
+    if (messages.length > 0) {
+      openingFetched.current = true
+      return
     }
+    if (openingFetched.current) return
+    openingFetched.current = true
+    fetchOpening()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // When messages is reset to empty (reset button), fetch a fresh opening
+  useEffect(() => {
+    if (messages.length === 0 && openingFetched.current) {
+      fetchOpening()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length])
 
   // Auto-scroll on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, loading])
-
-  // Save messages to localStorage on each change (checkpoint)
-  useEffect(() => {
-    if (messages.length > 1) {
-      saveSession(storageKey, messages)
-    }
-  }, [messages, storageKey])
 
   // Generation animation: 0→100% over ~2.5s
   useEffect(() => {
@@ -221,7 +160,6 @@ export function ChatWizard<T extends Record<string, unknown>>({
           setTimeout(() => {
             setGenerating(false)
             setProgress(0)
-            clearSession(storageKey)
             if (pendingExtracted.current) {
               onComplete(pendingExtracted.current)
               pendingExtracted.current = null
@@ -233,9 +171,9 @@ export function ChatWizard<T extends Record<string, unknown>>({
       })
     }, 40)
     return () => clearInterval(interval)
-  }, [generating, onComplete, storageKey])
+  }, [generating, onComplete])
 
-  const startOpening = useCallback(async () => {
+  const fetchOpening = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -247,26 +185,13 @@ export function ChatWizard<T extends Record<string, unknown>>({
       const { data, error: apiError } = await res.json()
       if (apiError) { setError(apiError.message); return }
       const turn = data as ChatTurnResponse
-      setMessages([{ role: "assistant", content: turn.message }])
+      onMessagesChange([{ role: "assistant", content: turn.message }])
     } catch {
       setError("Falha ao iniciar conversa.")
     } finally {
       setLoading(false)
     }
-  }, [moduleId])
-
-  function handleRestore() {
-    if (savedSession) {
-      setMessages(savedSession.messages)
-      setSavedSession(null)
-    }
-  }
-
-  function handleDiscard() {
-    clearSession(storageKey)
-    setSavedSession(null)
-    startOpening()
-  }
+  }, [moduleId, onMessagesChange])
 
   async function sendMessage() {
     const text = input.trim()
@@ -276,7 +201,7 @@ export function ChatWizard<T extends Record<string, unknown>>({
 
     const userMsg: ChatMessage = { role: "user", content: text }
     const next = [...messages, userMsg]
-    setMessages(next)
+    onMessagesChange(next)
     setLoading(true)
 
     try {
@@ -288,7 +213,7 @@ export function ChatWizard<T extends Record<string, unknown>>({
       const { data, error: apiError } = await res.json()
       if (apiError) { setError(apiError.message); return }
       const turn = data as ChatTurnResponse
-      setMessages(prev => [...prev, { role: "assistant", content: turn.message }])
+      onMessagesChange([...next, { role: "assistant", content: turn.message }])
       if (turn.done && turn.extracted) {
         pendingExtracted.current = turn.extracted as T
         setGenerating(true)
@@ -303,28 +228,10 @@ export function ChatWizard<T extends Record<string, unknown>>({
   }
 
   function reset() {
-    clearSession(storageKey)
-    setSavedSession(null)
-    setMessages([])
+    openingFetched.current = false
     setInput("")
     setError(null)
-    startOpening()
-  }
-
-  // Show restore banner while waiting for user decision
-  if (savedSession) {
-    return (
-      <div className="flex flex-col h-full min-h-[500px]">
-        <RestoreBanner
-          savedAt={savedSession.savedAt}
-          onRestore={handleRestore}
-          onDiscard={handleDiscard}
-        />
-        <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-          Carregando...
-        </div>
-      </div>
-    )
+    onMessagesChange([])
   }
 
   return (
