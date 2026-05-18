@@ -7,6 +7,16 @@ import { useProjectStream } from '@/hooks/useProjectStream';
 import type { Stage, StageRun, StageRunStatus } from '@brighttale/shared/pipeline/inputs';
 import type { TrackSnapshot } from '@brighttale/shared/schemas/project-snapshot';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 // ─── Extended stream result — allAttempts added by T4 stream ─────────────────
 
@@ -215,6 +225,7 @@ export function FocusPanel({ projectId }: Props) {
   const searchParams = useSearchParams();
   const [retrying, setRetrying] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  const [restartDialogOpen, setRestartDialogOpen] = useState(false);
 
   const { stageRuns, allAttempts: rawAllAttempts, tracks: rawTracks, refresh } = useProjectStream(projectId) as ProjectStreamResult;
   const tracks: TrackSnapshot[] = rawTracks ?? [];
@@ -286,12 +297,8 @@ export function FocusPanel({ projectId }: Props) {
     }
   }
 
-  async function handleRestart() {
+  async function handleRestartConfirmed() {
     if (!stage || !latestTargetRun) return;
-    const ok = window.confirm(
-      `Restart ${STAGE_LABELS[stage] ?? stage}? This aborts downstream stages and re-runs them from this step.`,
-    );
-    if (!ok) return;
     setRestarting(true);
     try {
       const body: Record<string, unknown> = {
@@ -309,6 +316,7 @@ export function FocusPanel({ projectId }: Props) {
       await refresh();
     } finally {
       setRestarting(false);
+      setRestartDialogOpen(false);
     }
   }
 
@@ -360,7 +368,7 @@ export function FocusPanel({ projectId }: Props) {
                 variant="outline"
                 size="sm"
                 disabled={restarting}
-                onClick={() => { void handleRestart(); }}
+                onClick={() => setRestartDialogOpen(true)}
               >
                 {restarting ? 'Restarting…' : 'Restart step'}
               </Button>
@@ -404,6 +412,31 @@ export function FocusPanel({ projectId }: Props) {
           />
         </div>
       </div>
+
+      <AlertDialog open={restartDialogOpen} onOpenChange={setRestartDialogOpen}>
+        <AlertDialogContent data-testid="restart-stage-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restart {STAGE_LABELS[stage] ?? stage}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This supersedes the current attempt and aborts every downstream stage.
+              The pipeline will rebuild from this step using the prior input.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={restarting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="restart-stage-confirm"
+              disabled={restarting}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleRestartConfirmed();
+              }}
+            >
+              {restarting ? 'Restarting…' : 'Restart step'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
