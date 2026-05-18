@@ -301,10 +301,16 @@ export function FocusPanel({ projectId }: Props) {
     if (!stage || !latestTargetRun) return;
     setRestarting(true);
     try {
+      // Build a stage-minimal input that satisfies STAGE_INPUT_SCHEMAS strict parse.
+      // Replaying latestTargetRun.inputJson is unsafe — `advanceAfter` writes the
+      // resolved AutopilotConfig fragment which can drift from the Zod schema.
+      // Production is the only stage with a required field (type: medium).
+      const restartInput: Record<string, unknown> =
+        stage === 'production' && medium ? { type: medium } : {};
       const body: Record<string, unknown> = {
         stage,
         cascade: true,
-        input: latestTargetRun.inputJson ?? {},
+        input: restartInput,
       };
       if (trackId) body.track_id = trackId;
       if (targetId) body.publish_target_id = targetId;
