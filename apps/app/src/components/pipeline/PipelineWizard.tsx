@@ -54,7 +54,13 @@ const wizardFormSchema = z.object({
   templateId: z.string().nullable(),
   autopilotConfig: z.unknown(),
   mediaConfig: z.record(z.string(), z.object({
-    wordCount: z.number().int().min(100).max(20000).optional(),
+    // valueAsNumber on an empty input yields NaN. Stale entries can also linger
+    // in form state after a medium is deselected. Coerce NaN/null → undefined
+    // so optional() accepts those cases instead of failing with "Expected number, received nan".
+    wordCount: z.preprocess(
+      (v) => (typeof v === 'number' && Number.isNaN(v)) || v === null ? undefined : v,
+      z.number().int().min(100).max(20000).optional(),
+    ),
     providerOverride: z.string().nullable().optional(),
     modelOverride: z.string().nullable().optional(),
   })).optional(),
@@ -1608,7 +1614,13 @@ function MultiMediaDraftFields({ selectedMedia }: { selectedMedia: Medium[] }) {
             id={`mediaConfig-${tab}-wordCount`}
             type="number"
             className="flex h-9 w-32 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            {...register(`mediaConfig.${tab}.wordCount`, { valueAsNumber: true })}
+            {...register(`mediaConfig.${tab}.wordCount`, {
+              setValueAs: (v) => {
+                if (v === '' || v === null || v === undefined) return undefined
+                const n = typeof v === 'number' ? v : Number(v)
+                return Number.isNaN(n) ? undefined : n
+              },
+            })}
           />
           {errors.mediaConfig?.[tab]?.wordCount && (
             <p className="text-xs text-destructive mt-1">
