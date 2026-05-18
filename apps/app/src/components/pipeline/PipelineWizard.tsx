@@ -1131,15 +1131,29 @@ export function PipelineWizard({ initialChannelId }: Props) {
         break
       }
     }
-    const fieldList = [
-      validationErrors.title && 'title',
-      validationErrors.channelId && 'channel',
-      validationErrors.media && 'media',
-      firstStageWithError && `${STAGE_LABELS[firstStageWithError]} settings`,
-    ].filter(Boolean).join(', ')
+
+    // Walk the entire error tree and collect dotted paths for the toast.
+    const paths: string[] = []
+    const walk = (node: unknown, trail: string[]): void => {
+      if (!node || typeof node !== 'object') return
+      const obj = node as Record<string, unknown>
+      if (typeof obj.message === 'string' && obj.message.length > 0) {
+        paths.push(`${trail.join('.')}: ${obj.message}`)
+        return
+      }
+      for (const [k, v] of Object.entries(obj)) {
+        if (k === 'ref' || k === 'type') continue
+        walk(v, [...trail, k])
+      }
+    }
+    walk(validationErrors, [])
+
+    console.warn('[PipelineWizard] validation errors:', validationErrors, paths)
     toast({
       title: 'Fix required fields',
-      description: fieldList ? `Check: ${fieldList}` : 'Some required fields are missing.',
+      description: paths.length > 0
+        ? paths.slice(0, 3).join(' | ')
+        : 'Some required fields are missing.',
       variant: 'destructive',
     })
   }
