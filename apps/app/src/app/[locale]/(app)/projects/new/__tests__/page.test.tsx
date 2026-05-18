@@ -94,7 +94,14 @@ describe('NewProjectPage wizard', () => {
     })
     fireEvent.click(screen.getAllByTestId('channel-option')[0])
 
+    // Topic is required to enable the Create button — fill it before asserting
+    // the button becomes enabled.
     const createBtn = screen.getByRole('button', { name: /create project/i })
+    expect(createBtn).toBeDisabled()
+    fireEvent.change(screen.getByLabelText(/^topic$/i), {
+      target: { value: 'retirement planning for freelancers' },
+    })
+
     await waitFor(() => expect(createBtn).not.toBeDisabled())
     fireEvent.click(createBtn)
 
@@ -111,6 +118,8 @@ describe('NewProjectPage wizard', () => {
     expect(body.channelId).toBe('c1')
     expect(body.mode).toBe('step-by-step')
     expect(body.media).toEqual(['blog'])
+    expect(body.autopilotConfigJson?.brainstorm?.topic).toBe('retirement planning for freelancers')
+    expect(body.autopilotConfigJson?.brainstorm?.mode).toBe('topic_driven')
   })
 
   it('preselects channel from ?channelId= deep link', async () => {
@@ -128,6 +137,9 @@ describe('NewProjectPage wizard', () => {
 
     fireEvent.change(screen.getByLabelText(/project title/i), {
       target: { value: 'Linked project' },
+    })
+    fireEvent.change(screen.getByLabelText(/^topic$/i), {
+      target: { value: 'deep link topic' },
     })
 
     const createBtn = screen.getByRole('button', { name: /create project/i })
@@ -160,7 +172,15 @@ describe('NewProjectPage wizard', () => {
       target: { value: 'Solo channel project' },
     })
 
+    // Title + channel are enough for the legacy fields, but the wizard now
+    // also gates Create on the brainstorm topic. The button must stay
+    // disabled until the topic is filled.
     const createBtn = screen.getByRole('button', { name: /create project/i })
+    expect(createBtn).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText(/^topic$/i), {
+      target: { value: 'solo channel topic' },
+    })
     await waitFor(() => expect(createBtn).not.toBeDisabled())
     fireEvent.click(createBtn)
 

@@ -27,7 +27,7 @@ import type { MediaConfig } from '@brighttale/shared/schemas/projects';
 import { bulkCreateSchema } from '@brighttale/shared/schemas/discovery';
 import type { Json } from '@brighttale/shared/types/database';
 import type { Medium } from '@brighttale/shared/pipeline/inputs';
-import { isAutopilotMode, resumeProject } from '../lib/pipeline/orchestrator.js';
+import { isAutopilotMode, resumeProject, requestStageRun } from '../lib/pipeline/orchestrator.js';
 
 // ─── Track shape returned from the DB ────────────────────────────────────────
 interface TrackRow {
@@ -205,6 +205,43 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
         media,
         data.mediaConfig as Record<string, MediaConfig> | undefined,
       );
+
+      // Auto-dispatch the brainstorm stage so the Focus view has something to
+      // render the moment the user lands on /projects/[id]. Skipped when
+      // seed_idea_id pre-completes brainstorm (pipeline_state_json above
+      // already advances current_stage to 'research'). Best-effort: a
+      // dispatch failure must not roll back project creation.
+      if (!data.seed_idea_id && request.userId) {
+        const bs = (data.autopilotConfigJson as Record<string, unknown> | undefined)?.brainstorm as
+          | Record<string, unknown>
+          | undefined;
+        const mode = (bs?.mode as 'topic_driven' | 'reference_guided' | undefined) ?? 'topic_driven';
+        const topic = typeof bs?.topic === 'string' ? bs.topic.trim() : '';
+        const referenceUrl = typeof bs?.referenceUrl === 'string' ? bs.referenceUrl.trim() : '';
+        const niche = typeof bs?.niche === 'string' ? bs.niche.trim() : '';
+        const tone = typeof bs?.tone === 'string' ? bs.tone.trim() : '';
+        const audience = typeof bs?.audience === 'string' ? bs.audience.trim() : '';
+        const goal = typeof bs?.goal === 'string' ? bs.goal.trim() : '';
+        const constraints = typeof bs?.constraints === 'string' ? bs.constraints.trim() : '';
+
+        const brainstormInput: Record<string, unknown> = { mode };
+        if (topic) brainstormInput.topic = topic;
+        if (referenceUrl) brainstormInput.referenceUrl = referenceUrl;
+        if (niche) brainstormInput.niche = niche;
+        if (tone) brainstormInput.tone = tone;
+        if (audience) brainstormInput.audience = audience;
+        if (goal) brainstormInput.goal = goal;
+        if (constraints) brainstormInput.constraints = constraints;
+
+        try {
+          await requestStageRun(project.id, 'brainstorm', brainstormInput, request.userId);
+        } catch (dispatchErr) {
+          request.log.warn(
+            { err: dispatchErr, projectId: project.id },
+            'Failed to auto-dispatch brainstorm stage run',
+          );
+        }
+      }
 
       return reply.status(201).send({ data: { ...project, tracks }, error: null });
     } catch (error) {

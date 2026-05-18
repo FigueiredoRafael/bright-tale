@@ -310,7 +310,7 @@ describe('PipelineWizard — submit button gating', () => {
     expect(btn).toBeDisabled()
   })
 
-  it('button enables when title >= 3 chars AND channel selected', async () => {
+  it('button enables when title >= 3 chars AND channel selected AND topic filled', async () => {
     render(<PipelineWizard />)
     await waitForChannels()
 
@@ -318,6 +318,11 @@ describe('PipelineWizard — submit button gating', () => {
       target: { value: 'Valid title here' },
     })
     fireEvent.click(screen.getAllByTestId('channel-option')[0])
+
+    // Topic is now required to seed brainstorm regardless of mode.
+    fireEvent.change(screen.getByLabelText(/^topic$/i), {
+      target: { value: 'AI agents taking over' },
+    })
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /create project/i })).not.toBeDisabled()
@@ -376,11 +381,11 @@ describe('PipelineWizard — topic required in autopilot', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('PipelineWizard — POST payload', () => {
-  it('step-by-step submit: body has no autopilotConfigJson', async () => {
+  it('step-by-step submit: body carries autopilotConfigJson with brainstorm seed', async () => {
     const fetchSpy = makeFetch()
     globalThis.fetch = fetchSpy
 
-    const user = userEvent.setup()
+    void userEvent.setup()
     render(<PipelineWizard />)
     await waitForChannels()
 
@@ -388,6 +393,9 @@ describe('PipelineWizard — POST payload', () => {
       target: { value: 'Step project title' },
     })
     fireEvent.click(screen.getAllByTestId('channel-option')[0])
+    fireEvent.change(screen.getByLabelText(/^topic$/i), {
+      target: { value: 'step-by-step seed topic' },
+    })
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /create project/i })).not.toBeDisabled()
@@ -402,7 +410,10 @@ describe('PipelineWizard — POST payload', () => {
     expect(postCall).toBeDefined()
     const body = JSON.parse(postCall![1].body as string)
     expect(body.mode).toBe('step-by-step')
-    expect(body.autopilotConfigJson).toBeUndefined()
+    // autopilotConfigJson is now always sent so the server can auto-dispatch
+    // a brainstorm stage_run with the user-supplied topic.
+    expect(body.autopilotConfigJson?.brainstorm?.topic).toBe('step-by-step seed topic')
+    expect(body.autopilotConfigJson?.brainstorm?.mode).toBe('topic_driven')
   })
 
   it('supervised submit: body includes autopilotConfigJson with full config', async () => {

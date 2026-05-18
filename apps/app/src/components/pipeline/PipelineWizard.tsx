@@ -65,6 +65,29 @@ const wizardFormSchema = z.object({
     modelOverride: z.string().nullable().optional(),
   })).optional(),
 }).superRefine((data, ctx) => {
+  // Topic is the brainstorm seed — required in every mode so the server can
+  // dispatch a brainstorm stage_run after project creation.
+  const cfg = data.autopilotConfig as AutopilotConfig | undefined
+  const b = cfg?.brainstorm
+  if (!b || b.mode === 'topic_driven') {
+    const topic = typeof b?.topic === 'string' ? b.topic.trim() : ''
+    if (!topic) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['autopilotConfig', 'brainstorm', 'topic'],
+        message: 'Topic required to start the pipeline',
+      })
+    }
+  } else if (b.mode === 'reference_guided') {
+    const url = typeof b.referenceUrl === 'string' ? b.referenceUrl.trim() : ''
+    if (!url) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['autopilotConfig', 'brainstorm', 'referenceUrl'],
+        message: 'Reference URL required for reference-guided mode',
+      })
+    }
+  }
   if (data.mode === 'step-by-step') return
   const result = autopilotConfigSchema.safeParse(data.autopilotConfig)
   if (!result.success) {
@@ -432,24 +455,6 @@ function BrainstormFields({ brainstormMode }: { brainstormMode: 'topic_driven' |
           )}
         />
       </div>
-
-      {brainstormMode === 'topic_driven' && (
-        <div>
-          <Label htmlFor="brainstorm-topic" className="text-xs font-medium text-muted-foreground mb-1.5 block">Topic</Label>
-          <input
-            id="brainstorm-topic"
-            type="text"
-            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            aria-label="Topic"
-            {...register('autopilotConfig.brainstorm.topic')}
-          />
-          {errors.autopilotConfig?.brainstorm?.topic && (
-            <p className="text-xs text-destructive mt-1">
-              {errors.autopilotConfig.brainstorm.topic.message}
-            </p>
-          )}
-        </div>
-      )}
 
       {brainstormMode === 'reference_guided' && (
         <div>
@@ -867,8 +872,7 @@ export function PipelineWizard({ initialChannelId }: Props) {
     watchedTitle.trim().length >= 3 &&
     watchedChannelId.length > 0 &&
     selectedMedia.length > 0 &&
-    (!isAutopilot ||
-      brainstormMode !== 'topic_driven' ||
+    (brainstormMode !== 'topic_driven' ||
       watchedBrainstormTopic.trim().length > 0)
 
   const [channels, setChannels] = useState<Channel[] | null>(null)
@@ -966,6 +970,21 @@ export function PipelineWizard({ initialChannelId }: Props) {
           ...merged.draft,
           wordCount: mediaConfig.blog.wordCount as number,
         },
+      }
+    }
+    // Preserve user-typed brainstorm seed fields across the merge — switching
+    // channels (or auto-loading a default template) shouldn't wipe a topic or
+    // reference URL the user already entered.
+    const existingBrainstorm = getValues('autopilotConfig.brainstorm') as
+      | AutopilotConfig['brainstorm']
+      | undefined
+    if (existingBrainstorm && merged.brainstorm) {
+      const userTopic = typeof existingBrainstorm.topic === 'string' ? existingBrainstorm.topic : ''
+      const userRefUrl = typeof existingBrainstorm.referenceUrl === 'string' ? existingBrainstorm.referenceUrl : ''
+      merged.brainstorm = {
+        ...merged.brainstorm,
+        topic: userTopic.length > 0 ? userTopic : merged.brainstorm.topic,
+        referenceUrl: userRefUrl.length > 0 ? userRefUrl : merged.brainstorm.referenceUrl,
       }
     }
     // Sanitize provider/model pairs
@@ -1177,7 +1196,7 @@ export function PipelineWizard({ initialChannelId }: Props) {
       mode: values.mode,
       media: values.media,
       mediaConfig: values.media.length >= 2 && isAutopilotMode ? values.mediaConfig : undefined,
-      autopilotConfigJson: isAutopilotMode ? values.autopilotConfig : undefined,
+      autopilotConfigJson: values.autopilotConfig,
     }
     try {
       const res = await fetch('/api/projects', {
@@ -1335,6 +1354,25 @@ export function PipelineWizard({ initialChannelId }: Props) {
                   </div>
                   {errors.media && (
                     <p className="text-xs text-destructive">{errors.media.message}</p>
+                  )}
+                </div>
+
+                {/* Brainstorm topic seed (required regardless of mode) */}
+                <div className="space-y-2">
+                  <Label htmlFor="wizard-brainstorm-topic">Topic</Label>
+                  <p className="text-xs text-muted-foreground">
+                    What should the pipeline brainstorm about? This seeds the first stage.
+                  </p>
+                  <Input
+                    id="wizard-brainstorm-topic"
+                    placeholder="e.g. retirement planning for freelancers"
+                    {...methods.register('autopilotConfig.brainstorm.topic')}
+                    aria-invalid={!!errors.autopilotConfig?.brainstorm?.topic}
+                  />
+                  {errors.autopilotConfig?.brainstorm?.topic && (
+                    <p className="text-xs text-destructive">
+                      {errors.autopilotConfig.brainstorm.topic.message}
+                    </p>
                   )}
                 </div>
               </div>
