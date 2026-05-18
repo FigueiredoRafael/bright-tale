@@ -110,6 +110,7 @@ interface StageRunPayload {
   finishedAt: string | null;
   errorMessage: string | null;
   outcomeJson: Record<string, unknown> | null;
+  payloadRef: { kind?: string; id?: string } | null;
   trackId: string | null;
   publishTargetId: string | null;
 }
@@ -120,9 +121,16 @@ function deriveStageResults(stageRuns: StageRunPayload[]): StageResultMap {
   const results: StageResultMap = {};
 
   for (const run of stageRuns) {
-    if (run.status !== 'completed' || !run.outcomeJson) continue;
+    if (run.status !== 'completed') continue;
+    // Allow canonical/production rows to derive a draftId from payload_ref even
+    // when outcome_json is null (legacy rows + pre-fix canonical writes).
+    const hasPayloadRefFallback =
+      (run.stage === 'canonical' || run.stage === 'production' || run.stage === 'draft') &&
+      run.payloadRef?.kind === 'content_draft' &&
+      typeof run.payloadRef.id === 'string';
+    if (!run.outcomeJson && !hasPayloadRefFallback) continue;
     const completedAt = run.finishedAt ?? new Date().toISOString();
-    const o = run.outcomeJson as Record<string, unknown>;
+    const o = (run.outcomeJson ?? {}) as Record<string, unknown>;
 
     switch (run.stage) {
       case 'brainstorm':
@@ -156,11 +164,21 @@ function deriveStageResults(stageRuns: StageRunPayload[]): StageResultMap {
 
       case 'draft':
       case 'canonical':
-      case 'production':
-        // canonical/production stage runs carry draft outcomes in this shape
-        if (o.draftId) {
+      case 'production': {
+        // canonical/production stage runs carry the content_drafts row id.
+        // Prefer outcome_json.draftId; fall back to payload_ref.id (kind=content_draft)
+        // for rows written before outcome_json carried draftId. We deliberately
+        // do NOT clobber a richer `draft` already set (e.g. by a later production
+        // run that wrote full draftTitle/draftContent).
+        const draftIdFromOutcome = typeof o.draftId === 'string' ? (o.draftId as string) : null;
+        const draftIdFromRef =
+          run.payloadRef?.kind === 'content_draft' && typeof run.payloadRef.id === 'string'
+            ? run.payloadRef.id
+            : null;
+        const resolvedDraftId = draftIdFromOutcome ?? draftIdFromRef;
+        if (resolvedDraftId && !results.draft) {
           results.draft = {
-            draftId: (o.draftId as string),
+            draftId: resolvedDraftId,
             draftTitle: (o.draftTitle as string) ?? '',
             draftContent: (o.draftContent as string) ?? '',
             personaId: o.personaId as string | undefined,
@@ -169,8 +187,11 @@ function deriveStageResults(stageRuns: StageRunPayload[]): StageResultMap {
             personaWpAuthorId: o.personaWpAuthorId as number | null | undefined,
             completedAt,
           } satisfies DraftResult & { completedAt: string };
+        } else if (resolvedDraftId && results.draft && !(results.draft as { draftId?: string }).draftId) {
+          (results.draft as { draftId: string }).draftId = resolvedDraftId;
         }
         break;
+      }
 
       case 'review':
         results.review = {

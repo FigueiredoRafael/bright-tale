@@ -256,6 +256,7 @@ export const productionGenerate = inngest.createFunction(
               projectId,
               stage: 'canonical',
               payloadRef: { kind: 'content_draft', id: draftId },
+              outcome: { draftId, type },
             });
           }
         } else {
