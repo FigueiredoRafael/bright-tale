@@ -93,9 +93,10 @@ interface PersonaFormProps {
     initial?: Partial<PersonaFormValues>
     personaId?: string
     archetypeSlug?: string
+    onSaved?: () => void
 }
 
-export function PersonaForm({ initial, personaId, archetypeSlug }: PersonaFormProps) {
+export function PersonaForm({ initial, personaId, archetypeSlug, onSaved }: PersonaFormProps) {
     const [values, setValues] = useState<PersonaFormValues>({ ...EMPTY, ...initial, archetypeSlug: archetypeSlug ?? initial?.archetypeSlug ?? null })
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -148,6 +149,7 @@ export function PersonaForm({ initial, personaId, archetypeSlug }: PersonaFormPr
                 setSaving(false)
                 return
             }
+            onSaved?.()
             router.push(`/${locale}/personas`)
         } catch (e) {
             setError(e instanceof Error ? e.message : "Failed to save")
