@@ -1111,11 +1111,13 @@ export function PipelineWizard({ initialChannelId }: Props) {
   }
 
   // ── Validation expand on submit error ────────────────────────────────────────
-  const onInvalid = () => {
+  const onInvalid = (validationErrors: typeof errors) => {
     const configErrors =
-      (errors.autopilotConfig as Record<string, unknown> | undefined) ?? {}
+      (validationErrors.autopilotConfig as Record<string, unknown> | undefined) ?? {}
+    let firstStageWithError: WizardStage | null = null
     for (const stage of STAGE_ORDER) {
       if (configErrors[stage]) {
+        firstStageWithError = stage
         const ref = sectionRefs.current[stage]
         if (ref) {
           const trigger = ref.querySelector('button[aria-expanded]') as HTMLButtonElement | null
@@ -1129,6 +1131,17 @@ export function PipelineWizard({ initialChannelId }: Props) {
         break
       }
     }
+    const fieldList = [
+      validationErrors.title && 'title',
+      validationErrors.channelId && 'channel',
+      validationErrors.media && 'media',
+      firstStageWithError && `${STAGE_LABELS[firstStageWithError]} settings`,
+    ].filter(Boolean).join(', ')
+    toast({
+      title: 'Fix required fields',
+      description: fieldList ? `Check: ${fieldList}` : 'Some required fields are missing.',
+      variant: 'destructive',
+    })
   }
 
   // ── Submit handler ───────────────────────────────────────────────────────────
