@@ -8,20 +8,31 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useRouter, usePathname } from "@/i18n/navigation";
+import { locales, type Locale } from "@/i18n/config";
+
+const LOCALE_LABELS: Record<Locale, string> = {
+    "pt-BR": "Português (Brasil)",
+    en: "English",
+};
 
 interface Profile {
     id: string;
     email: string;
     first_name: string | null;
     last_name: string | null;
+    locale: string | null;
 }
 
 export default function ProfilePage() {
     const [profile, setProfile] = useState<Profile | null>(null);
     const [firstName, setFirstName] = useState("");
     const [lastName, setLastName] = useState("");
+    const [locale, setLocale] = useState<Locale>("pt-BR");
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const router = useRouter();
+    const pathname = usePathname();
 
     useEffect(() => {
         (async () => {
@@ -38,6 +49,7 @@ export default function ProfilePage() {
                     setProfile(json.data);
                     setFirstName(json.data.first_name ?? "");
                     setLastName(json.data.last_name ?? "");
+                    setLocale((json.data.locale as Locale) ?? "pt-BR");
                 }
             } finally {
                 setLoading(false);
@@ -52,7 +64,7 @@ export default function ProfilePage() {
             const res = await fetch(`/api/users/${profile.id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ firstName, lastName }),
+                body: JSON.stringify({ firstName, lastName, locale }),
             });
             const json = await res.json();
             if (json.error) {
@@ -60,6 +72,8 @@ export default function ProfilePage() {
                 return;
             }
             toast.success("Perfil atualizado");
+            // Redirect to new locale URL if changed
+            router.replace(pathname, { locale });
         } catch {
             toast.error("Falha ao salvar");
         } finally {
@@ -103,6 +117,28 @@ export default function ProfilePage() {
                             <Label>Sobrenome</Label>
                             <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
                         </div>
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Idioma</Label>
+                        <div className="flex gap-2">
+                            {locales.map((l) => (
+                                <button
+                                    key={l}
+                                    type="button"
+                                    onClick={() => setLocale(l)}
+                                    className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                                        locale === l
+                                            ? "border-primary bg-primary/10 text-primary"
+                                            : "border-border text-muted-foreground hover:border-muted-foreground/40"
+                                    }`}
+                                >
+                                    {LOCALE_LABELS[l]}
+                                </button>
+                            ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            Define o idioma da interface e das notificações automáticas.
+                        </p>
                     </div>
                     <div className="flex justify-end">
                         <Button onClick={handleSave} disabled={saving}>

@@ -4,6 +4,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useRouter, usePathname } from '@/i18n/navigation';
 import { locales, type Locale } from '@/i18n/config';
 import { Globe } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 
 export default function LocaleSwitcher() {
   const locale = useLocale();
@@ -11,7 +12,19 @@ export default function LocaleSwitcher() {
   const pathname = usePathname();
   const t = useTranslations('locale');
 
-  function handleChange(newLocale: Locale) {
+  async function handleChange(newLocale: Locale) {
+    // Persist preference to DB (best-effort — don't block navigation on failure)
+    void (async () => {
+      const sb = createClient();
+      const { data: { user } } = await sb.auth.getUser();
+      if (user) {
+        await fetch(`/api/users/${user.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ locale: newLocale }),
+        });
+      }
+    })();
     router.replace(pathname, { locale: newLocale });
   }
 

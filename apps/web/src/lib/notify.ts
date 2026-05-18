@@ -32,6 +32,13 @@ export interface NotifyOptions {
   actionUrl?: string;
   /** Variable map interpolated into the template (or the explicit title/body). */
   variables?: Record<string, string>;
+  /**
+   * BCP-47 locale of the recipient (e.g. 'en', 'pt-BR').
+   * notify() fetches notification_template_translations for this locale,
+   * falling back to the base pt-BR template when no translation exists.
+   * Defaults to 'pt-BR' if omitted.
+   */
+  locale?: string;
   /** How many days until this notification expires. Default: 90 */
   ttlDays?: number;
   /** auth.users.id of the admin/manager who triggered this notification. */
@@ -50,6 +57,11 @@ interface NotificationTemplate {
   default_action_url: string | null;
 }
 
+interface NotificationTemplateTranslation {
+  title_template: string;
+  body_template: string | null;
+}
+
 async function resolveNotification(
   opts: NotifyOptions,
 ): Promise<{ title: string; body: string | null; actionUrl: string | null }> {
@@ -58,9 +70,9 @@ async function resolveNotification(
   // Fast path: caller provided an explicit title — interpolate vars and return.
   if (opts.title !== undefined) {
     return {
-      title: vars && Object.keys(vars).length > 0 ? interpolate(opts.title, vars) : opts.title,
+      title: Object.keys(vars).length > 0 ? interpolate(opts.title, vars) : opts.title,
       body: opts.body
-        ? vars && Object.keys(vars).length > 0
+        ? Object.keys(vars).length > 0
           ? interpolate(opts.body, vars)
           : opts.body
         : null,
@@ -68,29 +80,58 @@ async function resolveNotification(
     };
   }
 
-  // Slow path: fetch template from DB.
+  // Slow path: fetch template from DB, with locale-aware translation lookup.
   const db = createAdminClient();
-  const { data: tpl } = await db
-    .from('notification_templates')
-    .select('type, title_template, body_template, default_action_url')
-    .eq('type', opts.type)
-    .maybeSingle<NotificationTemplate>();
+  const locale = opts.locale ?? 'pt-BR';
 
-  if (!tpl) {
-    // Fallback if template is missing — use type as title.
+  // 1. Try the locale-specific translation first (skip for pt-BR, that IS the base).
+  let titleTpl: string | null = null;
+  let bodyTpl: string | null = null;
+
+  if (locale !== 'pt-BR') {
+    const { data: translation } = await db
+      .from('notification_template_translations')
+      .select('title_template, body_template')
+      .eq('type', opts.type)
+      .eq('locale', locale)
+      .maybeSingle<NotificationTemplateTranslation>();
+
+    if (translation) {
+      titleTpl = translation.title_template;
+      bodyTpl = translation.body_template;
+    }
+  }
+
+  // 2. Fall back to the base pt-BR template.
+  if (titleTpl === null) {
+    const { data: tpl } = await db
+      .from('notification_templates')
+      .select('type, title_template, body_template, default_action_url')
+      .eq('type', opts.type)
+      .maybeSingle<NotificationTemplate>();
+
+    if (!tpl) {
+      return {
+        title: opts.type,
+        body: opts.body ?? null,
+        actionUrl: opts.actionUrl ?? null,
+      };
+    }
+
+    titleTpl = tpl.title_template;
+    bodyTpl = tpl.body_template;
+
     return {
-      title: opts.type,
-      body: opts.body ?? null,
-      actionUrl: opts.actionUrl ?? null,
+      title: interpolate(titleTpl, vars),
+      body: bodyTpl ? interpolate(bodyTpl, vars) : (opts.body ?? null),
+      actionUrl: opts.actionUrl ?? tpl.default_action_url ?? null,
     };
   }
 
   return {
-    title: interpolate(tpl.title_template, vars),
-    body: tpl.body_template
-      ? interpolate(tpl.body_template, vars)
-      : (opts.body ?? null),
-    actionUrl: opts.actionUrl ?? tpl.default_action_url ?? null,
+    title: interpolate(titleTpl, vars),
+    body: bodyTpl ? interpolate(bodyTpl, vars) : (opts.body ?? null),
+    actionUrl: opts.actionUrl ?? null,
   };
 }
 
@@ -99,7 +140,18 @@ export async function notify(opts: NotifyOptions): Promise<void> {
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + (opts.ttlDays ?? 90));
 
-  const { title, body, actionUrl } = await resolveNotification(opts);
+  // Auto-detect user's locale from user_profiles when not provided.
+  let locale = opts.locale;
+  if (!locale && opts.title === undefined) {
+    const { data: profile } = await db
+      .from('user_profiles')
+      .select('locale')
+      .eq('id', opts.userId)
+      .maybeSingle<{ locale: string }>();
+    locale = profile?.locale ?? 'pt-BR';
+  }
+
+  const { title, body, actionUrl } = await resolveNotification({ ...opts, locale });
 
   await db.from('notifications').insert({
     user_id: opts.userId,
