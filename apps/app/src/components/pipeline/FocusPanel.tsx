@@ -5,6 +5,7 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { EngineHost } from './EngineHost';
 import { useProjectStream } from '@/hooks/useProjectStream';
 import type { Stage, StageRun, StageRunStatus } from '@brighttale/shared/pipeline/inputs';
+import type { TrackSnapshot } from '@brighttale/shared/schemas/project-snapshot';
 import { Button } from '@/components/ui/button';
 
 // ─── Extended stream result — allAttempts added by T4 stream ─────────────────
@@ -16,7 +17,7 @@ interface ProjectStreamResult {
   project: { mode: 'autopilot' | 'manual'; paused: boolean };
   refresh: () => Promise<void>;
   allAttempts?: StageRun[];
-  tracks?: unknown[];
+  tracks?: TrackSnapshot[];
 }
 
 interface Props {
@@ -214,7 +215,8 @@ export function FocusPanel({ projectId }: Props) {
   const searchParams = useSearchParams();
   const [retrying, setRetrying] = useState(false);
 
-  const { stageRuns, allAttempts: rawAllAttempts, refresh } = useProjectStream(projectId) as ProjectStreamResult;
+  const { stageRuns, allAttempts: rawAllAttempts, tracks: rawTracks, refresh } = useProjectStream(projectId) as ProjectStreamResult;
+  const tracks: TrackSnapshot[] = rawTracks ?? [];
 
   // Read URL state
   const stage = searchParams.get('stage') as Stage | null;
@@ -242,8 +244,16 @@ export function FocusPanel({ projectId }: Props) {
   // Prior attempts = all attempts with attemptNo < current
   const priorAttempts = attemptsToShow.filter((r) => r.attemptNo < attemptNo);
 
-  // Track label (for breadcrumb) — in MVP no tracks lookup, just use trackId
-  const trackLabel: string | null = trackId ? `Track ${trackId}` : null;
+  // Resolve the track (if any) so we can surface medium + a real label.
+  // Production/Review/Assets/Preview/Publish engines need `medium` to render —
+  // without it, ProductionEngine crashes on `medium.charAt(...)`.
+  const currentTrack = trackId ? tracks.find((t) => t.id === trackId) : undefined;
+  const medium = currentTrack?.medium;
+  const trackLabel: string | null = currentTrack
+    ? currentTrack.medium.charAt(0).toUpperCase() + currentTrack.medium.slice(1)
+    : trackId
+      ? `Track ${trackId}`
+      : null;
 
   function handleAttemptSelect(newAttemptNo: number) {
     const url = buildUrl(pathname, searchParams, { attempt: String(newAttemptNo) });
@@ -346,6 +356,7 @@ export function FocusPanel({ projectId }: Props) {
             trackId={trackId}
             publishTargetId={targetId}
             attemptNo={attemptNo}
+            medium={medium}
           />
         </div>
       </div>

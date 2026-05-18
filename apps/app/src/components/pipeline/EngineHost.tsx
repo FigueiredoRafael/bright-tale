@@ -10,7 +10,7 @@ import { ReviewEngine } from '@/components/engines/ReviewEngine';
 import { AssetsEngine } from '@/components/engines/AssetsEngine';
 import { PreviewEngine } from '@/components/engines/PreviewEngine';
 import { PublishEngine } from '@/components/engines/PublishEngine';
-import type { Stage, StageRun } from '@brighttale/shared/pipeline/inputs';
+import type { Stage, StageRun, Medium } from '@brighttale/shared/pipeline/inputs';
 
 // ENGINE_BY_STAGE uses React.ComponentType<any> as the approved type for dispatch maps (T3.4 plan).
 type AnyEngine = React.ComponentType<any>;
@@ -66,27 +66,28 @@ interface Props {
   trackId?: string;
   publishTargetId?: string;
   attemptNo: number;
+  medium?: Medium;
 }
 
-export function EngineHost({ projectId, stage, trackId, publishTargetId, attemptNo }: Props) {
+export function EngineHost({ projectId, stage, trackId, publishTargetId, attemptNo, medium }: Props) {
   const { data, isLoading, error } = useStageRun({ projectId, stage, trackId, publishTargetId, attemptNo });
 
   if (isLoading) return <div data-testid="engine-host-loading" />;
   if (error) return <div data-testid="engine-host-error">{error.message}</div>;
-  if (!data) return <div data-testid="engine-host-empty">No run yet</div>;
 
-  const isReadOnly = TERMINAL_STATUSES.has(data.status) && data.attemptNo !== attemptNo;
+  const isReadOnly = data ? TERMINAL_STATUSES.has(data.status) && data.attemptNo !== attemptNo : false;
   const Engine = ENGINE_BY_STAGE[stage];
 
   return (
     <EngineErrorBoundary>
-      <div data-testid="engine-host" data-readonly={isReadOnly}>
+      <div data-testid="engine-host" data-readonly={isReadOnly} data-has-run={data ? 'true' : 'false'}>
         {isReadOnly && <div data-testid="engine-host-readonly" />}
         <Engine
           projectId={projectId}
-          stageRun={data as StageRun}
+          stageRun={(data ?? undefined) as StageRun | undefined}
           trackId={trackId}
           publishTargetId={publishTargetId}
+          medium={medium}
           readOnly={isReadOnly}
         />
       </div>
