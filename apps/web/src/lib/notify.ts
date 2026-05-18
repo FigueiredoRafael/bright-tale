@@ -24,7 +24,8 @@ export type NotificationType =
 
 export interface NotifyOptions {
   userId: string;
-  type: NotificationType;
+  /** Accepts any string; IDE still suggests the known NotificationType literals. */
+  type: NotificationType | (string & Record<never, never>);
   /** When omitted the title is pulled from the notification_templates table. */
   title?: string;
   body?: string;

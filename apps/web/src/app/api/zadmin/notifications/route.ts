@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getManager } from '@/lib/admin-check';
-import { notify, notifyMany, NotificationType } from '@/lib/notify';
+import { notify, notifyMany } from '@/lib/notify';
 import { logAudit } from '@/lib/audit-log';
 import { z } from 'zod';
 
@@ -120,17 +120,8 @@ export async function GET(_req: NextRequest) {
 const notifySchema = z.object({
   target: z.enum(['user', 'all']),
   userId: z.string().uuid().optional(),
-  type: z.enum([
-    'donation_received',
-    'donation_pending_approval',
-    'tokens_reset',
-    'plan_low',
-    'plan_renewed',
-    'job_done',
-    'announcement',
-    'coupon_redeemed',
-    'security',
-  ] as [NotificationType, ...NotificationType[]]),
+  /** Accept any string so custom (non-system) templates can be targeted. */
+  type: z.string().min(1),
   title: z.string().min(1).max(120).optional(),
   body: z.string().max(500).optional(),
   actionUrl: z.string().url().optional().or(z.literal('')),

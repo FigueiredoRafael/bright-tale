@@ -14,6 +14,8 @@ import {
   FileText,
   ChevronDown,
   ChevronUp,
+  Plus,
+  X,
 } from 'lucide-react';
 import { adminApi } from '@/lib/admin-path';
 import { searchUser, UserSearchResult } from './actions';
@@ -167,16 +169,31 @@ function SendTab({
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserSearchResult | null>(null);
   const [isSearching, startSearch] = useTransition();
-  const [type, setType] = useState<NotificationType>('announcement');
+  // Use string so custom template types work without casting.
+  const [type, setType] = useState<string>('announcement');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [actionUrl, setActionUrl] = useState('');
+  const [variableInputs, setVariableInputs] = useState<Record<string, string>>({});
   const [isSending, startSend] = useTransition();
   const [status, setStatus] = useState<
     { kind: 'success'; message: string } | { kind: 'error'; message: string } | null
   >(null);
 
   const activeTemplate = templates.find((t) => t.type === type) ?? null;
+
+  // When the type changes, reset per-variable inputs.
+  const handleTypeChange = (newType: string) => {
+    setType(newType);
+    setVariableInputs({});
+    setStatus(null);
+  };
+
+  const titleIsVariable = activeTemplate?.availableVariables.includes('title') ?? false;
+  const bodyIsVariable = activeTemplate?.availableVariables.includes('body') ?? false;
+  // Extra variables are those that are neither title nor body.
+  const extraVariables =
+    activeTemplate?.availableVariables.filter((v) => v !== 'title' && v !== 'body') ?? [];
 
   const handleSearch = useCallback(
     (q: string) => {
@@ -205,21 +222,43 @@ function SendTab({
     setStatus(null);
 
     startSend(async () => {
+      if (target === 'user' && !selectedUser) {
+        setStatus({ kind: 'error', message: 'Selecione um usuário antes de enviar.' });
+        return;
+      }
+
+      // Build the variables map from variableInputs.
+      // If title/body are variables, they must be provided via variableInputs.
+      const variables: Record<string, string> = { ...variableInputs };
+
+      // Validate required variable fields.
+      if (titleIsVariable) {
+        const titleVal = variableInputs['title']?.trim() ?? '';
+        if (!titleVal) {
+          setStatus({ kind: 'error', message: 'O campo "Título" é obrigatório para este template.' });
+          return;
+        }
+      }
+
       const payload: Record<string, unknown> = {
         target,
         type,
-        body: body || undefined,
         actionUrl: actionUrl || undefined,
+        variables: Object.keys(variables).length > 0 ? variables : undefined,
       };
-      // Only include title when explicitly filled — omitting lets the API use the template
-      if (title.trim()) payload.title = title.trim();
+
+      // title as a direct field: only when it is NOT a template variable.
+      if (!titleIsVariable && title.trim()) {
+        payload.title = title.trim();
+      }
+
+      // body as a direct field: only when it is NOT a template variable.
+      if (!bodyIsVariable) {
+        payload.body = body || undefined;
+      }
 
       if (target === 'user') {
-        if (!selectedUser) {
-          setStatus({ kind: 'error', message: 'Selecione um usuário antes de enviar.' });
-          return;
-        }
-        payload.userId = selectedUser.id;
+        payload.userId = selectedUser!.id;
       }
 
       const res = await fetch(adminApi('/notifications'), {
@@ -245,6 +284,7 @@ function SendTab({
       setTitle('');
       setBody('');
       setActionUrl('');
+      setVariableInputs({});
       setSelectedUser(null);
       setEmailQuery('');
       setType('announcement');
@@ -347,7 +387,7 @@ function SendTab({
         </div>
       )}
 
-      {/* Type select */}
+      {/* Type select — built from templates list, not a hardcoded enum */}
       <div className="space-y-2">
         <label
           htmlFor="notif-type"
@@ -358,62 +398,142 @@ function SendTab({
         <select
           id="notif-type"
           value={type}
-          onChange={(e) => setType(e.target.value as NotificationType)}
+          onChange={(e) => handleTypeChange(e.target.value)}
           className="w-full rounded-lg border border-[var(--border,#263146)] bg-[var(--card,#121826)] px-3 py-2 text-sm text-[var(--foreground,#e6edf7)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#2DD4A8)]/50"
         >
-          {ALL_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {NOTIFICATION_TYPE_LABELS[t]}
-            </option>
-          ))}
+          {templates.length === 0 ? (
+            <option value="announcement">announcement</option>
+          ) : (
+            templates.map((t) => (
+              <option key={t.type} value={t.type}>
+                {t.label}
+              </option>
+            ))
+          )}
         </select>
 
         {/* Template preview for selected type */}
         {activeTemplate && <TemplatePreview template={activeTemplate} />}
       </div>
 
-      {/* Title */}
+      {/* Title — rendered as a variable input when the template uses {title} */}
       <div className="space-y-2">
         <label
           htmlFor="notif-title"
           className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground,#8b98b0)]"
         >
-          Título{' '}
-          <span className="text-[var(--muted-foreground,#8b98b0)] normal-case font-normal">
-            (opcional — usa template se vazio)
-          </span>
+          {titleIsVariable ? (
+            <>
+              Título{' '}
+              <span className="text-red-400 normal-case font-normal">*obrigatório</span>
+            </>
+          ) : (
+            <>
+              Título{' '}
+              <span className="text-[var(--muted-foreground,#8b98b0)] normal-case font-normal">
+                (opcional — usa template se vazio)
+              </span>
+            </>
+          )}
         </label>
-        <input
-          id="notif-title"
-          type="text"
-          maxLength={120}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Deixe vazio para usar o template padrão"
-          className="w-full rounded-lg border border-[var(--border,#263146)] bg-[var(--card,#121826)] px-3 py-2 text-sm text-[var(--foreground,#e6edf7)] placeholder:text-[var(--muted-foreground,#8b98b0)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#2DD4A8)]/50"
-        />
-        <p className="text-right text-xs text-[var(--muted-foreground,#8b98b0)]">{title.length}/120</p>
+        {titleIsVariable ? (
+          <input
+            id="notif-title"
+            type="text"
+            maxLength={120}
+            required
+            value={variableInputs['title'] ?? ''}
+            onChange={(e) =>
+              setVariableInputs((prev) => ({ ...prev, title: e.target.value }))
+            }
+            placeholder="Texto que substituirá {title} no template"
+            className="w-full rounded-lg border border-[var(--border,#263146)] bg-[var(--card,#121826)] px-3 py-2 text-sm text-[var(--foreground,#e6edf7)] placeholder:text-[var(--muted-foreground,#8b98b0)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#2DD4A8)]/50"
+          />
+        ) : (
+          <>
+            <input
+              id="notif-title"
+              type="text"
+              maxLength={120}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Deixe vazio para usar o template padrão"
+              className="w-full rounded-lg border border-[var(--border,#263146)] bg-[var(--card,#121826)] px-3 py-2 text-sm text-[var(--foreground,#e6edf7)] placeholder:text-[var(--muted-foreground,#8b98b0)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#2DD4A8)]/50"
+            />
+            <p className="text-right text-xs text-[var(--muted-foreground,#8b98b0)]">{title.length}/120</p>
+          </>
+        )}
       </div>
 
-      {/* Body */}
+      {/* Body — rendered as a variable input when the template uses {body} */}
       <div className="space-y-2">
         <label
           htmlFor="notif-body"
           className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground,#8b98b0)]"
         >
-          Mensagem <span className="text-[var(--muted-foreground,#8b98b0)]">(opcional)</span>
+          {bodyIsVariable ? (
+            <>Mensagem <span className="text-red-400 normal-case font-normal">*obrigatório</span></>
+          ) : (
+            <>Mensagem <span className="text-[var(--muted-foreground,#8b98b0)]">(opcional)</span></>
+          )}
         </label>
-        <textarea
-          id="notif-body"
-          maxLength={500}
-          rows={3}
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="Detalhes adicionais da notificação..."
-          className="w-full resize-none rounded-lg border border-[var(--border,#263146)] bg-[var(--card,#121826)] px-3 py-2 text-sm text-[var(--foreground,#e6edf7)] placeholder:text-[var(--muted-foreground,#8b98b0)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#2DD4A8)]/50"
-        />
-        <p className="text-right text-xs text-[var(--muted-foreground,#8b98b0)]">{body.length}/500</p>
+        {bodyIsVariable ? (
+          <textarea
+            id="notif-body"
+            maxLength={500}
+            rows={3}
+            required
+            value={variableInputs['body'] ?? ''}
+            onChange={(e) =>
+              setVariableInputs((prev) => ({ ...prev, body: e.target.value }))
+            }
+            placeholder="Texto que substituirá {body} no template"
+            className="w-full resize-none rounded-lg border border-[var(--border,#263146)] bg-[var(--card,#121826)] px-3 py-2 text-sm text-[var(--foreground,#e6edf7)] placeholder:text-[var(--muted-foreground,#8b98b0)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#2DD4A8)]/50"
+          />
+        ) : (
+          <>
+            <textarea
+              id="notif-body"
+              maxLength={500}
+              rows={3}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Detalhes adicionais da notificação..."
+              className="w-full resize-none rounded-lg border border-[var(--border,#263146)] bg-[var(--card,#121826)] px-3 py-2 text-sm text-[var(--foreground,#e6edf7)] placeholder:text-[var(--muted-foreground,#8b98b0)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#2DD4A8)]/50"
+            />
+            <p className="text-right text-xs text-[var(--muted-foreground,#8b98b0)]">{body.length}/500</p>
+          </>
+        )}
       </div>
+
+      {/* Extra template variables (not title/body) */}
+      {extraVariables.length > 0 && (
+        <div className="space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground,#8b98b0)]">
+            Variáveis do template
+          </p>
+          {extraVariables.map((v) => (
+            <div key={v} className="space-y-1.5">
+              <label
+                htmlFor={`var-${v}`}
+                className="text-xs font-semibold text-[var(--muted-foreground,#8b98b0)]"
+              >
+                <span className="font-mono text-[var(--primary,#2DD4A8)]">{`{${v}}`}</span>
+              </label>
+              <input
+                id={`var-${v}`}
+                type="text"
+                value={variableInputs[v] ?? ''}
+                onChange={(e) =>
+                  setVariableInputs((prev) => ({ ...prev, [v]: e.target.value }))
+                }
+                placeholder={`Valor para {${v}}`}
+                className="w-full rounded-lg border border-[var(--border,#263146)] bg-[var(--card,#121826)] px-3 py-2 text-sm text-[var(--foreground,#e6edf7)] placeholder:text-[var(--muted-foreground,#8b98b0)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#2DD4A8)]/50"
+              />
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Action URL */}
       <div className="space-y-2">
@@ -783,10 +903,34 @@ function TemplateRow({ template, isOwnerOrAdmin, onSaved }: TemplateRowProps) {
 // Tab: Templates
 // ---------------------------------------------------------------------------
 
+interface CreateFormState {
+  type: string;
+  label: string;
+  titleTemplate: string;
+  bodyTemplate: string;
+  defaultActionUrl: string;
+  availableVariablesRaw: string;
+}
+
+const EMPTY_CREATE_FORM: CreateFormState = {
+  type: '',
+  label: '',
+  titleTemplate: '',
+  bodyTemplate: '',
+  defaultActionUrl: '',
+  availableVariablesRaw: '',
+};
+
 function TemplatesTab({ isOwnerOrAdmin }: { isOwnerOrAdmin: boolean }) {
   const [templates, setTemplates] = useState<NotificationTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState<CreateFormState>(EMPTY_CREATE_FORM);
+  const [isCreating, startCreate] = useTransition();
+  const [createStatus, setCreateStatus] = useState<
+    { kind: 'success'; message: string } | { kind: 'error'; message: string } | null
+  >(null);
 
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
@@ -817,6 +961,48 @@ function TemplatesTab({ isOwnerOrAdmin }: { isOwnerOrAdmin: boolean }) {
     setTemplates((prev) => prev.map((t) => (t.type === updated.type ? updated : t)));
   }
 
+  function handleCreateField(field: keyof CreateFormState, value: string) {
+    setCreateForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setCreateStatus(null);
+    startCreate(async () => {
+      const availableVariables = createForm.availableVariablesRaw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const res = await fetch(adminApi('/notification-templates'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: createForm.type,
+          label: createForm.label,
+          titleTemplate: createForm.titleTemplate,
+          bodyTemplate: createForm.bodyTemplate || null,
+          defaultActionUrl: createForm.defaultActionUrl || null,
+          availableVariables,
+        }),
+      });
+      const json = (await res.json()) as {
+        data: NotificationTemplate | null;
+        error: { message: string } | null;
+      };
+      if (!res.ok || json.error) {
+        setCreateStatus({ kind: 'error', message: json.error?.message ?? 'Erro ao criar template.' });
+        return;
+      }
+      if (json.data) {
+        setTemplates((prev) => [json.data as NotificationTemplate, ...prev]);
+      }
+      setCreateForm(EMPTY_CREATE_FORM);
+      setShowCreate(false);
+      setCreateStatus(null);
+    });
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-[var(--muted-foreground,#8b98b0)]">
@@ -834,25 +1020,199 @@ function TemplatesTab({ isOwnerOrAdmin }: { isOwnerOrAdmin: boolean }) {
     );
   }
 
-  if (templates.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-[var(--muted-foreground,#8b98b0)]">
-        <FileText className="mb-3 h-8 w-8 opacity-30" />
-        <p className="text-sm">Nenhum template encontrado.</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="overflow-hidden rounded-xl border border-[var(--border,#263146)] bg-[var(--card,#121826)]">
-      {templates.map((t) => (
-        <TemplateRow
-          key={t.type}
-          template={t}
-          isOwnerOrAdmin={isOwnerOrAdmin}
-          onSaved={handleSaved}
-        />
-      ))}
+    <div className="space-y-4">
+      {/* Create button — only for owners/admins */}
+      {isOwnerOrAdmin && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              setShowCreate((v) => !v);
+              setCreateStatus(null);
+              setCreateForm(EMPTY_CREATE_FORM);
+            }}
+            className="flex items-center gap-2 rounded-lg border border-[var(--primary,#2DD4A8)]/50 px-4 py-2 text-sm font-medium text-[var(--primary,#2DD4A8)] hover:bg-[var(--primary,#2DD4A8)]/10 transition-colors"
+          >
+            {showCreate ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            {showCreate ? 'Cancelar' : 'Criar template'}
+          </button>
+        </div>
+      )}
+
+      {/* Create form */}
+      {showCreate && isOwnerOrAdmin && (
+        <form
+          onSubmit={handleCreate}
+          className="rounded-xl border border-[var(--primary,#2DD4A8)]/30 bg-[var(--card,#121826)] p-5 space-y-4"
+        >
+          <p className="text-sm font-semibold text-[var(--foreground,#e6edf7)]">Novo template</p>
+          <StatusBanner status={createStatus} />
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Type slug */}
+            <div className="space-y-1.5">
+              <label
+                htmlFor="create-type"
+                className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground,#8b98b0)]"
+              >
+                Tipo (snake_case) <span className="text-red-400">*</span>
+              </label>
+              <input
+                id="create-type"
+                type="text"
+                required
+                maxLength={80}
+                pattern="[a-z_]+"
+                value={createForm.type}
+                onChange={(e) => handleCreateField('type', e.target.value)}
+                placeholder="meu_template"
+                className="w-full rounded-lg border border-[var(--border,#263146)] bg-[var(--background,#0a0e1a)] px-3 py-2 text-sm text-[var(--foreground,#e6edf7)] placeholder:text-[var(--muted-foreground,#8b98b0)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#2DD4A8)]/50"
+              />
+            </div>
+
+            {/* Label */}
+            <div className="space-y-1.5">
+              <label
+                htmlFor="create-label"
+                className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground,#8b98b0)]"
+              >
+                Rótulo <span className="text-red-400">*</span>
+              </label>
+              <input
+                id="create-label"
+                type="text"
+                required
+                maxLength={100}
+                value={createForm.label}
+                onChange={(e) => handleCreateField('label', e.target.value)}
+                placeholder="Meu Template"
+                className="w-full rounded-lg border border-[var(--border,#263146)] bg-[var(--background,#0a0e1a)] px-3 py-2 text-sm text-[var(--foreground,#e6edf7)] placeholder:text-[var(--muted-foreground,#8b98b0)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#2DD4A8)]/50"
+              />
+            </div>
+          </div>
+
+          {/* Title template */}
+          <div className="space-y-1.5">
+            <label
+              htmlFor="create-title-template"
+              className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground,#8b98b0)]"
+            >
+              Título template <span className="text-red-400">*</span>
+            </label>
+            <input
+              id="create-title-template"
+              type="text"
+              required
+              maxLength={300}
+              value={createForm.titleTemplate}
+              onChange={(e) => handleCreateField('titleTemplate', e.target.value)}
+              placeholder="Olá {name}, seu pedido #{order_id} foi aprovado!"
+              className="w-full rounded-lg border border-[var(--border,#263146)] bg-[var(--background,#0a0e1a)] px-3 py-2 text-sm text-[var(--foreground,#e6edf7)] placeholder:text-[var(--muted-foreground,#8b98b0)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#2DD4A8)]/50"
+            />
+          </div>
+
+          {/* Body template */}
+          <div className="space-y-1.5">
+            <label
+              htmlFor="create-body-template"
+              className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground,#8b98b0)]"
+            >
+              Corpo template <span className="normal-case font-normal text-[var(--muted-foreground,#8b98b0)]">(opcional)</span>
+            </label>
+            <textarea
+              id="create-body-template"
+              maxLength={1000}
+              rows={3}
+              value={createForm.bodyTemplate}
+              onChange={(e) => handleCreateField('bodyTemplate', e.target.value)}
+              placeholder="Detalhes adicionais..."
+              className="w-full resize-none rounded-lg border border-[var(--border,#263146)] bg-[var(--background,#0a0e1a)] px-3 py-2 text-sm text-[var(--foreground,#e6edf7)] placeholder:text-[var(--muted-foreground,#8b98b0)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#2DD4A8)]/50"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Default action URL */}
+            <div className="space-y-1.5">
+              <label
+                htmlFor="create-action-url"
+                className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground,#8b98b0)]"
+              >
+                URL de ação padrão <span className="normal-case font-normal text-[var(--muted-foreground,#8b98b0)]">(opcional)</span>
+              </label>
+              <input
+                id="create-action-url"
+                type="text"
+                maxLength={500}
+                value={createForm.defaultActionUrl}
+                onChange={(e) => handleCreateField('defaultActionUrl', e.target.value)}
+                placeholder="/settings"
+                className="w-full rounded-lg border border-[var(--border,#263146)] bg-[var(--background,#0a0e1a)] px-3 py-2 text-sm text-[var(--foreground,#e6edf7)] placeholder:text-[var(--muted-foreground,#8b98b0)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#2DD4A8)]/50"
+              />
+            </div>
+
+            {/* Available variables */}
+            <div className="space-y-1.5">
+              <label
+                htmlFor="create-variables"
+                className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground,#8b98b0)]"
+              >
+                Variáveis <span className="normal-case font-normal text-[var(--muted-foreground,#8b98b0)]">(separadas por vírgula)</span>
+              </label>
+              <input
+                id="create-variables"
+                type="text"
+                value={createForm.availableVariablesRaw}
+                onChange={(e) => handleCreateField('availableVariablesRaw', e.target.value)}
+                placeholder="title, body, name"
+                className="w-full rounded-lg border border-[var(--border,#263146)] bg-[var(--background,#0a0e1a)] px-3 py-2 text-sm text-[var(--foreground,#e6edf7)] placeholder:text-[var(--muted-foreground,#8b98b0)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#2DD4A8)]/50"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              type="submit"
+              disabled={isCreating}
+              className="flex items-center gap-2 rounded-lg bg-[var(--primary,#2DD4A8)] px-4 py-2 text-sm font-semibold text-[var(--background,#0a0e1a)] transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Criar template
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowCreate(false);
+                setCreateStatus(null);
+                setCreateForm(EMPTY_CREATE_FORM);
+              }}
+              className="rounded-lg border border-[var(--border,#263146)] px-4 py-2 text-sm text-[var(--muted-foreground,#8b98b0)] hover:text-[var(--foreground,#e6edf7)] transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+
+      {templates.length === 0 && !showCreate ? (
+        <div className="flex flex-col items-center justify-center py-16 text-[var(--muted-foreground,#8b98b0)]">
+          <FileText className="mb-3 h-8 w-8 opacity-30" />
+          <p className="text-sm">Nenhum template encontrado.</p>
+        </div>
+      ) : (
+        templates.length > 0 && (
+          <div className="overflow-hidden rounded-xl border border-[var(--border,#263146)] bg-[var(--card,#121826)]">
+            {templates.map((t) => (
+              <TemplateRow
+                key={t.type}
+                template={t}
+                isOwnerOrAdmin={isOwnerOrAdmin}
+                onSaved={handleSaved}
+              />
+            ))}
+          </div>
+        )
+      )}
     </div>
   );
 }

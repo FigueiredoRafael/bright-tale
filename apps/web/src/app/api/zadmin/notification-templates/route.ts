@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getManager } from '@/lib/admin-check';
+import { z } from 'zod';
 
 function jsonError(message: string, code: string, status: number) {
   return NextResponse.json({ data: null, error: { code, message } }, { status });
@@ -65,4 +66,74 @@ export async function GET(_req: NextRequest) {
 
   const templates = (rows ?? []).map(mapRow);
   return NextResponse.json({ data: templates, error: null });
+}
+
+const createSchema = z.object({
+  type: z
+    .string()
+    .min(1)
+    .max(80)
+    .regex(/^[a-z_]+$/, 'type must be lowercase_snake_case'),
+  label: z.string().min(1).max(100),
+  titleTemplate: z.string().min(1).max(300),
+  bodyTemplate: z.string().max(1000).nullable().optional(),
+  defaultActionUrl: z.string().max(500).nullable().optional(),
+  availableVariables: z.array(z.string()).optional(),
+});
+
+/** POST /api/zadmin/notification-templates — create a new custom template. */
+export async function POST(req: NextRequest) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return jsonError('Unauthorized', 'UNAUTHORIZED', 401);
+
+  const manager = await getManager(supabase, user.id);
+  if (!manager || (manager.role !== 'owner' && manager.role !== 'admin')) {
+    return jsonError('Forbidden', 'FORBIDDEN', 403);
+  }
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return jsonError('Invalid JSON', 'INVALID_JSON', 400);
+  }
+
+  const parsed = createSchema.safeParse(body);
+  if (!parsed.success) return jsonError(parsed.error.message, 'VALIDATION_ERROR', 422);
+
+  const { type, label, titleTemplate, bodyTemplate, defaultActionUrl, availableVariables } =
+    parsed.data;
+
+  const db = createAdminClient();
+  const { data: row, error } = await db
+    .from('notification_templates')
+    .insert({
+      type,
+      label,
+      title_template: titleTemplate,
+      body_template: bodyTemplate ?? null,
+      default_action_url: defaultActionUrl ?? null,
+      available_variables: availableVariables ?? [],
+      is_system: false,
+    })
+    .select(
+      'type, label, title_template, body_template, default_action_url, available_variables, is_system, created_at, updated_at',
+    )
+    .single();
+
+  if (error) {
+    if (error.code === '23505') {
+      return jsonError(
+        `Já existe um template com o tipo "${type}". Escolha um tipo diferente.`,
+        'DUPLICATE_TYPE',
+        409,
+      );
+    }
+    return jsonError(error.message, 'DB_ERROR', 500);
+  }
+
+  return NextResponse.json({ data: mapRow(row), error: null }, { status: 201 });
 }
