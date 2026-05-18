@@ -6,6 +6,7 @@ import { FocusSidebar } from './FocusSidebar';
 import { FocusPanel } from './FocusPanel';
 import { GraphView } from './GraphView';
 import { ViewToggle } from './ViewToggle';
+import { ProjectContextProvider } from './ProjectContextProvider';
 import { useProjectStream } from '@/hooks/useProjectStream';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
@@ -104,38 +105,40 @@ export function PipelineWorkspace({ projectId }: Props) {
   const awaitingReason = awaitingRun?.awaitingReason ?? null;
 
   return (
-    <div data-testid="pipeline-workspace" className="flex flex-col h-full min-h-0">
-      {/* Header row with toggle */}
-      <div className="flex items-center justify-end px-6 py-2 border-b border-border shrink-0">
-        <ViewToggle />
+    <ProjectContextProvider projectId={projectId}>
+      <div data-testid="pipeline-workspace" className="flex flex-col h-full min-h-0">
+        {/* Header row with toggle */}
+        <div className="flex items-center justify-end px-6 py-2 border-b border-border shrink-0">
+          <ViewToggle />
+        </div>
+
+        {/* Project-scope awaiting banner — renders once regardless of track count */}
+        {isProjectAwaiting && (
+          <AwaitingBanner
+            reason={awaitingReason}
+            projectId={projectId}
+            onResumed={refresh}
+          />
+        )}
+
+        {/* Body */}
+        {isGraph ? (
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <GraphView projectId={projectId} />
+          </div>
+        ) : (
+          <div className="flex flex-1 min-h-0 overflow-hidden">
+            {/* Sidebar */}
+            <aside className="w-56 shrink-0 border-r border-border overflow-y-auto">
+              <FocusSidebar projectId={projectId} />
+            </aside>
+            {/* Main panel */}
+            <main className="flex-1 overflow-y-auto">
+              <FocusPanel projectId={projectId} />
+            </main>
+          </div>
+        )}
       </div>
-
-      {/* Project-scope awaiting banner — renders once regardless of track count */}
-      {isProjectAwaiting && (
-        <AwaitingBanner
-          reason={awaitingReason}
-          projectId={projectId}
-          onResumed={refresh}
-        />
-      )}
-
-      {/* Body */}
-      {isGraph ? (
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <GraphView projectId={projectId} />
-        </div>
-      ) : (
-        <div className="flex flex-1 min-h-0 overflow-hidden">
-          {/* Sidebar */}
-          <aside className="w-56 shrink-0 border-r border-border overflow-y-auto">
-            <FocusSidebar projectId={projectId} />
-          </aside>
-          {/* Main panel */}
-          <main className="flex-1 overflow-y-auto">
-            <FocusPanel projectId={projectId} />
-          </main>
-        </div>
-      )}
-    </div>
+    </ProjectContextProvider>
   );
 }
