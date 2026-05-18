@@ -214,6 +214,7 @@ export function FocusPanel({ projectId }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [retrying, setRetrying] = useState(false);
+  const [restarting, setRestarting] = useState(false);
 
   const { stageRuns, allAttempts: rawAllAttempts, tracks: rawTracks, refresh } = useProjectStream(projectId) as ProjectStreamResult;
   const tracks: TrackSnapshot[] = rawTracks ?? [];
@@ -285,6 +286,36 @@ export function FocusPanel({ projectId }: Props) {
     }
   }
 
+  async function handleRestart() {
+    if (!stage || !latestTargetRun) return;
+    const ok = window.confirm(
+      `Restart ${STAGE_LABELS[stage] ?? stage}? This aborts downstream stages and re-runs them from this step.`,
+    );
+    if (!ok) return;
+    setRestarting(true);
+    try {
+      const body: Record<string, unknown> = {
+        stage,
+        cascade: true,
+        input: latestTargetRun.inputJson ?? {},
+      };
+      if (trackId) body.track_id = trackId;
+      if (targetId) body.publish_target_id = targetId;
+      await fetch(`/api/projects/${projectId}/stage-runs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      await refresh();
+    } finally {
+      setRestarting(false);
+    }
+  }
+
+  const canRestart =
+    latestTargetRun !== null &&
+    ['completed', 'failed', 'aborted', 'skipped'].includes(latestTargetRun.status);
+
   // Empty state — no stage selected
   if (!stage) {
     return (
@@ -315,13 +346,26 @@ export function FocusPanel({ projectId }: Props) {
           <h2 className="text-xl font-semibold">
             {STAGE_LABELS[stage] ?? stage} Engine
           </h2>
-          {attemptsToShow.length > 0 && (
-            <AttemptTabs
-              attempts={attemptsToShow}
-              currentAttemptNo={attemptNo}
-              onSelect={handleAttemptSelect}
-            />
-          )}
+          <div className="flex items-center gap-2">
+            {attemptsToShow.length > 0 && (
+              <AttemptTabs
+                attempts={attemptsToShow}
+                currentAttemptNo={attemptNo}
+                onSelect={handleAttemptSelect}
+              />
+            )}
+            {canRestart && (
+              <Button
+                data-testid="restart-stage-button"
+                variant="outline"
+                size="sm"
+                disabled={restarting}
+                onClick={() => { void handleRestart(); }}
+              >
+                {restarting ? 'Restarting…' : 'Restart step'}
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Loop info card — only when attempt_no > 1 */}
