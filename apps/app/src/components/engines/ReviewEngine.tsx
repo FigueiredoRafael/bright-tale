@@ -76,6 +76,31 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
     setLocalDraft(draft);
   }, [draft]);
 
+  // Self-hydrate the draft when the prop is null but ctx.stageResults.draft
+  // already carries a draftId (server-driven path via EngineHost — EngineHost
+  // doesn't pass `draft`, only `stageRun`). Without this the engine would
+  // render the "Draft not loaded" defensive banner indefinitely.
+  useEffect(() => {
+    if (localDraft || !draftId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/content-drafts/${draftId}`, {
+          signal: abortController?.signal,
+        });
+        const json = await res.json();
+        if (!cancelled && json?.data) {
+          setLocalDraft(json.data as Record<string, unknown>);
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [localDraft, draftId, abortController?.signal]);
+
   const trackerContext: PipelineContext = {
     channelId: channelId ?? undefined,
     projectId,
