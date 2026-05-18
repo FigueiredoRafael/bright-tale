@@ -1,5 +1,14 @@
 import { z } from 'zod'
 
+const traitsSchema = z.object({
+  voz:          z.number().min(1).max(10).default(5),
+  expertise:    z.number().min(1).max(10).default(5),
+  autoridade:   z.number().min(1).max(10).default(5),
+  engajamento:  z.number().min(1).max(10).default(5),
+  personalidade: z.number().min(1).max(10).default(5),
+  originalidade: z.number().min(1).max(10).default(5),
+})
+
 const writingVoiceSchema = z.object({
   writingStyle: z.string().default(''),
   signaturePhrases: z.array(z.string()).default([]),
@@ -36,6 +45,7 @@ export const createPersonaSchema = z.object({
   writingVoiceJson: writingVoiceSchema.default({}),
   eeatSignalsJson: eeatSignalsSchema.default({}),
   soulJson: soulSchema.default({}),
+  traitsJson: traitsSchema.default({}),
   archetypeSlug: z.string().nullable().optional(),
   avatarParamsJson: z.record(z.unknown()).nullable().optional(),
 })

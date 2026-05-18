@@ -573,6 +573,7 @@ Return ONLY valid JSON, no explanation.`
         writing_voice_json: body.writingVoiceJson as unknown as Json,
         eeat_signals_json: body.eeatSignalsJson as unknown as Json,
         soul_json: body.soulJson as unknown as Json,
+        traits_json: (body.traitsJson ?? {}) as unknown as Json,
         archetype_slug: body.archetypeSlug ?? null,
         avatar_params_json: (body.avatarParamsJson ?? null) as unknown as Json,
       })

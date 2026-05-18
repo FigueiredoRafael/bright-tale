@@ -781,6 +781,24 @@ export interface PersonaSoul {
   languageGuardrails: string[]
 }
 
+export interface PersonaTraits {
+  voz: number          // 1-10: how distinct/strong the writing voice is
+  expertise: number    // 1-10: domain knowledge depth
+  autoridade: number   // 1-10: credibility and trust signals
+  engajamento: number  // 1-10: audience engagement style
+  personalidade: number // 1-10: personality coming through in content
+  originalidade: number // 1-10: unique perspective and originality
+}
+
+export const DEFAULT_PERSONA_TRAITS: PersonaTraits = {
+  voz: 5,
+  expertise: 5,
+  autoridade: 5,
+  engajamento: 5,
+  personalidade: 5,
+  originalidade: 5,
+}
+
 export interface Persona {
   id: string
   slug: string
@@ -794,6 +812,7 @@ export interface Persona {
   writingVoiceJson: PersonaWritingVoice
   eeatSignalsJson: PersonaEeatSignals
   soulJson: PersonaSoul
+  traitsJson: PersonaTraits
   wpAuthorId: number | null
   archetypeSlug: string | null
   avatarParamsJson: Record<string, unknown> | null

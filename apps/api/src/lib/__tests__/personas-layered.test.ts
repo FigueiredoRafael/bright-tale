@@ -57,6 +57,7 @@ const basePersona: Persona = {
     innerTensions: [],
     languageGuardrails: ['no jargon'],
   },
+  traitsJson: { voz: 5, expertise: 5, autoridade: 5, engajamento: 5, personalidade: 5, originalidade: 5 },
   wpAuthorId: null,
   archetypeSlug: null,
   avatarParamsJson: null,
@@ -67,7 +68,7 @@ const basePersona: Persona = {
 
 function makeMockSb(guardrailRules: string[], overlayData: unknown) {
   return {
-    from: vi.fn((table: string) => ({
+    from: vi.fn((_table: string) => ({
       select: vi.fn(() => ({
         eq: vi.fn(() => ({
           eq: vi.fn(() => ({

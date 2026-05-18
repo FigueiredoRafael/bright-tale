@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 
 import { buildPersonaContext, buildPersonaVoice } from '../production-generate.js'
 import { mapPersonaFromDb, type DbPersona } from '@brighttale/shared/mappers/db'
@@ -35,6 +35,7 @@ const DB_PERSONA: DbPersona = {
     innerTensions: ['Speed vs. focus.'],
     languageGuardrails: ["Never uses 'journey'"],
   },
+  traits_json: { voz: 5, expertise: 5, autoridade: 5, engajamento: 5, personalidade: 5, originalidade: 5 },
   wp_author_id: 42,
   archetype_slug: null,
   avatar_params_json: null,

@@ -16,6 +16,7 @@ function makePersona(overrides: Partial<Persona>): Persona {
     writingVoiceJson: { writingStyle: '', signaturePhrases: [], characteristicOpinions: [] },
     eeatSignalsJson: { analyticalLens: '', trustSignals: [], expertiseClaims: [] },
     soulJson: { values: [], lifePhilosophy: '', strongOpinions: [], petPeeves: [], humorStyle: '', recurringJokes: [], whatExcites: [], innerTensions: [], languageGuardrails: [] },
+    traitsJson: { voz: 5, expertise: 5, autoridade: 5, engajamento: 5, personalidade: 5, originalidade: 5 },
     wpAuthorId: null,
     archetypeSlug: null,
     avatarParamsJson: null,

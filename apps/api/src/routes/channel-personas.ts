@@ -29,7 +29,7 @@ export async function channelPersonasRoutes(app: FastifyInstance) {
     return reply.send({
       data: (data ?? []).map(row => ({
         ...mapChannelPersonaFromDb(row as DbChannelPersona),
-        persona: mapPersonaFromDb((row as { personas: DbPersona }).personas),
+        persona: mapPersonaFromDb((row as unknown as { personas: DbPersona }).personas),
       })),
       error: null,
     })
