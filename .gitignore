@@ -52,5 +52,8 @@ apps/api/public/generated-images/
 .claude/security/findings/
 .claude/security/run-*/
 
+# Claude Code runtime state (per-session locks, ephemeral)
+.claude/scheduled_tasks.lock
+
 # QA exploration screenshots (Playwright as eyes — throwaway artifacts)
 apps/app/qa-artifacts/
