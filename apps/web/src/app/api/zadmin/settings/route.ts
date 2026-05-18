@@ -37,10 +37,6 @@ export async function GET() {
 
   if (!cfg) return fail(500, 'NO_CONFIG', 'pricing_config row not found')
 
-  // Cast through unknown: support_sla_json + margin_thresholds_json are not in
-  // generated types yet (migration 20260518040000 must be applied + db:types rerun).
-  const row = cfg as unknown as Record<string, unknown>
-
   return NextResponse.json({
     data: {
       pricing: {
@@ -50,8 +46,8 @@ export async function GET() {
         freeTierSignupBonusCredits: cfg.free_tier_signup_bonus_credits,
         freeTierBonusValidityDays: cfg.free_tier_bonus_validity_days,
       },
-      sla: row.support_sla_json ?? { p0_mins: 15, p1_mins: 120, p2_mins: 480, p3_mins: 1440 },
-      margins: row.margin_thresholds_json ?? { green_pct: 40, yellow_pct: 20 },
+      sla: cfg.support_sla_json ?? { p0_mins: 15, p1_mins: 120, p2_mins: 480, p3_mins: 1440 },
+      margins: cfg.margin_thresholds_json ?? { green_pct: 40, yellow_pct: 20 },
       currencyRates: (rates ?? []).map((r) => ({
         currency: r.currency,
         rateToUsd: r.rate_to_usd,

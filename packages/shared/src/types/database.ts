@@ -3086,6 +3086,8 @@ export type Database = {
           free_tier_monthly_credits: number
           free_tier_signup_bonus_credits: number
           id: boolean
+          margin_thresholds_json: Json
+          support_sla_json: Json
           updated_at: string
           updated_by: string | null
         }
@@ -3096,6 +3098,8 @@ export type Database = {
           free_tier_monthly_credits?: number
           free_tier_signup_bonus_credits?: number
           id?: boolean
+          margin_thresholds_json?: Json
+          support_sla_json?: Json
           updated_at?: string
           updated_by?: string | null
         }
@@ -3106,6 +3110,8 @@ export type Database = {
           free_tier_monthly_credits?: number
           free_tier_signup_bonus_credits?: number
           id?: boolean
+          margin_thresholds_json?: Json
+          support_sla_json?: Json
           updated_at?: string
           updated_by?: string | null
         }
@@ -4718,4 +4724,3 @@ export const Constants = {
     },
   },
 } as const
-
