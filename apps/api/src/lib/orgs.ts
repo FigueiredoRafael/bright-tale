@@ -38,22 +38,38 @@ export async function ensureOrgId(userId: string): Promise<string> {
     .from('user_profiles')
     .upsert({ id: userId, email: email ?? '' }, { onConflict: 'id', ignoreDuplicates: true });
 
-  // Create org
+  // Create org. The slug is deterministic per userId, so a unique-violation
+  // here means a prior attempt created the org row but failed before the
+  // membership insert (or the membership was later deleted). Recover by
+  // looking the org up and continuing with the membership step.
   const { data: org, error: orgError } = await sb
     .from('organizations')
     .insert({ name: orgName, slug, plan: 'free' })
     .select('id')
     .single();
 
+  let orgId = org?.id;
   if (orgError || !org) {
-    throw new ApiError(500, `Failed to create org: ${orgError?.message ?? 'unknown'}`, 'ORG_CREATE_FAILED');
+    if (orgError?.code === '23505') {
+      const { data: existingOrg } = await sb
+        .from('organizations')
+        .select('id')
+        .eq('slug', slug)
+        .maybeSingle();
+      if (!existingOrg) {
+        throw new ApiError(500, `Failed to create org: ${orgError.message}`, 'ORG_CREATE_FAILED');
+      }
+      orgId = existingOrg.id;
+    } else {
+      throw new ApiError(500, `Failed to create org: ${orgError?.message ?? 'unknown'}`, 'ORG_CREATE_FAILED');
+    }
   }
 
   // Create membership
   const { error: memberError } = await sb
     .from('org_memberships')
     .insert({
-      org_id: org.id,
+      org_id: orgId!,
       user_id: userId,
       role: 'owner',
       accepted_at: new Date().toISOString(),
@@ -71,7 +87,7 @@ export async function ensureOrgId(userId: string): Promise<string> {
     throw new ApiError(500, `Failed to create membership: ${memberError.message}`, 'MEMBERSHIP_CREATE_FAILED');
   }
 
-  return org.id;
+  return orgId!;
 }
 
 /**
