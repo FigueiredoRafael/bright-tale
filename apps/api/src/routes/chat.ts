@@ -127,9 +127,14 @@ export async function chatRoutes(app: FastifyInstance) {
         },
       )
       const raw = call.result
-      const text = (typeof raw === 'string' ? raw : (raw as { content?: string })?.content ?? '').trim()
-      if (!text) throw new ApiError(500, 'AI returned empty response', 'CHAT_EMPTY_RESPONSE')
-      parsed = extractJson(text)
+      if (raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
+        // Provider already returned a parsed JSON object — use directly
+        parsed = raw
+      } else {
+        const text = (typeof raw === 'string' ? raw : '').trim()
+        if (!text) throw new ApiError(500, 'AI returned empty response', 'CHAT_EMPTY_RESPONSE')
+        parsed = extractJson(text)
+      }
     } else {
       // Direct env-var fallback — providers parse JSON internally and return the object.
       parsed = await callWithEnvKey(systemPrompt, userMessage)

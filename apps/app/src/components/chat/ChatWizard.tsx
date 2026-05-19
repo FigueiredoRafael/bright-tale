@@ -208,8 +208,8 @@ export function ChatWizard<T extends Record<string, unknown>>({
     lastTypedContent.current = last.content
 
     const full = last.content
-    let idx = 0
-    setTypingText("")
+    let idx = 6
+    setTypingText(full.slice(0, idx))
     const interval = setInterval(() => {
       idx += 6
       if (idx >= full.length) {
