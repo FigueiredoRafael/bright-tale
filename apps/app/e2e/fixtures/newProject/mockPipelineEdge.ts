@@ -64,7 +64,7 @@ function reviewRunRow(
   opts: {
     score: number
     verdict: 'approved' | 'revision_required'
-    awaitingReason?: 'manual_review' | null
+    awaitingReason?: 'manual_review' | 'max_iterations' | null
     status: 'completed' | 'awaiting_user' | 'failed'
   },
 ) {
@@ -193,7 +193,9 @@ export async function mockPipelineEdge(
 
   if (scenario === 'max-iterations') {
     // Every review returns score 70 (revision_required). After maxIterations=2,
-    // review dispatcher parks run in awaiting_user(manual_review).
+    // review dispatcher parks run in awaiting_user(max_iterations).
+    // Production emit site: apps/api/src/jobs/pipeline-review-dispatch.ts (budget branch)
+    // — `awaitingReason: 'max_iterations'` since #204.
     await page.route(`**/api/projects/${project.id}/stage-runs`, async (route: Route) => {
       if (route.request().method() !== 'POST') return route.fallback()
       const body = (await readBody(route)) as { stage?: string } | null
@@ -203,14 +205,14 @@ export async function mockPipelineEdge(
       const callNo = reviewCallCount
 
       // First maxIterations-1 calls: completed with revision_required (loop back)
-      // Final call: awaiting_user(manual_review) — budget exhausted
+      // Final call: awaiting_user(max_iterations) — budget exhausted
       const isExhausted = callNo >= 2
 
       const row = reviewRunRow(project.id, {
         score: 70,
         verdict: 'revision_required',
         status: isExhausted ? 'awaiting_user' : 'completed',
-        awaitingReason: isExhausted ? 'manual_review' : null,
+        awaitingReason: isExhausted ? 'max_iterations' : null,
       })
 
       // Update the snapshot so GET /stages reflects the awaiting state
@@ -251,7 +253,7 @@ export async function mockPipelineEdge(
       // Ensure review shows awaiting_user if iterations exhausted
       const enriched = stageRuns.map((r) => {
         if (r.stage === 'review' && reviewRun?.status === 'awaiting_user') {
-          return { ...r, status: 'awaiting_user', awaitingReason: 'manual_review' }
+          return { ...r, status: 'awaiting_user', awaitingReason: 'max_iterations' }
         }
         return r
       })
@@ -634,16 +636,19 @@ export async function mockPipelineEdge(
   }
 
   if (scenario === 'malformed-json') {
-    // Stage-runs POST for production returns 200 but orchestrator side fails parse
-    // In e2e terms: mock returns a success but with body that would cause recovery
-    // to manual_paste. We simulate the downstream effect: production stage →
-    // awaiting_user(manual_paste) after the orchestrator detects parse failure.
+    // Production worker hits a Zod parse error on the provider output.
+    // Real behavior (apps/api/src/lib/ai/router.ts retry-then-fail + the worker's
+    // catch in apps/api/src/jobs/production-generate.ts): the worker retries the
+    // same provider via shouldRetrySameProvider; on exhaustion it calls
+    // markFailed with the parse-error message. There is NO manual_paste park
+    // for malformed JSON — manual_paste only fires from pipeline-assets-dispatch.ts
+    // when mode === 'manual_upload'. Asserting awaiting(manual_paste) here was
+    // fixture-only; production emits status='failed'.
     await page.route(`**/api/projects/${project.id}/stage-runs`, async (route: Route) => {
       if (route.request().method() !== 'POST') return route.fallback()
       const body = (await readBody(route)) as { stage?: string } | null
       if (body?.stage !== 'production') return route.fallback()
 
-      // Return 200 but with malformed outcome that triggers manual_paste recovery
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -653,13 +658,13 @@ export async function mockPipelineEdge(
               id: 'sr-production-malformed',
               projectId: project.id,
               stage: 'production',
-              status: 'awaiting_user',
-              awaitingReason: 'manual_paste',
+              status: 'failed',
+              awaitingReason: null,
               attemptNo: 1,
               inputJson: null,
               outcomeJson: null,
               payloadRef: null,
-              finishedAt: null,
+              finishedAt: nowIso(),
               errorMessage: 'Output parse error: malformed JSON from provider',
               trackId: null,
               publishTargetId: null,
@@ -672,7 +677,7 @@ export async function mockPipelineEdge(
       })
     })
 
-    // GET /stages: production is awaiting_user(manual_paste) due to parse error
+    // GET /stages: production is failed due to parse error
     await page.route(`**/api/projects/${project.id}/stages`, async (route: Route) => {
       const stageRuns = happy.snapshot()
       return route.fulfill({
@@ -687,13 +692,13 @@ export async function mockPipelineEdge(
                 id: 'sr-production-malformed',
                 projectId: project.id,
                 stage: 'production',
-                status: 'awaiting_user',
-                awaitingReason: 'manual_paste',
+                status: 'failed',
+                awaitingReason: null,
                 attemptNo: 1,
                 inputJson: null,
                 outcomeJson: null,
                 payloadRef: null,
-                finishedAt: null,
+                finishedAt: nowIso(),
                 errorMessage: 'Output parse error: malformed JSON from provider',
                 trackId: null,
                 publishTargetId: null,
@@ -704,17 +709,6 @@ export async function mockPipelineEdge(
           },
           error: null,
         }),
-      })
-    })
-
-    // Accept manual-output paste to recover
-    await page.route(`**/api/projects/${project.id}/stage-runs/**/manual-output`, async (route: Route) => {
-      if (route.request().method() !== 'POST') return route.fallback()
-      happy.completeStage('production')
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: { stageRunId: 'sr-production-malformed', status: 'completed' }, error: null }),
       })
     })
   }

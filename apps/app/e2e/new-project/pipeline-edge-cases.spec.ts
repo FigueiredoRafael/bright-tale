@@ -144,14 +144,16 @@ test.describe('EC-R1 — low-score-retry (overview)', () => {
 
 // ── max-iterations ────────────────────────────────────────────────────────────
 // Every review iteration returns score 70 (revision_required). After maxIterations=2
-// the review dispatcher parks the run in awaiting_user(manual_review).
-// UI must show awaiting-banner with data-reason="manual_review".
+// the review dispatcher parks the run in awaiting_user(max_iterations).
+// UI must show awaiting-banner with data-reason="max_iterations".
+// Production emit site: apps/api/src/jobs/pipeline-review-dispatch.ts budget branch
+// (`iterationCount >= maxIterations` → `awaitingReason: 'max_iterations'`, since #204).
 // Scope: supervised and overview only (step-by-step has no auto-loop).
 
 test.describe('EC-R2 — max-iterations (supervised)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('review halts at awaiting_user(manual_review) after max iterations in supervised mode', async ({ page }) => {
+  test('review halts at awaiting_user(max_iterations) after max iterations in supervised mode', async ({ page }) => {
     test.setTimeout(120_000)
     const project = seed('proj-ec-max-1', 'supervised', 'EC Max Iterations Supervised')
 
@@ -171,10 +173,10 @@ test.describe('EC-R2 — max-iterations (supervised)', () => {
     await assertStageComplete(page, 'canonical', { timeout: 15_000 })
     await assertStageComplete(page, 'production', { timeout: 15_000 })
 
-    // The awaiting banner must appear with reason=manual_review
+    // emitted by apps/api/src/jobs/pipeline-review-dispatch.ts budget branch — see #185 reason taxonomy
     const banner = page.getByTestId('awaiting-banner')
     await banner.waitFor({ state: 'visible', timeout: 30_000 })
-    await expect(banner).toHaveAttribute('data-reason', 'manual_review')
+    await expect(banner).toHaveAttribute('data-reason', 'max_iterations')
 
     await mock.unroute()
   })
@@ -183,7 +185,7 @@ test.describe('EC-R2 — max-iterations (supervised)', () => {
 test.describe('EC-R2 — max-iterations (overview)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('review halts at awaiting_user(manual_review) after max iterations in overview mode', async ({ page }) => {
+  test('review halts at awaiting_user(max_iterations) after max iterations in overview mode', async ({ page }) => {
     test.setTimeout(120_000)
     const project = seed('proj-ec-max-2', 'overview', 'EC Max Iterations Overview')
 
@@ -202,10 +204,10 @@ test.describe('EC-R2 — max-iterations (overview)', () => {
     await expect(page.getByTestId('overview-stage-brainstorm')).toHaveAttribute('data-status', 'completed', { timeout: 15_000 })
     await expect(page.getByTestId('overview-stage-production')).toHaveAttribute('data-status', 'completed', { timeout: 15_000 })
 
-    // Banner or overview-stage-review should show awaiting state
+    // emitted by apps/api/src/jobs/pipeline-review-dispatch.ts budget branch — see #185 reason taxonomy
     const banner = page.getByTestId('awaiting-banner')
     await banner.waitFor({ state: 'visible', timeout: 30_000 })
-    await expect(banner).toHaveAttribute('data-reason', 'manual_review')
+    await expect(banner).toHaveAttribute('data-reason', 'max_iterations')
 
     await mock.unroute()
   })
@@ -468,7 +470,10 @@ test.describe('EC-F2 — manual-paste (step-by-step)', () => {
     await assertStageComplete(page, 'research', { timeout: 15_000 })
     await assertStageComplete(page, 'canonical', { timeout: 15_000 })
 
-    // Manual paste affordance: awaiting-banner with data-reason="manual_paste"
+    // emitted by apps/api/src/jobs/pipeline-assets-dispatch.ts:87 (mode === 'manual_upload') — see #185 reason taxonomy
+    // Note: the fixture's 422 NO_PROVIDER_CONFIGURED path on production is an
+    // adapter-only shortcut; production manual_paste is exclusive to the
+    // assets-dispatch manual_upload branch.
     const banner = page.getByTestId('awaiting-banner')
     await banner.waitFor({ state: 'visible', timeout: 30_000 })
     await expect(banner).toHaveAttribute('data-reason', 'manual_paste')
@@ -497,6 +502,7 @@ test.describe('EC-F2 — manual-paste (supervised)', () => {
     await assertStageComplete(page, 'research', { timeout: 15_000 })
     await assertStageComplete(page, 'canonical', { timeout: 15_000 })
 
+    // emitted by apps/api/src/jobs/pipeline-assets-dispatch.ts:87 (mode === 'manual_upload') — see #185 reason taxonomy
     const banner = page.getByTestId('awaiting-banner')
     await banner.waitFor({ state: 'visible', timeout: 30_000 })
     await expect(banner).toHaveAttribute('data-reason', 'manual_paste')
@@ -523,6 +529,7 @@ test.describe('EC-F2 — manual-paste (overview)', () => {
     const progressView = page.getByTestId('overview-progress-view')
     await progressView.waitFor({ state: 'visible', timeout: 20_000 })
 
+    // emitted by apps/api/src/jobs/pipeline-assets-dispatch.ts:87 (mode === 'manual_upload') — see #185 reason taxonomy
     const banner = page.getByTestId('awaiting-banner')
     await banner.waitFor({ state: 'visible', timeout: 30_000 })
     await expect(banner).toHaveAttribute('data-reason', 'manual_paste')
@@ -532,6 +539,9 @@ test.describe('EC-F2 — manual-paste (overview)', () => {
 })
 
 // ── stage-failure-retry ───────────────────────────────────────────────────────
+// Retry CTA wired by apps/app/src/components/pipeline/FocusPanel.tsx:308
+// (handleRestartConfirmed → POST /api/projects/:id/stage-runs {stage, cascade:true, input}).
+// Production testids: `restart-stage-button` (trigger) → `restart-stage-confirm` (dialog action).
 
 test.describe('EC-F3 — stage-failure-retry (step-by-step)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
@@ -562,16 +572,13 @@ test.describe('EC-F3 — stage-failure-retry (step-by-step)', () => {
       { timeout: 20_000, message: 'Production stage did not reach failed status on first attempt' },
     ).toBe('failed')
 
-    // Find and click the retry/restart CTA
-    const retryCta = page.getByTestId('restart-stage-btn')
-    const altRetryCta = page.getByRole('button', { name: /retry|restart/i }).first()
-    const retryVisible = await retryCta.isVisible().catch(() => false)
-    if (retryVisible) {
-      await retryCta.click()
-    } else {
-      await altRetryCta.waitFor({ state: 'visible', timeout: 10_000 })
-      await altRetryCta.click()
-    }
+    // Click restart trigger → confirm dialog (FocusPanel.tsx:308 fires the POST)
+    const retryCta = page.getByTestId('restart-stage-button')
+    await retryCta.waitFor({ state: 'visible', timeout: 10_000 })
+    await retryCta.click()
+    const confirmCta = page.getByTestId('restart-stage-confirm')
+    await confirmCta.waitFor({ state: 'visible', timeout: 10_000 })
+    await confirmCta.click()
 
     // Second attempt succeeds
     await assertStageComplete(page, 'production', { timeout: 20_000 })
@@ -608,15 +615,13 @@ test.describe('EC-F3 — stage-failure-retry (supervised)', () => {
       { timeout: 20_000, message: 'Production stage did not reach failed status' },
     ).toBe('failed')
 
-    const retryCta = page.getByTestId('restart-stage-btn')
-    const altRetryCta = page.getByRole('button', { name: /retry|restart/i }).first()
-    const retryVisible = await retryCta.isVisible().catch(() => false)
-    if (retryVisible) {
-      await retryCta.click()
-    } else {
-      await altRetryCta.waitFor({ state: 'visible', timeout: 10_000 })
-      await altRetryCta.click()
-    }
+    // Click restart trigger → confirm dialog (FocusPanel.tsx:308 fires the POST)
+    const retryCta = page.getByTestId('restart-stage-button')
+    await retryCta.waitFor({ state: 'visible', timeout: 10_000 })
+    await retryCta.click()
+    const confirmCta = page.getByTestId('restart-stage-confirm')
+    await confirmCta.waitFor({ state: 'visible', timeout: 10_000 })
+    await confirmCta.click()
 
     await assertStageComplete(page, 'production', { timeout: 20_000 })
 
@@ -650,16 +655,13 @@ test.describe('EC-F3 — stage-failure-retry (overview)', () => {
       { timeout: 20_000, message: 'Overview production stage did not reach failed status' },
     ).toBe('failed')
 
-    // Retry from the overview or focus panel
-    const retryCta = page.getByTestId('restart-stage-btn')
-    const altRetryCta = page.getByRole('button', { name: /retry|restart/i }).first()
-    const retryVisible = await retryCta.isVisible().catch(() => false)
-    if (retryVisible) {
-      await retryCta.click()
-    } else {
-      await altRetryCta.waitFor({ state: 'visible', timeout: 10_000 })
-      await altRetryCta.click()
-    }
+    // Click restart trigger → confirm dialog (FocusPanel.tsx:308 fires the POST)
+    const retryCta = page.getByTestId('restart-stage-button')
+    await retryCta.waitFor({ state: 'visible', timeout: 10_000 })
+    await retryCta.click()
+    const confirmCta = page.getByTestId('restart-stage-confirm')
+    await confirmCta.waitFor({ state: 'visible', timeout: 10_000 })
+    await confirmCta.click()
 
     await expect(page.getByTestId('overview-stage-production')).toHaveAttribute('data-status', 'completed', { timeout: 20_000 })
 
@@ -668,11 +670,22 @@ test.describe('EC-F3 — stage-failure-retry (overview)', () => {
 })
 
 // ── malformed-json ────────────────────────────────────────────────────────────
+// Production reality (apps/api/src/lib/ai/router.ts + apps/api/src/jobs/production-generate.ts):
+// a Zod parse error on the provider output triggers shouldRetrySameProvider; on
+// exhaustion the worker calls markFailed with the parse-error message. The stage run
+// ends in status='failed'. There is NO manual_paste park for malformed JSON —
+// manual_paste only fires from pipeline-assets-dispatch.ts when mode === 'manual_upload'.
 
 test.describe('EC-F4 — malformed-json (step-by-step)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('malformed provider output triggers manual_paste recovery in step-by-step mode', async ({ page }) => {
+  // FIXME: sidebar can't render a `production` row's failed icon without a tracks[]
+  // entry in GET /stages (FocusSidebar.tsx:300-319 iterates tracks then stages).
+  // Production fidelity requires status='failed' (see header), but observing it
+  // in non-overview modes needs a follow-up fixture extension to seed tracks.
+  // Overview mode below works because OverviewProgressView reads stage status
+  // independently of tracks.
+  test.fixme('malformed provider output marks production failed in step-by-step mode', async ({ page }) => {
     test.setTimeout(120_000)
     const project = seed('proj-ec-mj-1', 'step-by-step', 'EC Malformed JSON Step-by-Step')
 
@@ -689,10 +702,19 @@ test.describe('EC-F4 — malformed-json (step-by-step)', () => {
     await assertStageComplete(page, 'research', { timeout: 15_000 })
     await assertStageComplete(page, 'canonical', { timeout: 15_000 })
 
-    // Parse failure → awaiting_user(manual_paste)
+    // Parse failure → markFailed (status:'failed'), NOT awaiting_user(manual_paste).
+    await expect.poll(
+      async () => {
+        const el = page.locator('[data-testid*="sidebar-status-"][data-testid*="production"]').first()
+        return el.getAttribute('data-status').catch(() => null)
+      },
+      { timeout: 30_000, message: 'Production stage did not reach failed status after malformed JSON' },
+    ).toBe('failed')
+
+    // No awaiting-banner — parse failures emit status='failed', not awaiting_user.
     const banner = page.getByTestId('awaiting-banner')
-    await banner.waitFor({ state: 'visible', timeout: 30_000 })
-    await expect(banner).toHaveAttribute('data-reason', 'manual_paste')
+    const bannerVisible = await banner.isVisible().catch(() => false)
+    expect(bannerVisible).toBe(false)
 
     await mock.unroute()
   })
@@ -701,7 +723,8 @@ test.describe('EC-F4 — malformed-json (step-by-step)', () => {
 test.describe('EC-F4 — malformed-json (supervised)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('malformed provider output triggers manual_paste recovery in supervised mode', async ({ page }) => {
+  // FIXME: same fixture-tracks gap as step-by-step above.
+  test.fixme('malformed provider output marks production failed in supervised mode', async ({ page }) => {
     test.setTimeout(120_000)
     const project = seed('proj-ec-mj-2', 'supervised', 'EC Malformed JSON Supervised')
 
@@ -718,9 +741,17 @@ test.describe('EC-F4 — malformed-json (supervised)', () => {
     await assertStageComplete(page, 'research', { timeout: 15_000 })
     await assertStageComplete(page, 'canonical', { timeout: 15_000 })
 
+    await expect.poll(
+      async () => {
+        const el = page.locator('[data-testid*="sidebar-status-"][data-testid*="production"]').first()
+        return el.getAttribute('data-status').catch(() => null)
+      },
+      { timeout: 30_000, message: 'Production stage did not reach failed status after malformed JSON' },
+    ).toBe('failed')
+
     const banner = page.getByTestId('awaiting-banner')
-    await banner.waitFor({ state: 'visible', timeout: 30_000 })
-    await expect(banner).toHaveAttribute('data-reason', 'manual_paste')
+    const bannerVisible = await banner.isVisible().catch(() => false)
+    expect(bannerVisible).toBe(false)
 
     await mock.unroute()
   })
@@ -729,7 +760,7 @@ test.describe('EC-F4 — malformed-json (supervised)', () => {
 test.describe('EC-F4 — malformed-json (overview)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('malformed provider output triggers manual_paste recovery in overview mode', async ({ page }) => {
+  test('malformed provider output marks production failed in overview mode', async ({ page }) => {
     test.setTimeout(120_000)
     const project = seed('proj-ec-mj-3', 'overview', 'EC Malformed JSON Overview')
 
@@ -744,9 +775,17 @@ test.describe('EC-F4 — malformed-json (overview)', () => {
     const progressView = page.getByTestId('overview-progress-view')
     await progressView.waitFor({ state: 'visible', timeout: 20_000 })
 
+    await expect.poll(
+      async () => {
+        const el = page.getByTestId('overview-stage-production')
+        return el.getAttribute('data-status').catch(() => null)
+      },
+      { timeout: 30_000, message: 'Overview production stage did not reach failed status after malformed JSON' },
+    ).toBe('failed')
+
     const banner = page.getByTestId('awaiting-banner')
-    await banner.waitFor({ state: 'visible', timeout: 30_000 })
-    await expect(banner).toHaveAttribute('data-reason', 'manual_paste')
+    const bannerVisible = await banner.isVisible().catch(() => false)
+    expect(bannerVisible).toBe(false)
 
     await mock.unroute()
   })
@@ -758,6 +797,13 @@ test.describe('EC-F4 — malformed-json (overview)', () => {
 //   manual-abort        (×3 modes): abort during production → project aborted + no downstream dispatches
 
 // ── manual-pause-resume ───────────────────────────────────────────────────────
+// Production: PATCH /api/projects/:id {paused:true} → stampUserPausedOnActiveStage
+// at apps/api/src/routes/projects.ts:40-57 marks the currently-running stage_run
+// awaiting_user(user_paused) via markAwaitingUser. The fixture does NOT model that
+// side-effect (no running row in the snapshot at pause time), so the test asserts
+// the PATCH was sent rather than the awaiting-banner data-reason. Adding banner
+// coverage would require extending the fixture to seed a running production row
+// and transition it on pause.
 
 test.describe('EC-I1 — manual-pause-resume (supervised)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
@@ -855,6 +901,15 @@ test.describe('EC-I1 — manual-pause-resume (overview)', () => {
 })
 
 // ── manual-abort ──────────────────────────────────────────────────────────────
+// Fixture/UI drift: the OverviewProgressView abort handler PATCHes
+// /api/projects/:id with {status:'aborted', paused:true}, but updateProjectSchema
+// in packages/shared/src/schemas/projects.ts only allows
+// status ∈ {'active'|'paused'|'completed'|'archived'} — 'aborted' would fail Zod
+// validation in production. The real abort path is abortProject() at
+// apps/api/src/lib/pipeline/stage-run-writer.ts:482, invoked from project-setup
+// routes (cascade-cancels downstream runs). Asserting the PATCH body here verifies
+// the UI-side trigger only; downstream-suppression assertions still match
+// production guarantees (no review/publish dispatch after abort).
 
 test.describe('EC-I2 — manual-abort (step-by-step)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
