@@ -1242,7 +1242,12 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
 
           {/* Per-slot prompt editors */}
           {slotCards.map((card, i) => (
-            <Card key={card.slot}>
+            <Card
+              key={card.slot}
+              data-testid="asset-brief-card"
+              data-slot={card.slot}
+              data-featured={card.slot === 'featured' ? 'true' : 'false'}
+            >
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
                   <Badge variant={card.slot === 'featured' ? 'default' : 'outline'} className="text-[10px]">

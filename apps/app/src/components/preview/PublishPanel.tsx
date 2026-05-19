@@ -122,14 +122,14 @@ export function PublishPanel({
         {(canPublish || isPublished) && (
           <>
             {previewData && (
-              <div className="space-y-3 p-3 rounded-md border bg-muted/30">
+              <div data-testid="publish-summary" className="space-y-3 p-3 rounded-md border bg-muted/30">
                 <p className="text-xs font-medium">Publishing Summary</p>
                 <div className="space-y-1.5 text-xs">
-                  <div><span className="text-muted-foreground">Title:</span> {previewData.seo.title}</div>
-                  <div><span className="text-muted-foreground">Slug:</span> /{previewData.seo.slug}</div>
-                  <div><span className="text-muted-foreground">Images:</span> {previewData.imageCount}</div>
+                  <div><span className="text-muted-foreground">Title:</span> <span data-testid="publish-summary-title">{previewData.seo.title}</span></div>
+                  <div><span className="text-muted-foreground">Slug:</span> /<span data-testid="publish-summary-slug">{previewData.seo.slug}</span></div>
+                  <div><span className="text-muted-foreground">Images:</span> <span data-testid="publish-summary-image-count" data-value={previewData.imageCount}>{previewData.imageCount}</span></div>
                   {previewData.categories.length > 0 && (
-                    <div className="flex items-center gap-1 flex-wrap">
+                    <div data-testid="publish-summary-categories" data-count={previewData.categories.length} className="flex items-center gap-1 flex-wrap">
                       <span className="text-muted-foreground">Categories:</span>
                       {previewData.categories.map((c) => (
                         <Badge key={c} variant="secondary" className="text-[10px]">{c}</Badge>
@@ -137,7 +137,7 @@ export function PublishPanel({
                     </div>
                   )}
                   {previewData.tags.length > 0 && (
-                    <div className="flex items-center gap-1 flex-wrap">
+                    <div data-testid="publish-summary-tags" data-count={previewData.tags.length} className="flex items-center gap-1 flex-wrap">
                       <span className="text-muted-foreground">Tags:</span>
                       {previewData.tags.map((t) => (
                         <Badge key={t} variant="outline" className="text-[10px]">{t}</Badge>
@@ -156,12 +156,17 @@ export function PublishPanel({
                   Loading...
                 </div>
               ) : wpConfig ? (
-                <div className="rounded-md border px-3 py-2 text-sm">
+                <div
+                  data-testid="publish-wp-target"
+                  data-site-url={wpConfig.site_url}
+                  data-username={wpConfig.username}
+                  className="rounded-md border px-3 py-2 text-sm"
+                >
                   {wpConfig.site_url}
                   <span className="text-muted-foreground ml-2">({wpConfig.username})</span>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">
+                <p data-testid="publish-wp-target-missing" className="text-sm text-muted-foreground">
                   No WordPress configured for this channel.{' '}
                   <Link href="/channels" className="underline">Configure it here.</Link>
                 </p>
@@ -170,13 +175,15 @@ export function PublishPanel({
 
             <div className="space-y-2">
               <Label>Publishing Mode</Label>
-              <div className="flex gap-2">
+              <div data-testid="publish-mode-group" data-value={mode} className="flex gap-2">
                 {(['draft', 'publish', 'schedule'] as const).map((m) => (
                   <Button
                     key={m}
                     size="sm"
                     variant={mode === m ? 'default' : 'outline'}
                     onClick={() => setMode(m)}
+                    data-testid={`publish-mode-${m}`}
+                    data-active={mode === m ? 'true' : 'false'}
                   >
                     {m.charAt(0).toUpperCase() + m.slice(1)}
                   </Button>
@@ -188,6 +195,7 @@ export function PublishPanel({
               <div className="space-y-2">
                 <Label>Schedule Date</Label>
                 <Input
+                  data-testid="publish-schedule-date"
                   type="datetime-local"
                   value={scheduledDate}
                   onChange={(e) => setScheduledDate(e.target.value)}
