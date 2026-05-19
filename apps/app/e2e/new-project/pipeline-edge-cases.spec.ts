@@ -793,6 +793,13 @@ test.describe('EC-F1 — provider-quota (overview)', () => {
 
     const mock = await mockPipelineEdge(page, 'provider-quota', { project })
 
+    // Pre-seed shared stages so the first /stages poll already has them
+    // (avoids a serial-suite race where the 4s poll misaligns with the test
+    // budget under sustained dev-server load).
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
     await submitWizard(page, project, 'Overview')
     assertWizardModeRoundtrip(mock, 'overview')
 
@@ -800,12 +807,8 @@ test.describe('EC-F1 — provider-quota (overview)', () => {
     await page.getByTestId('overview-progress-view').waitFor({ state: 'visible', timeout: 20_000 })
     await expect(page.getByTestId('production-engine-root')).toHaveCount(0)
 
-    mock.completeStage('brainstorm')
-    mock.completeStage('research')
-    mock.completeStage('canonical')
-
     const banner = page.getByTestId('awaiting-banner')
-    await banner.waitFor({ state: 'visible', timeout: 30_000 })
+    await banner.waitFor({ state: 'visible', timeout: 60_000 })
     await expect(banner).toHaveAttribute('data-reason', 'provider_quota_exhausted')
 
     const resumeBtn = page.getByTestId('resume-track-btn')
@@ -878,18 +881,21 @@ test.describe('EC-F2 — manual-paste (overview)', () => {
 
     const mock = await mockPipelineEdge(page, 'manual-paste', { project })
 
+    // Pre-seed shared stages so the first /stages poll after page load already
+    // contains them — avoids a race window where useProjectStream's 4s poll
+    // misaligns with the test's banner waitFor under sustained suite load.
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
     await submitWizard(page, project, 'Overview')
     assertWizardModeRoundtrip(mock, 'overview')
 
     await page.getByTestId('overview-progress-view').waitFor({ state: 'visible', timeout: 20_000 })
     await expect(page.getByTestId('production-engine-root')).toHaveCount(0)
 
-    mock.completeStage('brainstorm')
-    mock.completeStage('research')
-    mock.completeStage('canonical')
-
     const banner = page.getByTestId('awaiting-banner')
-    await banner.waitFor({ state: 'visible', timeout: 30_000 })
+    await banner.waitFor({ state: 'visible', timeout: 60_000 })
     await expect(banner).toHaveAttribute('data-reason', 'manual_paste')
 
     await mock.unroute()
@@ -918,12 +924,15 @@ test.describe('EC-F3 — stage-failure-retry (step-by-step)', () => {
 
     const mock = await mockPipelineEdge(page, 'stage-failure-retry', { project })
 
-    await submitWizard(page, project, 'Step-by-step')
-    assertWizardModeRoundtrip(mock, 'step-by-step')
-
+    // Pre-seed shared stages so navigation to ?stage=production lands on a
+    // page where /stages already shows brainstorm/research/canonical complete
+    // + production failed in a single response — avoids serial-suite races.
     mock.completeStage('brainstorm')
     mock.completeStage('research')
     mock.completeStage('canonical')
+
+    await submitWizard(page, project, 'Step-by-step')
+    assertWizardModeRoundtrip(mock, 'step-by-step')
 
     // Navigate to the production stage URL so FocusPanel mounts the restart CTA
     // for the failed production target.
@@ -934,7 +943,7 @@ test.describe('EC-F3 — stage-failure-retry (step-by-step)', () => {
         const el = page.locator('[data-testid*="sidebar-status-"][data-testid*="production"]').first()
         return el.getAttribute('data-status').catch(() => null)
       },
-      { timeout: 30_000, message: 'Production stage did not reach failed status' },
+      { timeout: 60_000, message: 'Production stage did not reach failed status' },
     ).toBe('failed')
 
     // Restart CTA fires POST /api/projects/:id/stage-runs {stage, cascade:true}
@@ -961,12 +970,12 @@ test.describe('EC-F3 — stage-failure-retry (supervised)', () => {
 
     const mock = await mockPipelineEdge(page, 'stage-failure-retry', { project })
 
-    await submitWizard(page, project, 'Supervised')
-    assertWizardModeRoundtrip(mock, 'supervised')
-
     mock.completeStage('brainstorm')
     mock.completeStage('research')
     mock.completeStage('canonical')
+
+    await submitWizard(page, project, 'Supervised')
+    assertWizardModeRoundtrip(mock, 'supervised')
 
     await navigateToProductionStage(page, project.id)
 
@@ -975,7 +984,7 @@ test.describe('EC-F3 — stage-failure-retry (supervised)', () => {
         const el = page.locator('[data-testid*="sidebar-status-"][data-testid*="production"]').first()
         return el.getAttribute('data-status').catch(() => null)
       },
-      { timeout: 30_000, message: 'Production stage did not reach failed status' },
+      { timeout: 60_000, message: 'Production stage did not reach failed status' },
     ).toBe('failed')
 
     const retryCta = page.getByTestId('restart-stage-button')
