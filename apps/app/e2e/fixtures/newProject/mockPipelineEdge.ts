@@ -52,6 +52,12 @@ export interface EdgeMock extends HappyMock {
    * 'hard-fail'.
    */
   failReview: () => void
+  /**
+   * Seed a production stage_run as 'running' on the blog track so abort/pause
+   * UI affordances render in supervised + step-by-step modes (the FocusSidebar
+   * gates them on hasActiveStageRun). Generic — works for any scenario.
+   */
+  seedProductionRunning: () => void
 }
 
 async function readBody(route: Route): Promise<unknown> {
@@ -1027,9 +1033,29 @@ export async function mockPipelineEdge(
 
   if (scenario === 'manual-pause-resume') {
     let isPaused = false
+    let trackPaused = false
     let pauseCallCount = 0
 
-    // Intercept PATCH /projects/:id to track pause/resume
+    // PATCH /api/projects/:id/tracks/:trackId — sidebar track pause toggle
+    // (FocusSidebar.handlePauseToggle in supervised mode). Reflect the new
+    // track-paused flag back in GET /stages so the second click sees the
+    // updated track.paused and flips to the opposite value.
+    await page.route(`**/api/projects/${project.id}/tracks/**`, async (route: Route) => {
+      if (route.request().method() !== 'PATCH') return route.fallback()
+      const body = (await readBody(route)) as { paused?: boolean } | null
+      patchBodies.push({ url: route.request().url(), body })
+      if (body?.paused !== undefined) {
+        trackPaused = body.paused
+        if (body.paused) pauseCallCount++
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { ok: true }, error: null }),
+      })
+    })
+
+    // Intercept PATCH /projects/:id to track pause/resume (overview path)
     await page.route(`**/api/projects/${project.id}`, async (route: Route) => {
       const method = route.request().method()
       const body = (await readBody(route)) as { paused?: boolean } | null
@@ -1063,14 +1089,37 @@ export async function mockPipelineEdge(
       return route.fallback()
     })
 
-    // GET /stages: reflects paused state
+    // GET /stages: reflects both project-paused (overview path) and
+    // track-paused (sidebar pause toggle). Replays the full
+    // {project, stageRuns, tracks} shape with the per-track paused flag
+    // mirrored from PATCH /tracks state.
     await page.route(`**/api/projects/${project.id}/stages`, async (route: Route) => {
-      const stageRuns = happy.snapshot()
+      const stageRuns = happy.snapshot() as unknown as ReadonlyArray<Record<string, unknown>>
+      const TRACK_ID = 'track-e2e-blog-1'
+      const trackScopedStages = ['production', 'review', 'assets', 'preview', 'publish'] as const
+      const trackStageRuns: Record<string, unknown> = {}
+      for (const stage of trackScopedStages) {
+        const row = stageRuns.find((r) => r.stage === stage) ?? null
+        trackStageRuns[stage] = row ? { ...row, trackId: TRACK_ID, allAttempts: [] } : null
+      }
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: { project: { mode: project.mode, paused: isPaused }, stageRuns },
+          data: {
+            project: { mode: project.mode, paused: isPaused },
+            stageRuns: stageRuns.map((r) => ({ ...r, allAttempts: [] })),
+            tracks: [
+              {
+                id: TRACK_ID,
+                medium: 'blog',
+                status: 'active',
+                paused: trackPaused,
+                stageRuns: trackStageRuns,
+                publishTargets: [{ id: 'pt-e2e-1', displayName: 'E2E WordPress' }],
+              },
+            ],
+          },
           error: null,
         }),
       })
@@ -1087,7 +1136,23 @@ export async function mockPipelineEdge(
   if (scenario === 'manual-abort') {
     let isAborted = false
 
-    // Intercept PATCH /projects/:id to track abort
+    // PATCH /api/projects/:id/tracks/:trackId — sidebar track-level abort
+    // (FocusSidebar.handleAbortTrack at apps/app/src/components/pipeline/FocusSidebar.tsx:494).
+    await page.route(`**/api/projects/${project.id}/tracks/**`, async (route: Route) => {
+      if (route.request().method() !== 'PATCH') return route.fallback()
+      const body = (await readBody(route)) as { status?: string } | null
+      patchBodies.push({ url: route.request().url(), body })
+      if (body?.status === 'aborted') {
+        isAborted = true
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { ok: true }, error: null }),
+      })
+    })
+
+    // Intercept PATCH /projects/:id to track abort (overview path)
     await page.route(`**/api/projects/${project.id}`, async (route: Route) => {
       const method = route.request().method()
       const body = (await readBody(route)) as { status?: string; paused?: boolean } | null
@@ -1121,22 +1186,50 @@ export async function mockPipelineEdge(
       return route.fallback()
     })
 
-    // GET /stages: reflects aborted stages
+    // GET /stages: reflects aborted track-scoped stages. After abort, force
+    // production into status='aborted' even if not previously seeded — overview
+    // mode tests rely on the row appearing so the stepper renders aborted.
     await page.route(`**/api/projects/${project.id}/stages`, async (route: Route) => {
-      const stageRuns = isAborted
-        ? happy.snapshot().map((r) => {
-            if (!['brainstorm', 'research', 'canonical'].includes(r.stage)) {
-              return { ...r, status: 'aborted', errorMessage: 'User aborted pipeline' }
-            }
-            return r
+      const base = happy.snapshot() as unknown as Array<Record<string, unknown>>
+      let stageRuns = base
+      if (isAborted) {
+        const TRACK_SCOPED = new Set(['production', 'review', 'assets', 'preview', 'publish'])
+        const present = new Set(base.map((r) => r.stage as string))
+        const transitioned = base.map((r) => {
+          if (TRACK_SCOPED.has(r.stage as string)) {
+            return { ...r, status: 'aborted', errorMessage: 'User aborted pipeline' }
+          }
+          return r
+        })
+        // Inject a synthetic aborted production row when none was seeded — the
+        // overview stepper needs the row to render data-status="aborted".
+        if (!present.has('production')) {
+          transitioned.push({
+            id: 'sr-production-aborted',
+            projectId: project.id,
+            stage: 'production',
+            status: 'aborted',
+            attemptNo: 1,
+            inputJson: null,
+            outcomeJson: null,
+            payloadRef: null,
+            finishedAt: nowIso(),
+            errorMessage: 'User aborted pipeline',
+            awaitingReason: null,
+            trackId: 'track-e2e-blog-1',
+            publishTargetId: null,
+            createdAt: nowIso(-5),
+            updatedAt: nowIso(),
           })
-        : happy.snapshot()
+        }
+        stageRuns = transitioned
+      }
 
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: { project: { mode: project.mode, paused: isAborted }, stageRuns },
+          data: buildStagesResponse(project.id, project.mode, isAborted, stageRuns),
           error: null,
         }),
       })
@@ -1187,6 +1280,27 @@ export async function mockPipelineEdge(
     } as Parameters<typeof happy.runs.set>[1])
   }
 
+  const seedProductionRunning = () => {
+    happy.runs.set('production', {
+      ...happy.runs.get('production'),
+      id: 'sr-production-running',
+      projectId: project.id,
+      stage: 'production',
+      status: 'running',
+      attemptNo: 1,
+      inputJson: null,
+      outcomeJson: null,
+      payloadRef: null,
+      finishedAt: null,
+      errorMessage: null,
+      awaitingReason: null,
+      trackId: 'track-e2e-blog-1',
+      publishTargetId: null,
+      createdAt: nowIso(-5),
+      updatedAt: nowIso(),
+    } as Parameters<typeof happy.runs.set>[1])
+  }
+
   return {
     ...happy,
     scenario,
@@ -1195,6 +1309,7 @@ export async function mockPipelineEdge(
     patchBodies,
     parkReviewMax,
     failReview,
+    seedProductionRunning,
     // Override unroute to use the page's unrouteAll
     unroute: async () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' })
