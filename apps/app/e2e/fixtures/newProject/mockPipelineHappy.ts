@@ -666,9 +666,54 @@ export async function mockPipelineHappy(
 
   // ── Draft / canonical / production engine endpoints ─────────────────────
   const DRAFT_ID = 'draft-e2e-1'
+  // Full canonical core shape that the CanonicalEngine renderer expects.
+  // Covers all 7 sections (thesis, argument_chain, emotional_arc, key_stats,
+  // key_quotes, affiliate_moment, cta_*) so e2e specs can confront every
+  // surface against the wizard config and persona selection.
   const CANONICAL_CORE = {
     title: 'Retirement Planning for Freelancers: A Complete Guide',
     seo: { primary_keyword: 'retirement planning freelancers', meta_description: 'How freelancers can plan retirement.', slug: 'retirement-planning-freelancers' },
+    thesis: 'Freelancers need self-directed retirement vehicles to maximize tax-advantaged contributions and offset the absence of an employer match.',
+    argument_chain: [
+      {
+        claim: 'Freelancers cannot rely on employer-sponsored plans.',
+        evidence: 'Self-employed workers have no default 401(k) and bear the full FICA burden.',
+        source_ids: ['src-1'],
+      },
+      {
+        claim: 'Solo 401(k) raises the contribution ceiling for high earners.',
+        evidence: 'Combined employee + employer contributions reach $69,000 in 2024 vs $23,000 in a standard 401(k).',
+        source_ids: ['src-1', 'src-2'],
+      },
+      {
+        claim: 'Variable income demands flexible contribution timing.',
+        evidence: 'Quarterly contributions track earnings; lump-sum at year-end captures upside without overcommitting.',
+        source_ids: ['src-2'],
+      },
+    ],
+    emotional_arc: {
+      opening_emotion: 'concern - freelancers feel exposed by the lack of employer match',
+      turning_point: 'discovery - the Solo 401(k) ceiling unlocks higher savings than a salaried peer',
+      closing_emotion: 'confidence - a concrete contribution plan for variable income',
+    },
+    key_stats: [
+      { figure: '$69,000', stat: 'Solo 401(k) max combined contribution (2024)', source_id: 'src-1' },
+      { figure: '36%', stat: 'Freelancers with no retirement account', source_id: 'src-2' },
+    ],
+    key_quotes: [
+      {
+        quote: 'A Solo 401(k) is the single highest-ceiling tax-advantaged option for self-employed earners.',
+        author: 'Jane Tax-CPA',
+        credentials: 'CPA, retirement planning specialist',
+      },
+    ],
+    affiliate_moment: {
+      trigger_context: 'Right after the section comparing contribution ceilings.',
+      product_angle: 'Open a Solo 401(k) at a custodian that supports Roth + employer profit-sharing.',
+      cta_primary: 'Open your Solo 401(k) in under 10 minutes →',
+    },
+    cta_subscribe: 'Subscribe for the quarterly freelancer-finance checklist.',
+    cta_comment_prompt: 'Which retirement vehicle do you use today — and why?',
     outline: [
       { heading: 'Why freelancers need a different plan', points: ['No employer match', 'Variable income'] },
       { heading: 'Solo 401(k) basics', points: ['Contribution limits', 'Tax treatment'] },

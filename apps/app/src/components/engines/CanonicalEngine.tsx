@@ -675,7 +675,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
         )}
 
         {Array.isArray(keyStats) && keyStats.length > 0 && (
-          <div className="space-y-3">
+          <div data-testid="canonical-key-stats" data-count={keyStats.length} className="space-y-3">
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Key Stats
             </Label>
@@ -687,6 +687,8 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
                 return (
                   <div
                     key={i}
+                    data-testid="canonical-key-stat-card"
+                    data-source-id={sourceId ?? ''}
                     className="rounded-lg border border-border/60 bg-card/50 p-3.5 flex items-start gap-3"
                   >
                     <TrendingUp className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
@@ -707,7 +709,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
         )}
 
         {Array.isArray(keyQuotes) && keyQuotes.length > 0 && (
-          <div className="space-y-3">
+          <div data-testid="canonical-key-quotes" data-count={keyQuotes.length} className="space-y-3">
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Key Quotes
             </Label>
@@ -719,6 +721,8 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
                 return (
                   <blockquote
                     key={i}
+                    data-testid="canonical-key-quote-card"
+                    data-author={author ?? ''}
                     className="relative rounded-lg border-l-4 border-primary/50 bg-muted/30 pl-4 pr-3 py-3"
                   >
                     <Quote className="absolute top-2 right-2 h-4 w-4 text-muted-foreground/30" />
@@ -737,24 +741,24 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
         )}
 
         {affiliate && (
-          <div className="rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/[0.06] via-card to-card p-4 space-y-2">
+          <div data-testid="canonical-affiliate-moment" className="rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/[0.06] via-card to-card p-4 space-y-2">
             <div className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
               <Megaphone className="h-3 w-3" /> Affiliate Moment
             </div>
             {typeof affiliate.trigger_context === 'string' && (
-              <div>
+              <div data-testid="canonical-affiliate-trigger">
                 <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Trigger</div>
                 <p className="text-sm text-foreground/90 mt-0.5">{affiliate.trigger_context}</p>
               </div>
             )}
             {typeof affiliate.product_angle === 'string' && (
-              <div>
+              <div data-testid="canonical-affiliate-angle">
                 <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Angle</div>
                 <p className="text-sm text-foreground/90 mt-0.5">{affiliate.product_angle}</p>
               </div>
             )}
             {typeof affiliate.cta_primary === 'string' && (
-              <div className="pt-1">
+              <div data-testid="canonical-affiliate-cta" className="pt-1">
                 <div className="text-[10px] uppercase tracking-wide text-muted-foreground">CTA</div>
                 <p className="text-sm font-medium text-amber-700 dark:text-amber-300 mt-0.5">
                   {affiliate.cta_primary}
@@ -767,7 +771,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
         {(ctaSubscribe || ctaComment) && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
             {ctaSubscribe && (
-              <div className="rounded-lg border border-border/60 bg-card/50 p-3 flex items-start gap-2.5">
+              <div data-testid="canonical-cta-subscribe" className="rounded-lg border border-border/60 bg-card/50 p-3 flex items-start gap-2.5">
                 <Sparkles className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                 <div className="min-w-0">
                   <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Subscribe CTA</div>
@@ -776,7 +780,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
               </div>
             )}
             {ctaComment && (
-              <div className="rounded-lg border border-border/60 bg-card/50 p-3 flex items-start gap-2.5">
+              <div data-testid="canonical-cta-comment" className="rounded-lg border border-border/60 bg-card/50 p-3 flex items-start gap-2.5">
                 <MessageSquare className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                 <div className="min-w-0">
                   <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Comment Prompt</div>
