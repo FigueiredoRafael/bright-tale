@@ -29,7 +29,7 @@ import {
   type StageRunSpec,
 } from './fan-out-planner.js';
 import { insertRun, StageRunUniquenessError, type MultiTrackDims } from './stage-run-writer.js';
-import { resolveAutopilotConfig } from './autopilot-config-resolver.js';
+import { resolveAutopilotConfig, slotToStageInput } from './autopilot-config-resolver.js';
 import type { AutopilotConfig } from '@brighttale/shared/schemas/autopilotConfig';
 
 // The `stage_runs` table and the `projects.mode`/`paused`/`autopilot_config`
@@ -564,7 +564,8 @@ export async function resumeProject(projectId: string): Promise<void> {
       // legacy autopilot config shape (canonicalCore/draft slots), which only
       // works for stages that happen to share a name with their slot key.
       const stageDefaults = autopilotConfig?.[stage];
-      if (stageDefaults) nextRow.input_json = stageDefaults;
+      const normalizedDefaults = stageDefaults ? slotToStageInput(stage, stageDefaults) : null;
+      if (normalizedDefaults) nextRow.input_json = normalizedDefaults;
     }
 
     await clearAbortFlag(sb, projectId);
@@ -821,7 +822,8 @@ export async function advanceAfter(stageRunId: string): Promise<void> {
     // (project + track) coalesced AutopilotConfig fragment. Dispatchers are
     // still free to enrich further (prior-stage winners, etc).
     if (resolvedSlot !== null && resolvedSlot !== undefined) {
-      nextRow.input_json = resolvedSlot;
+      const normalized = slotToStageInput(next, resolvedSlot);
+      if (normalized) nextRow.input_json = normalized;
     }
   }
 
@@ -920,7 +922,7 @@ async function writeFanOutSpec(
   const track = spec.trackId ? tracks.find((t) => t.id === spec.trackId) ?? null : null;
   const trackSource = track ? { autopilotConfigJson: track.autopilotConfigJson } : null;
   const resolvedSlot = resolveAutopilotConfig(projectAutopilotSource, trackSource, spec.stage);
-  const inputJson = resolvedSlot ?? undefined;
+  const inputJson = resolvedSlot ? slotToStageInput(spec.stage, resolvedSlot) ?? undefined : undefined;
   try {
     const inserted = await insertRun(sb, {
       projectId,

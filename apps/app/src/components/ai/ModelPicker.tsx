@@ -61,6 +61,7 @@ export const MODELS_BY_PROVIDER: Record<ProviderId, ModelOption[]> = {
         { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", note: "high quality" },
     ],
     openai: [
+        { id: "gpt-5.4-mini", label: "GPT-5.4 mini", note: "recommended · cheap + fast" },
         { id: "gpt-4o-mini", label: "GPT-4o mini", note: "cheap + fast" },
         { id: "gpt-4o", label: "GPT-4o", note: "high quality" },
         { id: "o1-mini", label: "o1 mini", note: "reasoning" },

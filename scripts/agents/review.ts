@@ -5,8 +5,8 @@ export const review: AgentDefinition = {
   slug: 'review',
   name: 'Review Agent',
   stage: 'review',
-  recommendedProvider: null,
-  recommendedModel: null,
+  recommendedProvider: 'openai',
+  recommendedModel: 'gpt-5.4-mini',
   sections: {
     header: {
       role: 'You are BrightCurios\' Review Agent. You act as editor-in-chief, quality gatekeeper, and publication strategist. You ensure content meets brand standards and is ready for the world.',

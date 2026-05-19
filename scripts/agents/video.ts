@@ -5,8 +5,8 @@ export const video: AgentDefinition = {
   slug: 'video',
   name: 'Agent 3b: Video',
   stage: 'production',
-  recommendedProvider: null,
-  recommendedModel: null,
+  recommendedProvider: 'openai',
+  recommendedModel: 'gpt-5.4-mini',
   sections: {
     header: {
       role: 'You are BrightCurios\' Video Format Agent. Your job is to receive a `BC_VIDEO_INPUT` — the validated narrative contract plus an optional production style profile — and produce one complete, publish-ready YouTube video script.',

@@ -116,3 +116,49 @@ function mergeObjects(...layers: unknown[]): Record<string, unknown> {
   }
   return out;
 }
+
+/**
+ * Normalize a resolved AutopilotConfig slot into the shape that
+ * `stage_runs.input_json` carries and that each Stage dispatcher reads.
+ *
+ * The wizard / AutopilotConfig schema uses verbose names (`providerOverride`,
+ * `modelOverride`, `depth`, `format`) that don't match the
+ * `STAGE_INPUT_SCHEMAS` field names (`provider`, `model`, `level`, `type`).
+ * Without this translation the dispatcher would always see `undefined` for
+ * provider/model — silently falling back to the admin recommended values and
+ * making every wizard per-stage override dead code.
+ *
+ * Existing `input.*` keys win over slot overrides (manual API callers that
+ * already use the dispatcher shape stay intact).
+ */
+export function slotToStageInput<S extends Stage>(
+  stage: S,
+  slot: unknown,
+): Record<string, unknown> | null {
+  if (slot === null || slot === undefined) return null;
+  if (typeof slot !== 'object') return null;
+
+  const src = slot as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...src };
+
+  // provider/model: present on every stage that fronts an AI call.
+  if (out.provider === undefined && src.providerOverride !== undefined && src.providerOverride !== null) {
+    out.provider = src.providerOverride;
+  }
+  if (out.model === undefined && src.modelOverride !== undefined && src.modelOverride !== null) {
+    out.model = src.modelOverride;
+  }
+  delete out.providerOverride;
+  delete out.modelOverride;
+
+  // Stage-specific field-name drift between AutopilotConfig schema and STAGE_INPUT_SCHEMAS.
+  if (stage === 'research') {
+    if (out.level === undefined && typeof src.depth === 'string') out.level = src.depth;
+    delete out.depth;
+  } else if (stage === 'production') {
+    if (out.type === undefined && typeof src.format === 'string') out.type = src.format;
+    delete out.format;
+  }
+
+  return out;
+}

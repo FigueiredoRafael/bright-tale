@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveAutopilotConfig } from '../autopilot-config-resolver';
+import { resolveAutopilotConfig, slotToStageInput } from '../autopilot-config-resolver';
 
 describe('resolveAutopilotConfig', () => {
   describe('project-only config (no Track override)', () => {
@@ -240,6 +240,68 @@ describe('resolveAutopilotConfig', () => {
       };
       const resolved = resolveAutopilotConfig(project, null, 'review');
       expect(resolved).toMatchObject({ maxIterations: 7 });
+    });
+  });
+});
+
+describe('slotToStageInput', () => {
+  it('maps providerOverride → provider and modelOverride → model', () => {
+    const slot = {
+      providerOverride: 'openai',
+      modelOverride: 'gpt-4o-mini',
+      mode: 'topic_driven',
+      topic: 'x',
+    };
+    expect(slotToStageInput('brainstorm', slot)).toEqual({
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      mode: 'topic_driven',
+      topic: 'x',
+    });
+  });
+
+  it('drops null overrides instead of overwriting with null', () => {
+    const slot = {
+      providerOverride: null,
+      modelOverride: null,
+      mode: 'topic_driven',
+    };
+    const out = slotToStageInput('brainstorm', slot);
+    expect(out).toEqual({ mode: 'topic_driven' });
+    expect(out).not.toHaveProperty('provider');
+    expect(out).not.toHaveProperty('providerOverride');
+  });
+
+  it('research: maps depth → level', () => {
+    expect(slotToStageInput('research', { providerOverride: null, modelOverride: null, depth: 'deep' })).toEqual({
+      level: 'deep',
+    });
+  });
+
+  it('production: maps format → type', () => {
+    expect(
+      slotToStageInput('production', { providerOverride: 'anthropic', modelOverride: null, format: 'video', wordCount: 800 }),
+    ).toEqual({
+      provider: 'anthropic',
+      type: 'video',
+      wordCount: 800,
+    });
+  });
+
+  it('returns null for null/undefined slot', () => {
+    expect(slotToStageInput('brainstorm', null)).toBeNull();
+    expect(slotToStageInput('brainstorm', undefined)).toBeNull();
+  });
+
+  it('explicit provider on input wins over override (manual API callers)', () => {
+    const slot = {
+      provider: 'gemini',
+      providerOverride: 'openai',
+      mode: 'topic_driven',
+    };
+    expect(slotToStageInput('brainstorm', slot)).toEqual({
+      provider: 'gemini',
+      mode: 'topic_driven',
     });
   });
 });

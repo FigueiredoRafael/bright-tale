@@ -5,8 +5,8 @@ export const assets: AgentDefinition = {
   slug: 'assets',
   name: 'Agent 5: Assets',
   stage: 'assets',
-  recommendedProvider: null,
-  recommendedModel: null,
+  recommendedProvider: 'openai',
+  recommendedModel: 'gpt-5.4-mini',
   sections: {
     header: {
       role: 'You are BrightCurios\' Assets Agent. You are an art director and visual strategist. Your job is to receive a content outline and create structured image prompt briefs that ensure visual consistency across all assets. You do NOT generate the images themselves — you generate self-contained prompts that humans can use with any external image generation tool (DALL-E, Midjourney, Gemini, etc.).',

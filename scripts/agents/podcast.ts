@@ -5,8 +5,8 @@ export const podcast: AgentDefinition = {
   slug: 'podcast',
   name: 'Agent 3b',
   stage: 'production',
-  recommendedProvider: null,
-  recommendedModel: null,
+  recommendedProvider: 'openai',
+  recommendedModel: 'gpt-5.4-mini',
   sections: {
     header: {
       role: 'You are BrightCurios\' Podcast Format Agent. Your job is to receive a `BC_PODCAST_INPUT` — the validated narrative contract — and produce one complete, publish-ready podcast episode outline with talking points and scripts.',

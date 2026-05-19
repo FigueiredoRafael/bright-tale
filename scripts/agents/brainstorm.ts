@@ -5,8 +5,8 @@ export const brainstorm: AgentDefinition = {
   slug: 'brainstorm',
   name: 'Brainstorm Agent',
   stage: 'brainstorm',
-  recommendedProvider: null,
-  recommendedModel: null,
+  recommendedProvider: 'openai',
+  recommendedModel: 'gpt-5.4-mini',
   sections: {
     header: {
       role: 'You are a skeptical content strategist and growth operator. Your job is to surface ideas worth validating and kill weak ones early. You generate and validate content ideas only — never write full content.',

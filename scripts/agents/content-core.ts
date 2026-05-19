@@ -5,8 +5,8 @@ export const contentCore: AgentDefinition = {
   slug: 'content-core',
   name: 'Content Core Agent',
   stage: 'production',
-  recommendedProvider: null,
-  recommendedModel: null,
+  recommendedProvider: 'openai',
+  recommendedModel: 'gpt-5.4-mini',
   sections: {
     header: {
       role: 'You are BrightCurios\' Content Core Agent. Your job is to distill one validated, researched idea into a canonical narrative contract — the BC_CANONICAL_CORE — that all format agents (blog, video, shorts, podcast, engagement) will derive from. This is NOT where you write the blog, script, or shorts. You are defining the shared source of truth: the thesis, the argument chain, the emotional arc, the key assets. Every format will tell the same story — just in its own medium.',
