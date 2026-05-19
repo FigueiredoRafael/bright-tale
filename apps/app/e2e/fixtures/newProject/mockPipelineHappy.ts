@@ -57,26 +57,55 @@ const OUTCOME_BY_STAGE: Record<HappyStage, unknown> = {
     ideaTitle: 'E2E Happy Path Idea',
     ideaVerdict: 'viable',
     ideaCoreTension: 'Quality vs Speed',
+    audience: 'Freelancers nearing retirement',
+    angle: 'Solo 401(k) for variable income',
+    format: 'long-form blog',
   },
   research: {
     researchSessionId: 'rs-e2e-1',
     approvedCardsCount: 5,
     researchLevel: 'medium',
+    avgConfidence: 92,
+    confidenceCards: [
+      { title: 'Solo 401(k) contribution limits', confidence: 96 },
+      { title: 'SEP-IRA eligibility rules', confidence: 90 },
+      { title: 'Roth conversion strategy', confidence: 88 },
+    ],
   },
   canonical: {
     draftId: 'draft-e2e-1',
     draftTitle: 'E2E Happy Path Draft',
-    thesis: 'E2E thesis statement',
+    thesis: 'Freelancers need self-directed retirement vehicles to maximize contributions',
+    persona: {
+      name: 'E2E Persona',
+      age: 38,
+      niche: 'personal finance for freelancers',
+      voice: 'clear, steady, plain',
+    },
+    argument_chain: [
+      { claim: 'No employer match means freelancers fall behind by default' },
+      { claim: 'Solo 401(k) doubles the contribution limit through employee+employer roles' },
+      { claim: 'SEP-IRA is simpler but caps lower for solo earners' },
+    ],
   },
   production: {
     draftId: 'draft-e2e-1',
     draftTitle: 'E2E Happy Path Draft',
-    draftContent: 'This is the e2e test draft content for production stage.',
+    draftContent: 'This is the e2e test draft content for production stage. ' +
+      'Freelancers face unique challenges when planning for retirement. '.repeat(40),
+    wordCount: 1500,
+    headings: [
+      'Why freelancers need a different plan',
+      'Solo 401(k) basics',
+      'SEP-IRA overview',
+      'Roth conversions for variable income',
+    ],
   },
   review: {
     score: 95,
     qualityTier: 'excellent',
     verdict: 'approved',
+    topIssue: 'Add one more concrete example for SEP-IRA contribution math',
     feedbackJson: { summary: 'Great content!' },
   },
   assets: {
@@ -308,6 +337,28 @@ export async function mockPipelineHappy(
     }),
   )
 
+  // GET /api/agent-prompts/:slot — admin-defined provider/model defaults per slot.
+  // Engines consult this when the wizard didn't override provider/model.
+  await page.route(/\/api\/agent-prompts\/[^/?#]+/, async (route: Route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    const url = route.request().url()
+    const slotMatch = url.match(/\/api\/agent-prompts\/([^/?#]+)/)
+    const slot = slotMatch?.[1] ?? 'brainstorm'
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          slot,
+          provider: 'gemini',
+          model: 'gemini-2.5-flash',
+          temperature: 0.5,
+          system_prompt: `[e2e] default system prompt for ${slot}`,
+        },
+        error: null,
+      }),
+    })
+  })
+
   // ── Wizard-flow endpoints (used when T1 starts at /projects → Start Workflow) ─
 
   // Autopilot templates list — empty (use Blank)
@@ -353,10 +404,28 @@ export async function mockPipelineHappy(
   })
 
   // POST /api/projects — create project (wizard submit)
+  // Seed brainstorm stage_run as queued so PipelineWorkspace cold-start
+  // auto-route picks it up and points the user at the brainstorm engine.
+  // For supervised/overview, also seed assets+preview as 'skipped' to mirror
+  // the orchestrator's response to the wizard's assets.mode='skip' /
+  // preview.enabled=false config — without this, supervised auto-advance
+  // mounts the AssetsEngine instead of jumping to publish.
   await page.route('**/api/projects', async (route: Route) => {
     if (route.request().method() !== 'POST') return route.fallback()
     const body = await readBody(route)
     actions.push({ method: 'POST', url: '/api/projects', body })
+    // Seed brainstorm as queued (only if not already set)
+    if (!runs.get('brainstorm')) {
+      runs.set('brainstorm', makeRow('brainstorm', { status: 'queued' }))
+    }
+    // Seed assets+preview as 'skipped' so the supervised auto-advance
+    // walks past them and lands on publish.
+    if (!runs.get('assets')) {
+      runs.set('assets', makeRow('assets', { status: 'skipped', outcomeJson: OUTCOME_BY_STAGE.assets, finishedAt: nowIso() }))
+    }
+    if (!runs.get('preview')) {
+      runs.set('preview', makeRow('preview', { status: 'skipped', outcomeJson: OUTCOME_BY_STAGE.preview, finishedAt: nowIso() }))
+    }
     return route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify({ data: { id: project.id }, error: null }),

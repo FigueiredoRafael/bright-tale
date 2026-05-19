@@ -79,7 +79,7 @@ export function PipelineWorkspace({ projectId }: Props) {
   const isGraph = searchParams.get('view') === 'graph';
   const hasStageParam = searchParams.has('stage');
 
-  const { stageRuns, project, refresh } = useProjectStream(projectId);
+  const { stageRuns, project, tracks, refresh } = useProjectStream(projectId);
 
   // Cold-start auto-route: when the user lands on /projects/:id with no
   // ?stage= param (e.g. straight from the wizard), point them at the
@@ -95,6 +95,89 @@ export function PipelineWorkspace({ projectId }: Props) {
     next.set('attempt', String(brainstorm.attemptNo ?? 1));
     router.replace(`${pathname}?${next.toString()}`);
   }, [isGraph, hasStageParam, stageRuns.brainstorm, pathname, router, searchParams]);
+
+  // Supervised auto-advance: in supervised mode, when the currently-focused
+  // stage completes, route the URL to the next stage in the canonical
+  // sequence so engines mount continuously without user clicks.
+  //
+  // Sequence: brainstorm → research → canonical → (first active track's
+  // production → review → assets → preview → publish). assets/preview are
+  // skipped when their stage run is marked 'skipped' (e.g. wizard config).
+  useEffect(() => {
+    if (isGraph) return;
+    if (project.rawMode !== 'supervised') return;
+    if (project.paused) return;
+    const currentStage = searchParams.get('stage');
+    if (!currentStage) return;
+    const currentTrackId = searchParams.get('track');
+
+    const SHARED_SEQ = ['brainstorm', 'research', 'canonical'] as const;
+    const TRACK_SEQ = ['production', 'review', 'assets', 'preview', 'publish'] as const;
+
+    // Resolve the run for the current URL stage
+    const sharedIdx = SHARED_SEQ.indexOf(currentStage as (typeof SHARED_SEQ)[number]);
+    const trackIdx = TRACK_SEQ.indexOf(currentStage as (typeof TRACK_SEQ)[number]);
+    const activeTracks = tracks.filter((t) => t.status === 'active' && !t.paused);
+    const focusedTrack = currentTrackId
+      ? activeTracks.find((t) => t.id === currentTrackId) ?? null
+      : activeTracks[0] ?? null;
+
+    let currentRun: { status: string } | null | undefined = null;
+    if (sharedIdx >= 0) {
+      currentRun = stageRuns[currentStage as (typeof SHARED_SEQ)[number]];
+    } else if (trackIdx >= 0 && focusedTrack) {
+      currentRun = focusedTrack.stageRuns?.[currentStage] ?? null;
+    }
+    if (!currentRun || currentRun.status !== 'completed') return;
+
+    // Compute next stage in canonical sequence
+    let nextStage: string | null = null;
+    let nextTrackId: string | null = null;
+    if (sharedIdx >= 0) {
+      if (sharedIdx + 1 < SHARED_SEQ.length) {
+        nextStage = SHARED_SEQ[sharedIdx + 1];
+      } else if (focusedTrack) {
+        nextStage = TRACK_SEQ[0];
+        nextTrackId = focusedTrack.id;
+      }
+    } else if (trackIdx >= 0 && focusedTrack) {
+      // Walk forward to the first non-skipped track stage
+      for (let i = trackIdx + 1; i < TRACK_SEQ.length; i += 1) {
+        const cand = TRACK_SEQ[i];
+        const candRun = focusedTrack.stageRuns?.[cand];
+        if (candRun?.status === 'skipped') continue;
+        nextStage = cand;
+        nextTrackId = focusedTrack.id;
+        break;
+      }
+    }
+    if (!nextStage) return;
+
+    // Avoid redundant replace if URL already matches
+    if (
+      searchParams.get('stage') === nextStage &&
+      (searchParams.get('track') ?? null) === (nextTrackId ?? null)
+    ) return;
+
+    const next = new URLSearchParams(searchParams.toString());
+    next.set('stage', nextStage);
+    if (nextTrackId) {
+      next.set('track', nextTrackId);
+    } else {
+      next.delete('track');
+    }
+    next.delete('target');
+    router.replace(`${pathname}?${next.toString()}`);
+  }, [
+    isGraph,
+    project.rawMode,
+    project.paused,
+    stageRuns,
+    tracks,
+    searchParams,
+    pathname,
+    router,
+  ]);
 
   // Project is awaiting if it is explicitly paused OR if any stage run is
   // awaiting user input. Either condition warrants the project-scope banner.

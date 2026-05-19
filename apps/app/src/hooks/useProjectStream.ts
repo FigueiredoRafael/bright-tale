@@ -95,6 +95,9 @@ function rowToJobEvent(row: Record<string, unknown>): JobEvent {
 
 export interface ProjectMeta {
   mode: 'autopilot' | 'manual';
+  /** Uncoerced mode value as persisted — used by features that need to
+   * distinguish 'supervised' vs 'overview' (both coerce to 'autopilot'). */
+  rawMode: string | null;
   paused: boolean;
 }
 
@@ -109,7 +112,7 @@ export function useProjectStream(projectId: string): {
   const [state, dispatch] = useReducer(reducer, { stageRuns: EMPTY_STAGE_RUNS });
   const [liveEvent, setLiveEvent] = useState<JobEvent | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [project, setProject] = useState<ProjectMeta>({ mode: 'autopilot', paused: false });
+  const [project, setProject] = useState<ProjectMeta>({ mode: 'autopilot', rawMode: null, paused: false });
   const [tracks, setTracks] = useState<TrackSnapshot[]>([]);
   const cancelledRef = useRef(false);
   // Per-instance suffix so multiple consumers of useProjectStream on the
@@ -128,10 +131,10 @@ export function useProjectStream(projectId: string): {
       // pipeline UX revamp). Coerce legacy mode values here so consumers
       // can rely on the canonical {autopilot, manual} pair.
       const proj = body?.data?.project as { mode?: string | null; paused?: boolean } | undefined;
-      const rawMode = proj?.mode;
+      const rawMode = proj?.mode ?? null;
       const mode: 'autopilot' | 'manual' =
         rawMode === 'manual' || rawMode === 'step-by-step' ? 'manual' : 'autopilot';
-      setProject({ mode, paused: Boolean(proj?.paused ?? false) });
+      setProject({ mode, rawMode, paused: Boolean(proj?.paused ?? false) });
       // Snapshot also carries per-track data (T9.F157). Default to [] for
       // legacy projects that have no tracks rows yet.
       const snapshotTracks = (body?.data?.tracks ?? []) as TrackSnapshot[];

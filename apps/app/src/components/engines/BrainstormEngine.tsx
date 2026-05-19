@@ -441,7 +441,6 @@ export function BrainstormEngine({
     if (!ideas.length) return;
     if (running || regenerating) return;
 
-    ctx.setStageStatus('brainstorm', { status: 'Selecting idea' });
     const matchByPick = recommendation?.pick
       ? ideas.find(
           (i) =>
@@ -454,6 +453,7 @@ export function BrainstormEngine({
     const chosenId = chosen.id ?? chosen.idea_id;
     if (!chosenId || autoPickedRef.current === chosenId) return;
     autoPickedRef.current = chosenId;
+    ctx.setStageStatus('brainstorm', { status: 'Selecting idea' });
 
     const result: BrainstormResult = {
       ideaId: chosenId,

@@ -27,7 +27,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useProjectStream, type JobEvent } from '@/hooks/useProjectStream';
 import type { StageRun, StageRunStatus } from '@brighttale/shared/pipeline/inputs';
-import { summarizeStage } from '@/lib/overview/stageSummaryFormatter';
+import { summarizeStage, summarizeStageRich } from '@/lib/overview/stageSummaryFormatter';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -319,7 +319,7 @@ export function OverviewProgressView({ projectId }: Props) {
       {/* Live log */}
       <LiveLog events={logEntries} />
 
-      {/* Last output */}
+      {/* Last output (legacy single-card slot, kept for backwards compat) */}
       {lastCompletedEntry && (
         <div
           data-testid="overview-last-output"
@@ -335,6 +335,34 @@ export function OverviewProgressView({ projectId }: Props) {
           )}
         </div>
       )}
+
+      {/* Per-stage persistent summary cards — one card per completed stage */}
+      <div data-testid="overview-stage-summary-list" className="flex flex-col gap-2">
+        {OVERVIEW_STAGES.map((stage) => {
+          const run = stageRuns[stage];
+          if (!run || run.status !== 'completed') return null;
+          const rich = summarizeStageRich(stage, run.outcomeJson);
+          return (
+            <div
+              key={stage}
+              data-testid={`overview-stage-summary-${stage}`}
+              data-stage={stage}
+              className="rounded border border-border/40 bg-background/40 p-3 text-xs"
+            >
+              <div className="text-sm font-medium text-foreground mb-1">
+                {STAGE_LABELS[stage] ?? rich.title}
+              </div>
+              <ul className="text-muted-foreground space-y-0.5">
+                {rich.lines.map((line, i) => (
+                  <li key={i} data-testid={`overview-stage-summary-${stage}-line`}>
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
 
       {/* Actions */}
       <div data-testid="overview-actions" className="flex items-center gap-2">
