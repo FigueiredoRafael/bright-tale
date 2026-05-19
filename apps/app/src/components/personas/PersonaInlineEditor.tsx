@@ -46,8 +46,8 @@ const HUMOR_STYLE_OPTIONS = [
 ]
 
 const TRAIT_LABELS: Record<keyof PersonaTraits, string> = {
-    voz: "Voz", expertise: "Expertise", autoridade: "Autoridade",
-    engajamento: "Engajamento", personalidade: "Personalidade", originalidade: "Originalidade",
+    empatia: "Empatia", profundidade: "Profundidade", provocacao: "Provocação",
+    singularidade: "Singularidade", narrativa: "Narrativa", autoridade: "Autoridade",
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────

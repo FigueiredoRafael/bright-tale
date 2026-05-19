@@ -4,12 +4,12 @@ import type { PersonaTraits } from "@brighttale/shared/types/agents"
 import { DEFAULT_PERSONA_TRAITS } from "@brighttale/shared/types/agents"
 
 const LABELS: Record<keyof PersonaTraits, string> = {
-  voz:           "Voz",
-  expertise:     "Expertise",
-  autoridade:    "Autoridade",
-  engajamento:   "Engajamento",
-  personalidade: "Personalidade",
-  originalidade: "Originalidade",
+  empatia:      "Empatia",
+  profundidade: "Profundidade",
+  provocacao:   "Provocação",
+  singularidade: "Singularidade",
+  narrativa:    "Narrativa",
+  autoridade:   "Autoridade",
 }
 
 const KEYS = Object.keys(LABELS) as (keyof PersonaTraits)[]

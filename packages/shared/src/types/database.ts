@@ -2850,6 +2850,7 @@ export type Database = {
       }
       personas: {
         Row: {
+          age: number | null
           approved_categories: string[]
           archetype_slug: string | null
           avatar_params_json: Json | null
@@ -2859,18 +2860,24 @@ export type Database = {
           created_at: string
           domain_lens: string
           eeat_signals_json: Json
+          gender: string | null
           id: string
           is_active: boolean
+          languages_json: Json
           name: string
+          nationality: string | null
+          org_id: string
           primary_domain: string
           slug: string
           soul_json: Json
           traits_json: Json
           updated_at: string
+          visibility: string
           wp_author_id: number | null
           writing_voice_json: Json
         }
         Insert: {
+          age?: number | null
           approved_categories: string[]
           archetype_slug?: string | null
           avatar_params_json?: Json | null
@@ -2880,18 +2887,24 @@ export type Database = {
           created_at?: string
           domain_lens: string
           eeat_signals_json: Json
+          gender?: string | null
           id?: string
           is_active?: boolean
+          languages_json?: Json
           name: string
+          nationality?: string | null
+          org_id: string
           primary_domain: string
           slug: string
           soul_json: Json
           traits_json?: Json
           updated_at?: string
+          visibility?: string
           wp_author_id?: number | null
           writing_voice_json: Json
         }
         Update: {
+          age?: number | null
           approved_categories?: string[]
           archetype_slug?: string | null
           avatar_params_json?: Json | null
@@ -2901,18 +2914,31 @@ export type Database = {
           created_at?: string
           domain_lens?: string
           eeat_signals_json?: Json
+          gender?: string | null
           id?: string
           is_active?: boolean
+          languages_json?: Json
           name?: string
+          nationality?: string | null
+          org_id?: string
           primary_domain?: string
           slug?: string
           soul_json?: Json
           traits_json?: Json
           updated_at?: string
+          visibility?: string
           wp_author_id?: number | null
           writing_voice_json?: Json
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "personas_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pipeline_settings: {
         Row: {
@@ -4724,3 +4750,4 @@ export const Constants = {
     },
   },
 } as const
+

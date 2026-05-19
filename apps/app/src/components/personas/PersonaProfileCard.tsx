@@ -5,9 +5,9 @@ import Image from "next/image"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { PersonaRadar } from "./PersonaRadar"
-import { Globe, Lightbulb, Target, Zap, Heart, MessageSquare, Plus, X } from "lucide-react"
-import type { Persona, PersonaTraits } from "@brighttale/shared/types/agents"
-import { DEFAULT_PERSONA_TRAITS } from "@brighttale/shared/types/agents"
+import { Globe, Lightbulb, Target, Zap, Heart, MessageSquare, Plus, X, User, Languages, ShieldAlert, BookOpen, ChevronDown, ChevronUp } from "lucide-react"
+import type { Persona, PersonaTraits, PersonaLanguage } from "@brighttale/shared/types/agents"
+import { computePersonaTraits, computePersonaQualityScore } from "@/components/engines/utils/personaScoring"
 import type { PersonaFormValues } from "./PersonaForm"
 
 // ─── Option lists ─────────────────────────────────────────────────────────────
@@ -30,9 +30,36 @@ const HUMOR_STYLE_OPTIONS = [
     "Auto-depreciativo", "Referências culturais", "Absurdo / Non-sequitur",
 ]
 
+const LANGUAGE_LEVEL_OPTIONS: PersonaLanguage["level"][] = ["native", "fluent", "conversational", "basic"]
+
+const LEVEL_LABELS: Record<PersonaLanguage["level"], string> = {
+    native: "Nativo",
+    fluent: "Fluente",
+    conversational: "Conversacional",
+    basic: "Básico",
+}
+
 const TRAIT_LABELS: Record<keyof PersonaTraits, string> = {
-    voz: "Voz", expertise: "Expertise", autoridade: "Autoridade",
-    engajamento: "Engajamento", personalidade: "Personalidade", originalidade: "Originalidade",
+    empatia: "Empatia", profundidade: "Profundidade", provocacao: "Provocação",
+    singularidade: "Singularidade", narrativa: "Narrativa", autoridade: "Autoridade",
+}
+
+// ─── Quality thermometer ──────────────────────────────────────────────────────
+
+function QualityThermometer({ score }: { score: number }) {
+    const label = score >= 80 ? "Excelente" : score >= 60 ? "Boa" : "Persona rasa"
+    const color = score >= 80 ? "bg-green-500" : score >= 60 ? "bg-amber-400" : "bg-destructive"
+    const textColor = score >= 80 ? "text-green-600" : score >= 60 ? "text-amber-500" : "text-destructive"
+    return (
+        <div className="flex items-center gap-2 min-w-[120px]">
+            <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${score}%` }} />
+            </div>
+            <span className={`text-[10px] font-semibold tabular-nums whitespace-nowrap ${textColor}`}>
+                {score}% {label}
+            </span>
+        </div>
+    )
 }
 
 // ─── Inline primitives ────────────────────────────────────────────────────────
@@ -126,11 +153,54 @@ function EditTags({ value, onChange, placeholder }: {
     )
 }
 
+const BIO_PREVIEW_CHARS = 300
+
+function BioLongSection({ editing, value, display, onChange }: {
+    editing: boolean
+    value: string
+    display: string
+    onChange: (v: string) => void
+}) {
+    const [expanded, setExpanded] = useState(false)
+    const wordCount = display.trim().split(/\s+/).filter(Boolean).length
+    const needsToggle = display.length > BIO_PREVIEW_CHARS
+
+    return (
+        <div className="sm:col-span-2">
+            <SectionTitle icon={BookOpen} label="Biografia" />
+            {editing ? (
+                <EditTextarea
+                    value={value}
+                    onChange={onChange}
+                    placeholder="História de vida detalhada (~800 palavras)..."
+                    className="text-sm min-h-[160px]"
+                />
+            ) : (
+                <div>
+                    <p className="text-sm leading-relaxed whitespace-pre-line">
+                        {needsToggle && !expanded
+                            ? display.slice(0, BIO_PREVIEW_CHARS).trimEnd() + "…"
+                            : display}
+                    </p>
+                    {needsToggle && (
+                        <button
+                            onClick={() => setExpanded(e => !e)}
+                            className="mt-1.5 flex items-center gap-1 text-xs text-primary hover:underline"
+                        >
+                            {expanded
+                                ? <><ChevronUp className="h-3 w-3" /> Ver menos</>
+                                : <><ChevronDown className="h-3 w-3" /> Ver mais ({wordCount} palavras)</>}
+                        </button>
+                    )}
+                </div>
+            )}
+        </div>
+    )
+}
+
 function FieldLabel({ children }: { children: React.ReactNode }) {
     return <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">{children}</p>
 }
-
-// ─── Section title ────────────────────────────────────────────────────────────
 
 function SectionTitle({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
     return (
@@ -155,22 +225,78 @@ function BulletList({ items }: { items: string[] }) {
     )
 }
 
+// ─── Languages editor ─────────────────────────────────────────────────────────
+
+function LanguagesEditor({ value, onChange }: {
+    value: PersonaLanguage[]; onChange: (v: PersonaLanguage[]) => void
+}) {
+    const [lang, setLang] = useState("")
+    const [level, setLevel] = useState<PersonaLanguage["level"]>("fluent")
+    function add() {
+        const t = lang.trim()
+        if (t && !value.find(l => l.language.toLowerCase() === t.toLowerCase())) {
+            onChange([...value, { language: t, level }])
+        }
+        setLang("")
+    }
+    return (
+        <div className="space-y-1.5">
+            {value.map((l, i) => (
+                <div key={i} className="flex items-center gap-1.5 text-xs group">
+                    <span className="font-medium">{l.language}</span>
+                    <Badge variant="secondary" className="text-[9px] px-1 py-0">{LEVEL_LABELS[l.level]}</Badge>
+                    <button type="button" onClick={() => onChange(value.filter((_, j) => j !== i))}
+                        className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity ml-auto">
+                        <X className="h-2.5 w-2.5" />
+                    </button>
+                </div>
+            ))}
+            <div className="flex gap-1 items-center">
+                <input
+                    value={lang}
+                    onChange={e => setLang(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && (e.preventDefault(), add())}
+                    placeholder="Idioma..."
+                    className="bg-background border border-border rounded px-1.5 py-0.5 text-[11px] w-24 focus:outline-none focus:border-primary placeholder:text-muted-foreground/50"
+                />
+                <Select value={level} onValueChange={v => setLevel(v as PersonaLanguage["level"])}>
+                    <SelectTrigger className="h-6 text-[11px] w-32 border-border bg-background">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {LANGUAGE_LEVEL_OPTIONS.map(l => (
+                            <SelectItem key={l} value={l} className="text-xs">{LEVEL_LABELS[l]}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                <button type="button" onClick={add} className="text-muted-foreground hover:text-primary">
+                    <Plus className="h-3 w-3" />
+                </button>
+            </div>
+        </div>
+    )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 interface PersonaProfileCardProps {
     persona: Persona
-    // edit mode
     editing?: boolean
     values?: PersonaFormValues
     onChange?: (v: PersonaFormValues) => void
+    qualityScore?: number
 }
 
-export function PersonaProfileCard({ persona, editing = false, values, onChange }: PersonaProfileCardProps) {
+export function PersonaProfileCard({ persona, editing = false, values, onChange, qualityScore }: PersonaProfileCardProps) {
     const v = values ?? {
         name: persona.name, slug: persona.slug,
         bioShort: persona.bioShort, bioLong: persona.bioLong,
         primaryDomain: persona.primaryDomain, domainLens: persona.domainLens,
         approvedCategories: persona.approvedCategories,
+        nationality: persona.nationality ?? "",
+        age: persona.age ?? undefined,
+        gender: persona.gender ?? "",
+        languagesJson: persona.languagesJson ?? [],
         traitsJson: persona.traitsJson,
         writingVoiceJson: persona.writingVoiceJson,
         eeatSignalsJson: persona.eeatSignalsJson,
@@ -185,7 +311,8 @@ export function PersonaProfileCard({ persona, editing = false, values, onChange 
         onChange?.({ ...v, [key]: val })
     }
 
-    const traits = { ...DEFAULT_PERSONA_TRAITS, ...v.traitsJson }
+    const computedTraits = computePersonaTraits(editing ? { ...persona, ...v } as Persona : persona)
+    const score = qualityScore ?? computePersonaQualityScore(editing ? { ...persona, ...v } as Persona : persona)
 
     return (
         <div className={`rounded-2xl border bg-card overflow-hidden shadow-sm ${!persona.isActive ? "opacity-60" : ""}`}>
@@ -239,6 +366,71 @@ export function PersonaProfileCard({ persona, editing = false, values, onChange 
                             persona.domainLens && (
                                 <p className="text-[11px] text-muted-foreground italic leading-snug text-center">{persona.domainLens}</p>
                             )
+                        )}
+                    </div>
+
+                    {/* Quality score */}
+                    <div>
+                        <FieldLabel>Qualidade</FieldLabel>
+                        <QualityThermometer score={score} />
+                    </div>
+
+                    {/* Demographics */}
+                    <div>
+                        <SectionTitle icon={User} label="Identidade" />
+                        {editing ? (
+                            <div className="space-y-2">
+                                <div>
+                                    <FieldLabel>Nacionalidade</FieldLabel>
+                                    <EditText value={v.nationality ?? ""} onChange={val => upd("nationality", val)} placeholder="Ex: Brasileira, Americana..." />
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <FieldLabel>Idade</FieldLabel>
+                                        <input
+                                            type="number" min={1} max={120}
+                                            value={v.age ?? ""}
+                                            onChange={e => upd("age", e.target.value ? Number(e.target.value) : undefined)}
+                                            placeholder="Ex: 35"
+                                            className="bg-background border border-border rounded-md px-2 py-1 text-sm focus:border-primary focus:outline-none w-full transition-colors"
+                                        />
+                                    </div>
+                                    <div>
+                                        <FieldLabel>Gênero</FieldLabel>
+                                        <EditText value={v.gender ?? ""} onChange={val => upd("gender", val)} placeholder="Ex: Feminino..." />
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
+                                {persona.nationality && <span>{persona.nationality}</span>}
+                                {persona.age && <span>• {persona.age} anos</span>}
+                                {persona.gender && <span>• {persona.gender}</span>}
+                                {!persona.nationality && !persona.age && !persona.gender && <span className="italic">—</span>}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Languages */}
+                    <div>
+                        <SectionTitle icon={Languages} label="Idiomas" />
+                        {editing ? (
+                            <LanguagesEditor
+                                value={v.languagesJson ?? []}
+                                onChange={val => upd("languagesJson", val)}
+                            />
+                        ) : (
+                            <div className="space-y-1">
+                                {(persona.languagesJson ?? []).length === 0
+                                    ? <p className="text-xs text-muted-foreground italic">—</p>
+                                    : (persona.languagesJson ?? []).map((l, i) => (
+                                        <div key={i} className="flex items-center gap-1.5 text-xs">
+                                            <span className="font-medium">{l.language}</span>
+                                            <Badge variant="secondary" className="text-[9px] px-1 py-0">{LEVEL_LABELS[l.level]}</Badge>
+                                        </div>
+                                    ))
+                                }
+                            </div>
                         )}
                     </div>
 
@@ -298,7 +490,7 @@ export function PersonaProfileCard({ persona, editing = false, values, onChange 
 
                 {/* ─── Right column ─────────────────────────────────── */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 content-start">
-                    {/* Bio */}
+                    {/* Bio curta */}
                     <div className="sm:col-span-2">
                         <SectionTitle icon={Globe} label="Sobre" />
                         {editing ? (
@@ -312,6 +504,16 @@ export function PersonaProfileCard({ persona, editing = false, values, onChange 
                             <p className="text-sm leading-relaxed">{persona.bioShort}</p>
                         )}
                     </div>
+
+                    {/* Biografia detalhada */}
+                    {(editing || persona.bioLong) && (
+                        <BioLongSection
+                            editing={editing}
+                            value={v.bioLong}
+                            display={persona.bioLong}
+                            onChange={val => upd("bioLong", val)}
+                        />
+                    )}
 
                     {/* Motivações */}
                     <div>
@@ -404,6 +606,27 @@ export function PersonaProfileCard({ persona, editing = false, values, onChange 
                         )}
                     </div>
 
+                    {/* Guardrails */}
+                    <div className="sm:col-span-2">
+                        <SectionTitle icon={ShieldAlert} label="Guardrails — o que nunca faz" />
+                        {editing ? (
+                            <EditTags
+                                value={v.soulJson.languageGuardrails}
+                                onChange={val => upd("soulJson", { ...v.soulJson, languageGuardrails: val })}
+                                placeholder="ex: nunca use 'jornada'..."
+                            />
+                        ) : (
+                            <div className="flex flex-wrap gap-1">
+                                {(persona.soulJson.languageGuardrails ?? []).length === 0
+                                    ? <p className="text-xs text-muted-foreground italic">Nenhum guardrail definido — o output pode parecer genérico.</p>
+                                    : persona.soulJson.languageGuardrails.slice(0, 6).map(g => (
+                                        <Badge key={g} variant="outline" className="text-[10px] px-1.5 py-0 text-destructive border-destructive/30">{g}</Badge>
+                                    ))
+                                }
+                            </div>
+                        )}
+                    </div>
+
                     {/* Autoridade / EEAT */}
                     {(editing || persona.eeatSignalsJson.trustSignals.length > 0) && (
                         <div className="sm:col-span-2">
@@ -442,38 +665,28 @@ export function PersonaProfileCard({ persona, editing = false, values, onChange 
                         </div>
                     )}
 
-                    {/* ── FORÇAS ── */}
+                    {/* ── FORÇAS (computed) ── */}
                     <div className="sm:col-span-2 pt-4 border-t">
                         <SectionTitle icon={Zap} label="Forças" />
+                        <p className="text-[10px] text-muted-foreground mb-3">Calculado automaticamente a partir do perfil.</p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
-                            {/* Sliders / bars */}
                             <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
                                 {(Object.keys(TRAIT_LABELS) as (keyof PersonaTraits)[]).map(key => (
                                     <div key={key} className="space-y-0.5">
                                         <div className="flex justify-between items-center">
                                             <span className="text-[10px] text-muted-foreground">{TRAIT_LABELS[key]}</span>
-                                            <span className="text-[10px] font-semibold tabular-nums">{traits[key]}</span>
+                                            <span className="text-[10px] font-semibold tabular-nums">{computedTraits[key]}</span>
                                         </div>
-                                        {editing ? (
-                                            <input
-                                                type="range" min={1} max={10} step={1}
-                                                value={traits[key]}
-                                                onChange={e => upd("traitsJson", { ...traits, [key]: Number(e.target.value) })}
-                                                className="w-full accent-primary h-1"
+                                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                                            <div
+                                                className="h-full rounded-full bg-primary transition-all"
+                                                style={{ width: `${(computedTraits[key] / 10) * 100}%` }}
                                             />
-                                        ) : (
-                                            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                                                <div
-                                                    className="h-full rounded-full bg-primary transition-all"
-                                                    style={{ width: `${(traits[key] / 10) * 100}%` }}
-                                                />
-                                            </div>
-                                        )}
+                                        </div>
                                     </div>
                                 ))}
                             </div>
-                            {/* Radar chart */}
-                            <PersonaRadar traits={traits} />
+                            <PersonaRadar traits={computedTraits} />
                         </div>
                     </div>
                 </div>

@@ -5,9 +5,11 @@ import { createServiceClient } from '../lib/supabase/index.js'
 import { ApiError } from '../lib/api/errors.js'
 import { MODULE_SLUGS } from '@brighttale/shared/schemas/module-ai-assignments'
 import { PERSONA_WIZARD_SYSTEM_PROMPT, PERSONA_WIZARD_OPENING } from '../lib/chat-modules/persona-wizard.js'
+import { PERSONA_FIXER_SYSTEM_PROMPT } from '../lib/chat-modules/persona-fixer.js'
 
 const MODULE_SYSTEM_PROMPTS: Record<string, string> = {
   persona_wizard: PERSONA_WIZARD_SYSTEM_PROMPT,
+  persona_fixer: PERSONA_FIXER_SYSTEM_PROMPT,
 }
 
 const MODULE_OPENINGS: Record<string, string> = {
@@ -20,6 +22,7 @@ const turnSchema = z.object({
     role:    z.enum(['user', 'assistant']),
     content: z.string(),
   })),
+  context: z.string().optional(),
 })
 
 /**
@@ -91,20 +94,21 @@ export async function chatRoutes(app: FastifyInstance) {
       return reply.status(400).send({ data: null, error: { code: 'VALIDATION_ERROR', message: parse.error.message } })
     }
 
-    const { moduleId, messages } = parse.data
+    const { moduleId, messages, context } = parse.data
     const systemPrompt = MODULE_SYSTEM_PROMPTS[moduleId]
     if (!systemPrompt) throw new ApiError(400, `Unknown module: ${moduleId}`, 'UNKNOWN_MODULE')
 
     const assignment = await getModuleAssignment(moduleId)
 
     // Build the user message as the full conversation history for the AI.
+    const contextBlock = context ? `[CONTEXTO DA PERSONA]\n${context}\n\n` : ''
     const conversationBlock = messages
       .map(m => `[${m.role === 'user' ? 'USUÁRIO' : 'ASSISTENTE'}]: ${m.content}`)
       .join('\n\n')
 
     const userMessage = messages.length === 0
-      ? 'Começar conversa.'
-      : `${conversationBlock}\n\n[SISTEMA]: Continue a conversa respondendo à última mensagem do usuário. Retorne APENAS JSON válido.`
+      ? `${contextBlock}Começar conversa.`
+      : `${contextBlock}${conversationBlock}\n\n[SISTEMA]: Continue a conversa respondendo à última mensagem do usuário. Retorne APENAS JSON válido.`
 
     // Resolve provider: module assignment takes priority, then env-var fallback.
     // We bypass the stage router here because chat modules need a direct provider

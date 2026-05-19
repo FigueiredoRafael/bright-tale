@@ -9,4 +9,4 @@ export interface ChatTurnResponse {
   extracted?: Record<string, unknown>
 }
 
-export type ModuleId = 'persona_wizard' | 'onboarding_wizard'
+export type ModuleId = 'persona_wizard' | 'onboarding_wizard' | 'persona_fixer'

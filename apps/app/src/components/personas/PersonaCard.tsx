@@ -21,8 +21,8 @@ interface PersonaCardProps {
 }
 
 const TRAIT_LABELS: Partial<Record<keyof PersonaTraits, string>> = {
-  voz: "Voz",
-  expertise: "Expertise",
+  empatia: "Empatia",
+  profundidade: "Profundidade",
   autoridade: "Autoridade",
 }
 

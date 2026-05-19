@@ -24,9 +24,11 @@ function ModuleRow({ moduleSlug, current, onSaved, onDeleted }: ModuleRowProps) 
   const [model, setModel] = useState<string>(current?.model ?? MODELS_BY_PROVIDER.gemini[0].id)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   async function save() {
     setSaving(true)
+    setSaveError(null)
     try {
       const res = await fetch("/api/ai-providers/module-assignments", {
         method: "PUT",
@@ -34,7 +36,10 @@ function ModuleRow({ moduleSlug, current, onSaved, onDeleted }: ModuleRowProps) 
         body: JSON.stringify({ moduleSlug, provider, model }),
       })
       const { data, error } = await res.json()
-      if (!error && data) { onSaved(data); setEditing(false) }
+      if (error) { setSaveError(error.message ?? "Erro ao salvar"); return }
+      if (data) { onSaved(data); setEditing(false) }
+    } catch {
+      setSaveError("Falha de comunicação com o servidor")
     } finally { setSaving(false) }
   }
 
@@ -74,6 +79,9 @@ function ModuleRow({ moduleSlug, current, onSaved, onDeleted }: ModuleRowProps) 
             onProviderChange={p => { setProvider(p); setModel(MODELS_BY_PROVIDER[p][0].id) }}
             onModelChange={setModel}
           />
+          {saveError && (
+            <p className="text-xs text-destructive">{saveError}</p>
+          )}
           <div className="flex justify-between">
             {current && (
               <Button size="sm" variant="destructive" onClick={remove} disabled={deleting} className="h-7 text-xs">

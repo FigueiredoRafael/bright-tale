@@ -27,6 +27,7 @@ export class AnthropicProvider implements AIProvider {
     signal,
     tools,
     toolExecutor,
+    rawText,
   }: GenerateContentParams): Promise<any> {
     if (signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError');
@@ -95,6 +96,8 @@ export class AnthropicProvider implements AIProvider {
         if (!textBlock || textBlock.type !== "text") {
           throw new Error("Unexpected response type from Anthropic");
         }
+
+        if (rawText) return textBlock.text;
 
         const parsed = this.extractAndParseJson(textBlock.text);
         if (schema && typeof (schema as { parse?: unknown }).parse === "function") {

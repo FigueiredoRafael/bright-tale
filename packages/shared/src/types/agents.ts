@@ -781,34 +781,47 @@ export interface PersonaSoul {
   languageGuardrails: string[]
 }
 
+export interface PersonaLanguage {
+  language: string
+  level: 'native' | 'fluent' | 'conversational' | 'basic'
+}
+
+// Computed from persona profile — not manually editable.
+// Derived by computePersonaTraits() in personaScoring.ts.
 export interface PersonaTraits {
-  voz: number          // 1-10: how distinct/strong the writing voice is
-  expertise: number    // 1-10: domain knowledge depth
+  empatia: number      // 1-10: emotional connection with reader
+  profundidade: number // 1-10: analytical depth and expertise signals
+  provocacao: number   // 1-10: challenges conventional thinking
+  singularidade: number // 1-10: linguistic fingerprint strength (vícios de linguagem)
+  narrativa: number    // 1-10: use of storytelling and metaphors
   autoridade: number   // 1-10: credibility and trust signals
-  engajamento: number  // 1-10: audience engagement style
-  personalidade: number // 1-10: personality coming through in content
-  originalidade: number // 1-10: unique perspective and originality
 }
 
 export const DEFAULT_PERSONA_TRAITS: PersonaTraits = {
-  voz: 5,
-  expertise: 5,
+  empatia: 5,
+  profundidade: 5,
+  provocacao: 5,
+  singularidade: 5,
+  narrativa: 5,
   autoridade: 5,
-  engajamento: 5,
-  personalidade: 5,
-  originalidade: 5,
 }
 
 export interface Persona {
   id: string
   slug: string
   name: string
+  orgId: string
+  visibility: 'private' | 'global'
   avatarUrl: string | null
   bioShort: string
   bioLong: string
   primaryDomain: string
   domainLens: string
   approvedCategories: string[]
+  nationality: string | null
+  age: number | null
+  gender: string | null
+  languagesJson: PersonaLanguage[]
   writingVoiceJson: PersonaWritingVoice
   eeatSignalsJson: PersonaEeatSignals
   soulJson: PersonaSoul

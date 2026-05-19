@@ -512,12 +512,18 @@ export interface DbPersona {
   id: string;
   slug: string;
   name: string;
+  org_id: string;
+  visibility: 'private' | 'global';
   avatar_url: string | null;
   bio_short: string;
   bio_long: string;
   primary_domain: string;
   domain_lens: string;
   approved_categories: string[];
+  nationality: string | null;
+  age: number | null;
+  gender: string | null;
+  languages_json: Json;
   writing_voice_json: Json;
   eeat_signals_json: Json;
   soul_json: Json;
@@ -535,12 +541,18 @@ export function mapPersonaFromDb(row: DbPersona): Persona {
     id: row.id,
     slug: row.slug,
     name: row.name,
+    orgId: row.org_id,
+    visibility: row.visibility ?? 'private',
     avatarUrl: row.avatar_url,
     bioShort: row.bio_short,
     bioLong: row.bio_long,
     primaryDomain: row.primary_domain,
     domainLens: row.domain_lens,
     approvedCategories: row.approved_categories,
+    nationality: row.nationality ?? null,
+    age: row.age ?? null,
+    gender: row.gender ?? null,
+    languagesJson: (row.languages_json as unknown as Persona['languagesJson']) ?? [],
     writingVoiceJson: (row.writing_voice_json ?? {}) as unknown as Persona['writingVoiceJson'],
     eeatSignalsJson: (row.eeat_signals_json ?? {}) as unknown as Persona['eeatSignalsJson'],
     soulJson: (row.soul_json ?? {}) as unknown as Persona['soulJson'],
@@ -575,6 +587,10 @@ export function mapPersonaToDb(input: PersonaDbInput): Partial<DbPersona> {
   if (input.primaryDomain !== undefined) out.primary_domain = input.primaryDomain;
   if (input.domainLens !== undefined) out.domain_lens = input.domainLens;
   if (input.approvedCategories !== undefined) out.approved_categories = input.approvedCategories;
+  if (input.nationality !== undefined) out.nationality = input.nationality;
+  if (input.age !== undefined) out.age = input.age;
+  if (input.gender !== undefined) out.gender = input.gender;
+  if (input.languagesJson !== undefined) out.languages_json = input.languagesJson as unknown as Json;
   if (input.writingVoiceJson !== undefined) out.writing_voice_json = input.writingVoiceJson as unknown as Json;
   if (input.eeatSignalsJson !== undefined) out.eeat_signals_json = input.eeatSignalsJson as unknown as Json;
   if (input.soulJson !== undefined) out.soul_json = input.soulJson as unknown as Json;

@@ -22,6 +22,10 @@ export interface PersonaFormValues {
     primaryDomain: string
     domainLens: string
     approvedCategories: string[]
+    nationality?: string | null
+    age?: number | null
+    gender?: string | null
+    languagesJson?: Array<{ language: string; level: "native" | "fluent" | "conversational" | "basic" }>
     traitsJson: PersonaTraits
     writingVoiceJson: { writingStyle: string; signaturePhrases: string[]; characteristicOpinions: string[] }
     eeatSignalsJson: { analyticalLens: string; trustSignals: string[]; expertiseClaims: string[] }
@@ -268,8 +272,8 @@ export function PersonaForm({ initial, personaId, archetypeSlug, onSaved }: Pers
                     <div className="space-y-3">
                         {(Object.keys(DEFAULT_PERSONA_TRAITS) as (keyof PersonaTraits)[]).map(key => {
                             const labels: Record<keyof PersonaTraits, string> = {
-                                voz: "Voz", expertise: "Expertise", autoridade: "Autoridade",
-                                engajamento: "Engajamento", personalidade: "Personalidade", originalidade: "Originalidade",
+                                empatia: "Empatia", profundidade: "Profundidade", provocacao: "Provocação",
+                                singularidade: "Singularidade", narrativa: "Narrativa", autoridade: "Autoridade",
                             }
                             return (
                                 <div key={key} className="space-y-1">

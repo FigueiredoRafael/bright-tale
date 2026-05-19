@@ -1,12 +1,17 @@
 import { z } from 'zod'
 
+const personaLanguageSchema = z.object({
+  language: z.string().min(1),
+  level: z.enum(['native', 'fluent', 'conversational', 'basic']),
+})
+
 const traitsSchema = z.object({
-  voz:          z.number().min(1).max(10).default(5),
-  expertise:    z.number().min(1).max(10).default(5),
+  empatia:      z.number().min(1).max(10).default(5),
+  profundidade: z.number().min(1).max(10).default(5),
+  provocacao:   z.number().min(1).max(10).default(5),
+  singularidade: z.number().min(1).max(10).default(5),
+  narrativa:    z.number().min(1).max(10).default(5),
   autoridade:   z.number().min(1).max(10).default(5),
-  engajamento:  z.number().min(1).max(10).default(5),
-  personalidade: z.number().min(1).max(10).default(5),
-  originalidade: z.number().min(1).max(10).default(5),
 })
 
 const writingVoiceSchema = z.object({
@@ -42,6 +47,10 @@ export const createPersonaSchema = z.object({
   primaryDomain: z.string().default(''),
   domainLens: z.string().default(''),
   approvedCategories: z.array(z.string()).default([]),
+  nationality: z.string().nullable().optional(),
+  age: z.number().int().min(1).max(120).nullable().optional(),
+  gender: z.string().nullable().optional(),
+  languagesJson: z.array(personaLanguageSchema).default([]),
   writingVoiceJson: writingVoiceSchema.default({}),
   eeatSignalsJson: eeatSignalsSchema.default({}),
   soulJson: soulSchema.default({}),

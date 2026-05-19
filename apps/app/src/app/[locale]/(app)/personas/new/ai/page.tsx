@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { ChatWizard } from "@/components/chat/ChatWizard"
 import { PersonaProfileCard } from "@/components/personas/PersonaProfileCard"
 import { PersonaForm, type PersonaFormValues } from "@/components/personas/PersonaForm"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, Edit, Check, Plus, MessageSquare, CheckCircle2 } from "lucide-react"
+import { Loader2, ChevronLeft, Edit, Check, Plus, MessageSquare, CheckCircle2, Trash2 } from "lucide-react"
 import type { Persona } from "@brighttale/shared/types/agents"
 import { DEFAULT_PERSONA_TRAITS } from "@brighttale/shared/types/agents"
 import type { ChatMessage } from "@/components/chat/types"
@@ -80,6 +80,12 @@ function buildPreviewPersona(extracted: Record<string, unknown>): Persona {
     writingVoiceJson: (extracted.writingVoiceJson as Persona["writingVoiceJson"]) ?? { writingStyle: "", signaturePhrases: [], characteristicOpinions: [] },
     eeatSignalsJson: (extracted.eeatSignalsJson as Persona["eeatSignalsJson"]) ?? { analyticalLens: "", trustSignals: [], expertiseClaims: [] },
     soulJson: (extracted.soulJson as Persona["soulJson"]) ?? { values: [], lifePhilosophy: "", strongOpinions: [], petPeeves: [], humorStyle: "", recurringJokes: [], whatExcites: [], innerTensions: [], languageGuardrails: [] },
+    orgId: "",
+    visibility: "private" as const,
+    nationality: null,
+    age: null,
+    gender: null,
+    languagesJson: [],
     traitsJson: (extracted.traitsJson as Persona["traitsJson"]) ?? { ...DEFAULT_PERSONA_TRAITS },
     wpAuthorId: null,
     archetypeSlug: null,
@@ -97,10 +103,28 @@ interface SessionSidebarProps {
   activeId: string
   onSelect: (id: string) => void
   onNew: () => void
+  onRename: (id: string, name: string) => void
+  onDelete: (id: string) => void
 }
 
-function SessionSidebar({ sessions, activeId, onSelect, onNew }: SessionSidebarProps) {
+function SessionSidebar({ sessions, activeId, onSelect, onNew, onRename, onDelete }: SessionSidebarProps) {
   const sorted = [...sessions].sort((a, b) => b.savedAt - a.savedAt)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState("")
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function startEdit(session: WizardSession, e: React.MouseEvent) {
+    e.stopPropagation()
+    setEditingId(session.id)
+    setEditValue(session.name)
+    setTimeout(() => inputRef.current?.select(), 0)
+  }
+
+  function commitEdit(id: string) {
+    const trimmed = editValue.trim()
+    if (trimmed) onRename(id, trimmed)
+    setEditingId(null)
+  }
 
   return (
     <aside className="w-[220px] shrink-0 flex flex-col border-r bg-muted/20 h-full">
@@ -120,18 +144,19 @@ function SessionSidebar({ sessions, activeId, onSelect, onNew }: SessionSidebarP
         {sorted.map(session => {
           const isActive = session.id === activeId
           const isDone = session.personaId !== null
+          const isEditing = editingId === session.id
 
           return (
-            <button
+            <div
               key={session.id}
-              onClick={() => onSelect(session.id)}
-              className={`w-full text-left rounded-lg px-3 py-2.5 flex items-center gap-2.5 transition-colors ${
+              onClick={() => !isEditing && onSelect(session.id)}
+              className={`group w-full text-left rounded-lg px-3 py-2.5 flex items-center gap-2.5 transition-colors cursor-pointer ${
                 isActive
                   ? "bg-primary/10 text-foreground"
                   : "hover:bg-muted text-muted-foreground hover:text-foreground"
               }`}
             >
-              {/* Status dot */}
+              {/* Status icon */}
               {isDone ? (
                 <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
               ) : isActive ? (
@@ -141,12 +166,47 @@ function SessionSidebar({ sessions, activeId, onSelect, onNew }: SessionSidebarP
               )}
 
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium truncate">{session.name}</p>
-                {isDone && (
+                {isEditing ? (
+                  <input
+                    ref={inputRef}
+                    value={editValue}
+                    onChange={e => setEditValue(e.target.value)}
+                    onBlur={() => commitEdit(session.id)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") { e.preventDefault(); commitEdit(session.id) }
+                      if (e.key === "Escape") { setEditingId(null) }
+                    }}
+                    onClick={e => e.stopPropagation()}
+                    className="w-full text-xs font-medium bg-background border rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-primary"
+                  />
+                ) : (
+                  <p className="text-xs font-medium truncate">{session.name}</p>
+                )}
+                {isDone && !isEditing && (
                   <p className="text-[10px] text-emerald-500 truncate">persona salva</p>
                 )}
               </div>
-            </button>
+
+              {/* Action icons — visible on hover when not editing */}
+              {!isEditing && (
+                <div className="shrink-0 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={e => startEdit(session, e)}
+                    className="p-0.5 rounded hover:bg-muted-foreground/20"
+                    title="Renomear"
+                  >
+                    <Edit className="h-3 w-3" />
+                  </button>
+                  <button
+                    onClick={e => { e.stopPropagation(); onDelete(session.id) }}
+                    className="p-0.5 rounded hover:bg-destructive/20 hover:text-destructive"
+                    title="Deletar conversa"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+            </div>
           )
         })}
       </div>
@@ -173,10 +233,17 @@ export default function NewPersonaAiPage() {
   const locale = params.locale as string
   const router = useRouter()
 
-  // Lazy-init sessions and activeId from localStorage in a single pass
-  const [{ sessions, activeId: initialActiveId }] = useState(initState)
-  const [sessionList, setSessions] = useState<WizardSession[]>(sessions)
-  const [activeSessionId, setActiveSessionId] = useState<string>(initialActiveId)
+  const [mounted, setMounted] = useState(false)
+  const [sessionList, setSessions] = useState<WizardSession[]>([])
+  const [activeSessionId, setActiveSessionId] = useState<string>("")
+
+  useEffect(() => {
+    const { sessions, activeId } = initState()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSessions(sessions)
+    setActiveSessionId(activeId)
+    setMounted(true)
+  }, [])
 
   // Persist sessions + activeId to localStorage on every change (debounced)
   useEffect(() => {
@@ -207,11 +274,43 @@ export default function NewPersonaAiPage() {
     setActiveSessionId(id)
   }
 
+  // ── Session rename ───────────────────────────────────────────────────────
+
+  function handleRenameSession(id: string, name: string) {
+    updateSession(id, { name })
+  }
+
+  function handleDeleteSession(id: string) {
+    setSessions(prev => {
+      const next = prev.filter(s => s.id !== id)
+      if (next.length === 0) {
+        const fresh = createSession()
+        saveSessions([fresh], fresh.id)
+        setActiveSessionId(fresh.id)
+        return [fresh]
+      }
+      if (id === activeSessionId) {
+        const sorted = [...next].sort((a, b) => b.savedAt - a.savedAt)
+        setActiveSessionId(sorted[0].id)
+      }
+      return next
+    })
+  }
+
   // ── Chat callbacks ───────────────────────────────────────────────────────
 
   function handleMessagesChange(messages: ChatMessage[]) {
     if (!activeSession) return
-    updateSession(activeSession.id, { messages })
+    const patch: Partial<WizardSession> = { messages }
+    // Auto-rename from first user message when session still has default name
+    if (activeSession.name === "Nova Persona") {
+      const firstUser = messages.find(m => m.role === "user")
+      if (firstUser) {
+        const autoName = firstUser.content.trim().slice(0, 32).replace(/\s+\S*$/, "").trim() || "Nova Persona"
+        patch.name = autoName
+      }
+    }
+    updateSession(activeSession.id, patch)
   }
 
   function handleChatComplete(data: Record<string, unknown>) {
@@ -234,6 +333,12 @@ export default function NewPersonaAiPage() {
   }
 
   // ── Render active session content ────────────────────────────────────────
+
+  if (!mounted) return (
+    <div className="flex h-[calc(100vh-56px)] items-center justify-center">
+      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+    </div>
+  )
 
   if (!activeSession) return null
 
@@ -322,6 +427,8 @@ export default function NewPersonaAiPage() {
           activeId={activeSessionId}
           onSelect={handleSelectSession}
           onNew={handleNewSession}
+          onRename={handleRenameSession}
+          onDelete={handleDeleteSession}
         />
       </div>
 

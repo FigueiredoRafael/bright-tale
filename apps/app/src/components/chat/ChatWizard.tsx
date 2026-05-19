@@ -12,23 +12,57 @@ interface ChatWizardProps<T> {
   onMessagesChange: (messages: ChatMessage[]) => void
   onComplete: (extracted: T) => void
   placeholder?: string
+  context?: string
+  initialMessage?: string
+  skipGeneratingOverlay?: boolean
 }
 
 // ─── Bubble components ────────────────────────────────────────────────────────
 
+function renderInline(text: string) {
+  return text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/).map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**"))
+      return <strong key={i}>{part.slice(2, -2)}</strong>
+    if (part.startsWith("*") && part.endsWith("*"))
+      return <em key={i}>{part.slice(1, -1)}</em>
+    return <span key={i}>{part}</span>
+  })
+}
+
 function AssistantBubble({ content }: { content: string }) {
-  const parts = content.split(/(\*\*[^*]+\*\*)/)
+  const paragraphs = content.split(/\n{2,}/).filter(Boolean)
+
   return (
     <div className="flex gap-3 items-start">
-      <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold shrink-0">
+      <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-[10px] font-bold shrink-0 mt-0.5">
         AI
       </div>
-      <div className="bg-muted rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%] text-sm leading-relaxed whitespace-pre-line">
-        {parts.map((part, i) =>
-          part.startsWith("**") && part.endsWith("**")
-            ? <strong key={i}>{part.slice(2, -2)}</strong>
-            : <span key={i}>{part}</span>
-        )}
+      <div className="bg-muted rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed min-w-0 flex-1">
+        {paragraphs.map((para, pi) => {
+          const isBulletBlock = para.split('\n').every(l => /^[•\-\*]/.test(l.trim()))
+          if (isBulletBlock) {
+            return (
+              <ul key={pi} className={`space-y-1 list-none ${pi > 0 ? 'mt-3' : ''}`}>
+                {para.split('\n').filter(Boolean).map((line, li) => (
+                  <li key={li} className="flex gap-2">
+                    <span className="text-primary mt-0.5 shrink-0">•</span>
+                    <span>{renderInline(line.replace(/^[•\-\*]\s*/, ''))}</span>
+                  </li>
+                ))}
+              </ul>
+            )
+          }
+          return (
+            <p key={pi} className={pi > 0 ? 'mt-3' : ''}>
+              {para.split('\n').map((line, li, arr) => (
+                <span key={li}>
+                  {renderInline(line)}
+                  {li < arr.length - 1 && <br />}
+                </span>
+              ))}
+            </p>
+          )
+        })}
       </div>
     </div>
   )
@@ -37,7 +71,7 @@ function AssistantBubble({ content }: { content: string }) {
 function UserBubble({ content }: { content: string }) {
   return (
     <div className="flex gap-3 items-start justify-end">
-      <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-3 max-w-[80%] text-sm leading-relaxed whitespace-pre-line">
+      <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%] text-sm leading-relaxed whitespace-pre-line">
         {content}
       </div>
     </div>
@@ -112,18 +146,23 @@ export function ChatWizard<T extends Record<string, unknown>>({
   onMessagesChange,
   onComplete,
   placeholder = "Digite sua mensagem...",
+  context,
+  initialMessage,
+  skipGeneratingOverlay = false,
 }: ChatWizardProps<T>) {
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [typingText, setTypingText] = useState<string | null>(null)
   const pendingExtracted = useRef<T | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const openingFetched = useRef(false)
+  const lastTypedContent = useRef<string | null>(null)
 
-  // On mount (or when messages becomes empty): fetch the opening message once
+  // On mount (or when messages becomes empty): set or fetch the opening message once
   useEffect(() => {
     if (messages.length > 0) {
       openingFetched.current = true
@@ -131,22 +170,57 @@ export function ChatWizard<T extends Record<string, unknown>>({
     }
     if (openingFetched.current) return
     openingFetched.current = true
-    fetchOpening()
+    if (initialMessage) {
+      onMessagesChange([{ role: "assistant", content: initialMessage }])
+    } else {
+      fetchOpening()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // When messages is reset to empty (reset button), fetch a fresh opening
+  // When messages is reset to empty (reset button), set or fetch a fresh opening
   useEffect(() => {
     if (messages.length === 0 && openingFetched.current) {
-      fetchOpening()
+      if (initialMessage) {
+        onMessagesChange([{ role: "assistant", content: initialMessage }])
+      } else {
+        fetchOpening()
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length])
 
-  // Auto-scroll on new messages
+  // Auto-scroll on new messages or while typing
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, loading])
+  }, [messages, loading, typingText])
+
+  // Typewriter effect: reveal last assistant message progressively
+  useEffect(() => {
+    const last = messages[messages.length - 1]
+    if (!last || last.role !== "assistant") {
+      setTypingText(null)
+      lastTypedContent.current = null
+      return
+    }
+    // Skip if we already animated this exact content
+    if (last.content === lastTypedContent.current) return
+    lastTypedContent.current = last.content
+
+    const full = last.content
+    let idx = 0
+    setTypingText("")
+    const interval = setInterval(() => {
+      idx += 6
+      if (idx >= full.length) {
+        setTypingText(null)
+        clearInterval(interval)
+      } else {
+        setTypingText(full.slice(0, idx))
+      }
+    }, 16)
+    return () => clearInterval(interval)
+  }, [messages])
 
   // Generation animation: 0→100% over ~2.5s
   useEffect(() => {
@@ -208,16 +282,20 @@ export function ChatWizard<T extends Record<string, unknown>>({
       const res = await fetch("/api/chat/turn", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ moduleId, messages: next }),
+        body: JSON.stringify({ moduleId, messages: next, ...(context ? { context } : {}) }),
       })
       const { data, error: apiError } = await res.json()
       if (apiError) { setError(apiError.message); return }
       const turn = data as ChatTurnResponse
       onMessagesChange([...next, { role: "assistant", content: turn.message }])
       if (turn.done && turn.extracted) {
-        pendingExtracted.current = turn.extracted as T
-        setGenerating(true)
-        setProgress(0)
+        if (skipGeneratingOverlay) {
+          onComplete(turn.extracted as T)
+        } else {
+          pendingExtracted.current = turn.extracted as T
+          setGenerating(true)
+          setProgress(0)
+        }
       }
     } catch {
       setError("Falha ao enviar mensagem. Tente novamente.")
@@ -241,11 +319,13 @@ export function ChatWizard<T extends Record<string, unknown>>({
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {messages.map((msg, i) =>
-          msg.role === "assistant"
-            ? <AssistantBubble key={i} content={msg.content} />
+        {messages.map((msg, i) => {
+          const isLastAssistant = i === messages.length - 1 && msg.role === "assistant"
+          const content = isLastAssistant && typingText !== null ? typingText : msg.content
+          return msg.role === "assistant"
+            ? <AssistantBubble key={i} content={content} />
             : <UserBubble key={i} content={msg.content} />
-        )}
+        })}
         {loading && <TypingIndicator />}
         {error && (
           <div className="text-center text-xs text-destructive py-2">{error}</div>
