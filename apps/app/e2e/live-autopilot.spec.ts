@@ -5,17 +5,23 @@ import { attachPipelineEventRecorder } from './fixtures/pipelineMocks'
  * LIVE end-to-end pipeline test.
  *
  * No API mocking — every request hits the real apps/api on :3001 and the
- * real OpenAI gpt-4o-mini model. Pre-requisites:
+ * model configured in `agent_prompts.recommended_model` (currently
+ * openai/gpt-5.4-mini per migration 20260519140000). Pre-requisites:
  *
  *   1. apps/app/.env.local has NEXT_PUBLIC_E2E=1 + E2E_USER_ID=<uuid>
  *   2. Both `dev:app` and `dev:api` are running with those vars loaded
  *   3. apps/api/.env.local has OPENAI_API_KEY
- *   4. agent_prompts rows have recommended_provider='openai',
- *      recommended_model='gpt-4o-mini' for brainstorm/research/review/etc.
+ *   4. agent_prompts rows have recommended_provider/recommended_model
+ *      seeded for brainstorm/research/review/etc.
  *
  * The test is intentionally long-form: a single `test()` walks the user
  * through every stage so a failure pinpoints exactly where the auto-pilot
  * broke. Each stage logs progress to the terminal.
+ *
+ * NOTE: e2e/new-project/full-pipeline-real-ai.spec.ts is the modernized
+ * successor that uses the shared newProject fixtures. This file pre-dates
+ * those helpers and is kept for the API-seeded short path that skips
+ * brainstorm/research to save ~2 minutes per run.
  */
 
 const USER_ID = '5feae97f-86a5-4996-96c1-fc2ed459fa7f'
@@ -26,7 +32,7 @@ const TOPIC = 'Best practices for indie hacker side projects in 2026'
 test.setTimeout(600_000)
 
 test.describe('live auto-pilot pipeline', () => {
-  test('creates a new project and runs through every stage with gpt-4o-mini', async ({
+  test('creates a new project and runs through every stage with the recommended openai model', async ({
     page,
     request,
   }) => {

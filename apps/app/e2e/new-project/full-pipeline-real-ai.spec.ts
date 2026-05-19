@@ -135,4 +135,63 @@ test.describe('T4 — full pipeline with real AI (live)', () => {
 
     console.log('[T4] All stages completed successfully.')
   })
+
+  test('supervised wizard with provider override round-trips to stage_runs.input_json', async ({
+    page,
+  }) => {
+    // Confronts the wizard ↔ engine fix (slotToStageInput): the wizard writes
+    // providerOverride/modelOverride per stage, the orchestrator normalizes to
+    // provider/model before insert, and the dispatcher reads input.provider /
+    // input.model. We don't need to wait for the full pipeline — proving the
+    // first stage_run carries the wizard's choice is enough to validate the
+    // round-trip. The legacy step-by-step test above covers the full path.
+
+    const _recorder = attachPipelineEventRecorder(page)
+
+    await page.goto('/en/projects')
+    const ctaBtn = page
+      .getByRole('button')
+      .filter({ hasText: /start workflow|new project|create project|começar/i })
+      .first()
+    await ctaBtn.waitFor({ state: 'visible', timeout: 15_000 })
+    await ctaBtn.click()
+
+    const projectId = await fillWizard({
+      page,
+      title: `T4 Supervised Override — ${new Date().toISOString()}`,
+      channelId,
+      topic: TOPIC,
+      mode: 'supervised',
+      overrides: {
+        brainstorm: { provider: 'openai', model: 'gpt-5.4-mini' },
+      },
+    })
+    console.log('[T4][supervised] projectId', projectId)
+    expect(projectId).toBeTruthy()
+
+    // Supervised mode auto-dispatches brainstorm on project creation — poll
+    // /stages until the brainstorm stage_run shows up, then inspect its
+    // input_json shape. We accept either status=queued/running/completed —
+    // we're not asserting completion here, just that the wizard config made
+    // it onto the row. Use page.request so the call goes through the apps/app
+    // middleware (which injects INTERNAL_API_KEY); going directly to :3001
+    // would require us to know the secret here.
+    await page.waitForTimeout(2000) // give the orchestrator a beat
+    const stagesRes = await page.request.get(`/api/projects/${projectId}/stages`)
+    expect(stagesRes.ok()).toBeTruthy()
+    const { data } = await stagesRes.json()
+    const brainstormRun = (data.stageRuns as Array<{ stage: string; inputJson: unknown }>).find(
+      (r) => r.stage === 'brainstorm',
+    )
+    expect(brainstormRun, 'brainstorm stage_run must exist after supervised wizard submit').toBeTruthy()
+    const input = brainstormRun!.inputJson as Record<string, unknown>
+    expect(input.provider, 'wizard providerOverride must reach input.provider').toBe('openai')
+    expect(input.model, 'wizard modelOverride must reach input.model').toBe('gpt-5.4-mini')
+    expect(input.topic, 'wizard topic must reach input.topic').toBe(TOPIC)
+    // Sanity: no leftover override field names
+    expect(input).not.toHaveProperty('providerOverride')
+    expect(input).not.toHaveProperty('modelOverride')
+
+    console.log('[T4][supervised] wizard ↔ engine round-trip verified.')
+  })
 })
