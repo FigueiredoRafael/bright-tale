@@ -73,7 +73,7 @@ export function ProductionEngine({ projectId: projectIdProp, trackId, medium }: 
   });
 
   const [phase, setPhase] = useState<Phase>('produce');
-  const [draftId] = useState<string | null>(draftResult?.draftId ?? null);
+  const draftId = draftResult?.draftId ?? null;
   const [producedContent, setProducedContent] = useState<string>('');
   const [producedDraftJson, setProducedDraftJson] = useState<Record<string, unknown> | null>(null);
   const [contentWarning, setContentWarning] = useState<string | null>(null);

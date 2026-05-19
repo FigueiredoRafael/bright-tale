@@ -177,11 +177,31 @@ export async function mockPipelineHappy(
 
   function snapshotResponse() {
     const mode = project.mode
-    // Map mode to what the API returns (supervised → autopilot, overview → overview, step-by-step → step-by-step)
+    // Build a single blog track with the track-scoped stage runs
+    const TRACK_ID = 'track-e2e-blog-1'
+    const trackScopedStages: HappyStage[] = ['production', 'review', 'assets', 'preview', 'publish']
+    const trackStageRuns: Record<string, unknown> = {}
+    for (const stage of trackScopedStages) {
+      const row = runs.get(stage)
+      trackStageRuns[stage] = row
+        ? { ...row, trackId: TRACK_ID, allAttempts: [] }
+        : null
+    }
+    const tracks = [
+      {
+        id: TRACK_ID,
+        medium: 'blog',
+        status: 'active',
+        paused: false,
+        stageRuns: trackStageRuns,
+        publishTargets: [{ id: 'pt-e2e-1', displayName: 'E2E WordPress' }],
+      },
+    ]
     return {
       data: {
         project: { mode, paused: false },
-        stageRuns: snapshot(),
+        stageRuns: snapshot().map((r) => ({ ...r, allAttempts: [] })),
+        tracks,
       },
       error: null,
     }
@@ -288,17 +308,469 @@ export async function mockPipelineHappy(
     }),
   )
 
+  // ── Wizard-flow endpoints (used when T1 starts at /projects → Start Workflow) ─
+
+  // Autopilot templates list — empty (use Blank)
+  await page.route('**/api/autopilot-templates**', async (route: Route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ data: { items: [] }, error: null }),
+    })
+  })
+
+  // Channel default-media-config
+  await page.route(`**/api/channels/${project.channelId}/default-media-config`, async (route: Route) => {
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ data: { mediaConfig: { blog: { wordCount: 1500 } } }, error: null }),
+    })
+  })
+
+  // Channel personas
+  await page.route(`**/api/channels/${project.channelId}/personas`, async (route: Route) => {
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ data: { items: [] }, error: null }),
+    })
+  })
+
+  // Channel WordPress config — PublishPanel fetches this; `Publish` button stays
+  // disabled until wpConfig is non-null. Provide a minimal valid config.
+  await page.route(`**/api/channels/${project.channelId}/wordpress`, async (route: Route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          site_url: 'https://example.test',
+          username: 'e2e-publisher',
+          configured: true,
+        },
+        error: null,
+      }),
+    })
+  })
+
+  // POST /api/projects — create project (wizard submit)
+  await page.route('**/api/projects', async (route: Route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    const body = await readBody(route)
+    actions.push({ method: 'POST', url: '/api/projects', body })
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ data: { id: project.id }, error: null }),
+    })
+  })
+
   // Mirror-from-legacy endpoint (fire-and-forget in project page)
   await page.route(`**/api/projects/${project.id}/stage-runs/mirror-from-legacy`, async (route: Route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { mirrored: 0 }, error: null }) }),
   )
 
-  // Personas / persona-related endpoints
+  // ── Brainstorm engine endpoints ──────────────────────────────────────────
+  const BRAINSTORM_SESSION_ID = 'sess-e2e-brainstorm-1'
+
+  // POST /api/brainstorm/sessions — start a brainstorm; return sessionId so the engine subscribes to SSE
+  await page.route('**/api/brainstorm/sessions', async (route: Route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    const body = await readBody(route)
+    actions.push({ method: 'POST', url: '/api/brainstorm/sessions', body })
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ data: { sessionId: BRAINSTORM_SESSION_ID, status: 'streaming' }, error: null }),
+    })
+  })
+
+  // GET /api/brainstorm/sessions/:id/events — SSE stream: emit one `completed` event
+  await page.route(/\/api\/brainstorm\/sessions\/[^/]+\/events/, async (route: Route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    const completedEvent = {
+      id: 'evt-completed-1',
+      stage: 'completed',
+      message: 'Brainstorm completed',
+      metadata: null,
+      created_at: nowIso(),
+    }
+    const sseBody = `data: ${JSON.stringify(completedEvent)}\n\n`
+    return route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      headers: {
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      },
+      body: sseBody,
+    })
+  })
+
+  // GET /api/brainstorm/sessions/:id/drafts — list staged ideas + recommendation
+  await page.route(/\/api\/brainstorm\/sessions\/[^/]+\/drafts/, async (route: Route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          drafts: [
+            {
+              id: 'idea-e2e-1',
+              position: 1,
+              title: 'E2E Happy Path Idea',
+              core_tension: 'Quality vs Speed',
+              target_audience: 'Test readers',
+              verdict: 'viable',
+              discovery_data: 'Some discovery',
+            },
+            {
+              id: 'idea-e2e-2',
+              position: 2,
+              title: 'E2E Alt Idea',
+              core_tension: 'Cost vs Value',
+              target_audience: 'Test readers',
+              verdict: 'experimental',
+              discovery_data: 'Some discovery',
+            },
+          ],
+          recommendation: { pick: 'idea-e2e-1', rationale: 'Highest viability' },
+        },
+        error: null,
+      }),
+    })
+  })
+
+  // POST /api/brainstorm/sessions/:id/cancel — no-op
+  await page.route(/\/api\/brainstorm\/sessions\/[^/]+\/cancel/, async (route: Route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { ok: true }, error: null }) })
+  })
+
+  // ── Research engine endpoints ────────────────────────────────────────────
+  const RESEARCH_SESSION_ID = 'sess-e2e-research-1'
+  const RESEARCH_FINDINGS = {
+    seo: {
+      primary_keyword: 'retirement planning freelancers',
+      secondary_keywords: ['solo 401k', 'sep ira', 'roth ira freelancer'],
+      search_intent: 'informational',
+    },
+    confidence_score: 92,
+    evidence_strength: 'strong',
+    source_count: 12,
+    expert_quote_count: 3,
+    research_summary: 'Freelancers need self-directed retirement vehicles. Solo 401(k) and SEP-IRA offer the highest contribution limits.',
+    pivot_recommendation: 'None — original angle is strong',
+  }
+
+  // POST /api/research-sessions — return findings synchronously (skip SSE)
+  await page.route('**/api/research-sessions', async (route: Route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    const body = await readBody(route)
+    actions.push({ method: 'POST', url: '/api/research-sessions', body })
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          sessionId: RESEARCH_SESSION_ID,
+          status: 'completed',
+          findings: RESEARCH_FINDINGS,
+        },
+        error: null,
+      }),
+    })
+  })
+
+  // GET /api/research-sessions/:id — session detail
+  await page.route(/\/api\/research-sessions\/[^/]+$/, async (route: Route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          session: {
+            id: RESEARCH_SESSION_ID,
+            cards_json: RESEARCH_FINDINGS,
+            status: 'completed',
+          },
+        },
+        error: null,
+      }),
+    })
+  })
+
+  // SSE /api/research-sessions/:id/events — emit completed
+  await page.route(/\/api\/research-sessions\/[^/]+\/events/, async (route: Route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    const sseBody = `data: ${JSON.stringify({ id: 'evt-r-1', stage: 'completed', message: 'done', metadata: null, created_at: nowIso() })}\n\n`
+    return route.fulfill({
+      status: 200, contentType: 'text/event-stream',
+      headers: { 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' },
+      body: sseBody,
+    })
+  })
+
+  // POST /api/research-sessions/:id/cancel
+  await page.route(/\/api\/research-sessions\/[^/]+\/cancel/, async (route: Route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { ok: true }, error: null }) })
+  })
+
+  // PATCH /api/research-sessions/:id/review (legacy approve cards path)
+  await page.route(/\/api\/research-sessions\/[^/]+\/review/, async (route: Route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback()
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { ok: true }, error: null }) })
+  })
+
+  // ── Draft / canonical / production engine endpoints ─────────────────────
+  const DRAFT_ID = 'draft-e2e-1'
+  const CANONICAL_CORE = {
+    title: 'Retirement Planning for Freelancers: A Complete Guide',
+    seo: { primary_keyword: 'retirement planning freelancers', meta_description: 'How freelancers can plan retirement.', slug: 'retirement-planning-freelancers' },
+    outline: [
+      { heading: 'Why freelancers need a different plan', points: ['No employer match', 'Variable income'] },
+      { heading: 'Solo 401(k) basics', points: ['Contribution limits', 'Tax treatment'] },
+      { heading: 'SEP-IRA overview', points: ['Eligibility', 'Maxing out'] },
+    ],
+    image_slots: [],
+  }
+  const PRODUCED_CONTENT = {
+    body_markdown: '# Retirement Planning for Freelancers\n\n' + 'Freelancers face unique challenges when planning for retirement. '.repeat(120),
+    word_count: 1500,
+    meta_description: 'How freelancers can plan retirement using solo 401(k) and SEP-IRA.',
+  }
+
+  // POST /api/content-drafts — create
+  await page.route('**/api/content-drafts', async (route: Route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    const body = await readBody(route)
+    actions.push({ method: 'POST', url: '/api/content-drafts', body })
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ data: { id: DRAFT_ID, draftId: DRAFT_ID }, error: null }),
+    })
+  })
+
+  // POST /api/content-drafts/:id/canonical-core — generate canonical
+  await page.route(/\/api\/content-drafts\/[^/]+\/canonical-core/, async (route: Route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    const body = await readBody(route)
+    actions.push({ method: 'POST', url: '/api/content-drafts/:id/canonical-core', body })
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ data: { canonicalCoreJson: CANONICAL_CORE, canonical_core_json: CANONICAL_CORE }, error: null }),
+    })
+  })
+
+  // POST /api/content-drafts/:id/generate — kicks off production
+  await page.route(/\/api\/content-drafts\/[^/]+\/generate/, async (route: Route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    const body = await readBody(route)
+    actions.push({ method: 'POST', url: '/api/content-drafts/:id/generate', body })
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ data: { status: 'completed', ...PRODUCED_CONTENT }, error: null }),
+    })
+  })
+
+  // POST /api/content-drafts/:id/produce — production
+  await page.route(/\/api\/content-drafts\/[^/]+\/produce/, async (route: Route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    const body = await readBody(route)
+    actions.push({ method: 'POST', url: '/api/content-drafts/:id/produce', body })
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ data: { status: 'completed', ...PRODUCED_CONTENT }, error: null }),
+    })
+  })
+
+  // SSE /api/content-drafts/:id/events
+  await page.route(/\/api\/content-drafts\/[^/]+\/events/, async (route: Route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    const sseBody = `data: ${JSON.stringify({ id: 'evt-d-1', stage: 'completed', message: 'done', metadata: null, created_at: nowIso() })}\n\n`
+    return route.fulfill({
+      status: 200, contentType: 'text/event-stream',
+      headers: { 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' },
+      body: sseBody,
+    })
+  })
+
+  // POST /api/content-drafts/:id/cancel
+  await page.route(/\/api\/content-drafts\/[^/]+\/cancel/, async (route: Route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { ok: true }, error: null }) })
+  })
+
+  // Review state — shared by POST /review, PATCH /content-drafts/:id, GET /content-drafts/:id.
+  // ReviewEngine flow: PATCH(status:in_review) → POST /review → refetchDraft GET → expects
+  // review_feedback_json / review_score / review_verdict populated.
+  const REVIEW_ID = 'rev-e2e-1'
+  const REVIEW_SCORE = 95
+  const REVIEW_VERDICT = 'approved'
+  const REVIEW_FEEDBACK = {
+    overall_verdict: 'approved',
+    blog_review: { score: REVIEW_SCORE, verdict: 'approved', strengths: ['clear thesis'], weaknesses: [] },
+    summary: 'Great content!',
+  }
+  let draftStatus: 'completed' | 'in_review' | 'approved' = 'completed'
+  let reviewPosted = false
+  let iterationCount = 0
+
+  // GET /api/content-drafts/:id — draft detail (review fields populated after review POST)
+  await page.route(/\/api\/content-drafts\/[^/]+$/, async (route: Route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          id: DRAFT_ID,
+          status: draftStatus,
+          canonical_core_json: CANONICAL_CORE,
+          // ProductionEngine.extractProducedContent reads draft_json.blog.full_draft
+          // for the blog medium, with fallbacks to draft_json.full_draft.
+          draft_json: {
+            blog: { full_draft: PRODUCED_CONTENT.body_markdown },
+            full_draft: PRODUCED_CONTENT.body_markdown,
+            word_count: PRODUCED_CONTENT.word_count,
+          },
+          body_markdown: PRODUCED_CONTENT.body_markdown,
+          word_count: PRODUCED_CONTENT.word_count,
+          meta_description: PRODUCED_CONTENT.meta_description,
+          title: CANONICAL_CORE.title,
+          // Review fields — null until POST /review runs, then populated for refetchDraft
+          review_score: reviewPosted ? REVIEW_SCORE : null,
+          review_verdict: reviewPosted ? REVIEW_VERDICT : null,
+          review_feedback_json: reviewPosted ? REVIEW_FEEDBACK : null,
+          iteration_count: iterationCount,
+        },
+        error: null,
+      }),
+    })
+  })
+
+  // PATCH /api/content-drafts/:id — ReviewEngine PATCHes status:in_review then status:approved.
+  // Sibling routes above already filter on method GET/POST, so PATCH falls through to here.
+  await page.route(/\/api\/content-drafts\/[^/]+$/, async (route: Route) => {
+    const method = route.request().method()
+    if (method !== 'PATCH' && method !== 'PUT') return route.fallback()
+    const body = await readBody(route) as Record<string, unknown> | null
+    actions.push({ method, url: '/api/content-drafts/:id', body })
+    if (body && typeof body === 'object') {
+      if (body.status === 'in_review' || body.status === 'approved') {
+        draftStatus = body.status as typeof draftStatus
+      }
+    }
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ data: { id: DRAFT_ID, status: draftStatus }, error: null }),
+    })
+  })
+
+  // POST /api/content-drafts/:id/review — kick off review (returns review payload directly)
+  await page.route(/\/api\/content-drafts\/[^/]+\/review/, async (route: Route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    const body = await readBody(route)
+    actions.push({ method: 'POST', url: '/api/content-drafts/:id/review', body })
+    reviewPosted = true
+    iterationCount += 1
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          id: DRAFT_ID,
+          status: draftStatus,
+          review_score: REVIEW_SCORE,
+          review_verdict: REVIEW_VERDICT,
+          review_feedback_json: REVIEW_FEEDBACK,
+          iteration_count: iterationCount,
+        },
+        error: null,
+      }),
+    })
+  })
+
+  await page.route('**/api/reviews', async (route: Route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    const body = await readBody(route)
+    actions.push({ method: 'POST', url: '/api/reviews', body })
+    reviewPosted = true
+    iterationCount += 1
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        data: { reviewId: REVIEW_ID, status: 'completed', review_score: REVIEW_SCORE, review_verdict: REVIEW_VERDICT, review_feedback_json: REVIEW_FEEDBACK },
+        error: null,
+      }),
+    })
+  })
+
+  await page.route(/\/api\/reviews\/[^/]+/, async (route: Route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ data: { id: REVIEW_ID, status: 'completed', review_score: REVIEW_SCORE, review_verdict: REVIEW_VERDICT, review_feedback_json: REVIEW_FEEDBACK }, error: null }),
+    })
+  })
+
+  // ── Publish engine endpoints ────────────────────────────────────────────
+  await page.route(/\/api\/content-drafts\/[^/]+\/publish/, async (route: Route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    const body = await readBody(route)
+    actions.push({ method: 'POST', url: '/api/content-drafts/:id/publish', body })
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ data: { ok: true, postId: 'wp-post-e2e-1', url: 'https://example.test/blog/retirement' }, error: null }),
+    })
+  })
+
+  await page.route('**/api/publish-targets', async (route: Route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          items: [
+            { id: 'pt-e2e-1', name: 'E2E WordPress', type: 'wordpress', channel_id: project.channelId },
+          ],
+        },
+        error: null,
+      }),
+    })
+  })
+
+  // Personas / persona-related endpoints — CanonicalEngine expects `data` to be a Persona[] array
+  const E2E_PERSONA = {
+    id: 'persona-e2e-1',
+    slug: 'e2e-persona',
+    name: 'E2E Persona',
+    avatarUrl: null,
+    bioShort: 'E2E test persona',
+    bioLong: 'E2E test persona used for happy-path runs.',
+    primaryDomain: 'finance',
+    domainLens: 'personal finance for freelancers',
+    approvedCategories: ['retirement'],
+    writingVoiceJson: {
+      tone: 'clear',
+      cadence: 'steady',
+      diction: 'plain',
+      signaturePhrases: ['Independent income, dependable retirement.'],
+    },
+    eeatSignalsJson: { credentials: [], experience: [] },
+    soulJson: {
+      tagline: 'Independent income, dependable retirement.',
+      humorStyle: 'dry wit',
+      strongOpinions: ['Solo 401(k) beats SEP-IRA for solo earners.', 'Roth contributions matter more than people think.'],
+    },
+    wpAuthorId: null,
+    archetypeSlug: null,
+    avatarParamsJson: null,
+    isActive: true,
+    createdAt: nowIso(-86400),
+    updatedAt: nowIso(),
+  }
   await page.route('**/api/personas/**', async (route: Route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { items: [] }, error: null }) }),
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [E2E_PERSONA], error: null }) }),
   )
   await page.route('**/api/personas', async (route: Route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { items: [] }, error: null }) }),
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [E2E_PERSONA], error: null }) }),
   )
 
   // Stage-run action routes (PATCH/POST on specific runs)
@@ -311,6 +783,13 @@ export async function mockPipelineHappy(
 
     if (method === 'POST' && url.endsWith('/continue')) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'completed' }, error: null }) })
+    }
+    if (method === 'POST' && url.endsWith('/manual-output')) {
+      // Infer the stage from the stageRunId in the URL (format: sr-<stage>-e2e)
+      const match = url.match(/stage-runs\/sr-([a-z]+)-e2e\/manual-output/)
+      const stage = match?.[1] as HappyStage | undefined
+      if (stage) completeStage(stage)
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { ok: true }, error: null }) })
     }
     if (method === 'PATCH') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { ok: true }, error: null }) })

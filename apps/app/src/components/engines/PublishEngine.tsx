@@ -35,14 +35,16 @@ import { useProjectContext } from '@/components/pipeline/ProjectContextProvider'
 import type { PipelineContext, PipelineStage, PublishResult } from './types';
 import type { PublishTarget } from '@brighttale/shared';
 
+interface DraftRow {
+  id: string;
+  title: string | null;
+  status: string;
+  wordpress_post_id?: number | null;
+  published_url?: string | null;
+}
+
 interface PublishEngineProps {
-  draft: {
-    id: string;
-    title: string | null;
-    status: string;
-    wordpress_post_id?: number | null;
-    published_url?: string | null;
-  };
+  draft?: DraftRow | null;
   publishTargetId?: string;
 }
 
@@ -62,7 +64,43 @@ export function PublishEngine({ draft, publishTargetId }: PublishEngineProps) {
   const assetsResult     = context.stageResults.assets;
   const previewResult    = context.stageResults.preview;
 
-  const draftId = draftResult?.draftId ?? draft.id;
+  const draftId = draftResult?.draftId ?? draft?.id ?? '';
+
+  // Self-hydrate the draft row when EngineHost mounts us without a `draft` prop.
+  // Mirrors ReviewEngine's pattern — EngineHost only forwards `stageRun`, so the
+  // engine must fetch its own draft via the draftId from ctx.stageResults.draft.
+  const [localDraft, setLocalDraft] = useState<DraftRow | null>(draft ?? null);
+  useEffect(() => {
+    if (localDraft || !draftId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/content-drafts/${draftId}`);
+        const json = await res.json();
+        if (!cancelled && json?.data) {
+          const d = json.data as Record<string, unknown>;
+          setLocalDraft({
+            id: (d.id as string) ?? draftId,
+            title: (d.title as string | null) ?? null,
+            status: (d.status as string) ?? 'draft',
+            wordpress_post_id: (d.wordpress_post_id as number | null) ?? null,
+            published_url: (d.published_url as string | null) ?? null,
+          });
+        }
+      } catch {
+        // silent — leave localDraft null, UI shows defensive banner
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [localDraft, draftId]);
+
+  const draftView: DraftRow = localDraft ?? {
+    id: draftId,
+    title: draftResult?.draftTitle ?? null,
+    status: 'draft',
+    wordpress_post_id: null,
+    published_url: null,
+  };
 
   // ── Tracker context ───────────────────────────────────────────────────────
   const trackerContext: PipelineContext = {
@@ -162,7 +200,7 @@ export function PublishEngine({ draft, publishTargetId }: PublishEngineProps) {
       !publishBody &&
       !!channelId &&
       !!draftId &&
-      (draft.published_url ?? null) == null,
+      (draftView.published_url ?? null) == null,
     fire: () => handlePublish({ mode: publishConfigStatus === 'published' ? 'publish' : 'draft' }),
     rearmKey: draftId,
   });
@@ -215,10 +253,10 @@ export function PublishEngine({ draft, publishTargetId }: PublishEngineProps) {
   const panelProps = {
     draftId,
     channelId,
-    draftStatus: draft.status,
+    draftStatus: draftView.status,
     hasAssets: assetCount > 0,
-    wordpressPostId: draft.wordpress_post_id ?? null,
-    publishedUrl: draft.published_url ?? null,
+    wordpressPostId: draftView.wordpress_post_id ?? null,
+    publishedUrl: draftView.published_url ?? null,
     onPublish: handlePublish,
     isPublishing: publishing,
     previewData: previewResult?.seoOverrides ? {
@@ -247,13 +285,13 @@ export function PublishEngine({ draft, publishTargetId }: PublishEngineProps) {
         case 'wordpress':
           return <WordPressPublishForm publishTarget={publishTarget} panelProps={panelProps} />;
         case 'youtube':
-          return <YouTubePublishForm publishTarget={publishTarget} draft={{ id: draft.id, title: draft.title, status: draft.status }} />;
+          return <YouTubePublishForm publishTarget={publishTarget} draft={{ id: draftView.id, title: draftView.title, status: draftView.status }} />;
         case 'spotify':
-          return <SpotifyPublishForm publishTarget={publishTarget} draft={{ id: draft.id, title: draft.title, status: draft.status }} />;
+          return <SpotifyPublishForm publishTarget={publishTarget} draft={{ id: draftView.id, title: draftView.title, status: draftView.status }} />;
         case 'apple_podcasts':
-          return <ApplePodcastsPublishForm publishTarget={publishTarget} draft={{ id: draft.id, title: draft.title, status: draft.status }} />;
+          return <ApplePodcastsPublishForm publishTarget={publishTarget} draft={{ id: draftView.id, title: draftView.title, status: draftView.status }} />;
         case 'rss':
-          return <RssPublishForm publishTarget={publishTarget} draft={{ id: draft.id, title: draft.title, status: draft.status }} />;
+          return <RssPublishForm publishTarget={publishTarget} draft={{ id: draftView.id, title: draftView.title, status: draftView.status }} />;
       }
     }
 

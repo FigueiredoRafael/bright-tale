@@ -45,6 +45,10 @@ async function driveBrainstorm(page: Page): Promise<void> {
   await waitEngineRoot(page, 'brainstorm')
   // Generate
   await page.getByTestId('brainstorm-action-generate').click()
+  // Wait for idea cards to render (step-by-step requires manual selection)
+  const firstIdea = page.getByTestId('idea-card').first()
+  await firstIdea.waitFor({ state: 'visible', timeout: 30_000 })
+  await firstIdea.click()
   // Wait for result and click Next
   await page.getByTestId('brainstorm-action-next').waitFor({ state: 'visible', timeout: 30_000 })
   await page.getByTestId('brainstorm-action-next').click()

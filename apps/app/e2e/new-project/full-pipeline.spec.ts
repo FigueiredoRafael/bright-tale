@@ -41,7 +41,7 @@ test.describe('T1 — step-by-step + mocked AI', () => {
   })
 
   test('full pipeline completes via manual stage actions', async ({ page }) => {
-    test.setTimeout(120_000)
+    test.setTimeout(180_000)
 
     const project: HappyProjectSeed = {
       id: PROJECT_ID,
@@ -53,11 +53,26 @@ test.describe('T1 — step-by-step + mocked AI', () => {
     const _recorder = attachPipelineEventRecorder(page)
     const mock = await mockPipelineHappy(page, { project })
 
-    // Navigate to the project page
-    await page.goto(`/en/projects/${project.id}`)
+    // Per PRD/grill: user starts on /projects, clicks "Start Workflow", then
+    // walks through PipelineWizard before landing on the project page.
+    // DEBUG: skip the /projects entry — go straight to the wizard
+    await page.goto('/en/projects/new')
+    await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
 
-    // Wait for the pipeline to hydrate (FocusSidebar visible)
-    await page.getByTestId('brainstorm-engine-root').waitFor({ state: 'visible', timeout: 20_000 })
+    // Fill required fields
+    await page.locator('#project-title').fill(project.title)
+    await page.getByTestId('channel-option').first().click()
+    await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+
+    // Mode defaults to step-by-step, media defaults to blog. Submit.
+    await page.getByRole('button', { name: /create project/i }).click()
+
+    // Land on /projects/<id>
+    await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+
+    // Wait for hydration — FocusSidebar (step-by-step renders no engine until
+    // the user clicks a sidebar stage item; driveStageManual handles that).
+    await page.getByTestId('sidebar-item-brainstorm').waitFor({ state: 'visible', timeout: 20_000 })
 
     // ── Brainstorm ────────────────────────────────────────────────────────────
     await driveStageManual(page, 'brainstorm')

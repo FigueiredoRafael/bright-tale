@@ -368,6 +368,18 @@ export function ProjectContextProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, fetchSeq]);
 
+  // Periodic refetch so backend-driven stage_run completions (canonical → /generate,
+  // production → /produce, etc.) propagate into ctx.stageResults without requiring
+  // every engine to call signalStageComplete. Mirrors useProjectStream's 4s polling
+  // cadence — see hooks/useProjectStream.ts.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const id = window.setInterval(() => {
+      if (activeRef.current) refetch();
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, [refetch]);
+
   // Keep context in sync when session-local state changes (after initial load)
   useEffect(() => {
     if (isLoading) return;
