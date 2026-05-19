@@ -624,7 +624,7 @@ export function ProductionEngine({ projectId: projectIdProp, trackId, medium }: 
       <ContentWarningBanner warning={contentWarning} />
 
       {phase === 'done' && (producedContent || (medium === 'video' && producedDraftJson)) && (
-        <Card>
+        <Card data-testid="production-draft-preview">
           <CardHeader>
             <CardTitle className="text-base">Preview</CardTitle>
           </CardHeader>

@@ -80,9 +80,14 @@ export function PublishPanel({
       </CardHeader>
       <CardContent className="space-y-4">
         {isPublished && publishedUrl && (
-          <div className="rounded-md bg-green-50 dark:bg-green-950 p-3 text-sm">
+          <div
+            data-testid="publish-success"
+            data-url={publishedUrl}
+            className="rounded-md bg-green-50 dark:bg-green-950 p-3 text-sm"
+          >
             <span className="font-medium">Published!</span>{' '}
             <a
+              data-testid="publish-success-url"
               href={publishedUrl}
               target="_blank"
               rel="noopener noreferrer"
@@ -91,7 +96,13 @@ export function PublishPanel({
               View post
             </a>
             {wordpressPostId && (
-              <span className="text-muted-foreground ml-2">(WP #{wordpressPostId})</span>
+              <span
+                data-testid="publish-success-wp-id"
+                data-value={wordpressPostId}
+                className="text-muted-foreground ml-2"
+              >
+                (WP #{wordpressPostId})
+              </span>
             )}
           </div>
         )}

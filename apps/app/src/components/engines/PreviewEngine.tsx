@@ -526,7 +526,7 @@ export function PreviewEngine({ stageRun }: PreviewEngineProps = {}) {
 
   if (loadError) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4" data-testid="preview-engine-root">
         <ContextBanner stage="preview" context={trackerContext} onBack={navigate} />
         <Card className="border-destructive">
           <CardContent className="pt-6">
@@ -545,7 +545,7 @@ export function PreviewEngine({ stageRun }: PreviewEngineProps = {}) {
 
   if (busy || !draft) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4" data-testid="preview-engine-root">
         <ContextBanner stage="preview" context={trackerContext} onBack={navigate} />
         <Card>
           <CardContent className="pt-6 flex items-center gap-2 text-muted-foreground">
@@ -748,10 +748,10 @@ export function PreviewEngine({ stageRun }: PreviewEngineProps = {}) {
 
           {/* Action Buttons */}
           <div className="flex gap-2 sticky bottom-4">
-            <Button variant="outline" onClick={() => navigate('assets')} size="sm">
+            <Button variant="outline" onClick={() => navigate('assets')} size="sm" data-testid="preview-action-back">
               Back
             </Button>
-            <Button onClick={handleApprove} size="sm" className="flex-1 gap-2">
+            <Button onClick={handleApprove} size="sm" className="flex-1 gap-2" data-testid="preview-action-approve">
               Approve & Publish <ArrowRight className="h-3.5 w-3.5" />
             </Button>
           </div>
