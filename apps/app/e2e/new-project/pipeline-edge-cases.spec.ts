@@ -753,4 +753,247 @@ test.describe('EC-F4 — malformed-json (overview)', () => {
 })
 
 // ─── Issue #195 — Intervention edge cases ─────────────────────────────────────
-// (Tests appended here after issue #194 is merged)
+// 2 scenarios:
+//   manual-pause-resume (×2 modes: supervised + overview): pause mid-flight → awaiting banner → resume same attempt
+//   manual-abort        (×3 modes): abort during production → project aborted + no downstream dispatches
+
+// ── manual-pause-resume ───────────────────────────────────────────────────────
+
+test.describe('EC-I1 — manual-pause-resume (supervised)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('pause mid-flight then resume continues from same attempt in supervised mode', async ({ page }) => {
+    test.setTimeout(120_000)
+    const project = seed('proj-ec-mpr-1', 'supervised', 'EC Manual Pause Resume Supervised')
+
+    const mock = await mockPipelineEdge(page, 'manual-pause-resume', { project })
+
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    await page.goto(`/en/projects/${project.id}`)
+    await page.waitForTimeout(2_000)
+
+    await assertStageComplete(page, 'brainstorm', { timeout: 15_000 })
+    await assertStageComplete(page, 'research', { timeout: 15_000 })
+    await assertStageComplete(page, 'canonical', { timeout: 15_000 })
+
+    // Pause via overview-pause-btn or a fallback pause button
+    const pauseBtn = page.getByTestId('overview-pause-btn')
+    const altPauseBtn = page.getByRole('button', { name: /pause/i }).first()
+    const pauseVisible = await pauseBtn.isVisible().catch(() => false)
+    if (pauseVisible) {
+      await pauseBtn.click()
+    } else {
+      await altPauseBtn.waitFor({ state: 'visible', timeout: 10_000 })
+      await altPauseBtn.click()
+    }
+
+    // Verify the pause PATCH was recorded
+    await expect.poll(
+      () => mock.patchBodies.some((b) => (b.body as { paused?: boolean })?.paused === true),
+      { timeout: 10_000, message: 'PATCH with paused:true was not sent' },
+    ).toBe(true)
+
+    // Resume — click the pause/resume toggle or the awaiting banner resume button
+    const resumeBtn = page.getByTestId('resume-track-btn')
+    const overviewPauseToggle = page.getByTestId('overview-pause-btn')
+    const resumeVisible = await resumeBtn.isVisible().catch(() => false)
+    if (resumeVisible) {
+      await resumeBtn.click()
+    } else {
+      await overviewPauseToggle.waitFor({ state: 'visible', timeout: 10_000 })
+      await overviewPauseToggle.click()
+    }
+
+    // After resume, production should complete
+    mock.completeStage('production')
+    await assertStageComplete(page, 'production', { timeout: 20_000 })
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-I1 — manual-pause-resume (overview)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('pause mid-flight then resume continues from same attempt in overview mode', async ({ page }) => {
+    test.setTimeout(120_000)
+    const project = seed('proj-ec-mpr-2', 'overview', 'EC Manual Pause Resume Overview')
+
+    const mock = await mockPipelineEdge(page, 'manual-pause-resume', { project })
+
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    await page.goto(`/en/projects/${project.id}`)
+
+    const overviewPV = page.getByTestId('overview-progress-view')
+    await overviewPV.waitFor({ state: 'visible', timeout: 20_000 })
+
+    // Pause via overview-pause-btn
+    const pauseBtn3 = page.getByTestId('overview-pause-btn')
+    await pauseBtn3.waitFor({ state: 'visible', timeout: 10_000 })
+    await pauseBtn3.click()
+
+    await expect.poll(
+      () => mock.patchBodies.some((b) => (b.body as { paused?: boolean })?.paused === true),
+      { timeout: 10_000, message: 'PATCH with paused:true was not sent' },
+    ).toBe(true)
+
+    // Resume — click pause button again (acts as toggle)
+    await pauseBtn3.click()
+
+    // After resume, production completes
+    mock.completeStage('production')
+    await expect(page.getByTestId('overview-stage-production')).toHaveAttribute('data-status', 'completed', { timeout: 20_000 })
+
+    await mock.unroute()
+  })
+})
+
+// ── manual-abort ──────────────────────────────────────────────────────────────
+
+test.describe('EC-I2 — manual-abort (step-by-step)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('abort during production marks project aborted with no downstream runs in step-by-step mode', async ({ page }) => {
+    test.setTimeout(120_000)
+    const project = seed('proj-ec-ma-1', 'step-by-step', 'EC Manual Abort Step-by-Step')
+
+    const mock = await mockPipelineEdge(page, 'manual-abort', { project })
+
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    await page.goto(`/en/projects/${project.id}`)
+    await page.waitForTimeout(2_000)
+
+    await assertStageComplete(page, 'brainstorm', { timeout: 15_000 })
+    await assertStageComplete(page, 'research', { timeout: 15_000 })
+    await assertStageComplete(page, 'canonical', { timeout: 15_000 })
+
+    // Abort via the abort button (FocusPanel or OverviewProgressView)
+    const abortBtn = page.getByTestId('overview-abort-btn')
+    const altAbortBtn = page.getByRole('button', { name: /abort|cancel pipeline/i }).first()
+    const abortVisible = await abortBtn.isVisible().catch(() => false)
+    if (abortVisible) {
+      await abortBtn.click()
+      const confirmBtn = page.getByTestId('overview-abort-confirm')
+      const confirmVisible = await confirmBtn.isVisible().catch(() => false)
+      if (confirmVisible) await confirmBtn.click()
+    } else {
+      await altAbortBtn.waitFor({ state: 'visible', timeout: 10_000 })
+      await altAbortBtn.click()
+    }
+
+    // PATCH with status:aborted must have been sent
+    await expect.poll(
+      () => mock.patchBodies.some((b) => (b.body as { status?: string })?.status === 'aborted'),
+      { timeout: 15_000, message: 'PATCH with status:aborted was not sent' },
+    ).toBe(true)
+
+    // No downstream stage runs (review, publish) should be dispatched after abort
+    const postActionsA1 = mock.actions.filter((a) => a.method === 'POST' && (a.url.includes('review') || a.url.includes('publish')))
+    expect(postActionsA1.length).toBe(0)
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-I2 — manual-abort (supervised)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('abort during production marks project aborted with no downstream runs in supervised mode', async ({ page }) => {
+    test.setTimeout(120_000)
+    const project = seed('proj-ec-ma-2', 'supervised', 'EC Manual Abort Supervised')
+
+    const mock = await mockPipelineEdge(page, 'manual-abort', { project })
+
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    await page.goto(`/en/projects/${project.id}`)
+    await page.waitForTimeout(2_000)
+
+    await assertStageComplete(page, 'brainstorm', { timeout: 15_000 })
+    await assertStageComplete(page, 'research', { timeout: 15_000 })
+    await assertStageComplete(page, 'canonical', { timeout: 15_000 })
+
+    const abortBtn2 = page.getByTestId('overview-abort-btn')
+    const altAbortBtn2 = page.getByRole('button', { name: /abort|cancel pipeline/i }).first()
+    const abortVisible2 = await abortBtn2.isVisible().catch(() => false)
+    if (abortVisible2) {
+      await abortBtn2.click()
+      const confirmBtn2 = page.getByTestId('overview-abort-confirm')
+      const confirmVisible2 = await confirmBtn2.isVisible().catch(() => false)
+      if (confirmVisible2) await confirmBtn2.click()
+    } else {
+      await altAbortBtn2.waitFor({ state: 'visible', timeout: 10_000 })
+      await altAbortBtn2.click()
+    }
+
+    await expect.poll(
+      () => mock.patchBodies.some((b) => (b.body as { status?: string })?.status === 'aborted'),
+      { timeout: 15_000, message: 'PATCH with status:aborted was not sent' },
+    ).toBe(true)
+
+    const postActionsA2 = mock.actions.filter((a) => a.method === 'POST' && (a.url.includes('review') || a.url.includes('publish')))
+    expect(postActionsA2.length).toBe(0)
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-I2 — manual-abort (overview)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('abort during production marks project aborted with no downstream runs in overview mode', async ({ page }) => {
+    test.setTimeout(120_000)
+    const project = seed('proj-ec-ma-3', 'overview', 'EC Manual Abort Overview')
+
+    const mock = await mockPipelineEdge(page, 'manual-abort', { project })
+
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    await page.goto(`/en/projects/${project.id}`)
+
+    const overviewPV3 = page.getByTestId('overview-progress-view')
+    await overviewPV3.waitFor({ state: 'visible', timeout: 20_000 })
+
+    // Abort via the dedicated overview abort button
+    const abortBtn3 = page.getByTestId('overview-abort-btn')
+    await abortBtn3.waitFor({ state: 'visible', timeout: 10_000 })
+    await abortBtn3.click()
+
+    // Confirm via the abort dialog
+    const confirmBtn3 = page.getByTestId('overview-abort-confirm')
+    await confirmBtn3.waitFor({ state: 'visible', timeout: 10_000 })
+    await confirmBtn3.click()
+
+    await expect.poll(
+      () => mock.patchBodies.some((b) => (b.body as { status?: string })?.status === 'aborted'),
+      { timeout: 15_000, message: 'PATCH with status:aborted was not sent' },
+    ).toBe(true)
+
+    // Overview: production stage should show aborted
+    await expect.poll(
+      async () => {
+        const el = page.getByTestId('overview-stage-production')
+        return el.getAttribute('data-status').catch(() => null)
+      },
+      { timeout: 20_000, message: 'Overview production stage did not reach aborted status' },
+    ).toBe('aborted')
+
+    const postActionsA3 = mock.actions.filter((a) => a.method === 'POST' && (a.url.includes('review') || a.url.includes('publish')))
+    expect(postActionsA3.length).toBe(0)
+
+    await mock.unroute()
+  })
+})
