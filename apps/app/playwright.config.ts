@@ -30,10 +30,10 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       // live-autopilot.spec.ts and full-pipeline-real-ai.spec.ts are gated to
       // manual / pre-merge runs. Real Supabase dev DB + real AI providers — costs apply.
-      // Run manually with E2E_RUN_LIVE=1:
-      //   npx playwright test e2e/live-autopilot.spec.ts
-      //   npx playwright test e2e/new-project/full-pipeline-real-ai.spec.ts
-      testIgnore: /live-autopilot|full-pipeline-real-ai/,
+      // Default chromium project skips them; opt in via E2E_RUN_LIVE=1 so they
+      // run only when explicitly requested (the spec also has its own test.skip
+      // guard so a stray invocation without the env stays a no-op).
+      testIgnore: process.env.E2E_RUN_LIVE === '1' ? undefined : /live-autopilot|full-pipeline-real-ai/,
     },
   ],
 

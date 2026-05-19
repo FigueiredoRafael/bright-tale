@@ -727,6 +727,57 @@ describe('advanceAfter — per-Track pause + resolved config (T2.4)', () => {
     });
   });
 
+  it('normalizes wizard providerOverride/modelOverride into provider/model on input_json', async () => {
+    // Confronts the wizard ↔ engine fix: dispatchers read input.provider /
+    // input.model; the orchestrator must translate the AutopilotConfig slot's
+    // verbose field names before insert. Without slotToStageInput, the
+    // dispatcher always sees `undefined` and silently falls back to the agent
+    // recommended values — making every wizard provider/model override dead
+    // code (which is exactly the bug this normalizer fixes).
+    const projectAutopilot = {
+      review: {
+        providerOverride: 'openai',
+        modelOverride: 'gpt-5.4-mini',
+        maxIterations: 2,
+      },
+    };
+
+    mockChain.maybeSingle
+      .mockResolvedValueOnce(mockFinishedPerTrackRun('production'))
+      .mockResolvedValueOnce(mockProjectWithConfig(projectAutopilot))
+      .mockResolvedValueOnce({
+        data: { id: TRACK_ID, paused: false, autopilot_config_json: null },
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: null, error: null });
+
+    mockChain.single.mockResolvedValueOnce({
+      data: {
+        id: 'sr-rev-2',
+        project_id: PROJECT_ID,
+        stage: 'review',
+        status: 'queued',
+        attempt_no: 1,
+        track_id: TRACK_ID,
+      },
+      error: null,
+    });
+
+    await advanceAfter('sr-prod-1');
+
+    expect(mockChain.insert).toHaveBeenCalledTimes(1);
+    const insertedRow = (mockChain.insert as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(insertedRow.input_json).toMatchObject({
+      provider: 'openai',
+      model: 'gpt-5.4-mini',
+      maxIterations: 2,
+    });
+    // The dispatcher reads input.provider — the verbose slot names must not
+    // leak through.
+    expect(insertedRow.input_json).not.toHaveProperty('providerOverride');
+    expect(insertedRow.input_json).not.toHaveProperty('modelOverride');
+  });
+
   it('honors per-Track review.maxIterations=0 override by writing a skipped review and cascading to assets', async () => {
     // Project default: review runs (maxIterations=3). Track override: skip review.
     const projectAutopilot = { review: { maxIterations: 3 } };
