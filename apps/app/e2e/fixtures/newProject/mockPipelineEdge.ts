@@ -106,6 +106,44 @@ function reviewRunRow(
   }
 }
 
+/**
+ * Build the {project, stageRuns, tracks} shape that PipelineWorkspace expects
+ * from GET /api/projects/:id/stages. Without `tracks`, supervised auto-advance
+ * cannot find the active blog track to walk forward.
+ */
+function buildStagesResponse(
+  projectId: string,
+  mode: string,
+  paused: boolean,
+  allRuns: ReadonlyArray<Record<string, unknown>>,
+) {
+  const TRACK_ID = 'track-e2e-blog-1'
+  const trackScopedStages = ['production', 'review', 'assets', 'preview', 'publish'] as const
+  const trackStageRuns: Record<string, unknown> = {}
+  for (const stage of trackScopedStages) {
+    const row = allRuns.find((r) => r.stage === stage) ?? null
+    trackStageRuns[stage] = row ? { ...row, trackId: TRACK_ID, allAttempts: [] } : null
+  }
+  const tracks = [
+    {
+      id: TRACK_ID,
+      medium: 'blog',
+      status: 'active',
+      paused: false,
+      stageRuns: trackStageRuns,
+      publishTargets: [{ id: 'pt-e2e-1', displayName: 'E2E WordPress' }],
+    },
+  ]
+  // Suppress unused projectId warning — it's reserved for future per-track
+  // project metadata enrichment.
+  void projectId
+  return {
+    project: { mode, paused },
+    stageRuns: allRuns.map((r) => ({ ...r, allAttempts: [] })),
+    tracks,
+  }
+}
+
 export async function mockPipelineEdge(
   page: Page,
   scenario: EdgeScenario,
@@ -725,10 +763,11 @@ export async function mockPipelineEdge(
       })
     })
 
-    // GET /stages: production is awaiting_user(provider_quota_exhausted)
+    // GET /stages: production is awaiting_user(provider_quota_exhausted).
+    // Mirrors the happy {project, stageRuns, tracks} shape so the workspace's
+    // sidebar + supervised auto-advance both have the data they need.
     await page.route(`**/api/projects/${project.id}/stages`, async (route: Route) => {
-      const stageRuns = happy.snapshot()
-      // Find if production was attempted; if so, show it as awaiting
+      const stageRuns = happy.snapshot() as unknown as ReadonlyArray<Record<string, unknown>>
       const productionRun = happy.runs.get('production')
       const enriched = productionRun
         ? stageRuns
@@ -757,10 +796,7 @@ export async function mockPipelineEdge(
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: {
-            project: { mode: project.mode, paused: false },
-            stageRuns: enriched,
-          },
+          data: buildStagesResponse(project.id, project.mode, false, enriched),
           error: null,
         }),
       })
@@ -800,9 +836,10 @@ export async function mockPipelineEdge(
       })
     })
 
-    // GET /stages: production is awaiting_user(manual_paste)
+    // GET /stages: production is awaiting_user(manual_paste). Use the shared
+    // tracks-aware builder so sidebar + supervised auto-advance render.
     await page.route(`**/api/projects/${project.id}/stages`, async (route: Route) => {
-      const stageRuns = happy.snapshot()
+      const stageRuns = happy.snapshot() as unknown as ReadonlyArray<Record<string, unknown>>
       const productionRun = happy.runs.get('production')
       const enriched = productionRun
         ? stageRuns
@@ -831,10 +868,7 @@ export async function mockPipelineEdge(
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: {
-            project: { mode: project.mode, paused: false },
-            stageRuns: enriched,
-          },
+          data: buildStagesResponse(project.id, project.mode, false, enriched),
           error: null,
         }),
       })

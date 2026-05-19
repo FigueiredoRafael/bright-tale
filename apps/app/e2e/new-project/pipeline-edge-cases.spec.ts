@@ -683,39 +683,71 @@ test.describe('EC-R3 — hard-fail (overview)', () => {
 
 // ── provider-quota ────────────────────────────────────────────────────────────
 
+// Wizard ↔ pipeline parity for failure scenarios: the wizard's `mode` and the
+// project payload are what the workspace boots from. The provider/model fields
+// are part of autopilotConfigJson but are scenario-agnostic for the failure
+// mocks (the mock returns the error regardless of provider). The grill below
+// confronts:
+//   1. POST /api/projects body has the wizard-selected mode
+//   2. Workspace renders the awaiting-banner with the correct reason
+//   3. Resume button triggers recovery via POST /api/projects/:id/resume
+
+async function submitWizard(
+  page: import('@playwright/test').Page,
+  project: HappyProjectSeed,
+  modeLabel: 'Step-by-step' | 'Supervised' | 'Overview',
+) {
+  await page.goto('/en/projects/new')
+  await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
+  await page.locator('#project-title').fill(project.title)
+  await page.getByTestId('channel-option').first().click()
+  await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+  await page.getByRole('radio', { name: modeLabel }).click()
+  await page.getByRole('button', { name: /create project/i }).click()
+  await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+}
+
+function assertWizardModeRoundtrip(
+  mock: { actions: Array<{ method: string; url: string; body: unknown }> },
+  expectedMode: HappyProjectSeed['mode'],
+) {
+  const createAction = mock.actions.find(
+    (a) => a.method === 'POST' && a.url === '/api/projects',
+  )
+  expect(createAction).toBeDefined()
+  const createBody = createAction!.body as { mode?: string }
+  expect(createBody.mode).toBe(expectedMode)
+}
+
 test.describe('EC-F1 — provider-quota (step-by-step)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('production quota error shows awaiting-banner with resume in step-by-step mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard step-by-step → production quota 429 → awaiting-banner → resume completes', async ({ page }) => {
+    test.setTimeout(180_000)
     const project = seed('proj-ec-pq-1', 'step-by-step', 'EC Provider Quota Step-by-Step')
 
     const mock = await mockPipelineEdge(page, 'provider-quota', { project })
 
+    await submitWizard(page, project, 'Step-by-step')
+    assertWizardModeRoundtrip(mock, 'step-by-step')
+
+    // Backend would normally drive shared stages; we seed them so the test
+    // focuses on the quota recovery path (the actual failure surface).
     mock.completeStage('brainstorm')
     mock.completeStage('research')
     mock.completeStage('canonical')
 
-    await page.goto(`/en/projects/${project.id}`)
-    await page.waitForTimeout(2_000)
-
-    await assertStageComplete(page, 'brainstorm', { timeout: 15_000 })
-    await assertStageComplete(page, 'research', { timeout: 15_000 })
-    await assertStageComplete(page, 'canonical', { timeout: 15_000 })
-
-    // The awaiting-banner must appear for provider_quota_exhausted
+    // The awaiting-banner appears as soon as /stages reflects the synthetic
+    // production awaiting_user(provider_quota_exhausted) row.
     const banner = page.getByTestId('awaiting-banner')
     await banner.waitFor({ state: 'visible', timeout: 30_000 })
     await expect(banner).toHaveAttribute('data-reason', 'provider_quota_exhausted')
 
-    // Resume button inside the banner
     const resumeBtn = page.getByTestId('resume-track-btn')
     await resumeBtn.waitFor({ state: 'visible', timeout: 10_000 })
-
-    // Clicking resume should POST /api/projects/:id/resume
     await resumeBtn.click()
 
-    // After resume, production should complete
+    // POST /resume seeds production=completed → next /stages poll surfaces it
     await assertStageComplete(page, 'production', { timeout: 20_000 })
 
     await mock.unroute()
@@ -725,22 +757,18 @@ test.describe('EC-F1 — provider-quota (step-by-step)', () => {
 test.describe('EC-F1 — provider-quota (supervised)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('production quota error shows awaiting-banner with resume in supervised mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard supervised → production quota 429 → awaiting-banner → resume completes', async ({ page }) => {
+    test.setTimeout(180_000)
     const project = seed('proj-ec-pq-2', 'supervised', 'EC Provider Quota Supervised')
 
     const mock = await mockPipelineEdge(page, 'provider-quota', { project })
 
+    await submitWizard(page, project, 'Supervised')
+    assertWizardModeRoundtrip(mock, 'supervised')
+
     mock.completeStage('brainstorm')
     mock.completeStage('research')
     mock.completeStage('canonical')
-
-    await page.goto(`/en/projects/${project.id}`)
-    await page.waitForTimeout(2_000)
-
-    await assertStageComplete(page, 'brainstorm', { timeout: 15_000 })
-    await assertStageComplete(page, 'research', { timeout: 15_000 })
-    await assertStageComplete(page, 'canonical', { timeout: 15_000 })
 
     const banner = page.getByTestId('awaiting-banner')
     await banner.waitFor({ state: 'visible', timeout: 30_000 })
@@ -759,20 +787,22 @@ test.describe('EC-F1 — provider-quota (supervised)', () => {
 test.describe('EC-F1 — provider-quota (overview)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('production quota error shows awaiting-banner with resume in overview mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard overview → production quota 429 → awaiting-banner → resume completes', async ({ page }) => {
+    test.setTimeout(180_000)
     const project = seed('proj-ec-pq-3', 'overview', 'EC Provider Quota Overview')
 
     const mock = await mockPipelineEdge(page, 'provider-quota', { project })
 
+    await submitWizard(page, project, 'Overview')
+    assertWizardModeRoundtrip(mock, 'overview')
+
+    // Watch-only contract — no engine mounts
+    await page.getByTestId('overview-progress-view').waitFor({ state: 'visible', timeout: 20_000 })
+    await expect(page.getByTestId('production-engine-root')).toHaveCount(0)
+
     mock.completeStage('brainstorm')
     mock.completeStage('research')
     mock.completeStage('canonical')
-
-    await page.goto(`/en/projects/${project.id}`)
-
-    const progressView = page.getByTestId('overview-progress-view')
-    await progressView.waitFor({ state: 'visible', timeout: 20_000 })
 
     const banner = page.getByTestId('awaiting-banner')
     await banner.waitFor({ state: 'visible', timeout: 30_000 })
@@ -793,27 +823,20 @@ test.describe('EC-F1 — provider-quota (overview)', () => {
 test.describe('EC-F2 — manual-paste (step-by-step)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('no-provider 422 shows manual paste affordance in step-by-step mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard step-by-step → no-provider 422 → awaiting-banner(manual_paste)', async ({ page }) => {
+    test.setTimeout(180_000)
     const project = seed('proj-ec-mp-1', 'step-by-step', 'EC Manual Paste Step-by-Step')
 
     const mock = await mockPipelineEdge(page, 'manual-paste', { project })
+
+    await submitWizard(page, project, 'Step-by-step')
+    assertWizardModeRoundtrip(mock, 'step-by-step')
 
     mock.completeStage('brainstorm')
     mock.completeStage('research')
     mock.completeStage('canonical')
 
-    await page.goto(`/en/projects/${project.id}`)
-    await page.waitForTimeout(2_000)
-
-    await assertStageComplete(page, 'brainstorm', { timeout: 15_000 })
-    await assertStageComplete(page, 'research', { timeout: 15_000 })
-    await assertStageComplete(page, 'canonical', { timeout: 15_000 })
-
     // emitted by apps/api/src/jobs/pipeline-assets-dispatch.ts:87 (mode === 'manual_upload') — see #185 reason taxonomy
-    // Note: the fixture's 422 NO_PROVIDER_CONFIGURED path on production is an
-    // adapter-only shortcut; production manual_paste is exclusive to the
-    // assets-dispatch manual_upload branch.
     const banner = page.getByTestId('awaiting-banner')
     await banner.waitFor({ state: 'visible', timeout: 30_000 })
     await expect(banner).toHaveAttribute('data-reason', 'manual_paste')
@@ -825,24 +848,19 @@ test.describe('EC-F2 — manual-paste (step-by-step)', () => {
 test.describe('EC-F2 — manual-paste (supervised)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('no-provider 422 shows manual paste affordance in supervised mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard supervised → no-provider 422 → awaiting-banner(manual_paste)', async ({ page }) => {
+    test.setTimeout(180_000)
     const project = seed('proj-ec-mp-2', 'supervised', 'EC Manual Paste Supervised')
 
     const mock = await mockPipelineEdge(page, 'manual-paste', { project })
+
+    await submitWizard(page, project, 'Supervised')
+    assertWizardModeRoundtrip(mock, 'supervised')
 
     mock.completeStage('brainstorm')
     mock.completeStage('research')
     mock.completeStage('canonical')
 
-    await page.goto(`/en/projects/${project.id}`)
-    await page.waitForTimeout(2_000)
-
-    await assertStageComplete(page, 'brainstorm', { timeout: 15_000 })
-    await assertStageComplete(page, 'research', { timeout: 15_000 })
-    await assertStageComplete(page, 'canonical', { timeout: 15_000 })
-
-    // emitted by apps/api/src/jobs/pipeline-assets-dispatch.ts:87 (mode === 'manual_upload') — see #185 reason taxonomy
     const banner = page.getByTestId('awaiting-banner')
     await banner.waitFor({ state: 'visible', timeout: 30_000 })
     await expect(banner).toHaveAttribute('data-reason', 'manual_paste')
@@ -854,22 +872,22 @@ test.describe('EC-F2 — manual-paste (supervised)', () => {
 test.describe('EC-F2 — manual-paste (overview)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('no-provider 422 shows manual paste affordance in overview mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard overview → no-provider 422 → OverviewProgressView surfaces awaiting-banner(manual_paste)', async ({ page }) => {
+    test.setTimeout(180_000)
     const project = seed('proj-ec-mp-3', 'overview', 'EC Manual Paste Overview')
 
     const mock = await mockPipelineEdge(page, 'manual-paste', { project })
+
+    await submitWizard(page, project, 'Overview')
+    assertWizardModeRoundtrip(mock, 'overview')
+
+    await page.getByTestId('overview-progress-view').waitFor({ state: 'visible', timeout: 20_000 })
+    await expect(page.getByTestId('production-engine-root')).toHaveCount(0)
 
     mock.completeStage('brainstorm')
     mock.completeStage('research')
     mock.completeStage('canonical')
 
-    await page.goto(`/en/projects/${project.id}`)
-
-    const progressView = page.getByTestId('overview-progress-view')
-    await progressView.waitFor({ state: 'visible', timeout: 20_000 })
-
-    // emitted by apps/api/src/jobs/pipeline-assets-dispatch.ts:87 (mode === 'manual_upload') — see #185 reason taxonomy
     const banner = page.getByTestId('awaiting-banner')
     await banner.waitFor({ state: 'visible', timeout: 30_000 })
     await expect(banner).toHaveAttribute('data-reason', 'manual_paste')
