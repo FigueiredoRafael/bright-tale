@@ -223,24 +223,75 @@ test.describe('EC-R1 — low-score-retry (supervised)', () => {
 test.describe('EC-R1 — low-score-retry (overview)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('review loops once then completes in overview mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard overview + thresholds → OverviewProgressView mounts, engines suppressed, stages advance', async ({ page }) => {
+    test.setTimeout(180_000)
     const project = seed('proj-ec-lsr-3', 'overview', 'EC Low-Score Retry Overview')
 
     const mock = await mockPipelineEdge(page, 'low-score-retry', { project })
 
+    // ── Wizard ────────────────────────────────────────────────────────────────
+    // Overview mode unlocks per-stage threshold inputs (isAutopilot=true). The
+    // spec sets review thresholds explicitly so the POST /api/projects body
+    // carries them — confronting wizard config against the pipeline payload.
+    // In overview the backend autopilot owns the loop; the UI is watch-only.
+    await page.goto('/en/projects/new')
+    await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
+
+    await page.locator('#project-title').fill(project.title)
+    await page.getByTestId('channel-option').first().click()
+    await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+
+    await page.getByRole('radio', { name: 'Overview' }).click()
+
+    // Expand Review section and lock the loop thresholds
+    await page.locator('[data-testid="stage-section-review"] button').first().click()
+    await page.locator('#review-maxIterations').fill('2')
+    await page.locator('#review-autoApproveThreshold').fill('90')
+    await page.locator('#review-hardFailThreshold').fill('50')
+
+    await page.getByRole('button', { name: /create project/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+
+    // ── Wizard ↔ pipeline parity: thresholds round-trip into POST /api/projects ─
+    const createAction = mock.actions.find(
+      (a) => a.method === 'POST' && a.url === '/api/projects',
+    )
+    expect(createAction).toBeDefined()
+    const createBody = createAction!.body as {
+      mode?: string
+      autopilotConfigJson?: { review?: { maxIterations?: number; autoApproveThreshold?: number; hardFailThreshold?: number } }
+    }
+    expect(createBody.mode).toBe('overview')
+    expect(createBody.autopilotConfigJson?.review?.maxIterations).toBe(2)
+    expect(createBody.autopilotConfigJson?.review?.autoApproveThreshold).toBe(90)
+    expect(createBody.autopilotConfigJson?.review?.hardFailThreshold).toBe(50)
+
+    // ── Overview view mounts; engines must NOT mount (watch-only contract) ───
+    await page.getByTestId('overview-progress-view').waitFor({ state: 'visible', timeout: 20_000 })
+    await expect(page.getByTestId('brainstorm-engine-root')).toHaveCount(0)
+    await expect(page.getByTestId('research-engine-root')).toHaveCount(0)
+    await expect(page.getByTestId('canonical-engine-root')).toHaveCount(0)
+    await expect(page.getByTestId('production-engine-root')).toHaveCount(0)
+    await expect(page.getByTestId('review-engine-root')).toHaveCount(0)
+
+    // ── Backend autopilot simulation: seed stages and watch the stepper advance.
+    // The review loop semantics (iter1 65 → iter2 95) are owned by the backend
+    // in overview mode; the front-end only observes the final completed state
+    // surfaced via stage_runs. Mock.completeStage('review') writes the final
+    // approved outcome row that the OverviewProgressView reads.
     mock.completeStage('brainstorm')
-    mock.completeStage('research')
-    mock.completeStage('canonical')
-    mock.completeStage('production')
-    mock.completeStage('review')
-
-    await page.goto(`/en/projects/${project.id}`)
-
-    const progressView = page.getByTestId('overview-progress-view')
-    await progressView.waitFor({ state: 'visible', timeout: 20_000 })
-
     await expect(page.getByTestId('overview-stage-brainstorm')).toHaveAttribute('data-status', 'completed', { timeout: 20_000 })
+
+    mock.completeStage('research')
+    await expect(page.getByTestId('overview-stage-research')).toHaveAttribute('data-status', 'completed', { timeout: 20_000 })
+
+    mock.completeStage('canonical')
+    await expect(page.getByTestId('overview-stage-canonical')).toHaveAttribute('data-status', 'completed', { timeout: 20_000 })
+
+    mock.completeStage('production')
+    await expect(page.getByTestId('overview-stage-production')).toHaveAttribute('data-status', 'completed', { timeout: 20_000 })
+
+    mock.completeStage('review')
     await expect(page.getByTestId('overview-stage-review')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
 
     await mock.unroute()
