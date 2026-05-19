@@ -17,6 +17,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { useOptionalProjectContext } from './ProjectContextProvider';
+import { OverviewProgressView } from './OverviewProgressView';
 
 // ─── Extended stream result — allAttempts added by T4 stream ─────────────────
 
@@ -230,6 +232,12 @@ export function FocusPanel({ projectId }: Props) {
   const { stageRuns, allAttempts: rawAllAttempts, tracks: rawTracks, refresh } = useProjectStream(projectId) as ProjectStreamResult;
   const tracks: TrackSnapshot[] = rawTracks ?? [];
 
+  // Overview mode — render the watch-only OverviewProgressView instead of any engine.
+  // Read raw mode from ProjectContextProvider (context.mode = 'overview' is the DB value;
+  // useProjectStream coerces it to 'autopilot' so we cannot rely on that).
+  const projectCtx = useOptionalProjectContext();
+  const isOverviewMode = projectCtx?.context.mode === 'overview';
+
   // Read URL state
   const stage = searchParams.get('stage') as Stage | null;
   const trackId = searchParams.get('track') ?? undefined;
@@ -329,6 +337,11 @@ export function FocusPanel({ projectId }: Props) {
   const canRestart =
     latestTargetRun !== null &&
     ['completed', 'failed', 'aborted', 'skipped'].includes(latestTargetRun.status);
+
+  // Overview mode — watch-only view; engines must not mount
+  if (isOverviewMode) {
+    return <OverviewProgressView projectId={projectId} />;
+  }
 
   // Empty state — no stage selected
   if (!stage) {
