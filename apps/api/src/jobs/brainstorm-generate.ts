@@ -6,7 +6,7 @@
  * can show live progress ("Calling Ollama…", "Parsing output…", "Saving…").
  */
 import { inngest } from './client.js';
-import { STAGE_COSTS, generateWithFallback } from '../lib/ai/router.js';
+import { STAGE_COSTS, generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
 import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
 import { debitCredits } from '../lib/credits.js';
@@ -327,6 +327,11 @@ export const brainstormGenerate = inngest.createFunction(
       }
 
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      const quotaExhausted = isQuotaExhausted(err);
+
+      // Provider quota exhausted: park the stage awaiting user (not failed) so
+      // the operator can top up credits / swap providers and resume. Leave the
+      // upstream session row in 'failed' — the orchestrator only reads stage_runs.
       await (sb.from('brainstorm_sessions') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
       })
@@ -337,22 +342,34 @@ export const brainstormGenerate = inngest.createFunction(
 
       if (stageRunId) {
         const now = new Date().toISOString();
+        const patch: Record<string, unknown> = quotaExhausted
+          ? {
+              status: 'awaiting_user',
+              awaiting_reason: 'provider_quota_exhausted',
+              updated_at: now,
+            }
+          : {
+              status: 'failed',
+              error_message: message.slice(0, 500),
+              finished_at: now,
+              updated_at: now,
+            };
         await (sb.from('stage_runs') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
-          .update({
-            status: 'failed',
-            error_message: message.slice(0, 500),
-            finished_at: now,
-            updated_at: now,
-          })
+          .update(patch)
           .eq('id', stageRunId);
-        await inngest.send({
-          name: 'pipeline/stage.run.finished',
-          data: { stageRunId, projectId },
-        });
+        // Quota-park is non-terminal — no advance event; orchestrator resumes
+        // via the explicit /continue path when the user clears the block.
+        if (!quotaExhausted) {
+          await inngest.send({
+            name: 'pipeline/stage.run.finished',
+            data: { stageRunId, projectId },
+          });
+        }
       }
 
+      if (quotaExhausted) return;
       throw err;
     }
   },

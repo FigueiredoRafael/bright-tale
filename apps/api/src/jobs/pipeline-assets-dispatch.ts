@@ -15,7 +15,7 @@
  * dispatcher never sees it.
  */
 import { inngest } from './client.js';
-import { generateWithFallback } from '../lib/ai/router.js';
+import { generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
 import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { buildAssetsMessage } from '../lib/ai/prompts/assets.js';
@@ -163,6 +163,13 @@ export const pipelineAssetsDispatch = inngest.createFunction(
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      if (isQuotaExhausted(err)) {
+        await markAwaitingUser(sb, stageRunId, {
+          ...ctx,
+          awaitingReason: 'provider_quota_exhausted',
+        });
+        return;
+      }
       await markFailed(sb, stageRunId, { ...ctx, errorMessage: message });
       throw err;
     }

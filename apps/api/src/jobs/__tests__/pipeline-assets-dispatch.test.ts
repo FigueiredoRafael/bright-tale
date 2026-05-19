@@ -18,6 +18,7 @@ vi.mock('../client.js', () => ({
 const generateWithFallbackMock = vi.fn();
 vi.mock('../../lib/ai/router.js', () => ({
   generateWithFallback: generateWithFallbackMock,
+  isQuotaExhausted: vi.fn(() => false),
 }));
 
 vi.mock('../../lib/ai/promptLoader.js', () => ({

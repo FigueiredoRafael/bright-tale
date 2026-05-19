@@ -15,6 +15,7 @@
  * package the same way vitest does. Keep the two in sync if either changes.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { AwaitingReason } from './stage-run-writer.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Sb = SupabaseClient<any, any, any>;
@@ -61,7 +62,7 @@ interface StageRunInsert {
   project_id: string;
   stage: Stage;
   status: 'queued' | 'running' | 'awaiting_user' | 'completed' | 'skipped';
-  awaiting_reason: 'manual_paste' | 'manual_advance' | null;
+  awaiting_reason: AwaitingReason | null;
   payload_ref: { kind: string; id: string } | null;
   attempt_no: number;
   started_at: string | null;

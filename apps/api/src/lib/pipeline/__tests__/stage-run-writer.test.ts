@@ -177,6 +177,31 @@ describe('markAwaitingUser', () => {
     expect(lastChain?.payload?.finished_at).toBeUndefined();
     expect(inngestSendMock).not.toHaveBeenCalled();
   });
+
+  // Type-check + write-through smoke for every value in the expanded
+  // AwaitingReason union. If a future migration drops a value, the matching
+  // case here must be removed alongside it.
+  it.each([
+    'manual_paste',
+    'manual_advance',
+    'manual_review',
+    'provider_quota_exhausted',
+    'max_iterations',
+    'user_paused',
+  ] as const)('accepts awaitingReason="%s"', async (reason) => {
+    sb.from = vi.fn(() => ({
+      update: vi.fn((payload: Record<string, unknown>) => {
+        lastChain = { payload, filters: [], errorToReturn: null };
+        return makeUpdateChain(null);
+      }),
+    }));
+    await markAwaitingUser(sb, 'sr-1', {
+      projectId: PROJECT_ID,
+      stage: 'review',
+      awaitingReason: reason,
+    });
+    expect(lastChain?.payload?.awaiting_reason).toBe(reason);
+  });
 });
 
 describe('markAborted', () => {
