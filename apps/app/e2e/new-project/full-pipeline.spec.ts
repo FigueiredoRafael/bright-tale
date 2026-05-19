@@ -203,7 +203,7 @@ test.describe('T3 — overview + mocked AI', () => {
   })
 
   test('overview mode shows per-stage summary cards and done banner', async ({ page }) => {
-    test.setTimeout(180_000)
+    test.setTimeout(240_000)
 
     const project: HappyProjectSeed = {
       id: 'proj-e2e-happy-3',
@@ -233,61 +233,97 @@ test.describe('T3 — overview + mocked AI', () => {
     const progressView = page.getByTestId('overview-progress-view')
     await progressView.waitFor({ state: 'visible', timeout: 30_000 })
 
-    // Seed the snapshot with completed stages so the watch-only UI has
-    // something to render. The mock auto-completes on POST, but overview
-    // mode doesn't trigger POSTs from the UI — we mark completion directly.
+    // Progressive walk: complete each stage one at a time, wait for the UI
+    // to reflect both the stepper status and the rich summary card before
+    // advancing. A small pause between stages keeps the headed run watchable
+    // (the user sees outputs open one by one instead of all at once).
+
+    const STEP_PAUSE_MS = 1500 // visible cadence in headed mode
+
+    // ── Brainstorm ───────────────────────────────────────────────────────────
     mock.completeStage('brainstorm')
-    mock.completeStage('research')
-    mock.completeStage('canonical')
-    mock.completeStage('production')
-    mock.completeStage('review')
-    mock.completeStage('assets')
-    mock.completeStage('preview')
-    mock.completeStage('publish')
-
-    // Stepper status — all stages reach 'completed'
     await expect(page.getByTestId('overview-stage-brainstorm')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
-    await expect(page.getByTestId('overview-stage-research')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
-    await expect(page.getByTestId('overview-stage-canonical')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
-    await expect(page.getByTestId('overview-stage-production')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
-    await expect(page.getByTestId('overview-stage-review')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
-    await expect(page.getByTestId('overview-stage-publish')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
-
-    // Per-stage summary cards: each completed stage renders one persistent card
     const brainstormCard = page.getByTestId('overview-stage-summary-brainstorm')
     await expect(brainstormCard).toBeVisible({ timeout: 30_000 })
     await expect(brainstormCard).toContainText('E2E Happy Path Idea')
     await expect(brainstormCard).toContainText('Audience')
     await expect(brainstormCard).toContainText('Angle')
+    await page.waitForTimeout(STEP_PAUSE_MS)
 
+    // ── Research ─────────────────────────────────────────────────────────────
+    mock.completeStage('research')
+    await expect(page.getByTestId('overview-stage-research')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
     const researchCard = page.getByTestId('overview-stage-summary-research')
-    await expect(researchCard).toBeVisible()
+    await expect(researchCard).toBeVisible({ timeout: 30_000 })
     await expect(researchCard).toContainText('5 cards approved')
     await expect(researchCard).toContainText('Avg confidence: 92')
     await expect(researchCard).toContainText('Solo 401(k) contribution limits')
+    await page.waitForTimeout(STEP_PAUSE_MS)
 
+    // ── Canonical ────────────────────────────────────────────────────────────
+    mock.completeStage('canonical')
+    await expect(page.getByTestId('overview-stage-canonical')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
     const canonicalCard = page.getByTestId('overview-stage-summary-canonical')
-    await expect(canonicalCard).toBeVisible()
+    await expect(canonicalCard).toBeVisible({ timeout: 30_000 })
     await expect(canonicalCard).toContainText('Thesis')
     await expect(canonicalCard).toContainText('Persona: E2E Persona')
+    await page.waitForTimeout(STEP_PAUSE_MS)
 
+    // ── Production ───────────────────────────────────────────────────────────
+    mock.completeStage('production')
+    await expect(page.getByTestId('overview-stage-production')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
     const productionCard = page.getByTestId('overview-stage-summary-production')
-    await expect(productionCard).toBeVisible()
+    await expect(productionCard).toBeVisible({ timeout: 30_000 })
     await expect(productionCard).toContainText('Words: 1500')
     await expect(productionCard).toContainText('Why freelancers need a different plan')
+    await page.waitForTimeout(STEP_PAUSE_MS)
 
+    // ── Review ───────────────────────────────────────────────────────────────
+    mock.completeStage('review')
+    await expect(page.getByTestId('overview-stage-review')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
     const reviewCard = page.getByTestId('overview-stage-summary-review')
-    await expect(reviewCard).toBeVisible()
+    await expect(reviewCard).toBeVisible({ timeout: 30_000 })
     await expect(reviewCard).toContainText('Score: 95')
     await expect(reviewCard).toContainText('Verdict: approved')
+    await page.waitForTimeout(STEP_PAUSE_MS)
 
+    // ── Assets (skipped, but still completes the row) ────────────────────────
+    mock.completeStage('assets')
+    await page.waitForTimeout(STEP_PAUSE_MS)
+
+    // ── Preview (skipped, auto-derived) ──────────────────────────────────────
+    mock.completeStage('preview')
+    await page.waitForTimeout(STEP_PAUSE_MS)
+
+    // ── Publish ──────────────────────────────────────────────────────────────
+    mock.completeStage('publish')
+    await expect(page.getByTestId('overview-stage-publish')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
     const publishCard = page.getByTestId('overview-stage-summary-publish')
-    await expect(publishCard).toBeVisible()
+    await expect(publishCard).toBeVisible({ timeout: 30_000 })
     await expect(publishCard).toContainText('Status: published')
     await expect(publishCard).toContainText('https://example.com/e2e-happy-path')
+    await page.waitForTimeout(STEP_PAUSE_MS)
 
-    // Done banner
+    // Done banner — appears once every expected stage is completed/skipped
     await expect(page.getByTestId('overview-done-banner')).toBeVisible({ timeout: 30_000 })
+
+    // Tab navigation: click an earlier completed stepper item to bring its
+    // summary card back into the focused panel.
+    await page.getByTestId('overview-stage-brainstorm').click()
+    const brainstormCardAgain = page.getByTestId('overview-stage-summary-brainstorm')
+    await expect(brainstormCardAgain).toBeVisible({ timeout: 10_000 })
+    await expect(brainstormCardAgain).toContainText('E2E Happy Path Idea')
+    await page.waitForTimeout(STEP_PAUSE_MS)
+
+    // Flip to review
+    await page.getByTestId('overview-stage-review').click()
+    const reviewCardAgain = page.getByTestId('overview-stage-summary-review')
+    await expect(reviewCardAgain).toBeVisible({ timeout: 10_000 })
+    await expect(reviewCardAgain).toContainText('Score: 95')
+    await page.waitForTimeout(STEP_PAUSE_MS)
+
+    // Hold the final state briefly so the watcher can read the completed view
+    await page.waitForTimeout(2000)
 
     await mock.unroute()
   })

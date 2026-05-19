@@ -117,18 +117,45 @@ function statusToSymbol(status: StageRunStatus | 'queued'): string {
 interface StageStepProps {
   stage: string;
   run: StageRun | null;
+  active: boolean;
+  onSelect?: () => void;
 }
 
-function StageStep({ stage, run }: StageStepProps) {
+function StageStep({ stage, run, active, onSelect }: StageStepProps) {
   const status: StageRunStatus | 'queued' = run?.status ?? 'queued';
+  const isClickable = onSelect !== undefined;
+  const baseClass = `flex items-center gap-2 rounded border px-3 py-2 text-xs font-medium transition-colors ${statusToStyle(status)}`;
+  const activeRing = active ? ' ring-2 ring-blue-500/60' : '';
+  const cursorClass = isClickable ? ' cursor-pointer hover:bg-foreground/5' : '';
+  const className = `${baseClass}${activeRing}${cursorClass}`;
+  const content = (
+    <>
+      <span className="font-mono w-4 text-center">{statusToSymbol(status)}</span>
+      <span>{STAGE_LABELS[stage] ?? stage}</span>
+    </>
+  );
+  if (isClickable) {
+    return (
+      <button
+        type="button"
+        data-testid={`overview-stage-${stage}`}
+        data-status={status}
+        data-active={active ? 'true' : 'false'}
+        onClick={onSelect}
+        className={`${className} text-left`}
+      >
+        {content}
+      </button>
+    );
+  }
   return (
     <div
       data-testid={`overview-stage-${stage}`}
       data-status={status}
-      className={`flex items-center gap-2 rounded border px-3 py-2 text-xs font-medium transition-colors ${statusToStyle(status)}`}
+      data-active={active ? 'true' : 'false'}
+      className={className}
     >
-      <span className="font-mono w-4 text-center">{statusToSymbol(status)}</span>
-      <span>{STAGE_LABELS[stage] ?? stage}</span>
+      {content}
     </div>
   );
 }
@@ -204,6 +231,11 @@ export function OverviewProgressView({ projectId }: Props) {
   const [elapsed, setElapsed] = useState<string>('—');
   const [abortDialogOpen, setAbortDialogOpen] = useState(false);
   const [actionPending, setActionPending] = useState<'pause' | 'abort' | null>(null);
+  // Tab-style focused stage: only the active stage's rich summary is shown.
+  // Auto-advances to the most-recently-completed stage as the pipeline runs.
+  // Users can click any completed stepper item to flip back to that output.
+  const [selectedStage, setSelectedStage] = useState<OverviewStageName | null>(null);
+  const [userPinnedStage, setUserPinnedStage] = useState<boolean>(false);
 
   // Track live-log (rolling last 5)
   useEffect(() => {
@@ -237,6 +269,34 @@ export function OverviewProgressView({ projectId }: Props) {
     .reverse()
     .map((s) => stageRuns[s])
     .find((r) => r !== null && r.status === 'completed') ?? null;
+
+  // Auto-advance selectedStage to newest completed stage unless the user has
+  // explicitly clicked a different one. Picks the latest-by-sequence completed
+  // stage so visualization tracks pipeline progression.
+  const newestCompletedStage = OVERVIEW_STAGES.reduce<OverviewStageName | null>(
+    (acc, s) => (stageRuns[s]?.status === 'completed' ? s : acc),
+    null,
+  );
+  useEffect(() => {
+    if (!newestCompletedStage) return;
+    if (userPinnedStage && selectedStage !== null) return;
+    if (newestCompletedStage !== selectedStage) {
+      setSelectedStage(newestCompletedStage);
+    }
+  }, [newestCompletedStage, selectedStage, userPinnedStage]);
+
+  const handleSelectStage = useCallback((stage: OverviewStageName) => {
+    setSelectedStage(stage);
+    // Pin only if user picked something other than the newest. Picking the
+    // newest is equivalent to "follow live progression" — keep auto-advance on.
+    setUserPinnedStage(stage !== newestCompletedStage);
+  }, [newestCompletedStage]);
+
+  const activeStageRun = selectedStage ? stageRuns[selectedStage] : null;
+  const activeRichSummary =
+    selectedStage && activeStageRun && activeStageRun.status === 'completed'
+      ? summarizeStageRich(selectedStage, activeStageRun.outcomeJson)
+      : null;
 
   // Done banner: all expected stages are completed or skipped.
   // Skip stages that the project config disables (assets/preview) are already
@@ -300,11 +360,21 @@ export function OverviewProgressView({ projectId }: Props) {
         )}
       </div>
 
-      {/* Stepper */}
+      {/* Stepper — clickable when a stage is completed; doubles as a tab strip */}
       <div data-testid="overview-stepper" className="flex flex-col gap-1.5">
-        {OVERVIEW_STAGES.map((stage) => (
-          <StageStep key={stage} stage={stage} run={stageRuns[stage] ?? null} />
-        ))}
+        {OVERVIEW_STAGES.map((stage) => {
+          const run = stageRuns[stage] ?? null;
+          const isCompleted = run?.status === 'completed';
+          return (
+            <StageStep
+              key={stage}
+              stage={stage}
+              run={run}
+              active={selectedStage === stage}
+              onSelect={isCompleted ? () => handleSelectStage(stage) : undefined}
+            />
+          );
+        })}
       </div>
 
       {/* Current running stage */}
@@ -336,33 +406,41 @@ export function OverviewProgressView({ projectId }: Props) {
         </div>
       )}
 
-      {/* Per-stage persistent summary cards — one card per completed stage */}
-      <div data-testid="overview-stage-summary-list" className="flex flex-col gap-2">
-        {OVERVIEW_STAGES.map((stage) => {
-          const run = stageRuns[stage];
-          if (!run || run.status !== 'completed') return null;
-          const rich = summarizeStageRich(stage, run.outcomeJson);
-          return (
-            <div
-              key={stage}
-              data-testid={`overview-stage-summary-${stage}`}
-              data-stage={stage}
-              className="rounded border border-border/40 bg-background/40 p-3 text-xs"
+      {/* Focused stage panel — tab-style: one stage's rich summary at a time.
+          Auto-advances to the newest completed stage; click any stepper item
+          above to flip back to that output. */}
+      {selectedStage && activeRichSummary && (
+        <div
+          data-testid="overview-stage-summary-active"
+          data-stage={selectedStage}
+          className="rounded border border-border/60 bg-background/60 p-4"
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span
+              data-testid="overview-stage-summary-active-title"
+              className="text-sm font-semibold text-foreground"
             >
-              <div className="text-sm font-medium text-foreground mb-1">
-                {STAGE_LABELS[stage] ?? rich.title}
-              </div>
-              <ul className="text-muted-foreground space-y-0.5">
-                {rich.lines.map((line, i) => (
-                  <li key={i} data-testid={`overview-stage-summary-${stage}-line`}>
-                    {line}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          );
-        })}
-      </div>
+              {STAGE_LABELS[selectedStage] ?? activeRichSummary.title}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              Stage output
+            </span>
+          </div>
+          <ul
+            data-testid={`overview-stage-summary-${selectedStage}`}
+            className="text-sm text-muted-foreground space-y-1"
+          >
+            {activeRichSummary.lines.map((line, i) => (
+              <li
+                key={i}
+                data-testid={`overview-stage-summary-${selectedStage}-line`}
+              >
+                {line}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Actions */}
       <div data-testid="overview-actions" className="flex items-center gap-2">
