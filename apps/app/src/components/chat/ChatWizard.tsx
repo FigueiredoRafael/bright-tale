@@ -160,7 +160,12 @@ export function ChatWizard<T extends Record<string, unknown>>({
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const openingFetched = useRef(false)
-  const lastTypedContent = useRef<string | null>(null)
+  // Pre-seed with existing last assistant message so typewriter skips already-read messages on mount
+  const lastTypedContent = useRef<string | null>(
+    messages.length > 0 && messages[messages.length - 1].role === "assistant"
+      ? messages[messages.length - 1].content
+      : null
+  )
 
   // On mount (or when messages becomes empty): set or fetch the opening message once
   useEffect(() => {
