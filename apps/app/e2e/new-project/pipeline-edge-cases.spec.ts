@@ -134,26 +134,86 @@ test.describe('EC-R1 — low-score-retry (step-by-step)', () => {
 test.describe('EC-R1 — low-score-retry (supervised)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('review loops once then completes in supervised mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard supervised + threshold=90 → autopilot loops review iter1(65) → iter2(95)', async ({ page }) => {
+    test.setTimeout(240_000)
     const project = seed('proj-ec-lsr-2', 'supervised', 'EC Low-Score Retry Supervised')
 
     const mock = await mockPipelineEdge(page, 'low-score-retry', { project })
 
-    // Pre-complete shared stages + both production iterations + passing review
+    // ── Wizard ────────────────────────────────────────────────────────────────
+    // Supervised unlocks the per-stage threshold inputs (isAutopilot=true). The
+    // spec sets them explicitly so the loop semantics are anchored on wizard
+    // config, not on pipeline_settings defaults — a true wizard ↔ pipeline
+    // parity check.
+    await page.goto('/en/projects/new')
+    await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
+
+    await page.locator('#project-title').fill(project.title)
+    await page.getByTestId('channel-option').first().click()
+    await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+
+    await page.getByRole('radio', { name: 'Supervised' }).click()
+
+    // Expand Review section and confront the wizard inputs that drive the loop
+    await page.locator('[data-testid="stage-section-review"] button').first().click()
+    await page.locator('#review-maxIterations').fill('2')
+    await page.locator('#review-autoApproveThreshold').fill('90')
+    await page.locator('#review-hardFailThreshold').fill('50')
+
+    await page.getByRole('button', { name: /create project/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+
+    // ── Supervised walkthrough ───────────────────────────────────────────────
+    // In supervised mode each engine mounts and useAutoPilotTrigger fires its
+    // primary action. We assert the engine root + rich output rendered, then
+    // call mock.completeStage() to simulate the orchestrator persisting the
+    // outcome. The supervised auto-advance hook routes the URL forward.
+
+    // Brainstorm: idea cards must surface
+    await page.getByTestId('brainstorm-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+    await expect(page.getByTestId('idea-card').first()).toBeVisible({ timeout: 30_000 })
     mock.completeStage('brainstorm')
+    await assertStageComplete(page, 'brainstorm', { timeout: 30_000 })
+
+    // Research: findings + at least one source card must render
+    await page.getByTestId('research-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+    await page.getByTestId('research-findings-report').waitFor({ state: 'visible', timeout: 30_000 })
+    await expect(page.getByTestId('research-source-card').first()).toBeVisible({ timeout: 30_000 })
     mock.completeStage('research')
+    await assertStageComplete(page, 'research', { timeout: 30_000 })
+
+    // Canonical: thesis + argument chain must render
+    await page.getByTestId('canonical-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+    // canonical-core-preview is gated on autopilot finishing the generate step;
+    // in the mocked-AI run we only assert the engine mounted then sim-complete.
     mock.completeStage('canonical')
+    await assertStageComplete(page, 'canonical', { timeout: 30_000 })
+
+    // Production iter 1 fires autopilot
+    await page.getByTestId('production-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
     mock.completeStage('production')
+    await assertStageComplete(page, 'production', { timeout: 30_000 })
+
+    // ── Review loop ──────────────────────────────────────────────────────────
+    // Review engine mounts; autopilot fires iter 1 (score 65), then rearms on
+    // iteration_count change and fires iter 2 (score 95) — no manual clicks.
+    await page.getByTestId('review-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+
+    // Iter 1 lands first
+    await expect(page.getByTestId('review-score')).toHaveAttribute('data-value', '65', { timeout: 30_000 })
+    await expect(page.getByTestId('review-verdict')).toHaveAttribute('data-value', 'revision_required')
+    await expect(page.getByTestId('review-iteration')).toHaveAttribute('data-value', '1')
+    await expect(page.getByTestId('review-feedback-critical')).toBeVisible()
+
+    // Iter 2 fires automatically when iteration_count flips to 2
+    await expect(page.getByTestId('review-score')).toHaveAttribute('data-value', '95', { timeout: 30_000 })
+    await expect(page.getByTestId('review-verdict')).toHaveAttribute('data-value', 'approved')
+    await expect(page.getByTestId('review-iteration')).toHaveAttribute('data-value', '2')
+
+    // Loop accounting: exactly two reviews fired, no more
+    expect(mock.reviewCallCount).toBe(2)
+
     mock.completeStage('review')
-
-    await page.goto(`/en/projects/${project.id}`)
-    await page.waitForTimeout(2_000)
-
-    await assertStageComplete(page, 'brainstorm', { timeout: 20_000 })
-    await assertStageComplete(page, 'research', { timeout: 20_000 })
-    await assertStageComplete(page, 'canonical', { timeout: 20_000 })
-    await assertStageComplete(page, 'production', { timeout: 20_000 })
     await assertStageComplete(page, 'review', { timeout: 30_000 })
 
     await mock.unroute()
