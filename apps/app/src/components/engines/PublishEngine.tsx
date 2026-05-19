@@ -266,7 +266,7 @@ export function PublishEngine({ draft, publishTargetId }: PublishEngineProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="publish-engine-root">
       <ContextBanner stage="publish" context={trackerContext} onBack={navigate} />
       {renderDriverSection()}
     </div>

@@ -81,7 +81,7 @@ describe('ProductionEngine', () => {
       global.fetch = makeFetch();
       render(wrap(medium));
       await waitFor(() =>
-        expect(screen.queryByTestId('production-engine')).not.toBeNull(),
+        expect(screen.queryByTestId('production-engine-root')).not.toBeNull(),
       );
     },
   );

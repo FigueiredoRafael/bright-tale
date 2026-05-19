@@ -911,7 +911,7 @@ export function ResearchEngine({
   // Import mode: show ImportPicker when mode='import' and no initial session
   if (engineMode === 'import' && !initialSession) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" data-testid="research-engine-root">
         <ContextBanner stage="research" context={trackerContext} />
 
         <div className="flex items-start justify-between gap-4">
@@ -968,7 +968,7 @@ export function ResearchEngine({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="research-engine-root">
       <ContextBanner stage="research" context={trackerContext} />
 
       <div className="flex items-start justify-between gap-4">
@@ -1142,7 +1142,7 @@ export function ResearchEngine({
                 }}
                 onModelChange={setModel}
               />
-              <Button onClick={handleRun} disabled={(isGenerating || running)}>
+              <Button onClick={handleRun} disabled={(isGenerating || running)} data-testid="research-action-generate">
                 {(isGenerating || running) ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />{' '}
@@ -1252,7 +1252,7 @@ export function ResearchEngine({
           )}
 
           <div className="flex justify-end pt-2">
-            <Button onClick={handleApprove} size="lg">
+            <Button onClick={handleApprove} size="lg" data-testid="research-action-approve-all">
               <Check className="h-4 w-4 mr-2" /> Continue{' '}
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
@@ -1606,7 +1606,7 @@ export function ResearchEngine({
           )}
 
           <div className="flex justify-end pt-2">
-            <Button onClick={handleApprove} size="lg">
+            <Button onClick={handleApprove} size="lg" data-testid="research-action-approve-all">
               <Check className="h-4 w-4 mr-2" /> Approve ({approved.size}){' '}
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>

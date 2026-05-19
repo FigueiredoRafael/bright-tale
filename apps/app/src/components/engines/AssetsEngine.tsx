@@ -946,7 +946,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   /* ── Import mode ── */
   if (engineMode === 'import' && !draftId) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" data-testid="assets-engine-root">
         <ContextBanner stage="assets" context={trackerContext} onBack={navigate} />
         <div className="space-y-4">
           <div className="flex items-start justify-between gap-4">
@@ -1020,7 +1020,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   const pendingCount = pendingUploads.length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="assets-engine-root">
       <ContextBanner stage="assets" context={trackerContext} onBack={navigate} />
 
       <div className="flex items-start justify-between gap-4">
@@ -1153,6 +1153,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
                   onClick={handleGenerateBriefs}
                   disabled={(isGeneratingBriefs || generatingBriefs) || !draftId}
                   className="gap-2 shrink-0"
+                  data-testid="assets-action-generate-briefs"
                 >
                   {(isGeneratingBriefs || generatingBriefs) ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -1177,7 +1178,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
                   Pick images yourself using each section&apos;s title + content as context.
                 </p>
               </div>
-              <Button variant="outline" className="gap-2 shrink-0" onClick={handleSkipBriefs}>
+              <Button variant="outline" className="gap-2 shrink-0" onClick={handleSkipBriefs} data-testid="assets-action-skip-briefs">
                 <SkipForward className="h-4 w-4" />
                 Skip Briefs
               </Button>
@@ -1484,7 +1485,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
           })}
 
           <div className="flex items-center gap-3">
-            <Button onClick={handleFinish} disabled={finishing} className="gap-2">
+            <Button onClick={handleFinish} disabled={finishing} className="gap-2" data-testid="assets-action-finish">
               {finishing ? (
                 <><Loader2 className="h-4 w-4 animate-spin" />Saving…</>
               ) : (
@@ -1529,7 +1530,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
           })}
 
           <div className="flex items-center gap-3">
-            <Button onClick={handleFinish} disabled={finishing} className="gap-2">
+            <Button onClick={handleFinish} disabled={finishing} className="gap-2" data-testid="assets-action-finish">
               {finishing ? (
                 <><Loader2 className="h-4 w-4 animate-spin" />Saving…</>
               ) : (
