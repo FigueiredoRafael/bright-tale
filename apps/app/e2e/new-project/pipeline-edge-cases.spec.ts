@@ -463,27 +463,60 @@ test.describe('EC-R2 — max-iterations (overview)', () => {
 test.describe('EC-R3 — hard-fail (step-by-step)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('review hard-fail shows failed status in step-by-step mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard step-by-step + manual review fires hard-fail (score 30 < 50) → verdict=rejected, no banner', async ({ page }) => {
+    test.setTimeout(180_000)
     const project = seed('proj-ec-hf-1', 'step-by-step', 'EC Hard Fail Step-by-Step')
 
     const mock = await mockPipelineEdge(page, 'hard-fail', { project })
 
+    // ── Wizard ────────────────────────────────────────────────────────────────
+    // step-by-step gates per-stage threshold inputs behind isAutopilot=false, so
+    // the hardFail=50 default from pipeline_settings governs the outcome.
+    await page.goto('/en/projects/new')
+    await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
+
+    await page.locator('#project-title').fill(project.title)
+    await page.getByTestId('channel-option').first().click()
+    await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+    await page.getByRole('radio', { name: 'Step-by-step' }).click()
+
+    await page.getByRole('button', { name: /create project/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+    await page.getByTestId('sidebar-item-brainstorm').waitFor({ state: 'visible', timeout: 20_000 })
+
+    // ── Walk shared + production manually ────────────────────────────────────
+    await driveStageManual(page, 'brainstorm')
     mock.completeStage('brainstorm')
+    await assertStageComplete(page, 'brainstorm', { timeout: 30_000 })
+
+    await driveStageManual(page, 'research')
     mock.completeStage('research')
+    await assertStageComplete(page, 'research', { timeout: 30_000 })
+
+    await driveStageManual(page, 'canonical')
     mock.completeStage('canonical')
+    await assertStageComplete(page, 'canonical', { timeout: 30_000 })
+
+    await driveStageManual(page, 'production')
     mock.completeStage('production')
+    await assertStageComplete(page, 'production', { timeout: 30_000 })
 
-    await page.goto(`/en/projects/${project.id}`)
-    await page.waitForTimeout(2_000)
+    // ── Review: user clicks Run → POST /review returns score 30 rejected ────
+    const reviewSidebar = page.locator('[data-testid*="sidebar-item-"][data-testid*="review"]').first()
+    await reviewSidebar.click()
+    await page.getByTestId('review-engine-root').waitFor({ state: 'visible', timeout: 20_000 })
+    await page.getByTestId('review-action-run').first().click()
 
-    await assertStageComplete(page, 'brainstorm', { timeout: 15_000 })
-    await assertStageComplete(page, 'research', { timeout: 15_000 })
-    await assertStageComplete(page, 'canonical', { timeout: 15_000 })
-    await assertStageComplete(page, 'production', { timeout: 15_000 })
+    // Engine renders the rejected outcome
+    await page.getByTestId('review-feedback-panel').waitFor({ state: 'visible', timeout: 30_000 })
+    await expect(page.getByTestId('review-score')).toHaveAttribute('data-value', '30')
+    await expect(page.getByTestId('review-verdict')).toHaveAttribute('data-value', 'rejected')
 
-    // Review stage run fails — sidebar status should be 'failed', not 'completed'
-    // and the awaiting-banner should NOT be shown (hard-fail ≠ awaiting_user)
+    // Awaiting banner must NOT show — hard-fail ≠ awaiting_user
+    const banner = page.getByTestId('awaiting-banner')
+    expect(await banner.isVisible().catch(() => false)).toBe(false)
+
+    // Sidebar review pill must reach data-status="failed"
     await expect.poll(
       async () => {
         const el = page.locator('[data-testid*="sidebar-status-"][data-testid*="review"]').first()
@@ -492,10 +525,7 @@ test.describe('EC-R3 — hard-fail (step-by-step)', () => {
       { timeout: 30_000, message: 'Review stage did not reach failed status' },
     ).toBe('failed')
 
-    // Awaiting banner must not be visible for a hard-fail
-    const banner = page.getByTestId('awaiting-banner')
-    const bannerVisible = await banner.isVisible().catch(() => false)
-    expect(bannerVisible).toBe(false)
+    expect(mock.reviewCallCount).toBeGreaterThanOrEqual(1)
 
     await mock.unroute()
   })
@@ -504,24 +534,66 @@ test.describe('EC-R3 — hard-fail (step-by-step)', () => {
 test.describe('EC-R3 — hard-fail (supervised)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('review hard-fail shows failed status in supervised mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard supervised + hardFail=50 → autopilot fires once, verdict=rejected, no banner', async ({ page }) => {
+    test.setTimeout(240_000)
     const project = seed('proj-ec-hf-2', 'supervised', 'EC Hard Fail Supervised')
 
     const mock = await mockPipelineEdge(page, 'hard-fail', { project })
 
+    // ── Wizard ────────────────────────────────────────────────────────────────
+    await page.goto('/en/projects/new')
+    await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
+
+    await page.locator('#project-title').fill(project.title)
+    await page.getByTestId('channel-option').first().click()
+    await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+    await page.getByRole('radio', { name: 'Supervised' }).click()
+
+    await page.locator('[data-testid="stage-section-review"] button').first().click()
+    await page.locator('#review-maxIterations').fill('2')
+    await page.locator('#review-autoApproveThreshold').fill('90')
+    await page.locator('#review-hardFailThreshold').fill('50')
+
+    await page.getByRole('button', { name: /create project/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+
+    // ── Parity: thresholds round-trip
+    const createAction = mock.actions.find((a) => a.method === 'POST' && a.url === '/api/projects')
+    expect(createAction).toBeDefined()
+    const createBody = createAction!.body as {
+      mode?: string
+      autopilotConfigJson?: { review?: { hardFailThreshold?: number; autoApproveThreshold?: number } }
+    }
+    expect(createBody.mode).toBe('supervised')
+    expect(createBody.autopilotConfigJson?.review?.hardFailThreshold).toBe(50)
+    expect(createBody.autopilotConfigJson?.review?.autoApproveThreshold).toBe(90)
+
+    // ── Walk shared + production via supervised auto-advance ─────────────────
+    await page.getByTestId('brainstorm-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
     mock.completeStage('brainstorm')
+    await assertStageComplete(page, 'brainstorm', { timeout: 30_000 })
+
+    await page.getByTestId('research-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
     mock.completeStage('research')
+    await assertStageComplete(page, 'research', { timeout: 30_000 })
+
+    await page.getByTestId('canonical-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
     mock.completeStage('canonical')
+    await assertStageComplete(page, 'canonical', { timeout: 30_000 })
+
+    await page.getByTestId('production-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
     mock.completeStage('production')
+    await assertStageComplete(page, 'production', { timeout: 30_000 })
 
-    await page.goto(`/en/projects/${project.id}`)
-    await page.waitForTimeout(2_000)
+    // ── Review autopilot fires → score 30 < hardFail=50 → rejected ──────────
+    await page.getByTestId('review-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
 
-    await assertStageComplete(page, 'brainstorm', { timeout: 15_000 })
-    await assertStageComplete(page, 'research', { timeout: 15_000 })
-    await assertStageComplete(page, 'canonical', { timeout: 15_000 })
-    await assertStageComplete(page, 'production', { timeout: 15_000 })
+    await expect(page.getByTestId('review-score')).toHaveAttribute('data-value', '30', { timeout: 30_000 })
+    await expect(page.getByTestId('review-verdict')).toHaveAttribute('data-value', 'rejected')
+
+    // No banner for hard-fail
+    const banner = page.getByTestId('awaiting-banner')
+    expect(await banner.isVisible().catch(() => false)).toBe(false)
 
     await expect.poll(
       async () => {
@@ -531,9 +603,8 @@ test.describe('EC-R3 — hard-fail (supervised)', () => {
       { timeout: 30_000, message: 'Review stage did not reach failed status' },
     ).toBe('failed')
 
-    const banner = page.getByTestId('awaiting-banner')
-    const bannerVisible = await banner.isVisible().catch(() => false)
-    expect(bannerVisible).toBe(false)
+    // Engine fires at least once. Capped iteration_count=1 prevents runaway.
+    expect(mock.reviewCallCount).toBeGreaterThanOrEqual(1)
 
     await mock.unroute()
   })
@@ -542,23 +613,51 @@ test.describe('EC-R3 — hard-fail (supervised)', () => {
 test.describe('EC-R3 — hard-fail (overview)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('review hard-fail shows failed status in overview mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard overview + hardFail=50 → OverviewProgressView surfaces failed review, no banner', async ({ page }) => {
+    test.setTimeout(180_000)
     const project = seed('proj-ec-hf-3', 'overview', 'EC Hard Fail Overview')
 
     const mock = await mockPipelineEdge(page, 'hard-fail', { project })
 
+    // ── Wizard ────────────────────────────────────────────────────────────────
+    await page.goto('/en/projects/new')
+    await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
+
+    await page.locator('#project-title').fill(project.title)
+    await page.getByTestId('channel-option').first().click()
+    await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+    await page.getByRole('radio', { name: 'Overview' }).click()
+
+    await page.locator('[data-testid="stage-section-review"] button').first().click()
+    await page.locator('#review-hardFailThreshold').fill('50')
+
+    await page.getByRole('button', { name: /create project/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+
+    // ── Parity ───────────────────────────────────────────────────────────────
+    const createAction = mock.actions.find((a) => a.method === 'POST' && a.url === '/api/projects')
+    expect(createAction).toBeDefined()
+    const createBody = createAction!.body as {
+      mode?: string
+      autopilotConfigJson?: { review?: { hardFailThreshold?: number } }
+    }
+    expect(createBody.mode).toBe('overview')
+    expect(createBody.autopilotConfigJson?.review?.hardFailThreshold).toBe(50)
+
+    // ── Watch-only contract ──────────────────────────────────────────────────
+    await page.getByTestId('overview-progress-view').waitFor({ state: 'visible', timeout: 20_000 })
+    await expect(page.getByTestId('review-engine-root')).toHaveCount(0)
+
+    // Backend autopilot would have run shared+production stages then failed review
     mock.completeStage('brainstorm')
     mock.completeStage('research')
     mock.completeStage('canonical')
     mock.completeStage('production')
+    mock.failReview()
 
-    await page.goto(`/en/projects/${project.id}`)
+    await expect(page.getByTestId('overview-stage-brainstorm')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
+    await expect(page.getByTestId('overview-stage-production')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
 
-    const progressView = page.getByTestId('overview-progress-view')
-    await progressView.waitFor({ state: 'visible', timeout: 20_000 })
-
-    // Overview view: review stage indicator should reach 'failed'
     await expect.poll(
       async () => {
         const el = page.getByTestId('overview-stage-review')
@@ -569,8 +668,7 @@ test.describe('EC-R3 — hard-fail (overview)', () => {
 
     // No awaiting-banner for hard-fail
     const banner = page.getByTestId('awaiting-banner')
-    const bannerVisible = await banner.isVisible().catch(() => false)
-    expect(bannerVisible).toBe(false)
+    expect(await banner.isVisible().catch(() => false)).toBe(false)
 
     await mock.unroute()
   })

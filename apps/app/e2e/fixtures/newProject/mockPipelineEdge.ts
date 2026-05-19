@@ -46,6 +46,12 @@ export interface EdgeMock extends HappyMock {
    * scenarios other than 'max-iterations'.
    */
   parkReviewMax: () => void
+  /**
+   * Force the review stage_run into failed state without a POST /review fire
+   * (overview-mode hard-fail seeding). No-op for scenarios other than
+   * 'hard-fail'.
+   */
+  failReview: () => void
 }
 
 async function readBody(route: Route): Promise<unknown> {
@@ -113,6 +119,8 @@ export async function mockPipelineEdge(
   let reviewCallCount = 0
   const callCounts = new Map<string, number>()
   const patchBodies: EdgeMock['patchBodies'] = []
+  // Default no-op; the hard-fail scenario rebinds it below.
+  let failReview: () => void = () => {}
 
   // ── Scenario-specific route overrides ────────────────────────────────────────
   // Routes registered AFTER happy base → run FIRST (Playwright matches in reverse
@@ -538,27 +546,22 @@ export async function mockPipelineEdge(
   }
 
   if (scenario === 'hard-fail') {
-    // Review returns score 30 < hardFailThreshold(50) → Stage Run failed
-    await page.route(`**/api/projects/${project.id}/stage-runs`, async (route: Route) => {
-      if (route.request().method() !== 'POST') return route.fallback()
-      const body = (await readBody(route)) as { stage?: string } | null
-      if (body?.stage !== 'review') return route.fallback()
+    // Review returns score 30 < hardFailThreshold(50) → Stage Run failed.
+    // Production emit site: apps/api/src/jobs/pipeline-review-dispatch.ts hardReject
+    // branch (`reviewScore < hardFailThreshold` → `runOutcome.status = 'failed'`).
 
-      reviewCallCount++
-
+    function markReviewFailed() {
       const row = {
-        id: `sr-review-e2e-hardfail`,
+        id: 'sr-review-e2e-hardfail',
         projectId: project.id,
-        stage: 'review',
-        status: 'failed',
+        stage: 'review' as const,
+        status: 'failed' as const,
         attemptNo: 1,
         outcomeJson: {
           score: 30,
           verdict: 'rejected',
           qualityTier: 'poor',
-          feedbackJson: {
-            summary: 'Content does not meet minimum quality threshold.',
-          },
+          feedbackJson: { summary: 'Content does not meet minimum quality threshold.' },
         },
         errorMessage: 'Review rejected (score 30 < 50)',
         awaitingReason: null,
@@ -567,9 +570,8 @@ export async function mockPipelineEdge(
         createdAt: nowIso(-10),
         updatedAt: nowIso(),
       }
-
-      // Update snapshot so GET /stages reflects failed state
       happy.runs.set('review', {
+        ...happy.runs.get('review'),
         id: row.id,
         projectId: project.id,
         stage: 'review',
@@ -585,27 +587,113 @@ export async function mockPipelineEdge(
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       } as Parameters<typeof happy.runs.set>[1])
+      return row
+    }
+    failReview = () => { markReviewFailed() }
 
+    function hardFailDraftBody() {
+      return {
+        id: 'draft-e2e-1',
+        status: 'failed',
+        canonical_core_json: { title: 'EC R3 Draft', thesis: 'Hard fail' },
+        draft_json: {
+          blog: { full_draft: 'Body markdown for EC R3 draft.' },
+          full_draft: 'Body markdown for EC R3 draft.',
+          word_count: 800,
+        },
+        body_markdown: 'Body markdown for EC R3 draft.',
+        word_count: 800,
+        title: 'EC R3 Draft',
+        review_score: 30,
+        review_verdict: 'rejected',
+        review_feedback_json: {
+          overall_verdict: 'Rejected',
+          blog_review: {
+            score: 30,
+            verdict: 'Rejected',
+            strengths: [],
+            issues: {
+              critical: [
+                { location: 'whole_post', issue: 'Multiple critical issues.', suggested_fix: 'Rewrite from scratch.' },
+              ],
+              minor: [],
+            },
+          },
+          summary: 'Hard fail — score 30 below 50 threshold.',
+        },
+        // Cap iteration_count at 1 so autopilot rearmKey stops changing after
+        // the first failure. Without the cap, the engine would loop endlessly
+        // (canFire never blocks 'failed' draft status).
+        iteration_count: 1,
+      }
+    }
+
+    // POST /api/content-drafts/:id/review — primary trigger fired by ReviewEngine
+    await page.route(/\/api\/content-drafts\/[^/]+\/review/, async (route: Route) => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      reviewCallCount++
+      markReviewFailed()
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          data: { stageRun: row },
-          error: null,
-        }),
+        body: JSON.stringify({ data: hardFailDraftBody(), error: null }),
       })
     })
 
-    // GET /stages: reflect failed review
+    // GET /api/content-drafts/:id — surface failed draft for refetchDraft
+    await page.route(/\/api\/content-drafts\/[^/]+$/, async (route: Route) => {
+      if (route.request().method() !== 'GET') return route.fallback()
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: hardFailDraftBody(), error: null }),
+      })
+    })
+
+    // POST /api/projects/:id/stage-runs (stage=review) — fallback path for any
+    // host that fires the dispatcher endpoint directly.
+    await page.route(`**/api/projects/${project.id}/stage-runs`, async (route: Route) => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      const body = (await readBody(route)) as { stage?: string } | null
+      if (body?.stage !== 'review') return route.fallback()
+      reviewCallCount++
+      const row = markReviewFailed()
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { stageRun: row }, error: null }),
+      })
+    })
+
+    // GET /stages: reflect failed review with tracks shape so supervised
+    // auto-advance can still find the active blog track.
     await page.route(`**/api/projects/${project.id}/stages`, async (route: Route) => {
-      const stageRuns = happy.snapshot()
+      const allRuns = happy.snapshot()
+      const TRACK_ID = 'track-e2e-blog-1'
+      const trackScopedStages = ['production', 'review', 'assets', 'preview', 'publish'] as const
+      const trackStageRuns: Record<string, unknown> = {}
+      for (const stage of trackScopedStages) {
+        const row = allRuns.find((r) => r.stage === stage) ?? null
+        trackStageRuns[stage] = row ? { ...row, trackId: TRACK_ID, allAttempts: [] } : null
+      }
+      const tracks = [
+        {
+          id: TRACK_ID,
+          medium: 'blog',
+          status: 'active',
+          paused: false,
+          stageRuns: trackStageRuns,
+          publishTargets: [{ id: 'pt-e2e-1', displayName: 'E2E WordPress' }],
+        },
+      ]
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           data: {
             project: { mode: project.mode, paused: false },
-            stageRuns,
+            stageRuns: allRuns.map((r) => ({ ...r, allAttempts: [] })),
+            tracks,
           },
           error: null,
         }),
@@ -1110,6 +1198,7 @@ export async function mockPipelineEdge(
     callCounts,
     patchBodies,
     parkReviewMax,
+    failReview,
     // Override unroute to use the page's unrouteAll
     unroute: async () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' })
