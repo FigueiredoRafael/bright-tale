@@ -264,6 +264,8 @@ export function ChatWizard<T extends Record<string, unknown>>({
       const { data, error: apiError } = await res.json()
       if (apiError) { setError(apiError.message); return }
       const turn = data as ChatTurnResponse
+      // Mark as already-seen so typewriter skips the opening message (appears instantly)
+      lastTypedContent.current = turn.message
       onMessagesChange([{ role: "assistant", content: turn.message }])
     } catch {
       setError("Falha ao iniciar conversa.")
