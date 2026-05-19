@@ -43,13 +43,22 @@ async function clickSidebar(page: Page, stage: string): Promise<void> {
 async function driveBrainstorm(page: Page): Promise<void> {
   await clickSidebar(page, 'brainstorm')
   await waitEngineRoot(page, 'brainstorm')
-  // Generate
   await page.getByTestId('brainstorm-action-generate').click()
-  // Wait for idea cards to render (step-by-step requires manual selection)
+
+  // Confront the wizard ↔ pipeline contract: brainstorm must surface MORE
+  // than one idea card so the user actually picks. A single card is a
+  // smoke test, not a brainstorm. Wait for >=2 cards before selecting.
+  await page.getByTestId('idea-card').first().waitFor({ state: 'visible', timeout: 30_000 })
+  const cardCount = await page.getByTestId('idea-card').count()
+  if (cardCount < 2) {
+    throw new Error(`[driveBrainstorm] expected >=2 idea cards, got ${cardCount}`)
+  }
+
+  // Pick the first idea and confirm it transitions to data-selected="true".
   const firstIdea = page.getByTestId('idea-card').first()
-  await firstIdea.waitFor({ state: 'visible', timeout: 30_000 })
   await firstIdea.click()
-  // Wait for result and click Next
+  await firstIdea.waitFor({ state: 'visible' })
+
   await page.getByTestId('brainstorm-action-next').waitFor({ state: 'visible', timeout: 30_000 })
   await page.getByTestId('brainstorm-action-next').click()
 }
@@ -57,9 +66,15 @@ async function driveBrainstorm(page: Page): Promise<void> {
 async function driveResearch(page: Page): Promise<void> {
   await clickSidebar(page, 'research')
   await waitEngineRoot(page, 'research')
-  // Generate
   await page.getByTestId('research-action-generate').click()
-  // Approve all
+
+  // Confront the wizard ↔ pipeline contract: ResearchFindingsReport must
+  // surface actual research before the user approves. Wait for the report
+  // root + at least one source card so we know the rich findings rendered,
+  // not just a hollow summary.
+  await page.getByTestId('research-findings-report').waitFor({ state: 'visible', timeout: 30_000 })
+  await page.getByTestId('research-source-card').first().waitFor({ state: 'visible', timeout: 15_000 })
+
   await page.getByTestId('research-action-approve-all').waitFor({ state: 'visible', timeout: 30_000 })
   await page.getByTestId('research-action-approve-all').click()
 }

@@ -516,17 +516,92 @@ export async function mockPipelineHappy(
 
   // ── Research engine endpoints ────────────────────────────────────────────
   const RESEARCH_SESSION_ID = 'sess-e2e-research-1'
+  // Realistic findings shape that ResearchFindingsReport renders into
+  // per-section cards. The structured arrays (sources/statistics/quotes/
+  // counterarguments) are what e2e specs must confront — empty arrays mean
+  // the report only shows the summary card and tests cannot prove the
+  // research stage actually surfaced research.
   const RESEARCH_FINDINGS = {
     seo: {
       primary_keyword: 'retirement planning freelancers',
       secondary_keywords: ['solo 401k', 'sep ira', 'roth ira freelancer'],
       search_intent: 'informational',
     },
-    confidence_score: 92,
+    idea_validation: {
+      core_claim_verified: true,
+      evidence_strength: 'strong',
+      confidence_score: 0.92,
+      validation_notes: 'Multiple independent sources confirm the contribution ceiling differential.',
+    },
+    research_summary: 'Freelancers need self-directed retirement vehicles. Solo 401(k) and SEP-IRA offer the highest contribution limits.',
+    sources: [
+      {
+        source_id: 'src-1',
+        title: 'IRS Publication 560 — Retirement Plans for Self-Employed',
+        url: 'https://www.irs.gov/publications/p560',
+        type: 'government',
+        credibility: 'High',
+        key_insight: 'Solo 401(k) contribution limit reaches $69,000 in 2024 (employee + employer).',
+        date_published: '2024-01-15',
+      },
+      {
+        source_id: 'src-2',
+        title: 'Fidelity Self-Employed Retirement Guide',
+        url: 'https://www.fidelity.com/retirement-ira/small-business',
+        type: 'industry',
+        credibility: 'Medium',
+        key_insight: 'SEP-IRA caps at 25% of net earnings; lower than Solo 401(k) for high earners.',
+        date_published: '2024-03-02',
+      },
+    ],
+    statistics: [
+      {
+        stat_id: 'stat-1',
+        figure: '$69,000',
+        claim: 'Solo 401(k) max contribution (2024)',
+        source_id: 'src-1',
+        context: 'Employee deferral + employer profit sharing combined ceiling.',
+      },
+      {
+        stat_id: 'stat-2',
+        figure: '36%',
+        claim: 'Freelancers with no retirement account',
+        source_id: 'src-2',
+        context: 'Industry survey across 1,200 US freelancers.',
+      },
+    ],
+    expert_quotes: [
+      {
+        quote_id: 'q-1',
+        quote: 'A Solo 401(k) is the single highest-ceiling tax-advantaged option for self-employed earners.',
+        author: 'Jane Tax-CPA',
+        credentials: 'CPA, retirement planning specialist',
+        source_id: 'src-1',
+      },
+    ],
+    counterarguments: [
+      {
+        counter_id: 'c-1',
+        point: 'SEP-IRAs are simpler to administer than Solo 401(k)s.',
+        strength: 'Medium',
+        rebuttal: 'Modern providers (Fidelity, Schwab) offer Solo 401(k)s with the same admin burden as SEPs.',
+        source_id: 'src-2',
+      },
+    ],
+    knowledge_gaps: [
+      'How quarterly variable income impacts Solo 401(k) contribution timing.',
+    ],
+    refined_angle: {
+      should_pivot: false,
+      updated_title: 'Solo 401(k) vs SEP-IRA for Freelancers — the honest comparison',
+      updated_hook: 'You can contribute up to $69k if you pick the right vehicle.',
+      angle_notes: 'Lead with the dollar figure; keep the original audience.',
+      recommendation: 'Proceed with the original angle, sharpen the hook.',
+    },
+    confidence_score: 0.92,
     evidence_strength: 'strong',
     source_count: 12,
     expert_quote_count: 3,
-    research_summary: 'Freelancers need self-directed retirement vehicles. Solo 401(k) and SEP-IRA offer the highest contribution limits.',
     pivot_recommendation: 'None — original angle is strong',
   }
 

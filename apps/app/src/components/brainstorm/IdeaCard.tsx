@@ -116,7 +116,14 @@ export function IdeaCard({
     : {};
 
   return (
-    <div {...containerProps} className={containerClass} data-testid="idea-card">
+    <div
+      {...containerProps}
+      className={containerClass}
+      data-testid="idea-card"
+      data-idea-id={idea.id ?? ''}
+      data-selected={isSelected ? 'true' : 'false'}
+      data-verdict={idea.verdict ?? ''}
+    >
       {(isSelected || isWinner) && (
         <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-primary to-primary/60" />
       )}
