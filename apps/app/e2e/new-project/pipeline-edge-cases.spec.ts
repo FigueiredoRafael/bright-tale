@@ -309,30 +309,79 @@ test.describe('EC-R1 — low-score-retry (overview)', () => {
 test.describe('EC-R2 — max-iterations (supervised)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('review halts at awaiting_user(max_iterations) after max iterations in supervised mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard supervised + maxIter=2 → autopilot loops 2× then parks awaiting_user(max_iterations)', async ({ page }) => {
+    test.setTimeout(240_000)
     const project = seed('proj-ec-max-1', 'supervised', 'EC Max Iterations Supervised')
 
     const mock = await mockPipelineEdge(page, 'max-iterations', { project })
 
+    // ── Wizard ────────────────────────────────────────────────────────────────
+    // The grill confronts maxIterations=2: every review iter returns score 70
+    // (below auto-approve 90, above hard-fail 50). After iter 2 the dispatcher
+    // parks the run in awaiting_user(max_iterations) — see #204 budget branch.
+    await page.goto('/en/projects/new')
+    await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
+
+    await page.locator('#project-title').fill(project.title)
+    await page.getByTestId('channel-option').first().click()
+    await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+
+    await page.getByRole('radio', { name: 'Supervised' }).click()
+
+    // Lock review thresholds — parity with the mock's budget
+    await page.locator('[data-testid="stage-section-review"] button').first().click()
+    await page.locator('#review-maxIterations').fill('2')
+    await page.locator('#review-autoApproveThreshold').fill('90')
+    await page.locator('#review-hardFailThreshold').fill('50')
+
+    await page.getByRole('button', { name: /create project/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+
+    // ── Wizard ↔ pipeline parity: thresholds round-trip into POST /api/projects
+    const createAction = mock.actions.find(
+      (a) => a.method === 'POST' && a.url === '/api/projects',
+    )
+    expect(createAction).toBeDefined()
+    const createBody = createAction!.body as {
+      mode?: string
+      autopilotConfigJson?: { review?: { maxIterations?: number; autoApproveThreshold?: number; hardFailThreshold?: number } }
+    }
+    expect(createBody.mode).toBe('supervised')
+    expect(createBody.autopilotConfigJson?.review?.maxIterations).toBe(2)
+    expect(createBody.autopilotConfigJson?.review?.autoApproveThreshold).toBe(90)
+    expect(createBody.autopilotConfigJson?.review?.hardFailThreshold).toBe(50)
+
+    // ── Supervised walkthrough ───────────────────────────────────────────────
+    await page.getByTestId('brainstorm-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
     mock.completeStage('brainstorm')
+    await assertStageComplete(page, 'brainstorm', { timeout: 30_000 })
+
+    await page.getByTestId('research-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
     mock.completeStage('research')
+    await assertStageComplete(page, 'research', { timeout: 30_000 })
+
+    await page.getByTestId('canonical-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
     mock.completeStage('canonical')
+    await assertStageComplete(page, 'canonical', { timeout: 30_000 })
+
+    await page.getByTestId('production-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
     mock.completeStage('production')
-    // Do NOT pre-complete review — the max-iterations mock handles all review calls
+    await assertStageComplete(page, 'production', { timeout: 30_000 })
 
-    await page.goto(`/en/projects/${project.id}`)
-    await page.waitForTimeout(2_000)
+    // ── Review loop ──────────────────────────────────────────────────────────
+    // Autopilot fires iter1 (score 70), rearm→iter2 (score 70, budget exhausted).
+    // The mock parks the stage_run on iter2 → workspace-level AwaitingBanner
+    // renders with data-reason="max_iterations".
+    await page.getByTestId('review-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
 
-    await assertStageComplete(page, 'brainstorm', { timeout: 15_000 })
-    await assertStageComplete(page, 'research', { timeout: 15_000 })
-    await assertStageComplete(page, 'canonical', { timeout: 15_000 })
-    await assertStageComplete(page, 'production', { timeout: 15_000 })
-
-    // emitted by apps/api/src/jobs/pipeline-review-dispatch.ts budget branch — see #185 reason taxonomy
     const banner = page.getByTestId('awaiting-banner')
-    await banner.waitFor({ state: 'visible', timeout: 30_000 })
+    await banner.waitFor({ state: 'visible', timeout: 60_000 })
     await expect(banner).toHaveAttribute('data-reason', 'max_iterations')
+
+    // Loop accounting: at least two reviews fired (the budget). The cap on
+    // iteration_count in the mock prevents the rearmKey from advancing past 2,
+    // so autopilot can't loop indefinitely after the parking.
+    expect(mock.reviewCallCount).toBeGreaterThanOrEqual(2)
 
     await mock.unroute()
   })
@@ -341,24 +390,61 @@ test.describe('EC-R2 — max-iterations (supervised)', () => {
 test.describe('EC-R2 — max-iterations (overview)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('review halts at awaiting_user(max_iterations) after max iterations in overview mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard overview + maxIter=2 → OverviewProgressView surfaces awaiting_user(max_iterations)', async ({ page }) => {
+    test.setTimeout(180_000)
     const project = seed('proj-ec-max-2', 'overview', 'EC Max Iterations Overview')
 
     const mock = await mockPipelineEdge(page, 'max-iterations', { project })
 
+    // ── Wizard ────────────────────────────────────────────────────────────────
+    // Overview is watch-only: the front-end never fires /review — the backend
+    // autopilot owns the loop and writes awaiting_user(max_iterations) into
+    // stage_runs. The grill seeds that final state directly to mirror what the
+    // real orchestrator would persist after exhausting iterations.
+    await page.goto('/en/projects/new')
+    await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
+
+    await page.locator('#project-title').fill(project.title)
+    await page.getByTestId('channel-option').first().click()
+    await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+
+    await page.getByRole('radio', { name: 'Overview' }).click()
+
+    await page.locator('[data-testid="stage-section-review"] button').first().click()
+    await page.locator('#review-maxIterations').fill('2')
+    await page.locator('#review-autoApproveThreshold').fill('90')
+    await page.locator('#review-hardFailThreshold').fill('50')
+
+    await page.getByRole('button', { name: /create project/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+
+    // ── Parity: thresholds → POST /api/projects body
+    const createAction = mock.actions.find(
+      (a) => a.method === 'POST' && a.url === '/api/projects',
+    )
+    expect(createAction).toBeDefined()
+    const createBody = createAction!.body as {
+      mode?: string
+      autopilotConfigJson?: { review?: { maxIterations?: number; autoApproveThreshold?: number; hardFailThreshold?: number } }
+    }
+    expect(createBody.mode).toBe('overview')
+    expect(createBody.autopilotConfigJson?.review?.maxIterations).toBe(2)
+
+    // ── Overview view mounts; engines must NOT mount ─────────────────────────
+    await page.getByTestId('overview-progress-view').waitFor({ state: 'visible', timeout: 20_000 })
+    await expect(page.getByTestId('review-engine-root')).toHaveCount(0)
+    await expect(page.getByTestId('production-engine-root')).toHaveCount(0)
+
+    // ── Simulate backend autopilot completing shared+production stages and
+    // ── then parking review on max-iterations
     mock.completeStage('brainstorm')
     mock.completeStage('research')
     mock.completeStage('canonical')
     mock.completeStage('production')
+    mock.parkReviewMax()
 
-    await page.goto(`/en/projects/${project.id}`)
-
-    const progressView = page.getByTestId('overview-progress-view')
-    await progressView.waitFor({ state: 'visible', timeout: 20_000 })
-
-    await expect(page.getByTestId('overview-stage-brainstorm')).toHaveAttribute('data-status', 'completed', { timeout: 15_000 })
-    await expect(page.getByTestId('overview-stage-production')).toHaveAttribute('data-status', 'completed', { timeout: 15_000 })
+    await expect(page.getByTestId('overview-stage-brainstorm')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
+    await expect(page.getByTestId('overview-stage-production')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
 
     // emitted by apps/api/src/jobs/pipeline-review-dispatch.ts budget branch — see #185 reason taxonomy
     const banner = page.getByTestId('awaiting-banner')

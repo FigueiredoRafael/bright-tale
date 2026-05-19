@@ -39,6 +39,13 @@ export interface EdgeMock extends HappyMock {
   callCounts: Map<string, number>
   /** Captured PATCH / POST bodies keyed by url pattern */
   patchBodies: Array<{ url: string; body: unknown }>
+  /**
+   * Force the review stage_run into awaiting_user(max_iterations) state without
+   * a POST /review fire (used by overview-mode tests where the front-end never
+   * triggers reviews — the backend autopilot owns the loop). No-op for
+   * scenarios other than 'max-iterations'.
+   */
+  parkReviewMax: () => void
 }
 
 async function readBody(route: Route): Promise<unknown> {
@@ -288,6 +295,117 @@ export async function mockPipelineEdge(
     // review dispatcher parks run in awaiting_user(max_iterations).
     // Production emit site: apps/api/src/jobs/pipeline-review-dispatch.ts (budget branch)
     // — `awaitingReason: 'max_iterations'` since #204.
+
+    const MAX_ITER = 2
+
+    // POST /api/content-drafts/:id/review — primary trigger fired by ReviewEngine
+    // (autopilot loop in supervised). Returns score 70 revision_required each
+    // call and, on hitting the budget, also parks the review stage_run so the
+    // workspace-level AwaitingBanner renders with reason=max_iterations.
+    await page.route(/\/api\/content-drafts\/[^/]+\/review/, async (route: Route) => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      reviewCallCount++
+      const callNo = reviewCallCount
+      const cappedIter = Math.min(callNo, MAX_ITER)
+      const isExhausted = callNo >= MAX_ITER
+
+      if (isExhausted) {
+        const row = reviewRunRow(project.id, {
+          score: 70,
+          verdict: 'revision_required',
+          status: 'awaiting_user',
+          awaitingReason: 'max_iterations',
+        })
+        happy.runs.set('review', {
+          ...happy.runs.get('review'),
+          id: row.id,
+          projectId: project.id,
+          stage: 'review',
+          status: 'awaiting_user',
+          attemptNo: callNo,
+          inputJson: null,
+          outcomeJson: row.outcomeJson,
+          payloadRef: row.payloadRef,
+          finishedAt: null,
+          errorMessage: null,
+          trackId: null,
+          publishTargetId: null,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+        } as Parameters<typeof happy.runs.set>[1])
+      }
+
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: 'draft-e2e-1',
+            status: 'in_review',
+            review_score: 70,
+            review_verdict: 'revision_required',
+            review_feedback_json: {
+              overall_verdict: 'Revision Required',
+              blog_review: {
+                score: 70,
+                verdict: 'Revision Required',
+                strengths: [],
+                issues: {
+                  critical: [
+                    { location: 'intro', issue: 'Still weak.', suggested_fix: 'Rewrite intro.' },
+                  ],
+                  minor: [],
+                },
+              },
+              summary: 'Needs more work.',
+            },
+            // Cap iteration_count at MAX_ITER so rearmKey stops changing past
+            // the budget — prevents the autopilot from firing additional
+            // reviews after parking (the orchestrator would refuse them in
+            // production; the cap mirrors that gate).
+            iteration_count: cappedIter,
+          },
+          error: null,
+        }),
+      })
+    })
+
+    // GET /api/content-drafts/:id — surface latest review fields with capped iter
+    await page.route(/\/api\/content-drafts\/[^/]+$/, async (route: Route) => {
+      if (route.request().method() !== 'GET') return route.fallback()
+      const cappedIter = Math.min(reviewCallCount, MAX_ITER)
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: 'draft-e2e-1',
+            status: 'in_review',
+            canonical_core_json: { title: 'EC R2 Draft', thesis: 'Loop budget' },
+            draft_json: {
+              blog: { full_draft: 'Body markdown for EC R2 draft.' },
+              full_draft: 'Body markdown for EC R2 draft.',
+              word_count: 800,
+            },
+            body_markdown: 'Body markdown for EC R2 draft.',
+            word_count: 800,
+            title: 'EC R2 Draft',
+            review_score: reviewCallCount > 0 ? 70 : null,
+            review_verdict: reviewCallCount > 0 ? 'revision_required' : 'pending',
+            review_feedback_json: reviewCallCount > 0
+              ? {
+                  overall_verdict: 'Revision Required',
+                  blog_review: { score: 70, verdict: 'Revision Required', strengths: [], issues: { critical: [{ location: 'intro', issue: 'Still weak.', suggested_fix: 'Rewrite intro.' }], minor: [] } },
+                  summary: 'Needs more work.',
+                }
+              : null,
+            iteration_count: cappedIter,
+          },
+          error: null,
+        }),
+      })
+    })
+
     await page.route(`**/api/projects/${project.id}/stage-runs`, async (route: Route) => {
       if (route.request().method() !== 'POST') return route.fallback()
       const body = (await readBody(route)) as { stage?: string } | null
@@ -338,28 +456,46 @@ export async function mockPipelineEdge(
       })
     })
 
-    // GET /stages override for max-iterations: reflects awaiting_user for review
+    // GET /stages override for max-iterations: reflects awaiting_user for review.
+    // Mirrors the happy snapshotResponse shape (project + stageRuns + tracks)
+    // so PipelineWorkspace's supervised auto-advance can still find the active
+    // blog track and walk forward through production → review.
     await page.route(`**/api/projects/${project.id}/stages`, async (route: Route) => {
       const reviewRun = happy.runs.get('review')
-      const stageRuns = happy.snapshot()
-      // Ensure review shows awaiting_user if iterations exhausted
-      const enriched = stageRuns.map((r) => {
+      const allRuns = happy.snapshot()
+      const enriched = allRuns.map((r) => {
         if (r.stage === 'review' && reviewRun?.status === 'awaiting_user') {
           return { ...r, status: 'awaiting_user', awaitingReason: 'max_iterations' }
         }
         return r
       })
 
+      const TRACK_ID = 'track-e2e-blog-1'
+      const trackScopedStages = ['production', 'review', 'assets', 'preview', 'publish'] as const
+      const trackStageRuns: Record<string, unknown> = {}
+      for (const stage of trackScopedStages) {
+        const row = enriched.find((r) => r.stage === stage) ?? null
+        trackStageRuns[stage] = row ? { ...row, trackId: TRACK_ID, allAttempts: [] } : null
+      }
+      const tracks = [
+        {
+          id: TRACK_ID,
+          medium: 'blog',
+          status: 'active',
+          paused: false,
+          stageRuns: trackStageRuns,
+          publishTargets: [{ id: 'pt-e2e-1', displayName: 'E2E WordPress' }],
+        },
+      ]
+
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           data: {
-            project: {
-              mode: project.mode,
-              paused: false,
-            },
-            stageRuns: enriched,
+            project: { mode: project.mode, paused: false },
+            stageRuns: enriched.map((r) => ({ ...r, allAttempts: [] })),
+            tracks,
           },
           error: null,
         }),
@@ -940,12 +1076,40 @@ export async function mockPipelineEdge(
 
   // reviewCallCount is mutated by route handlers; expose via getter so callers
   // see the live count instead of a value snapshot taken at return time.
+  const parkReviewMax = () => {
+    if (scenario !== 'max-iterations') return
+    const row = reviewRunRow(project.id, {
+      score: 70,
+      verdict: 'revision_required',
+      status: 'awaiting_user',
+      awaitingReason: 'max_iterations',
+    })
+    happy.runs.set('review', {
+      ...happy.runs.get('review'),
+      id: row.id,
+      projectId: project.id,
+      stage: 'review',
+      status: 'awaiting_user',
+      attemptNo: 2,
+      inputJson: null,
+      outcomeJson: row.outcomeJson,
+      payloadRef: row.payloadRef,
+      finishedAt: null,
+      errorMessage: null,
+      trackId: null,
+      publishTargetId: null,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    } as Parameters<typeof happy.runs.set>[1])
+  }
+
   return {
     ...happy,
     scenario,
     get reviewCallCount() { return reviewCallCount },
     callCounts,
     patchBodies,
+    parkReviewMax,
     // Override unroute to use the page's unrouteAll
     unroute: async () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' })
