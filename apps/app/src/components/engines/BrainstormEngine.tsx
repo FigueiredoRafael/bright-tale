@@ -825,7 +825,7 @@ export function BrainstormEngine({
   // Import mode: show ImportPicker when mode='import' and no initial session
   if (engineMode === 'import' && !initialSession) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" data-testid="brainstorm-engine-root">
         <ContextBanner stage="brainstorm" context={trackerContext} />
 
         <div className="flex items-start justify-between gap-4">
@@ -895,7 +895,7 @@ export function BrainstormEngine({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="brainstorm-engine-root">
       <ContextBanner stage="brainstorm" context={trackerContext} />
 
       <div className="flex items-start justify-between gap-4">
@@ -1036,7 +1036,7 @@ export function BrainstormEngine({
                 }}
                 onModelChange={setModel}
               />
-              <Button onClick={handleRun} disabled={running}>
+              <Button onClick={handleRun} disabled={running} data-testid="brainstorm-action-generate">
                 {running ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />{' '}
@@ -1141,6 +1141,7 @@ export function BrainstormEngine({
                   size="sm"
                   onClick={handleRegenerate}
                   disabled={regenerating}
+                  data-testid="brainstorm-action-regenerate"
                 >
                   {regenerating ? (
                     <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
@@ -1229,6 +1230,7 @@ export function BrainstormEngine({
             <Button
               onClick={handleComplete}
               className="shrink-0 gap-2"
+              data-testid="brainstorm-action-next"
             >
               Next: Research <ArrowRight className="h-4 w-4" />
             </Button>

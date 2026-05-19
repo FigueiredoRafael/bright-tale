@@ -643,7 +643,7 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
   const hasReview = !!draftView.review_feedback_json;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="review-engine-root">
       <ContextBanner stage="review" context={trackerContext} onBack={navigate} />
       <ContentWarningBanner warning={typeof (draftView.review_feedback_json as Record<string, unknown> | null)?.content_warning === 'string' ? (draftView.review_feedback_json as Record<string, unknown>).content_warning as string : undefined} />
 
@@ -683,6 +683,7 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
                 disabled={busy || reviewing || !draftView.draft_json}
                 size="lg"
                 className="gap-2 shrink-0"
+                data-testid="review-action-run"
               >
                 {busy || reviewing ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -767,6 +768,7 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
                       }
                     }}
                     className="gap-2"
+                    data-testid="review-action-next"
                   >
                     <Check className="h-4 w-4" />
                     Next: Assets <ArrowRight className="h-4 w-4" />
@@ -810,6 +812,7 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
                       disabled={busy || reviewing}
                       size="sm"
                       className="gap-1.5"
+                      data-testid="review-action-run"
                     >
                       {busy || reviewing ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -874,6 +877,7 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
                   variant="ghost"
                   size="sm"
                   className="w-full"
+                  data-testid="review-action-override-approve"
                 >
                   Override Approve
                 </Button>

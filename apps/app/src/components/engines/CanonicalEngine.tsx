@@ -779,7 +779,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
   }
 
   return (
-    <section data-testid="canonical-engine" className="space-y-6">
+    <section data-testid="canonical-engine-root" className="space-y-6">
       <ContextBanner stage="draft" context={trackerContext} />
 
       <div className="flex items-start justify-between gap-4">
@@ -898,7 +898,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
                   }}
                   onModelChange={setModel}
                 />
-                <Button onClick={handleGenerateCore} disabled={busy || !research || !title.trim() || !selectedPersonaId}>
+                <Button onClick={handleGenerateCore} disabled={busy || !research || !title.trim() || !selectedPersonaId} data-testid="canonical-action-generate">
                   {busy ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating Core...</>
                   ) : (
@@ -985,6 +985,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
                     setCoreApproved(false);
                   }}
                   className="text-xs gap-1"
+                  data-testid="canonical-action-regenerate"
                 >
                   <Pencil className="h-3 w-3" /> Regenerate
                 </Button>
@@ -1006,7 +1007,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
                   <div className="text-xs text-muted-foreground">
                     Review the core narrative. Approve to unlock content production, or regenerate to try again.
                   </div>
-                  <Button size="sm" onClick={() => setCoreApproved(true)} className="shrink-0 gap-1.5">
+                  <Button size="sm" onClick={() => setCoreApproved(true)} className="shrink-0 gap-1.5" data-testid="canonical-action-approve">
                     <Check className="h-4 w-4" /> Approve &amp; Continue
                   </Button>
                 </div>

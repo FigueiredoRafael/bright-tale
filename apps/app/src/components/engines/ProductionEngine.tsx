@@ -483,7 +483,7 @@ export function ProductionEngine({ projectId: projectIdProp, trackId, medium }: 
 
   return (
     <section
-      data-testid="production-engine"
+      data-testid="production-engine-root"
       data-medium={medium}
       data-track-id={trackId}
       className="space-y-6"
@@ -608,7 +608,7 @@ export function ProductionEngine({ projectId: projectIdProp, trackId, medium }: 
                   }}
                   onModelChange={setModel}
                 />
-                <Button onClick={handleProduce} disabled={busy || !draftId}>
+                <Button onClick={handleProduce} disabled={busy || !draftId} data-testid="production-action-produce">
                   {busy ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Producing...</>
                   ) : (
@@ -659,10 +659,11 @@ export function ProductionEngine({ projectId: projectIdProp, trackId, medium }: 
                   setProducedContent('');
                   setProducedDraftJson(null);
                 }}
+                data-testid="production-action-produce-again"
               >
                 <Pencil className="h-4 w-4 mr-2" /> Produce Again
               </Button>
-              <Button onClick={() => {
+              <Button data-testid="production-action-done" onClick={() => {
                 const wordCount = producedContent.split(/\s+/).length;
                 tracker.trackCompleted({
                   draftId: draftId || '',

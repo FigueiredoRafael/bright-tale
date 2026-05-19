@@ -193,6 +193,7 @@ export function PublishPanel({
                   scheduledDate: mode === 'schedule' ? new Date(scheduledDate).toISOString() : undefined,
                 })
               }
+              data-testid="publish-action-confirm"
             >
               {isPublishing
                 ? 'Publishing...'

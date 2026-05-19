@@ -1327,7 +1327,7 @@ export function DraftEngine({
   // ── Import mode ───────────────────────────────────────────────
   if (engineMode === 'import' && !initialDraft) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" data-testid="draft-engine-root">
         {srOnlyHooks}
         <ContextBanner stage="draft" context={trackerContext} />
 
@@ -1379,7 +1379,7 @@ export function DraftEngine({
 
   // ── Main render ───────────────────────────────────────────────
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="draft-engine-root">
       {srOnlyHooks}
 
       <ContextBanner stage="draft" context={trackerContext} />
@@ -1523,7 +1523,7 @@ export function DraftEngine({
                   }}
                   onModelChange={setModel}
                 />
-                <Button onClick={handleGenerateCore} disabled={busy || !research || !title.trim() || !selectedPersonaId}>
+                <Button onClick={handleGenerateCore} disabled={busy || !research || !title.trim() || !selectedPersonaId} data-testid="draft-action-generate-core">
                   {busy ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating Core...</>
                   ) : (
@@ -1596,6 +1596,7 @@ export function DraftEngine({
                     setCoreApproved(false);
                   }}
                   className="text-xs gap-1"
+                  data-testid="draft-action-regenerate-core"
                 >
                   <Pencil className="h-3 w-3" /> Regenerate
                 </Button>
@@ -1617,7 +1618,7 @@ export function DraftEngine({
                   <div className="text-xs text-muted-foreground">
                     Review the core narrative. Approve to unlock content production, or regenerate to try again.
                   </div>
-                  <Button size="sm" onClick={() => setCoreApproved(true)} className="shrink-0 gap-1.5">
+                  <Button size="sm" onClick={() => setCoreApproved(true)} className="shrink-0 gap-1.5" data-testid="draft-action-approve-core">
                     <Check className="h-4 w-4" /> Approve &amp; Continue
                   </Button>
                 </div>
@@ -1759,7 +1760,7 @@ export function DraftEngine({
                 {canonicalCore && typeof canonicalCore.content_warning === 'string' && canonicalCore.content_warning && (
                   <ContentWarningBanner warning={canonicalCore.content_warning} />
                 )}
-                <Button onClick={handleProduce} disabled={busy || phase === 'produce'}>
+                <Button onClick={handleProduce} disabled={busy || phase === 'produce'} data-testid="draft-action-produce">
                   {phase === 'produce' ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Producing...</>
                   ) : (
@@ -1812,10 +1813,11 @@ export function DraftEngine({
                   setProducedContent('');
                   setProducedDraftJson(null);
                 }}
+                data-testid="draft-action-produce-another"
               >
                 <Pencil className="h-4 w-4 mr-2" /> Produce Another Format
               </Button>
-              <Button onClick={() => {
+              <Button data-testid="draft-action-done" onClick={() => {
                 const wordCount = producedContent.split(/\s+/).length;
                 tracker.trackCompleted({
                   draftId: draftId || '',
