@@ -901,44 +901,51 @@ test.describe('EC-F2 — manual-paste (overview)', () => {
 // (handleRestartConfirmed → POST /api/projects/:id/stage-runs {stage, cascade:true, input}).
 // Production testids: `restart-stage-button` (trigger) → `restart-stage-confirm` (dialog action).
 
+// Production failure surface is pre-seeded by the mock (no engine fires
+// POST /stage-runs in step-by-step / overview), so the retry path is what
+// the test confronts. The wizard parity check is the project mode itself.
+async function navigateToProductionStage(page: import('@playwright/test').Page, projectId: string) {
+  const url = `/en/projects/${projectId}?stage=production&track=track-e2e-blog-1`
+  await page.goto(url)
+}
+
 test.describe('EC-F3 — stage-failure-retry (step-by-step)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('production 500 then retry succeeds in step-by-step mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard step-by-step → production failed → restart-stage CTA → completed', async ({ page }) => {
+    test.setTimeout(180_000)
     const project = seed('proj-ec-sfr-1', 'step-by-step', 'EC Stage Failure Retry Step-by-Step')
 
     const mock = await mockPipelineEdge(page, 'stage-failure-retry', { project })
+
+    await submitWizard(page, project, 'Step-by-step')
+    assertWizardModeRoundtrip(mock, 'step-by-step')
 
     mock.completeStage('brainstorm')
     mock.completeStage('research')
     mock.completeStage('canonical')
 
-    await page.goto(`/en/projects/${project.id}`)
-    await page.waitForTimeout(2_000)
+    // Navigate to the production stage URL so FocusPanel mounts the restart CTA
+    // for the failed production target.
+    await navigateToProductionStage(page, project.id)
 
-    await assertStageComplete(page, 'brainstorm', { timeout: 15_000 })
-    await assertStageComplete(page, 'research', { timeout: 15_000 })
-    await assertStageComplete(page, 'canonical', { timeout: 15_000 })
-
-    // First production attempt fails — sidebar should show failed
     await expect.poll(
       async () => {
         const el = page.locator('[data-testid*="sidebar-status-"][data-testid*="production"]').first()
         return el.getAttribute('data-status').catch(() => null)
       },
-      { timeout: 20_000, message: 'Production stage did not reach failed status on first attempt' },
+      { timeout: 30_000, message: 'Production stage did not reach failed status' },
     ).toBe('failed')
 
-    // Click restart trigger → confirm dialog (FocusPanel.tsx:308 fires the POST)
+    // Restart CTA fires POST /api/projects/:id/stage-runs {stage, cascade:true}
+    // wired by FocusPanel.tsx (handleRestartConfirmed).
     const retryCta = page.getByTestId('restart-stage-button')
-    await retryCta.waitFor({ state: 'visible', timeout: 10_000 })
+    await retryCta.waitFor({ state: 'visible', timeout: 15_000 })
     await retryCta.click()
     const confirmCta = page.getByTestId('restart-stage-confirm')
     await confirmCta.waitFor({ state: 'visible', timeout: 10_000 })
     await confirmCta.click()
 
-    // Second attempt succeeds
     await assertStageComplete(page, 'production', { timeout: 20_000 })
 
     await mock.unroute()
@@ -948,34 +955,31 @@ test.describe('EC-F3 — stage-failure-retry (step-by-step)', () => {
 test.describe('EC-F3 — stage-failure-retry (supervised)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('production 500 then retry succeeds in supervised mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard supervised → production failed → restart-stage CTA → completed', async ({ page }) => {
+    test.setTimeout(180_000)
     const project = seed('proj-ec-sfr-2', 'supervised', 'EC Stage Failure Retry Supervised')
 
     const mock = await mockPipelineEdge(page, 'stage-failure-retry', { project })
+
+    await submitWizard(page, project, 'Supervised')
+    assertWizardModeRoundtrip(mock, 'supervised')
 
     mock.completeStage('brainstorm')
     mock.completeStage('research')
     mock.completeStage('canonical')
 
-    await page.goto(`/en/projects/${project.id}`)
-    await page.waitForTimeout(2_000)
-
-    await assertStageComplete(page, 'brainstorm', { timeout: 15_000 })
-    await assertStageComplete(page, 'research', { timeout: 15_000 })
-    await assertStageComplete(page, 'canonical', { timeout: 15_000 })
+    await navigateToProductionStage(page, project.id)
 
     await expect.poll(
       async () => {
         const el = page.locator('[data-testid*="sidebar-status-"][data-testid*="production"]').first()
         return el.getAttribute('data-status').catch(() => null)
       },
-      { timeout: 20_000, message: 'Production stage did not reach failed status' },
+      { timeout: 30_000, message: 'Production stage did not reach failed status' },
     ).toBe('failed')
 
-    // Click restart trigger → confirm dialog (FocusPanel.tsx:308 fires the POST)
     const retryCta = page.getByTestId('restart-stage-button')
-    await retryCta.waitFor({ state: 'visible', timeout: 10_000 })
+    await retryCta.waitFor({ state: 'visible', timeout: 15_000 })
     await retryCta.click()
     const confirmCta = page.getByTestId('restart-stage-confirm')
     await confirmCta.waitFor({ state: 'visible', timeout: 10_000 })
@@ -990,37 +994,34 @@ test.describe('EC-F3 — stage-failure-retry (supervised)', () => {
 test.describe('EC-F3 — stage-failure-retry (overview)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('production 500 then retry succeeds in overview mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard overview → production failed → OverviewProgressView surfaces failed → mock seed recovers', async ({ page }) => {
+    test.setTimeout(180_000)
     const project = seed('proj-ec-sfr-3', 'overview', 'EC Stage Failure Retry Overview')
 
     const mock = await mockPipelineEdge(page, 'stage-failure-retry', { project })
+
+    await submitWizard(page, project, 'Overview')
+    assertWizardModeRoundtrip(mock, 'overview')
 
     mock.completeStage('brainstorm')
     mock.completeStage('research')
     mock.completeStage('canonical')
 
-    await page.goto(`/en/projects/${project.id}`)
-
-    const progressView = page.getByTestId('overview-progress-view')
-    await progressView.waitFor({ state: 'visible', timeout: 20_000 })
+    // Watch-only contract — no engine, no restart CTA accessible from here.
+    await page.getByTestId('overview-progress-view').waitFor({ state: 'visible', timeout: 20_000 })
+    await expect(page.getByTestId('production-engine-root')).toHaveCount(0)
 
     await expect.poll(
       async () => {
         const el = page.getByTestId('overview-stage-production')
         return el.getAttribute('data-status').catch(() => null)
       },
-      { timeout: 20_000, message: 'Overview production stage did not reach failed status' },
+      { timeout: 30_000, message: 'Overview production stage did not reach failed status' },
     ).toBe('failed')
 
-    // Click restart trigger → confirm dialog (FocusPanel.tsx:308 fires the POST)
-    const retryCta = page.getByTestId('restart-stage-button')
-    await retryCta.waitFor({ state: 'visible', timeout: 10_000 })
-    await retryCta.click()
-    const confirmCta = page.getByTestId('restart-stage-confirm')
-    await confirmCta.waitFor({ state: 'visible', timeout: 10_000 })
-    await confirmCta.click()
-
+    // Backend autopilot would internally retry; here we simulate it by
+    // seeding production=completed directly via the mock.
+    mock.completeStage('production')
     await expect(page.getByTestId('overview-stage-production')).toHaveAttribute('data-status', 'completed', { timeout: 20_000 })
 
     await mock.unroute()
@@ -1037,28 +1038,20 @@ test.describe('EC-F3 — stage-failure-retry (overview)', () => {
 test.describe('EC-F4 — malformed-json (step-by-step)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  // FIXME: sidebar can't render a `production` row's failed icon without a tracks[]
-  // entry in GET /stages (FocusSidebar.tsx:300-319 iterates tracks then stages).
-  // Production fidelity requires status='failed' (see header), but observing it
-  // in non-overview modes needs a follow-up fixture extension to seed tracks.
-  // Overview mode below works because OverviewProgressView reads stage status
-  // independently of tracks.
-  test.fixme('malformed provider output marks production failed in step-by-step mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard step-by-step → production parse error → status=failed, no banner', async ({ page }) => {
+    test.setTimeout(180_000)
     const project = seed('proj-ec-mj-1', 'step-by-step', 'EC Malformed JSON Step-by-Step')
 
     const mock = await mockPipelineEdge(page, 'malformed-json', { project })
+
+    await submitWizard(page, project, 'Step-by-step')
+    assertWizardModeRoundtrip(mock, 'step-by-step')
 
     mock.completeStage('brainstorm')
     mock.completeStage('research')
     mock.completeStage('canonical')
 
-    await page.goto(`/en/projects/${project.id}`)
-    await page.waitForTimeout(2_000)
-
-    await assertStageComplete(page, 'brainstorm', { timeout: 15_000 })
-    await assertStageComplete(page, 'research', { timeout: 15_000 })
-    await assertStageComplete(page, 'canonical', { timeout: 15_000 })
+    await navigateToProductionStage(page, project.id)
 
     // Parse failure → markFailed (status:'failed'), NOT awaiting_user(manual_paste).
     await expect.poll(
@@ -1071,8 +1064,7 @@ test.describe('EC-F4 — malformed-json (step-by-step)', () => {
 
     // No awaiting-banner — parse failures emit status='failed', not awaiting_user.
     const banner = page.getByTestId('awaiting-banner')
-    const bannerVisible = await banner.isVisible().catch(() => false)
-    expect(bannerVisible).toBe(false)
+    expect(await banner.isVisible().catch(() => false)).toBe(false)
 
     await mock.unroute()
   })
@@ -1081,23 +1073,20 @@ test.describe('EC-F4 — malformed-json (step-by-step)', () => {
 test.describe('EC-F4 — malformed-json (supervised)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  // FIXME: same fixture-tracks gap as step-by-step above.
-  test.fixme('malformed provider output marks production failed in supervised mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard supervised → production parse error → status=failed, no banner', async ({ page }) => {
+    test.setTimeout(180_000)
     const project = seed('proj-ec-mj-2', 'supervised', 'EC Malformed JSON Supervised')
 
     const mock = await mockPipelineEdge(page, 'malformed-json', { project })
+
+    await submitWizard(page, project, 'Supervised')
+    assertWizardModeRoundtrip(mock, 'supervised')
 
     mock.completeStage('brainstorm')
     mock.completeStage('research')
     mock.completeStage('canonical')
 
-    await page.goto(`/en/projects/${project.id}`)
-    await page.waitForTimeout(2_000)
-
-    await assertStageComplete(page, 'brainstorm', { timeout: 15_000 })
-    await assertStageComplete(page, 'research', { timeout: 15_000 })
-    await assertStageComplete(page, 'canonical', { timeout: 15_000 })
+    await navigateToProductionStage(page, project.id)
 
     await expect.poll(
       async () => {
@@ -1108,8 +1097,7 @@ test.describe('EC-F4 — malformed-json (supervised)', () => {
     ).toBe('failed')
 
     const banner = page.getByTestId('awaiting-banner')
-    const bannerVisible = await banner.isVisible().catch(() => false)
-    expect(bannerVisible).toBe(false)
+    expect(await banner.isVisible().catch(() => false)).toBe(false)
 
     await mock.unroute()
   })
@@ -1118,20 +1106,21 @@ test.describe('EC-F4 — malformed-json (supervised)', () => {
 test.describe('EC-F4 — malformed-json (overview)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('malformed provider output marks production failed in overview mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard overview → production parse error → OverviewProgressView surfaces failed, no banner', async ({ page }) => {
+    test.setTimeout(180_000)
     const project = seed('proj-ec-mj-3', 'overview', 'EC Malformed JSON Overview')
 
     const mock = await mockPipelineEdge(page, 'malformed-json', { project })
 
+    await submitWizard(page, project, 'Overview')
+    assertWizardModeRoundtrip(mock, 'overview')
+
+    await page.getByTestId('overview-progress-view').waitFor({ state: 'visible', timeout: 20_000 })
+    await expect(page.getByTestId('production-engine-root')).toHaveCount(0)
+
     mock.completeStage('brainstorm')
     mock.completeStage('research')
     mock.completeStage('canonical')
-
-    await page.goto(`/en/projects/${project.id}`)
-
-    const progressView = page.getByTestId('overview-progress-view')
-    await progressView.waitFor({ state: 'visible', timeout: 20_000 })
 
     await expect.poll(
       async () => {

@@ -887,27 +887,39 @@ export async function mockPipelineEdge(
   }
 
   if (scenario === 'stage-failure-retry') {
-    // Production fails once (HTTP 500), succeeds on second attempt
+    // Production first attempt failed; retry POST /stage-runs succeeds.
+    //
+    // The first failed row is seeded directly into happy.runs so it surfaces
+    // through GET /stages on page load (the ProductionEngine never fires
+    // POST /stage-runs in the mocked flow — only the retry CTA does). After
+    // the retry POST, production flips to completed.
     let productionAttempts = 0
+    happy.runs.set('production', {
+      ...happy.runs.get('production'),
+      id: 'sr-production-failed',
+      projectId: project.id,
+      stage: 'production',
+      status: 'failed',
+      attemptNo: 1,
+      inputJson: null,
+      outcomeJson: null,
+      payloadRef: null,
+      finishedAt: null,
+      errorMessage: 'Internal server error',
+      awaitingReason: null,
+      trackId: 'track-e2e-blog-1',
+      publishTargetId: null,
+      createdAt: nowIso(-5),
+      updatedAt: nowIso(),
+    } as Parameters<typeof happy.runs.set>[1])
+
     await page.route(`**/api/projects/${project.id}/stage-runs`, async (route: Route) => {
       if (route.request().method() !== 'POST') return route.fallback()
       const body = (await readBody(route)) as { stage?: string } | null
       if (body?.stage !== 'production') return route.fallback()
 
       productionAttempts++
-      if (productionAttempts === 1) {
-        // First attempt fails
-        return route.fulfill({
-          status: 500,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            data: null,
-            error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },
-          }),
-        })
-      }
-
-      // Subsequent attempts succeed
+      // Retry succeeds — flip production to completed
       happy.completeStage('production')
       return route.fulfill({
         status: 200,
@@ -915,11 +927,11 @@ export async function mockPipelineEdge(
         body: JSON.stringify({
           data: {
             stageRun: {
-              id: `sr-production-retry-${productionAttempts}`,
+              id: `sr-production-retry-${productionAttempts + 1}`,
               projectId: project.id,
               stage: 'production',
               status: 'completed',
-              attemptNo: productionAttempts,
+              attemptNo: productionAttempts + 1,
               outcomeJson: {
                 draftId: 'draft-e2e-1',
                 draftTitle: 'E2E Retry Draft',
@@ -936,49 +948,16 @@ export async function mockPipelineEdge(
       })
     })
 
-    // GET /stages: reflect failed state after first attempt
+    // GET /stages: emit full {project, stageRuns, tracks} shape so the sidebar
+    // surfaces the failed production row and the supervised auto-advance can
+    // walk the active track.
     await page.route(`**/api/projects/${project.id}/stages`, async (route: Route) => {
-      const stageRuns = happy.snapshot()
-      const productionRun = happy.runs.get('production')
-
-      if (!productionRun && productionAttempts >= 1) {
-        return route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            data: {
-              project: { mode: project.mode, paused: false },
-              stageRuns: [
-                ...stageRuns,
-                {
-                  id: 'sr-production-failed',
-                  projectId: project.id,
-                  stage: 'production',
-                  status: 'failed',
-                  attemptNo: 1,
-                  inputJson: null,
-                  outcomeJson: null,
-                  payloadRef: null,
-                  finishedAt: null,
-                  errorMessage: 'Internal server error',
-                  awaitingReason: null,
-                  trackId: null,
-                  publishTargetId: null,
-                  createdAt: nowIso(-5),
-                  updatedAt: nowIso(),
-                },
-              ],
-            },
-            error: null,
-          }),
-        })
-      }
-
+      const stageRuns = happy.snapshot() as unknown as ReadonlyArray<Record<string, unknown>>
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: { project: { mode: project.mode, paused: false }, stageRuns },
+          data: buildStagesResponse(project.id, project.mode, false, stageRuns),
           error: null,
         }),
       })
@@ -994,6 +973,28 @@ export async function mockPipelineEdge(
     // for malformed JSON — manual_paste only fires from pipeline-assets-dispatch.ts
     // when mode === 'manual_upload'. Asserting awaiting(manual_paste) here was
     // fixture-only; production emits status='failed'.
+    //
+    // Seed the failed production row directly so the sidebar surfaces the
+    // failure without depending on any engine firing POST /stage-runs.
+    happy.runs.set('production', {
+      ...happy.runs.get('production'),
+      id: 'sr-production-malformed',
+      projectId: project.id,
+      stage: 'production',
+      status: 'failed',
+      awaitingReason: null,
+      attemptNo: 1,
+      inputJson: null,
+      outcomeJson: null,
+      payloadRef: null,
+      finishedAt: nowIso(),
+      errorMessage: 'Output parse error: malformed JSON from provider',
+      trackId: 'track-e2e-blog-1',
+      publishTargetId: null,
+      createdAt: nowIso(-5),
+      updatedAt: nowIso(),
+    } as Parameters<typeof happy.runs.set>[1])
+
     await page.route(`**/api/projects/${project.id}/stage-runs`, async (route: Route) => {
       if (route.request().method() !== 'POST') return route.fallback()
       const body = (await readBody(route)) as { stage?: string } | null
@@ -1003,60 +1004,21 @@ export async function mockPipelineEdge(
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: {
-            stageRun: {
-              id: 'sr-production-malformed',
-              projectId: project.id,
-              stage: 'production',
-              status: 'failed',
-              awaitingReason: null,
-              attemptNo: 1,
-              inputJson: null,
-              outcomeJson: null,
-              payloadRef: null,
-              finishedAt: nowIso(),
-              errorMessage: 'Output parse error: malformed JSON from provider',
-              trackId: null,
-              publishTargetId: null,
-              createdAt: nowIso(-5),
-              updatedAt: nowIso(),
-            },
-          },
+          data: { stageRun: happy.runs.get('production') },
           error: null,
         }),
       })
     })
 
-    // GET /stages: production is failed due to parse error
+    // GET /stages: emit the full {project, stageRuns, tracks} shape so the
+    // sidebar can render the failed production pill.
     await page.route(`**/api/projects/${project.id}/stages`, async (route: Route) => {
-      const stageRuns = happy.snapshot()
+      const stageRuns = happy.snapshot() as unknown as ReadonlyArray<Record<string, unknown>>
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: {
-            project: { mode: project.mode, paused: false },
-            stageRuns: [
-              ...stageRuns,
-              {
-                id: 'sr-production-malformed',
-                projectId: project.id,
-                stage: 'production',
-                status: 'failed',
-                awaitingReason: null,
-                attemptNo: 1,
-                inputJson: null,
-                outcomeJson: null,
-                payloadRef: null,
-                finishedAt: nowIso(),
-                errorMessage: 'Output parse error: malformed JSON from provider',
-                trackId: null,
-                publishTargetId: null,
-                createdAt: nowIso(-5),
-                updatedAt: nowIso(),
-              },
-            ],
-          },
+          data: buildStagesResponse(project.id, project.mode, false, stageRuns),
           error: null,
         }),
       })
