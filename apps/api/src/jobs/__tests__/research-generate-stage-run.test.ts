@@ -19,6 +19,7 @@ vi.mock('../client.js', () => ({
 vi.mock('../../lib/ai/router.js', () => ({
   STAGE_COSTS: { research: 100 },
   LEVEL_COSTS: { surface: 50, medium: 100, deep: 200 },
+  isQuotaExhausted: vi.fn(() => false),
   generateWithFallback: vi.fn(async () => ({
     result: {
       sources: [{ source_id: 's1', title: 'A study', url: 'https://x', credibility: 'high' }],

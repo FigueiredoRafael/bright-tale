@@ -3,7 +3,7 @@
  * Mirrors brainstorm-generate pattern.
  */
 import { inngest } from './client.js';
-import { generateWithFallback } from '../lib/ai/router.js';
+import { generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
 
 import { debitCredits } from '../lib/credits.js';
 import { createServiceClient } from '../lib/supabase/index.js';
@@ -251,6 +251,8 @@ export const researchGenerate = inngest.createFunction(
       }
 
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      const quotaExhausted = isQuotaExhausted(err);
+
       await (sb.from('research_sessions') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
       })
@@ -261,22 +263,32 @@ export const researchGenerate = inngest.createFunction(
 
       if (stageRunId) {
         const now = new Date().toISOString();
+        const patch: Record<string, unknown> = quotaExhausted
+          ? {
+              status: 'awaiting_user',
+              awaiting_reason: 'provider_quota_exhausted',
+              updated_at: now,
+            }
+          : {
+              status: 'failed',
+              error_message: message.slice(0, 500),
+              finished_at: now,
+              updated_at: now,
+            };
         await (sb.from('stage_runs') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
-          .update({
-            status: 'failed',
-            error_message: message.slice(0, 500),
-            finished_at: now,
-            updated_at: now,
-          })
+          .update(patch)
           .eq('id', stageRunId);
-        await inngest.send({
-          name: 'pipeline/stage.run.finished',
-          data: { stageRunId, projectId },
-        });
+        if (!quotaExhausted) {
+          await inngest.send({
+            name: 'pipeline/stage.run.finished',
+            data: { stageRunId, projectId },
+          });
+        }
       }
 
+      if (quotaExhausted) return;
       throw err;
     }
   },

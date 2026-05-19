@@ -11,7 +11,7 @@
  * actually queues a review Stage Run.
  */
 import { inngest } from './client.js';
-import { generateWithFallback } from '../lib/ai/router.js';
+import { generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
 import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { buildReviewMessage } from '../lib/ai/prompts/review.js';
@@ -196,14 +196,14 @@ export const pipelineReviewDispatch = inngest.createFunction(
       //   approved        → draft.approved + Stage Run completed (advance → assets)
       //   hard-rejected   → draft.failed   + Stage Run failed
       //   revise + budget → draft.in_review + Stage Run completed (advance loops back to draft)
-      //   revise + out    → draft.in_review + Stage Run awaiting_user(manual_review)
+      //   revise + out    → draft.in_review + Stage Run awaiting_user(max_iterations)
       let newVerdict: 'approved' | 'revision_required' | 'rejected';
       let newDraftStatus: 'approved' | 'in_review' | 'failed';
       let approvedAt: string | null = null;
       type RunOutcome =
         | { status: 'completed' }
         | { status: 'failed'; errorMessage: string }
-        | { status: 'awaiting_user'; awaitingReason: 'manual_review' };
+        | { status: 'awaiting_user'; awaitingReason: 'max_iterations' };
       let runOutcome: RunOutcome;
 
       const hardReject =
@@ -228,7 +228,7 @@ export const pipelineReviewDispatch = inngest.createFunction(
       } else if (iterationCount >= maxIterations) {
         newVerdict = 'revision_required';
         newDraftStatus = 'in_review';
-        runOutcome = { status: 'awaiting_user', awaitingReason: 'manual_review' };
+        runOutcome = { status: 'awaiting_user', awaitingReason: 'max_iterations' };
       } else {
         newVerdict = 'revision_required';
         newDraftStatus = 'in_review';
@@ -278,6 +278,17 @@ export const pipelineReviewDispatch = inngest.createFunction(
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       console.error(err);
+      // Provider quota exhaustion isn't a stage failure — the operator just
+      // needs to top up credits or swap providers. Park awaiting_user so the
+      // user can resume after fixing it, instead of burning the Stage Run.
+      if (isQuotaExhausted(err)) {
+        await markAwaitingUser(sb, stageRunId, {
+          ...ctx,
+          awaitingReason: 'provider_quota_exhausted',
+          markStarted: true,
+        });
+        return;
+      }
       await markFailed(sb, stageRunId, { ...ctx, errorMessage: message });
       throw err;
     }

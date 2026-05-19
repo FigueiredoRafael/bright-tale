@@ -16,8 +16,10 @@ vi.mock('../client.js', () => ({
 }));
 
 const generateWithFallbackMock = vi.fn();
+const isQuotaExhaustedMock = vi.fn(() => false);
 vi.mock('../../lib/ai/router.js', () => ({
   generateWithFallback: generateWithFallbackMock,
+  isQuotaExhausted: isQuotaExhaustedMock,
 }));
 
 vi.mock('../../lib/ai/promptLoader.js', () => ({
@@ -262,5 +264,62 @@ describe('pipeline-review-dispatch', () => {
       .find((r) => r.status === 'failed');
     expect(failedRow).toBeDefined();
     expect(generateWithFallbackMock).not.toHaveBeenCalled();
+  });
+
+  it('on budget exhaustion (iterationCount >= maxIterations): stage_run → awaiting_user(max_iterations)', async () => {
+    // Final iteration that exhausts the budget. With maxIterations=5 and
+    // draft.iteration_count=4, dispatcher computes iterationCount=5, hits the
+    // budget branch, and parks the run for user review.
+    draftRow = { ...(draftRow as Record<string, unknown>), iteration_count: 4 };
+    generateWithFallbackMock.mockResolvedValueOnce({
+      result: { overall_verdict: 'revision_required', blog_review: { score: 60 } },
+      providerName: 'mock',
+      model: 'mock',
+      usage: {},
+    });
+
+    const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
+
+    await (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
+
+    const awaitingRow = stageRunsUpdateMock.mock.calls
+      .map((c) => c[0])
+      .find((r) => r.status === 'awaiting_user');
+    expect(awaitingRow).toBeDefined();
+    expect(awaitingRow.awaiting_reason).toBe('max_iterations');
+
+    // Non-terminal — no advance event.
+    const finishedCall = (inngestSendMock.mock.calls as unknown as unknown[][]).find(
+      (c) => (c[0] as { name: string }).name === 'pipeline/stage.run.finished',
+    );
+    expect(finishedCall).toBeUndefined();
+  });
+
+  it('on provider quota exhausted: stage_run → awaiting_user(provider_quota_exhausted), no rethrow', async () => {
+    const quotaErr = new Error('429 quota exceeded');
+    generateWithFallbackMock.mockRejectedValueOnce(quotaErr);
+    isQuotaExhaustedMock.mockReturnValueOnce(true);
+
+    const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
+
+    // Quota exhaustion swallows the rethrow because the run is parked, not failed.
+    await (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
+
+    const awaitingRow = stageRunsUpdateMock.mock.calls
+      .map((c) => c[0])
+      .find((r) => r.status === 'awaiting_user');
+    expect(awaitingRow).toBeDefined();
+    expect(awaitingRow.awaiting_reason).toBe('provider_quota_exhausted');
+
+    const failedRow = stageRunsUpdateMock.mock.calls
+      .map((c) => c[0])
+      .find((r) => r.status === 'failed');
+    expect(failedRow).toBeUndefined();
   });
 });

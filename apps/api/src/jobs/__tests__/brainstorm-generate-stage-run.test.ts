@@ -21,6 +21,7 @@ vi.mock('../client.js', () => ({
 
 vi.mock('../../lib/ai/router.js', () => ({
   STAGE_COSTS: { brainstorm: 50 },
+  isQuotaExhausted: vi.fn(() => false),
   generateWithFallback: vi.fn(async () => ({
     result: [
       {

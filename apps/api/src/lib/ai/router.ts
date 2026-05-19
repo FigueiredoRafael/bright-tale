@@ -353,11 +353,15 @@ export async function getRouteForStage(stage: AgentType, tier: string = 'standar
  * Validation/auth errors (400/401/403) are NOT retryable — the caller's input
  * is the problem, not the provider.
  */
-/** Should we try a different provider after this error? */
-function isProviderFailover(err: unknown): boolean {
+/**
+ * Quota / rate-limit / billing — this provider is unusable right now until
+ * the quota refills or the operator tops up credits. Distinct from generic
+ * capacity blips because dispatchers translate this into
+ * `awaiting_reason='provider_quota_exhausted'` so the orchestrator can park
+ * the stage for the user to resolve, rather than terminating as `failed`.
+ */
+export function isQuotaExhausted(err: unknown): boolean {
   const msg = String((err as { message?: string })?.message ?? err ?? '').toLowerCase();
-  // Quota / rate-limit / billing — this provider is unusable right now,
-  // try the next one.
   if (msg.includes('429')) return true;
   if (msg.includes('quota')) return true;
   if (msg.includes('resource_exhausted')) return true;
@@ -366,6 +370,15 @@ function isProviderFailover(err: unknown): boolean {
   if (msg.includes('insufficient_quota')) return true;
   if (msg.includes('insufficient credits')) return true;
   if (msg.includes('billing')) return true;
+  return false;
+}
+
+/** Should we try a different provider after this error? */
+function isProviderFailover(err: unknown): boolean {
+  const msg = String((err as { message?: string })?.message ?? err ?? '').toLowerCase();
+  // Quota / rate-limit / billing — this provider is unusable right now,
+  // try the next one.
+  if (isQuotaExhausted(err)) return true;
   // Capacity / network issues — also worth trying a different provider.
   if (msg.includes('overloaded')) return true;
   if (msg.includes('unavailable')) return true;

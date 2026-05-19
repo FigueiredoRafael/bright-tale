@@ -35,7 +35,13 @@ export type StageRunStatus =
   | 'awaiting_user'
   | 'skipped';
 
-export type AwaitingReason = 'manual_paste' | 'manual_advance' | 'manual_review';
+export type AwaitingReason =
+  | 'manual_paste'
+  | 'manual_advance'
+  | 'manual_review'
+  | 'provider_quota_exhausted'
+  | 'max_iterations'
+  | 'user_paused';
 
 export interface PayloadRef {
   kind: string;

@@ -4,7 +4,7 @@
  */
 import { inngest } from './client.js';
 import { markCompleted } from '../lib/pipeline/stage-run-writer.js';
-import { generateWithFallback } from '../lib/ai/router.js';
+import { generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
 import { loadAgentConfig, loadAgentPrompt, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
 import { loadIdeaContext } from '../lib/ai/loadIdeaContext.js';
@@ -303,6 +303,7 @@ export const productionGenerate = inngest.createFunction(
       // selected "Ollama: ECONNREFUSED").
       const providerLabel = provider ? `[${provider}${model ? `/${model}` : ''}] ` : '';
       const message = `${providerLabel}${rawMessage}`;
+      const quotaExhausted = isQuotaExhausted(err);
       await (sb.from('content_drafts') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
       })
@@ -312,22 +313,32 @@ export const productionGenerate = inngest.createFunction(
 
       if (stageRunId) {
         const now = new Date().toISOString();
+        const patch: Record<string, unknown> = quotaExhausted
+          ? {
+              status: 'awaiting_user',
+              awaiting_reason: 'provider_quota_exhausted',
+              updated_at: now,
+            }
+          : {
+              status: 'failed',
+              error_message: message.slice(0, 500),
+              finished_at: now,
+              updated_at: now,
+            };
         await (sb.from('stage_runs') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
-          .update({
-            status: 'failed',
-            error_message: message.slice(0, 500),
-            finished_at: now,
-            updated_at: now,
-          })
+          .update(patch)
           .eq('id', stageRunId);
-        await inngest.send({
-          name: 'pipeline/stage.run.finished',
-          data: { stageRunId, projectId },
-        });
+        if (!quotaExhausted) {
+          await inngest.send({
+            name: 'pipeline/stage.run.finished',
+            data: { stageRunId, projectId },
+          });
+        }
       }
 
+      if (quotaExhausted) return;
       throw err;
     }
   },

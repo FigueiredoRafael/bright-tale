@@ -28,6 +28,33 @@ import { bulkCreateSchema } from '@brighttale/shared/schemas/discovery';
 import type { Json } from '@brighttale/shared/types/database';
 import type { Medium } from '@brighttale/shared/pipeline/inputs';
 import { isAutopilotMode, resumeProject, requestStageRun } from '../lib/pipeline/orchestrator.js';
+import { markAwaitingUser } from '../lib/pipeline/stage-run-writer.js';
+
+/**
+ * Pause transition (paused: false → true): stamp the currently-running
+ * stage_run row with awaiting_reason='user_paused' so the UI banner can
+ * surface why the pipeline is parked and the orchestrator can resume from
+ * a known state. No-op if no stage is mid-flight.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function stampUserPausedOnActiveStage(sb: any, projectId: string): Promise<void> {
+  const { data: active } = await sb
+    .from('stage_runs')
+    .select('id, stage, track_id, publish_target_id')
+    .eq('project_id', projectId)
+    .eq('status', 'running')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!active) return;
+  await markAwaitingUser(sb, active.id as string, {
+    projectId,
+    stage: active.stage as string,
+    trackId: (active.track_id as string | null) ?? null,
+    publishTargetId: (active.publish_target_id as string | null) ?? null,
+    awaitingReason: 'user_paused',
+  });
+}
 
 // ─── Track shape returned from the DB ────────────────────────────────────────
 interface TrackRow {
@@ -500,6 +527,15 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
 
       if (error) throw error;
 
+      // Pause transition (false → true): stamp the currently-running stage_run
+      // with awaiting_reason='user_paused' so the UI banner can read data-reason
+      // and the orchestrator resumes from a known parked state. No-op if no
+      // stage is mid-flight.
+      const becamePaused = data.paused === true && existing.paused !== true;
+      if (becamePaused) {
+        await stampUserPausedOnActiveStage(sb, id);
+      }
+
       // If the update flipped the project into an autopilot-eligible state
       // (mode → autopilot/legacy-autopilot OR paused → false), re-evaluate
       // the pipeline so the orchestrator picks up wherever it left off.
@@ -656,6 +692,15 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
         .single();
 
       if (error) throw error;
+
+      // Pause transition (false → true): stamp the currently-running stage_run
+      // with awaiting_reason='user_paused' so the UI banner can read data-reason
+      // and the orchestrator resumes from a known parked state. No-op if no
+      // stage is mid-flight.
+      const becamePaused = data.paused === true && existing.paused !== true;
+      if (becamePaused) {
+        await stampUserPausedOnActiveStage(sb, id);
+      }
 
       // If the update flipped the project into an autopilot-eligible state
       // (mode → autopilot/legacy-autopilot OR paused → false), re-evaluate

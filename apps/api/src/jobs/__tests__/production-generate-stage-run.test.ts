@@ -18,6 +18,7 @@ vi.mock('../client.js', () => ({
 
 vi.mock('../../lib/ai/router.js', () => ({
   STAGE_COSTS: { production: 200 },
+  isQuotaExhausted: vi.fn(() => false),
   generateWithFallback: vi.fn(async () => ({
     result: { core: { title: 'X' } },
     providerName: 'mock',
