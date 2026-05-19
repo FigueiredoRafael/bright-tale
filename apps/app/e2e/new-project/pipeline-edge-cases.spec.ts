@@ -16,6 +16,7 @@
 import { test, expect } from '@playwright/test'
 import { mockPipelineEdge } from '../fixtures/newProject/mockPipelineEdge'
 import { assertStageComplete } from '../fixtures/newProject/assertStageComplete'
+import { driveStageManual } from '../fixtures/newProject/driveStageManual'
 import type { HappyProjectSeed } from '../fixtures/newProject/mockPipelineHappy'
 
 // ─── Shared helpers ────────────────────────────────────────────────────────────
@@ -44,43 +45,87 @@ function attachConsoleListeners(page: import('@playwright/test').Page) {
 test.describe('EC-R1 — low-score-retry (step-by-step)', () => {
   test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
 
-  test('review loops once then completes in step-by-step mode', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('wizard thresholds drive review loop: iter1 score 65 → iter2 score 95', async ({ page }) => {
+    test.setTimeout(180_000)
     const project = seed('proj-ec-lsr-1', 'step-by-step', 'EC Low-Score Retry Step-by-Step')
 
     const mock = await mockPipelineEdge(page, 'low-score-retry', { project })
 
-    // Seed pre-completed shared stages so we can focus on review loop
+    // ── Wizard ────────────────────────────────────────────────────────────────
+    // In step-by-step mode the wizard only exposes the project-scope inputs
+    // (title / channel / media / topic / mode). Per-stage review thresholds
+    // are gated behind `isAutopilot` and never render here — they fall back to
+    // pipeline_settings defaults at orchestrator time (autoApproveThreshold=90,
+    // hardFailThreshold=50, maxIterations=2). The grill confronts:
+    //   - mode = step-by-step  → engines must wait for user CTAs (no autopilot)
+    //   - default threshold=90 → mock score 65 must loop, score 95 must pass
+    //   - default hardFail=50  → score 65 must NOT mark stage as failed
+    await page.goto('/en/projects/new')
+    await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
+
+    await page.locator('#project-title').fill(project.title)
+    await page.getByTestId('channel-option').first().click()
+    await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+
+    // step-by-step is the default mode — click anyway to make the intent explicit
+    await page.getByRole('radio', { name: 'Step-by-step' }).click()
+
+    await page.getByRole('button', { name: /create project/i }).click()
+
+    await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+    await page.getByTestId('sidebar-item-brainstorm').waitFor({ state: 'visible', timeout: 20_000 })
+
+    // ── Shared stages: brainstorm → research → canonical ─────────────────────
+    await driveStageManual(page, 'brainstorm')
     mock.completeStage('brainstorm')
+    await assertStageComplete(page, 'brainstorm', { timeout: 30_000 })
+
+    await driveStageManual(page, 'research')
     mock.completeStage('research')
+    await assertStageComplete(page, 'research', { timeout: 30_000 })
+
+    await driveStageManual(page, 'canonical')
     mock.completeStage('canonical')
+    await assertStageComplete(page, 'canonical', { timeout: 30_000 })
 
-    await page.goto(`/en/projects/${project.id}`)
-
-    // Hydrate
-    await page.waitForTimeout(2_000)
-
-    // Shared stages already completed
-    await assertStageComplete(page, 'brainstorm', { timeout: 15_000 })
-    await assertStageComplete(page, 'research', { timeout: 15_000 })
-    await assertStageComplete(page, 'canonical', { timeout: 15_000 })
-
-    // In step-by-step mode the user manually triggers production + review.
-    // Simulate first production run
+    // ── Production iter 1 ────────────────────────────────────────────────────
+    await driveStageManual(page, 'production')
     mock.completeStage('production')
-    await assertStageComplete(page, 'production', { timeout: 15_000 })
+    await assertStageComplete(page, 'production', { timeout: 30_000 })
 
-    // Trigger review iter 1 → score 65 → loop
-    // (The mock returns completed with revision_required; UI should stay not-completed)
-    // Then simulate the second production run (review feedback injected) and review iter 2
-    mock.completeStage('production')
+    // ── Review iter 1 — wizard threshold=90 vs mock score=65 → revision_required
+    const reviewSidebar = page.locator('[data-testid*="sidebar-item-"][data-testid*="review"]').first()
+    await reviewSidebar.click()
+    await page.getByTestId('review-engine-root').waitFor({ state: 'visible', timeout: 20_000 })
+    await page.getByTestId('review-action-run').first().click()
+
+    // ReviewFeedbackPanel must render the iter 1 outcome
+    await page.getByTestId('review-feedback-panel').waitFor({ state: 'visible', timeout: 30_000 })
+    await expect(page.getByTestId('review-score')).toHaveAttribute('data-value', '65')
+    await expect(page.getByTestId('review-verdict')).toHaveAttribute('data-value', 'revision_required')
+    await expect(page.getByTestId('review-iteration')).toHaveAttribute('data-value', '1')
+    // Critical-issue feedback should be visible — drives the next iteration
+    await expect(page.getByTestId('review-feedback-critical')).toBeVisible()
+
+    // ── Review iter 2 — wizard threshold=90 vs mock score=95 → approved ──────
+    // ReviewEngine's needsRevision branch re-renders the same review-action-run
+    // testid; click it again to fire iter 2.
+    await page.getByTestId('review-action-run').first().click()
+
+    await expect(page.getByTestId('review-score')).toHaveAttribute('data-value', '95', { timeout: 30_000 })
+    await expect(page.getByTestId('review-verdict')).toHaveAttribute('data-value', 'approved')
+    await expect(page.getByTestId('review-iteration')).toHaveAttribute('data-value', '2')
+
+    // Approved branch should expose review-action-next; clicking writes the
+    // outcome back so the sidebar pill turns green.
+    await page.getByTestId('review-action-next').waitFor({ state: 'visible', timeout: 30_000 })
+    await page.getByTestId('review-action-next').click()
     mock.completeStage('review')
-
-    // Review should eventually reach completed (iter 2 score 95)
     await assertStageComplete(page, 'review', { timeout: 30_000 })
 
-    // Verify the mock was called at least twice for review
-    expect(mock.reviewCallCount).toBeGreaterThanOrEqual(1)
+    // ── Loop accounting ──────────────────────────────────────────────────────
+    // Exactly two reviews fired — one low-score loop + one approved pass.
+    expect(mock.reviewCallCount).toBe(2)
 
     await mock.unroute()
   })

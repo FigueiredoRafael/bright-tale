@@ -114,31 +114,123 @@ export async function mockPipelineEdge(
   if (scenario === 'low-score-retry') {
     // Review iter 1 → score 65 (revision_required, completed so orchestrator loops)
     // Review iter 2 → score 95 (approved, completed)
+    //
+    // Two endpoints must agree on the per-iteration values so the engine UI
+    // matches the orchestrator snapshot:
+    //   POST /api/content-drafts/:id/review — what ReviewEngine actually fires
+    //     (returns the new score/verdict/iteration_count + feedback)
+    //   POST /api/projects/:id/stage-runs (stage=review) — what the orchestrator
+    //     would have written; some flows still POST to this from the engine host
+    //   GET /api/content-drafts/:id — what ReviewEngine refetches; must reflect
+    //     the latest review fields
+    let lastReviewScore = 0
+    let lastReviewVerdict: 'approved' | 'revision_required' | 'pending' = 'pending'
+    function nextReviewIter() {
+      reviewCallCount++
+      const isApproved = reviewCallCount >= 2
+      lastReviewScore = isApproved ? 95 : 65
+      lastReviewVerdict = isApproved ? 'approved' : 'revision_required'
+      return {
+        callNo: reviewCallCount,
+        score: lastReviewScore,
+        verdict: lastReviewVerdict as 'approved' | 'revision_required',
+      }
+    }
+    function reviewFeedbackPayload(score: number, verdict: 'approved' | 'revision_required') {
+      const blogReview: Record<string, unknown> = {
+        score,
+        verdict: verdict === 'approved' ? 'Approved' : 'Revision Required',
+        strengths: ['clear thesis', 'good keyword coverage'],
+        issues: verdict === 'revision_required'
+          ? {
+              critical: [
+                { location: 'intro', issue: 'Hook is weak', suggested_fix: 'Open with a concrete number.' },
+              ],
+              minor: [],
+            }
+          : { critical: [], minor: [] },
+      }
+      return {
+        overall_verdict: verdict === 'approved' ? 'Approved' : 'Revision Required',
+        blog_review: blogReview,
+        summary: verdict === 'approved' ? 'Ready to publish.' : 'Improve the intro.',
+      }
+    }
+
+    // POST /api/content-drafts/:id/review — primary review trigger fired by ReviewEngine.
+    await page.route(/\/api\/content-drafts\/[^/]+\/review/, async (route: Route) => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      const { callNo, score, verdict } = nextReviewIter()
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: 'draft-e2e-1',
+            status: 'in_review',
+            review_score: score,
+            review_verdict: verdict,
+            review_feedback_json: reviewFeedbackPayload(score, verdict),
+            iteration_count: callNo,
+          },
+          error: null,
+        }),
+      })
+    })
+
+    // GET /api/content-drafts/:id — surface the latest review fields when the
+    // engine refetches after the POST resolves.
+    await page.route(/\/api\/content-drafts\/[^/]+$/, async (route: Route) => {
+      if (route.request().method() !== 'GET') return route.fallback()
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: 'draft-e2e-1',
+            status: lastReviewVerdict === 'approved' ? 'approved' : 'in_review',
+            canonical_core_json: { title: 'EC R1 Draft', thesis: 'Loop until approved' },
+            draft_json: {
+              blog: { full_draft: 'Body markdown for EC R1 draft.' },
+              full_draft: 'Body markdown for EC R1 draft.',
+              word_count: 800,
+            },
+            body_markdown: 'Body markdown for EC R1 draft.',
+            word_count: 800,
+            title: 'EC R1 Draft',
+            review_score: lastReviewScore || null,
+            review_verdict: lastReviewVerdict,
+            review_feedback_json: lastReviewScore
+              ? reviewFeedbackPayload(lastReviewScore, lastReviewVerdict as 'approved' | 'revision_required')
+              : null,
+            iteration_count: reviewCallCount,
+          },
+          error: null,
+        }),
+      })
+    })
+
+    // POST /api/projects/:id/stage-runs (stage=review) — keep the orchestrator
+    // snapshot consistent with whichever iter just ran.
     await page.route(`**/api/projects/${project.id}/stage-runs`, async (route: Route) => {
       if (route.request().method() !== 'POST') return route.fallback()
       const body = (await readBody(route)) as { stage?: string } | null
       if (body?.stage !== 'review') return route.fallback()
 
-      reviewCallCount++
-      const callNo = reviewCallCount
-
-      let score: number
-      let verdict: 'approved' | 'revision_required'
-      let status: 'completed' | 'awaiting_user' | 'failed'
-
-      if (callNo === 1) {
-        // Iter 1: low score, orchestrator loops back to production
-        score = 65
-        verdict = 'revision_required'
-        status = 'completed'
-      } else {
-        // Iter 2+: passes
-        score = 95
-        verdict = 'approved'
-        status = 'completed'
+      // If no /review POST has fired yet, advance the iter here; otherwise mirror
+      // the most recent values written by /review (don't double-increment).
+      let score = lastReviewScore
+      let verdict = lastReviewVerdict
+      if (verdict === 'pending') {
+        const next = nextReviewIter()
+        score = next.score
+        verdict = next.verdict
       }
-
-      const row = reviewRunRow(project.id, { score, verdict, status })
+      const row = reviewRunRow(project.id, {
+        score,
+        verdict: verdict as 'approved' | 'revision_required',
+        status: 'completed',
+      })
       happy.completeStage('review')
 
       return route.fulfill({
@@ -846,10 +938,12 @@ export async function mockPipelineEdge(
     })
   }
 
+  // reviewCallCount is mutated by route handlers; expose via getter so callers
+  // see the live count instead of a value snapshot taken at return time.
   return {
     ...happy,
     scenario,
-    reviewCallCount,
+    get reviewCallCount() { return reviewCallCount },
     callCounts,
     patchBodies,
     // Override unroute to use the page's unrouteAll
