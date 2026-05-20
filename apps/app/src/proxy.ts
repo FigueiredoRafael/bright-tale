@@ -91,6 +91,18 @@ export async function proxy(request: NextRequest) {
     },
   });
 
+  // OAuth codes that miss the callback route (Supabase fell back to site_url
+  // root) land as ?code= on an arbitrary page. Redirect them to the proper
+  // handler so the PKCE exchange completes without requiring a second user
+  // interaction. Without this, the code never reaches exchangeCodeForSession,
+  // no session cookie is set, and the visitor bounces straight back to login.
+  const oauthCode = request.nextUrl.searchParams.get('code');
+  if (oauthCode && !pathname.includes('/auth/callback')) {
+    const callbackUrl = new URL('/auth/callback', request.url);
+    callbackUrl.searchParams.set('code', oauthCode);
+    return NextResponse.redirect(callbackUrl);
+  }
+
   // getClaims() verifies the JWT locally via JWKS (no network call) on
   // projects with asymmetric signing keys, which Supabase has used by default
   // since mid-2024. getUser() always hits the network — using it on every
@@ -140,6 +152,21 @@ export async function proxy(request: NextRequest) {
     locales.some((l) => pathname.startsWith(`/${l}/auth/`));
   if (isAuthPage) {
     if (user) {
+      // Verify the session belongs to a real app user (has a user_profiles row).
+      // Guards against leaked admin sessions: an admin user exists in auth.users
+      // but has no user_profiles row, so they must not be auto-admitted to the app.
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (!profile) {
+        // Valid Supabase session but no app profile — sign out and show login.
+        await supabase.auth.signOut();
+        return intlMiddleware(request);
+      }
+
       return NextResponse.redirect(new URL('/', request.url));
     }
     return intlMiddleware(request);
