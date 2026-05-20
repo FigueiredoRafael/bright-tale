@@ -170,7 +170,23 @@ test.describe('T4 — full pipeline with real AI (live)', () => {
       const items = (data?.items ?? data?.channels ?? []) as Array<{ id: string }>
       if (items.length > 0) activeChannelId = items[0].id
     }
-    expect(activeChannelId, 'need at least one existing channel for the e2e user').toBeTruthy()
+    // No channel? Create one directly — bypasses the brittle 7-step onboarding
+    // flow when state was just reset by the beforeAll cleanup.
+    if (!activeChannelId) {
+      const created = await page.request.post('/api/channels', {
+        data: {
+          name: 'E2E Test Channel',
+          niche: 'general',
+          language: 'en',
+          tone: 'neutral',
+          presentation_style: 'concise',
+        },
+      })
+      expect(created.ok(), `POST /api/channels failed: ${created.status()} ${await created.text()}`).toBeTruthy()
+      const json = await created.json()
+      activeChannelId = json?.data?.id ?? ''
+    }
+    expect(activeChannelId, 'need a channel for the e2e user').toBeTruthy()
 
     const ctaBtn = page
       .getByRole('button')

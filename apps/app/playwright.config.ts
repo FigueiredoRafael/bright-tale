@@ -1,4 +1,13 @@
 import { defineConfig, devices } from '@playwright/test'
+import { config as loadDotenv } from 'dotenv'
+import { resolve } from 'node:path'
+
+// Load env for the test-runner process (not just the webServer subprocess).
+// apps/app/.env.local supplies E2E_USER_ID + the NEXT_PUBLIC_* keys; apps/api/.env.local
+// supplies SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY needed by cleanupHelper.
+// Existing process.env values win — explicit shell exports still override.
+loadDotenv({ path: resolve(__dirname, '.env.local') })
+loadDotenv({ path: resolve(__dirname, '../api/.env.local') })
 
 const PORT = Number(process.env.PLAYWRIGHT_PORT ?? 3100)
 const BASE_URL = `http://localhost:${PORT}`
