@@ -48,7 +48,7 @@ const TERMINAL_STATUSES: ReadonlyArray<string> = [
 
 interface PayloadIndex {
   brainstorm: { id: string; session_id: string | null; created_at: string } | null;
-  research: { id: string; status?: string | null; created_at: string; completed_at?: string | null } | null;
+  research: { id: string; status?: string | null; created_at: string; updated_at?: string | null } | null;
   draft: {
     id: string;
     status?: string | null;
@@ -67,6 +67,7 @@ interface StageRunInsert {
   attempt_no: number;
   started_at: string | null;
   finished_at: string | null;
+  outcome_json: Record<string, unknown> | null;
 }
 
 export interface MirrorOutcome {
@@ -100,7 +101,7 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
   // terminal row exists.
   const { data: existingRows } = await sb
     .from('stage_runs')
-    .select('id, stage, status, created_at')
+    .select('id, stage, status, outcome_json, created_at')
     .eq('project_id', projectId)
     .order('created_at', { ascending: false });
   const existingByStage = bucketExistingRows(existingRows ?? []);
@@ -127,9 +128,35 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
     const wasCompleted = !!stageResults[stage];
     const latest = existingByStage.get(stage)?.latest;
 
-    // The v2 stages endpoint surfaces the LATEST row per stage. If the latest
-    // is already terminal, the view is correct as-is — leave it alone.
+    // Enrichment-only path: latest row is already terminal but missing
+    // outcome_json. The legacy approve flow (research, canonical, etc.)
+    // marks stage_runs.status='completed' inline but never seeds
+    // outcome_json — only pipeline_state_json.stageResults gets the rich
+    // result. Downstream engines gate on stage_runs.outcome_json via
+    // deriveStageResults, so without enrichment the next stage's
+    // prerequisite check fails (e.g. CanonicalEngine sees research=null
+    // and keeps generate disabled). When the legacy stageResults has
+    // a payload for this stage, copy it onto the terminal row so the
+    // v2 view sees the same result.
     if (latest?.isTerminal) {
+      if (!latest.hasOutcome) {
+        const legacyResult = stageResults[stage] as Record<string, unknown> | undefined;
+        if (legacyResult && Object.keys(legacyResult).length > 0) {
+          const { error } = await (sb.from('stage_runs') as unknown as {
+            update: (row: Record<string, unknown>) => {
+              eq: (col: string, val: string) => Promise<{ error: unknown }>;
+            };
+          })
+            .update({ outcome_json: legacyResult, updated_at: new Date().toISOString() })
+            .eq('id', latest.id);
+          if (error) {
+            console.warn(
+              `[mirror] enrich outcome_json for ${latest.id} (stage=${stage}) failed:`,
+              error,
+            );
+          }
+        }
+      }
       continue;
     }
 
@@ -137,6 +164,7 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
       const payloadRef = resolvePayloadRef(stage, payloads);
       if (!payloadRef) continue;
       const ts = resolveTimestamps(stage, payloads);
+      const legacyResult = stageResults[stage] as Record<string, unknown> | undefined;
       desired.push({
         project_id: projectId,
         stage,
@@ -146,6 +174,7 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
         attempt_no: 1,
         started_at: ts.startedAt,
         finished_at: ts.finishedAt,
+        outcome_json: legacyResult ?? null,
       });
       continue;
     }
@@ -164,6 +193,7 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
       attempt_no: 1,
       started_at: null,
       finished_at: null,
+      outcome_json: null,
     });
   }
 
@@ -195,7 +225,12 @@ async function loadPayloadIndex(sb: Sb, projectId: string): Promise<PayloadIndex
       .maybeSingle(),
     sb
       .from('research_sessions')
-      .select('id, status, created_at, completed_at')
+      // `completed_at` does not exist on this table — Supabase rejects the
+      // whole select with a 400, which used to silently set payloads.research
+      // to null and prevent mirror from creating the research stage_run.
+      // Use `updated_at` instead; mirror only needs a representative finish
+      // timestamp and updated_at is what the legacy completion path stamps.
+      .select('id, status, created_at, updated_at')
       .eq('project_id', projectId)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -246,7 +281,9 @@ function resolveTimestamps(
   if (stage === 'research' && payloads.research) {
     return {
       startedAt: payloads.research.created_at,
-      finishedAt: payloads.research.completed_at ?? payloads.research.created_at,
+      finishedAt:
+        (payloads.research as { updated_at?: string | null }).updated_at ??
+        payloads.research.created_at,
     };
   }
   if (payloads.draft) {
@@ -257,7 +294,7 @@ function resolveTimestamps(
 
 type StageBucket = {
   /** Most-recent row per stage, regardless of status — the row the v2 view shows. */
-  latest?: { id: string; status: string; isTerminal: boolean };
+  latest?: { id: string; status: string; isTerminal: boolean; hasOutcome: boolean };
   /** Most-recent non-terminal row, if any (DB guarantees ≤1). */
   nonTerminal?: { id: string };
 };
@@ -270,9 +307,11 @@ function bucketExistingRows(rows: unknown[]): Map<string, StageBucket> {
     const status = r.status as string;
     const id = r.id as string;
     const isTerminal = TERMINAL_STATUSES.includes(status);
+    const outcome = r.outcome_json as Record<string, unknown> | null | undefined;
+    const hasOutcome = outcome !== null && outcome !== undefined && Object.keys(outcome).length > 0;
     const bucket = byStage.get(stage) ?? {};
     if (!bucket.latest) {
-      bucket.latest = { id, status, isTerminal };
+      bucket.latest = { id, status, isTerminal, hasOutcome };
     }
     if (!isTerminal && !bucket.nonTerminal) {
       bucket.nonTerminal = { id };
@@ -335,6 +374,7 @@ async function upsertStageRuns(
           payload_ref: sr.payload_ref,
           started_at: sr.started_at,
           finished_at: sr.finished_at,
+          ...(sr.outcome_json !== null ? { outcome_json: sr.outcome_json } : {}),
           updated_at: now,
         })
         .eq('id', bucket.nonTerminal.id);

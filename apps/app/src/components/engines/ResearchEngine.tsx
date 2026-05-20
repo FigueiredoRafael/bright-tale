@@ -634,11 +634,9 @@ export function ResearchEngine({
       pivotRecommendation: signals.pivotRecommendation,
     };
     tracker.trackAction('findings.auto_approved', { sessionId });
+    ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
     if (stageRun && projectId) {
-      void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> })
-        .then(() => ctx.signalStageComplete('research', result as unknown as Record<string, unknown>)).catch(() => {});
-    } else {
-      ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
+      void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> }).catch(() => {});
     }
   }, [
     autoMode,
@@ -675,11 +673,9 @@ export function ResearchEngine({
       researchLevel: level,
     };
     tracker.trackAction('cards.auto_approved', { cardCount: cards.length });
+    ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
     if (stageRun && projectId) {
-      void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> })
-        .then(() => ctx.signalStageComplete('research', result as unknown as Record<string, unknown>)).catch(() => {});
-    } else {
-      ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
+      void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> }).catch(() => {});
     }
   }, [
     autoMode,
@@ -845,11 +841,9 @@ export function ResearchEngine({
         researchSummary: signals.researchSummary,
         pivotRecommendation: signals.pivotRecommendation,
       };
+      ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
       if (stageRun && projectId) {
-        void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> })
-          .then(() => ctx.signalStageComplete('research', result as unknown as Record<string, unknown>)).catch(() => {});
-      } else {
-        ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
+        void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> }).catch(() => {});
       }
       onComplete?.();
       return;
@@ -892,11 +886,9 @@ export function ResearchEngine({
       approvedCardsCount: approvedCards.length,
       researchLevel: level,
     };
+    ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
     if (stageRun && projectId) {
-      void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> })
-        .then(() => ctx.signalStageComplete('research', result as unknown as Record<string, unknown>)).catch(() => {});
-    } else {
-      ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
+      void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> }).catch(() => {});
     }
     onComplete?.();
   }

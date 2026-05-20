@@ -276,6 +276,28 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
     setCoreApproved(true);
   }, [autoMode, autoPaused, phase, canonicalCore, draftId, coreApproved]);
 
+  // Approve flips local state only; the sidebar's v2 view reads from
+  // stage_runs and needs a 'canonical' row at status=completed. Mirror creates
+  // that row by routing a legacy 'draft' signal through ensureTracksForProject,
+  // which splits draft → canonical+production based on content_drafts column
+  // state (canonical_core_json present → canonical=completed; draft_json null
+  // → production=queued). Fire once per draftId so the canonical row lands as
+  // soon as the user approves the core.
+  const canonicalSignalSentRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!coreApproved || !draftId) return;
+    if (canonicalSignalSentRef.current === draftId) return;
+    canonicalSignalSentRef.current = draftId;
+    const persona = personas.find((p) => p.id === selectedPersonaId);
+    ctx.signalStageComplete('draft', {
+      draftId,
+      personaId: selectedPersonaId ?? undefined,
+      personaName: persona?.name,
+      personaSlug: persona?.slug,
+      personaWpAuthorId: persona?.wpAuthorId,
+    });
+  }, [coreApproved, draftId, selectedPersonaId, personas, ctx]);
+
   async function runStep(label: string, fn: () => Promise<Response>) {
     setBusy(true);
     try {
@@ -313,6 +335,10 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
 
     let newDraftId = draftId;
     if (!newDraftId) {
+      // content_drafts.type is NOT NULL. The wizard's autopilot config carries
+      // the chosen format (blog/video/shorts/podcast); fall back to 'blog' for
+      // ad-hoc canonical runs (no project / no wizard config).
+      const draftType = hydrateDraftFromConfig(autopilotConfig ?? null).format ?? 'blog';
       const draft = await runStep('create draft', () =>
         fetch('/api/content-drafts', {
           method: 'POST',
@@ -324,6 +350,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
             researchSessionId: research.id,
             title,
             personaId: selectedPersonaId,
+            type: draftType,
           }),
           signal: abortController?.signal,
         })

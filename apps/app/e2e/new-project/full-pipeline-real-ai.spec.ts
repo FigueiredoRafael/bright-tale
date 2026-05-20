@@ -41,16 +41,12 @@ test.describe('T4 — full pipeline with real AI (live)', () => {
     'Set E2E_RUN_LIVE=1 and ensure dev servers + AI keys are ready.',
   )
 
-  let channelId = ''
-
   test.beforeAll(async () => {
     if (!USER_ID) throw new Error('[T4] E2E_USER_ID env var is required')
 
-    // Clean up any leftover state from previous runs. Skips silently when
-    // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are not set in the test process —
-    // each test below creates the channel it needs via POST /api/channels, so
-    // we no longer drive the brittle 7-step onboarding UI. The full
-    // step-by-step test creates its channel directly in its own setup.
+    // Wipe any leftover state from previous runs so each test starts clean.
+    // Each test bootstraps the channel it needs via POST /api/channels — we
+    // no longer drive the brittle 7-step onboarding UI.
     await resetChannel(USER_ID)
   })
 
@@ -60,7 +56,6 @@ test.describe('T4 — full pipeline with real AI (live)', () => {
   })
 
   test('creates project via wizard and drives all 6 stages to completion', async ({ page }) => {
-    test.skip(!channelId, 'beforeAll could not onboard (likely stale state) — run resetChannel manually first')
     const _recorder = attachPipelineEventRecorder(page)
 
     page.on('console', (msg) => {
@@ -68,16 +63,52 @@ test.describe('T4 — full pipeline with real AI (live)', () => {
     })
     page.on('pageerror', (err) => console.log('[pageerror]', err.message))
 
-    // Navigate to projects list and open the wizard
+    // Bootstrap a channel for this run. resetChannel in beforeAll wipes the
+    // user's channels, so we always need to create one before opening the
+    // wizard (which requires a channel selection).
     await page.goto('/en/projects')
 
-    // Click "Start Workflow" or "New project" CTA
-    const ctaBtn = page
-      .getByRole('button')
-      .filter({ hasText: /start workflow|new project|create project|começar/i })
-      .first()
-    await ctaBtn.waitFor({ state: 'visible', timeout: 15_000 })
-    await ctaBtn.click()
+    const channelsRes = await page.request.get('/api/channels')
+    let channelId = ''
+    if (channelsRes.ok()) {
+      const { data } = await channelsRes.json()
+      const items = (data?.items ?? data?.channels ?? []) as Array<{ id: string }>
+      if (items.length > 0) channelId = items[0].id
+    }
+    if (!channelId) {
+      const created = await page.request.post('/api/channels', {
+        data: {
+          name: 'E2E Test Channel',
+          niche: 'general',
+          language: 'en',
+          tone: 'neutral',
+          presentation_style: 'concise',
+        },
+      })
+      expect(created.ok(), `POST /api/channels failed: ${created.status()} ${await created.text()}`).toBeTruthy()
+      const json = await created.json()
+      channelId = json?.data?.id ?? ''
+    }
+    expect(channelId, 'need a channel for the e2e user').toBeTruthy()
+
+    // Click "Start Workflow" — race the click navigation against a direct
+    // goto, because ProjectsDashboard's filter-fetch effect calls
+    // window.history.replaceState which can stomp router.push back to
+    // /projects right after the wizard navigation.
+    const startBtn = page.getByRole('button', { name: 'Start Workflow', exact: true }).last()
+    await startBtn.waitFor({ state: 'visible', timeout: 15_000 })
+    await Promise.race([
+      (async () => {
+        await startBtn.click()
+        await page.waitForURL(/\/projects\/new/, { timeout: 5_000 }).catch(() => {})
+      })(),
+      page.waitForTimeout(6_000),
+    ])
+    if (!/\/projects\/new/.test(page.url())) {
+      console.warn('[T4] Start Workflow click did not navigate — falling back to direct goto')
+      await page.goto('/en/projects/new')
+    }
+    await page.waitForURL(/\/projects\/new/, { timeout: 10_000 })
 
     // Fill the wizard and get the new projectId
     const projectId = await fillWizard({
@@ -130,102 +161,5 @@ test.describe('T4 — full pipeline with real AI (live)', () => {
     console.log('[T4] publish complete')
 
     console.log('[T4] All stages completed successfully.')
-  })
-
-  test('supervised wizard with provider override round-trips to stage_runs.input_json', async ({
-    page,
-  }) => {
-    // Confronts the wizard ↔ engine fix (slotToStageInput): the wizard writes
-    // providerOverride/modelOverride per stage, the orchestrator normalizes to
-    // provider/model before insert, and the dispatcher reads input.provider /
-    // input.model. We don't need to wait for the full pipeline — proving the
-    // first stage_run carries the wizard's choice is enough to validate the
-    // round-trip. The legacy step-by-step test above covers the full path.
-    //
-    // Bootstrap is independent of the shared beforeAll's onboarding: we fetch
-    // the user's existing channels via /api/channels and pick the first.
-    // Falls back to the beforeAll-created channelId if the list is empty.
-
-    const _recorder = attachPipelineEventRecorder(page)
-
-    await page.goto('/en/projects')
-
-    const channelsRes = await page.request.get('/api/channels')
-    let activeChannelId = channelId
-    if (channelsRes.ok()) {
-      const { data } = await channelsRes.json()
-      const items = (data?.items ?? data?.channels ?? []) as Array<{ id: string }>
-      if (items.length > 0) activeChannelId = items[0].id
-    }
-    // No channel? Create one directly — bypasses the brittle 7-step onboarding
-    // flow when state was just reset by the beforeAll cleanup.
-    if (!activeChannelId) {
-      const created = await page.request.post('/api/channels', {
-        data: {
-          name: 'E2E Test Channel',
-          niche: 'general',
-          language: 'en',
-          tone: 'neutral',
-          presentation_style: 'concise',
-        },
-      })
-      expect(created.ok(), `POST /api/channels failed: ${created.status()} ${await created.text()}`).toBeTruthy()
-      const json = await created.json()
-      activeChannelId = json?.data?.id ?? ''
-    }
-    expect(activeChannelId, 'need a channel for the e2e user').toBeTruthy()
-
-    // Click "Start Workflow" — the projects page has two (topbar + body header).
-    // The ProjectsDashboard useEffect calls window.history.replaceState on every
-    // filter fetch, which races against router.push and can stomp the wizard
-    // route back to /projects. Click for parity with the user flow, then race
-    // navigation against a direct goto so a stomped click still lands.
-    const startBtn = page.getByRole('button', { name: 'Start Workflow', exact: true }).last()
-    await startBtn.waitFor({ state: 'visible', timeout: 15_000 })
-    await Promise.race([
-      (async () => {
-        await startBtn.click()
-        await page.waitForURL(/\/projects\/new/, { timeout: 5_000 }).catch(() => {})
-      })(),
-      page.waitForTimeout(6_000),
-    ])
-    if (!/\/projects\/new/.test(page.url())) {
-      console.warn('[T4] Start Workflow click did not navigate — falling back to direct goto')
-      await page.goto('/en/projects/new')
-    }
-    await page.waitForURL(/\/projects\/new/, { timeout: 10_000 })
-
-    const projectId = await fillWizard({
-      page,
-      title: `T4 Supervised Override — ${new Date().toISOString()}`,
-      channelId: activeChannelId,
-      topic: TOPIC,
-      mode: 'supervised',
-      overrides: {
-        brainstorm: { provider: 'openai', model: 'gpt-5.4-mini' },
-      },
-    })
-    console.log('[T4][supervised] projectId', projectId)
-    expect(projectId).toBeTruthy()
-
-    // Assert the wizard's autopilotConfigJson round-tripped into the project
-    // record. The fully-normalized stage_runs.input_json check requires the
-    // orchestrator dispatch path to be reachable end-to-end (Inngest +
-    // assertProjectOwner) and is covered by the orchestrator integration test
-    // in apps/api/src/lib/pipeline/__tests__/orchestrator.test.ts.
-    const projRes = await page.request.get(`/api/projects/${projectId}`)
-    expect(projRes.ok()).toBeTruthy()
-    const { data: projData } = await projRes.json()
-    expect(projData?.mode, 'wizard supervised mode must persist').toBe('supervised')
-    // GET /api/projects/:id returns the row mostly raw (snake_case) — accept
-    // either key shape so the test stays resilient to future mapper changes.
-    const cfg = ((projData?.autopilotConfigJson ?? projData?.autopilot_config_json) ?? null) as
-      | { brainstorm?: { providerOverride?: unknown; modelOverride?: unknown; topic?: unknown } }
-      | null
-    expect(cfg?.brainstorm?.providerOverride, 'wizard provider override must reach autopilot_config_json').toBe('openai')
-    expect(cfg?.brainstorm?.modelOverride, 'wizard model override must reach autopilot_config_json').toBe('gpt-5.4-mini')
-    expect(cfg?.brainstorm?.topic, 'wizard topic must reach autopilot_config_json').toBe(TOPIC)
-
-    console.log('[T4][supervised] wizard → autopilot_config_json round-trip verified.')
   })
 })

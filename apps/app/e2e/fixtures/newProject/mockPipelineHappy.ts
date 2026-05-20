@@ -440,6 +440,46 @@ export async function mockPipelineHappy(
   // ── Brainstorm engine endpoints ──────────────────────────────────────────
   const BRAINSTORM_SESSION_ID = 'sess-e2e-brainstorm-1'
 
+  // GET /api/brainstorm/sessions/running[?channelId=...] — reconnect hook called on
+  // BrainstormEngine mount. Returning a running session with a recent created_at
+  // causes the engine to set activeGenerationId → GenerationProgressFloat opens →
+  // SSE fires completed → handleGenerationComplete fetches drafts → idea cards
+  // populate without any click. This mirrors real-AI behaviour where
+  // POST /api/projects auto-dispatches a run.
+  //
+  // IMPORTANT: Only return the running session ONCE. After the first SSE completes,
+  // handleGenerationComplete sets activeGenerationId(null) which re-triggers the
+  // reconnect effect. If we keep returning a running session, we get an infinite
+  // cycle: reconnect → SSE complete → clear → reconnect again. After the first
+  // response, return null so the effect sees no running session and stops.
+  let runningSessionServed = false
+  await page.route(/\/api\/brainstorm\/sessions\/running(\?.*)?$/, async (route: Route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    if (runningSessionServed) {
+      // Already served once — no active running session anymore
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { session: null }, error: null }),
+      })
+    }
+    runningSessionServed = true
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          session: {
+            id: BRAINSTORM_SESSION_ID,
+            status: 'running',
+            created_at: nowIso(-30), // 30 s old — well within the 20-min reconnect window
+          },
+        },
+        error: null,
+      }),
+    })
+  })
+
   // POST /api/brainstorm/sessions — start a brainstorm; return sessionId so the engine subscribes to SSE
   await page.route('**/api/brainstorm/sessions', async (route: Route) => {
     if (route.request().method() !== 'POST') return route.fallback()

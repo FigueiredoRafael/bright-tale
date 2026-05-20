@@ -403,12 +403,17 @@ export function ProjectContextProvider({
   const setReturnPromptOpen = useCallback((value: boolean) => setReturnPromptOpenState(value), []);
   const setPauseReason = useCallback((value: PauseReason | null) => setPauseReasonState(value), []);
 
-  // Server-driven signalStageComplete: PATCH pipeline_state_json then refetch.
+  // Server-driven signalStageComplete: PATCH pipeline_state_json, mirror legacy
+  // state into stage_runs (so sidebar/orchestrator pick up the completion),
+  // then refetch. Without the mirror call, `stage_runs.<stage>.status` stays
+  // 'none' even after the engine reports the stage done — the legacy storage
+  // (`pipeline_state_json.stageResults`) is the source the engine writes, but
+  // the v2 view reads from `stage_runs`. The mirror is the bridge between them.
   const signalStageComplete = useCallback(
     (stage: PipelineStage, result: Record<string, unknown>) => {
       const pid = context.projectId;
       if (!pid || pid.startsWith('standalone-')) return;
-      // Fire-and-forget PATCH, then refetch to pick up the new stageResults.
+      // Fire-and-forget PATCH → mirror → refetch.
       fetch(`/api/projects/${pid}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -418,6 +423,15 @@ export function ProjectContextProvider({
           },
         }),
       })
+        .then(() =>
+          fetch(`/api/projects/${pid}/stage-runs/mirror-from-legacy`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+          }).catch(() => {
+            // Non-fatal — refetch will surface whatever state did land.
+          }),
+        )
         .then(() => refetch())
         .catch(() => {
           // Non-fatal — refetch anyway so UI state stays consistent.

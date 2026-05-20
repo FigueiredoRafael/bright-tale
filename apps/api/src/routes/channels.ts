@@ -92,7 +92,7 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
         return { ...c, has_wordpress: wpChannelIds.has(c.id) };
       });
 
-      reply.header('Cache-Control', 'private, max-age=60');
+      reply.header('Cache-Control', 'private, no-store');
       return reply.send({
         data: { items, total: count, page, limit },
         error: null,

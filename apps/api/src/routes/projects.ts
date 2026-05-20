@@ -88,6 +88,30 @@ function rowToTrack(row: TrackRow) {
  *
  * Returns the inserted track objects or throws ApiError.
  */
+/**
+ * Deep-merge an incoming `pipelineStateJson` patch into the existing row.
+ *
+ * `stageResults` is the only nested field the engines update incrementally:
+ * each engine calls signalStageComplete with `{ stageResults: { [stage]: {...} } }`,
+ * and a naive replace wipes out the prior stages. We merge that key by stage,
+ * but leave all other top-level keys as full replacements (the engines that
+ * write those — currentStage, autoConfig — always send the complete value).
+ */
+function mergePipelineStateJson(
+  existing: Record<string, unknown> | null | undefined,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const base = (existing ?? {}) as Record<string, unknown>;
+  const merged: Record<string, unknown> = { ...base, ...patch };
+  if (patch.stageResults && typeof patch.stageResults === 'object') {
+    merged.stageResults = {
+      ...((base.stageResults as Record<string, unknown> | undefined) ?? {}),
+      ...(patch.stageResults as Record<string, unknown>),
+    };
+  }
+  return merged;
+}
+
 async function insertTracksForProject(
   sb: any, // eslint-disable-line @typescript-eslint/no-explicit-any
   projectId: string,
@@ -259,6 +283,16 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
         if (audience) brainstormInput.audience = audience;
         if (goal) brainstormInput.goal = goal;
         if (constraints) brainstormInput.constraints = constraints;
+
+        // Carry the wizard's per-stage provider/model overrides into the
+        // dispatcher input. AutopilotConfig uses verbose `providerOverride`/
+        // `modelOverride` field names; the dispatcher reads `provider`/`model`.
+        // Without this remap the wizard's choice is silently dropped and every
+        // brainstorm run falls back to the admin recommended values.
+        const providerOverride = typeof bs?.providerOverride === 'string' ? bs.providerOverride : '';
+        const modelOverride = typeof bs?.modelOverride === 'string' ? bs.modelOverride : '';
+        if (providerOverride) brainstormInput.provider = providerOverride;
+        if (modelOverride) brainstormInput.model = modelOverride;
 
         try {
           await requestStageRun(project.id, 'brainstorm', brainstormInput, request.userId);
@@ -513,8 +547,12 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       if (data.winner !== undefined) updateData.winner = data.winner;
       if (data.completed_stages !== undefined)
         updateData.completed_stages = data.completed_stages;
-      if (data.pipelineStateJson !== undefined)
-        updateData.pipeline_state_json = data.pipelineStateJson;
+      if (data.pipelineStateJson !== undefined) {
+        updateData.pipeline_state_json = mergePipelineStateJson(
+          existing.pipeline_state_json as Record<string, unknown> | null | undefined,
+          data.pipelineStateJson as Record<string, unknown>,
+        );
+      }
       if (data.channelId !== undefined)
         updateData.channel_id = data.channelId;
 
@@ -681,8 +719,12 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       if (data.winner !== undefined) updateData.winner = data.winner;
       if (data.completed_stages !== undefined)
         updateData.completed_stages = data.completed_stages;
-      if (data.pipelineStateJson !== undefined)
-        updateData.pipeline_state_json = data.pipelineStateJson;
+      if (data.pipelineStateJson !== undefined) {
+        updateData.pipeline_state_json = mergePipelineStateJson(
+          existing.pipeline_state_json as Record<string, unknown> | null | undefined,
+          data.pipelineStateJson as Record<string, unknown>,
+        );
+      }
 
       const { data: project, error } = await sb
         .from('projects')

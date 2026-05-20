@@ -276,18 +276,34 @@ export const brainstormGenerate = inngest.createFunction(
       if (stageRunId) {
         const { data: firstDraft } = await sb
           .from('brainstorm_drafts')
-          .select('id, title')
+          .select('id, title, verdict, core_tension')
           .eq('session_id', sessionId)
           .order('position', { ascending: true })
           .limit(1)
           .maybeSingle();
         const now = new Date().toISOString();
+        // Seed outcome_json with the first draft's metadata so downstream
+        // engines (ResearchEngine reads brainstormResult.ideaTitle from
+        // stage_runs.outcome_json via deriveStageResults) have a sensible
+        // default. The user can override the choice via the UI; that path
+        // goes through a separate selection endpoint (or no-ops when picking
+        // the first card, which is the same as the auto-default).
+        const seedOutcome = firstDraft?.id
+          ? {
+              ideaId: firstDraft.id,
+              ideaTitle: firstDraft.title as string,
+              ideaVerdict: (firstDraft.verdict as string) ?? '',
+              ideaCoreTension: (firstDraft.core_tension as string) ?? '',
+              brainstormSessionId: sessionId,
+            }
+          : null;
         await (sb.from('stage_runs') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
           .update({
             status: 'completed',
             payload_ref: firstDraft?.id ? { kind: 'brainstorm_draft', id: firstDraft.id } : null,
+            ...(seedOutcome ? { outcome_json: seedOutcome } : {}),
             finished_at: now,
             updated_at: now,
           })

@@ -358,11 +358,6 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
         const sb: Sb = createServiceClient();
         await assertProjectOwner(projectId, userId, sb);
 
-        // T2.1: lazy multi-track migration. Idempotent — no-op once a Track
-        // exists for the project. Must run before the legacy mirror so the
-        // resulting canonical/production rows respect the new track_id FK.
-        await ensureTracksForProject(sb, projectId);
-
         // Coalesce concurrent calls for the same project — see
         // `mirrorInFlight` comment above.
         const existing = mirrorInFlight.get(projectId);
@@ -371,6 +366,14 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
         });
         if (!existing) mirrorInFlight.set(projectId, promise);
         const outcome = await promise;
+
+        // T2.1: lazy multi-track migration. Runs AFTER the legacy mirror so the
+        // newly-mirrored draft stage_run row can be split into canonical +
+        // production. ensureTracksForProject re-runs splitDraftStageRuns on
+        // every call (idempotent), so late signals from CanonicalEngine still
+        // produce the canonical row the v2 sidebar expects.
+        await ensureTracksForProject(sb, projectId);
+
         return reply.send({ data: outcome, error: null });
       } catch (err) {
         return sendError(reply, err);

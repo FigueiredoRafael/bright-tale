@@ -42,7 +42,7 @@ export default defineConfig({
       // Default chromium project skips them; opt in via E2E_RUN_LIVE=1 so they
       // run only when explicitly requested (the spec also has its own test.skip
       // guard so a stray invocation without the env stays a no-op).
-      testIgnore: process.env.E2E_RUN_LIVE === '1' ? undefined : /live-autopilot|full-pipeline-real-ai/,
+      testIgnore: process.env.E2E_RUN_LIVE === '1' ? undefined : /live-autopilot|full-pipeline-real-ai|canonical-onwards-real-ai/,
     },
   ],
 

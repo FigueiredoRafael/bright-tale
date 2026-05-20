@@ -148,19 +148,29 @@ export async function ensureTracksForProject(sb: Sb, projectId: string): Promise
     .eq('project_id', projectId);
 
   const rows = (existing ?? []) as TrackRow[];
-  if (rows.length > 0) return toTrack(rows[0]);
+  let trackRow: TrackRow
+  if (rows.length > 0) {
+    trackRow = rows[0]
+  } else {
+    const medium = await deriveMedium(sb, projectId);
+    const { data: inserted } = await sb
+      .from('tracks')
+      .insert({ project_id: projectId, medium, status: 'active', paused: false })
+      .select()
+      .single();
+    trackRow = inserted as TrackRow
+  }
 
-  const medium = await deriveMedium(sb, projectId);
-
-  const { data: inserted } = await sb
-    .from('tracks')
-    .insert({ project_id: projectId, medium, status: 'active', paused: false })
-    .select()
-    .single();
-
+  // splitDraftStageRuns must run on every call, not only on track creation.
+  // The legacy 'draft' stage_run can be materialized any time a downstream
+  // engine signalStageComplete('draft') fires (e.g. CanonicalEngine after the
+  // user approves the canonical core). If we skip the split when a track
+  // already exists, those late-arriving draft rows never get migrated to
+  // separate canonical+production stage_runs and the v2 sidebar stays at
+  // status="none" for canonical forever.
   await splitDraftStageRuns(sb, projectId);
 
-  return toTrack(inserted as TrackRow);
+  return toTrack(trackRow);
 }
 
 async function deriveMedium(sb: Sb, projectId: string): Promise<Medium> {
