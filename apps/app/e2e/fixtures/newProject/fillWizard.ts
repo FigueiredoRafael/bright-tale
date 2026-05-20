@@ -69,18 +69,26 @@ async function setProviderOverride(
     if (!expanded) await trigger.click()
   }
 
-  // Each ProviderModelFields renders two SelectTriggers in order: provider, model.
-  // Scope by stage-section to avoid hitting another stage's selectors.
+  // Each ProviderModelFields renders two SelectTriggers labelled "Provider" and
+  // "Model" — but the stage section ALSO contains stage-specific selects (Mode,
+  // research depth, canonical persona, draft format, etc.) so we must anchor by
+  // the literal "Provider"/"Model" Label text, not by position.
   const scope = sectionVisible ? section : page.locator('body')
-  const triggers = scope.locator('button[role="combobox"]')
-  // Provider trigger is the first combobox under the stage section.
-  await triggers.first().click()
-  await page.getByRole('option', { name: new RegExp(`^${override.provider}$`, 'i') }).click()
+  const providerCombobox = scope
+    .locator('label:has-text("Provider")')
+    .locator('xpath=following::button[@role="combobox"][1]')
+  await providerCombobox.first().click()
+  // Wizard label-cases provider names (e.g. `openai` → `Openai`). Use a regex
+  // anchored to the first letter so we tolerate either casing.
+  await page
+    .getByRole('option', { name: new RegExp(`^${override.provider}$`, 'i') })
+    .click()
 
   if (override.model) {
-    // Model trigger is the second combobox. After provider change the model
-    // resets to "Provider default" so we have to pick the explicit model id.
-    await triggers.nth(1).click()
+    const modelCombobox = scope
+      .locator('label:has-text("Model")')
+      .locator('xpath=following::button[@role="combobox"][1]')
+    await modelCombobox.first().click()
     await page.getByRole('option', { name: override.model }).click()
   }
 }
@@ -147,6 +155,12 @@ export async function fillWizard({
   const modeLabel = MODE_LABEL[mode]
   await page.getByRole('radio', { name: modeLabel }).click()
 
+  // handleChannelSelect's async merge can race with topic fill and wipe the
+  // brainstorm.topic field once templates resolve. Re-fill the topic AFTER
+  // mode selection (which is when supervised autopilot sections mount) so the
+  // value is the last write before submit.
+  await page.locator('#wizard-brainstorm-topic').fill(topic)
+
   // Apply per-stage provider/model overrides (autopilot modes only).
   if (overrides && (mode === 'supervised' || mode === 'overview')) {
     for (const [stage, override] of Object.entries(overrides) as Array<
@@ -159,11 +173,15 @@ export async function fillWizard({
   // Submit
   await page.getByRole('button', { name: /create project/i }).click()
 
-  // Wait for navigation to /projects/:id
-  await page.waitForURL(/\/projects\/[a-zA-Z0-9-]+/, { timeout: 30_000 })
+  // Wait for navigation to /projects/:id. The naive `[a-zA-Z0-9-]+` regex also
+  // matches /projects/new (the wizard route itself) so waitForURL returns
+  // immediately when the click hasn't navigated yet. Anchor on a UUID prefix
+  // so we wait for the real destination.
+  const UUID_PATH = /\/projects\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/
+  await page.waitForURL(UUID_PATH, { timeout: 30_000 })
 
   const url = page.url()
-  const match = url.match(/\/projects\/([a-zA-Z0-9-]+)/)
+  const match = url.match(/\/projects\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/)
   if (!match) {
     throw new Error(`[fillWizard] Could not parse projectId from URL: ${url}`)
   }

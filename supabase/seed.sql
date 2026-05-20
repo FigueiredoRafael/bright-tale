@@ -2,6 +2,9 @@
 -- Source of truth: scripts/agents/*.ts
 -- Run: npm run db:seed:agents
 
+-- Ensure tools_json column exists (referenced by the INSERTs below).
+ALTER TABLE public.agent_prompts ADD COLUMN IF NOT EXISTS tools_json JSONB NOT NULL DEFAULT '[]'::jsonb;
+
 insert into public.agent_prompts (id, name, slug, stage, instructions, sections_json, recommended_provider, recommended_model, tools_json, created_at, updated_at)
 values (
   $bt$agent-brainstorm$bt$,

@@ -77,8 +77,27 @@ function main() {
 
 `;
 
-  writeFileSync(SEED_PATH, header + sql);
-  writeFileSync(MIGRATION_PATH, header + sql);
+  // Seed-only preamble: when supabase db reset runs seed.sql AFTER all
+  // migrations the column already exists. Belt-and-suspenders.
+  const seedPreamble = `-- Ensure tools_json column exists (referenced by the INSERTs below).
+ALTER TABLE public.agent_prompts ADD COLUMN IF NOT EXISTS tools_json JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+`;
+
+  // Migration preamble: this file's timestamp (20260417210000) predates the
+  // 20260430100000_agent_prompts_tools.sql migration that originally added
+  // tools_json — so a fresh \`db:reset\` would fail without an idempotent
+  // ALTER TABLE before the INSERTs.
+  const migrationPreamble = `-- Idempotently ensure schema columns exist before INSERT — protects local
+-- \`db:reset\` (strict timestamp order) when this regenerated file predates
+-- the 20260430100000_agent_prompts_tools migration that originally added
+-- tools_json. No-op on environments that already have the column.
+ALTER TABLE public.agent_prompts ADD COLUMN IF NOT EXISTS tools_json JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+`;
+
+  writeFileSync(SEED_PATH, header + seedPreamble + sql);
+  writeFileSync(MIGRATION_PATH, header + migrationPreamble + sql);
 
   console.log(`Wrote ${ALL_AGENTS.length} agents to:`);
   console.log(`  - ${SEED_PATH}`);
