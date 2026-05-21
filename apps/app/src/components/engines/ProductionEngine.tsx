@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
-  Loader2, FileText, Video, Zap, Mic, Check, ArrowRight, Sparkles, Pencil,
+  Loader2, FileText, Video, Zap, Mic, Check, ArrowRight, Sparkles, Pencil, Printer,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +29,7 @@ import type { VideoStyleConfig } from '@brighttale/shared/schemas/videoStyle';
 import type { AutopilotConfig } from '@brighttale/shared';
 import type { DraftResult } from './types';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
+import { openEditorBriefPrintView } from '@/lib/exporters/editorBrief';
 
 type Medium = 'blog' | 'video' | 'shorts' | 'podcast';
 type Phase = 'produce' | 'done';
@@ -696,6 +697,24 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
               className="bg-muted/20 p-4 rounded"
             />
             <div className="flex justify-end gap-2 flex-wrap">
+              {(medium === 'video' || medium === 'shorts' || medium === 'podcast') && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    openEditorBriefPrintView({
+                      medium,
+                      title: extractTitleForBrief(medium, producedDraftJson, producedContent),
+                      draftJson: producedDraftJson,
+                      bodyMarkdown: producedContent,
+                    });
+                  }}
+                  disabled={!producedContent && !producedDraftJson}
+                  title="Open print view to save the brief as PDF for your editor"
+                >
+                  <Printer className="h-4 w-4 mr-2" />
+                  Export brief (PDF)
+                </Button>
+              )}
               {medium === 'video' && producedDraftJson && (
                 <Button
                   variant="outline"
@@ -778,4 +797,28 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
       )}
     </section>
   );
+}
+
+function extractTitleForBrief(
+  medium: Medium,
+  draftJson: Record<string, unknown> | null,
+  bodyMarkdown: string,
+): string {
+  if (draftJson) {
+    if (medium === 'video') {
+      const vt = (draftJson.video_title as { primary?: string } | undefined)?.primary;
+      const opt = (draftJson.title_options as string[] | undefined)?.[0];
+      if (vt) return vt;
+      if (opt) return opt;
+    }
+    if (medium === 'podcast') {
+      const t = (draftJson.episode_title as string | undefined)
+        ?? ((draftJson.production as { podcast?: { episode_title?: string } } | undefined)?.podcast?.episode_title);
+      if (t) return t;
+    }
+  }
+  // shorts (and fallback): first markdown heading
+  const headingMatch = bodyMarkdown.match(/^#\s+(.+)$/m);
+  if (headingMatch) return headingMatch[1].trim();
+  return medium.charAt(0).toUpperCase() + medium.slice(1);
 }

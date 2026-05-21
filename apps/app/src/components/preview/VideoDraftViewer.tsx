@@ -17,6 +17,7 @@ import {
   Check,
   AlertTriangle,
   Loader2,
+  Download,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +38,7 @@ import type {
   VideoEditorSection,
   ThumbnailIdea,
 } from '@brighttale/shared/types/agents';
+import { downloadTextFile } from '@/lib/exporters/editorBrief';
 
 type Path = (string | number)[];
 
@@ -1607,6 +1609,22 @@ function PublishTab({
                 variant="outline"
                 size="sm"
                 className="gap-1.5"
+                onClick={() => {
+                  if (!teleprompter.trim()) return;
+                  const titleForFile = output.video_title?.primary ?? output.title_options?.[0] ?? 'teleprompter';
+                  const slug = slugifyForFilename(titleForFile);
+                  downloadTextFile({ content: teleprompter, filename: `${slug}-teleprompter.txt` });
+                }}
+                disabled={!teleprompter.trim()}
+                title={!teleprompter.trim() ? 'Empty teleprompter — nothing to download.' : 'Download teleprompter as .txt'}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download .txt
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
                 onClick={handleSynthesize}
                 disabled={!draftId || !teleprompter.trim() || synthesizing}
                 title={
@@ -1781,4 +1799,15 @@ function EmptyState({ icon, message }: { icon: React.ReactNode; message: string 
       </div>
     </div>
   );
+}
+
+function slugifyForFilename(raw: string): string {
+  const cleaned = raw
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+  return cleaned || 'untitled';
 }
