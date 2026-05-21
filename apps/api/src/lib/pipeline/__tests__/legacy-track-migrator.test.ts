@@ -82,6 +82,7 @@ function makeSb(seed: Seed): FakeSb {
   function makeQuery(table: string) {
     const filters: Array<[string, unknown]> = [];
     const inFilters: Array<[string, unknown[]]> = [];
+    const isNullFilters: string[] = [];
     const orders: Array<[string, boolean]> = [];
     let limitN: number | null = null;
 
@@ -89,6 +90,7 @@ function makeSb(seed: Seed): FakeSb {
       let rows = pick(table).slice();
       for (const [col, val] of filters) rows = rows.filter((r) => r[col] === val);
       for (const [col, vals] of inFilters) rows = rows.filter((r) => vals.includes(r[col]));
+      for (const col of isNullFilters) rows = rows.filter((r) => r[col] === null || r[col] === undefined);
       for (const [col, asc] of orders) {
         rows.sort((a, b) => {
           const av = a[col] as string;
@@ -107,6 +109,11 @@ function makeSb(seed: Seed): FakeSb {
       },
       in(col: string, vals: unknown[]) {
         inFilters.push([col, vals]);
+        return chain;
+      },
+      is(col: string, val: unknown) {
+        if (val === null) isNullFilters.push(col);
+        else filters.push([col, val]);
         return chain;
       },
       order(col: string, opts?: { ascending?: boolean }) {
@@ -142,6 +149,15 @@ function makeSb(seed: Seed): FakeSb {
     from(table: string) {
       return {
         select: () => makeQuery(table),
+        update: (patch: Record<string, unknown>) => ({
+          eq: (col: string, val: unknown) => {
+            const rows = pick(table);
+            for (const r of rows) {
+              if (r[col] === val) Object.assign(r, patch);
+            }
+            return Promise.resolve({ error: null });
+          },
+        }),
         insert: (row: Record<string, unknown>) => {
           const now = '2026-05-14T00:00:00Z';
           let full: Record<string, unknown>;

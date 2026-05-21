@@ -170,7 +170,43 @@ export async function ensureTracksForProject(sb: Sb, projectId: string): Promise
   // status="none" for canonical forever.
   await splitDraftStageRuns(sb, projectId);
 
+  // mirrorFromLegacy writes assets/preview/publish stage_runs without
+  // track_id (it has no track context). The sidebar groups stage_runs by
+  // (stage, track_id) — rows with track_id=null never match any track and
+  // stay invisible. Sweep null-track_id rows onto the active track so they
+  // surface as completed/in-progress in the per-track sidebar.
+  await backfillTrackScopedStageRuns(sb, projectId, trackRow.id);
+
   return toTrack(trackRow);
+}
+
+const TRACK_SCOPED_STAGES = ['review', 'assets', 'preview', 'publish'] as const;
+
+async function backfillTrackScopedStageRuns(
+  sb: Sb,
+  projectId: string,
+  trackId: string,
+): Promise<number> {
+  const { data: rows } = await sb
+    .from('stage_runs')
+    .select('id')
+    .eq('project_id', projectId)
+    .is('track_id', null)
+    .in('stage', TRACK_SCOPED_STAGES as unknown as string[]);
+  const targets = (rows ?? []) as Array<{ id: string }>;
+  if (targets.length === 0) return 0;
+  let updated = 0;
+  for (const r of targets) {
+    const { error } = await (sb.from('stage_runs') as unknown as {
+      update: (row: Record<string, unknown>) => {
+        eq: (col: string, val: string) => Promise<{ error: unknown }>;
+      };
+    })
+      .update({ track_id: trackId })
+      .eq('id', r.id);
+    if (!error) updated += 1;
+  }
+  return updated;
 }
 
 async function deriveMedium(sb: Sb, projectId: string): Promise<Medium> {
