@@ -36,6 +36,23 @@ export async function resolveIdeaArchiveFromBrainstorm(
     .limit(1)
     .maybeSingle();
   const ref = priorBrainstorm?.payload_ref as { kind?: string; id?: string } | null | undefined;
+
+  // Manual paste flow writes the picked idea straight into idea_archives and
+  // sets payload_ref={kind:'idea_archive', id} — no brainstorm_draft row
+  // exists. Resolve directly.
+  if (ref?.kind === 'idea_archive' && ref.id) {
+    const { data: archive } = await sb
+      .from('idea_archives')
+      .select('id, title')
+      .eq('id', ref.id)
+      .maybeSingle();
+    if (!archive?.id) return { ideaArchiveId: null, topic: null };
+    return {
+      ideaArchiveId: archive.id as string,
+      topic: (archive.title as string | null) ?? null,
+    };
+  }
+
   if (ref?.kind !== 'brainstorm_draft' || !ref.id) {
     return { ideaArchiveId: null, topic: null };
   }

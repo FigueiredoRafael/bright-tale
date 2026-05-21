@@ -101,7 +101,7 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
   // terminal row exists.
   const { data: existingRows } = await sb
     .from('stage_runs')
-    .select('id, stage, status, outcome_json, created_at')
+    .select('id, stage, status, outcome_json, created_at, finished_at')
     .eq('project_id', projectId)
     .order('created_at', { ascending: false });
   const existingByStage = bucketExistingRows(existingRows ?? []);
@@ -139,9 +139,26 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
     // a payload for this stage, copy it onto the terminal row so the
     // v2 view sees the same result.
     if (latest?.isTerminal) {
-      if (!latest.hasOutcome) {
-        const legacyResult = stageResults[stage] as Record<string, unknown> | undefined;
-        if (legacyResult && Object.keys(legacyResult).length > 0) {
+      const legacyResult = stageResults[stage] as Record<string, unknown> | undefined;
+      if (legacyResult && Object.keys(legacyResult).length > 0) {
+        // For brainstorm the user-facing engine writes the authoritative
+        // pick via signalStageComplete (regenerate + new idea selection),
+        // so always overwrite the dispatcher's seeded outcome.
+        // For research the dispatcher also writes outcome_json, so we only
+        // overwrite when the legacy result is strictly NEWER than the
+        // stage_run's finished_at — i.e. the user just clicked Continue
+        // after handleRegenerate. A bare page-load with stale legacy state
+        // must NOT clobber a fresh dispatcher write (e.g. after Restart step).
+        let shouldOverwrite = stage === 'brainstorm';
+        if (stage === 'research' && !shouldOverwrite) {
+          const legacyCompletedAt =
+            typeof legacyResult?.completedAt === 'string' ? legacyResult.completedAt : null;
+          const stageFinishedAt = latest.finishedAt;
+          if (legacyCompletedAt && stageFinishedAt && legacyCompletedAt > stageFinishedAt) {
+            shouldOverwrite = true;
+          }
+        }
+        if (shouldOverwrite || !latest.hasOutcome) {
           const { error } = await (sb.from('stage_runs') as unknown as {
             update: (row: Record<string, unknown>) => {
               eq: (col: string, val: string) => Promise<{ error: unknown }>;
@@ -151,7 +168,7 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
             .eq('id', latest.id);
           if (error) {
             console.warn(
-              `[mirror] enrich outcome_json for ${latest.id} (stage=${stage}) failed:`,
+              `[mirror] sync outcome_json for ${latest.id} (stage=${stage}) failed:`,
               error,
             );
           }
@@ -294,7 +311,7 @@ function resolveTimestamps(
 
 type StageBucket = {
   /** Most-recent row per stage, regardless of status — the row the v2 view shows. */
-  latest?: { id: string; status: string; isTerminal: boolean; hasOutcome: boolean };
+  latest?: { id: string; status: string; isTerminal: boolean; hasOutcome: boolean; finishedAt: string | null };
   /** Most-recent non-terminal row, if any (DB guarantees ≤1). */
   nonTerminal?: { id: string };
 };
@@ -309,9 +326,10 @@ function bucketExistingRows(rows: unknown[]): Map<string, StageBucket> {
     const isTerminal = TERMINAL_STATUSES.includes(status);
     const outcome = r.outcome_json as Record<string, unknown> | null | undefined;
     const hasOutcome = outcome !== null && outcome !== undefined && Object.keys(outcome).length > 0;
+    const finishedAt = typeof r.finished_at === 'string' ? (r.finished_at as string) : null;
     const bucket = byStage.get(stage) ?? {};
     if (!bucket.latest) {
-      bucket.latest = { id, status, isTerminal, hasOutcome };
+      bucket.latest = { id, status, isTerminal, hasOutcome, finishedAt };
     }
     if (!isTerminal && !bucket.nonTerminal) {
       bucket.nonTerminal = { id };

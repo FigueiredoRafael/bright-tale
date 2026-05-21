@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Loader2, Sparkles, Check, AlertCircle, ArrowRight, ClipboardPaste, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
@@ -18,9 +19,8 @@ import { friendlyAiError } from '@/lib/ai/error-message';
 import { useUpgrade } from '@/components/billing/UpgradeProvider';
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
-import { writeStageRunOutcome } from '@/lib/api/stageRuns';
+import { fetchTracks, nextTrackStage, pushStage } from '@/lib/pipeline/advanceUrl';
 import type { PipelineContext, PipelineStage, ReviewResult } from './types';
-import type { StageRun } from '@brighttale/shared/pipeline/inputs';
 import { deriveTier, isApprovedTier } from '@brighttale/shared';
 import type { AutopilotConfig } from '@brighttale/shared';
 
@@ -30,7 +30,6 @@ import type { AutopilotConfig } from '@brighttale/shared';
  */
 interface ReviewEngineProps {
   draft: Record<string, unknown> | null;
-  stageRun?: StageRun;
 }
 
 const REVIEW_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
@@ -51,9 +50,28 @@ const TIER_COLOR: Record<string, string> = {
   not_requested: 'bg-gray-500/20 text-gray-700 border-gray-500/50',
 };
 
-export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
+export function ReviewEngine({ draft }: ReviewEngineProps) {
   const ctx = useProjectContext();
   const abortController = usePipelineAbort();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Step-by-step URL advance: review → next non-skipped track stage. Walks
+  // (assets → preview → publish) and skips any stage_run marked 'skipped'
+  // (e.g. wizard chose to skip assets). Supervised mode is handled by
+  // PipelineWorkspace's auto-advance.
+  async function advanceFromReview() {
+    const trackId = searchParams?.get('track') ?? null;
+    if (!ctx.context.projectId) {
+      pushStage({ router, pathname, searchParams, stage: 'assets', trackId });
+      return;
+    }
+    const tracks = await fetchTracks(ctx.context.projectId);
+    const track = trackId ? tracks.find((t) => t.id === trackId) ?? null : tracks[0] ?? null;
+    const stage = nextTrackStage('review', track);
+    pushStage({ router, pathname, searchParams, stage, trackId: track?.id ?? trackId });
+  }
 
   const channelId = ctx.context.channelId;
   const projectId = ctx.context.projectId ?? '';
@@ -140,6 +158,11 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
   }, [providerOverride, modelOverride]); // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  // 'revising' → /produce reproduce-mode is in flight; on completion we chain
+  //   into /review automatically so the user sees a fresh score.
+  // 'reviewing' → /review is in flight; modal shows scoring progress.
+  // null → idle.
+  const [revisePhase, setRevisePhase] = useState<'revising' | 'reviewing' | null>(null);
   // Anchor the SSE event filter to the moment the action started so the modal
   // doesn't replay a previous stage's `completed` event (events are keyed by
   // draftId across stages).
@@ -546,17 +569,37 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
     });
   }
 
-  async function handleRevise() {
+  // Featured action in the revision-required panel — labelled "Start AI Review".
+  // Feeds the production content with the current review feedback (calls
+  // `/produce` with `productionParams.review_feedback`, which flips
+  // production-produce.ts into reproduce-prompt mode). When the production
+  // job emits a `completed` event the SSE `onComplete` hook chains into
+  // `handleSubmitForReview` so the user gets a fresh score in one click.
+  async function handleReviseAndReview() {
     await withGuard(async () => {
+      if (!draftId) return;
       try {
+        tracker.trackStarted({ draftId, iterationCount: draftView.iteration_count });
+        ctx.setStageStatus('review', {
+          status: `Iteration ${machineIterationCount + 1}/${maxIterations}: revising`,
+          current: machineIterationCount,
+          total: maxIterations,
+        });
+
+        const body: Record<string, unknown> = {
+          provider,
+          productionParams: { review_feedback: draftView.review_feedback_json },
+        };
+        if (model && !isManual) body.model = model;
+
         setReviewSince(new Date(Date.now() - 1_000).toISOString());
         setReviewing(true);
-        const res = await fetch(`/api/content-drafts/${draftId}/revise`, {
+        setRevisePhase('revising');
+
+        const res = await fetch(`/api/content-drafts/${draftId}/produce`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            feedback: draftView.review_feedback_json,
-          }),
+          body: JSON.stringify(body),
           signal: abortController?.signal,
         });
         const json = await res.json();
@@ -564,20 +607,37 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
         if (json?.error) {
           if (handleMaybeCreditsError(json.error)) {
             setReviewing(false);
+            setRevisePhase(null);
             return;
           }
           const f = friendlyAiError(json.error.message ?? '');
           toast.error(f.title, { description: f.hint });
           setReviewing(false);
+          setRevisePhase(null);
           return;
         }
 
-        await refetchDraft();
-        setReviewing(false);
-        if (!overviewMode) toast.success('Draft revised based on feedback');
+        // Manual provider parks the draft at awaiting_manual — break out of
+        // the chained flow and surface the paste dialog. The user submits via
+        // ManualOutputDialog → /:id/manual-output, which writes draft_json
+        // and flips production stage_run to completed (content-drafts.ts).
+        // After manual paste they can hit "Retry Review" to score it.
+        if (isManual && json.data?.status === 'awaiting_manual') {
+          setManualState({ draftId });
+          toast.info('Production prompt copied to Axiom. Paste output when ready.');
+          setReviewing(false);
+          setRevisePhase(null);
+          return;
+        }
+        // SSE modal is open; onComplete chains into the review.
       } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') { setReviewing(false); return; }
+        if (err instanceof Error && err.name === 'AbortError') {
+          setReviewing(false);
+          setRevisePhase(null);
+          return;
+        }
         setReviewing(false);
+        setRevisePhase(null);
         toast.error('Failed to revise draft');
       }
     });
@@ -759,13 +819,8 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
                         feedbackJson: fb,
                         iterationCount: draftView.iteration_count,
                       };
-                      if (stageRun && projectId) {
-                        void writeStageRunOutcome({
-                          projectId,
-                          stageRunId: stageRun.id,
-                          outcome: result as unknown as Record<string, unknown>,
-                        }).then(() => ctx.refetch()).catch(() => {});
-                      }
+                      ctx.signalStageComplete('review', result as unknown as Record<string, unknown>);
+                      await advanceFromReview();
                     }}
                     className="gap-2"
                     data-testid="review-action-next"
@@ -791,9 +846,12 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
                   <span>{needsRevision ? 'Revision required.' : 'Draft rejected.'} Choose an action:</span>
                 </div>
 
-                {/* Re-review section */}
+                {/* Primary: revise the draft with the review feedback, then
+                    score it automatically (chained handleReviseAndReview). */}
                 <div className="space-y-3">
-                  <p className="text-xs font-medium text-muted-foreground">Run a new review:</p>
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Apply review feedback and re-score the draft:
+                  </p>
                   <ModelPicker
                     providers={manualEnabled ? REVIEW_PROVIDERS : REVIEW_PROVIDERS.filter((p) => p !== 'manual')}
                     provider={provider}
@@ -808,18 +866,17 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
                   />
                   <div className="flex justify-end">
                     <Button
-                      onClick={handleSubmitForReview}
+                      onClick={handleReviseAndReview}
                       disabled={busy || reviewing}
-                      size="sm"
-                      className="gap-1.5"
-                      data-testid="review-action-run"
+                      className="gap-2"
+                      data-testid="review-action-revise"
                     >
                       {busy || reviewing ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <Loader2 className="h-4 w-4 animate-spin" />
                       ) : isManual ? (
-                        <ClipboardPaste className="h-3.5 w-3.5" />
+                        <ClipboardPaste className="h-4 w-4" />
                       ) : (
-                        <Sparkles className="h-3.5 w-3.5" />
+                        <Sparkles className="h-4 w-4" />
                       )}
                       {isManual ? 'Get Manual Prompt' : 'Start AI Review'}
                     </Button>
@@ -828,22 +885,23 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
 
                 <div className="h-px bg-border" />
 
-                {/* Go back options */}
+                {/* Secondary: re-score the existing draft without rewriting it. */}
                 <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground">Or go back to revise content:</p>
+                  <p className="text-xs font-medium text-muted-foreground">Other options:</p>
                   <div className="grid grid-cols-2 gap-2">
                     <Button
-                      onClick={handleRevise}
-                      disabled={busy}
+                      onClick={handleSubmitForReview}
+                      disabled={busy || reviewing}
                       variant="outline"
                       size="sm"
+                      data-testid="review-action-retry"
                     >
-                      {busy ? (
+                      {busy || reviewing ? (
                         <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
                       ) : (
                         <Sparkles className="h-4 w-4 mr-1.5" />
                       )}
-                      AI Revision
+                      Retry Review
                     </Button>
                     <Button
                       onClick={() => navigate('draft')}
@@ -913,8 +971,21 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
           sessionId={draftId}
           sseUrl={`/api/content-drafts/${draftId}/events`}
           since={reviewSince ?? undefined}
-          title="Running AI Review"
+          title={revisePhase === 'revising' ? 'Revising draft from feedback' : 'Running AI Review'}
           onComplete={async () => {
+            // Chained flow: when "Start AI Review" is the trigger, the first
+            // SSE `completed` event comes from the /produce job. Refetch the
+            // draft, then kick off the actual /review so the user gets a
+            // fresh score without a second click.
+            if (revisePhase === 'revising') {
+              await refetchDraft();
+              setRevisePhase('reviewing');
+              setReviewSince(new Date(Date.now() - 1_000).toISOString());
+              // handleSubmitForReview reopens the SSE flow (sets reviewing=true
+              // again after this onComplete settles) and posts /review.
+              void handleSubmitForReview();
+              return;
+            }
             // Fetch fresh values — the /review POST returned 202 and ran async,
             // so json.data at POST-time had NULL score/verdict. Reading them now
             // from the DB gives the real results.
@@ -924,6 +995,7 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
             pendingReviewResultRef.current = null; // no longer needed
             setReviewing(false);
             setReviewSince(null);
+            setRevisePhase(null);
             if (fresh && (currentMode === 'supervised' || currentMode === 'overview')) {
               const fb = (fresh.review_feedback_json as Record<string, unknown> | null) ?? {};
               const fmt = (fb.blog_review ?? fb.video_review ?? fb.podcast_review ?? fb.shorts_review) as Record<string, unknown> | undefined;
@@ -931,18 +1003,19 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
               const verdict = (fresh.review_verdict as string | null) ?? 'pending';
               const tier = deriveTier(fmt ?? fb);
               const iterationCount = (fresh.iteration_count as number | null) ?? 1;
-              if (stageRun && projectId) {
-                void writeStageRunOutcome({
-                  projectId,
-                  stageRunId: stageRun.id,
-                  outcome: { score, qualityTier: tier, verdict, feedbackJson: fb, iterationCount } as Record<string, unknown>,
-                }).then(() => ctx.refetch()).catch(() => {});
-              }
+              ctx.signalStageComplete('review', {
+                score,
+                qualityTier: tier,
+                verdict,
+                feedbackJson: fb,
+                iterationCount,
+              });
             }
           }}
           onFailed={(msg) => {
             setReviewing(false);
             setReviewSince(null);
+            setRevisePhase(null);
             pendingReviewResultRef.current = null;
             const f = friendlyAiError(msg);
             toast.error(f.title, { description: f.hint });
@@ -964,13 +1037,13 @@ export function ReviewEngine({ draft, stageRun }: ReviewEngineProps) {
                 const verdict = (fresh.review_verdict as string | null) ?? 'pending';
                 const tier = deriveTier(fmt ?? fb);
                 const iterationCount = (fresh.iteration_count as number | null) ?? 1;
-                if (stageRun && projectId) {
-                  void writeStageRunOutcome({
-                    projectId,
-                    stageRunId: stageRun.id,
-                    outcome: { score, qualityTier: tier, verdict, feedbackJson: fb, iterationCount } as Record<string, unknown>,
-                  }).then(() => ctx.refetch()).catch(() => {});
-                }
+                ctx.signalStageComplete('review', {
+                  score,
+                  qualityTier: tier,
+                  verdict,
+                  feedbackJson: fb,
+                  iterationCount,
+                });
               }
             } else {
               setReviewing(false);

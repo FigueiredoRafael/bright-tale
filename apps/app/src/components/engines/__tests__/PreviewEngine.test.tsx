@@ -5,14 +5,6 @@ import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectC
 import { PreviewEngine } from '../PreviewEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
 import type { AutopilotConfig } from '@brighttale/shared'
-import type { StageRun } from '@brighttale/shared/pipeline/inputs'
-
-const mockWriteStageRunOutcome = vi.fn(async () => ({ ok: true }))
-vi.mock('@/lib/api/stageRuns', () => ({
-  get writeStageRunOutcome() {
-    return mockWriteStageRunOutcome
-  },
-}))
 
 vi.mock('@/hooks/use-analytics', () => ({
   useAnalytics: () => ({ track: vi.fn() }),
@@ -212,71 +204,3 @@ describe('PreviewEngine', () => {
 
 })
 
-describe('PreviewEngine — stageRun binding (T3.5)', () => {
-  const stageRun: StageRun = {
-    id: 'sr-preview-1',
-    projectId: 'proj-1',
-    stage: 'preview',
-    status: 'queued',
-    attemptNo: 1,
-    awaitingReason: null,
-    payloadRef: null,
-    inputJson: null,
-    errorMessage: null,
-    startedAt: null,
-    finishedAt: null,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }
-
-  beforeEach(() => {
-    mockWriteStageRunOutcome.mockClear()
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation(async (url: string) => {
-        if (String(url).includes('/api/content-drafts/draft-1')) {
-          return { ok: true, json: async () => ({ data: STUB_DRAFT, error: null }) } as Response
-        }
-        if (String(url).includes('/api/assets?content_id=draft-1')) {
-          return { ok: true, json: async () => ({ data: { assets: STUB_ASSETS }, error: null }) } as Response
-        }
-        return { ok: true, json: async () => ({ data: null, error: null }) } as Response
-      }),
-    )
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
-  it('writes outcome via stage-run-writer when stageRun prop is provided and user approves', async () => {
-    const user = userEvent.setup()
-
-    render(
-      <StandaloneProjectContextProvider
-        projectId="proj-1"
-        channelId="ch-1"
-        mode={null}
-        autopilotConfig={null}
-        initialStageResults={PREVIEW_STAGE_RESULTS}
-        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
-        creditSettings={DEFAULT_CREDIT_SETTINGS}
-      >
-        <PreviewEngine stageRun={stageRun} />
-      </StandaloneProjectContextProvider>,
-    )
-
-    const approveBtn = await screen.findByRole('button', { name: /approve.*publish/i })
-    await user.click(approveBtn)
-
-    await waitFor(() => {
-      expect(mockWriteStageRunOutcome).toHaveBeenCalledWith(
-        expect.objectContaining({
-          projectId: 'proj-1',
-          stageRunId: 'sr-preview-1',
-          outcome: expect.objectContaining({ imageMap: expect.any(Object) }),
-        }),
-      )
-    })
-  })
-})

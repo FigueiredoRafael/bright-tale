@@ -13,13 +13,6 @@ import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
 import type { AutopilotConfig } from '@brighttale/shared'
 import type { StageRun } from '@brighttale/shared/pipeline/inputs'
 
-const mockWriteStageRunOutcome = vi.fn(async () => ({ ok: true }))
-vi.mock('@/lib/api/stageRuns', () => ({
-  get writeStageRunOutcome() {
-    return mockWriteStageRunOutcome
-  },
-}))
-
 vi.mock('@/hooks/use-analytics', () => ({
   useAnalytics: () => ({ track: vi.fn() }),
 }))
@@ -178,7 +171,6 @@ describe('BrainstormEngine', () => {
 
 describe('BrainstormEngine — stageRun binding (T3.5)', () => {
   beforeEach(() => {
-    mockWriteStageRunOutcome.mockClear()
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation(async (url: string) => {
@@ -200,7 +192,7 @@ describe('BrainstormEngine — stageRun binding (T3.5)', () => {
     vi.restoreAllMocks()
   })
 
-  it('writes outcome via stage-run-writer when stageRun prop is provided and user confirms idea', async () => {
+  it('signals stage complete with selected idea when stageRun prop is provided and user confirms', async () => {
     const user = userEvent.setup()
     const stageRun = {
       id: 'sr-1',
@@ -217,6 +209,7 @@ describe('BrainstormEngine — stageRun binding (T3.5)', () => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     } as StageRun
+    const completedStages: Array<{ stage: string; result: Record<string, unknown> }> = []
 
     render(
       <StandaloneProjectContextProvider
@@ -225,6 +218,7 @@ describe('BrainstormEngine — stageRun binding (T3.5)', () => {
         mode="step-by-step"
         pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
         creditSettings={DEFAULT_CREDIT_SETTINGS}
+        onStageComplete={(stage, result) => completedStages.push({ stage, result })}
       >
         <BrainstormEngine
           mode="generate"
@@ -240,13 +234,9 @@ describe('BrainstormEngine — stageRun binding (T3.5)', () => {
     await user.click(confirmBtn)
 
     await waitFor(() => {
-      expect(mockWriteStageRunOutcome).toHaveBeenCalledWith(
-        expect.objectContaining({
-          projectId: 'proj-1',
-          stageRunId: 'sr-1',
-          outcome: expect.objectContaining({ ideaId: 'idea-1' }),
-        }),
-      )
+      expect(
+        completedStages.some((e) => e.stage === 'brainstorm' && e.result.ideaId === 'idea-1'),
+      ).toBe(true)
     })
   })
 })

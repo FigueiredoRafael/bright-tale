@@ -5,18 +5,10 @@ import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectC
 import { AssetsEngine } from '../AssetsEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
 import type { AutopilotConfig } from '@brighttale/shared'
-import type { StageRun } from '@brighttale/shared/pipeline/inputs'
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger'
 
 vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
   useAutoPilotTrigger: vi.fn(),
-}))
-
-const mockWriteStageRunOutcome = vi.fn(async () => ({ ok: true }))
-vi.mock('@/lib/api/stageRuns', () => ({
-  get writeStageRunOutcome() {
-    return mockWriteStageRunOutcome
-  },
 }))
 
 vi.mock('@/hooks/use-analytics', () => ({
@@ -211,25 +203,8 @@ describe('AssetsEngine STAGE_PROGRESS', () => {
   })
 })
 
-describe('AssetsEngine — stageRun binding (T3.5)', () => {
-  const stageRun: StageRun = {
-    id: 'sr-assets-1',
-    projectId: 'proj-1',
-    stage: 'assets',
-    status: 'queued',
-    attemptNo: 1,
-    awaitingReason: null,
-    payloadRef: null,
-    inputJson: null,
-    errorMessage: null,
-    startedAt: null,
-    finishedAt: null,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }
-
+describe('AssetsEngine — import flow signal', () => {
   beforeEach(() => {
-    mockWriteStageRunOutcome.mockClear()
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation(async (url: string) => {
@@ -245,12 +220,11 @@ describe('AssetsEngine — stageRun binding (T3.5)', () => {
     vi.restoreAllMocks()
   })
 
-  it('writes outcome via stage-run-writer when stageRun prop is provided and import-mode selects an asset', async () => {
+  it('signals stage complete when import-mode selects a library asset', async () => {
     const userEvent = (await import('@testing-library/user-event')).default
     const user = userEvent.setup()
     const { screen } = await import('@testing-library/react')
 
-    // Mock fetch: return an asset so ImportPicker shows it
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation(async (url: string) => {
@@ -264,6 +238,7 @@ describe('AssetsEngine — stageRun binding (T3.5)', () => {
       }),
     )
 
+    const completedStages: Array<{ stage: string; result: Record<string, unknown> }> = []
     render(
       <StandaloneProjectContextProvider
         projectId="proj-1"
@@ -273,23 +248,21 @@ describe('AssetsEngine — stageRun binding (T3.5)', () => {
         initialStageResults={{}}
         pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
         creditSettings={DEFAULT_CREDIT_SETTINGS}
+        onStageComplete={(stage, result) => completedStages.push({ stage, result })}
       >
-        <AssetsEngine mode="import" draft={{ id: 'd-1', status: 'approved', draft_json: {} }} stageRun={stageRun} />
+        <AssetsEngine mode="import" draft={{ id: 'd-1', status: 'approved', draft_json: {} }} />
       </StandaloneProjectContextProvider>,
     )
 
-    // The ImportPicker loads library assets and shows them
     const libItem = await screen.findByText('lib alt', {}, { timeout: 3000 })
     await user.click(libItem)
 
     await waitFor(() => {
-      expect(mockWriteStageRunOutcome).toHaveBeenCalledWith(
-        expect.objectContaining({
-          projectId: 'proj-1',
-          stageRunId: 'sr-assets-1',
-          outcome: expect.objectContaining({ assetIds: expect.any(Array) }),
-        }),
-      )
+      expect(
+        completedStages.some(
+          (e) => e.stage === 'assets' && Array.isArray(e.result.assetIds),
+        ),
+      ).toBe(true)
     })
   })
 })

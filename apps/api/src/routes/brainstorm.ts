@@ -294,6 +294,85 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         throw new ApiError(500, `Failed to mark session completed: ${String((updErr as { message?: string })?.message ?? updErr)}`, 'DB_ERROR');
       }
 
+      // Re-query the persisted idea_archives rows so we can return real UUIDs to
+      // the client AND seed the brainstorm Stage Run outcome with a proper FK.
+      // The upsert above used onConflict:'idea_id' + ignoreDuplicates so we did
+      // not get returning rows; reading by brainstorm_session_id is the
+      // canonical source.
+      const { data: persistedIdeas } = await sb
+        .from('idea_archives')
+        .select('id, idea_id, title, core_tension, target_audience, verdict, discovery_data')
+        .eq('brainstorm_session_id', id)
+        .order('created_at', { ascending: true });
+      const ideas = (persistedIdeas ?? []) as Array<Record<string, unknown>>;
+
+      // Pipeline Orchestrator handoff for manual brainstorms: flip the matching
+      // brainstorm Stage Run to `completed` and seed `outcome_json` so
+      // deriveStageResults picks it up (it skips rows where status !== 'completed').
+      // Without this, a stage_run stuck in `failed` (e.g. initial run died because
+      // no AI provider was configured) keeps the UI thinking brainstorm never
+      // finished even after the user pasted output.
+      const projectId = row.project_id as string | null | undefined;
+      if (projectId && ideas.length > 0) {
+        // Prefer the AI's `recommendation.pick` (matched by title) so autopilot
+        // promotes the winning idea, not just the first card. Fall back to the
+        // first `viable` verdict, then the first idea overall.
+        const pickTitle = recommendation?.pick?.trim().toLowerCase();
+        const byPick = pickTitle
+          ? ideas.find((i) => ((i.title as string) ?? '').trim().toLowerCase() === pickTitle)
+          : undefined;
+        const firstViable = ideas.find((i) => i.verdict === 'viable');
+        const winner = byPick ?? firstViable ?? ideas[0];
+        const winnerId = winner.id as string;
+        const winnerTitle = (winner.title as string) ?? '';
+        const seedOutcome = {
+          ideaId: winnerId,
+          ideaTitle: winnerTitle,
+          ideaVerdict: (winner.verdict as string) ?? '',
+          ideaCoreTension: (winner.core_tension as string) ?? '',
+          brainstormSessionId: id,
+        };
+
+        const { data: latestRun } = await sb
+          .from('stage_runs')
+          .select('id')
+          .eq('project_id', projectId)
+          .eq('stage', 'brainstorm')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (latestRun?.id) {
+          const now = new Date().toISOString();
+          await (sb.from('stage_runs') as unknown as {
+            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+          })
+            .update({
+              status: 'completed',
+              awaiting_reason: null,
+              error_message: null,
+              outcome_json: seedOutcome,
+              payload_ref: { kind: 'idea_archive', id: winnerId },
+              finished_at: now,
+              updated_at: now,
+            })
+            .eq('id', latestRun.id as string);
+
+          await inngest.send({
+            name: 'pipeline/stage.run.finished',
+            data: { stageRunId: latestRun.id as string, projectId },
+          });
+        }
+
+        if (winnerTitle) {
+          await (sb.from('projects') as unknown as {
+            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+          })
+            .update({ title: winnerTitle })
+            .eq('id', projectId);
+        }
+      }
+
       logAiUsage({
         userId: request.userId,
         orgId: (row.org_id as string) ?? null,
@@ -313,7 +392,10 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         },
       });
 
-      return reply.send({ data: { ideas: ideaRows, recommendation }, error: null });
+      return reply.send({
+        data: { ideas: ideas.length > 0 ? ideas : ideaRows, recommendation },
+        error: null,
+      });
     } catch (error) {
       return sendError(reply, error);
     }

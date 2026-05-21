@@ -531,7 +531,20 @@ export async function contentDraftsRoutes(
         const { id } = request.params as { id: string };
         const override = providerOverrideSchema.parse(request.body ?? {});
         const draft = (await loadDraft(id)) as Record<string, unknown>;
-        const orgId = await getOrgId(request.userId);
+        // Ownership guard: /generate overwrites canonical_core_json and bills
+        // the draft's org. Mirrors the guard on /produce.
+        if (draft.user_id && draft.user_id !== request.userId) {
+          throw new ApiError(
+            403,
+            `Forbidden: this draft belongs to user ${String(draft.user_id).slice(0, 8)}… and the current session is user ${String(request.userId).slice(0, 8)}…. Log in as the draft owner.`,
+            "FORBIDDEN",
+          );
+        }
+        // Prefer draft.org_id over a fresh org_memberships lookup — see
+        // /produce for the rationale (OAuth/admin sessions without a
+        // membership row would otherwise hit "No organization found").
+        const orgId =
+          (draft.org_id as string | null) ?? (await getOrgId(request.userId));
 
         const creditSettings = await loadCreditSettings(createServiceClient());
         const CANONICAL_CORE_COST = creditSettings.costCanonicalCore;
@@ -986,7 +999,25 @@ export async function contentDraftsRoutes(
         const { id } = request.params as { id: string };
         const override = providerOverrideSchema.parse(request.body ?? {});
         const draft = (await loadDraft(id)) as Record<string, unknown>;
-        const orgId = await getOrgId(request.userId);
+        // Ownership guard: produce mutates the draft (and bills its org), so
+        // require the session user own the row. Surface the mismatching IDs in
+        // the error message — without them the operator can't tell whether the
+        // wrong account is logged in or a session got swapped.
+        if (draft.user_id && draft.user_id !== request.userId) {
+          throw new ApiError(
+            403,
+            `Forbidden: this draft belongs to user ${String(draft.user_id).slice(0, 8)}… and the current session is user ${String(request.userId).slice(0, 8)}…. Log in as the draft owner.`,
+            "FORBIDDEN",
+          );
+        }
+        // Prefer the draft's org_id over a fresh org_memberships lookup. Some
+        // users (OAuth signups, admin impersonation) hit /produce without an
+        // org_membership row and getOrgId throws "No organization found" even
+        // though the draft itself has a valid org_id. Falling back to the
+        // membership lookup keeps the legacy path intact when draft.org_id is
+        // null (pre-org-scoping migration drafts).
+        const orgId =
+          (draft.org_id as string | null) ?? (await getOrgId(request.userId));
 
         const creditSettings = await loadCreditSettings(sb);
 
@@ -1296,6 +1327,59 @@ export async function contentDraftsRoutes(
             `Failed to mark draft as draft: ${String((updErr as { message?: string })?.message ?? updErr)}`,
             "DB_ERROR",
           );
+        }
+
+        // Pipeline Orchestrator handoff for manual production/canonical writes:
+        // flip the matching project stage_run to `completed`. Without this,
+        // stage_runs.production stays `queued`/`running` after the user pastes
+        // output — the v2 sidebar / advance polling keeps the run open and
+        // downstream stages never trigger. Mirror of brainstorm manual-output
+        // fix and production-produce.ts:300 (AI dispatcher path).
+        const projectId = row.project_id as string | null | undefined;
+        if (projectId) {
+          const targetStage = body.phase === "core" ? "canonical" : "production";
+          const { data: matchingRun } = await sb
+            .from("stage_runs")
+            .select("id, payload_ref")
+            .eq("project_id", projectId)
+            .eq("stage", targetStage)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const runRef = (matchingRun?.payload_ref ?? null) as
+            | { kind?: string; id?: string }
+            | null;
+          // Only flip when the stage_run's payload_ref points at THIS draft —
+          // protects against multi-track projects where production has
+          // multiple draftIds and we don't want to clobber a sibling track.
+          if (
+            matchingRun?.id &&
+            (runRef?.id === id || runRef?.kind !== "content_draft")
+          ) {
+            const now = new Date().toISOString();
+            await (sb.from("stage_runs") as unknown as {
+              update: (row: Record<string, unknown>) => {
+                eq: (col: string, val: string) => Promise<unknown>;
+              };
+            })
+              .update({
+                status: "completed",
+                awaiting_reason: null,
+                error_message: null,
+                outcome_json: {
+                  draftId: id,
+                  draftTitle: (row.title as string) ?? "",
+                },
+                payload_ref: { kind: "content_draft", id },
+                finished_at: now,
+                updated_at: now,
+              })
+              .eq("id", matchingRun.id as string);
+            await inngest.send({
+              name: "pipeline/stage.run.finished",
+              data: { stageRunId: matchingRun.id as string, projectId },
+            });
+          }
         }
 
         logAiUsage({

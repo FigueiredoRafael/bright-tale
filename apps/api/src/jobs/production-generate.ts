@@ -226,10 +226,30 @@ export const productionGenerate = inngest.createFunction(
         const coreToSave = draft.idea_id && canonicalCore && typeof canonicalCore === 'object' && !Array.isArray(canonicalCore)
           ? { ...(canonicalCore as Record<string, unknown>), idea_id: draft.idea_id }
           : canonicalCore;
+        // Regenerating the canonical core invalidates anything downstream that
+        // was derived from the previous core. Clear `draft_json` (the produced
+        // body) and the review fields so the user is forced to re-produce +
+        // re-review against the new core. Without this, ProductionEngine's
+        // hydration finds stale `draft_json` from the previous run and
+        // renders phase=done — masking the fact that production never ran
+        // against the new canonical. Only clears when the previous run had
+        // already produced content (draft_json non-empty); first canonical
+        // generation is a no-op for these fields.
+        const prevDraftJson = draft.draft_json as Record<string, unknown> | null | undefined;
+        const hasPrevProduction =
+          prevDraftJson && typeof prevDraftJson === 'object' && Object.keys(prevDraftJson).length > 0;
+        const updateRow: Record<string, unknown> = { canonical_core_json: coreToSave };
+        if (hasPrevProduction) {
+          updateRow.draft_json = null;
+          updateRow.review_score = null;
+          updateRow.review_verdict = 'pending';
+          updateRow.review_feedback_json = null;
+          updateRow.iteration_count = 0;
+        }
         await (sb.from('content_drafts') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
-          .update({ canonical_core_json: coreToSave })
+          .update(updateRow)
           .eq('id', draftId);
         await debitCredits(orgId, userId, 'canonical-core', 'text', coreCost, { draftId, type, provider });
       });

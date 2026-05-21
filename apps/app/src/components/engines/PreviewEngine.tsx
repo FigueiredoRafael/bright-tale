@@ -24,9 +24,9 @@ import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { ContextBanner } from './ContextBanner';
 import { markdownToHtml } from '@/lib/utils';
 import { derivePreview } from '@/lib/pipeline/derivePreview';
-import { writeStageRunOutcome } from '@/lib/api/stageRuns';
+import { pushStage } from '@/lib/pipeline/advanceUrl';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { PipelineContext, PipelineStage, PreviewResult } from './types';
-import type { StageRun } from '@brighttale/shared/pipeline/inputs';
 
 interface ContentAsset {
   id: string;
@@ -184,13 +184,18 @@ function composedHtmlFromMarkdown(
 /* PreviewEngine reads everything from the pipeline actor — no pipeline-state props.
  * The component is rendered by PipelineOrchestrator only; standalone usage would
  * require <StandaloneEngineHost stage="preview"> like ReviewEngine/AssetsEngine. */
-interface PreviewEngineProps {
-  stageRun?: StageRun;
-}
 
-export function PreviewEngine({ stageRun }: PreviewEngineProps = {}) {
+export function PreviewEngine() {
   const ctx = useProjectContext();
   const abortController = usePipelineAbort();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  function advanceToPublish() {
+    const trackId = searchParams?.get('track') ?? null;
+    pushStage({ router, pathname, searchParams, stage: 'publish', trackId });
+  }
 
   const channelId = ctx.context.channelId;
   const projectId = ctx.context.projectId ?? undefined;
@@ -425,16 +430,8 @@ export function PreviewEngine({ stageRun }: PreviewEngineProps = {}) {
       autoDerived: true,
     };
 
-    if (stageRun && projectId) {
-      void writeStageRunOutcome({
-        projectId,
-        stageRunId: stageRun.id,
-        outcome: result as unknown as Record<string, unknown>,
-      }).then(() => ctx.signalStageComplete('preview', result as unknown as Record<string, unknown>)).catch(() => {});
-    } else {
-      ctx.signalStageComplete('preview', result as unknown as Record<string, unknown>);
-    }
-  }, [overviewMode, previewEnabled, busy, draft, assets, reviewResult, draftResult, stageRun, projectId, ctx]);
+    ctx.signalStageComplete('preview', result as unknown as Record<string, unknown>);
+  }, [overviewMode, previewEnabled, busy, draft, assets, reviewResult, draftResult, ctx]);
 
   // Build asset map for quick lookup
   const assetMap = useMemo(() => {
@@ -511,15 +508,8 @@ export function PreviewEngine({ stageRun }: PreviewEngineProps = {}) {
       seoOverrides: result.seoOverrides,
     });
 
-    if (stageRun && projectId) {
-      void writeStageRunOutcome({
-        projectId,
-        stageRunId: stageRun.id,
-        outcome: result as unknown as Record<string, unknown>,
-      }).then(() => ctx.signalStageComplete('preview', result as unknown as Record<string, unknown>)).catch(() => {});
-    } else {
-      ctx.signalStageComplete('preview', result as unknown as Record<string, unknown>);
-    }
+    ctx.signalStageComplete('preview', result as unknown as Record<string, unknown>);
+    advanceToPublish();
   };
 
   /* ── Render ── */

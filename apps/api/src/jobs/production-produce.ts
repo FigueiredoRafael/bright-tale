@@ -190,27 +190,106 @@ export const productionProduce = inngest.createFunction(
         // productionParams it means this run is a revision (review loop).
         // Switch to the reproduce prompt so the agent rewrites the draft
         // against the feedback instead of producing from scratch.
-        const reviewFeedback =
+        //
+        // The review agent stores feedback as a wrapper keyed by format:
+        // `{ blog_review: {...}, video_review: {...} }`, with critical/minor
+        // issues nested under `issues.critical` (array of {issue, location,
+        // suggested_fix}) or under `rubric_checks.critical_issues` (array of
+        // strings). buildReproduceMessage expects a flat
+        // `{ overall_verdict, score, critical_issues, minor_issues, strengths }`
+        // shape — without this normalization the prompt receives `undefined`
+        // for every field and the AI rewrites blind (score never moves).
+        const reviewFeedbackRaw =
           effectiveProductionParams && typeof effectiveProductionParams === 'object'
             ? ((effectiveProductionParams as Record<string, unknown>).review_feedback as
                 | Record<string, unknown>
                 | undefined)
             : undefined;
+        // Flatten the review agent's nested wrapper into the shape
+        // buildReproduceMessage expects: { overall_verdict, score,
+        // critical_issues, minor_issues, strengths }. The agent stores
+        // feedback as `{ <type>_review: { verdict, issues: { critical, minor },
+        // strengths, rubric_checks: { critical_issues, minor_issues,
+        // strengths } } }` — mixing detailed-object arrays (with
+        // suggested_fix + location) and plain-string arrays. Without this
+        // flattening, every field arrives as `undefined` and the prompt
+        // contains no actionable feedback (the score never moves). Inlined
+        // (not extracted) so tsx --watch can't lose the helper.
+        const normalizedReviewFeedback = ((): {
+          overall_verdict?: string;
+          score?: number | null;
+          critical_issues?: string[];
+          minor_issues?: string[];
+          strengths?: string[];
+        } | undefined => {
+          const raw = reviewFeedbackRaw;
+          if (!raw || typeof raw !== 'object') return undefined;
+          const block = ((raw[`${type}_review`] as Record<string, unknown> | undefined) ??
+            raw) as Record<string, unknown>;
+          const issues = (block.issues as Record<string, unknown> | undefined) ?? {};
+          const rubric = (block.rubric_checks as Record<string, unknown> | undefined) ?? {};
+
+          const fmtIssue = (i: unknown): string => {
+            if (typeof i === 'string') return i;
+            if (!i || typeof i !== 'object') return '';
+            const obj = i as Record<string, unknown>;
+            const issueText = (obj.issue as string) ?? '';
+            const fix = (obj.suggested_fix as string) ?? '';
+            const loc = (obj.location as string) ?? '';
+            const head = loc ? `[${loc}] ${issueText}` : issueText;
+            return fix ? `${head} — Fix: ${fix}` : head;
+          };
+          const dedupe = (arr: string[]): string[] =>
+            Array.from(new Set(arr.filter(Boolean)));
+
+          const criticalDetailed = Array.isArray(issues.critical)
+            ? (issues.critical as unknown[]).map(fmtIssue)
+            : [];
+          const minorDetailed = Array.isArray(issues.minor)
+            ? (issues.minor as unknown[]).map(fmtIssue)
+            : [];
+          const criticalRubric = Array.isArray(rubric.critical_issues)
+            ? (rubric.critical_issues as string[])
+            : [];
+          const minorRubric = Array.isArray(rubric.minor_issues)
+            ? (rubric.minor_issues as string[])
+            : [];
+          const blockStrengths = Array.isArray(block.strengths)
+            ? (block.strengths as string[])
+            : [];
+          const rubricStrengths = Array.isArray(rubric.strengths)
+            ? (rubric.strengths as string[])
+            : [];
+
+          const critical_issues = dedupe([...criticalDetailed, ...criticalRubric]);
+          const minor_issues = dedupe([...minorDetailed, ...minorRubric]);
+          const strengths = dedupe([...blockStrengths, ...rubricStrengths]);
+
+          if (
+            critical_issues.length === 0 &&
+            minor_issues.length === 0 &&
+            strengths.length === 0
+          ) {
+            return undefined;
+          }
+          return {
+            overall_verdict:
+              (block.verdict as string) ?? (block.quality_tier as string) ?? undefined,
+            score: (draft.review_score as number | null) ?? null,
+            critical_issues,
+            minor_issues,
+            strengths,
+          };
+        })();
         const draftTitle = (draft.title as string) ?? ((draft.draft_json as Record<string, unknown> | null)?.title as string | undefined) ?? '';
-        const userMessage = reviewFeedback
+        const userMessage = normalizedReviewFeedback
           ? buildReproduceMessage({
               type: type as string,
               title: draftTitle,
               canonicalCore,
               previousDraft: draft.draft_json,
               idea: ideaContext,
-              reviewFeedback: reviewFeedback as {
-                overall_verdict?: string;
-                score?: number | null;
-                critical_issues?: string[];
-                minor_issues?: string[];
-                strengths?: string[];
-              },
+              reviewFeedback: normalizedReviewFeedback,
               channel: channelContext as
                 | { name?: string; niche?: string; language?: string; tone?: string }
                 | undefined,

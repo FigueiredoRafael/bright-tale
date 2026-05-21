@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,9 +24,8 @@ import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
 import { getPersonaTheme } from './utils/personaTheme';
-import { writeStageRunOutcome } from '@/lib/api/stageRuns';
+import { fetchTracks, nextTrackStage, pushStage } from '@/lib/pipeline/advanceUrl';
 import type { AssetsResult, PipelineContext, PipelineStage } from './types';
-import type { StageRun } from '@brighttale/shared/pipeline/inputs';
 
 /* ── Types ── */
 
@@ -82,7 +82,6 @@ interface AssetsEngineProps {
   imageProviderOverride?: ImageProvider;
   /** Bumped by orchestrator to re-arm autopilot after a quota error recovery. */
   retrySignal?: number;
-  stageRun?: StageRun;
 }
 
 interface NoBriefSection {
@@ -198,12 +197,29 @@ interface PendingUpload {
 
 /* ── Component ── */
 
-export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProviderOverride, retrySignal = 0, stageRun }: AssetsEngineProps) {
+export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProviderOverride, retrySignal = 0 }: AssetsEngineProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const ctx = useProjectContext();
   const abortController = usePipelineAbort();
 
   const channelId = ctx.context.channelId;
   const projectId = ctx.context.projectId ?? undefined;
+
+  // Step-by-step URL advance: assets → next non-skipped track stage
+  // (preview → publish). Supervised mode auto-routes via PipelineWorkspace.
+  async function advanceFromAssets() {
+    const trackId = searchParams?.get('track') ?? null;
+    if (!projectId) {
+      pushStage({ router, pathname, searchParams, stage: 'preview', trackId });
+      return;
+    }
+    const tracks = await fetchTracks(projectId);
+    const track = trackId ? tracks.find((t) => t.id === trackId) ?? null : tracks[0] ?? null;
+    const stage = nextTrackStage('assets', track);
+    pushStage({ router, pathname, searchParams, stage, trackId: track?.id ?? trackId });
+  }
   const brainstormResult = ctx.context.stageResults?.brainstorm as Record<string, unknown> | undefined;
   const researchResult = ctx.context.stageResults?.research as Record<string, unknown> | undefined;
   const draftResult = ctx.context.stageResults?.draft as { draftId?: string; draftTitle?: string; personaId?: string; personaName?: string; personaSlug?: string; personaWpAuthorId?: number | null } | undefined;
@@ -804,13 +820,8 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
         const featuredUrl = existingAssets.find((a) => a.role === 'featured_image')?.url;
         tracker.trackCompleted({ draftId, assetCount: existingAssets.length, assetIds, featuredImageUrl: featuredUrl });
         const noUploadResult: AssetsResult = { assetIds, featuredImageUrl: featuredUrl };
-        if (stageRun && projectId) {
-          void writeStageRunOutcome({
-            projectId,
-            stageRunId: stageRun.id,
-            outcome: noUploadResult as unknown as Record<string, unknown>,
-          }).then(() => ctx.refetch()).catch(() => {});
-        }
+        ctx.signalStageComplete('assets', noUploadResult as unknown as Record<string, unknown>);
+        await advanceFromAssets();
         return;
       }
 
@@ -916,13 +927,8 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
         featuredImageUrl: featuredUrl,
       });
       const uploadResult: AssetsResult = { assetIds, featuredImageUrl: featuredUrl };
-      if (stageRun && projectId) {
-        void writeStageRunOutcome({
-          projectId,
-          stageRunId: stageRun.id,
-          outcome: uploadResult as unknown as Record<string, unknown>,
-        }).then(() => ctx.refetch()).catch(() => {});
-      }
+      ctx.signalStageComplete('assets', uploadResult as unknown as Record<string, unknown>);
+      await advanceFromAssets();
     } catch (e) {
       tracker.trackFailed(e instanceof Error ? e.message : 'Failed to save images');
       toast.error('Failed to save images');
@@ -997,13 +1003,8 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
                 assetIds: [item.id as string],
                 featuredImageUrl: (item.url as string | undefined) || undefined,
               };
-              if (stageRun && projectId) {
-                void writeStageRunOutcome({
-                  projectId,
-                  stageRunId: stageRun.id,
-                  outcome: importResult as unknown as Record<string, unknown>,
-                }).then(() => ctx.refetch()).catch(() => {});
-              }
+              ctx.signalStageComplete('assets', importResult as unknown as Record<string, unknown>);
+              void advanceFromAssets();
             }}
           />
         </div>

@@ -804,9 +804,26 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       const cost = LEVEL_COSTS[level];
       await checkCredits(orgId, request.userId, cost);
 
+      // Caller may pass the active brainstorm idea (and topic) so regen runs
+      // against the current pipeline pick, not the OLD session's stale idea.
+      const body = (request.body ?? {}) as { ideaId?: string; topic?: string };
+      const overrideIdeaId =
+        typeof body.ideaId === 'string' && body.ideaId.trim().length > 0 ? body.ideaId : null;
+      const overrideTopic =
+        typeof body.topic === 'string' && body.topic.trim().length > 0 ? body.topic : null;
+
+      const targetIdeaId =
+        (await resolveIdeaId(overrideIdeaId)) ??
+        (await resolveIdeaId(orig.idea_id as string | null));
+
       const focusTags = (orig.focus_tags as string[]) ?? [];
       const instruction = buildLevelInstruction(level, focusTags);
-      const inputJson = { ...(orig.input_json as Record<string, unknown>), instruction };
+      const baseInput = (orig.input_json as Record<string, unknown>) ?? {};
+      const inputJson = {
+        ...baseInput,
+        ...(overrideTopic ? { topic: overrideTopic } : {}),
+        instruction,
+      };
 
       const { data: session, error: insertErr } = await (
         sb.from('research_sessions') as unknown as {
@@ -820,7 +837,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           user_id: request.userId,
           channel_id: orig.channel_id ?? null,
           project_id: orig.project_id ?? null,
-          idea_id: await resolveIdeaId(orig.idea_id as string | null),
+          idea_id: targetIdeaId,
           level,
           focus_tags: focusTags,
           input_json: inputJson,
@@ -839,11 +856,11 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
         let ideaTitle: string | undefined;
         let coreTension: string | undefined;
         let targetAudience: string | undefined;
-        if (orig.idea_id) {
+        if (targetIdeaId) {
           const { data: idea } = await sb
             .from('idea_archives')
             .select('*')
-            .eq('id', orig.idea_id as string)
+            .eq('id', targetIdeaId)
             .maybeSingle();
           if (idea) {
             ideaTitle = (idea as Record<string, unknown>).title as string | undefined;
@@ -875,7 +892,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
         );
 
         const userMessage = buildResearchMessage({
-          ideaId: (orig.idea_id as string) ?? undefined,
+          ideaId: targetIdeaId ?? undefined,
           ideaTitle: ideaTitle ?? ((inputJson as Record<string, unknown>).topic as string) ?? undefined,
           coreTension,
           targetAudience,

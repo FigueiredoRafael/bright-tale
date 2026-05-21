@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Loader2,
   Search,
@@ -45,7 +46,7 @@ import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { hydrateResearchFromConfig } from '@/lib/pipeline/hydrateEngineFromConfig';
-import { writeStageRunOutcome } from '@/lib/api/stageRuns';
+import { pushStage } from '@/lib/pipeline/advanceUrl';
 import type { ResearchResult, PipelineContext } from './types';
 import type { StageRun } from '@brighttale/shared/pipeline/inputs';
 import type { AutopilotConfig } from '@brighttale/shared';
@@ -95,9 +96,16 @@ export function ResearchEngine({
 }: ResearchEngineProps) {
   const ctx = useProjectContext();
   const abortController = usePipelineAbort();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const channelId = ctx.context.channelId;
   const projectId = ctx.context.projectId ?? '';
+
+  function advanceUrl() {
+    pushStage({ router, pathname, searchParams, stage: 'canonical' });
+  }
   const brainstormResult = ctx.context.stageResults.brainstorm as { ideaId?: string; ideaTitle?: string } | undefined;
   const researchResult = ctx.context.stageResults.research as { researchSessionId?: string } | undefined;
   const isGenerating = false;
@@ -231,7 +239,9 @@ export function ResearchEngine({
     if (initialSession || initialCards) return;
     const ctxSessionId = researchResult?.researchSessionId;
     if (!ctxSessionId) return;
-    if (sessionId === ctxSessionId && (cards.length > 0 || findings)) return;
+    // Don't clobber a freshly-loaded local session (e.g. after regenerate)
+    // with whatever ctx still reports — ctx may be stale until mirror runs.
+    if (sessionId && (cards.length > 0 || findings)) return;
 
     (async () => {
       try {
@@ -244,6 +254,15 @@ export function ResearchEngine({
           // Check if session is awaiting manual output
           if (sess.status === 'awaiting_manual') {
             setManualSessionId(sess.id as string);
+            return;
+          }
+
+          // Idea mismatch — the session was generated for an older brainstorm
+          // pick. Skip hydrating so the user regenerates against the new idea
+          // instead of seeing stale findings as if they were current.
+          const sessIdeaId = (sess.idea_id as string | null) ?? null;
+          const currentIdeaId = trackerContext.ideaId ?? null;
+          if (sessIdeaId && currentIdeaId && sessIdeaId !== currentIdeaId) {
             return;
           }
 
@@ -635,9 +654,6 @@ export function ResearchEngine({
     };
     tracker.trackAction('findings.auto_approved', { sessionId });
     ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
-    if (stageRun && projectId) {
-      void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> }).catch(() => {});
-    }
   }, [
     autoMode,
     autoPaused,
@@ -649,8 +665,6 @@ export function ResearchEngine({
     level,
     ctx,
     tracker,
-    stageRun,
-    projectId,
   ]);
 
   // Auto-pilot (overview mode, legacy-cards path): handles sessions where the API returned a
@@ -674,9 +688,6 @@ export function ResearchEngine({
     };
     tracker.trackAction('cards.auto_approved', { cardCount: cards.length });
     ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
-    if (stageRun && projectId) {
-      void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> }).catch(() => {});
-    }
   }, [
     autoMode,
     autoPaused,
@@ -689,8 +700,6 @@ export function ResearchEngine({
     level,
     ctx,
     tracker,
-    stageRun,
-    projectId,
   ]);
 
   useAutoPilotTrigger({
@@ -716,10 +725,21 @@ export function ResearchEngine({
     }
 
     setRegenerating(true);
+    // Clear stale findings so the UI doesn't render the prior session while
+    // the new one is in flight — matches user expectation when regenerating
+    // after a brainstorm idea swap.
+    setFindings(null);
+    setCards([]);
+    setApproved(new Set());
     try {
       const res = await fetch(`/api/research-sessions/${sessionId}/regenerate`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         signal: abortController?.signal,
+        body: JSON.stringify({
+          ...(trackerContext.ideaId ? { ideaId: trackerContext.ideaId } : {}),
+          ...(topic.trim() ? { topic: topic.trim() } : {}),
+        }),
       });
       const json = await res.json();
       if (json.error) {
@@ -842,16 +862,15 @@ export function ResearchEngine({
         pivotRecommendation: signals.pivotRecommendation,
       };
       ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
-      if (stageRun && projectId) {
-        void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> }).catch(() => {});
-      }
       onComplete?.();
+      advanceUrl();
       return;
     }
 
     // No new findings but old research is already done — just navigate forward.
     if (researchResult?.researchSessionId) {
       onComplete?.();
+      advanceUrl();
       return;
     }
 
@@ -887,10 +906,8 @@ export function ResearchEngine({
       researchLevel: level,
     };
     ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
-    if (stageRun && projectId) {
-      void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: result as unknown as Record<string, unknown> }).catch(() => {});
-    }
     onComplete?.();
+    advanceUrl();
   }
 
   const shouldPivot = refinedAngle && Boolean(refinedAngle.should_pivot);
@@ -947,12 +964,8 @@ export function ResearchEngine({
               approvedCardsCount: importedCards.length,
               researchLevel: (item.level as string) ?? 'medium',
             };
-            if (stageRun && projectId) {
-              void writeStageRunOutcome({ projectId, stageRunId: stageRun.id, outcome: importResult as unknown as Record<string, unknown> })
-                .then(() => ctx.refetch()).catch(() => {});
-            } else {
-              ctx.refetch();
-            }
+            ctx.signalStageComplete('research', importResult as unknown as Record<string, unknown>);
+            advanceUrl();
           }}
         />
       </div>

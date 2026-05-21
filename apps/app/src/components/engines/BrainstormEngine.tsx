@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
+import { pushStage } from '@/lib/pipeline/advanceUrl';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import {
   Loader2,
@@ -35,7 +37,6 @@ import { friendlyAiError } from '@/lib/ai/error-message';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { hydrateBrainstormFromConfig } from '@/lib/pipeline/hydrateEngineFromConfig';
 import { IdeaCard } from '@/components/brainstorm/IdeaCard';
-import { writeStageRunOutcome } from '@/lib/api/stageRuns';
 import type { BrainstormResult, PipelineContext } from './types';
 import type { StageRun } from '@brighttale/shared/pipeline/inputs';
 import type { AutopilotConfig } from '@brighttale/shared';
@@ -92,6 +93,9 @@ export function BrainstormEngine({
 }: BrainstormEngineProps) {
   const ctx = useProjectContext();
   const abortController = usePipelineAbort();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const channelId = ctx.context.channelId;
   const projectId = ctx.context.projectId ?? '';
@@ -281,8 +285,13 @@ export function BrainstormEngine({
       return;
     }
 
-    // Already loaded this session
-    if (sessionId === ctxSessionId && ideas.length > 0) return;
+    // Local state already has a session + ideas loaded — never overwrite from
+    // ctx. ProjectContextProvider polls every 4s and rehydrates from
+    // stage_runs.outcome_json, which can still be the previous session when
+    // mirror-from-legacy declines to re-sync a populated row. Without this
+    // guard a regenerate + new ideas get clobbered by the next ctx poll
+    // (the user sees the new ideas flash then revert to the old session).
+    if (sessionId && ideas.length > 0) return;
 
     (async () => {
       try {
@@ -475,15 +484,11 @@ export function BrainstormEngine({
         body: JSON.stringify({ title: chosen.title }),
       }).catch(() => {});
     }
-    if (stageRun && projectId) {
-      void writeStageRunOutcome({
-        projectId,
-        stageRunId: stageRun.id,
-        outcome: result as unknown as Record<string, unknown>,
-      }).then(() => ctx.signalStageComplete('brainstorm', result as unknown as Record<string, unknown>)).catch(() => {});
-    } else {
-      ctx.signalStageComplete('brainstorm', result as unknown as Record<string, unknown>);
-    }
+    // Stage run completion happens server-side (manual-output or AI dispatcher).
+    // Here we only sync legacy pipeline_state_json so engines reading the
+    // legacy stageResults stay coherent. PipelineWorkspace auto-advances the
+    // URL in supervised mode by polling stage_runs.
+    ctx.signalStageComplete('brainstorm', result as unknown as Record<string, unknown>);
   }, [
     autoMode,
     autoPaused,
@@ -804,15 +809,18 @@ export function BrainstormEngine({
       });
     }
 
-    if (stageRun && projectId) {
-      void writeStageRunOutcome({
-        projectId,
-        stageRunId: stageRun.id,
-        outcome: result as unknown as Record<string, unknown>,
-      }).then(() => ctx.signalStageComplete('brainstorm', result as unknown as Record<string, unknown>)).catch(() => {});
-    } else {
-      ctx.signalStageComplete('brainstorm', result as unknown as Record<string, unknown>);
-    }
+    // Signal completion to legacy pipeline_state_json + run the mirror so the
+    // stage_runs view stays coherent. The brainstorm stage_run was already
+    // flipped to `completed` by /api/brainstorm/sessions/:id/manual-output (or
+    // the AI dispatcher), so signaling here is the legacy-state sync — it does
+    // not advance the URL on its own in step-by-step mode.
+    ctx.signalStageComplete('brainstorm', result as unknown as Record<string, unknown>);
+
+    // Step-by-step mode: the "Next: Research" click is the only signal to
+    // advance the URL. Supervised mode handles routing in PipelineWorkspace's
+    // auto-advance effect, which reacts to stage_runs status — so a redundant
+    // push here is safe (no-ops when the URL already matches).
+    pushStage({ router, pathname, searchParams, stage: 'research' });
   }
 
   const selectedIdea = ideas.find(
@@ -879,15 +887,8 @@ export function BrainstormEngine({
               ideaVerdict: (item.verdict as string) ?? 'experimental',
               ideaCoreTension: (item.core_tension as string) ?? '',
             };
-            if (stageRun && projectId) {
-              void writeStageRunOutcome({
-                projectId,
-                stageRunId: stageRun.id,
-                outcome: importResult as unknown as Record<string, unknown>,
-              }).then(() => ctx.signalStageComplete('brainstorm', importResult as unknown as Record<string, unknown>)).catch(() => {});
-            } else {
-              ctx.signalStageComplete('brainstorm', importResult as unknown as Record<string, unknown>);
-            }
+            ctx.signalStageComplete('brainstorm', importResult as unknown as Record<string, unknown>);
+            pushStage({ router, pathname, searchParams, stage: 'research' });
           }}
         />
       </div>

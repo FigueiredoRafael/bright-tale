@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Loader2, BookOpen, Check,
   ArrowRight, Sparkles, ChevronDown, ChevronUp, Pencil,
@@ -31,6 +32,7 @@ import { useProjectContext } from '@/components/pipeline/ProjectContextProvider'
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { hydrateDraftFromConfig } from '@/lib/pipeline/hydrateEngineFromConfig';
+import { fetchTracks, firstActiveTrack, pushStage } from '@/lib/pipeline/advanceUrl';
 import type { PipelineContext } from './types';
 import type { AutopilotConfig } from '@brighttale/shared';
 
@@ -53,10 +55,22 @@ const DRAFT_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama'
 export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEngineProps) {
   const ctx = useProjectContext();
   const abortController = usePipelineAbort();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const channelId = ctx.context.channelId;
   const ctxProjectId = ctx.context.projectId;
   const projectId = projectIdProp ?? ctxProjectId;
+
+  // Step-by-step URL advance: canonical → production. Production is per-track,
+  // so we resolve the first active track and append `&track=<id>`.
+  async function advanceToProduction() {
+    if (!projectId) return;
+    const tracks = await fetchTracks(projectId);
+    const track = firstActiveTrack(tracks);
+    pushStage({ router, pathname, searchParams, stage: 'production', trackId: track?.id });
+  }
   const brainstormResult = ctx.context.stageResults.brainstorm as { ideaId?: string; ideaTitle?: string; ideaVerdict?: string; ideaCoreTension?: string; brainstormSessionId?: string } | undefined;
   const researchResult = ctx.context.stageResults.research as { researchSessionId?: string; approvedCardsCount?: number; researchLevel?: string; primaryKeyword?: string; secondaryKeywords?: string[]; searchIntent?: string } | undefined;
   const draftResult = ctx.context.stageResults.draft as { draftId?: string } | undefined;
@@ -160,6 +174,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
   useEffect(() => {
     const ctxDraftId = draftResult?.draftId;
     if (!ctxDraftId) return;
+    const currentRsid = researchResult?.researchSessionId;
 
     (async () => {
       try {
@@ -169,6 +184,17 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
         const json = await res.json();
         if (!json?.data) return;
         const d = json.data as Record<string, unknown>;
+
+        // Stale-draft guard: when research was regenerated, ctx may still
+        // point at a content_draft built against the OLD research session.
+        // /api/content-drafts/:id/generate reads draft.research_session_id
+        // server-side, so reusing that draft would regenerate canonical from
+        // the OLD research/idea. Drop the bind so handleGenerateCore creates
+        // a fresh draft tied to currentRsid.
+        const draftRsid = (d.research_session_id as string | null) ?? null;
+        if (currentRsid && draftRsid && currentRsid !== draftRsid) {
+          return;
+        }
 
         setDraftId(ctxDraftId);
         if (d.title && typeof d.title === 'string' && !titleRef.current) setTitle(d.title);
@@ -193,7 +219,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
         if (err instanceof Error && err.name === 'AbortError') return;
       }
     })();
-  }, [draftResult?.draftId, abortController?.signal]);
+  }, [draftResult?.draftId, researchResult?.researchSessionId, abortController?.signal]);
 
   useEffect(() => {
     if (personas.length === 0) return;
@@ -296,6 +322,8 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
       personaSlug: persona?.slug,
       personaWpAuthorId: persona?.wpAuthorId,
     });
+    void advanceToProduction();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coreApproved, draftId, selectedPersonaId, personas, ctx]);
 
   async function runStep(label: string, fn: () => Promise<Response>) {
@@ -1023,9 +1051,19 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
                   onClick={() => {
                     setPhase('core');
                     setCanonicalCore(null);
-                    setDraftId(null);
+                    // Intentionally KEEP draftId — handleGenerateCore will
+                    // reuse the existing content_draft row and POST to
+                    // /:id/generate, which overwrites canonical_core_json
+                    // in place (production-generate.ts:232). Clearing it
+                    // would create a duplicate content_draft row and
+                    // orphan the previous stage_run.payload_ref.
                     setCoreExpanded(true);
                     setCoreApproved(false);
+                    // Reset the signal-sent ref so an approve after this
+                    // regenerate fires the draft signal again. Without
+                    // this, the old draftId stays gated by the ref and
+                    // signalStageComplete is suppressed.
+                    canonicalSignalSentRef.current = null;
                   }}
                   className="text-xs gap-1"
                   data-testid="canonical-action-regenerate"

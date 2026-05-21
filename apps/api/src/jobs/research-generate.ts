@@ -45,6 +45,31 @@ interface ResearchGenerateEvent {
  * Unwraps the BC_RESEARCH_OUTPUT wrapper key if present.
  * Falls back to a legacy flat-array normalizer for old-style model output.
  */
+function extractResearchSignals(findings: unknown): Record<string, unknown> {
+  if (!findings || typeof findings !== 'object') return {};
+  const f = findings as Record<string, unknown>;
+  const seo = f.seo as Record<string, unknown> | undefined;
+  const validation = f.idea_validation as Record<string, unknown> | undefined;
+  const refinedAngle = f.refined_angle as Record<string, unknown> | undefined;
+  const secondaryKeywords =
+    seo && Array.isArray(seo.secondary_keywords)
+      ? (seo.secondary_keywords as Array<Record<string, unknown>>)
+          .map((k) => k.keyword as string)
+          .filter(Boolean)
+      : undefined;
+  const out: Record<string, unknown> = {};
+  if (seo && typeof seo.primary_keyword === 'string') out.primaryKeyword = seo.primary_keyword;
+  if (secondaryKeywords) out.secondaryKeywords = secondaryKeywords;
+  if (seo && typeof seo.search_intent === 'string') out.searchIntent = seo.search_intent;
+  if (validation && typeof validation.confidence_score === 'number') out.confidenceScore = validation.confidence_score;
+  if (validation && typeof validation.evidence_strength === 'string') out.evidenceStrength = validation.evidence_strength;
+  if (Array.isArray(f.sources)) out.sourceCount = (f.sources as unknown[]).length;
+  if (Array.isArray(f.expert_quotes)) out.expertQuoteCount = (f.expert_quotes as unknown[]).length;
+  if (typeof f.research_summary === 'string') out.researchSummary = f.research_summary;
+  if (refinedAngle && typeof refinedAngle.recommendation === 'string') out.pivotRecommendation = refinedAngle.recommendation;
+  return out;
+}
+
 function extractFindings(raw: unknown): { findings: Record<string, unknown>; cardCount: number } {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
     const top = raw as Record<string, unknown>;
@@ -211,21 +236,50 @@ export const researchGenerate = inngest.createFunction(
         { cardCount },
       );
 
-      if (stageRunId) {
+      // Bind this completed session to a stage_run so ctx/sidebar pick it up.
+      // - Orchestrator path: stageRunId is passed by pipeline-research-dispatch.
+      // - Engine path (POST /api/research-sessions, /:id/regenerate): no
+      //   stageRunId — resolve the latest research stage_run for the project
+      //   and update it. Without this the new session is orphaned: sidebar
+      //   stays on the prior aborted/completed row and downstream stages
+      //   can't see the new research.
+      let resolvedStageRunId: string | null = stageRunId ?? null;
+      if (!resolvedStageRunId && projectId) {
+        const { data: latestRun } = await sb
+          .from('stage_runs')
+          .select('id')
+          .eq('project_id', projectId)
+          .eq('stage', 'research')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (latestRun?.id) resolvedStageRunId = latestRun.id as string;
+      }
+
+      if (resolvedStageRunId) {
         const now = new Date().toISOString();
+        const signals = extractResearchSignals(findings);
+        const outcomeJson: Record<string, unknown> = {
+          researchSessionId: sessionId,
+          approvedCardsCount: cardCount,
+          researchLevel: level,
+          ...signals,
+        };
         await (sb.from('stage_runs') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
           .update({
             status: 'completed',
             payload_ref: { kind: 'research_session', id: sessionId },
+            outcome_json: outcomeJson,
+            error_message: null,
             finished_at: now,
             updated_at: now,
           })
-          .eq('id', stageRunId);
+          .eq('id', resolvedStageRunId);
         await inngest.send({
           name: 'pipeline/stage.run.finished',
-          data: { stageRunId, projectId },
+          data: { stageRunId: resolvedStageRunId, projectId },
         });
       }
 

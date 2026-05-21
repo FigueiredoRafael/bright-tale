@@ -8,13 +8,6 @@ import type { AutopilotConfig } from '@brighttale/shared'
 import type { StageRun } from '@brighttale/shared/pipeline/inputs'
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger'
 
-const mockWriteStageRunOutcome = vi.fn(async () => ({ ok: true }))
-vi.mock('@/lib/api/stageRuns', () => ({
-  get writeStageRunOutcome() {
-    return mockWriteStageRunOutcome
-  },
-}))
-
 vi.mock('@/hooks/use-analytics', () => ({
   useAnalytics: () => ({ track: vi.fn() }),
 }))
@@ -375,7 +368,6 @@ describe('ResearchEngine — stageRun binding (T3.5)', () => {
   }
 
   beforeEach(() => {
-    mockWriteStageRunOutcome.mockClear()
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation(async (url: string) => {
@@ -407,7 +399,7 @@ describe('ResearchEngine — stageRun binding (T3.5)', () => {
     vi.restoreAllMocks()
   })
 
-  it('writes outcome via stage-run-writer when stageRun prop is provided and research auto-completes', async () => {
+  it('signals stage complete when stageRun prop is provided and research auto-completes', async () => {
     // Slice 14.3: useAutoPilotTrigger no longer reads from xstate actor.
     // We mock it to call fire() in a useEffect so it runs after mount (not during
     // render), avoiding the "Too many re-renders" infinite loop.
@@ -416,6 +408,7 @@ describe('ResearchEngine — stageRun binding (T3.5)', () => {
       React.useEffect(() => { void fire() }, [])
     })
 
+    const completedStages: Array<{ stage: string; result: Record<string, unknown> }> = []
     render(
       <StandaloneProjectContextProvider
         projectId="proj-1"
@@ -433,19 +426,18 @@ describe('ResearchEngine — stageRun binding (T3.5)', () => {
             completedAt: new Date().toISOString(),
           },
         }}
+        onStageComplete={(stage, result) => completedStages.push({ stage, result })}
       >
         <ResearchEngine mode="generate" stageRun={stageRun} />
       </StandaloneProjectContextProvider>,
     )
 
     await waitFor(() => {
-      expect(mockWriteStageRunOutcome).toHaveBeenCalledWith(
-        expect.objectContaining({
-          projectId: 'proj-1',
-          stageRunId: 'sr-research-1',
-          outcome: expect.objectContaining({ researchSessionId: expect.any(String) }),
-        }),
-      )
+      expect(
+        completedStages.some(
+          (e) => e.stage === 'research' && typeof e.result.researchSessionId === 'string',
+        ),
+      ).toBe(true)
     }, { timeout: 3000 })
   })
 })

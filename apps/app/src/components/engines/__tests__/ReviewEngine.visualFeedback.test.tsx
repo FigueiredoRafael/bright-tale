@@ -97,8 +97,11 @@ describe('ReviewEngine — visual feedback', () => {
     // and as the prompt copy in the action card. Either one is sufficient.
     expect(screen.getAllByText(/Revision Required/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Revision required\./)).toBeInTheDocument();
-    // Action buttons
-    expect(screen.getByRole('button', { name: /AI Revision/i })).toBeInTheDocument();
+    // Action buttons — primary "Start AI Review" rewrites the draft from
+    // review feedback and chains a fresh /review. Secondary "Retry Review"
+    // re-scores without rewriting.
+    expect(screen.getByRole('button', { name: /Start AI Review/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Retry Review/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Edit Manually/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Regenerate Research/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Pick Different Idea/i })).toBeInTheDocument();

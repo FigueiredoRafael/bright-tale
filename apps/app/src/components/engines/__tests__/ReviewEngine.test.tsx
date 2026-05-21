@@ -1,5 +1,5 @@
 /**
- * ReviewEngine stageRun binding tests (T3.5)
+ * ReviewEngine stage advance tests
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
@@ -8,14 +8,6 @@ import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectC
 import { ReviewEngine } from '@/components/engines/ReviewEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '@/components/engines/types'
 import { makeReviewDraftRow } from './fixtures/review'
-import type { StageRun } from '@brighttale/shared/pipeline/inputs'
-
-const mockWriteStageRunOutcome = vi.fn(async () => ({ ok: true }))
-vi.mock('@/lib/api/stageRuns', () => ({
-  get writeStageRunOutcome() {
-    return mockWriteStageRunOutcome
-  },
-}))
 
 vi.mock('@/hooks/use-analytics', () => ({
   useAnalytics: () => ({ track: vi.fn() }),
@@ -33,31 +25,39 @@ vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
   useAutoPilotTrigger: vi.fn(),
 }))
 
-describe('ReviewEngine — stageRun binding (T3.5)', () => {
-  const stageRun: StageRun = {
-    id: 'sr-review-1',
-    projectId: 'proj-1',
-    stage: 'review',
-    status: 'queued',
-    attemptNo: 1,
-    awaitingReason: null,
-    payloadRef: null,
-    inputJson: null,
-    errorMessage: null,
-    startedAt: null,
-    finishedAt: null,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }
-
+describe('ReviewEngine — stage advance', () => {
   beforeEach(() => {
-    mockWriteStageRunOutcome.mockClear()
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation(async (url: string) => {
         const u = String(url)
         if (u.includes('/api/agents') || u.includes('/api/agent-prompts')) {
           return { ok: true, json: async () => ({ data: { agents: [] }, error: null }) } as Response
+        }
+        if (u.includes('/api/projects/') && u.includes('/stages')) {
+          return {
+            ok: true,
+            json: async () => ({
+              data: {
+                tracks: [
+                  {
+                    id: 'track-1',
+                    medium: 'blog',
+                    status: 'active',
+                    paused: false,
+                    stageRuns: {
+                      production: { status: 'completed' },
+                      review: { status: 'completed' },
+                      assets: { status: 'queued' },
+                      preview: { status: 'queued' },
+                      publish: { status: 'queued' },
+                    },
+                  },
+                ],
+              },
+              error: null,
+            }),
+          } as Response
         }
         return { ok: true, json: async () => ({ data: null, error: null }) } as Response
       }),
@@ -68,9 +68,10 @@ describe('ReviewEngine — stageRun binding (T3.5)', () => {
     vi.restoreAllMocks()
   })
 
-  it('writes outcome via stage-run-writer when stageRun prop is provided and user approves review', async () => {
+  it('signals stage complete with review outcome when user approves and clicks Next: Assets', async () => {
     const user = userEvent.setup()
     const approvedDraft = makeReviewDraftRow({ verdict: 'approved', score: 92 })
+    const completedStages: Array<{ stage: string; result: Record<string, unknown> }> = []
 
     render(
       <StandaloneProjectContextProvider
@@ -83,8 +84,9 @@ describe('ReviewEngine — stageRun binding (T3.5)', () => {
         }}
         pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
         creditSettings={DEFAULT_CREDIT_SETTINGS}
+        onStageComplete={(stage, result) => completedStages.push({ stage, result })}
       >
-        <ReviewEngine draft={approvedDraft} stageRun={stageRun} />
+        <ReviewEngine draft={approvedDraft} />
       </StandaloneProjectContextProvider>,
     )
 
@@ -92,13 +94,9 @@ describe('ReviewEngine — stageRun binding (T3.5)', () => {
     await user.click(approveBtn)
 
     await waitFor(() => {
-      expect(mockWriteStageRunOutcome).toHaveBeenCalledWith(
-        expect.objectContaining({
-          projectId: 'proj-1',
-          stageRunId: 'sr-review-1',
-          outcome: expect.objectContaining({ score: 92 }),
-        }),
-      )
+      expect(
+        completedStages.some((e) => e.stage === 'review' && e.result.score === 92),
+      ).toBe(true)
     })
   })
 })

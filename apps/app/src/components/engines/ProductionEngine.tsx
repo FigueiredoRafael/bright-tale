@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Loader2, FileText, Video, Zap, Mic, Check, ArrowRight, Sparkles, Pencil,
 } from 'lucide-react';
@@ -23,6 +24,7 @@ import { useUpgrade } from '@/components/billing/UpgradeProvider';
 import VideoStyleSelector from '@/components/production/VideoStyleSelector';
 import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
+import { pushStage } from '@/lib/pipeline/advanceUrl';
 import type { VideoStyleConfig } from '@brighttale/shared/schemas/videoStyle';
 import type { AutopilotConfig } from '@brighttale/shared';
 import type { DraftResult } from './types';
@@ -33,19 +35,41 @@ type Phase = 'produce' | 'done';
 
 interface ProductionEngineProps {
   projectId?: string;
-  trackId: string;
-  medium: Medium;
+  trackId?: string;
+  medium?: Medium;
 }
 
 const DRAFT_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
 
-export function ProductionEngine({ projectId: projectIdProp, trackId, medium }: ProductionEngineProps) {
+export function ProductionEngine(props: ProductionEngineProps) {
+  // Defensive guard: EngineHost forwards `medium` from the resolved track,
+  // but tracks load asynchronously via useProjectStream. On the very first
+  // render after navigating to ?stage=production, `medium` can be undefined.
+  // Without this guard the body below crashes on `medium.charAt(...)`.
+  if (!props.trackId || !props.medium) {
+    return (
+      <div data-testid="production-engine-loading" className="p-6 text-sm text-muted-foreground">
+        Loading production track…
+      </div>
+    );
+  }
+  return <ProductionEngineInner {...(props as Required<Pick<ProductionEngineProps, 'trackId' | 'medium'>> & ProductionEngineProps)} />;
+}
+
+function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { projectId?: string; trackId: string; medium: Medium }) {
   const ctx = useProjectContext();
   const abortController = usePipelineAbort();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const channelId = ctx.context.channelId;
   const ctxProjectId = ctx.context.projectId;
   const projectId = projectIdProp ?? ctxProjectId;
+
+  function advanceToReview() {
+    pushStage({ router, pathname, searchParams, stage: 'review', trackId });
+  }
   const draftResult = ctx.context.stageResults.draft as { draftId?: string } | undefined;
   const creditSettings = ctx.context.creditSettings as { costBlog?: number; costVideo?: number; costShorts?: number; costPodcast?: number } | undefined;
   const autopilotConfig: AutopilotConfig | null | undefined = ctx.context.autopilotConfig;
@@ -97,6 +121,40 @@ export function ProductionEngine({ projectId: projectIdProp, trackId, medium }: 
   const { handleMaybeCreditsError } = useUpgrade();
 
   const [derivingShorts, setDerivingShorts] = useState(false);
+
+  // Hydrate produced content from `content_drafts.draft_json` on mount. Without
+  // this, navigating back to ?stage=production after the draft was already
+  // produced shows the empty "Produce X Content" form instead of the previously
+  // generated content. Reads the same draft row the AI dispatcher / manual
+  // paste route writes to, so the engine is stateless across reloads.
+  const hydratedDraftRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!draftId) return;
+    if (hydratedDraftRef.current === draftId) return;
+    if (activeDraftId) return; // a generation is in flight — don't clobber its state
+    hydratedDraftRef.current = draftId;
+    (async () => {
+      try {
+        const res = await fetch(`/api/content-drafts/${draftId}`, {
+          signal: abortController?.signal,
+        });
+        const json = await res.json();
+        const draftRow = json.data as Record<string, unknown> | null;
+        if (!draftRow) return;
+        const draftJson = draftRow.draft_json as Record<string, unknown> | null | undefined;
+        if (!draftJson || typeof draftJson !== 'object' || Object.keys(draftJson).length === 0) return;
+        const content = extractProducedContent(draftRow, medium);
+        if (!content || content === '{}') return;
+        setProducedContent(content);
+        setProducedDraftJson(draftJson);
+        setPhase('done');
+        const warning = typeof draftJson.content_warning === 'string' ? draftJson.content_warning : null;
+        setContentWarning(warning);
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
+      }
+    })();
+  }, [draftId, medium, activeDraftId, abortController?.signal]);
 
   const TYPES: { id: Medium; label: string; icon: typeof FileText; cost: number | undefined }[] = [
     { id: 'blog', label: 'Blog', icon: FileText, cost: creditSettings?.costBlog },
@@ -677,6 +735,7 @@ export function ProductionEngine({ projectId: projectIdProp, trackId, medium }: 
                   draftContent: producedContent,
                 };
                 ctx.signalStageComplete('draft', result as unknown as Record<string, unknown>);
+                advanceToReview();
               }}>
                 <Check className="h-4 w-4 mr-2" /> Done <ArrowRight className="h-4 w-4 ml-2" />
               </Button>
