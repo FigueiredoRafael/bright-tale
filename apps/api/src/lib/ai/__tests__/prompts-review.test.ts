@@ -154,21 +154,37 @@ describe('buildReviewMessage', () => {
     expect(msg).toContain('"hook_0_10s": "opening hook here"');
   });
 
-  it('injects the blog rubric and asks for rubric_evaluation when type=blog', () => {
+  it('injects the blog rubric with mandatory schema override + worked example', () => {
     const msg = buildReviewMessage({
       type: 'blog',
       title: 'Test',
       draftJson: { full_draft: 'x', slug: 'y' },
     });
-    expect(msg).toContain('Rubric (REQUIRED');
-    expect(msg).toContain('blog_review.rubric_evaluation');
+    // System-prompt override
+    expect(msg).toContain('MANDATORY SCHEMA OVERRIDE');
+    expect(msg).toContain('contract shown in your system prompt does NOT include');
+    expect(msg).toContain('blog_review object MUST include a "rubric_evaluation"');
+    expect(msg).toContain('Do NOT include a "score" field');
+    // Worked example (JSON block with rubric_evaluation key + sample pass/evidence)
+    expect(msg).toContain('"rubric_evaluation"');
+    expect(msg).toContain('"pass"');
+    expect(msg).toContain('"evidence"');
+    // All 10 criteria listed by key
     expect(msg).toContain('has_strong_hook');
     expect(msg).toContain('thesis_clear_in_intro');
     expect(msg).toContain('meets_word_count');
     expect(msg).toContain('claims_have_inline_citations');
+    expect(msg).toContain('outline_matches_canonical');
+    expect(msg).toContain('no_promotional_tone');
+    expect(msg).toContain('sentence_clarity');
+    expect(msg).toContain('seo_meta_optimized');
+    expect(msg).toContain('cta_present_and_aligned');
+    expect(msg).toContain('strengths_preserved');
     expect(msg).toContain('PASS when:');
-    expect(msg).toContain('Do NOT include a `score` field');
     expect(msg).toContain('aesthetic preference');
+    // Self-check reminder mentions all-keys-required
+    expect(msg).toContain('Self-check before returning');
+    expect(msg).toContain('all 10 keys');
   });
 
   it('does NOT inject a rubric for types without one (video/shorts/podcast)', () => {

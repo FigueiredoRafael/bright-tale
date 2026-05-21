@@ -120,21 +120,47 @@ export function buildReviewMessage(input: ReviewInput): string {
   // evaluation per criterion. Server computes the final score from the
   // evaluation, so the reviewer never picks a number — it just answers yes/no
   // per criterion with quoted evidence.
+  //
+  // IMPORTANT: the agent's system prompt (BC_REVIEW_OUTPUT contract in the
+  // DB-stored review agent instructions) shows an OLD example shape without
+  // a `rubric_evaluation` field. Without an authoritative override, the
+  // model copies the system-prompt example and omits rubric_evaluation —
+  // the server then treats every criterion as missing (= fail) and returns
+  // score=0. The block below overrides the contract by stating "MANDATORY
+  // SCHEMA OVERRIDE", showing the exact extended shape with a worked
+  // example, and listing every required key.
   const rubric = getRubricForType(input.type);
   if (rubric && rubric.length > 0) {
+    const exampleKey = rubric[0].key;
+    const exampleEvaluation = rubric.reduce((acc, c, idx) => {
+      // Mix of pass/fail across the example to make the schema unambiguous.
+      acc[c.key] = {
+        pass: idx % 2 === 0,
+        evidence:
+          idx % 2 === 0
+            ? `"quoted passage from current draft demonstrating ${c.key} passes"`
+            : `"quoted passage that fails ${c.key} — explain why"`,
+      };
+      return acc;
+    }, {} as Record<string, { pass: boolean; evidence: string }>);
+
+    lines.push('');
+    lines.push('=== MANDATORY SCHEMA OVERRIDE (read this carefully) ===');
+    lines.push(
+      `The BC_REVIEW_OUTPUT contract shown in your system prompt does NOT include a "rubric_evaluation" field under ${input.type}_review. That contract is OUTDATED for this call. For THIS review, your ${input.type}_review object MUST include a "rubric_evaluation" object as shown below. Do NOT include a "score" field — the server computes it from your rubric_evaluation. Output everything else from the original contract unchanged.`,
+    );
+    lines.push('');
+    lines.push(`Required shape of ${input.type}_review.rubric_evaluation (worked example with placeholder evidence):`);
+    lines.push('```json');
+    lines.push(JSON.stringify({ rubric_evaluation: exampleEvaluation }, null, 2));
+    lines.push('```');
     lines.push('');
     lines.push(
-      'Rubric (REQUIRED — evaluate each criterion binary, do NOT pick a 0-100 score):',
+      `Required keys (ALL ${rubric.length} MUST appear in rubric_evaluation; missing keys are treated as fail by the server):`,
     );
-    lines.push(
-      `For each criterion below, decide whether the current draft PASSES it. Return your decisions in ${input.type}_review.rubric_evaluation as an object keyed by criterion key, with this shape:`,
-    );
-    lines.push('  { "<criterion_key>": { "pass": true | false, "evidence": "<quote from the draft + brief reasoning>" }, ... }');
-    lines.push(
-      'Every criterion MUST appear in your rubric_evaluation, even if you mark it pass. Evidence is REQUIRED for both pass and fail — quote the relevant passage from the current draft (not a paraphrase of past wording). Do NOT include a `score` field; the server computes the final score from your rubric_evaluation.',
-    );
+    for (const c of rubric) lines.push(`  - ${c.key}`);
     lines.push('');
-    lines.push('Criteria:');
+    lines.push('Criteria (apply these binary pass/fail when populating rubric_evaluation):');
     for (const c of rubric) {
       lines.push('');
       lines.push(`- key: ${c.key}`);
@@ -149,6 +175,10 @@ export function buildReviewMessage(input: ReviewInput): string {
     lines.push('');
     lines.push(
       'Calibration note: aesthetic preference for one rhetorical device over another is NOT a fail. If you find yourself writing "consider starting with a question", you are stating preference, not detecting a defect — that criterion PASSES.',
+    );
+    lines.push('');
+    lines.push(
+      `Self-check before returning: did you include all ${rubric.length} keys in ${input.type}_review.rubric_evaluation? Did each key have both "pass" (boolean) and "evidence" (non-empty string quoting the current draft)? If any key is missing, the server scores it as 0. The "${exampleKey}" key is shown in the example above — use the same shape for all keys.`,
     );
   }
 
