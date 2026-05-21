@@ -50,7 +50,7 @@ interface PublishEngineProps {
 
 export function PublishEngine({ draft, publishTargetId }: PublishEngineProps) {
   // ── Context from server-driven provider ───────────────────────────────────
-  const { context, refetch, setStageStatus } = useProjectContext();
+  const { context, setStageStatus, signalStageComplete } = useProjectContext();
 
   const channelId = context.channelId;
   const projectId = context.projectId;
@@ -162,6 +162,21 @@ export function PublishEngine({ draft, publishTargetId }: PublishEngineProps) {
     return () => { active = false; };
   }, [publishTargetId]);
 
+  // Heal orphaned publishes: drafts that already have published_url+wordpress_post_id
+  // but never had stageResults.publish populated (e.g. completed before the engine
+  // started calling signalStageComplete on stream completion). Fire once so mirror
+  // writes the missing stage_runs.publish row and the sidebar catches up.
+  const publishHealedRef = useRef(false);
+  useEffect(() => {
+    if (publishHealedRef.current) return;
+    if (context.stageResults.publish) return;
+    const url = localDraft?.published_url ?? null;
+    const wpId = localDraft?.wordpress_post_id ?? null;
+    if (!url || wpId == null) return;
+    publishHealedRef.current = true;
+    signalStageComplete('publish', { wordpressPostId: wpId, publishedUrl: url } as unknown as Record<string, unknown>);
+  }, [context.stageResults.publish, localDraft?.published_url, localDraft?.wordpress_post_id, signalStageComplete]);
+
   function handlePublish(params: { mode: string; scheduledDate?: string }) {
     if (publishing) return;
 
@@ -218,16 +233,16 @@ export function PublishEngine({ draft, publishTargetId }: PublishEngineProps) {
         publishedUrl: result.publishedUrl,
         mode: modeRef.current ?? 'unknown',
       });
-      // Replace actor.send(PUBLISH_COMPLETE) — refetch so context reflects new stage_runs row
-      // The dispatcher (PublishProgress / legacy WordPressPublishForm) writes the
-      // outcome_json to stage_runs server-side; we just need to re-sync here.
-      refetch();
-      // Keep local publish result in-memory for UI until refetch resolves
-      void publishResult; // referenced to avoid unused-var lint
+      // The /publish-draft/stream route updates content_drafts.published_url
+      // but does NOT write a stage_runs.publish row. Without signalStageComplete
+      // the sidebar's Publish tile stays uncompleted and stageResults.publish is
+      // never populated (downstream UI loses the published URL). Fire the
+      // signal so PATCH→mirror writes stageResults + the stage_run.
+      signalStageComplete('publish', publishResult as unknown as Record<string, unknown>);
       setPublishing(false);
       setPublishBody(null);
     },
-    [draftId, tracker, overviewMode, refetch],
+    [draftId, tracker, overviewMode, signalStageComplete],
   );
 
   const handleStreamError = useCallback(
