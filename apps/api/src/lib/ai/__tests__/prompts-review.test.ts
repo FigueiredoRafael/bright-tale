@@ -153,4 +153,31 @@ describe('buildReviewMessage', () => {
     expect(msg).toContain('"video"');
     expect(msg).toContain('"hook_0_10s": "opening hook here"');
   });
+
+  it('injects the blog rubric and asks for rubric_evaluation when type=blog', () => {
+    const msg = buildReviewMessage({
+      type: 'blog',
+      title: 'Test',
+      draftJson: { full_draft: 'x', slug: 'y' },
+    });
+    expect(msg).toContain('Rubric (REQUIRED');
+    expect(msg).toContain('blog_review.rubric_evaluation');
+    expect(msg).toContain('has_strong_hook');
+    expect(msg).toContain('thesis_clear_in_intro');
+    expect(msg).toContain('meets_word_count');
+    expect(msg).toContain('claims_have_inline_citations');
+    expect(msg).toContain('PASS when:');
+    expect(msg).toContain('Do NOT include a `score` field');
+    expect(msg).toContain('aesthetic preference');
+  });
+
+  it('does NOT inject a rubric for types without one (video/shorts/podcast)', () => {
+    const videoMsg = buildReviewMessage({
+      type: 'video',
+      title: 'Test',
+      draftJson: {},
+    });
+    expect(videoMsg).not.toContain('Rubric (REQUIRED');
+    expect(videoMsg).not.toContain('rubric_evaluation');
+  });
 });

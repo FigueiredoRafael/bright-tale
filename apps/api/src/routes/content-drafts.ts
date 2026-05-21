@@ -38,6 +38,12 @@ import {
 } from "../lib/personas.js";
 import { validateProducedDraft } from "../lib/ai/validators/index.js";
 import { buildReviewMessage } from "../lib/ai/prompts/review.js";
+import {
+  computeRubricScore,
+  deriveVerdictFromScore,
+  extractRubricEvaluation,
+  getRubricForType,
+} from "../lib/ai/scoring/computeRubricScore.js";
 import { buildAssetsMessage } from "../lib/ai/prompts/assets.js";
 import {
   loadIdeaContext,
@@ -1697,8 +1703,16 @@ export async function contentDraftsRoutes(
           throw agentError;
         }
 
-        // Extract verdict and score from agent response
-        const overallVerdict =
+        // Extract verdict and score from agent response.
+        //
+        // Score derivation: if a rubric is defined for this content type
+        // (currently blog), the server computes score deterministically from
+        // rubric_evaluation (Σ weight over passing criteria). This replaces
+        // the LLM's opinionated 0-100 number, which was unreliable — the
+        // model would settle on round numbers like 60 regardless of actual
+        // quality. When no rubric exists for the type, fall back to the
+        // legacy LLM score or the quality_tier mapping.
+        const overallVerdictRaw =
           (result.overall_verdict as string) ?? "revision_required";
         const draftType = draft.type as string;
         const formatReview = result[`${draftType}_review`] as
@@ -1712,9 +1726,28 @@ export async function contentDraftsRoutes(
           reject: 20,
           not_requested: 0,
         };
-        const rawScore = (formatReview?.score as number | undefined) ?? null;
-        const reviewScore: number | null =
-          rawScore !== null ? rawScore : (legacyScoreMap[tier] ?? null);
+
+        const rubric = getRubricForType(draftType);
+        let reviewScore: number | null;
+        let computedFromRubric: ReturnType<typeof computeRubricScore> | null = null;
+        if (rubric) {
+          const rubricEval = extractRubricEvaluation(result, draftType);
+          computedFromRubric = computeRubricScore(rubric, rubricEval);
+          reviewScore = computedFromRubric.score;
+        } else {
+          const rawScore = (formatReview?.score as number | undefined) ?? null;
+          reviewScore =
+            rawScore !== null ? rawScore : (legacyScoreMap[tier] ?? null);
+        }
+
+        // Verdict: if we computed from rubric, the score determines verdict
+        // (90+ = approved). Otherwise honor the model's overall_verdict.
+        const overallVerdict = computedFromRubric
+          ? deriveVerdictFromScore(
+              computedFromRubric.score,
+              computedFromRubric.maxScore,
+            )
+          : overallVerdictRaw;
         const iterationCount = ((draft.iteration_count as number) ?? 0) + 1;
 
         // Determine status based on agent verdict

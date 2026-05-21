@@ -14,6 +14,11 @@ import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
 import { buildProduceMessage, buildReproduceMessage } from '../lib/ai/prompts/production.js';
 import { loadPriorReviewAttempts } from '../lib/ai/loadPriorReviewAttempts.js';
+import {
+  computeRubricScore,
+  extractRubricEvaluation,
+  getRubricForType,
+} from '../lib/ai/scoring/computeRubricScore.js';
 import { calculateDraftCost } from '../lib/calculate-draft-cost.js';
 import { loadCreditSettings } from '../lib/credit-settings.js';
 import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
@@ -262,7 +267,31 @@ export const productionProduce = inngest.createFunction(
             ? (rubric.strengths as string[])
             : [];
 
-          const critical_issues = dedupe([...criticalDetailed, ...criticalRubric]);
+          // Rubric-based criticals: when the reviewer returned a
+          // rubric_evaluation (new deterministic scoring path), surface every
+          // failed criterion as a critical issue with its pass condition.
+          // This gives the producer concrete instructions ("criterion X failed
+          // because Y, to pass the draft must Z") instead of free-form text.
+          const rubricForType = getRubricForType(type as string);
+          const criticalFromRubric: string[] = [];
+          if (rubricForType) {
+            const rubricEval = extractRubricEvaluation(raw, type as string);
+            const computed = computeRubricScore(rubricForType, rubricEval);
+            for (const f of computed.failures) {
+              const evidenceLine = f.evidence && f.evidence !== '(no evidence provided)'
+                ? `Evidence: ${f.evidence}. `
+                : '';
+              criticalFromRubric.push(
+                `[${f.key}] ${f.title} — FAIL. ${evidenceLine}Pass condition: ${f.passWhen}`,
+              );
+            }
+          }
+
+          const critical_issues = dedupe([
+            ...criticalFromRubric,
+            ...criticalDetailed,
+            ...criticalRubric,
+          ]);
           const minor_issues = dedupe([...minorDetailed, ...minorRubric]);
           const strengths = dedupe([...blockStrengths, ...rubricStrengths]);
 

@@ -1,4 +1,5 @@
 import type { IdeaContext } from '../loadIdeaContext.js';
+import { getRubricForType } from '../scoring/computeRubricScore.js';
 
 /**
  * Shape of a prior review attempt. Kept exported here because the production
@@ -112,6 +113,43 @@ export function buildReviewMessage(input: ReviewInput): string {
       lines.push('');
       lines.push(parts.join('\n'));
     }
+  }
+
+  // Rubric injection: when a deterministic rubric exists for this content
+  // type, replace the LLM's opinionated 0-100 score with a binary pass/fail
+  // evaluation per criterion. Server computes the final score from the
+  // evaluation, so the reviewer never picks a number — it just answers yes/no
+  // per criterion with quoted evidence.
+  const rubric = getRubricForType(input.type);
+  if (rubric && rubric.length > 0) {
+    lines.push('');
+    lines.push(
+      'Rubric (REQUIRED — evaluate each criterion binary, do NOT pick a 0-100 score):',
+    );
+    lines.push(
+      `For each criterion below, decide whether the current draft PASSES it. Return your decisions in ${input.type}_review.rubric_evaluation as an object keyed by criterion key, with this shape:`,
+    );
+    lines.push('  { "<criterion_key>": { "pass": true | false, "evidence": "<quote from the draft + brief reasoning>" }, ... }');
+    lines.push(
+      'Every criterion MUST appear in your rubric_evaluation, even if you mark it pass. Evidence is REQUIRED for both pass and fail — quote the relevant passage from the current draft (not a paraphrase of past wording). Do NOT include a `score` field; the server computes the final score from your rubric_evaluation.',
+    );
+    lines.push('');
+    lines.push('Criteria:');
+    for (const c of rubric) {
+      lines.push('');
+      lines.push(`- key: ${c.key}`);
+      lines.push(`  title: ${c.title}`);
+      lines.push(`  what to check: ${c.description}`);
+      lines.push(`  PASS when: ${c.passWhen}`);
+      if (c.failExamples.length > 0) {
+        lines.push(`  examples of FAIL:`);
+        for (const ex of c.failExamples) lines.push(`    - ${ex}`);
+      }
+    }
+    lines.push('');
+    lines.push(
+      'Calibration note: aesthetic preference for one rhetorical device over another is NOT a fail. If you find yourself writing "consider starting with a question", you are stating preference, not detecting a defect — that criterion PASSES.',
+    );
   }
 
   lines.push('');

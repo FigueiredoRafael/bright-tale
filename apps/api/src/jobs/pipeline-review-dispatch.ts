@@ -16,6 +16,12 @@ import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader
 import { createServiceClient } from '../lib/supabase/index.js';
 import { buildReviewMessage } from '../lib/ai/prompts/review.js';
 import {
+  computeRubricScore,
+  deriveVerdictFromScore,
+  extractRubricEvaluation,
+  getRubricForType,
+} from '../lib/ai/scoring/computeRubricScore.js';
+import {
   markAwaitingUser,
   markCompleted,
   markFailed,
@@ -185,10 +191,25 @@ export const pipelineReviewDispatch = inngest.createFunction(
       );
 
       const result = response.result as Record<string, unknown>;
-      const overallVerdict = (result.overall_verdict as string) ?? 'revision_required';
+      const overallVerdictRaw = (result.overall_verdict as string) ?? 'revision_required';
       const draftType = draft.type as string;
       const formatReview = result[`${draftType}_review`] as Record<string, unknown> | undefined;
-      const reviewScore = (formatReview?.score as number | undefined) ?? null;
+
+      // Score derivation: prefer deterministic rubric-based scoring (Σ weight
+      // over passing criteria) when a rubric exists for the content type.
+      // Falls back to the LLM's score field when the type has no rubric.
+      const rubric = getRubricForType(draftType);
+      let reviewScore: number | null;
+      let overallVerdict: string;
+      if (rubric) {
+        const rubricEval = extractRubricEvaluation(result, draftType);
+        const computed = computeRubricScore(rubric, rubricEval);
+        reviewScore = computed.score;
+        overallVerdict = deriveVerdictFromScore(computed.score, computed.maxScore);
+      } else {
+        reviewScore = (formatReview?.score as number | undefined) ?? null;
+        overallVerdict = overallVerdictRaw;
+      }
 
       const iterationCount = ((draft.iteration_count as number) ?? 0) + 1;
 

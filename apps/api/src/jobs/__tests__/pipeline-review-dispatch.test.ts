@@ -36,6 +36,30 @@ const PROJECT_ID = 'proj-xyz';
 const DRAFT_ID = 'cd-1';
 
 const STEP_MOCK = { run: <T>(_id: string, fn: () => Promise<T>) => fn() };
+
+// Generates a rubric_evaluation for the blog rubric (10 criteria) with the
+// requested number of passing criteria. Dispatcher now derives review_score
+// deterministically from this evaluation (Σ weight over passes), so tests
+// that need a specific score must shape the rubric, not the LLM score field.
+function makeBlogRubricEval(passCount: number): Record<string, { pass: boolean; evidence: string }> {
+  const keys = [
+    'has_strong_hook',
+    'thesis_clear_in_intro',
+    'meets_word_count',
+    'claims_have_inline_citations',
+    'outline_matches_canonical',
+    'no_promotional_tone',
+    'sentence_clarity',
+    'seo_meta_optimized',
+    'cta_present_and_aligned',
+    'strengths_preserved',
+  ];
+  const out: Record<string, { pass: boolean; evidence: string }> = {};
+  keys.forEach((k, idx) => {
+    out[k] = { pass: idx < passCount, evidence: idx < passCount ? 'pass' : 'fail' };
+  });
+  return out;
+}
 type HandlerArgs = {
   event: { data: { stageRunId: string; stage: string; projectId: string } };
   step: typeof STEP_MOCK;
@@ -167,7 +191,13 @@ describe('pipeline-review-dispatch', () => {
     };
 
     generateWithFallbackMock.mockResolvedValue({
-      result: { overall_verdict: 'approved', blog_review: { score: 92 } },
+      result: {
+        overall_verdict: 'approved',
+        blog_review: {
+          score: 92,
+          rubric_evaluation: makeBlogRubricEval(10), // 10/10 → 100 = approved
+        },
+      },
       providerName: 'mock',
       model: 'mock',
       usage: {},
@@ -205,7 +235,8 @@ describe('pipeline-review-dispatch', () => {
     const draftUpdate = contentDraftsUpdateMock.mock.calls[0][0];
     expect(draftUpdate.review_verdict).toBe('approved');
     expect(draftUpdate.status).toBe('approved');
-    expect(draftUpdate.review_score).toBe(92);
+    // 10 passing criteria × 10 weight = 100 (rubric-derived, not LLM-set).
+    expect(draftUpdate.review_score).toBe(100);
 
     const finishedCall = (inngestSendMock.mock.calls as unknown as unknown[][]).find(
       (c) => (c[0] as { name: string }).name === 'pipeline/stage.run.finished',
@@ -215,7 +246,13 @@ describe('pipeline-review-dispatch', () => {
 
   it('on revision_required verdict: writes draft → in_review, stage_run still completed', async () => {
     generateWithFallbackMock.mockResolvedValueOnce({
-      result: { overall_verdict: 'revision_required', blog_review: { score: 60 } },
+      result: {
+        overall_verdict: 'revision_required',
+        blog_review: {
+          score: 60,
+          rubric_evaluation: makeBlogRubricEval(6), // 6/10 → 60 = revision_required
+        },
+      },
       providerName: 'mock',
       model: 'mock',
       usage: {},
@@ -280,7 +317,13 @@ describe('pipeline-review-dispatch', () => {
     // budget branch, and parks the run for user review.
     draftRow = { ...(draftRow as Record<string, unknown>), iteration_count: 4 };
     generateWithFallbackMock.mockResolvedValueOnce({
-      result: { overall_verdict: 'revision_required', blog_review: { score: 60 } },
+      result: {
+        overall_verdict: 'revision_required',
+        blog_review: {
+          score: 60,
+          rubric_evaluation: makeBlogRubricEval(6),
+        },
+      },
       providerName: 'mock',
       model: 'mock',
       usage: {},
