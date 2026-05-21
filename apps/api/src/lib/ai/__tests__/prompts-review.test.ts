@@ -62,7 +62,12 @@ describe('buildReviewMessage', () => {
     expect(msg).toContain('pt-BR');
   });
 
-  it('omits prior-attempts section when none provided', () => {
+  it('does NOT include prior-attempts memory in the reviewer prompt (reviewer is stateless)', () => {
+    // Sanity check: the reviewer prompt must never carry past criticals.
+    // Giving the reviewer prior-attempts memory caused it to anchor on stale
+    // flags and stop seeing genuine improvements. The PRODUCER still uses
+    // prior-attempts memory (see prompts-production tests) — only the reviewer
+    // has been reverted to stateless.
     const msg = buildReviewMessage({
       type: 'blog',
       title: 'test',
@@ -71,47 +76,8 @@ describe('buildReviewMessage', () => {
     expect(msg).not.toContain('Previous review attempts');
     expect(msg).not.toContain('Convergence rules');
     expect(msg).not.toContain('Per-prior-critical evaluation');
-  });
-
-  it('renders prior attempts with score, verdict, and issues', () => {
-    const msg = buildReviewMessage({
-      type: 'blog',
-      title: 'test',
-      draftJson: {},
-      priorAttempts: [
-        {
-          attemptNo: 2,
-          score: 68,
-          verdict: 'revision_required',
-          criticalIssues: ['weak intro hook', 'missing CTA'],
-          minorIssues: ['repetitive phrasing'],
-        },
-        {
-          attemptNo: 1,
-          score: 72,
-          verdict: 'revision_required',
-          criticalIssues: ['weak intro hook'],
-          minorIssues: [],
-        },
-      ],
-    });
-    expect(msg).toContain('Previous review attempts');
-    expect(msg).toContain('Attempt #2');
-    expect(msg).toContain('Attempt #1');
-    expect(msg).toContain('weak intro hook');
-    expect(msg).toContain('missing CTA');
-    expect(msg).toContain('repetitive phrasing');
-    expect(msg).toContain('Per-prior-critical evaluation');
-    expect(msg).toContain('quote the specific passage from the CURRENT draft');
-    expect(msg).toContain('Convergence rules');
-    expect(msg).toContain('previous_score + 5');
-    expect(msg).toContain('score MUST be >= the most recent prior score');
-    expect(msg).toContain('What counts as a "strong hook"');
-    expect(msg).toContain('declarative contrarian opener');
-    expect(msg).toContain('Aesthetic preference for one rhetorical device over another is NOT a critical issue');
-    expect(msg).toContain('Partial progress requires a partial gain');
-    expect(msg).toContain('previous_score + round(F * 5)');
-    expect(msg).toContain('flat score with F > 0 is a hard violation');
+    expect(msg).not.toContain('Partial progress');
+    expect(msg).not.toContain('What counts as a "strong hook"');
   });
 
   it('falls back to draftJson.title when input.title is empty or "null"', () => {
@@ -140,22 +106,4 @@ describe('buildReviewMessage', () => {
     expect(msg).not.toMatch(/^Title:/m);
   });
 
-  it('handles attempts with null score gracefully', () => {
-    const msg = buildReviewMessage({
-      type: 'blog',
-      title: 'test',
-      draftJson: {},
-      priorAttempts: [
-        {
-          attemptNo: 1,
-          score: null,
-          verdict: 'rejected',
-          criticalIssues: ['major factual error'],
-          minorIssues: [],
-        },
-      ],
-    });
-    expect(msg).toContain('score=n/a');
-    expect(msg).toContain('major factual error');
-  });
 });

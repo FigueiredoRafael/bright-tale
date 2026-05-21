@@ -1,5 +1,14 @@
 import type { IdeaContext } from '../loadIdeaContext.js';
 
+/**
+ * Shape of a prior review attempt. Kept exported here because the production
+ * reproduce prompt (apps/api/src/lib/ai/prompts/production.ts) consumes the
+ * same type — the PRODUCER uses prior-attempts memory to see what fixes it
+ * already tried. The reviewer itself does NOT take priorAttempts anymore:
+ * giving the reviewer past criticals caused it to anchor on stale flags and
+ * stop seeing genuine improvements, even when the producer substantively
+ * rewrote the flagged sections. Reviewer is back to stateless per call.
+ */
 export interface PriorReviewAttempt {
   attemptNo: number;
   score: number | null;
@@ -17,13 +26,6 @@ export interface ReviewInput {
   research?: unknown;
   contentTypesRequested?: string[];
   channel?: { name?: string; niche?: string; language?: string; tone?: string };
-  /**
-   * Earlier review attempts on this same draft (most recent first). Lets the
-   * reviewer judge convergence — whether prior critical issues were addressed
-   * — instead of treating every attempt as fresh. Stateless per provider; we
-   * inline the relevant history into the prompt.
-   */
-  priorAttempts?: PriorReviewAttempt[];
 }
 
 export function buildReviewMessage(input: ReviewInput): string {
@@ -53,59 +55,6 @@ export function buildReviewMessage(input: ReviewInput): string {
 
   if (input.contentTypesRequested?.length) {
     lines.push(`Content types to review: ${input.contentTypesRequested.join(', ')}`);
-  }
-
-  if (input.priorAttempts && input.priorAttempts.length > 0) {
-    lines.push('');
-    lines.push('Previous review attempts on this draft (most recent first):');
-    for (const a of input.priorAttempts) {
-      const scoreStr = a.score != null ? String(a.score) : 'n/a';
-      lines.push(`- Attempt #${a.attemptNo} — verdict=${a.verdict}, score=${scoreStr}`);
-      if (a.criticalIssues.length > 0) {
-        lines.push(`  critical: ${JSON.stringify(a.criticalIssues)}`);
-      }
-      if (a.minorIssues.length > 0) {
-        lines.push(`  minor: ${JSON.stringify(a.minorIssues)}`);
-      }
-    }
-    lines.push('');
-    lines.push(
-      'Per-prior-critical evaluation (REQUIRED — do this before scoring):',
-    );
-    lines.push(
-      '- For each prior critical issue, judge whether it STILL applies to the CURRENT draft, which may have been substantively rewritten between attempts.',
-    );
-    lines.push(
-      '- To re-assert a prior critical, you MUST quote the specific passage from the CURRENT draft that demonstrates the problem (the evidence must come from the current draft, not paraphrase the prior wording). Put the quote inside the issue\'s `suggested_fix` or `issue` field. If you cannot quote current-draft evidence, the issue has been addressed — DO NOT relist it as critical.',
-    );
-    lines.push(
-      '- Treating a prior critical as "still applies" without quoted current-draft evidence is a calibration failure: the producer may have legitimately fixed it (different opening, restructured paragraphs, new framing) and you are anchoring on stale memory.',
-    );
-    lines.push('');
-    lines.push('What counts as a "strong hook" (hook-critical rubric):');
-    lines.push(
-      '- A hook is satisfied when the opening (a) identifies the target reader OR the pain/problem they recognize, AND (b) uses any anchored rhetorical device: a direct question, a statistic, a concrete scenario, a contrarian/counterintuitive claim, a vivid anecdote, or an explicit stakes-naming statement.',
-    );
-    lines.push(
-      '- A declarative contrarian opener (e.g., "Most X are late to Y. That is not because they Z. It is because…") is a valid hook — it names the pain, calls out a misconception, and sets stakes. Do NOT flag it as critical just because you would prefer a question or statistic instead. Aesthetic preference for one rhetorical device over another is NOT a critical issue. If you find yourself writing "consider starting with a question", you are stating a preference, not a defect.',
-    );
-    lines.push(
-      '- Only flag "lacks hook" as critical if the opening fails (a) AND (b) above: no reader/pain identified AND no anchored device used. In that case quote the failing opening verbatim and explain WHICH of (a) or (b) is missing.',
-    );
-    lines.push('');
-    lines.push('Convergence rules (apply in order — these are HARD constraints, not guidelines):');
-    lines.push(
-      '1. If the current draft genuinely addresses all prior criticals without introducing new ones of equal severity, score MUST be >= the most recent prior score. The producer earned the gain.',
-    );
-    lines.push(
-      '2. Partial progress requires a partial gain. Compute the fraction of prior criticals that are addressed in the current draft (a prior critical is "addressed" when it is no longer relisted as critical here — downgrade to minor counts as addressed for this calculation). If that fraction is F (0 ≤ F ≤ 1), your score MUST be >= previous_score + round(F * 5). You CANNOT keep the score flat when F > 0. A flat score with F > 0 is a hard violation of this rule.',
-    );
-    lines.push(
-      '3. Anti-oscillation ceiling: if you re-assert any prior critical with quoted current-draft evidence AND no new severity emerged, your score MUST NOT exceed (previous_score + 5). Combined with rule 2, this means the score must land in [previous_score + round(F * 5), previous_score + 5] when partial progress is observed.',
-    );
-    lines.push(
-      '4. If the current draft is genuinely worse than the prior (regression, dropped sections, broken structure), score lower than prior and explain why in `notes`.',
-    );
   }
 
   lines.push('');

@@ -15,7 +15,6 @@ import { generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
 import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { buildReviewMessage } from '../lib/ai/prompts/review.js';
-import { loadPriorReviewAttempts } from '../lib/ai/loadPriorReviewAttempts.js';
 import {
   markAwaitingUser,
   markCompleted,
@@ -147,12 +146,6 @@ export const pipelineReviewDispatch = inngest.createFunction(
         agentConfig,
       );
 
-      const priorAttempts = await loadPriorReviewAttempts(
-        sb,
-        draftId,
-        draft.type as string,
-      );
-
       const userMessage = buildReviewMessage({
         type: draft.type as string,
         title: draft.title as string,
@@ -162,7 +155,6 @@ export const pipelineReviewDispatch = inngest.createFunction(
         research: null,
         contentTypesRequested: [draft.type as string],
         channel: undefined,
-        priorAttempts,
       });
 
       // Wrap the LLM call in `step.run` so Inngest treats it as a long-running

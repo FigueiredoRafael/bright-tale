@@ -38,7 +38,6 @@ import {
 } from "../lib/personas.js";
 import { validateProducedDraft } from "../lib/ai/validators/index.js";
 import { buildReviewMessage } from "../lib/ai/prompts/review.js";
-import { loadPriorReviewAttempts } from "../lib/ai/loadPriorReviewAttempts.js";
 import { buildAssetsMessage } from "../lib/ai/prompts/assets.js";
 import {
   loadIdeaContext,
@@ -1506,12 +1505,6 @@ export async function contentDraftsRoutes(
             researchData = rs?.approved_cards_json ?? rs?.cards_json ?? null;
           }
 
-          const priorAttempts = await loadPriorReviewAttempts(
-            sb,
-            id,
-            draft.type as string,
-          );
-
           const userMessage = buildReviewMessage({
             type: draft.type as string,
             title: draft.title as string,
@@ -1528,7 +1521,6 @@ export async function contentDraftsRoutes(
                   tone?: string;
                 }
               | undefined,
-            priorAttempts,
           });
 
           // Update draft to awaiting_manual status
@@ -1634,12 +1626,6 @@ export async function contentDraftsRoutes(
             })()
           : null;
 
-        const priorAttempts = await loadPriorReviewAttempts(
-          sb,
-          id,
-          draft.type as string,
-        );
-
         let result: Record<string, unknown>;
         try {
           const userMessage = buildReviewMessage({
@@ -1658,7 +1644,6 @@ export async function contentDraftsRoutes(
                   tone?: string;
                 }
               | undefined,
-            priorAttempts,
           });
 
           await emitJobEvent(
