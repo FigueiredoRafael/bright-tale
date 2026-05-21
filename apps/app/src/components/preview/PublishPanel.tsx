@@ -51,6 +51,12 @@ export function PublishPanel({
 
   const canPublish = draftStatus === 'approved';
   const isPublished = draftStatus === 'published' || draftStatus === 'scheduled';
+  // "Publish as WP draft" creates a real WordPress post (returning a published_url
+  // + wordpress_post_id) but leaves our content_drafts.status='approved'. Surface
+  // the success banner whenever a WP post exists, regardless of draftStatus.
+  const hasWordPressPost = !!publishedUrl && wordpressPostId != null;
+  const successLabel =
+    draftStatus === 'scheduled' ? 'Scheduled' : draftStatus === 'published' ? 'Published' : 'Draft created in WordPress';
 
   useEffect(() => {
     async function fetchConfig() {
@@ -79,16 +85,16 @@ export function PublishPanel({
         <CardTitle className="text-sm">WordPress Publishing</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {isPublished && publishedUrl && (
+        {hasWordPressPost && (
           <div
             data-testid="publish-success"
             data-url={publishedUrl}
             className="rounded-md bg-green-50 dark:bg-green-950 p-3 text-sm"
           >
-            <span className="font-medium">Published!</span>{' '}
+            <span className="font-medium">{successLabel}!</span>{' '}
             <a
               data-testid="publish-success-url"
-              href={publishedUrl}
+              href={publishedUrl ?? '#'}
               target="_blank"
               rel="noopener noreferrer"
               className="underline text-green-700 dark:text-green-300"
