@@ -290,6 +290,10 @@ export const productionProduce = inngest.createFunction(
               previousDraft: draft.draft_json,
               idea: ideaContext,
               reviewFeedback: normalizedReviewFeedback,
+              iterationCount:
+                typeof (draft.iteration_count as number | null) === 'number'
+                  ? ((draft.iteration_count as number) + 1)
+                  : 1,
               channel: channelContext as
                 | { name?: string; niche?: string; language?: string; tone?: string }
                 | undefined,

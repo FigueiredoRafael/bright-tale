@@ -114,4 +114,32 @@ describe('buildReproduceMessage', () => {
     expect(msg).toContain('Original idea context:');
     expect(msg).toContain('"curiosity_gap"');
   });
+
+  it('does NOT include stubborn-loop language on first attempt', () => {
+    const msg = buildReproduceMessage({
+      type: 'blog',
+      title: 'test',
+      reviewFeedback: { overall_verdict: 'revision_required' },
+      iterationCount: 1,
+    });
+    expect(msg).toContain('Revision attempt: #1');
+    expect(msg).not.toContain('FAILED to address');
+    expect(msg).not.toContain('replacing whole paragraphs');
+  });
+
+  it('escalates language when iteration >= 2', () => {
+    const msg = buildReproduceMessage({
+      type: 'blog',
+      title: 'test',
+      reviewFeedback: {
+        overall_verdict: 'revision_required',
+        critical_issues: ['weak hook'],
+      },
+      iterationCount: 3,
+    });
+    expect(msg).toContain('Revision attempt: #3');
+    expect(msg).toContain('FAILED to address');
+    expect(msg).toContain('replacing whole paragraphs');
+    expect(msg).toContain('MUST be resolved, not softened');
+  });
 });

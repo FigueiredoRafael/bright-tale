@@ -54,6 +54,13 @@ export interface ReproduceInput {
     minor_issues?: string[];
     strengths?: string[];
   };
+  /**
+   * Revision iteration number (1 = first revision, 2 = second, ...). Lets the
+   * prompt escalate language as the loop persists — by attempt 3+ we tell the
+   * model the producer keeps failing to address the critical issues and must
+   * rewrite more aggressively.
+   */
+  iterationCount?: number;
   channel?: { name?: string; niche?: string; language?: string; tone?: string };
 }
 
@@ -186,27 +193,37 @@ export function buildProduceMessage(input: ProduceInput): string {
 
 export function buildReproduceMessage(input: ReproduceInput): string {
   const lines: string[] = [];
+  const iter = typeof input.iterationCount === 'number' ? input.iterationCount : 1;
+  const stubborn = iter >= 2;
+
   lines.push(`Revise the ${input.type} draft based on review feedback.`);
   lines.push(`Title: "${input.title}"`);
+  lines.push("");
+  lines.push(`Revision attempt: #${iter}`);
+  if (stubborn) {
+    lines.push(
+      "Earlier revision attempts on this draft FAILED to address the critical issues — the reviewer flagged the same problems again. You must do better this round: a polish or cosmetic edit will fail review again.",
+    );
+  }
   lines.push("");
   lines.push(
     `Review verdict: ${input.reviewFeedback.overall_verdict ?? "unknown"}`,
   );
   if (input.reviewFeedback.score != null)
-    lines.push(`Score: ${input.reviewFeedback.score}`);
+    lines.push(`Previous score: ${input.reviewFeedback.score}/100`);
   if (input.reviewFeedback.critical_issues?.length) {
     lines.push("");
-    lines.push("Critical issues to fix:");
+    lines.push("Critical issues (MUST be resolved, not softened):");
     input.reviewFeedback.critical_issues.forEach((i) => lines.push(`- ${i}`));
   }
   if (input.reviewFeedback.minor_issues?.length) {
     lines.push("");
-    lines.push("Minor issues to fix:");
+    lines.push("Minor issues to address:");
     input.reviewFeedback.minor_issues.forEach((i) => lines.push(`- ${i}`));
   }
   if (input.reviewFeedback.strengths?.length) {
     lines.push("");
-    lines.push("Strengths to keep:");
+    lines.push("Strengths to preserve:");
     input.reviewFeedback.strengths.forEach((s) => lines.push(`- ${s}`));
   }
 
@@ -218,20 +235,39 @@ export function buildReproduceMessage(input: ReproduceInput): string {
 
   if (input.canonicalCore) {
     lines.push("");
-    lines.push("Canonical core:");
+    lines.push("Canonical core (the structural backbone — keep thesis, argument_chain, emotional_arc consistent):");
     lines.push(jsonBlock(input.canonicalCore));
   }
 
   if (input.previousDraft) {
     lines.push("");
-    lines.push("Previous draft:");
+    lines.push("Previous draft (this is what the reviewer scored; sections flagged as critical MUST be substantively rewritten, not lightly edited):");
     lines.push(jsonBlock(input.previousDraft));
   }
 
   lines.push(channelBlock(input.channel));
   lines.push("");
+  lines.push("Revision rules:");
   lines.push(
-    "Fix the issues, keep the strengths. Respond with a JSON object matching the output contract. No markdown, no commentary.",
+    "- Every CRITICAL issue must be resolved by substantive rewriting of the affected section. Do not preserve original wording in flagged sections — the reviewer will compare against the previous draft.",
+  );
+  lines.push(
+    "- Address each critical issue at the location indicated; do not address it elsewhere.",
+  );
+  lines.push(
+    "- Preserve the listed strengths and the canonical core's thesis/structure.",
+  );
+  lines.push(
+    "- A revision that only rewords the previous draft will fail review again. Visible structural changes (new opening, broken-up sentences, removed promotional language, etc.) are expected.",
+  );
+  if (stubborn) {
+    lines.push(
+      "- Because earlier attempts failed to address these criticals, you may rewrite more aggressively this round, including replacing whole paragraphs.",
+    );
+  }
+  lines.push("");
+  lines.push(
+    "Respond with a JSON object matching the output contract. No markdown, no commentary.",
   );
   return lines.join("\n");
 }
