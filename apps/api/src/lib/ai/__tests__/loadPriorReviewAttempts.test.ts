@@ -202,4 +202,42 @@ describe('loadPriorReviewAttempts', () => {
     expect(result[0].criticalIssues).toContain('fact wrong');
     expect(result[0].minorIssues).toContain('typo');
   });
+
+  it('deduplicates critical/minor issues that appear in both issues and rubric_checks shapes', async () => {
+    // Real-world shape: review agents populate BOTH issues.critical (detailed
+    // objects → flattened to text by asStringArray) and rubric_checks.critical_issues
+    // (flat strings) with the same content. Without dedup, the priorAttempts
+    // block lists each critical 2x and the reviewer over-weights it.
+    const sb = buildSb({
+      stageRows: [
+        {
+          attempt_no: 9,
+          payload_ref: { kind: 'content_draft', id: 'draft-1' },
+          outcome_json: {
+            score: 60,
+            verdict: 'revision_required',
+            feedbackJson: {
+              blog_review: {
+                issues: {
+                  critical: [
+                    { issue: 'intro lacks hook' },
+                    { issue: 'sentences too long' },
+                  ],
+                  minor: [{ issue: 'tone too promotional' }],
+                },
+                rubric_checks: {
+                  critical_issues: ['intro lacks hook', 'sentences too long'],
+                  minor_issues: ['tone too promotional'],
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+    const result = await loadPriorReviewAttempts(sb as never, 'draft-1', 'blog');
+    expect(result).toHaveLength(1);
+    expect(result[0].criticalIssues).toEqual(['intro lacks hook', 'sentences too long']);
+    expect(result[0].minorIssues).toEqual(['tone too promotional']);
+  });
 });

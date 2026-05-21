@@ -69,7 +69,8 @@ describe('buildReviewMessage', () => {
       draftJson: {},
     });
     expect(msg).not.toContain('Previous review attempts');
-    expect(msg).not.toContain('Convergence rule');
+    expect(msg).not.toContain('Convergence rules');
+    expect(msg).not.toContain('Per-prior-critical evaluation');
   });
 
   it('renders prior attempts with score, verdict, and issues', () => {
@@ -100,8 +101,37 @@ describe('buildReviewMessage', () => {
     expect(msg).toContain('weak intro hook');
     expect(msg).toContain('missing CTA');
     expect(msg).toContain('repetitive phrasing');
-    expect(msg).toContain('Convergence rule');
+    expect(msg).toContain('Per-prior-critical evaluation');
+    expect(msg).toContain('quote the specific passage from the CURRENT draft');
+    expect(msg).toContain('Convergence rules');
     expect(msg).toContain('previous_score + 5');
+    expect(msg).toContain('score MUST be >= the most recent prior score');
+  });
+
+  it('falls back to draftJson.title when input.title is empty or "null"', () => {
+    const fallbackMsg = buildReviewMessage({
+      type: 'blog',
+      title: 'null',
+      draftJson: { blog: { title: 'Real Title From Draft JSON' } },
+    });
+    expect(fallbackMsg).toContain('Real Title From Draft JSON');
+    expect(fallbackMsg).not.toContain('Title: "null"');
+
+    const emptyMsg = buildReviewMessage({
+      type: 'blog',
+      title: '',
+      draftJson: { title: 'Top-Level Draft Title' },
+    });
+    expect(emptyMsg).toContain('Top-Level Draft Title');
+  });
+
+  it('omits the Title line entirely when no title can be resolved', () => {
+    const msg = buildReviewMessage({
+      type: 'blog',
+      title: '',
+      draftJson: { content: 'no title anywhere' },
+    });
+    expect(msg).not.toMatch(/^Title:/m);
   });
 
   it('handles attempts with null score gracefully', () => {

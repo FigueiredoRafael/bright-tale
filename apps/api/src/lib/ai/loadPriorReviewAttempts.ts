@@ -60,7 +60,11 @@ function extractIssues(
         : null)) as Record<string, unknown> | null;
 
   // Two shapes observed: { issues: { critical, minor } } and
-  // { rubric_checks: { critical_issues, minor_issues } }. Merge both.
+  // { rubric_checks: { critical_issues, minor_issues } }. Merge both, then
+  // dedup — review agents typically populate BOTH shapes with the same text
+  // (the detailed array carries location + suggested_fix, the rubric array is
+  // the flat summary), so naive concat produces 2x duplicates in priorAttempts
+  // that mislead the reviewer into thinking the issue is more severe than it is.
   const critical: string[] = [];
   const minor: string[] = [];
   if (formatReview) {
@@ -79,7 +83,20 @@ function extractIssues(
     critical.push(...asStringArray(wrapped.critical_issues));
     minor.push(...asStringArray(wrapped.minor_issues));
   }
-  return { critical, minor };
+  // Dedup by normalized text (case-insensitive, whitespace-collapsed) — keeps
+  // the first occurrence's exact formatting.
+  const dedup = (arr: string[]): string[] => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const item of arr) {
+      const key = item.trim().toLowerCase().replace(/\s+/g, ' ');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(item);
+    }
+    return out;
+  };
+  return { critical: dedup(critical), minor: dedup(minor) };
 }
 
 function extractScore(feedback: unknown, draftType: string): number | null {
