@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
-  Loader2, FileText, Video, Zap, Mic, Check, ArrowRight, Sparkles, Pencil, Printer,
+  Loader2, FileText, Video, Zap, Mic, Check, ArrowRight, Sparkles, Pencil, Download,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,7 +29,6 @@ import type { VideoStyleConfig } from '@brighttale/shared/schemas/videoStyle';
 import type { AutopilotConfig } from '@brighttale/shared';
 import type { DraftResult } from './types';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
-import { openEditorBriefPrintView } from '@/lib/exporters/editorBrief';
 
 type Medium = 'blog' | 'video' | 'shorts' | 'podcast';
 type Phase = 'produce' | 'done';
@@ -700,8 +699,9 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
               {(medium === 'video' || medium === 'shorts' || medium === 'podcast') && (
                 <Button
                   variant="outline"
-                  onClick={() => {
-                    openEditorBriefPrintView({
+                  onClick={async () => {
+                    const { downloadEditorBriefPdf } = await import('@/lib/exporters/editorBrief');
+                    downloadEditorBriefPdf({
                       medium,
                       title: extractTitleForBrief(medium, producedDraftJson, producedContent),
                       draftJson: producedDraftJson,
@@ -709,10 +709,10 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
                     });
                   }}
                   disabled={!producedContent && !producedDraftJson}
-                  title="Open print view to save the brief as PDF for your editor"
+                  title="Download the brief as a PDF for your editor"
                 >
-                  <Printer className="h-4 w-4 mr-2" />
-                  Export brief (PDF)
+                  <Download className="h-4 w-4 mr-2" />
+                  Brief (PDF)
                 </Button>
               )}
               {medium === 'video' && producedDraftJson && (
