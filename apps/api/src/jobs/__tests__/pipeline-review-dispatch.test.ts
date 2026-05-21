@@ -57,6 +57,14 @@ vi.mock('../../lib/supabase/index.js', () => ({
               if (cols.includes('input_json')) {
                 return { maybeSingle: () => Promise.resolve({ data: stageRunRow, error: null }) };
               }
+              // loadPriorReviewAttempts: select('attempt_no, status, outcome_json, payload_ref').eq('stage','review').order().limit()
+              if (cols.includes('attempt_no')) {
+                return {
+                  order: () => ({
+                    limit: () => Promise.resolve({ data: [], error: null }),
+                  }),
+                };
+              }
               return {
                 eq: () => ({
                   order: () => ({
