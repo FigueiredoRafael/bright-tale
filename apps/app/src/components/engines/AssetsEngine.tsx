@@ -224,7 +224,38 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   const researchResult = ctx.context.stageResults?.research as Record<string, unknown> | undefined;
   const draftResult = ctx.context.stageResults?.draft as { draftId?: string; draftTitle?: string; personaId?: string; personaName?: string; personaSlug?: string; personaWpAuthorId?: number | null } | undefined;
   const draftId = draftResult?.draftId;
-  const draftStatus = draft?.status as string | undefined;
+
+  // Self-hydrate the draft when the prop is null but ctx.stageResults.draft
+  // already carries a draftId (server-driven path via EngineHost — EngineHost
+  // doesn't pass `draft`, only `stageRun`). Without this the engine renders
+  // the "Draft not loaded" defensive banner indefinitely. Mirrors the same
+  // pattern used in ReviewEngine.
+  const [localDraft, setLocalDraft] = useState<Record<string, unknown> | null>(draft);
+  useEffect(() => {
+    setLocalDraft(draft);
+  }, [draft]);
+  useEffect(() => {
+    if (localDraft || !draftId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/content-drafts/${draftId}`, {
+          signal: abortController?.signal,
+        });
+        const json = await res.json();
+        if (!cancelled && json?.data) {
+          setLocalDraft(json.data as Record<string, unknown>);
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [localDraft, draftId, abortController?.signal]);
+
+  const draftStatus = localDraft?.status as string | undefined;
 
   const bResult = brainstormResult as { ideaId?: string; ideaTitle?: string; ideaVerdict?: string; ideaCoreTension?: string; brainstormSessionId?: string } | undefined;
   const rResult = researchResult as { researchSessionId?: string; approvedCardsCount?: number; researchLevel?: string; primaryKeyword?: string; secondaryKeywords?: string[]; searchIntent?: string } | undefined;
@@ -262,7 +293,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   // or has no asset_briefs, we fall through to Briefs and let the effect
   // promote later.
   const initialBriefs = (
-    (draft?.draft_json as { asset_briefs?: { visualDirection?: VisualDirection | null; slots?: SlotCard[] } } | undefined)
+    (localDraft?.draft_json as { asset_briefs?: { visualDirection?: VisualDirection | null; slots?: SlotCard[] } } | undefined)
       ?.asset_briefs
   );
   const [phase, setPhase] = useState<AssetPhase>(() =>
@@ -432,7 +463,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     async function fetchAssets() {
       try {
         const persistedBriefs = (
-          (draft?.draft_json as { asset_briefs?: { visualDirection?: VisualDirection | null; slots?: SlotCard[] } } | undefined)
+          (localDraft?.draft_json as { asset_briefs?: { visualDirection?: VisualDirection | null; slots?: SlotCard[] } } | undefined)
             ?.asset_briefs
         );
 
@@ -939,7 +970,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   }
 
   /* ── Defensive guard — orchestrator gates render until draft hydrates ── */
-  if (!draft) {
+  if (!localDraft) {
     return (
       <Card>
         <CardContent className="py-6">

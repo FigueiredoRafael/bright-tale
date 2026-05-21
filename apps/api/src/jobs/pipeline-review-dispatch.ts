@@ -144,6 +144,35 @@ export const pipelineReviewDispatch = inngest.createFunction(
       return;
     }
 
+    // Defensive: backfill track_id if the stage_run was created without one.
+    // Legacy review stage_runs created before the per-track architecture was
+    // consolidated end up with track_id=null. The sidebar groups stage_runs
+    // by track.id (see /:projectId/stages → tracks[].stageRuns), so a
+    // completed review with null track_id never shows as done in the UI
+    // even though the score is recorded on the draft. We derive the missing
+    // track_id from the latest production stage_run on the same project
+    // that points at the same content_draft.
+    if (!(stageRun as { track_id?: string | null }).track_id) {
+      const { data: priorProduction } = await sb
+        .from('stage_runs')
+        .select('track_id, payload_ref')
+        .eq('project_id', projectId)
+        .eq('stage', 'production')
+        .order('created_at', { ascending: false })
+        .limit(10);
+      const inheritedTrackId = ((priorProduction ?? []) as Array<{
+        track_id: string | null;
+        payload_ref: { id?: string } | null;
+      }>)
+        .find((r) => r.track_id && r.payload_ref?.id === draftId)?.track_id ?? null;
+      if (inheritedTrackId) {
+        await sb
+          .from('stage_runs')
+          .update({ track_id: inheritedTrackId })
+          .eq('id', stageRunId);
+      }
+    }
+
     try {
       const agentConfig = await loadAgentConfig('review');
       const { provider: resolvedProvider, model: resolvedModel } = resolveProviderOverride(
