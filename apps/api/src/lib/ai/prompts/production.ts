@@ -91,6 +91,58 @@ function jsonBlock(data: unknown): string {
   return typeof data === "string" ? data : JSON.stringify(data, null, 2);
 }
 
+/**
+ * Extract the first ~280 chars of a draft's opening passage so the reproduce
+ * prompt can show it verbatim and forbid the model from reproducing the same
+ * phrasing. Without this surgical anchor, the model paraphrases the same
+ * opening every revision and the review loop oscillates instead of converging.
+ *
+ * Per-type shapes:
+ *   - blog: `full_draft` markdown — take first paragraph (split on \n\n)
+ *   - video: `script.hook_0_10s` (the 0-10s hook)
+ *   - shorts: `[0].script` (first short's script)
+ *
+ * Handles both wrapped (`{ blog: {...} }`) and flat (`{ full_draft: '...' }`)
+ * shapes that the codebase emits in different stages.
+ */
+function extractPreviousOpening(
+  type: string,
+  previousDraft: unknown,
+): string | null {
+  if (!previousDraft || typeof previousDraft !== "object") return null;
+  const root = previousDraft as Record<string, unknown>;
+  const inner = (root[type] && typeof root[type] === "object"
+    ? (root[type] as Record<string, unknown>)
+    : root) as Record<string, unknown>;
+
+  let raw: string | undefined;
+  if (type === "video") {
+    const script = inner.script as Record<string, unknown> | undefined;
+    if (script && typeof script.hook_0_10s === "string") {
+      raw = script.hook_0_10s as string;
+    }
+  } else if (type === "shorts") {
+    const arr = (Array.isArray(root.shorts) ? root.shorts : Array.isArray(inner.shorts) ? inner.shorts : null) as
+      | Array<Record<string, unknown>>
+      | null;
+    const first = arr?.[0];
+    if (first && typeof first.script === "string") raw = first.script as string;
+  } else {
+    // blog (default)
+    if (typeof inner.full_draft === "string") raw = inner.full_draft as string;
+    else if (typeof root.full_draft === "string") raw = root.full_draft as string;
+  }
+
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return null;
+  // First paragraph (markdown convention: double newline). Strip leading
+  // h1/h2 markers so we anchor on prose, not headings.
+  const firstParagraph = trimmed.split(/\n\s*\n/)[0].replace(/^#{1,6}\s+.*\n/, "").trim();
+  const sample = firstParagraph.length > 0 ? firstParagraph : trimmed;
+  return sample.length > 280 ? sample.slice(0, 280) + "…" : sample;
+}
+
 // TODO: Too much hardcoded instructions, we gotta use the admin configs for the agents from db.
 export function buildCanonicalCoreMessage(input: CanonicalCoreInput): string {
   const lines: string[] = [];
@@ -272,6 +324,27 @@ export function buildReproduceMessage(input: ReproduceInput): string {
     lines.push("");
     lines.push("Previous draft (this is what the reviewer scored; sections flagged as critical MUST be substantively rewritten, not lightly edited):");
     lines.push(jsonBlock(input.previousDraft));
+  }
+
+  // Surgical anti-paraphrase anchor: when the loop is stubborn (iter >= 2)
+  // and we can isolate the opening, surface it verbatim and forbid the model
+  // from reproducing its phrasing. Without this the model paraphrases the
+  // same first paragraph every revision because the abstract "rewrite the
+  // hook" instruction is too easy to satisfy with cosmetic edits.
+  if (stubborn && input.previousDraft) {
+    const previousOpening = extractPreviousOpening(input.type, input.previousDraft);
+    if (previousOpening) {
+      lines.push("");
+      lines.push(
+        "Previous opening (verbatim — the reviewer has flagged this passage in multiple iterations):",
+      );
+      lines.push("```");
+      lines.push(previousOpening);
+      lines.push("```");
+      lines.push(
+        "Hard rule for the new opening: it MUST be structurally and tonally different from the passage above. Different first word, different rhetorical device (statistic, vivid scenario, contrarian claim, direct question, anecdote — pick something not used above), different sentence rhythm. Do not reuse any noun phrase from the first sentence above. A reader comparing the two openings side by side should see no echo.",
+      );
+    }
   }
 
   lines.push(channelBlock(input.channel));

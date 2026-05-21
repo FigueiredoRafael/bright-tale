@@ -187,4 +187,86 @@ describe('buildReproduceMessage', () => {
     expect(msg).not.toContain('Previous revision attempts on this draft');
     expect(msg).not.toContain('Producer self-check');
   });
+
+  it('injects verbatim previous opening (blog, first paragraph only) on stubborn iteration', () => {
+    const firstParagraph = 'CRM tools often get pushed into the "later" bucket. That feels reasonable until leads start living in five different places.';
+    const secondParagraph = 'Second paragraph that lives outside the opening anchor.';
+    const msg = buildReproduceMessage({
+      type: 'blog',
+      title: 'test',
+      reviewFeedback: { overall_verdict: 'revision_required' },
+      iterationCount: 3,
+      previousDraft: {
+        blog: { full_draft: `${firstParagraph}\n\n${secondParagraph}` },
+      },
+    });
+    expect(msg).toContain('Previous opening (verbatim');
+    expect(msg).toContain('Hard rule for the new opening');
+    expect(msg).toContain('different rhetorical device');
+    // Scope: the opening-anchor block must include only the first paragraph,
+    // not the second. (The full previousDraft is dumped as JSON elsewhere in
+    // the prompt; we only care about what the verbatim anchor surfaces.)
+    const anchorBlock = msg.split('Previous opening (verbatim')[1].split('Hard rule for the new opening')[0];
+    expect(anchorBlock).toContain(firstParagraph);
+    expect(anchorBlock).not.toContain(secondParagraph);
+  });
+
+  it('does NOT inject verbatim opening on first revision attempt', () => {
+    const msg = buildReproduceMessage({
+      type: 'blog',
+      title: 'test',
+      reviewFeedback: { overall_verdict: 'revision_required' },
+      iterationCount: 1,
+      previousDraft: {
+        blog: { full_draft: 'First paragraph that exists.\n\nSecond.' },
+      },
+    });
+    expect(msg).not.toContain('Previous opening (verbatim');
+  });
+
+  it('extracts video hook as previous opening on stubborn iteration', () => {
+    const msg = buildReproduceMessage({
+      type: 'video',
+      title: 'test',
+      reviewFeedback: { overall_verdict: 'revision_required' },
+      iterationCount: 2,
+      previousDraft: {
+        video: {
+          script: {
+            hook_0_10s: 'Did you know that 73% of bootstrapped founders quit at month 18? Here is why.',
+            context_0_10_0_45: 'Some context here.',
+          },
+        },
+      },
+    });
+    expect(msg).toContain('Previous opening (verbatim');
+    expect(msg).toContain('73% of bootstrapped founders');
+  });
+
+  it('truncates very long openings to ~280 chars with ellipsis in the anchor block', () => {
+    const longOpening = 'A'.repeat(500);
+    const msg = buildReproduceMessage({
+      type: 'blog',
+      title: 'test',
+      reviewFeedback: { overall_verdict: 'revision_required' },
+      iterationCount: 2,
+      previousDraft: { blog: { full_draft: longOpening } },
+    });
+    const anchorBlock = msg.split('Previous opening (verbatim')[1]?.split('Hard rule for the new opening')[0];
+    expect(anchorBlock).toBeDefined();
+    expect(anchorBlock).toContain('…');
+    expect(anchorBlock).toContain('A'.repeat(280));
+    expect(anchorBlock).not.toContain('A'.repeat(400));
+  });
+
+  it('skips opening anchor when previousDraft has no extractable opening', () => {
+    const msg = buildReproduceMessage({
+      type: 'blog',
+      title: 'test',
+      reviewFeedback: { overall_verdict: 'revision_required' },
+      iterationCount: 3,
+      previousDraft: { something_else: 'no full_draft here' },
+    });
+    expect(msg).not.toContain('Previous opening (verbatim');
+  });
 });
