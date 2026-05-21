@@ -139,11 +139,19 @@ export async function tracksRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         const isAbort = parsed.data.status === 'aborted';
+        const isRevive = parsed.data.status === 'active';
         if (isAbort && (existing as { status: string }).status !== 'active') {
           throw new ApiError(
             409,
             'Track is already terminal and cannot be aborted',
             'TRACK_TERMINAL',
+          );
+        }
+        if (isRevive && (existing as { status: string }).status !== 'aborted') {
+          throw new ApiError(
+            409,
+            'Only aborted tracks can be revived',
+            'TRACK_NOT_ABORTED',
           );
         }
 

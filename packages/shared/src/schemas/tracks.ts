@@ -22,16 +22,17 @@ export type AddTrackInput = z.infer<typeof addTrackSchema>;
  * `PATCH /api/projects/:id/tracks/:trackId` allows the user to:
  *   - pause/resume the Track (`paused`)
  *   - abort the Track (`status: 'aborted'`) — cascades to in-flight stage_runs
+ *   - revive an aborted Track (`status: 'active'`) — no cascade; the user
+ *     re-runs whatever downstream stages they want via Restart step
  *   - override autopilot config mid-flight (`autopilotConfigJson`)
  *
- * `status` only accepts `'aborted'` — `'completed'` is derived by the
- * orchestrator and `'active'` is implied by the initial insert. At least one
- * field must be present.
+ * `status` accepts `'aborted'` and `'active'`. `'completed'` is derived by
+ * the orchestrator. At least one field must be present.
  */
 export const updateTrackSchema = z
   .object({
     paused: z.boolean().optional(),
-    status: z.literal('aborted').optional(),
+    status: z.enum(['active', 'aborted']).optional(),
     autopilotConfigJson: z.record(z.unknown()).nullable().optional(),
   })
   .refine(

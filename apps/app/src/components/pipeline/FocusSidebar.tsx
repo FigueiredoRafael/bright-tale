@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { CheckCircle, Circle, Loader2, XCircle, AlertCircle, MinusCircle, SkipForward, Pause, Play, OctagonX } from 'lucide-react';
+import { CheckCircle, Circle, Loader2, XCircle, AlertCircle, MinusCircle, SkipForward, Pause, Play, OctagonX, RotateCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -222,6 +222,15 @@ function TrackSection({ track, searchParams, onSelect, onPauseToggle, onAbort, p
     });
   }
 
+  async function handleRevive() {
+    if (!projectId) return;
+    await fetch(`/api/projects/${projectId}/tracks/${track.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'active' }),
+    });
+  }
+
   const trackCost = costByTrack?.[track.id] ?? 0;
   const isAborted = track.status === 'aborted';
   const isCompleted = track.status === 'completed';
@@ -251,13 +260,26 @@ function TrackSection({ track, searchParams, onSelect, onPauseToggle, onAbort, p
           </Badge>
         )}
         {isAborted && (
-          <Badge
-            data-testid={`sidebar-track-aborted-badge-${track.id}`}
-            variant="secondary"
-            className="text-xs px-1 py-0 h-4"
-          >
-            Aborted
-          </Badge>
+          <>
+            <Badge
+              data-testid={`sidebar-track-aborted-badge-${track.id}`}
+              variant="secondary"
+              className="text-xs px-1 py-0 h-4"
+            >
+              Aborted
+            </Badge>
+            <Button
+              data-testid={`sidebar-track-revive-${track.id}`}
+              variant="ghost"
+              size="icon"
+              aria-label={`Revive ${MEDIUM_LABELS[track.medium] ?? track.medium} track`}
+              title="Revive track"
+              className="h-4 w-4 shrink-0"
+              onClick={(e) => { e.stopPropagation(); void handleRevive(); }}
+            >
+              <RotateCcw size={10} />
+            </Button>
+          </>
         )}
         {track.paused && !isAborted && (
           <Badge

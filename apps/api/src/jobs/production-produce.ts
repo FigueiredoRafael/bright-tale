@@ -377,7 +377,37 @@ export const productionProduce = inngest.createFunction(
       // Pipeline Orchestrator handoff: this is the actual end of the Draft
       // Stage (canonical-core only produces structure; produce writes the
       // body). Stage Run terminal is owned here.
-      if (stageRunId) {
+      //
+      // Engine path (POST /api/content-drafts/:id/produce) doesn't pass a
+      // stageRunId, so the production stage_run stays in whatever state it
+      // had (often aborted from a prior track-abort cascade) and the sidebar
+      // never flips to ✓. Resolve the latest production stage_run for this
+      // (project, track) and update it so engine-driven runs persist too.
+      let resolvedStageRunId: string | null = stageRunId ?? null;
+      if (!resolvedStageRunId && projectId) {
+        const { data: track } = await sb
+          .from('tracks')
+          .select('id')
+          .eq('project_id', projectId)
+          .eq('medium', type)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (track?.id) {
+          const { data: latestRun } = await sb
+            .from('stage_runs')
+            .select('id')
+            .eq('project_id', projectId)
+            .eq('stage', 'production')
+            .eq('track_id', track.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (latestRun?.id) resolvedStageRunId = latestRun.id as string;
+        }
+      }
+
+      if (resolvedStageRunId) {
         const now = new Date().toISOString();
         await (sb.from('stage_runs') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
@@ -385,13 +415,14 @@ export const productionProduce = inngest.createFunction(
           .update({
             status: 'completed',
             payload_ref: { kind: 'content_draft', id: draftId },
+            error_message: null,
             finished_at: now,
             updated_at: now,
           })
-          .eq('id', stageRunId);
+          .eq('id', resolvedStageRunId);
         await inngest.send({
           name: 'pipeline/stage.run.finished',
-          data: { stageRunId, projectId },
+          data: { stageRunId: resolvedStageRunId, projectId },
         });
       }
 

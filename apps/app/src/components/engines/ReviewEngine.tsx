@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Loader2, Sparkles, Check, AlertCircle, ArrowRight, ClipboardPaste, MessageSquare } from 'lucide-react';
+import { Loader2, Sparkles, Check, AlertCircle, ArrowRight, ClipboardPaste, MessageSquare, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
@@ -158,6 +158,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
   }, [providerOverride, modelOverride]); // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const [draftPreviewExpanded, setDraftPreviewExpanded] = useState(false);
   // 'revising' → /produce reproduce-mode is in flight; on completion we chain
   //   into /review automatically so the user sees a fresh score.
   // 'reviewing' → /review is in flight; modal shows scoring progress.
@@ -706,6 +707,78 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
     <div className="space-y-6" data-testid="review-engine-root">
       <ContextBanner stage="review" context={trackerContext} onBack={navigate} />
       <ContentWarningBanner warning={typeof (draftView.review_feedback_json as Record<string, unknown> | null)?.content_warning === 'string' ? (draftView.review_feedback_json as Record<string, unknown>).content_warning as string : undefined} />
+
+      {/* Production draft preview — confirms the reviewer sees the produced body */}
+      {(() => {
+        const dj = draftView.draft_json as Record<string, unknown> | null;
+        if (!dj) {
+          return (
+            <Card data-testid="review-draft-preview" className="border-amber-500/30 bg-amber-500/5">
+              <CardContent className="py-3 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                No production draft loaded — review will fail until production completes.
+              </CardContent>
+            </Card>
+          );
+        }
+        const fullDraft = typeof dj.full_draft === 'string' ? (dj.full_draft as string) : '';
+        const outline = Array.isArray(dj.outline) ? (dj.outline as unknown[]) : null;
+        const slug = typeof dj.slug === 'string' ? (dj.slug as string) : null;
+        const wordCount = fullDraft ? fullDraft.trim().split(/\s+/).length : 0;
+        const previewBody = draftPreviewExpanded || fullDraft.length <= 800
+          ? fullDraft
+          : `${fullDraft.slice(0, 800).trimEnd()}…`;
+        const displayTitle = (typeof dj.title === 'string' && dj.title) || draftView.title || 'Untitled';
+        return (
+          <Card data-testid="review-draft-preview">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileText className="h-4 w-4" /> Draft to review
+              </CardTitle>
+              <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground mt-1">
+                <span className="font-medium text-foreground">{displayTitle}</span>
+                {slug && <span>· /{slug}</span>}
+                {wordCount > 0 && <span>· {wordCount.toLocaleString()} words</span>}
+                {outline && outline.length > 0 && <span>· {outline.length} sections</span>}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {fullDraft ? (
+                <>
+                  <div
+                    data-testid="review-draft-body"
+                    className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed max-h-[420px] overflow-y-auto"
+                  >
+                    {previewBody}
+                  </div>
+                  {fullDraft.length > 800 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 text-xs"
+                      onClick={() => setDraftPreviewExpanded((v) => !v)}
+                    >
+                      {draftPreviewExpanded ? (
+                        <>
+                          <ChevronUp className="h-3 w-3" /> Collapse
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="h-3 w-3" /> Expand full draft
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground italic">
+                  Draft body is empty — production may have failed to write content.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* No review yet — submit for review */}
       {!hasReview && (
