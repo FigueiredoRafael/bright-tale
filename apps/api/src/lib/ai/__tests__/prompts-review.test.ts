@@ -106,6 +106,12 @@ describe('buildReviewMessage', () => {
     expect(msg).toContain('Convergence rules');
     expect(msg).toContain('previous_score + 5');
     expect(msg).toContain('score MUST be >= the most recent prior score');
+    expect(msg).toContain('What counts as a "strong hook"');
+    expect(msg).toContain('declarative contrarian opener');
+    expect(msg).toContain('Aesthetic preference for one rhetorical device over another is NOT a critical issue');
+    expect(msg).toContain('Partial progress requires a partial gain');
+    expect(msg).toContain('previous_score + round(F * 5)');
+    expect(msg).toContain('flat score with F > 0 is a hard violation');
   });
 
   it('falls back to draftJson.title when input.title is empty or "null"', () => {
