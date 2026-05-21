@@ -106,4 +106,51 @@ describe('buildReviewMessage', () => {
     expect(msg).not.toMatch(/^Title:/m);
   });
 
+  it('wraps a flat draft_json under production.<type> so the agent contract is satisfied', () => {
+    // The review agent's BC_REVIEW_INPUT contract requires
+    // production.blog.full_draft (and similar). Without wrapping a flat draft,
+    // the reviewer reports "Missing required field" even though the field
+    // exists at a different path.
+    const msg = buildReviewMessage({
+      type: 'blog',
+      title: 'Test',
+      draftJson: {
+        title: 'Test',
+        slug: 'test-slug',
+        full_draft: 'Lorem ipsum content',
+        outline: [],
+      },
+    });
+    expect(msg).toContain('"production"');
+    expect(msg).toContain('"blog"');
+    expect(msg).toContain('"full_draft": "Lorem ipsum content"');
+    expect(msg).toContain('"slug": "test-slug"');
+  });
+
+  it('passes through draft_json already wrapped under production', () => {
+    const msg = buildReviewMessage({
+      type: 'blog',
+      title: 'Test',
+      draftJson: {
+        production: { blog: { full_draft: 'already wrapped' } },
+      },
+    });
+    expect(msg).toContain('"full_draft": "already wrapped"');
+    // Should not double-wrap
+    const productionOccurrences = (msg.match(/"production":/g) ?? []).length;
+    expect(productionOccurrences).toBe(1);
+  });
+
+  it('promotes a half-wrapped draft (e.g. {blog: {...}}) to production.<type>', () => {
+    const msg = buildReviewMessage({
+      type: 'video',
+      title: 'Test',
+      draftJson: {
+        video: { script: { hook_0_10s: 'opening hook here' } },
+      },
+    });
+    expect(msg).toContain('"production"');
+    expect(msg).toContain('"video"');
+    expect(msg).toContain('"hook_0_10s": "opening hook here"');
+  });
 });

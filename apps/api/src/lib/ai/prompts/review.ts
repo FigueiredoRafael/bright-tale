@@ -57,9 +57,32 @@ export function buildReviewMessage(input: ReviewInput): string {
     lines.push(`Content types to review: ${input.contentTypesRequested.join(', ')}`);
   }
 
+  // The review agent's BC_REVIEW_INPUT contract expects the draft under
+  // `production.<type>.{...}` (see agents/agent-4-review.md). The producer
+  // stores draft_json flat (`{title, slug, full_draft, ...}` direct at root
+  // for blogs) because UI consumers read it that way. Without re-wrapping
+  // here, the reviewer reports "Missing required field: production.blog.full_draft"
+  // even though the field is present — it just lives at a different path.
+  // Normalize to the contract shape before serializing.
+  const draftForReview = (() => {
+    if (!input.draftJson || typeof input.draftJson !== 'object') {
+      return { production: { [input.type]: input.draftJson } };
+    }
+    const root = input.draftJson as Record<string, unknown>;
+    // Already wrapped (`{production: {blog: {...}}}`) — pass through.
+    if (root.production && typeof root.production === 'object') return root;
+    // Half-wrapped (`{blog: {...}}` or `{video: {...}}` etc.) — promote to
+    // `production.<type>`.
+    if (root[input.type] && typeof root[input.type] === 'object') {
+      return { production: { [input.type]: root[input.type] } };
+    }
+    // Flat (`{title, full_draft, ...}` direct) — wrap under production.<type>.
+    return { production: { [input.type]: root } };
+  })();
+
   lines.push('');
   lines.push('Draft to review:');
-  lines.push(typeof input.draftJson === 'string' ? input.draftJson : JSON.stringify(input.draftJson, null, 2));
+  lines.push(JSON.stringify(draftForReview, null, 2));
 
   if (input.canonicalCore) {
     lines.push('');
