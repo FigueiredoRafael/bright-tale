@@ -1,4 +1,5 @@
 import type { IdeaContext } from "../loadIdeaContext.js";
+import type { PriorReviewAttempt } from "./review.js";
 
 export interface CanonicalCoreInput {
   type: string;
@@ -61,6 +62,13 @@ export interface ReproduceInput {
    * rewrite more aggressively.
    */
   iterationCount?: number;
+  /**
+   * Earlier review attempts on this same draft (most recent first). Mirrors
+   * the reviewer's priorAttempts memory on the producer side: without it the
+   * producer keeps re-applying the same paraphrase to a flagged section
+   * because it can't see what it already tried in prior iterations.
+   */
+  priorAttempts?: PriorReviewAttempt[];
   channel?: { name?: string; niche?: string; language?: string; tone?: string };
 }
 
@@ -205,6 +213,27 @@ export function buildReproduceMessage(input: ReproduceInput): string {
       "Earlier revision attempts on this draft FAILED to address the critical issues — the reviewer flagged the same problems again. You must do better this round: a polish or cosmetic edit will fail review again.",
     );
   }
+
+  if (input.priorAttempts && input.priorAttempts.length > 0) {
+    lines.push("");
+    lines.push(
+      "Previous revision attempts on this draft (most recent first) — the reviewer scored each like this:",
+    );
+    for (const a of input.priorAttempts) {
+      const scoreStr = a.score != null ? String(a.score) : "n/a";
+      lines.push(
+        `- Attempt #${a.attemptNo} — verdict=${a.verdict}, score=${scoreStr}`,
+      );
+      if (a.criticalIssues.length > 0) {
+        lines.push(`  critical: ${JSON.stringify(a.criticalIssues)}`);
+      }
+    }
+    lines.push("");
+    lines.push(
+      "Producer self-check: if any critical issue from a previous attempt also appears in this round's feedback, your prior fix attempt for that issue did NOT work. Do NOT repeat the same approach — try a fundamentally different rewrite (different opening, different structure, different framing). Cosmetic paraphrasing of the same wording will fail review again.",
+    );
+  }
+
   lines.push("");
   lines.push(
     `Review verdict: ${input.reviewFeedback.overall_verdict ?? "unknown"}`,

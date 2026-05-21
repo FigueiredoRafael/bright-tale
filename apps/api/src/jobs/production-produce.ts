@@ -13,6 +13,7 @@ import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
 import { buildProduceMessage, buildReproduceMessage } from '../lib/ai/prompts/production.js';
+import { loadPriorReviewAttempts } from '../lib/ai/loadPriorReviewAttempts.js';
 import { calculateDraftCost } from '../lib/calculate-draft-cost.js';
 import { loadCreditSettings } from '../lib/credit-settings.js';
 import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
@@ -282,6 +283,16 @@ export const productionProduce = inngest.createFunction(
           };
         })();
         const draftTitle = (draft.title as string) ?? ((draft.draft_json as Record<string, unknown> | null)?.title as string | undefined) ?? '';
+        // Mirror the reviewer's priorAttempts memory on the producer side.
+        // Without it the producer keeps re-applying the same paraphrase to a
+        // flagged section because it can't see what it already tried in
+        // previous iterations. skipLatest=true drops the just-completed
+        // review (its feedback is already in normalizedReviewFeedback below).
+        const priorAttempts = normalizedReviewFeedback
+          ? await loadPriorReviewAttempts(sb, draftId, type as string, {
+              skipLatest: true,
+            })
+          : [];
         const userMessage = normalizedReviewFeedback
           ? buildReproduceMessage({
               type: type as string,
@@ -294,6 +305,7 @@ export const productionProduce = inngest.createFunction(
                 typeof (draft.iteration_count as number | null) === 'number'
                   ? ((draft.iteration_count as number) + 1)
                   : 1,
+              priorAttempts,
               channel: channelContext as
                 | { name?: string; niche?: string; language?: string; tone?: string }
                 | undefined,

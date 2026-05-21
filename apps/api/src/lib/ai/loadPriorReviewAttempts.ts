@@ -111,15 +111,17 @@ export async function loadPriorReviewAttempts(
   sb: Sb,
   draftId: string,
   draftType: string,
-  excludeCurrentAttemptNo?: number,
+  options?: { excludeCurrentAttemptNo?: number; skipLatest?: boolean },
 ): Promise<PriorReviewAttempt[]> {
+  const excludeCurrentAttemptNo = options?.excludeCurrentAttemptNo;
+  const skipLatest = options?.skipLatest ?? false;
   // Primary source: stage_runs review history bound to this draft.
   const { data: rows } = await sb
     .from('stage_runs')
     .select('attempt_no, status, outcome_json, payload_ref')
     .eq('stage', 'review')
     .order('attempt_no', { ascending: false })
-    .limit(MAX_PRIORS + 2);
+    .limit(MAX_PRIORS + 3);
 
   const filtered = ((rows ?? []) as Array<Record<string, unknown>>).filter((r) => {
     const ref = r.payload_ref as { kind?: string; id?: string } | null | undefined;
@@ -128,8 +130,14 @@ export async function loadPriorReviewAttempts(
     return true;
   });
 
-  if (filtered.length > 0) {
-    return filtered.slice(0, MAX_PRIORS).map((r) => {
+  // When called from the producer (post-review), the most recent stage_run
+  // IS the review whose feedback we're acting on — surfacing it again as a
+  // "prior attempt" duplicates the current feedback block. skipLatest drops
+  // that first row so the producer sees only N-1, N-2, N-3.
+  const effective = skipLatest ? filtered.slice(1) : filtered;
+
+  if (effective.length > 0) {
+    return effective.slice(0, MAX_PRIORS).map((r) => {
       const outcome = (r.outcome_json ?? {}) as Record<string, unknown>;
       const feedback = outcome.feedbackJson;
       const { critical, minor } = extractIssues(feedback, draftType);

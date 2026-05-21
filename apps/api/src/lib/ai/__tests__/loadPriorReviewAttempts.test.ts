@@ -124,9 +124,39 @@ describe('loadPriorReviewAttempts', () => {
         },
       ],
     });
-    const result = await loadPriorReviewAttempts(sb as never, 'draft-1', 'blog', 3);
+    const result = await loadPriorReviewAttempts(sb as never, 'draft-1', 'blog', {
+      excludeCurrentAttemptNo: 3,
+    });
     expect(result).toHaveLength(1);
     expect(result[0].attemptNo).toBe(2);
+  });
+
+  it('skipLatest drops the most recent stage_run (producer post-review use case)', async () => {
+    const sb = buildSb({
+      stageRows: [
+        {
+          attempt_no: 5,
+          payload_ref: { kind: 'content_draft', id: 'draft-1' },
+          outcome_json: { score: 60, feedbackJson: {} },
+        },
+        {
+          attempt_no: 4,
+          payload_ref: { kind: 'content_draft', id: 'draft-1' },
+          outcome_json: { score: 55, feedbackJson: {} },
+        },
+        {
+          attempt_no: 3,
+          payload_ref: { kind: 'content_draft', id: 'draft-1' },
+          outcome_json: { score: 50, feedbackJson: {} },
+        },
+      ],
+    });
+    const result = await loadPriorReviewAttempts(sb as never, 'draft-1', 'blog', {
+      skipLatest: true,
+    });
+    expect(result).toHaveLength(2);
+    expect(result[0].attemptNo).toBe(4);
+    expect(result[1].attemptNo).toBe(3);
   });
 
   it('falls back to content_drafts.review_feedback_json when no stage_runs match', async () => {

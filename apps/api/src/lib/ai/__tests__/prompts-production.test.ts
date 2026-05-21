@@ -142,4 +142,49 @@ describe('buildReproduceMessage', () => {
     expect(msg).toContain('replacing whole paragraphs');
     expect(msg).toContain('MUST be resolved, not softened');
   });
+
+  it('surfaces priorAttempts so producer can see what fixes have already failed', () => {
+    const msg = buildReproduceMessage({
+      type: 'blog',
+      title: 'test',
+      reviewFeedback: {
+        overall_verdict: 'revision_required',
+        critical_issues: ['intro lacks hook'],
+      },
+      iterationCount: 4,
+      priorAttempts: [
+        {
+          attemptNo: 3,
+          score: 60,
+          verdict: 'revision_required',
+          criticalIssues: ['intro lacks hook', 'sentences too long'],
+          minorIssues: [],
+        },
+        {
+          attemptNo: 2,
+          score: 55,
+          verdict: 'revision_required',
+          criticalIssues: ['intro lacks hook'],
+          minorIssues: [],
+        },
+      ],
+    });
+    expect(msg).toContain('Previous revision attempts on this draft');
+    expect(msg).toContain('Attempt #3');
+    expect(msg).toContain('score=60');
+    expect(msg).toContain('Attempt #2');
+    expect(msg).toContain('"intro lacks hook"');
+    expect(msg).toContain('your prior fix attempt for that issue did NOT work');
+    expect(msg).toContain('fundamentally different rewrite');
+  });
+
+  it('does not include priorAttempts block when none provided', () => {
+    const msg = buildReproduceMessage({
+      type: 'blog',
+      title: 'test',
+      reviewFeedback: { overall_verdict: 'revision_required' },
+    });
+    expect(msg).not.toContain('Previous revision attempts on this draft');
+    expect(msg).not.toContain('Producer self-check');
+  });
 });
