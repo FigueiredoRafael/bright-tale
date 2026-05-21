@@ -1006,6 +1006,13 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--brand-400); out
 /* Nav scrolled: stronger separator */
 .navbar.scrolled { box-shadow: 0 1px 30px var(--shadow-md); }
 
+/* ── Hero standalone CTA ──────────────────────────────────────────────────── */
+.hero-cta-wrap { max-width: 480px; margin: 0 auto 20px; animation: fadeInUp 0.8s ease both 0.4s; }
+.hero-cta-standalone { display: block; width: 100%; padding: 15px 28px; background: var(--accent); color: var(--color-white) !important; font-family: var(--font-display); font-size: 16px; font-weight: 700; border-radius: var(--radius-full); cursor: pointer; transition: all 0.25s; white-space: nowrap; text-decoration: none; text-align: center; }
+.hero-cta-standalone:hover { background: var(--accent-hover); box-shadow: 0 4px 20px var(--accent-shadow-lg); transform: translateY(-1px); }
+.hero-split .hero-cta-wrap { margin: 0 0 14px; max-width: 100%; }
+@media (max-width: 768px) { .hero-split .hero-cta-wrap { margin: 0 auto 14px; } }
+
 /* Footer: social icons scale on hover */
 .f-socials a:hover { transform: translateY(-2px); }
 .f-socials a { transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }

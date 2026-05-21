@@ -24,6 +24,7 @@ export class OpenAIProvider implements AIProvider {
     signal,
     tools,
     toolExecutor,
+    rawText,
   }: GenerateContentParams): Promise<any> {
     if (signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError');
@@ -58,7 +59,7 @@ export class OpenAIProvider implements AIProvider {
             temperature: this.temperature,
             ...(openaiTools
               ? { tools: openaiTools, tool_choice: "auto" as const }
-              : { response_format: { type: "json_object" as const } }),
+              : rawText ? {} : { response_format: { type: "json_object" as const } }),
           },
           { signal },
         );
@@ -96,6 +97,8 @@ export class OpenAIProvider implements AIProvider {
 
         const content = choice.message?.content;
         if (!content) throw new Error("No content generated from OpenAI");
+
+        if (rawText) return content;
 
         const parsed = JSON.parse(content);
         if (schema && typeof (schema as { parse?: unknown }).parse === "function") {

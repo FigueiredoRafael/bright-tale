@@ -34,6 +34,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_audit_log: {
+        Row: {
+          action: string
+          actor_id: string
+          amount: number | null
+          amount_unit: string | null
+          created_at: string
+          id: string
+          metadata_json: Json | null
+          target_user_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          amount?: number | null
+          amount_unit?: string | null
+          created_at?: string
+          id?: string
+          metadata_json?: Json | null
+          target_user_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          amount?: number | null
+          amount_unit?: string | null
+          created_at?: string
+          id?: string
+          metadata_json?: Json | null
+          target_user_id?: string | null
+        }
+        Relationships: []
+      }
       affiliate_clicks: {
         Row: {
           affiliate_code: string
@@ -2399,6 +2432,44 @@ export type Database = {
         }
         Relationships: []
       }
+      module_ai_assignments: {
+        Row: {
+          created_at: string
+          id: string
+          model: string
+          module_slug: string
+          org_id: string | null
+          provider: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          model: string
+          module_slug: string
+          org_id?: string | null
+          provider: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          model?: string
+          module_slug?: string
+          org_id?: string | null
+          provider?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "module_ai_assignments_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_preferences: {
         Row: {
           category: string
@@ -2420,6 +2491,74 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_template_translations: {
+        Row: {
+          body_template: string | null
+          locale: string
+          title_template: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          body_template?: string | null
+          locale: string
+          title_template: string
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          body_template?: string | null
+          locale?: string
+          title_template?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_template_translations_type_fkey"
+            columns: ["type"]
+            isOneToOne: false
+            referencedRelation: "notification_templates"
+            referencedColumns: ["type"]
+          },
+        ]
+      }
+      notification_templates: {
+        Row: {
+          available_variables: Json
+          body_template: string | null
+          created_at: string
+          default_action_url: string | null
+          is_system: boolean
+          label: string
+          title_template: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          available_variables?: Json
+          body_template?: string | null
+          created_at?: string
+          default_action_url?: string | null
+          is_system?: boolean
+          label: string
+          title_template: string
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          available_variables?: Json
+          body_template?: string | null
+          created_at?: string
+          default_action_url?: string | null
+          is_system?: boolean
+          label?: string
+          title_template?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           action_url: string | null
@@ -2429,10 +2568,12 @@ export type Database = {
           id: string
           is_read: boolean
           read_at: string | null
+          sent_by: string | null
           sent_via_email: boolean
           sent_via_push: boolean
           title: string
           type: string
+          updated_at: string
           user_id: string
         }
         Insert: {
@@ -2443,10 +2584,12 @@ export type Database = {
           id?: string
           is_read?: boolean
           read_at?: string | null
+          sent_by?: string | null
           sent_via_email?: boolean
           sent_via_push?: boolean
           title: string
           type: string
+          updated_at?: string
           user_id: string
         }
         Update: {
@@ -2457,10 +2600,12 @@ export type Database = {
           id?: string
           is_read?: boolean
           read_at?: string | null
+          sent_by?: string | null
           sent_via_email?: boolean
           sent_via_push?: boolean
           title?: string
           type?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -2765,6 +2910,7 @@ export type Database = {
       }
       personas: {
         Row: {
+          age: number | null
           approved_categories: string[]
           archetype_slug: string | null
           avatar_params_json: Json | null
@@ -2774,17 +2920,24 @@ export type Database = {
           created_at: string
           domain_lens: string
           eeat_signals_json: Json
+          gender: string | null
           id: string
           is_active: boolean
+          languages_json: Json
           name: string
+          nationality: string | null
+          org_id: string
           primary_domain: string
           slug: string
           soul_json: Json
+          traits_json: Json
           updated_at: string
+          visibility: string
           wp_author_id: number | null
           writing_voice_json: Json
         }
         Insert: {
+          age?: number | null
           approved_categories: string[]
           archetype_slug?: string | null
           avatar_params_json?: Json | null
@@ -2794,17 +2947,24 @@ export type Database = {
           created_at?: string
           domain_lens: string
           eeat_signals_json: Json
+          gender?: string | null
           id?: string
           is_active?: boolean
+          languages_json?: Json
           name: string
+          nationality?: string | null
+          org_id: string
           primary_domain: string
           slug: string
           soul_json: Json
+          traits_json?: Json
           updated_at?: string
+          visibility?: string
           wp_author_id?: number | null
           writing_voice_json: Json
         }
         Update: {
+          age?: number | null
           approved_categories?: string[]
           archetype_slug?: string | null
           avatar_params_json?: Json | null
@@ -2814,17 +2974,31 @@ export type Database = {
           created_at?: string
           domain_lens?: string
           eeat_signals_json?: Json
+          gender?: string | null
           id?: string
           is_active?: boolean
+          languages_json?: Json
           name?: string
+          nationality?: string | null
+          org_id?: string
           primary_domain?: string
           slug?: string
           soul_json?: Json
+          traits_json?: Json
           updated_at?: string
+          visibility?: string
           wp_author_id?: number | null
           writing_voice_json?: Json
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "personas_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pipeline_settings: {
         Row: {
@@ -3002,6 +3176,8 @@ export type Database = {
           free_tier_monthly_credits: number
           free_tier_signup_bonus_credits: number
           id: boolean
+          margin_thresholds_json: Json
+          support_sla_json: Json
           updated_at: string
           updated_by: string | null
         }
@@ -3012,6 +3188,8 @@ export type Database = {
           free_tier_monthly_credits?: number
           free_tier_signup_bonus_credits?: number
           id?: boolean
+          margin_thresholds_json?: Json
+          support_sla_json?: Json
           updated_at?: string
           updated_by?: string | null
         }
@@ -3022,6 +3200,8 @@ export type Database = {
           free_tier_monthly_credits?: number
           free_tier_signup_bonus_credits?: number
           id?: boolean
+          margin_thresholds_json?: Json
+          support_sla_json?: Json
           updated_at?: string
           updated_by?: string | null
         }
@@ -3802,15 +3982,21 @@ export type Database = {
           closed_at: string | null
           created_at: string
           escalated_at: string | null
+          escalation_summary: string | null
           id: string
           last_message_at: string
           priority: string | null
+          rated_at: string | null
+          rating_comment: string | null
           resolved_at: string | null
           sla_due_at: string | null
           status: string
           subject: string | null
           tags: string[]
+          updated_at: string
           user_id: string
+          user_rating: number | null
+          user_unread_count: number
         }
         Insert: {
           assignee_id?: string | null
@@ -3818,15 +4004,21 @@ export type Database = {
           closed_at?: string | null
           created_at?: string
           escalated_at?: string | null
+          escalation_summary?: string | null
           id?: string
           last_message_at?: string
           priority?: string | null
+          rated_at?: string | null
+          rating_comment?: string | null
           resolved_at?: string | null
           sla_due_at?: string | null
           status?: string
           subject?: string | null
           tags?: string[]
+          updated_at?: string
           user_id: string
+          user_rating?: number | null
+          user_unread_count?: number
         }
         Update: {
           assignee_id?: string | null
@@ -3834,15 +4026,21 @@ export type Database = {
           closed_at?: string | null
           created_at?: string
           escalated_at?: string | null
+          escalation_summary?: string | null
           id?: string
           last_message_at?: string
           priority?: string | null
+          rated_at?: string | null
+          rating_comment?: string | null
           resolved_at?: string | null
           sla_due_at?: string | null
           status?: string
           subject?: string | null
           tags?: string[]
+          updated_at?: string
           user_id?: string
+          user_rating?: number | null
+          user_unread_count?: number
         }
         Relationships: []
       }
@@ -4201,6 +4399,7 @@ export type Database = {
           is_active: boolean
           is_premium: boolean
           last_name: string | null
+          locale: string
           onboarding_completed: boolean
           onboarding_step: string | null
           premium_expires_at: string | null
@@ -4217,6 +4416,7 @@ export type Database = {
           is_active?: boolean
           is_premium?: boolean
           last_name?: string | null
+          locale?: string
           onboarding_completed?: boolean
           onboarding_step?: string | null
           premium_expires_at?: string | null
@@ -4233,6 +4433,7 @@ export type Database = {
           is_active?: boolean
           is_premium?: boolean
           last_name?: string | null
+          locale?: string
           onboarding_completed?: boolean
           onboarding_step?: string | null
           premium_expires_at?: string | null

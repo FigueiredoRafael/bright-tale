@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getManager } from '@/lib/admin-check';
+import { logAudit } from '@/lib/audit-log';
 import { z } from 'zod';
 
 function jsonError(message: string, code: string, status: number) {
@@ -69,6 +70,17 @@ export async function POST(
     reason: parsed.data.reason,
     prev_credits_used: org.credits_used ?? 0,
     prev_credits_addon: org.credits_addon ?? 0,
+  });
+
+  void logAudit({
+    actorId: user.id,
+    action: 'token_reset',
+    targetUserId: targetUserId,
+    metadata: {
+      reason: parsed.data.reason,
+      prev_credits_used: org.credits_used ?? 0,
+      prev_credits_addon: org.credits_addon ?? 0,
+    },
   });
 
   return NextResponse.json({

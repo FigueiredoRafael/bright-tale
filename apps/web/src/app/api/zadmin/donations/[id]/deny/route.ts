@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getManager } from '@/lib/admin-check';
+import { logAudit } from '@/lib/audit-log';
 
 function jsonError(message: string, code: string, status: number) {
   return NextResponse.json({ data: null, error: { code, message } }, { status });
@@ -26,7 +27,7 @@ export async function POST(
   const db = createAdminClient();
   const { data: donation } = await db
     .from('token_donations')
-    .select('status')
+    .select('status, amount, recipient_user_id')
     .eq('id', id)
     .maybeSingle();
 
@@ -43,5 +44,13 @@ export async function POST(
     .single();
 
   if (error) return jsonError(error.message, 'DB_ERROR', 500);
+
+  void logAudit({
+    actorId: user.id,
+    action: 'donation_denied',
+    targetUserId: donation.recipient_user_id ?? undefined,
+    metadata: { donation_id: id },
+  });
+
   return NextResponse.json({ data: updated, error: null });
 }

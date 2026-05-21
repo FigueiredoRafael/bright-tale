@@ -4,6 +4,7 @@ import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 import { UpgradeProvider } from "@/components/billing/UpgradeProvider";
 import { CreditsBanner } from "@/components/billing/CreditsBanner";
+import { ChatWidget } from "@/components/support/ChatWidget";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
     return (
@@ -21,6 +22,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     </div>
                 </div>
             </div>
+            <ChatWidget />
         </UpgradeProvider>
     );
 }

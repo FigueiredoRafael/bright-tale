@@ -41,7 +41,9 @@ export function Bell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unread, setUnread] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
-  const sb = createClient();
+  // createClient() returns a singleton — store in ref to avoid re-renders
+  const sbRef = useRef(createClient());
+  const sb = sbRef.current;
   const sbAny = sb as any;
 
   const fetchNotifications = useCallback(async () => {
@@ -58,20 +60,38 @@ export function Bell() {
     const rows = (data ?? []) as Notification[];
     setNotifications(rows);
     setUnread(rows.filter((n) => !n.is_read).length);
-  }, [sb, sbAny]);
+  // sb/sbAny are singleton refs — safe to omit from deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchNotifications();
+    let channel: ReturnType<typeof sbAny.channel> | null = null;
 
-    const channel = sbAny.channel('notifications-bell');
-    channel.on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'notifications' },
-      () => { fetchNotifications(); },
-    ).subscribe();
+    void (async () => {
+      const { data: { user } } = await sb.auth.getUser();
+      if (!user) return;
 
-    return () => { sbAny.removeChannel(channel); };
+      await fetchNotifications();
+
+      // Use broadcast (not postgres_changes) — the notifications table has
+      // deny-all RLS so walrus never delivers postgres_changes to clients.
+      // The DB trigger broadcast_notification() pushes each INSERT here.
+      channel = sbAny.channel(`notifications-user-${user.id}`);
+      channel
+        .on('broadcast', { event: 'new_notification' }, (payload: { payload: Notification }) => {
+          const n = payload.payload;
+          setNotifications((prev) => {
+            if (prev.some((x) => x.id === n.id)) return prev;
+            return [n, ...prev];
+          });
+          if (!n.is_read) setUnread((c) => c + 1);
+        })
+        .subscribe();
+    })();
+
+    return () => {
+      if (channel) void sbAny.removeChannel(channel);
+    };
   }, [fetchNotifications, sb, sbAny]);
 
   useEffect(() => {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getManager } from '@/lib/admin-check';
+import { logAudit } from '@/lib/audit-log';
 
 function jsonError(message: string, code: string, status: number) {
   return NextResponse.json({ data: null, error: { code, message } }, { status });
@@ -63,6 +64,15 @@ export async function POST(
       .update({ credits_addon: (org.credits_addon ?? 0) + donation.amount })
       .eq('id', donation.recipient_org_id);
   }
+
+  void logAudit({
+    actorId: user.id,
+    action: 'donation_approved',
+    targetUserId: donation.recipient_user_id ?? undefined,
+    amount: donation.amount,
+    amountUnit: 'tokens',
+    metadata: { donation_id: id },
+  });
 
   return NextResponse.json({ data: updated, error: null });
 }

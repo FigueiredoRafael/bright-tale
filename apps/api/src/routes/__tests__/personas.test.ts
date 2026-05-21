@@ -10,7 +10,15 @@ vi.mock('../../lib/supabase/index.js', () => ({
 }))
 
 vi.mock('../../middleware/authenticate.js', () => ({
-  authenticate: (_req: unknown, _rep: unknown, done: () => void) => done(),
+  authenticate: (req: { userId?: string }, _rep: unknown, done: () => void) => {
+    req.userId = 'user-test'
+    done()
+  },
+}))
+
+vi.mock('../../lib/orgs.js', () => ({
+  getOrgIdStrict: vi.fn().mockResolvedValue('org-test'),
+  ensureOrgId: vi.fn().mockResolvedValue('org-test'),
 }))
 
 vi.mock('../../lib/crypto.js', () => ({
@@ -62,6 +70,13 @@ const PERSONA_DB = {
     values: [], lifePhilosophy: '', strongOpinions: [], petPeeves: [],
     humorStyle: '', recurringJokes: [], whatExcites: [], innerTensions: [], languageGuardrails: [],
   },
+  traits_json: { empatia: 5, profundidade: 5, provocacao: 5, singularidade: 5, narrativa: 5, autoridade: 5 },
+  org_id: 'org-test',
+  visibility: 'private' as const,
+  nationality: null as string | null,
+  age: null as number | null,
+  gender: null as string | null,
+  languages_json: [],
   wp_author_id: null,
   is_active: true,
   archetype_slug: null,
@@ -86,13 +101,15 @@ let chainValue: { data: unknown; error: unknown }
 
 function createChain() {
   const chain: Record<string, unknown> = {
-    select:     vi.fn().mockReturnThis(),
-    eq:         vi.fn().mockReturnThis(),
-    order:      vi.fn().mockReturnThis(),
-    limit:      vi.fn().mockReturnThis(),
-    insert:     vi.fn().mockReturnThis(),
-    update:     vi.fn().mockReturnThis(),
-    single:     vi.fn().mockResolvedValue({ data: null, error: null }),
+    select:      vi.fn().mockReturnThis(),
+    eq:          vi.fn().mockReturnThis(),
+    or:          vi.fn().mockReturnThis(),
+    order:       vi.fn().mockReturnThis(),
+    limit:       vi.fn().mockReturnThis(),
+    insert:      vi.fn().mockReturnThis(),
+    update:      vi.fn().mockReturnThis(),
+    upsert:      vi.fn().mockResolvedValue({ data: null, error: null }),
+    single:      vi.fn().mockResolvedValue({ data: null, error: null }),
     maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
     then(res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) {
       return Promise.resolve(chainValue).then(res, rej)
@@ -101,9 +118,9 @@ function createChain() {
       return Promise.resolve(chainValue).catch(rej)
     },
   }
-  // Every fluent method returns the same chain object
   ;(chain.select as ReturnType<typeof vi.fn>).mockReturnValue(chain)
   ;(chain.eq as ReturnType<typeof vi.fn>).mockReturnValue(chain)
+  ;(chain.or as ReturnType<typeof vi.fn>).mockReturnValue(chain)
   ;(chain.order as ReturnType<typeof vi.fn>).mockReturnValue(chain)
   ;(chain.limit as ReturnType<typeof vi.fn>).mockReturnValue(chain)
   ;(chain.insert as ReturnType<typeof vi.fn>).mockReturnValue(chain)

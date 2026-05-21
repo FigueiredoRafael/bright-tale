@@ -40,6 +40,8 @@ export interface GenerateContentParams {
   signal?: AbortSignal;
   tools?: ToolDefinition[];
   toolExecutor?: ToolExecutor;
+  /** When true, return the raw text string instead of parsing as JSON. */
+  rawText?: boolean;
 }
 
 export interface TokenUsage {

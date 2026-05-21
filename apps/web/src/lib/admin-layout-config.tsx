@@ -34,9 +34,11 @@ export const ADMIN_LAYOUT_CONFIG: AdminLayoutConfig = {
     {
       group: 'Operações',
       items: [
-        { label: 'Suporte', path: adminPath('/support'), icon: 'Bell' },
+        { label: 'Notificações', path: adminPath('/notifications'), icon: 'Bell' },
+        { label: 'Suporte', path: adminPath('/support'), icon: 'Headphones' },
         { label: 'Refunds', path: adminPath('/refunds'), icon: 'Activity' },
         { label: 'Finance', path: adminPath('/finance'), icon: 'BarChart3' },
+        { label: 'Audit Log', path: adminPath('/audit-log'), icon: 'ClipboardList' },
       ],
     },
     {

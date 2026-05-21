@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getManager } from '@/lib/admin-check';
+import { logAudit } from '@/lib/audit-log';
 
 function jsonError(message: string, code: string, status: number) {
   return NextResponse.json({ data: null, error: { code, message } }, { status });
@@ -34,6 +35,12 @@ export async function POST(
 
   if (error) return jsonError(error.message, 'DB_ERROR', 500);
   if (!data) return jsonError('Coupon not found or already archived', 'NOT_FOUND', 404);
+
+  void logAudit({
+    actorId: user.id,
+    action: 'coupon_archived',
+    metadata: { coupon_id: id, code: data.code },
+  });
 
   return NextResponse.json({ data, error: null });
 }

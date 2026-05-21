@@ -22,6 +22,7 @@ export class GeminiProvider implements AIProvider {
     signal,
     tools,
     toolExecutor,
+    rawText,
   }: GenerateContentParams): Promise<unknown> {
     if (signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError');
@@ -53,7 +54,7 @@ export class GeminiProvider implements AIProvider {
           systemInstruction: systemPrompt || undefined,
           ...(geminiTools
             ? { tools: geminiTools }
-            : { responseMimeType: 'application/json' }),
+            : rawText ? {} : { responseMimeType: 'application/json' }),
         },
       });
 
@@ -92,6 +93,8 @@ export class GeminiProvider implements AIProvider {
 
       const text = response.text;
       if (!text) throw new Error('No content generated from Gemini');
+
+      if (rawText) return text;
 
       const parsed = JSON.parse(text);
       if (schema && typeof (schema as { parse?: unknown }).parse === 'function') {

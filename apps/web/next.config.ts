@@ -43,6 +43,13 @@ const nextConfig: NextConfig = {
   // Remove the X-Powered-By: Next.js fingerprint.
   poweredByHeader: false,
 
+  turbopack: {
+    extensionAlias: {
+      '.js': ['.ts', '.tsx', '.js'],
+      '.mjs': ['.mts', '.mjs'],
+    },
+  },
+
   transpilePackages: ['@tn-figueiredo/admin', '@tn-figueiredo/affiliate-admin', '@tn-figueiredo/affiliate-portal', '@brighttale/shared'],
   async rewrites() {
     return [
@@ -98,6 +105,13 @@ const nextConfig: NextConfig = {
         ],
       },
     ];
+  },
+  webpack(config) {
+    config.resolve.extensionAlias = {
+      '.js': ['.ts', '.tsx', '.js'],
+      '.mjs': ['.mts', '.mjs'],
+    }
+    return config
   },
 };
 

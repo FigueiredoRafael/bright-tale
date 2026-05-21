@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getManager } from '@/lib/admin-check';
 import { notify } from '@/lib/notify';
+import { logAudit } from '@/lib/audit-log';
 import { z } from 'zod';
 
 function jsonError(message: string, code: string, status: number) {
@@ -196,6 +197,15 @@ export async function POST(req: NextRequest) {
       ),
     );
   }
+
+  void logAudit({
+    actorId: user.id,
+    action: autoExecute ? 'donation_created_auto' : 'donation_created_pending',
+    targetUserId: recipientUserId,
+    amount: amount,
+    amountUnit: 'tokens',
+    metadata: { donation_id: donation.id, reason },
+  });
 
   return NextResponse.json({ data: donation, error: null }, { status: 201 });
 }

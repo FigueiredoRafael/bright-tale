@@ -1,5 +1,5 @@
 /**
- * M-006 — Support chatbot (Claude Haiku streaming SSE)
+ * M-006 — Support chatbot (gpt-4o-mini streaming SSE)
  * M-008 — Support escalation queue (admin)
  *
  * The `support_threads` and `support_messages` tables are new and not yet
@@ -8,7 +8,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { authenticateWithUser, authenticate } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { ApiError } from '../lib/api/errors.js';
@@ -25,6 +25,9 @@ interface SupportThreadRow {
   priority: string | null;
   escalation_summary: string | null;
   assigned_to: string | null;
+  user_rating: number | null;
+  rating_comment: string | null;
+  rated_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -80,67 +83,59 @@ Responda sempre em português do Brasil.
 Se não conseguir resolver em 7 mensagens, use a tool escalate.`;
 
 // ---------------------------------------------------------------------------
-// Anthropic tool definitions
+// OpenAI tool definitions
 // ---------------------------------------------------------------------------
-const supportTools: Anthropic.Tool[] = [
+const supportTools: OpenAI.Chat.ChatCompletionTool[] = [
   {
-    name: 'lookup_user_plan',
-    description: 'Retorna as informações do plano atual do usuário (nome do plano, créditos, etc). Não requer parâmetros.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {},
-      required: [],
+    type: 'function',
+    function: {
+      name: 'lookup_user_plan',
+      description: 'Retorna as informações do plano atual do usuário (nome do plano, créditos, etc). Não requer parâmetros.',
+      parameters: { type: 'object', properties: {}, required: [] },
     },
   },
   {
-    name: 'request_refund',
-    description: 'Solicita um reembolso para o usuário. Marca como pendente para revisão administrativa.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        reason: {
-          type: 'string',
-          description: 'Motivo do reembolso solicitado pelo usuário.',
+    type: 'function',
+    function: {
+      name: 'request_refund',
+      description: 'Solicita um reembolso para o usuário. Marca como pendente para revisão administrativa.',
+      parameters: {
+        type: 'object',
+        properties: {
+          reason: { type: 'string', description: 'Motivo do reembolso solicitado pelo usuário.' },
         },
+        required: ['reason'],
       },
-      required: ['reason'],
     },
   },
   {
-    name: 'cancel_subscription',
-    description: 'Cancela a assinatura do usuário. Se save_flow_offer=true, ofereça um desconto antes de cancelar.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        reason: {
-          type: 'string',
-          description: 'Motivo do cancelamento.',
+    type: 'function',
+    function: {
+      name: 'cancel_subscription',
+      description: 'Cancela a assinatura do usuário. Se save_flow_offer=true, ofereça um desconto antes de cancelar.',
+      parameters: {
+        type: 'object',
+        properties: {
+          reason: { type: 'string', description: 'Motivo do cancelamento.' },
+          save_flow_offer: { type: 'boolean', description: 'Se true, oferece desconto antes de efetivar o cancelamento.' },
         },
-        save_flow_offer: {
-          type: 'boolean',
-          description: 'Se true, oferece desconto antes de efetivar o cancelamento.',
-        },
+        required: ['reason'],
       },
-      required: ['reason'],
     },
   },
   {
-    name: 'escalate',
-    description: 'Escala o ticket para um agente humano quando o assistente não consegue resolver.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        summary: {
-          type: 'string',
-          description: 'Resumo do problema do usuário para o agente humano.',
+    type: 'function',
+    function: {
+      name: 'escalate',
+      description: 'Escala o ticket para um agente humano quando o assistente não consegue resolver.',
+      parameters: {
+        type: 'object',
+        properties: {
+          summary: { type: 'string', description: 'Resumo do problema do usuário para o agente humano.' },
+          priority: { type: 'string', enum: ['P0', 'P1', 'P2', 'P3'], description: 'Prioridade: P0=crítico, P1=alto, P2=médio, P3=baixo.' },
         },
-        priority: {
-          type: 'string',
-          enum: ['P0', 'P1', 'P2', 'P3'],
-          description: 'Prioridade: P0=crítico, P1=alto, P2=médio, P3=baixo.',
-        },
+        required: ['summary', 'priority'],
       },
-      required: ['summary', 'priority'],
     },
   },
 ];
@@ -316,8 +311,8 @@ async function executeTool(
 // Route registration
 // ---------------------------------------------------------------------------
 export async function supportRoutes(fastify: FastifyInstance): Promise<void> {
-  const anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
+  const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
   });
 
   // ── POST /support/chat ────────────────────────────────────────────────────
@@ -364,12 +359,40 @@ export async function supportRoutes(fastify: FastifyInstance): Promise<void> {
       }
     }
 
+    // Check if thread is in human-agent mode (skip AI)
+    const { data: currentThread } = await supportThreads(sb)
+      .select('status')
+      .eq('id', threadId)
+      .maybeSingle();
+
+    const isHumanMode = currentThread?.status === 'escalated' || currentThread?.status === 'in_progress';
+
     // Save user message
     await supportMessages(sb).insert({
       thread_id: threadId,
       role: 'user',
       content: body.message,
     });
+
+    // Update thread timestamp so admin sees it at top of queue
+    // (user_unread_count is incremented by a DB trigger on support_messages INSERT)
+    await supportThreads(sb)
+      .update({ updated_at: new Date().toISOString() } as unknown as Partial<SupportThreadRow>)
+      .eq('id', threadId);
+
+    // Human mode: just save the message and notify via SSE, no AI
+    if (isHumanMode) {
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Thread-Id': threadId,
+      });
+      reply.raw.write(`data: ${JSON.stringify({ threadId, human_mode: true })}\n\n`);
+      reply.raw.write('data: [DONE]\n\n');
+      reply.raw.end();
+      return;
+    }
 
     // Load conversation history
     const { data: messages } = await (supportMessages(sb)
@@ -380,7 +403,7 @@ export async function supportRoutes(fastify: FastifyInstance): Promise<void> {
         error: unknown;
       }>);
 
-    const conversationMessages: Anthropic.MessageParam[] = (messages ?? []).map((m) => ({
+    const conversationMessages: OpenAI.Chat.ChatCompletionMessageParam[] = (messages ?? []).map((m) => ({
       role: m.role === 'assistant' ? ('assistant' as const) : ('user' as const),
       content: m.content,
     }));
@@ -407,55 +430,73 @@ export async function supportRoutes(fastify: FastifyInstance): Promise<void> {
       let fullResponse = '';
 
       // Agentic loop: handle tool calls
+      const loopMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+        { role: 'system', content: SUPPORT_SYSTEM_PROMPT },
+        ...conversationMessages,
+      ];
       let continueLoop = true;
-      let loopMessages = [...conversationMessages];
 
       while (continueLoop) {
-        const response = await anthropic.messages.create({
-          model: 'claude-haiku-4-5',
+        const stream = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
           max_tokens: 1024,
-          system: SUPPORT_SYSTEM_PROMPT,
           messages: loopMessages,
           tools: supportTools,
+          tool_choice: 'auto',
+          stream: true,
         });
 
-        // Stream text content
-        for (const block of response.content) {
-          if (block.type === 'text') {
-            const text = block.text;
-            fullResponse += text;
-            reply.raw.write(`data: ${JSON.stringify({ text })}\n\n`);
+        let assistantContent = '';
+        const toolCallsMap = new Map<number, { id: string; name: string; args: string }>();
+
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta;
+          if (!delta) continue;
+
+          if (delta.content) {
+            assistantContent += delta.content;
+            reply.raw.write(`data: ${JSON.stringify({ text: delta.content })}\n\n`);
           }
+
+          if (delta.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index;
+              if (!toolCallsMap.has(idx)) {
+                toolCallsMap.set(idx, { id: tc.id ?? '', name: tc.function?.name ?? '', args: '' });
+              }
+              const entry = toolCallsMap.get(idx)!;
+              if (tc.id) entry.id = tc.id;
+              if (tc.function?.name) entry.name = tc.function.name;
+              if (tc.function?.arguments) entry.args += tc.function.arguments;
+            }
+          }
+
+          if (chunk.choices[0]?.finish_reason === 'stop') continueLoop = false;
         }
 
-        if (response.stop_reason === 'tool_use') {
-          const toolUseBlocks = response.content.filter(
-            (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
-          );
+        const toolCalls = [...toolCallsMap.values()];
 
-          const toolResults: Anthropic.ToolResultBlockParam[] = [];
+        if (toolCalls.length > 0) {
+          loopMessages.push({
+            role: 'assistant',
+            content: assistantContent || null,
+            tool_calls: toolCalls.map((tc) => ({
+              id: tc.id,
+              type: 'function' as const,
+              function: { name: tc.name, arguments: tc.args },
+            })),
+          });
 
-          for (const toolUse of toolUseBlocks) {
-            const result = await executeTool(
-              toolUse.name,
-              toolUse.input as Record<string, unknown>,
-              threadId,
-              orgContext,
-            );
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: toolUse.id,
-              content: result,
-            });
+          for (const tc of toolCalls) {
+            let input: Record<string, unknown> = {};
+            try { input = JSON.parse(tc.args); } catch { /* ignore */ }
+
+            const result = await executeTool(tc.name, input, threadId, orgContext);
+            loopMessages.push({ role: 'tool', tool_call_id: tc.id, content: result });
           }
-
-          loopMessages = [
-            ...loopMessages,
-            { role: 'assistant' as const, content: response.content },
-            { role: 'user' as const, content: toolResults },
-          ];
         } else {
           continueLoop = false;
+          if (assistantContent) fullResponse = assistantContent;
         }
       }
 
@@ -669,7 +710,151 @@ export async function supportRoutes(fastify: FastifyInstance): Promise<void> {
         throw new ApiError(404, 'Thread not found', 'NOT_FOUND');
       }
 
+      // Notify user via broadcast when thread is resolved/closed
+      if (body.status === 'resolved' || body.status === 'closed') {
+        await supportMessages(sb).insert({
+          thread_id: id,
+          role: 'system',
+          content: `thread_${body.status}`,
+          agent_user_id: request.userId,
+        } as unknown as Partial<SupportMessageRow>);
+      }
+
       return reply.send({ data: { thread: updated }, error: null });
+    },
+  );
+
+  // ── GET /support/threads ──────────────────────────────────────────────────
+  // Returns the authenticated user's own threads (most recent first).
+  fastify.get('/threads', { preHandler: [authenticateWithUser] }, async (request, reply) => {
+    if (!request.userId) {
+      return reply.status(401).send({ data: null, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } });
+    }
+
+    const sb = createServiceClient();
+
+    const { data: threads, error } = await (supportThreads(sb)
+      .select('id, status, priority, escalation_summary, created_at, updated_at, user_rating')
+      .eq('user_id', request.userId)
+      .order('updated_at', { ascending: false })
+      .limit(20) as unknown as Promise<{ data: SupportThreadRow[] | null; error: unknown }>);
+
+    if (error) throw new ApiError(500, 'Failed to fetch threads', 'THREADS_FETCH_ERROR');
+
+    if (!threads || threads.length === 0) {
+      return reply.send({ data: { threads: [] }, error: null });
+    }
+
+    const threadIds = threads.map((t) => t.id);
+    const { data: messages } = await (supportMessages(sb)
+      .select('thread_id, content, created_at')
+      .in('thread_id', threadIds)
+      .order('created_at', { ascending: false }) as unknown as Promise<{
+        data: Pick<SupportMessageRow, 'thread_id' | 'content' | 'created_at'>[] | null;
+        error: unknown;
+      }>);
+
+    const lastMsgMap = new Map<string, string>();
+    const msgCountMap = new Map<string, number>();
+    for (const m of messages ?? []) {
+      if (!lastMsgMap.has(m.thread_id)) lastMsgMap.set(m.thread_id, m.content);
+      msgCountMap.set(m.thread_id, (msgCountMap.get(m.thread_id) ?? 0) + 1);
+    }
+
+    return reply.send({
+      data: {
+        threads: threads.map((t) => ({
+          ...t,
+          last_message: lastMsgMap.get(t.id) ?? null,
+          message_count: msgCountMap.get(t.id) ?? 0,
+        })),
+      },
+      error: null,
+    });
+  });
+
+  // ── POST /support/threads/:threadId/rate ─────────────────────────────────
+  fastify.post(
+    '/threads/:threadId/rate',
+    { preHandler: [authenticateWithUser] },
+    async (request, reply) => {
+      if (!request.userId) {
+        return reply.status(401).send({ data: null, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } });
+      }
+
+      const { threadId } = request.params as { threadId: string };
+      const body = z.object({
+        rating: z.number().int().min(1).max(5),
+        comment: z.string().max(500).optional(),
+      }).parse(request.body);
+
+      const sb = createServiceClient();
+
+      const { data: thread } = await (supportThreads(sb)
+        .select('id, user_id, status, user_rating')
+        .eq('id', threadId)
+        .eq('user_id', request.userId)
+        .maybeSingle() as unknown as Promise<{ data: SupportThreadRow | null }>);
+
+      if (!thread) throw new ApiError(404, 'Thread not found', 'NOT_FOUND');
+      if (thread.status !== 'resolved' && thread.status !== 'closed') {
+        throw new ApiError(400, 'Thread must be resolved to rate', 'INVALID_STATE');
+      }
+      if (thread.user_rating !== null) {
+        throw new ApiError(409, 'Thread already rated', 'ALREADY_RATED');
+      }
+
+      await supportThreads(sb)
+        .update({
+          user_rating: body.rating,
+          rating_comment: body.comment ?? null,
+          rated_at: new Date().toISOString(),
+        } as unknown as Partial<SupportThreadRow>)
+        .eq('id', threadId);
+
+      return reply.send({ data: { ok: true }, error: null });
+    },
+  );
+
+  // ── POST /support/threads/:threadId/human-reply ───────────────────────────
+  // Admin sends a message as human_agent. Used by the admin drawer.
+  fastify.post(
+    '/threads/:threadId/human-reply',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      if (!request.userId) {
+        return reply.status(401).send({ data: null, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } });
+      }
+
+      const isManager = await assertManager(request.userId);
+      if (!isManager) {
+        return reply.status(403).send({ data: null, error: { code: 'FORBIDDEN', message: 'Manager role required' } });
+      }
+
+      const { threadId } = request.params as { threadId: string };
+      const body = z.object({ content: z.string().min(1).max(4000) }).parse(request.body);
+      const sb = createServiceClient();
+
+      const { data: thread } = await supportThreads(sb)
+        .select('id, user_id, status')
+        .eq('id', threadId)
+        .maybeSingle();
+
+      if (!thread) throw new ApiError(404, 'Thread not found', 'NOT_FOUND');
+
+      await supportMessages(sb).insert({
+        thread_id: threadId,
+        role: 'human_agent',
+        content: body.content,
+        agent_user_id: request.userId,
+      } as unknown as Partial<SupportMessageRow>);
+
+      // Mark thread as in_progress if it was escalated/open
+      await supportThreads(sb)
+        .update({ status: 'in_progress', updated_at: new Date().toISOString() } as unknown as Partial<SupportThreadRow>)
+        .eq('id', threadId);
+
+      return reply.send({ data: { ok: true, userId: thread.user_id }, error: null });
     },
   );
 }

@@ -30,12 +30,18 @@ const basePersona: Persona = {
   id: 'p1',
   slug: 'test-persona',
   name: 'Test Persona',
+  orgId: 'org-1',
+  visibility: 'private',
   avatarUrl: null,
   bioShort: 'Short bio',
   bioLong: 'Long bio',
   primaryDomain: 'Tech',
   domainLens: 'Analytical',
   approvedCategories: ['tech', 'ai'],
+  nationality: null,
+  age: null,
+  gender: null,
+  languagesJson: [],
   writingVoiceJson: {
     writingStyle: 'Direct',
     signaturePhrases: ['phrase one'],
@@ -57,6 +63,7 @@ const basePersona: Persona = {
     innerTensions: [],
     languageGuardrails: ['no jargon'],
   },
+  traitsJson: { empatia: 5, profundidade: 5, provocacao: 5, singularidade: 5, narrativa: 5, autoridade: 5 },
   wpAuthorId: null,
   archetypeSlug: null,
   avatarParamsJson: null,
@@ -67,7 +74,7 @@ const basePersona: Persona = {
 
 function makeMockSb(guardrailRules: string[], overlayData: unknown) {
   return {
-    from: vi.fn((table: string) => ({
+    from: vi.fn((_table: string) => ({
       select: vi.fn(() => ({
         eq: vi.fn(() => ({
           eq: vi.fn(() => ({

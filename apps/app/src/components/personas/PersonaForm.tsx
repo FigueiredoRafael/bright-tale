@@ -10,6 +10,9 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ChevronDown, Loader2 } from "lucide-react"
 import { AvatarSection } from "./AvatarSection"
 import { WpIntegrationSection } from "./WpIntegrationSection"
+import { PersonaRadar } from "./PersonaRadar"
+import type { PersonaTraits } from "@brighttale/shared/types/agents"
+import { DEFAULT_PERSONA_TRAITS } from "@brighttale/shared/types/agents"
 
 export interface PersonaFormValues {
     slug: string
@@ -19,6 +22,11 @@ export interface PersonaFormValues {
     primaryDomain: string
     domainLens: string
     approvedCategories: string[]
+    nationality?: string | null
+    age?: number | null
+    gender?: string | null
+    languagesJson?: Array<{ language: string; level: "native" | "fluent" | "conversational" | "basic" }>
+    traitsJson: PersonaTraits
     writingVoiceJson: { writingStyle: string; signaturePhrases: string[]; characteristicOpinions: string[] }
     eeatSignalsJson: { analyticalLens: string; trustSignals: string[]; expertiseClaims: string[] }
     soulJson: {
@@ -35,6 +43,7 @@ export interface PersonaFormValues {
 const EMPTY: PersonaFormValues = {
     slug: "", name: "", bioShort: "", bioLong: "",
     primaryDomain: "", domainLens: "", approvedCategories: [],
+    traitsJson: { ...DEFAULT_PERSONA_TRAITS },
     writingVoiceJson: { writingStyle: "", signaturePhrases: [], characteristicOpinions: [] },
     eeatSignalsJson: { analyticalLens: "", trustSignals: [], expertiseClaims: [] },
     soulJson: {
@@ -88,9 +97,10 @@ interface PersonaFormProps {
     initial?: Partial<PersonaFormValues>
     personaId?: string
     archetypeSlug?: string
+    onSaved?: () => void
 }
 
-export function PersonaForm({ initial, personaId, archetypeSlug }: PersonaFormProps) {
+export function PersonaForm({ initial, personaId, archetypeSlug, onSaved }: PersonaFormProps) {
     const [values, setValues] = useState<PersonaFormValues>({ ...EMPTY, ...initial, archetypeSlug: archetypeSlug ?? initial?.archetypeSlug ?? null })
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -143,6 +153,7 @@ export function PersonaForm({ initial, personaId, archetypeSlug }: PersonaFormPr
                 setSaving(false)
                 return
             }
+            onSaved?.()
             router.push(`/${locale}/personas`)
         } catch (e) {
             setError(e instanceof Error ? e.message : "Failed to save")
@@ -253,6 +264,34 @@ export function PersonaForm({ initial, personaId, archetypeSlug }: PersonaFormPr
                         <Label className="text-xs">Expertise Claims</Label>
                         <TagInput value={values.eeatSignalsJson.expertiseClaims} onChange={v => set("eeatSignalsJson", { ...values.eeatSignalsJson, expertiseClaims: v })} placeholder="Add claim..." />
                     </div>
+                </div>
+            </Section>
+
+            <Section title="Forças da Persona">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div className="space-y-3">
+                        {(Object.keys(DEFAULT_PERSONA_TRAITS) as (keyof PersonaTraits)[]).map(key => {
+                            const labels: Record<keyof PersonaTraits, string> = {
+                                empatia: "Empatia", profundidade: "Profundidade", provocacao: "Provocação",
+                                singularidade: "Singularidade", narrativa: "Narrativa", autoridade: "Autoridade",
+                            }
+                            return (
+                                <div key={key} className="space-y-1">
+                                    <div className="flex justify-between">
+                                        <Label className="text-xs">{labels[key]}</Label>
+                                        <span className="text-xs text-muted-foreground">{values.traitsJson[key]}/10</span>
+                                    </div>
+                                    <input
+                                        type="range" min={1} max={10} step={1}
+                                        value={values.traitsJson[key]}
+                                        onChange={e => set("traitsJson", { ...values.traitsJson, [key]: Number(e.target.value) })}
+                                        className="w-full accent-primary"
+                                    />
+                                </div>
+                            )
+                        })}
+                    </div>
+                    <PersonaRadar traits={values.traitsJson} />
                 </div>
             </Section>
 
