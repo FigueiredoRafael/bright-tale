@@ -34,7 +34,7 @@ describe('buildReviewMessage', () => {
     expect(msg).toContain('video');
   });
 
-  it('includes idea and research data', () => {
+  it('includes idea context but explicitly NOT research data (prompt-size optimization)', () => {
     const msg = buildReviewMessage({
       type: 'blog',
       title: 'test',
@@ -48,7 +48,12 @@ describe('buildReviewMessage', () => {
       research: { cards: ['card1'] },
     });
     expect(msg).toContain('Great idea');
-    expect(msg).toContain('card1');
+    // Research data is intentionally dropped from the reviewer prompt — the
+    // research session JSON is 5-15KB and the reviewer evaluates the draft,
+    // not the research. Keeping it caused the model to summarize research
+    // instead of reviewing the draft.
+    expect(msg).not.toContain('card1');
+    expect(msg).not.toContain('Research data:');
   });
 
   it('includes channel context', () => {
@@ -160,16 +165,16 @@ describe('buildReviewMessage', () => {
       title: 'Test',
       draftJson: { full_draft: 'x', slug: 'y' },
     });
-    // System-prompt override
+    // System-prompt override (compressed wording)
     expect(msg).toContain('MANDATORY SCHEMA OVERRIDE');
-    expect(msg).toContain('contract shown in your system prompt does NOT include');
     expect(msg).toContain('blog_review object MUST include a "rubric_evaluation"');
     expect(msg).toContain('Do NOT include a "score" field');
+    expect(msg).toContain('Missing keys count as fail');
     // Worked example (JSON block with rubric_evaluation key + sample pass/evidence)
     expect(msg).toContain('"rubric_evaluation"');
     expect(msg).toContain('"pass"');
     expect(msg).toContain('"evidence"');
-    // All 10 criteria listed by key
+    // All 10 criteria listed by key (single-line each in the criteria block)
     expect(msg).toContain('has_strong_hook');
     expect(msg).toContain('thesis_clear_in_intro');
     expect(msg).toContain('meets_word_count');
@@ -180,11 +185,25 @@ describe('buildReviewMessage', () => {
     expect(msg).toContain('seo_meta_optimized');
     expect(msg).toContain('cta_present_and_aligned');
     expect(msg).toContain('strengths_preserved');
-    expect(msg).toContain('PASS when:');
+    expect(msg).toContain('Calibration:');
     expect(msg).toContain('aesthetic preference');
-    // Self-check reminder mentions all-keys-required
-    expect(msg).toContain('Self-check before returning');
-    expect(msg).toContain('all 10 keys');
+  });
+
+  it('keeps the rubric block compact (no per-criterion multi-line breakdown)', () => {
+    // Regression test: the previous verbose layout (5 lines per criterion +
+    // a redundant required-keys list + a self-check paragraph) was inflating
+    // the prompt. After compression each criterion is one line and the
+    // required-keys list is gone (the criteria block IS the keys list).
+    const msg = buildReviewMessage({
+      type: 'blog',
+      title: 'Test',
+      draftJson: { full_draft: 'x', slug: 'y' },
+    });
+    // Old verbose markers should NOT appear
+    expect(msg).not.toContain('what to check:');
+    expect(msg).not.toContain('examples of FAIL:');
+    expect(msg).not.toContain('Required keys (ALL');
+    expect(msg).not.toContain('Self-check before returning');
   });
 
   it('does NOT inject a rubric for types without one (video/shorts/podcast)', () => {

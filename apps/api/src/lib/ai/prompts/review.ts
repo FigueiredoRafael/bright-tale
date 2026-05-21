@@ -97,11 +97,12 @@ export function buildReviewMessage(input: ReviewInput): string {
     lines.push(typeof input.idea === 'string' ? input.idea : JSON.stringify(input.idea, null, 2));
   }
 
-  if (input.research) {
-    lines.push('');
-    lines.push('Research data:');
-    lines.push(typeof input.research === 'string' ? input.research : JSON.stringify(input.research, null, 2));
-  }
+  // Research data is intentionally NOT included in the reviewer prompt. The
+  // reviewer evaluates the draft against the canonical core and rubric, not
+  // the research session. Including the full research_sessions JSON (5-15KB)
+  // was inflating prompt size and pushing the model toward summarizing
+  // research instead of evaluating the draft. The `input.research` field is
+  // kept on the interface for backward compat with callers but ignored here.
 
   if (input.channel) {
     const ch = input.channel;
@@ -131,54 +132,38 @@ export function buildReviewMessage(input: ReviewInput): string {
   // example, and listing every required key.
   const rubric = getRubricForType(input.type);
   if (rubric && rubric.length > 0) {
-    const exampleKey = rubric[0].key;
-    const exampleEvaluation = rubric.reduce((acc, c, idx) => {
-      // Mix of pass/fail across the example to make the schema unambiguous.
-      acc[c.key] = {
-        pass: idx % 2 === 0,
-        evidence:
-          idx % 2 === 0
-            ? `"quoted passage from current draft demonstrating ${c.key} passes"`
-            : `"quoted passage that fails ${c.key} — explain why"`,
-      };
-      return acc;
-    }, {} as Record<string, { pass: boolean; evidence: string }>);
+    // Compact worked example: 2 entries (one pass, one fail) is enough to
+    // anchor the shape without listing all 10. The criteria block below
+    // tells the model the rest of the keys must follow this same shape.
+    const exampleEvaluation = {
+      [rubric[0].key]: {
+        pass: true,
+        evidence: `"<short quote from current draft demonstrating ${rubric[0].key} passes>"`,
+      },
+      [rubric[1].key]: {
+        pass: false,
+        evidence: `"<short quote that fails ${rubric[1].key} + why>"`,
+      },
+    };
 
     lines.push('');
-    lines.push('=== MANDATORY SCHEMA OVERRIDE (read this carefully) ===');
     lines.push(
-      `The BC_REVIEW_OUTPUT contract shown in your system prompt does NOT include a "rubric_evaluation" field under ${input.type}_review. That contract is OUTDATED for this call. For THIS review, your ${input.type}_review object MUST include a "rubric_evaluation" object as shown below. Do NOT include a "score" field — the server computes it from your rubric_evaluation. Output everything else from the original contract unchanged.`,
+      `MANDATORY SCHEMA OVERRIDE: your ${input.type}_review object MUST include a "rubric_evaluation" object with all ${rubric.length} keys listed below. Do NOT include a "score" field — the server computes it. Missing keys count as fail.`,
     );
     lines.push('');
-    lines.push(`Required shape of ${input.type}_review.rubric_evaluation (worked example with placeholder evidence):`);
+    lines.push(`Example shape (apply same {pass, evidence} structure to every key):`);
     lines.push('```json');
     lines.push(JSON.stringify({ rubric_evaluation: exampleEvaluation }, null, 2));
     lines.push('```');
     lines.push('');
-    lines.push(
-      `Required keys (ALL ${rubric.length} MUST appear in rubric_evaluation; missing keys are treated as fail by the server):`,
-    );
-    for (const c of rubric) lines.push(`  - ${c.key}`);
-    lines.push('');
-    lines.push('Criteria (apply these binary pass/fail when populating rubric_evaluation):');
+    lines.push(`Criteria — for each, mark pass=true only if the PASS condition holds, with a current-draft quote as evidence:`);
     for (const c of rubric) {
-      lines.push('');
-      lines.push(`- key: ${c.key}`);
-      lines.push(`  title: ${c.title}`);
-      lines.push(`  what to check: ${c.description}`);
-      lines.push(`  PASS when: ${c.passWhen}`);
-      if (c.failExamples.length > 0) {
-        lines.push(`  examples of FAIL:`);
-        for (const ex of c.failExamples) lines.push(`    - ${ex}`);
-      }
+      const failEx = c.failExamples[0] ? ` Fail example: ${c.failExamples[0]}` : '';
+      lines.push(`- ${c.key}: ${c.passWhen}${failEx}`);
     }
     lines.push('');
     lines.push(
-      'Calibration note: aesthetic preference for one rhetorical device over another is NOT a fail. If you find yourself writing "consider starting with a question", you are stating preference, not detecting a defect — that criterion PASSES.',
-    );
-    lines.push('');
-    lines.push(
-      `Self-check before returning: did you include all ${rubric.length} keys in ${input.type}_review.rubric_evaluation? Did each key have both "pass" (boolean) and "evidence" (non-empty string quoting the current draft)? If any key is missing, the server scores it as 0. The "${exampleKey}" key is shown in the example above — use the same shape for all keys.`,
+      'Calibration: aesthetic preference for one rhetorical device over another is NOT a fail. "Consider starting with a question" is preference, not defect — that criterion PASSES.',
     );
   }
 
