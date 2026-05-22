@@ -33,6 +33,7 @@ import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { hydrateDraftFromConfig } from '@/lib/pipeline/hydrateEngineFromConfig';
 import { fetchTracks, firstActiveTrack, pushStage } from '@/lib/pipeline/advanceUrl';
+import { CanonicalTrackPicker } from '@/components/pipeline/CanonicalTrackPicker';
 import type { PipelineContext } from './types';
 import type { AutopilotConfig } from '@brighttale/shared';
 
@@ -322,9 +323,14 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
       personaSlug: persona?.slug,
       personaWpAuthorId: persona?.wpAuthorId,
     });
-    void advanceToProduction();
+    // In supervised/overview the orchestrator drives server-side; jump the user
+    // to the first track for visibility. In step-by-step we render the track
+    // picker below instead so the user explicitly chooses which medium first.
+    if (autoMode === 'supervised' || autoMode === 'overview') {
+      void advanceToProduction();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [coreApproved, draftId, selectedPersonaId, personas, ctx]);
+  }, [coreApproved, draftId, selectedPersonaId, personas, ctx, autoMode]);
 
   async function runStep(label: string, fn: () => Promise<Response>) {
     setBusy(true);
@@ -1092,6 +1098,13 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
                     <Check className="h-4 w-4" /> Approve &amp; Continue
                   </Button>
                 </div>
+              )}
+              {coreApproved && autoMode !== 'supervised' && autoMode !== 'overview' && projectId && channelId && (
+                <CanonicalTrackPicker
+                  projectId={projectId}
+                  channelId={channelId}
+                  onPick={(track) => pushStage({ router, pathname, searchParams, stage: 'production', trackId: track.id })}
+                />
               )}
             </CardContent>
           )}

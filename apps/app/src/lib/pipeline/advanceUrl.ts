@@ -18,10 +18,12 @@ interface TrackStageRuns {
   preview?: { status: StageRunStatus } | null;
   publish?: { status: StageRunStatus } | null;
 }
-interface TrackSnapshot {
+export type TrackMedium = 'blog' | 'video' | 'shorts' | 'podcast';
+export interface TrackSnapshot {
   id: string;
   status: string;
   paused: boolean;
+  medium?: TrackMedium;
   stageRuns?: TrackStageRuns;
 }
 interface StagesResponse {
