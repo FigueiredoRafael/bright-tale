@@ -113,7 +113,6 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
     })();
   }, [canonicalDraftId, perTrackDraftId, trackId, medium, derivedDraftId, abortController?.signal]);
 
-  const draftResult = ctx.context.stageResults.draft as { draftId?: string } | undefined;
   const creditSettings = ctx.context.creditSettings as { costBlog?: number; costVideo?: number; costShorts?: number; costPodcast?: number } | undefined;
   const autopilotConfig: AutopilotConfig | null | undefined = ctx.context.autopilotConfig;
   const autoMode = ctx.context.mode;
@@ -140,9 +139,10 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
   });
 
   const [phase, setPhase] = useState<Phase>('produce');
-  // Per-track derived id wins; fall back to legacy flat stageResults.draft for
-  // single-track projects without trackId-aware stage_runs.
-  const draftId = derivedDraftId ?? draftResult?.draftId ?? null;
+  // Per-track only. Never fall back to the legacy flat ctx.stageResults.draft
+  // — that points at the canonical/blog draft and leaks into the wrong track
+  // while /derive is in flight.
+  const draftId = derivedDraftId;
   const [producedContent, setProducedContent] = useState<string>('');
   const [producedDraftJson, setProducedDraftJson] = useState<Record<string, unknown> | null>(null);
   const [contentWarning, setContentWarning] = useState<string | null>(null);
@@ -823,7 +823,9 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
 
       {phase === 'produce' && !draftId && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-700 dark:text-amber-300">
-          Waiting for canonical core — complete the CanonicalEngine step first.
+          {canonicalDraftId
+            ? `Preparing ${medium} draft from canonical core…`
+            : 'Waiting for canonical core — complete the CanonicalEngine step first.'}
         </div>
       )}
 

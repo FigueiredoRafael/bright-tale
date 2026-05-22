@@ -237,4 +237,79 @@ describe('ProductionEngine — issue #210: derive-on-first-run', () => {
     );
     expect(wrongCall).toBeUndefined();
   });
+
+  // Regression: a real user produced BLOG content into the VIDEO track because
+  // the engine fell back to ctx.stageResults.draft.draftId (the legacy single-
+  // track flat shape, which points at the canonical/blog draft) while the
+  // /derive POST was still in flight. The Produce button must stay disabled
+  // until the per-track derive resolves — never leak the canonical id to /produce.
+  it('keeps Produce disabled while /derive is pending — never falls back to a stale flat-shape canonical id', async () => {
+    // Stage_runs that would populate the LEGACY (flat) draft bucket with the
+    // canonical/blog draft id — the very leak that caused the bug.
+    const LEGACY_DRAFT_FROM_BLOG = {
+      id: 'sr-draft-legacy-blog',
+      projectId: PROJECT_ID,
+      stage: 'draft',
+      status: 'completed',
+      attemptNo: 1,
+      finishedAt: '2026-05-22T09:50:00Z',
+      errorMessage: null,
+      outcomeJson: { draftId: 'canonical-draft-1' },
+      payloadRef: { kind: 'content_draft', id: 'canonical-draft-1' },
+      trackId: null,
+      publishTargetId: null,
+    };
+    // Hold the /derive response hostage so derivedDraftId stays null when the
+    // user clicks Produce.
+    let resolveDerive: (value: unknown) => void = () => {};
+    const derivePending = new Promise((resolve) => { resolveDerive = resolve; });
+    const calls: { url: string; init?: RequestInit }[] = [];
+    global.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url.includes('/stages')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            data: { stageRuns: [CANONICAL_RUN, LEGACY_DRAFT_FROM_BLOG], tracks: [], project: { mode: 'step-by-step', paused: false } },
+            error: null,
+          }),
+        });
+      }
+      if (url.includes('/derive') && init?.method === 'POST') {
+        return derivePending;
+      }
+      if (url.includes('/api/agents')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { agents: [] }, error: null }) });
+      }
+      if (url.match(/\/api\/content-drafts\/[^/]+$/)) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: { id: 'canonical-draft-1', draft_json: {} }, error: null }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: PROJECT_ROW, error: null }) });
+    });
+
+    render(wrapWithTrack('video', TRACK_ID));
+    await waitFor(() => expect(screen.queryByTestId('production-engine-root')).not.toBeNull());
+    // Let the derive POST fire and the flat-shape stageResults hydrate.
+    await new Promise((r) => setTimeout(r, 30));
+
+    const btn = screen.getByTestId('production-action-produce') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    // Even if the user attempted to click (some users do), no /produce call
+    // should leak to the canonical/flat-shape id.
+    fireEvent.click(btn);
+    await new Promise((r) => setTimeout(r, 30));
+    const leakedProduce = calls.find(
+      (c) => c.url.includes('/api/content-drafts/canonical-draft-1/produce') && c.init?.method === 'POST',
+    );
+    expect(leakedProduce).toBeUndefined();
+
+    // Unblock derive so the test cleans up.
+    resolveDerive({
+      ok: true,
+      json: () => Promise.resolve({ data: { id: 'derived-vid-xyz', created: true }, error: null }),
+    });
+  });
 });
