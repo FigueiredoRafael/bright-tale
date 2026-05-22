@@ -117,9 +117,15 @@ describe('BrainstormEngine — visual feedback', () => {
     const ideas = makeBrainstormIdeas();
     mountEngine({ ideas });
 
+    // Scope title assertions to the idea cards — the AI-pre-selected idea
+    // also has its title in the sticky footer, which would trip a global
+    // getByText. core_tension + target_audience are only inside the card.
+    const cards = screen.getAllByTestId('idea-card');
     for (const idea of ideas) {
+      const card = cards.find((c) => c.textContent?.includes(idea.title));
+      expect(card, `card for "${idea.title}" should be visible`).toBeTruthy();
       expect(
-        screen.getByText(idea.title),
+        within(card as HTMLElement).getByText(idea.title),
         `idea title "${idea.title}" should be visible`,
       ).toBeInTheDocument();
       expect(

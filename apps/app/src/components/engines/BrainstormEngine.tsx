@@ -221,6 +221,9 @@ export function BrainstormEngine({
     if (initialSession && typeof initialSession === 'object') {
       const sess = initialSession as Record<string, unknown>;
       setSessionId(sess.id as string);
+      if (sess.recommendation_json && typeof sess.recommendation_json === 'object') {
+        setRecommendation(sess.recommendation_json as { pick?: string; rationale?: string; content_warning?: string });
+      }
       if (sess.input_json && typeof sess.input_json === 'object') {
         const input = sess.input_json as Record<string, unknown>;
         setTopic((input.topic as string) || '');
@@ -437,18 +440,23 @@ export function BrainstormEngine({
     fire: handleRun,
   });
 
-  // Auto-pilot: when ideas finish generating and the AI flagged a `pick`,
-  // select that idea and advance the machine. Falls back to the first 'viable'
-  // verdict if no explicit pick is provided.
+  // Pre-select the AI's recommended idea (or fallback) once ideas land. In
+  // auto-pilot (supervised/overview) this also advances the pipeline. In
+  // step-by-step it only highlights the recommendation so the user sees what
+  // the AI picked — they still confirm via the sticky CTA. Without this the
+  // recommendation card was purely informational and no idea was selected,
+  // forcing an extra click even when the AI's choice was obvious.
   const autoPickedRef = useRef<string | null>(null);
   const autoMode = ctx.context.mode;
   const overviewMode = autoMode === 'overview';
+  const autopilotMode = autoMode === 'supervised' || autoMode === 'overview';
   const autoPaused = ctx.context.paused ?? false;
   useEffect(() => {
-    if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
+    if (autoPaused) return;
     if (brainstormResult?.ideaId) return;
     if (!ideas.length) return;
     if (running || regenerating) return;
+    if (selectedIdeaId) return;
 
     const matchByPick = recommendation?.pick
       ? ideas.find(
@@ -462,8 +470,18 @@ export function BrainstormEngine({
     const chosenId = chosen.id ?? chosen.idea_id;
     if (!chosenId || autoPickedRef.current === chosenId) return;
     autoPickedRef.current = chosenId;
-    ctx.setStageStatus('brainstorm', { status: 'Selecting idea' });
 
+    setSelectedIdeaId(chosenId);
+    tracker.trackAction('idea.auto_selected', {
+      ideaId: chosenId,
+      ideaTitle: chosen.title,
+      reason: matchByPick ? 'ai_pick' : firstViable ? 'first_viable' : 'fallback_first',
+      autopilot: autopilotMode,
+    });
+
+    if (!autopilotMode) return;
+
+    ctx.setStageStatus('brainstorm', { status: 'Selecting idea' });
     const result: BrainstormResult = {
       ideaId: chosenId,
       ideaTitle: chosen.title,
@@ -471,12 +489,6 @@ export function BrainstormEngine({
       ideaCoreTension: chosen.core_tension || '',
       brainstormSessionId: sessionId || undefined,
     };
-    setSelectedIdeaId(chosenId);
-    tracker.trackAction('idea.auto_selected', {
-      ideaId: chosenId,
-      ideaTitle: result.ideaTitle,
-      reason: matchByPick ? 'ai_pick' : firstViable ? 'first_viable' : 'fallback_first',
-    });
     if (projectId && chosen.title) {
       void fetch(`/api/projects/${projectId}`, {
         method: 'PUT',
@@ -491,12 +503,14 @@ export function BrainstormEngine({
     ctx.signalStageComplete('brainstorm', result as unknown as Record<string, unknown>);
   }, [
     autoMode,
+    autopilotMode,
     autoPaused,
     ideas,
     recommendation,
     brainstormResult,
     running,
     regenerating,
+    selectedIdeaId,
     sessionId,
     ctx,
     tracker,

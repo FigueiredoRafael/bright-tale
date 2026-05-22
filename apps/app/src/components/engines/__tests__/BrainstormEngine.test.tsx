@@ -128,6 +128,44 @@ describe('BrainstormEngine', () => {
     })
   })
 
+  it('pre-selects the AI-recommended idea by title when ideas hydrate in step-by-step mode', async () => {
+    const completedStages: Array<{ stage: string; result: Record<string, unknown> }> = []
+    render(
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+        onStageComplete={(stage, result) => completedStages.push({ stage, result })}
+      >
+        <BrainstormEngine
+          mode="generate"
+          initialIdeas={[
+            { id: 'idea-1', idea_id: 'BC-IDEA-001', title: 'Top Pick', verdict: 'viable', target_audience: 'devs', core_tension: 't1' },
+            { id: 'idea-2', idea_id: 'BC-IDEA-002', title: 'Runner Up', verdict: 'viable', target_audience: 'devs', core_tension: 't2' },
+          ]}
+          initialSession={{
+            id: 'bs-1',
+            input_json: { topic: 'test topic' },
+            recommendation_json: { pick: 'Top Pick', rationale: 'best fit' },
+          }}
+        />
+      </StandaloneProjectContextProvider>,
+    )
+
+    // Recommended idea ends up visually selected without user interaction.
+    await waitFor(() => {
+      const cards = screen.getAllByTestId('idea-card')
+      const top = cards.find((c) => c.textContent?.includes('Top Pick'))
+      expect(top?.getAttribute('data-selected')).toBe('true')
+    })
+    // Sticky footer's confirm CTA appears because an idea is selected.
+    expect(screen.getByRole('button', { name: /next.*research/i })).toBeInTheDocument()
+    // No auto-advance in step-by-step — user still has to click.
+    expect(completedStages).toEqual([])
+  })
+
   it('hydrates topic + niche from autopilotConfig.brainstorm on mount', () => {
     const autopilotConfig: AutopilotConfig = {
       defaultProvider: 'recommended',
