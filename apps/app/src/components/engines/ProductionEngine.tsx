@@ -25,6 +25,7 @@ import VideoStyleSelector from '@/components/production/VideoStyleSelector';
 import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { pushStage } from '@/lib/pipeline/advanceUrl';
+import { getTrackStageResults } from '@/lib/pipeline/stage-results-by-track';
 import type { VideoStyleConfig } from '@brighttale/shared/schemas/videoStyle';
 import type { AutopilotConfig } from '@brighttale/shared';
 import type { DraftResult } from './types';
@@ -70,6 +71,48 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
   function advanceToReview() {
     pushStage({ router, pathname, searchParams, stage: 'review', trackId });
   }
+  // Issue #210: per-track derive-on-first-run. The shared canonical row lives in
+  // the LEGACY bucket (track_id=null). The per-track derived row lives under
+  // tracks[trackId]. If the per-track row is absent on mount, POST /derive to
+  // copy canonical → per-track draft. Idempotent via canonical+track ref guard.
+  const stageResultsByTrack = ctx.context.stageResultsByTrack;
+  const perTrackBucket = getTrackStageResults(stageResultsByTrack, trackId);
+  const canonicalBucket = getTrackStageResults(stageResultsByTrack, null);
+  const canonicalDraftId = canonicalBucket.draft?.draftId ?? null;
+  const perTrackDraftId = perTrackBucket.draft?.draftId ?? null;
+  const [derivedDraftId, setDerivedDraftId] = useState<string | null>(perTrackDraftId);
+  const deriveAttemptRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (perTrackDraftId) {
+      if (derivedDraftId !== perTrackDraftId) setDerivedDraftId(perTrackDraftId);
+      return;
+    }
+    if (!canonicalDraftId) return;
+    const attemptKey = `${canonicalDraftId}::${trackId}`;
+    if (deriveAttemptRef.current === attemptKey) return;
+    deriveAttemptRef.current = attemptKey;
+    (async () => {
+      try {
+        const res = await fetch(`/api/content-drafts/${canonicalDraftId}/derive`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trackId, medium }),
+          signal: abortController?.signal,
+        });
+        const json = await res.json();
+        if (json?.error || !json?.data?.id) {
+          deriveAttemptRef.current = null;
+          return;
+        }
+        setDerivedDraftId(json.data.id as string);
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
+        deriveAttemptRef.current = null;
+      }
+    })();
+  }, [canonicalDraftId, perTrackDraftId, trackId, medium, derivedDraftId, abortController?.signal]);
+
   const draftResult = ctx.context.stageResults.draft as { draftId?: string } | undefined;
   const creditSettings = ctx.context.creditSettings as { costBlog?: number; costVideo?: number; costShorts?: number; costPodcast?: number } | undefined;
   const autopilotConfig: AutopilotConfig | null | undefined = ctx.context.autopilotConfig;
@@ -97,7 +140,9 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
   });
 
   const [phase, setPhase] = useState<Phase>('produce');
-  const draftId = draftResult?.draftId ?? null;
+  // Per-track derived id wins; fall back to legacy flat stageResults.draft for
+  // single-track projects without trackId-aware stage_runs.
+  const draftId = derivedDraftId ?? draftResult?.draftId ?? null;
   const [producedContent, setProducedContent] = useState<string>('');
   const [producedDraftJson, setProducedDraftJson] = useState<Record<string, unknown> | null>(null);
   const [contentWarning, setContentWarning] = useState<string | null>(null);
