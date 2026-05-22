@@ -21,8 +21,10 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import type {
   PipelineMachineContext,
   StageResultMap,
+  StageResultsByTrack,
   PauseReason,
 } from '@/lib/pipeline/types';
+import { deriveStageResultsByTrack } from '@/lib/pipeline/stage-results-by-track';
 import type { PipelineStage } from '@/components/engines/types';
 import type {
   BrainstormResult,
@@ -266,6 +268,7 @@ function buildDefaultContext(projectId: string): PipelineMachineContext {
     autopilotConfig: null,
     templateId: null,
     stageResults: {},
+    stageResultsByTrack: { shared: {}, tracks: {} },
     stageStatus: {},
     iterationCount: 0,
     lastError: null,
@@ -332,6 +335,7 @@ export function ProjectContextProvider({
         const stageRuns = stagesRes.data?.stageRuns ?? [];
 
         const derived = deriveStageResults(stageRuns);
+        const derivedByTrack = deriveStageResultsByTrack(stageRuns);
         const iterationCount = deriveIterationCount(stageRuns);
         const lastError = deriveLastError(stageRuns);
 
@@ -343,6 +347,7 @@ export function ProjectContextProvider({
           autopilotConfig: project.autopilot_config_json,
           templateId: project.template_id,
           stageResults: derived,
+          stageResultsByTrack: derivedByTrack,
           stageStatus,
           iterationCount,
           lastError,
@@ -509,6 +514,7 @@ export function StandaloneProjectContextProvider({
     autopilotConfig,
     templateId: null,
     stageResults,
+    stageResultsByTrack: { shared: {}, tracks: {} },
     stageStatus,
     iterationCount: 0,
     lastError: null,

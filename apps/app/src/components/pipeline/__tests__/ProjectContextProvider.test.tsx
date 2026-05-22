@@ -105,6 +105,12 @@ function ContextConsumer() {
       <div data-testid="ctx-lastError">{context.lastError ?? 'null'}</div>
       <div data-testid="ctx-brainstormIdeaId">{context.stageResults.brainstorm?.ideaId ?? 'none'}</div>
       <div data-testid="ctx-researchLevel">{context.stageResults.research?.researchLevel ?? 'none'}</div>
+      <div data-testid="ctx-trackBlogDraftId">
+        {context.stageResultsByTrack?.tracks?.['t-blog']?.draft?.draftId ?? 'none'}
+      </div>
+      <div data-testid="ctx-trackVideoDraftId">
+        {context.stageResultsByTrack?.tracks?.['t-video']?.draft?.draftId ?? 'none'}
+      </div>
       <div data-testid="ctx-pendingDrillIn">{context.pendingDrillIn ?? 'null'}</div>
       <div data-testid="ctx-returnPromptOpen">{String(context.returnPromptOpen)}</div>
       <button data-testid="btn-refetch" onClick={() => refetch()} />
@@ -299,6 +305,52 @@ describe('ProjectContextProvider — slice 4: derives stageResults', () => {
     render(<ProjectContextProvider projectId={PROJECT_ID}><ContextConsumer /></ProjectContextProvider>);
     await waitFor(() => screen.getByTestId('ctx-lastError'));
     expect(screen.getByTestId('ctx-lastError').textContent).toBe('AI quota exceeded');
+  });
+});
+
+describe('ProjectContextProvider — issue #210: stageResultsByTrack', () => {
+  it('exposes per-track draft buckets so two tracks do not collide', async () => {
+    global.fetch = makeFetchMock({
+      stagesResponse: {
+        data: {
+          stageRuns: [
+            BRAINSTORM_RUN,
+            {
+              id: 'sr-draft-blog',
+              projectId: PROJECT_ID,
+              stage: 'draft',
+              status: 'completed',
+              attemptNo: 1,
+              finishedAt: '2026-01-01T13:00:00Z',
+              errorMessage: null,
+              outcomeJson: { draftId: 'draft-blog' },
+              payloadRef: { kind: 'content_draft', id: 'draft-blog' },
+              trackId: 't-blog',
+              publishTargetId: null,
+            },
+            {
+              id: 'sr-draft-video',
+              projectId: PROJECT_ID,
+              stage: 'draft',
+              status: 'completed',
+              attemptNo: 1,
+              finishedAt: '2026-01-01T13:05:00Z',
+              errorMessage: null,
+              outcomeJson: { draftId: 'draft-video' },
+              payloadRef: { kind: 'content_draft', id: 'draft-video' },
+              trackId: 't-video',
+              publishTargetId: null,
+            },
+          ],
+          tracks: [],
+          project: { mode: 'step-by-step', paused: false },
+        },
+        error: null,
+      },
+    });
+    render(<ProjectContextProvider projectId={PROJECT_ID}><ContextConsumer /></ProjectContextProvider>);
+    await waitFor(() => expect(screen.getByTestId('ctx-trackBlogDraftId').textContent).toBe('draft-blog'));
+    expect(screen.getByTestId('ctx-trackVideoDraftId').textContent).toBe('draft-video');
   });
 });
 

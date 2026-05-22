@@ -18,8 +18,10 @@ import type {
   PublishResult,
 } from '@/components/engines/types'
 import type { AutopilotConfig } from '@brighttale/shared'
+import type { StageResultsByTrack } from './stage-results-by-track'
 
 export type { PipelineStage }
+export type { StageResultsByTrack }
 
 export type StageResultMap = {
   brainstorm?: BrainstormResult & { completedAt: string }
@@ -45,6 +47,10 @@ export interface PipelineMachineContext {
   autopilotConfig: AutopilotConfig | null
   templateId: string | null
   stageResults: StageResultMap
+  /** Issue #210 — per-track stage results.
+   *  `shared` holds project-scoped stages (brainstorm, research). `tracks` is keyed
+   *  by track UUID, with a legacy bucket (`__legacy__`) for runs missing trackId. */
+  stageResultsByTrack: StageResultsByTrack
   /** Transient per-stage in-flight metadata (isGenerating, activeSessionId, phase, …).
    *  Lives in context so it survives component remounts within the same session.
    *  Cleared automatically when a stage completes or is redone. */
