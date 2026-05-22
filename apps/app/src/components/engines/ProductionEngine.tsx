@@ -81,6 +81,8 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
   const canonicalDraftId = canonicalBucket.draft?.draftId ?? null;
   const perTrackDraftId = perTrackBucket.draft?.draftId ?? null;
   const [derivedDraftId, setDerivedDraftId] = useState<string | null>(perTrackDraftId);
+  const [deriveError, setDeriveError] = useState<string | null>(null);
+  const [deriveRetryNonce, setDeriveRetryNonce] = useState(0);
   const deriveAttemptRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -89,9 +91,10 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
       return;
     }
     if (!canonicalDraftId) return;
-    const attemptKey = `${canonicalDraftId}::${trackId}`;
+    const attemptKey = `${canonicalDraftId}::${trackId}::${deriveRetryNonce}`;
     if (deriveAttemptRef.current === attemptKey) return;
     deriveAttemptRef.current = attemptKey;
+    setDeriveError(null);
     (async () => {
       try {
         const res = await fetch(`/api/content-drafts/${canonicalDraftId}/derive`, {
@@ -103,15 +106,19 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
         const json = await res.json();
         if (json?.error || !json?.data?.id) {
           deriveAttemptRef.current = null;
+          const code = json?.error?.code ?? `HTTP_${res.status}`;
+          const message = json?.error?.message ?? 'Failed to derive per-track draft';
+          setDeriveError(`${code}: ${message}`);
           return;
         }
         setDerivedDraftId(json.data.id as string);
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
         deriveAttemptRef.current = null;
+        setDeriveError(err instanceof Error ? err.message : 'Network error contacting /derive');
       }
     })();
-  }, [canonicalDraftId, perTrackDraftId, trackId, medium, derivedDraftId, abortController?.signal]);
+  }, [canonicalDraftId, perTrackDraftId, trackId, medium, derivedDraftId, abortController?.signal, deriveRetryNonce]);
 
   const creditSettings = ctx.context.creditSettings as { costBlog?: number; costVideo?: number; costShorts?: number; costPodcast?: number } | undefined;
   const autopilotConfig: AutopilotConfig | null | undefined = ctx.context.autopilotConfig;
@@ -822,11 +829,28 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
       />
 
       {phase === 'produce' && !draftId && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-700 dark:text-amber-300">
-          {canonicalDraftId
-            ? `Preparing ${medium} draft from canonical core…`
-            : 'Waiting for canonical core — complete the CanonicalEngine step first.'}
-        </div>
+        deriveError ? (
+          <div className="rounded-lg border border-red-500/40 bg-red-500/5 p-3 text-sm text-red-700 dark:text-red-300 flex items-start justify-between gap-3" data-testid="derive-error-banner">
+            <div>
+              <div className="font-medium">Couldn’t prepare the {medium} draft.</div>
+              <div className="text-xs opacity-80 mt-0.5">{deriveError}</div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setDeriveRetryNonce((n) => n + 1)}
+              data-testid="derive-retry"
+            >
+              Retry
+            </Button>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-700 dark:text-amber-300">
+            {canonicalDraftId
+              ? `Preparing ${medium} draft from canonical core…`
+              : 'Waiting for canonical core — complete the CanonicalEngine step first.'}
+          </div>
+        )
       )}
 
       {phase === 'produce' && draftId && (

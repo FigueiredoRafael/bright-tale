@@ -15,7 +15,9 @@ create unique index one_draft_per_project_track
   on public.content_drafts(project_id, track_id)
   where track_id is not null;
 
--- At most one canonical (shared) row per project.
-create unique index one_canonical_draft_per_project
-  on public.content_drafts(project_id)
-  where track_id is null and project_id is not null;
+-- NOTE: a canonical-uniqueness index (one row with track_id IS NULL per project)
+-- is intentionally deferred. Legacy projects can have multiple content_drafts
+-- rows with track_id=null (the pre-#210 production dispatcher forked rows
+-- without setting track_id), and creating the constraint here would fail mid-
+-- migration. A follow-up migration will reinstate it after a backfill that
+-- attaches orphan rows to their tracks.
