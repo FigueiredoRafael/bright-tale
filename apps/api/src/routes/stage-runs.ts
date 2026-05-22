@@ -346,7 +346,7 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
    * clobber a real dispatcher write). The legacy orchestrator calls this on
    * every persist; cheap when there is nothing to mirror.
    */
-  fastify.post<{ Params: { projectId: string } }>(
+  fastify.post<{ Params: { projectId: string }; Body: { trackId?: string | null } }>(
     '/:projectId/stage-runs/mirror-from-legacy',
     { preHandler: [authenticate] },
     async (request, reply) => {
@@ -355,16 +355,29 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
         const userId = (request as unknown as { userId?: string }).userId;
         if (!userId) throw new ApiError(401, 'Unauthorized', 'UNAUTHORIZED');
 
+        // Per-track scope. When the caller (signalStageComplete from a
+        // multi-track engine) passes a trackId, the mirror writes the
+        // matching per-track row instead of polluting the track_id=null
+        // legacy slot. Issue #210 follow-up.
+        const trackId =
+          typeof request.body?.trackId === 'string' && request.body.trackId.length > 0
+            ? request.body.trackId
+            : null;
+
         const sb: Sb = createServiceClient();
         await assertProjectOwner(projectId, userId, sb);
 
-        // Coalesce concurrent calls for the same project — see
-        // `mirrorInFlight` comment above.
-        const existing = mirrorInFlight.get(projectId);
-        const promise = existing ?? mirrorFromLegacy(sb, projectId).finally(() => {
-          mirrorInFlight.delete(projectId);
-        });
-        if (!existing) mirrorInFlight.set(projectId, promise);
+        // Coalesce concurrent calls for the same (project, track) — different
+        // tracks must not share a promise, otherwise track A's mirror would
+        // hide track B's call.
+        const coalesceKey = trackId ? `${projectId}::${trackId}` : projectId;
+        const existing = mirrorInFlight.get(coalesceKey);
+        const promise =
+          existing ??
+          mirrorFromLegacy(sb, projectId, { trackId }).finally(() => {
+            mirrorInFlight.delete(coalesceKey);
+          });
+        if (!existing) mirrorInFlight.set(coalesceKey, promise);
         const outcome = await promise;
 
         // T2.1: lazy multi-track migration. Runs AFTER the legacy mirror so the

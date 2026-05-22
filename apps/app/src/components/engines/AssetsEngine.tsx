@@ -226,9 +226,13 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   const brainstormResult = ctx.context.stageResults?.brainstorm as Record<string, unknown> | undefined;
   const researchResult = ctx.context.stageResults?.research as Record<string, unknown> | undefined;
   const draftResult = ctx.context.stageResults?.draft as { draftId?: string; draftTitle?: string; personaId?: string; personaName?: string; personaSlug?: string; personaWpAuthorId?: number | null } | undefined;
-  // Issue #210 — per-track bucket wins; fall back to flat for legacy projects.
+  // Issue #210 — per-track bucket wins. When trackId is provided, never fall
+  // back to the flat ctx.stageResults.draft (canonical/blog leak). Flat is only
+  // safe for legacy single-track projects where trackId is absent.
   const perTrackDraft = getTrackStageResults(ctx.context.stageResultsByTrack, trackId ?? null).draft;
-  const draftId = perTrackDraft?.draftId ?? draftResult?.draftId;
+  const draftId = trackId
+    ? perTrackDraft?.draftId
+    : perTrackDraft?.draftId ?? draftResult?.draftId;
 
   // Self-hydrate the draft when the prop is null but ctx.stageResults.draft
   // already carries a draftId (server-driven path via EngineHost — EngineHost
@@ -856,7 +860,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
         const featuredUrl = existingAssets.find((a) => a.role === 'featured_image')?.url;
         tracker.trackCompleted({ draftId, assetCount: existingAssets.length, assetIds, featuredImageUrl: featuredUrl });
         const noUploadResult: AssetsResult = { assetIds, featuredImageUrl: featuredUrl };
-        ctx.signalStageComplete('assets', noUploadResult as unknown as Record<string, unknown>);
+        ctx.signalStageComplete('assets', noUploadResult as unknown as Record<string, unknown>, trackId);
         await advanceFromAssets();
         return;
       }
@@ -963,7 +967,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
         featuredImageUrl: featuredUrl,
       });
       const uploadResult: AssetsResult = { assetIds, featuredImageUrl: featuredUrl };
-      ctx.signalStageComplete('assets', uploadResult as unknown as Record<string, unknown>);
+      ctx.signalStageComplete('assets', uploadResult as unknown as Record<string, unknown>, trackId);
       await advanceFromAssets();
     } catch (e) {
       tracker.trackFailed(e instanceof Error ? e.message : 'Failed to save images');
@@ -1039,7 +1043,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
                 assetIds: [item.id as string],
                 featuredImageUrl: (item.url as string | undefined) || undefined,
               };
-              ctx.signalStageComplete('assets', importResult as unknown as Record<string, unknown>);
+              ctx.signalStageComplete('assets', importResult as unknown as Record<string, unknown>, trackId);
               void advanceFromAssets();
             }}
           />

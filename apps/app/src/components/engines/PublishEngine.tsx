@@ -67,10 +67,14 @@ export function PublishEngine({ draft, publishTargetId, trackId }: PublishEngine
   const assetsResult     = context.stageResults.assets;
   const previewResult    = context.stageResults.preview;
 
-  // Issue #210 — per-track bucket wins; fall back to flat shape / prop for
-  // legacy single-track projects.
+  // Issue #210 — per-track bucket wins. When trackId is provided, never fall
+  // back to the flat ctx.stageResults.draft (canonical/blog leak). The `draft`
+  // prop is also legacy-shape and must be ignored for multi-track projects.
+  // Flat fallback is only safe for legacy single-track projects.
   const perTrackDraft = getTrackStageResults(context.stageResultsByTrack, trackId ?? null).draft;
-  const draftId = perTrackDraft?.draftId ?? draftResult?.draftId ?? draft?.id ?? '';
+  const draftId = trackId
+    ? perTrackDraft?.draftId ?? ''
+    : perTrackDraft?.draftId ?? draftResult?.draftId ?? draft?.id ?? '';
 
   // Self-hydrate the draft row when EngineHost mounts us without a `draft` prop.
   // Mirrors ReviewEngine's pattern — EngineHost only forwards `stageRun`, so the
@@ -180,8 +184,8 @@ export function PublishEngine({ draft, publishTargetId, trackId }: PublishEngine
     const wpId = localDraft?.wordpress_post_id ?? null;
     if (!url || wpId == null) return;
     publishHealedRef.current = true;
-    signalStageComplete('publish', { wordpressPostId: wpId, publishedUrl: url } as unknown as Record<string, unknown>);
-  }, [context.stageResults.publish, localDraft?.published_url, localDraft?.wordpress_post_id, signalStageComplete]);
+    signalStageComplete('publish', { wordpressPostId: wpId, publishedUrl: url } as unknown as Record<string, unknown>, trackId);
+  }, [context.stageResults.publish, localDraft?.published_url, localDraft?.wordpress_post_id, signalStageComplete, trackId]);
 
   function handlePublish(params: { mode: string; scheduledDate?: string }) {
     if (publishing) return;
@@ -244,11 +248,11 @@ export function PublishEngine({ draft, publishTargetId, trackId }: PublishEngine
       // the sidebar's Publish tile stays uncompleted and stageResults.publish is
       // never populated (downstream UI loses the published URL). Fire the
       // signal so PATCH→mirror writes stageResults + the stage_run.
-      signalStageComplete('publish', publishResult as unknown as Record<string, unknown>);
+      signalStageComplete('publish', publishResult as unknown as Record<string, unknown>, trackId);
       setPublishing(false);
       setPublishBody(null);
     },
-    [draftId, tracker, overviewMode, signalStageComplete],
+    [draftId, tracker, overviewMode, signalStageComplete, trackId],
   );
 
   const handleStreamError = useCallback(

@@ -82,8 +82,11 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
   const brainstormResult = ctx.context.stageResults.brainstorm as { ideaId?: string; ideaTitle?: string; ideaVerdict?: string; ideaCoreTension?: string; brainstormSessionId?: string } | undefined;
   const researchResult = ctx.context.stageResults.research as { researchSessionId?: string; approvedCardsCount?: number; researchLevel?: string; primaryKeyword?: string; secondaryKeywords?: string[]; searchIntent?: string } | undefined;
   const draftResult = ctx.context.stageResults.draft as { draftId?: string; draftTitle?: string } | undefined;
-  // Issue #210 — per-track bucket wins; fall back to flat shape for legacy /
-  // single-track projects.
+  // Issue #210 — per-track bucket wins. When trackId is provided we must NEVER
+  // fall back to the flat ctx.stageResults.draft — that points at the
+  // canonical/blog draft and leaks blog content into the wrong track's review
+  // (same leak we removed from ProductionEngine). The flat fallback is only
+  // safe for legacy single-track projects where trackId is absent.
   const perTrackDraft = getTrackStageResults(ctx.context.stageResultsByTrack, trackId ?? null).draft;
   const pipelineSettings = ctx.context.pipelineSettings;
   const machineIterationCount = ctx.context.iterationCount ?? 0;
@@ -92,7 +95,9 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
   const autoApproveThreshold = autopilotConfig?.review?.autoApproveThreshold ?? pipelineSettings?.reviewApproveScore ?? 90;
   const autoMode = ctx.context.mode;
   const overviewMode = autoMode === 'overview';
-  const draftId = perTrackDraft?.draftId ?? draftResult?.draftId ?? '';
+  const draftId = trackId
+    ? perTrackDraft?.draftId ?? ''
+    : perTrackDraft?.draftId ?? draftResult?.draftId ?? '';
 
   // Local mutable view of the draft — initialized from the prop, kept in sync as
   // the engine refetches after status changes (review API, manual import, override).
@@ -899,7 +904,11 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
                         feedbackJson: fb,
                         iterationCount: draftView.iteration_count,
                       };
-                      ctx.signalStageComplete('review', result as unknown as Record<string, unknown>);
+                      ctx.signalStageComplete(
+                        'review',
+                        result as unknown as Record<string, unknown>,
+                        trackId,
+                      );
                       await advanceFromReview();
                     }}
                     className="gap-2"
@@ -1083,13 +1092,17 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
               const verdict = (fresh.review_verdict as string | null) ?? 'pending';
               const tier = deriveTier(fmt ?? fb);
               const iterationCount = (fresh.iteration_count as number | null) ?? 1;
-              ctx.signalStageComplete('review', {
-                score,
-                qualityTier: tier,
-                verdict,
-                feedbackJson: fb,
-                iterationCount,
-              });
+              ctx.signalStageComplete(
+                'review',
+                {
+                  score,
+                  qualityTier: tier,
+                  verdict,
+                  feedbackJson: fb,
+                  iterationCount,
+                },
+                trackId,
+              );
             }
           }}
           onFailed={(msg) => {
@@ -1117,13 +1130,17 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
                 const verdict = (fresh.review_verdict as string | null) ?? 'pending';
                 const tier = deriveTier(fmt ?? fb);
                 const iterationCount = (fresh.iteration_count as number | null) ?? 1;
-                ctx.signalStageComplete('review', {
-                  score,
-                  qualityTier: tier,
-                  verdict,
-                  feedbackJson: fb,
-                  iterationCount,
-                });
+                ctx.signalStageComplete(
+                  'review',
+                  {
+                    score,
+                    qualityTier: tier,
+                    verdict,
+                    feedbackJson: fb,
+                    iterationCount,
+                  },
+                  trackId,
+                );
               }
             } else {
               setReviewing(false);

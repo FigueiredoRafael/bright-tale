@@ -805,7 +805,7 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
                   draftTitle: '',
                   draftContent: producedContent,
                 };
-                ctx.signalStageComplete('draft', result as unknown as Record<string, unknown>);
+                ctx.signalStageComplete('draft', result as unknown as Record<string, unknown>, trackId);
                 advanceToReview();
               }}>
                 <Check className="h-4 w-4 mr-2" /> Done <ArrowRight className="h-4 w-4 ml-2" />

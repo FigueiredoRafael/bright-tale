@@ -210,9 +210,13 @@ export function PreviewEngine({ trackId }: PreviewEngineProps = {}) {
   const draftResult = ctx.context.stageResults?.draft as { draftId?: string; draftTitle?: string; personaId?: string; personaName?: string; personaSlug?: string; personaWpAuthorId?: number | null } | undefined;
   const reviewResult = ctx.context.stageResults?.review as { score?: number; verdict?: string; feedbackJson?: unknown } | undefined;
   const assetsResult = ctx.context.stageResults?.assets as { assetIds?: string[]; featuredImageUrl?: string } | undefined;
-  // Issue #210 — per-track bucket wins; fall back to flat for legacy projects.
+  // Issue #210 — per-track bucket wins. When trackId is provided, never fall
+  // back to the flat ctx.stageResults.draft (canonical/blog leak). Flat is only
+  // safe for legacy single-track projects where trackId is absent.
   const perTrackDraft = getTrackStageResults(ctx.context.stageResultsByTrack, trackId ?? null).draft;
-  const draftId = perTrackDraft?.draftId ?? draftResult?.draftId ?? '';
+  const draftId = trackId
+    ? perTrackDraft?.draftId ?? ''
+    : perTrackDraft?.draftId ?? draftResult?.draftId ?? '';
 
   // Overview-mode / autopilot selectors
   const overviewMode = ctx.context.mode === 'overview';
@@ -438,8 +442,8 @@ export function PreviewEngine({ trackId }: PreviewEngineProps = {}) {
       autoDerived: true,
     };
 
-    ctx.signalStageComplete('preview', result as unknown as Record<string, unknown>);
-  }, [overviewMode, previewEnabled, busy, draft, assets, reviewResult, draftResult, ctx]);
+    ctx.signalStageComplete('preview', result as unknown as Record<string, unknown>, trackId);
+  }, [overviewMode, previewEnabled, busy, draft, assets, reviewResult, draftResult, ctx, trackId]);
 
   // Build asset map for quick lookup
   const assetMap = useMemo(() => {
@@ -516,7 +520,7 @@ export function PreviewEngine({ trackId }: PreviewEngineProps = {}) {
       seoOverrides: result.seoOverrides,
     });
 
-    ctx.signalStageComplete('preview', result as unknown as Record<string, unknown>);
+    ctx.signalStageComplete('preview', result as unknown as Record<string, unknown>, trackId);
     advanceToPublish();
   };
 

@@ -428,23 +428,37 @@ export const productionProduce = inngest.createFunction(
       // had (often aborted from a prior track-abort cascade) and the sidebar
       // never flips to ✓. Resolve the latest production stage_run for this
       // (project, track) and update it so engine-driven runs persist too.
+      //
+      // Step-by-step mode never fans out from Canonical (only autopilot does
+      // — see orchestrator.enqueueProductionForNewTrack), so a newly-picked
+      // track has NO production stage_run row. In that case we INSERT one
+      // as 'completed' here, otherwise the sidebar's Production indicator
+      // for that track stays blank forever.
       let resolvedStageRunId: string | null = stageRunId ?? null;
+      let resolvedTrackId: string | null = null;
       if (!resolvedStageRunId && projectId) {
-        const { data: track } = await sb
-          .from('tracks')
-          .select('id')
-          .eq('project_id', projectId)
-          .eq('medium', type)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (track?.id) {
+        // Prefer the draft's own track_id (set on per-track derived drafts
+        // by /derive); falls back to track-lookup by medium for legacy /
+        // single-track projects where the draft predates Issue #210.
+        resolvedTrackId = (draft.track_id as string | null | undefined) ?? null;
+        if (!resolvedTrackId) {
+          const { data: track } = await sb
+            .from('tracks')
+            .select('id')
+            .eq('project_id', projectId)
+            .eq('medium', type)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (track?.id) resolvedTrackId = track.id as string;
+        }
+        if (resolvedTrackId) {
           const { data: latestRun } = await sb
             .from('stage_runs')
             .select('id')
             .eq('project_id', projectId)
             .eq('stage', 'production')
-            .eq('track_id', track.id)
+            .eq('track_id', resolvedTrackId)
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
@@ -468,6 +482,23 @@ export const productionProduce = inngest.createFunction(
         await inngest.send({
           name: 'pipeline/stage.run.finished',
           data: { stageRunId: resolvedStageRunId, projectId },
+        });
+      } else if (projectId && resolvedTrackId) {
+        // No existing stage_run for this (project, track, production) — happens
+        // in step-by-step mode where the orchestrator never fanned out. Insert
+        // a fresh 'completed' row so the sidebar reflects the produce.
+        const now = new Date().toISOString();
+        await sb.from('stage_runs').insert({
+          project_id: projectId,
+          stage: 'production',
+          status: 'completed',
+          attempt_no: 1,
+          track_id: resolvedTrackId,
+          publish_target_id: null,
+          payload_ref: { kind: 'content_draft', id: draftId },
+          started_at: now,
+          finished_at: now,
+          updated_at: now,
         });
       }
 

@@ -68,6 +68,9 @@ interface StageRunInsert {
   started_at: string | null;
   finished_at: string | null;
   outcome_json: Record<string, unknown> | null;
+  /** Per-track scope. Null for shared stages (brainstorm, research, canonical)
+   *  or for legacy single-track mirror calls without an explicit trackId. */
+  track_id: string | null;
 }
 
 export interface MirrorOutcome {
@@ -76,7 +79,23 @@ export interface MirrorOutcome {
   reason?: string;
 }
 
-export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<MirrorOutcome> {
+/** Stages that live under a Track in the v2 sidebar. When mirrorFromLegacy is
+ *  called with a trackId, only these stages get scoped to that track — shared
+ *  stages (brainstorm, research, canonical) always live at the project level. */
+const PER_TRACK_STAGES: ReadonlySet<Stage> = new Set([
+  'draft',
+  'review',
+  'assets',
+  'preview',
+  'publish',
+]);
+
+export async function mirrorFromLegacy(
+  sb: Sb,
+  projectId: string,
+  opts?: { trackId?: string | null },
+): Promise<MirrorOutcome> {
+  const trackId = opts?.trackId ?? null;
   const { data: projectRow } = await sb
     .from('projects')
     .select('id, current_stage, mode, paused, pipeline_state_json')
@@ -99,12 +118,22 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
   // the row the v2 stages endpoint shows (it dedupes to latest-per-stage).
   // If the latest is non-terminal we must update it even when an older
   // terminal row exists.
-  const { data: existingRows } = await sb
+  //
+  // Per-track scope: when trackId is supplied we only consider rows from THAT
+  // track (plus shared stages with track_id=null). Without this, a sibling
+  // track's terminal review row would shadow this track's nothing-yet state
+  // and the mirror would skip the insert we actually need.
+  let existingRowsQuery = sb
     .from('stage_runs')
-    .select('id, stage, status, outcome_json, created_at, finished_at')
+    .select('id, stage, status, track_id, outcome_json, created_at, finished_at')
     .eq('project_id', projectId)
     .order('created_at', { ascending: false });
-  const existingByStage = bucketExistingRows(existingRows ?? []);
+  if (trackId) {
+    // PostgREST: rows where track_id matches OR is null (shared stages).
+    existingRowsQuery = existingRowsQuery.or(`track_id.eq.${trackId},track_id.is.null`);
+  }
+  const { data: existingRows } = await existingRowsQuery;
+  const existingByStage = bucketExistingRows(existingRows ?? [], trackId);
 
   const desired: StageRunInsert[] = [];
 
@@ -178,6 +207,10 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
     }
 
     if (wasCompleted) {
+      // Per-track call: shared stages (brainstorm, research, canonical) are
+      // owned by the no-track mirror path — skip them so we don't redundantly
+      // re-check rows that aren't part of this track's slot.
+      if (trackId && !PER_TRACK_STAGES.has(stage)) continue;
       const payloadRef = resolvePayloadRef(stage, payloads);
       if (!payloadRef) continue;
       const ts = resolveTimestamps(stage, payloads);
@@ -192,6 +225,7 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
         started_at: ts.startedAt,
         finished_at: ts.finishedAt,
         outcome_json: legacyResult ?? null,
+        track_id: PER_TRACK_STAGES.has(stage) ? trackId : null,
       });
       continue;
     }
@@ -201,6 +235,10 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
     // invariant this stage was effectively skipped. Mark it so the v2 view
     // renders it as a terminal-skipped tile rather than the default-Queued
     // fallback or a stale `queued` row from a stalled dispatch attempt.
+    //
+    // Per-track call: only gap-fill per-track stages — we'd corrupt the
+    // shared brainstorm/research view if we wrote 'skipped' rows for them.
+    if (trackId && !PER_TRACK_STAGES.has(stage)) continue;
     desired.push({
       project_id: projectId,
       stage,
@@ -211,6 +249,7 @@ export async function mirrorFromLegacy(sb: Sb, projectId: string): Promise<Mirro
       started_at: null,
       finished_at: null,
       outcome_json: null,
+      track_id: PER_TRACK_STAGES.has(stage) ? trackId : null,
     });
   }
 
@@ -316,11 +355,23 @@ type StageBucket = {
   nonTerminal?: { id: string };
 };
 
-/** `rows` MUST be ordered by created_at desc so the first one we see per stage is the latest. */
-function bucketExistingRows(rows: unknown[]): Map<string, StageBucket> {
+/** `rows` MUST be ordered by created_at desc so the first one we see per stage is the latest.
+ *  When `trackId` is provided, per-track stage rows are bucketed only when their
+ *  `track_id` matches; shared-stage rows (track_id=null) are always bucketed. */
+function bucketExistingRows(
+  rows: unknown[],
+  trackId: string | null,
+): Map<string, StageBucket> {
   const byStage = new Map<string, StageBucket>();
   for (const r of rows as Record<string, unknown>[]) {
     const stage = r.stage as string;
+    const rowTrackId = (r.track_id as string | null | undefined) ?? null;
+    // Filter out sibling-track rows for per-track stages — a video-track call
+    // must not see the blog-track's terminal review row, otherwise the mirror
+    // assumes "already done" and skips its insert.
+    if (trackId && PER_TRACK_STAGES.has(stage as Stage)) {
+      if (rowTrackId !== trackId) continue;
+    }
     const status = r.status as string;
     const id = r.id as string;
     const isTerminal = TERMINAL_STATUSES.includes(status);
@@ -370,11 +421,20 @@ async function upsertStageRuns(
     // inserted. Without this, both processes' buckets see "nothing terminal"
     // and both insert, producing duplicate completed rows (the exact bug
     // observed on 2026-05-14 for project 50cd4595).
-    const { data: fresh } = await sb
+    //
+    // Per-track scope: the re-check must filter by track_id too, otherwise a
+    // sibling track's terminal row blocks this track's insert.
+    let freshQuery = sb
       .from('stage_runs')
       .select('id, status')
       .eq('project_id', projectId)
-      .eq('stage', sr.stage)
+      .eq('stage', sr.stage);
+    if (sr.track_id === null) {
+      freshQuery = freshQuery.is('track_id', null);
+    } else {
+      freshQuery = freshQuery.eq('track_id', sr.track_id);
+    }
+    const { data: fresh } = await freshQuery
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();

@@ -64,7 +64,16 @@ export interface ProjectContextValue {
    * Standalone mode (StandaloneProjectContextProvider): updates local state and
    * invokes the host-provided `onStageComplete` callback.
    */
-  signalStageComplete: (stage: PipelineStage, result: Record<string, unknown>) => void;
+  /**
+   * @param trackId — when set, the mirror writes a per-track stage_run row so
+   *   the multi-track sidebar shows the completion under the right Track. Omit
+   *   for shared stages (brainstorm, research) and legacy single-track flows.
+   */
+  signalStageComplete: (
+    stage: PipelineStage,
+    result: Record<string, unknown>,
+    trackId?: string | null,
+  ) => void;
 }
 
 const ProjectContext = createContext<ProjectContextValue | null>(null);
@@ -415,7 +424,7 @@ export function ProjectContextProvider({
   // (`pipeline_state_json.stageResults`) is the source the engine writes, but
   // the v2 view reads from `stage_runs`. The mirror is the bridge between them.
   const signalStageComplete = useCallback(
-    (stage: PipelineStage, result: Record<string, unknown>) => {
+    (stage: PipelineStage, result: Record<string, unknown>, trackId?: string | null) => {
       const pid = context.projectId;
       if (!pid || pid.startsWith('standalone-')) return;
       // Fire-and-forget PATCH → mirror → refetch.
@@ -432,7 +441,7 @@ export function ProjectContextProvider({
           fetch(`/api/projects/${pid}/stage-runs/mirror-from-legacy`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: '{}',
+            body: JSON.stringify(trackId ? { trackId } : {}),
           }).catch(() => {
             // Non-fatal — refetch will surface whatever state did land.
           }),
@@ -541,7 +550,10 @@ export function StandaloneProjectContextProvider({
   const standaloneSetPauseReason = useCallback((v: PauseReason | null) => setPauseReasonState(v), []);
 
   const signalStageComplete = useCallback(
-    (stage: PipelineStage, result: Record<string, unknown>) => {
+    (stage: PipelineStage, result: Record<string, unknown>, _trackId?: string | null) => {
+      // Standalone provider has no server seam → trackId is moot here. The
+      // engine still passes it through; we discard it so the signature matches
+      // the server-driven provider's contract.
       const resultWithTs = { ...result, completedAt: new Date().toISOString() };
       setStageResults((prev) => ({ ...prev, [stage]: resultWithTs }));
       onStageCompleteRef.current?.(stage, result);
