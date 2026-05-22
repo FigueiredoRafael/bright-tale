@@ -93,9 +93,33 @@ const PER_TRACK_STAGES: ReadonlySet<Stage> = new Set([
 export async function mirrorFromLegacy(
   sb: Sb,
   projectId: string,
-  opts?: { trackId?: string | null },
+  opts?: { trackId?: string | null; stage?: string | null },
 ): Promise<MirrorOutcome> {
   const trackId = opts?.trackId ?? null;
+  // When a specific stage is supplied (per-track engine signal), restrict the
+  // mirror to JUST that stage. Without this, the loop walks every entry in
+  // pipeline_state_json.stageResults — which is project-wide and last-wins —
+  // and inserts blog's review/assets/preview/publish results into the video
+  // track with the WRONG outcome_json (the user-reported bug: video Review/
+  // Assets/Preview/Publish showing as ✓ before they were ever run).
+  //
+  // The mirror only knows the 7 legacy stages (brainstorm…publish). The newer
+  // 'production' / 'canonical' stages are handled by other writers; when the
+  // caller passes one of those, the per-track loop simply produces no match
+  // and the mirror no-ops on those stages.
+  const targetStage = ((): Stage | null => {
+    const s = opts?.stage;
+    if (!s) return null;
+    return (STAGES as readonly string[]).includes(s) ? (s as Stage) : null;
+  })();
+  // Caller named a stage outside the mirror's 7-stage vocabulary
+  // ('production' / 'canonical') — that signal is owned by another writer
+  // (production-produce / canonical-dispatch), so the mirror should not run
+  // at all. Otherwise the loop would happily fall through and mirror every
+  // OTHER stage in stageResults, defeating the surgical scoping.
+  if (opts?.stage && !targetStage) {
+    return { kind: 'noop', mirrored: 0, reason: 'stage owned by another writer' };
+  }
   const { data: projectRow } = await sb
     .from('projects')
     .select('id, current_stage, mode, paused, pipeline_state_json')
@@ -154,6 +178,12 @@ export async function mirrorFromLegacy(
 
   for (let i = 0; i <= rightmostIdx; i++) {
     const stage = STAGES[i];
+    // Surgical per-stage mirror: when the caller named a specific stage AND
+    // a trackId, skip every other slot. The flat stageResults dict is
+    // project-wide, so without this filter we'd mirror sibling tracks'
+    // completions into this track (the original user-reported bug).
+    // Legacy single-track callers (no trackId) keep the multi-stage loop.
+    if (trackId && targetStage && stage !== targetStage) continue;
     const wasCompleted = !!stageResults[stage];
     const latest = existingByStage.get(stage)?.latest;
 

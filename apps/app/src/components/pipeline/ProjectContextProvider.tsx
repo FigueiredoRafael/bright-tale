@@ -441,7 +441,10 @@ export function ProjectContextProvider({
           fetch(`/api/projects/${pid}/stage-runs/mirror-from-legacy`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(trackId ? { trackId } : {}),
+            // Pass both trackId AND the specific stage being signaled so the
+            // mirror writes a single (stage, track) row instead of looping
+            // through every entry in the project-wide stageResults dict.
+            body: JSON.stringify(trackId ? { trackId, stage } : { stage }),
           }).catch(() => {
             // Non-fatal — refetch will surface whatever state did land.
           }),
