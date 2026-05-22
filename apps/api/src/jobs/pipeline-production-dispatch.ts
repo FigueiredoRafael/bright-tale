@@ -11,6 +11,8 @@
 import { inngest } from './client.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { markFailed, markRunning } from '../lib/pipeline/stage-run-writer.js';
+import { deriveDraft } from '../lib/content-drafts/derive.js';
+import { ApiError } from '../lib/api/errors.js';
 
 interface StageRequestedEvent {
   name: 'pipeline/stage.requested';
@@ -127,59 +129,46 @@ export const pipelineProductionDispatch = inngest.createFunction(
       return;
     }
 
-    const { data: canonicalDraft } = await sb
-      .from('content_drafts')
-      .select(
-        'id, project_id, type, canonical_core_json, research_session_id, idea_id, persona_id, channel_id, org_id, user_id',
-      )
-      .eq('id', canonicalDraftId)
-      .maybeSingle();
-    if (!canonicalDraft) {
-      await markFailed(sb, stageRunId, {
-        ...ctx,
-        errorMessage: `Canonical content_draft ${canonicalDraftId} not found`,
-      });
-      return;
-    }
-
     const modelTier = (input.modelTier as string | undefined) ?? 'standard';
     const provider = input.provider as string | undefined;
     const model = input.model as string | undefined;
     const productionParams = (input.productionParams as Record<string, unknown> | undefined) ?? null;
 
-    // Reuse the canonical content_draft when its type already matches the
-    // Track medium (single-Track / first-Track case). Fork otherwise: a new
-    // row with the canonical_core_json copied so the produce agent has the
-    // shared foundation but writes a medium-specific draft_json.
+    // Issue #210 — auto-pilot uses the same deriveDraft helper that the
+    // step-by-step ProductionEngine calls via POST /api/content-drafts/:id/derive.
+    // Always derives a per-track row (track_id set) with canonical_core_json
+    // copied + empty draft_json. Idempotent at DB level via the partial unique
+    // index on (project_id, track_id). The "reuse canonical when type matches"
+    // optimization is gone: the canonical row stays untouched (track_id=null),
+    // every track gets its own derived row.
+    if (!userId) {
+      await markFailed(sb, stageRunId, {
+        ...ctx,
+        errorMessage: 'Could not resolve user_id for derive',
+      });
+      return;
+    }
     let draftId: string;
-    if (canonicalDraft.type === medium) {
-      draftId = canonicalDraft.id as string;
-    } else {
-      const { data: forked, error: insertError } = await sb
-        .from('content_drafts')
-        .insert({
-          org_id: canonicalDraft.org_id ?? orgId,
-          user_id: canonicalDraft.user_id ?? userId,
-          channel_id: canonicalDraft.channel_id ?? project.channel_id ?? null,
-          project_id: projectId,
-          research_session_id: canonicalDraft.research_session_id,
-          idea_id: canonicalDraft.idea_id,
-          persona_id: canonicalDraft.persona_id,
-          type: medium,
-          status: 'draft',
-          canonical_core_json: canonicalDraft.canonical_core_json,
-          production_params: productionParams,
-        })
-        .select()
-        .single();
-      if (insertError || !forked?.id) {
-        await markFailed(sb, stageRunId, {
-          ...ctx,
-          errorMessage: `Failed to fork content_draft: ${(insertError as { message?: string } | undefined)?.message ?? 'unknown'}`,
-        });
-        return;
-      }
-      draftId = forked.id as string;
+    try {
+      const result = await deriveDraft(sb, {
+        sourceId: canonicalDraftId,
+        trackId,
+        medium,
+        userId,
+      });
+      draftId = result.id;
+    } catch (err) {
+      const msg =
+        err instanceof ApiError
+          ? `${err.code}: ${err.message}`
+          : err instanceof Error
+            ? err.message
+            : 'Unknown error';
+      await markFailed(sb, stageRunId, {
+        ...ctx,
+        errorMessage: `Failed to derive per-track draft: ${msg}`,
+      });
+      return;
     }
 
     await markRunning(sb, stageRunId, {
@@ -191,8 +180,8 @@ export const pipelineProductionDispatch = inngest.createFunction(
       name: 'production/produce',
       data: {
         draftId,
-        orgId: canonicalDraft.org_id ?? orgId,
-        userId: canonicalDraft.user_id ?? userId,
+        orgId,
+        userId,
         type: medium,
         modelTier,
         provider,

@@ -19,6 +19,10 @@ vi.mock('../client.js', () => ({
   },
 }));
 
+vi.mock('../../lib/content-drafts/derive.js', () => ({
+  deriveDraft: vi.fn(),
+}));
+
 const STAGE_RUN_ID = 'sr-production';
 const PROJECT_ID = 'proj-xyz';
 const TRACK_ID = 'track-blog';
@@ -105,8 +109,16 @@ vi.mock('../../lib/supabase/index.js', () => ({
 }));
 
 describe('pipeline-production-dispatch', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+
+    const { deriveDraft } = await import('../../lib/content-drafts/derive.js');
+    (deriveDraft as ReturnType<typeof vi.fn>).mockReset();
+    // Sensible default — most tests want the helper to succeed.
+    (deriveDraft as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: FORKED_DRAFT_ID,
+      created: true,
+    });
 
     stageRunsUpdateMock = vi.fn().mockReturnValue({
       eq: vi.fn().mockResolvedValue({ error: null }),
@@ -183,10 +195,15 @@ describe('pipeline-production-dispatch', () => {
     expect(draftInsertMock).not.toHaveBeenCalled();
   });
 
-  it('reuses canonical content_draft when Track medium matches, emits production/produce', async () => {
+  it('always derives a per-track content_draft via deriveDraft — uses returned id (issue #210)', async () => {
+    const { deriveDraft } = await import('../../lib/content-drafts/derive.js');
+    (deriveDraft as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'derived-blog-id', created: true });
+
     const { pipelineProductionDispatch } = await import('../pipeline-production-dispatch.js');
     const { inngest } = await import('../client.js');
 
+    // canonical type 'blog' matches Track medium 'blog' — STILL derives a
+    // per-track row (canonical stays untouched with track_id=null).
     await (
       pipelineProductionDispatch as unknown as (args: {
         event: { data: { stageRunId: string; stage: string; projectId: string } };
@@ -195,23 +212,36 @@ describe('pipeline-production-dispatch', () => {
       event: { data: { stageRunId: STAGE_RUN_ID, stage: 'production', projectId: PROJECT_ID } },
     });
 
-    // medium ('blog') matches canonical draft type → no fork
+    expect(deriveDraft).toHaveBeenCalledTimes(1);
+    const args = (deriveDraft as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(args).toEqual({
+      sourceId: CANONICAL_DRAFT_ID,
+      trackId: TRACK_ID,
+      medium: 'blog',
+      userId: USER_ID,
+    });
+
+    // The dispatcher no longer writes content_drafts itself — deriveDraft owns
+    // the INSERT (and idempotency via the partial unique index).
     expect(draftInsertMock).not.toHaveBeenCalled();
 
     expect(stageRunsUpdateMock).toHaveBeenCalled();
     const updateRow = stageRunsUpdateMock.mock.calls[0][0];
     expect(updateRow.status).toBe('running');
-    expect(updateRow.payload_ref).toEqual({ kind: 'content_draft', id: CANONICAL_DRAFT_ID });
+    expect(updateRow.payload_ref).toEqual({ kind: 'content_draft', id: 'derived-blog-id' });
 
     expect(inngest.send).toHaveBeenCalledTimes(1);
     const event = (inngest.send as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(event.name).toBe('production/produce');
-    expect(event.data.draftId).toBe(CANONICAL_DRAFT_ID);
+    expect(event.data.draftId).toBe('derived-blog-id');
     expect(event.data.stageRunId).toBe(STAGE_RUN_ID);
     expect(event.data.type).toBe('blog');
   });
 
-  it('forks a new content_draft when Track medium differs from canonical type', async () => {
+  it('derives with the Track medium even when canonical type differs', async () => {
+    const { deriveDraft } = await import('../../lib/content-drafts/derive.js');
+    (deriveDraft as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'derived-video-id', created: true });
+
     trackRow = { id: 'track-video', project_id: PROJECT_ID, medium: 'video', status: 'active' };
     stageRunRow = { ...stageRunRow, track_id: 'track-video' };
 
@@ -226,17 +256,48 @@ describe('pipeline-production-dispatch', () => {
       event: { data: { stageRunId: STAGE_RUN_ID, stage: 'production', projectId: PROJECT_ID } },
     });
 
-    expect(draftInsertMock).toHaveBeenCalled();
-    const forkedRow = draftInsertMock.mock.calls[0][0];
-    expect(forkedRow.project_id).toBe(PROJECT_ID);
-    expect(forkedRow.type).toBe('video');
-    // canonical_core_json copied from the canonical draft
-    expect(forkedRow.canonical_core_json).toEqual({ thesis: 't' });
+    expect(deriveDraft).toHaveBeenCalledTimes(1);
+    expect((deriveDraft as ReturnType<typeof vi.fn>).mock.calls[0][1]).toEqual({
+      sourceId: CANONICAL_DRAFT_ID,
+      trackId: 'track-video',
+      medium: 'video',
+      userId: USER_ID,
+    });
 
     const event = (inngest.send as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(event.name).toBe('production/produce');
-    expect(event.data.draftId).toBe(FORKED_DRAFT_ID);
+    expect(event.data.draftId).toBe('derived-video-id');
     expect(event.data.type).toBe('video');
+  });
+
+  it('marks the Stage Run failed when deriveDraft throws (e.g. missing canonical)', async () => {
+    const { deriveDraft } = await import('../../lib/content-drafts/derive.js');
+    const { ApiError } = await import('../../lib/api/errors.js');
+    (deriveDraft as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new ApiError(404, 'Source draft not found', 'NOT_FOUND'),
+    );
+
+    const { pipelineProductionDispatch } = await import('../pipeline-production-dispatch.js');
+    const { inngest } = await import('../client.js');
+
+    await (
+      pipelineProductionDispatch as unknown as (args: {
+        event: { data: { stageRunId: string; stage: string; projectId: string } };
+      }) => Promise<void>
+    )({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'production', projectId: PROJECT_ID } },
+    });
+
+    // No produce event fired
+    expect(inngest.send).not.toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'production/produce' }),
+    );
+    // Stage Run updated to failed with the derive error surfaced
+    expect(stageRunsUpdateMock).toHaveBeenCalled();
+    const updateRow = stageRunsUpdateMock.mock.calls[0][0];
+    expect(updateRow.status).toBe('failed');
+    expect(updateRow.error_message).toContain('NOT_FOUND');
+    expect(updateRow.error_message).toContain('Source draft not found');
   });
 
   it('fails the Stage Run when track_id is missing', async () => {
@@ -262,3 +323,4 @@ describe('pipeline-production-dispatch', () => {
     expect(updateRow.status).toBe('failed');
   });
 });
+
