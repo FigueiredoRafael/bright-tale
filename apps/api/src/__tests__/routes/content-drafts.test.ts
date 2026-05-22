@@ -58,8 +58,12 @@ vi.mock('@/lib/ai/channelContext', () => ({
 vi.mock('@/lib/axiom', () => ({
   logAiUsage: vi.fn(),
 }));
+vi.mock('@/lib/content-drafts/derive', () => ({
+  deriveDraft: vi.fn(),
+}));
 
 import { contentDraftsRoutes } from '@/routes/content-drafts';
+import { deriveDraft } from '@/lib/content-drafts/derive';
 
 const AUTH_USER = { 'x-internal-key': 'test-key', 'x-user-id': 'user-1' };
 
@@ -340,5 +344,54 @@ describe('POST /content-drafts/:id/generate-asset-prompts', () => {
     expect(res.statusCode).toBe(500);
     const body = JSON.parse(res.payload);
     expect(body.error).toBeTruthy();
+  });
+});
+
+describe('POST /content-drafts/:id/derive', () => {
+  it('validates body and returns the derived draft id', async () => {
+    (deriveDraft as any).mockResolvedValueOnce({ id: 'derived-1', created: true });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/content-drafts/src-1/derive',
+      headers: AUTH_USER,
+      payload: { trackId: '11111111-1111-1111-1111-111111111111', medium: 'video' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ data: { id: 'derived-1', created: true }, error: null });
+    expect(deriveDraft).toHaveBeenCalledWith(expect.anything(), {
+      sourceId: 'src-1',
+      trackId: '11111111-1111-1111-1111-111111111111',
+      medium: 'video',
+      userId: 'user-1',
+    });
+  });
+
+  it('returns 400 on invalid medium', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/content-drafts/src-1/derive',
+      headers: AUTH_USER,
+      payload: { trackId: '11111111-1111-1111-1111-111111111111', medium: 'newsletter' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('propagates ApiError status from the helper', async () => {
+    const err: any = new Error('Track does not belong');
+    err.status = 409;
+    err.statusCode = 409;
+    err.code = 'CONFLICT';
+    (deriveDraft as any).mockRejectedValueOnce(err);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/content-drafts/src-1/derive',
+      headers: AUTH_USER,
+      payload: { trackId: '11111111-1111-1111-1111-111111111111', medium: 'video' },
+    });
+
+    expect(res.statusCode).toBe(409);
   });
 });

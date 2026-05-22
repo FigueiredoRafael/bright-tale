@@ -24,6 +24,8 @@ import {
   blogProductionSettingsSchema,
   reviseSchema,
 } from "@brighttale/shared/schemas/pipeline";
+import { deriveDraftRequestSchema } from "@brighttale/shared/schemas/content-drafts";
+import { deriveDraft } from "../lib/content-drafts/derive.js";
 import { inngest } from "../jobs/client.js";
 import { emitJobEvent } from "../jobs/emitter.js";
 import {
@@ -2648,6 +2650,36 @@ export async function contentDraftsRoutes(
           },
           error: null,
         });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  /**
+   * POST /:id/derive — derive a per-track draft from a canonical/source draft.
+   * Copies canonical_core_json + identity fields, sets type/track_id, and is idempotent
+   * per (project_id, track_id). Used by ProductionEngine when a track first runs.
+   */
+  fastify.post(
+    "/:id/derive",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        if (!request.userId)
+          throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        const { id } = request.params as { id: string };
+        const body = deriveDraftRequestSchema.parse(request.body ?? {});
+
+        const sb = createServiceClient();
+        const result = await deriveDraft(sb, {
+          sourceId: id,
+          trackId: body.trackId,
+          medium: body.medium,
+          userId: request.userId,
+        });
+
+        return reply.send({ data: result, error: null });
       } catch (error) {
         return sendError(reply, error);
       }

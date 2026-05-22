@@ -119,6 +119,16 @@ export {
   type PodcastQuery,
 } from "./podcasts";
 
+// Content Drafts (cross-medium) schemas
+export {
+  mediumSchema,
+  deriveDraftRequestSchema,
+  deriveDraftResponseSchema,
+  type Medium,
+  type DeriveDraftRequest,
+  type DeriveDraftResponse,
+} from "./content-drafts";
+
 // Ideas Library schemas
 export {
   listIdeasQuerySchema,
