@@ -266,3 +266,50 @@ describe('AssetsEngine — import flow signal', () => {
     })
   })
 })
+
+// ---- issue #210 / Slice 4 — per-track draftId routing ----
+
+describe('AssetsEngine — issue #210: per-track draftId', () => {
+  it('uses the per-track draftId for /api/assets?content_id (not the flat shape)', async () => {
+    const seenUrls: string[] = []
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      seenUrls.push(String(url))
+      return {
+        ok: true,
+        json: async () => ({ data: { assets: [], briefs: [], suggested_count: 0 }, error: null }),
+      } as unknown as Response
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        autopilotConfig={null}
+        initialStageResults={{
+          // Flat shape points at the canonical / wrong-track draft id.
+          draft: { draftId: 'wrong-flat-id', draftTitle: 'flat', draftContent: '', completedAt: new Date().toISOString() },
+        }}
+        initialStageResultsByTrack={{
+          shared: {},
+          tracks: {
+            't-blog': {
+              draft: { draftId: 'blog-track-id', draftTitle: 'blog', draftContent: '', completedAt: new Date().toISOString() },
+            },
+          },
+        }}
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
+        {/* Pass through `draft` with the per-track id so internal hydration uses the right row */}
+        <AssetsEngine mode="generate" draft={{ id: 'blog-track-id', status: 'approved', draft_json: {} }} trackId="t-blog" />
+      </StandaloneProjectContextProvider>,
+    )
+
+    await waitFor(() => {
+      expect(seenUrls.some((u) => u.includes('/api/assets?content_id=blog-track-id'))).toBe(true)
+    })
+    expect(seenUrls.some((u) => u.includes('/api/assets?content_id=wrong-flat-id'))).toBe(false)
+  })
+})

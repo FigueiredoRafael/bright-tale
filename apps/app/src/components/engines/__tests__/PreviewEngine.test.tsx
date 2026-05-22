@@ -204,3 +204,52 @@ describe('PreviewEngine', () => {
 
 })
 
+// ---- issue #210 / Slice 4 — per-track draftId routing ----
+
+describe('PreviewEngine — issue #210: per-track draftId', () => {
+  it('loads the draft from the per-track draftId (not the flat shape)', async () => {
+    const seenUrls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        seenUrls.push(String(url))
+        const u = String(url)
+        if (u.match(/\/api\/content-drafts\/[^/?]+$/)) {
+          return { ok: true, json: async () => ({ data: STUB_DRAFT, error: null }) } as Response
+        }
+        return { ok: true, json: async () => ({ data: [], error: null }) } as Response
+      }),
+    )
+
+    render(
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        autopilotConfig={null}
+        initialStageResults={{
+          ...PREVIEW_STAGE_RESULTS,
+          draft: { draftId: 'wrong-flat-id', draftTitle: 'flat', draftContent: '', completedAt: new Date().toISOString() },
+        }}
+        initialStageResultsByTrack={{
+          shared: {},
+          tracks: {
+            't-blog': {
+              draft: { draftId: 'blog-track-id', draftTitle: 'blog', draftContent: '', completedAt: new Date().toISOString() },
+            },
+          },
+        }}
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
+        <PreviewEngine trackId="t-blog" />
+      </StandaloneProjectContextProvider>,
+    )
+
+    await waitFor(() => {
+      expect(seenUrls.some((u) => u.includes('/api/content-drafts/blog-track-id'))).toBe(true)
+    })
+    expect(seenUrls.some((u) => u.includes('/api/content-drafts/wrong-flat-id'))).toBe(false)
+  })
+})
+

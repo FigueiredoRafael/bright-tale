@@ -15,7 +15,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import { ProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
+import { ProjectContextProvider, StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
+import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
 import { PublishEngine } from '../PublishEngine'
 import type { AutopilotConfig } from '@brighttale/shared'
 
@@ -482,5 +483,61 @@ describe('PublishEngine', () => {
     // (still intact in legacy). In the new host, this becomes a 14.2 concern.
     // Test passes if no body captured (paused project shouldn't trigger in new path).
     expect(capturedBodies.length).toBe(0)
+  })
+})
+
+// ---- issue #210 / Slice 4 — per-track draftId routing ----
+
+describe('PublishEngine — issue #210: per-track draftId', () => {
+  it('self-hydrates from the per-track draftId (not the flat shape)', async () => {
+    const seenUrls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        seenUrls.push(String(url))
+        const u = String(url)
+        if (u.match(/\/api\/content-drafts\/[^/?]+$/)) {
+          const id = u.match(/\/api\/content-drafts\/([^/?]+)/)![1]
+          return {
+            ok: true,
+            json: async () => ({
+              data: { id, title: 'T', status: 'reviewed', wordpress_post_id: null, published_url: null },
+              error: null,
+            }),
+          } as Response
+        }
+        return { ok: true, json: async () => ({ data: null, error: null }) } as Response
+      }),
+    )
+
+    render(
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        autopilotConfig={null}
+        initialStageResults={{
+          draft: { draftId: 'wrong-flat-id', draftTitle: 'flat', draftContent: '', completedAt: new Date().toISOString() },
+        }}
+        initialStageResultsByTrack={{
+          shared: {},
+          tracks: {
+            't-blog': {
+              draft: { draftId: 'blog-track-id', draftTitle: 'blog', draftContent: '', completedAt: new Date().toISOString() },
+            },
+          },
+        }}
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
+        {/* No `draft` prop → self-hydrate fetch fires for derived draftId */}
+        <PublishEngine trackId="t-blog" />
+      </StandaloneProjectContextProvider>,
+    )
+
+    await waitFor(() => {
+      expect(seenUrls.some((u) => u.includes('/api/content-drafts/blog-track-id'))).toBe(true)
+    })
+    expect(seenUrls.some((u) => u.includes('/api/content-drafts/wrong-flat-id'))).toBe(false)
   })
 })

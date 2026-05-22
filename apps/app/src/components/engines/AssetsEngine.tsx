@@ -25,6 +25,7 @@ import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
 import { getPersonaTheme } from './utils/personaTheme';
 import { fetchTracks, nextTrackStage, pushStage } from '@/lib/pipeline/advanceUrl';
+import { getTrackStageResults } from '@/lib/pipeline/stage-results-by-track';
 import type { AssetsResult, PipelineContext, PipelineStage } from './types';
 
 /* ── Types ── */
@@ -82,6 +83,8 @@ interface AssetsEngineProps {
   imageProviderOverride?: ImageProvider;
   /** Bumped by orchestrator to re-arm autopilot after a quota error recovery. */
   retrySignal?: number;
+  /** Issue #210 — when set, draftId resolves from ctx.stageResultsByTrack[trackId]. */
+  trackId?: string;
 }
 
 interface NoBriefSection {
@@ -197,7 +200,7 @@ interface PendingUpload {
 
 /* ── Component ── */
 
-export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProviderOverride, retrySignal = 0 }: AssetsEngineProps) {
+export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProviderOverride, retrySignal = 0, trackId }: AssetsEngineProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -223,7 +226,9 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   const brainstormResult = ctx.context.stageResults?.brainstorm as Record<string, unknown> | undefined;
   const researchResult = ctx.context.stageResults?.research as Record<string, unknown> | undefined;
   const draftResult = ctx.context.stageResults?.draft as { draftId?: string; draftTitle?: string; personaId?: string; personaName?: string; personaSlug?: string; personaWpAuthorId?: number | null } | undefined;
-  const draftId = draftResult?.draftId;
+  // Issue #210 — per-track bucket wins; fall back to flat for legacy projects.
+  const perTrackDraft = getTrackStageResults(ctx.context.stageResultsByTrack, trackId ?? null).draft;
+  const draftId = perTrackDraft?.draftId ?? draftResult?.draftId;
 
   // Self-hydrate the draft when the prop is null but ctx.stageResults.draft
   // already carries a draftId (server-driven path via EngineHost — EngineHost

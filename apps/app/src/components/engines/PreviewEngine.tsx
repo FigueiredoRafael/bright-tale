@@ -25,6 +25,7 @@ import { ContextBanner } from './ContextBanner';
 import { markdownToHtml } from '@/lib/utils';
 import { derivePreview } from '@/lib/pipeline/derivePreview';
 import { pushStage } from '@/lib/pipeline/advanceUrl';
+import { getTrackStageResults } from '@/lib/pipeline/stage-results-by-track';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { PipelineContext, PipelineStage, PreviewResult } from './types';
 
@@ -185,7 +186,12 @@ function composedHtmlFromMarkdown(
  * The component is rendered by PipelineOrchestrator only; standalone usage would
  * require <StandaloneEngineHost stage="preview"> like ReviewEngine/AssetsEngine. */
 
-export function PreviewEngine() {
+/** Issue #210 — when set, draftId resolves from ctx.stageResultsByTrack[trackId]. */
+interface PreviewEngineProps {
+  trackId?: string;
+}
+
+export function PreviewEngine({ trackId }: PreviewEngineProps = {}) {
   const ctx = useProjectContext();
   const abortController = usePipelineAbort();
   const router = useRouter();
@@ -204,7 +210,9 @@ export function PreviewEngine() {
   const draftResult = ctx.context.stageResults?.draft as { draftId?: string; draftTitle?: string; personaId?: string; personaName?: string; personaSlug?: string; personaWpAuthorId?: number | null } | undefined;
   const reviewResult = ctx.context.stageResults?.review as { score?: number; verdict?: string; feedbackJson?: unknown } | undefined;
   const assetsResult = ctx.context.stageResults?.assets as { assetIds?: string[]; featuredImageUrl?: string } | undefined;
-  const draftId = draftResult?.draftId ?? '';
+  // Issue #210 — per-track bucket wins; fall back to flat for legacy projects.
+  const perTrackDraft = getTrackStageResults(ctx.context.stageResultsByTrack, trackId ?? null).draft;
+  const draftId = perTrackDraft?.draftId ?? draftResult?.draftId ?? '';
 
   // Overview-mode / autopilot selectors
   const overviewMode = ctx.context.mode === 'overview';

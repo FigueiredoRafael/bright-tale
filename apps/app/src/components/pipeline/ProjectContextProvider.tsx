@@ -476,6 +476,8 @@ export function ProjectContextProvider({
 export interface StandaloneProjectContextProviderProps {
   initialStage?: PipelineStage;
   initialStageResults?: StageResultMap;
+  /** Issue #210 — seed per-track stage results in standalone tests. */
+  initialStageResultsByTrack?: StageResultsByTrack;
   pipelineSettings?: PipelineSettings;
   creditSettings?: CreditSettings;
   channelId?: string | null;
@@ -488,6 +490,7 @@ export interface StandaloneProjectContextProviderProps {
 
 export function StandaloneProjectContextProvider({
   initialStageResults = {},
+  initialStageResultsByTrack = { shared: {}, tracks: {} },
   pipelineSettings = DEFAULT_PIPELINE_SETTINGS,
   creditSettings = DEFAULT_CREDIT_SETTINGS,
   channelId = null,
@@ -514,7 +517,7 @@ export function StandaloneProjectContextProvider({
     autopilotConfig,
     templateId: null,
     stageResults,
-    stageResultsByTrack: { shared: {}, tracks: {} },
+    stageResultsByTrack: initialStageResultsByTrack,
     stageStatus,
     iterationCount: 0,
     lastError: null,

@@ -32,6 +32,7 @@ import { ApplePodcastsPublishForm } from './publish-drivers/ApplePodcastsPublish
 import { RssPublishForm } from './publish-drivers/RssPublishForm';
 import { fetchPublishTarget } from '@/lib/api/publishTargets';
 import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
+import { getTrackStageResults } from '@/lib/pipeline/stage-results-by-track';
 import type { PipelineContext, PipelineStage, PublishResult } from './types';
 import type { PublishTarget } from '@brighttale/shared';
 
@@ -46,9 +47,11 @@ interface DraftRow {
 interface PublishEngineProps {
   draft?: DraftRow | null;
   publishTargetId?: string;
+  /** Issue #210 — when set, draftId resolves from ctx.stageResultsByTrack[trackId]. */
+  trackId?: string;
 }
 
-export function PublishEngine({ draft, publishTargetId }: PublishEngineProps) {
+export function PublishEngine({ draft, publishTargetId, trackId }: PublishEngineProps) {
   // ── Context from server-driven provider ───────────────────────────────────
   const { context, setStageStatus, signalStageComplete } = useProjectContext();
 
@@ -64,7 +67,10 @@ export function PublishEngine({ draft, publishTargetId }: PublishEngineProps) {
   const assetsResult     = context.stageResults.assets;
   const previewResult    = context.stageResults.preview;
 
-  const draftId = draftResult?.draftId ?? draft?.id ?? '';
+  // Issue #210 — per-track bucket wins; fall back to flat shape / prop for
+  // legacy single-track projects.
+  const perTrackDraft = getTrackStageResults(context.stageResultsByTrack, trackId ?? null).draft;
+  const draftId = perTrackDraft?.draftId ?? draftResult?.draftId ?? draft?.id ?? '';
 
   // Self-hydrate the draft row when EngineHost mounts us without a `draft` prop.
   // Mirrors ReviewEngine's pattern — EngineHost only forwards `stageRun`, so the

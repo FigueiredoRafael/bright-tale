@@ -100,3 +100,62 @@ describe('ReviewEngine — stage advance', () => {
     })
   })
 })
+
+// ---- issue #210 / Slice 4 — per-track draftId routing ----
+
+describe('ReviewEngine — issue #210: per-track draftId', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        const u = String(url)
+        if (u.includes('/api/agents') || u.includes('/api/agent-prompts')) {
+          return { ok: true, json: async () => ({ data: { agents: [] }, error: null }) } as Response
+        }
+        if (u.match(/\/api\/content-drafts\/[^/?]+$/)) {
+          // Echo the requested id back so the engine has a populated draft row.
+          const id = u.match(/\/api\/content-drafts\/([^/?]+)/)![1]
+          return { ok: true, json: async () => ({ data: { id, title: 't', draft_json: {} }, error: null }) } as Response
+        }
+        return { ok: true, json: async () => ({ data: null, error: null }) } as Response
+      }),
+    )
+  })
+
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('hydrates the draft from the per-track draftId (not the flat shape)', async () => {
+    render(
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        initialStageResults={{
+          // Flat shape points at a wrong id (e.g. canonical / different track).
+          draft: { draftId: 'wrong-flat-id', draftTitle: 'flat', draftContent: '', completedAt: new Date().toISOString() },
+        }}
+        initialStageResultsByTrack={{
+          shared: {},
+          tracks: {
+            't-video': {
+              draft: { draftId: 'video-track-id', draftTitle: 'video', draftContent: '', completedAt: new Date().toISOString() },
+            },
+          },
+        }}
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
+        {/* No `draft` prop → engine self-hydrates via /api/content-drafts/{draftId} */}
+        <ReviewEngine draft={null} trackId="t-video" />
+      </StandaloneProjectContextProvider>,
+    )
+
+    await waitFor(() => {
+      const fetchMock = vi.mocked(global.fetch)
+      const urls = fetchMock.mock.calls.map((c) => String(c[0]))
+      expect(urls.some((u) => u.includes('/api/content-drafts/video-track-id'))).toBe(true)
+    })
+    const urls = vi.mocked(global.fetch).mock.calls.map((c) => String(c[0]))
+    expect(urls.some((u) => u.includes('/api/content-drafts/wrong-flat-id'))).toBe(false)
+  })
+})

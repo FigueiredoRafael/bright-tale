@@ -20,6 +20,7 @@ import { useUpgrade } from '@/components/billing/UpgradeProvider';
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { fetchTracks, nextTrackStage, pushStage } from '@/lib/pipeline/advanceUrl';
+import { getTrackStageResults } from '@/lib/pipeline/stage-results-by-track';
 import type { PipelineContext, PipelineStage, ReviewResult } from './types';
 import { deriveTier, isApprovedTier } from '@brighttale/shared';
 import type { AutopilotConfig } from '@brighttale/shared';
@@ -30,6 +31,9 @@ import type { AutopilotConfig } from '@brighttale/shared';
  */
 interface ReviewEngineProps {
   draft: Record<string, unknown> | null;
+  /** Issue #210 — when set, the engine reads draftId from the per-track bucket
+   *  in ctx.stageResultsByTrack[trackId] instead of the flat stageResults.draft. */
+  trackId?: string;
 }
 
 const REVIEW_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
@@ -50,7 +54,7 @@ const TIER_COLOR: Record<string, string> = {
   not_requested: 'bg-gray-500/20 text-gray-700 border-gray-500/50',
 };
 
-export function ReviewEngine({ draft }: ReviewEngineProps) {
+export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
   const ctx = useProjectContext();
   const abortController = usePipelineAbort();
   const router = useRouter();
@@ -78,6 +82,9 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
   const brainstormResult = ctx.context.stageResults.brainstorm as { ideaId?: string; ideaTitle?: string; ideaVerdict?: string; ideaCoreTension?: string; brainstormSessionId?: string } | undefined;
   const researchResult = ctx.context.stageResults.research as { researchSessionId?: string; approvedCardsCount?: number; researchLevel?: string; primaryKeyword?: string; secondaryKeywords?: string[]; searchIntent?: string } | undefined;
   const draftResult = ctx.context.stageResults.draft as { draftId?: string; draftTitle?: string } | undefined;
+  // Issue #210 — per-track bucket wins; fall back to flat shape for legacy /
+  // single-track projects.
+  const perTrackDraft = getTrackStageResults(ctx.context.stageResultsByTrack, trackId ?? null).draft;
   const pipelineSettings = ctx.context.pipelineSettings;
   const machineIterationCount = ctx.context.iterationCount ?? 0;
   const autopilotConfig: AutopilotConfig | null | undefined = ctx.context.autopilotConfig;
@@ -85,7 +92,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
   const autoApproveThreshold = autopilotConfig?.review?.autoApproveThreshold ?? pipelineSettings?.reviewApproveScore ?? 90;
   const autoMode = ctx.context.mode;
   const overviewMode = autoMode === 'overview';
-  const draftId = draftResult?.draftId ?? '';
+  const draftId = perTrackDraft?.draftId ?? draftResult?.draftId ?? '';
 
   // Local mutable view of the draft — initialized from the prop, kept in sync as
   // the engine refetches after status changes (review API, manual import, override).
