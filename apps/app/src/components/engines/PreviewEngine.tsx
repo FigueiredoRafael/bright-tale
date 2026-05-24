@@ -28,6 +28,7 @@ import { pushStage } from '@/lib/pipeline/advanceUrl';
 import { getTrackStageResults } from '@/lib/pipeline/stage-results-by-track';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { PipelineContext, PipelineStage, PreviewResult } from './types';
+import { PreviewEngineVideo } from './PreviewEngineVideo';
 
 interface ContentAsset {
   id: string;
@@ -189,9 +190,16 @@ function composedHtmlFromMarkdown(
 /** Issue #210 — when set, draftId resolves from ctx.stageResultsByTrack[trackId]. */
 interface PreviewEngineProps {
   trackId?: string;
+  /**
+   * Issue #214 — when set to 'video', routes to the video read-only layout
+   * (inventory pills + viewer card + teleprompter) instead of the WP HTML preview.
+   * Consistent with the trackMedium prop pattern used on AssetsEngine.
+   * NOTE: orchestrator wiring is a follow-up; this prop is set by the caller.
+   */
+  trackMedium?: 'blog' | 'video';
 }
 
-export function PreviewEngine({ trackId }: PreviewEngineProps = {}) {
+export function PreviewEngine({ trackId, trackMedium }: PreviewEngineProps = {}) {
   const ctx = useProjectContext();
   const abortController = usePipelineAbort();
   const router = useRouter();
@@ -555,6 +563,20 @@ export function PreviewEngine({ trackId }: PreviewEngineProps = {}) {
             <span>Loading preview data...</span>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  // ── Video routing (issue #214) ──────────────────────────────────────────────
+  // When the track medium is video, delegate to the read-only video layout.
+  if (trackMedium === 'video') {
+    return (
+      <div className="space-y-4">
+        <ContextBanner stage="preview" context={trackerContext} onBack={navigate} />
+        <PreviewEngineVideo
+          draftJson={draft.draft_json}
+          onApprove={handleApprove}
+        />
       </div>
     );
   }

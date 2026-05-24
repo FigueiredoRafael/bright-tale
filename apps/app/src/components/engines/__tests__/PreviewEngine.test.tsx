@@ -204,6 +204,207 @@ describe('PreviewEngine', () => {
 
 })
 
+// ---- issue #214 — video routing + read-only layout ----
+
+const STUB_VIDEO_DRAFT = {
+  id: 'video-draft-1',
+  title: 'The China Copycat Trap',
+  draft_json: {
+    video_title: 'The China Copycat Trap: Why Most Founders Steal the Wrong Lesson',
+    video_description: `Copying China sounds easy. It rarely is.\n\nIn this video we unpack the part of the China story founders usually skip.`,
+    pinned_comment: 'Sources and links: brightcurios.com/china — drop questions below.',
+    tags: ['china business', 'entrepreneurship', 'startup lessons'],
+    lower_thirds: [
+      { at: '0:42', label: 'The setup: copying was real' },
+      { at: '2:30', label: 'The hidden engine' },
+      { at: '4:15', label: 'What to steal instead' },
+    ],
+    script: {
+      hook: { content: 'China did not win just because it copied.' },
+      problem: { content: 'A lot of founders hear one simplified idea.' },
+      chapters: [
+        {
+          title: 'Yes, Copying Was Part of the Story',
+          content: 'Let\'s start with the part people usually oversimplify.',
+          duration: '1:48',
+        },
+        {
+          title: 'The Hidden Engine Nobody Imports',
+          content: 'Here\'s the part the copy-paste reading skips.',
+          duration: '1:45',
+        },
+      ],
+      outro: { cta: 'Subscribe for the weekly small-business teardown.' },
+    },
+  },
+  review_feedback_json: null,
+}
+
+const VIDEO_STAGE_RESULTS = {
+  brainstorm: { ideaId: 'idea-2', ideaTitle: 'China Trap', ideaVerdict: 'viable', ideaCoreTension: 'copy vs build', completedAt: new Date().toISOString() },
+  research:   { researchSessionId: 'rs-2', approvedCardsCount: 2, researchLevel: 'medium', completedAt: new Date().toISOString() },
+  draft:      { draftId: 'video-draft-1', draftTitle: 'The China Copycat Trap', draftContent: '', completedAt: new Date().toISOString() },
+  review:     { score: 91, verdict: 'approved', feedbackJson: {} as Record<string, unknown>, iterationCount: 1, completedAt: new Date().toISOString() },
+  assets:     { assetIds: [], featuredImageUrl: undefined, completedAt: new Date().toISOString() },
+}
+
+function mountVideoPreview(opts?: {
+  onStageComplete?: (stage: string, result: Record<string, unknown>) => void
+}) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockImplementation(async (url: string) => {
+      if (String(url).includes('/api/content-drafts/video-draft-1')) {
+        return { ok: true, json: async () => ({ data: STUB_VIDEO_DRAFT, error: null }) } as Response
+      }
+      if (String(url).includes('/api/assets?content_id=video-draft-1')) {
+        return { ok: true, json: async () => ({ data: { assets: [] }, error: null }) } as Response
+      }
+      return { ok: true, json: async () => ({ data: null, error: null }) } as Response
+    }),
+  )
+
+  return render(
+    <StandaloneProjectContextProvider
+      projectId="proj-2"
+      channelId="ch-2"
+      mode={null}
+      autopilotConfig={null}
+      initialStageResults={VIDEO_STAGE_RESULTS}
+      onStageComplete={opts?.onStageComplete}
+      pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+      creditSettings={DEFAULT_CREDIT_SETTINGS}
+    >
+      <PreviewEngine trackMedium="video" />
+    </StandaloneProjectContextProvider>,
+  )
+}
+
+describe('PreviewEngine — issue #214: video routing', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('renders inventory pills strip when trackMedium=video', async () => {
+    mountVideoPreview()
+    // Inventory pills should appear — not the blog HTML preview
+    await screen.findByTestId('preview-video-inventory')
+  })
+
+  it('renders viewer-style card with video title when trackMedium=video', async () => {
+    mountVideoPreview()
+    const viewerCard = await screen.findByTestId('preview-video-viewer-card')
+    // Multiple elements may contain the title (ContextBanner + card) — scope to viewer card
+    expect(viewerCard.textContent).toMatch(/China Copycat Trap/i)
+  })
+
+  it('renders teleprompter with chapter titles when trackMedium=video', async () => {
+    mountVideoPreview()
+    await screen.findByTestId('preview-video-teleprompter')
+    await screen.findByText(/Yes, Copying Was Part of the Story/i)
+    await screen.findByText(/Hidden Engine Nobody Imports/i)
+  })
+
+  it('teleprompter renders lower-third cues beside chapter headings', async () => {
+    mountVideoPreview()
+    await screen.findByTestId('preview-video-teleprompter')
+    // The prototype uses lowerThirds[i+1] for chapter i, so:
+    // chapter 0 gets lower_thirds[1] → 'The hidden engine'
+    // chapter 1 gets lower_thirds[2] → 'What to steal instead'
+    // Lower-third cues are rendered in <span> with font-mono class.
+    // Use getAllByText because chapter titles may contain similar text.
+    const cueElements = await screen.findAllByText(/The hidden engine/i)
+    expect(cueElements.length).toBeGreaterThan(0)
+    await screen.findByText(/What to steal instead/i)
+  })
+
+  it('inventory pills show missing affordance when pinned_comment absent from draft_json', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        if (String(url).includes('/api/content-drafts/video-draft-1')) {
+          const draftWithoutComment = {
+            ...STUB_VIDEO_DRAFT,
+            draft_json: { ...STUB_VIDEO_DRAFT.draft_json, pinned_comment: undefined },
+          }
+          return { ok: true, json: async () => ({ data: draftWithoutComment, error: null }) } as Response
+        }
+        return { ok: true, json: async () => ({ data: { assets: [] }, error: null }) } as Response
+      }),
+    )
+    render(
+      <StandaloneProjectContextProvider
+        projectId="proj-2"
+        channelId="ch-2"
+        mode={null}
+        autopilotConfig={null}
+        initialStageResults={VIDEO_STAGE_RESULTS}
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
+        <PreviewEngine trackMedium="video" />
+      </StandaloneProjectContextProvider>,
+    )
+    await screen.findByTestId('preview-video-inventory')
+    // The pinned comment pill should show "missing" affordance
+    const missingPills = screen.getAllByTestId('inventory-pill-missing')
+    expect(missingPills.length).toBeGreaterThan(0)
+  })
+
+  it('no mutation fetch calls fire from the video preview surface', async () => {
+    const fetchCalls: Array<{ url: string; method: string }> = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        fetchCalls.push({ url: String(url), method: init?.method ?? 'GET' })
+        if (String(url).includes('/api/content-drafts/video-draft-1')) {
+          return { ok: true, json: async () => ({ data: STUB_VIDEO_DRAFT, error: null }) } as Response
+        }
+        return { ok: true, json: async () => ({ data: { assets: [] }, error: null }) } as Response
+      }),
+    )
+    render(
+      <StandaloneProjectContextProvider
+        projectId="proj-2"
+        channelId="ch-2"
+        mode={null}
+        autopilotConfig={null}
+        initialStageResults={VIDEO_STAGE_RESULTS}
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
+        <PreviewEngine trackMedium="video" />
+      </StandaloneProjectContextProvider>,
+    )
+    await screen.findByTestId('preview-video-inventory')
+    // Wait a tick to let any stray effects fire
+    await waitFor(() => expect(fetchCalls.length).toBeGreaterThan(0))
+    const mutating = fetchCalls.filter((c) => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(c.method.toUpperCase()))
+    expect(mutating).toHaveLength(0)
+  })
+
+  it('CTA "Approve bundle → Publish" fires stage complete + advances to publish', async () => {
+    const user = userEvent.setup()
+    const completed: Array<{ stage: string }> = []
+    mountVideoPreview({ onStageComplete: (stage) => completed.push({ stage }) })
+
+    const cta = await screen.findByTestId('preview-video-cta')
+    await user.click(cta)
+
+    await waitFor(() => {
+      expect(completed.some((e) => e.stage === 'preview')).toBe(true)
+    })
+  })
+
+  it('blog flow unchanged when trackMedium is absent', async () => {
+    // Mounting without trackMedium — should render the existing blog preview (Live Preview card)
+    mountAtPreviewStage()
+    // Blog path renders the approve button (no video testids)
+    await screen.findByRole('button', { name: /approve.*publish/i })
+    expect(screen.queryByTestId('preview-video-inventory')).toBeNull()
+  })
+})
+
 // ---- issue #210 / Slice 4 — per-track draftId routing ----
 
 describe('PreviewEngine — issue #210: per-track draftId', () => {
