@@ -265,3 +265,9 @@ export {
   type BundleText,
   type VideoAssetBundle,
 } from "./videoAssetBundle";
+
+// YouTube Publish params schema (issue #222 / S10)
+export {
+  youtubePublishParams,
+  type YouTubePublishParams,
+} from "./youtubePublishParams";

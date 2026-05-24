@@ -190,15 +190,15 @@ describe('PublishEngine — video routing (issue #215)', () => {
     expect(screen.getByTestId('video-publish-bundle-actions')).toBeInTheDocument()
   })
 
-  // ── AC3: Direct mode shows placeholder ─────────────────────────────────────
-  it('switching to direct mode shows coming-soon placeholder', async () => {
+  // ── AC3: Direct mode — no YouTube target → Connect prompt (S10) ────────────
+  it('switching to direct mode shows connect prompt when no YouTube target is wired', async () => {
     const user = userEvent.setup()
     mountVideoPublish()
     await screen.findByTestId('video-publish-mode-toggle')
     const directBtn = screen.getByRole('button', { name: /direct publish/i })
     await user.click(directBtn)
-    expect(screen.getByTestId('video-publish-direct-placeholder')).toBeInTheDocument()
-    expect(screen.getByText(/direct publish.*coming soon/i)).toBeInTheDocument()
+    // No youtube target provided → ConnectYouTubePrompt renders
+    expect(screen.getByTestId('yt-connect-prompt')).toBeInTheDocument()
   })
 
   // ── AC4a: Asset checklist row counts from draft_json ───────────────────────

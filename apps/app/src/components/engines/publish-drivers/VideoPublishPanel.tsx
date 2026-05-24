@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * VideoPublishPanel — issue #215 (S3) + issue #218 (S5)
+ * VideoPublishPanel — issue #215 (S3) + issue #218 (S5) + issue #222 (S10)
  *
  * Renders the video-track publish surface:
  * - Target channel card (shared between modes)
@@ -9,7 +9,9 @@
  * - Asset checklist (shared between modes)
  * - Bundle actions: CTA active when manifest has ≥1 entry (S5)
  * - Per-image-row Download buttons: active when URL present in manifest (S5)
- * - Direct placeholder when in direct mode (full wiring lands in #222)
+ * - Direct mode (S10): upload dropzone + YouTube-API-only fields + Publish CTA
+ *   - Connected target: shows the form
+ *   - No target: shows "Connect YouTube" prompt
  *
  * Download-trigger injection pattern (onDownloadZip / onDownloadImage):
  *   jsdom does not implement URL.createObjectURL or anchor.click(), so
@@ -17,12 +19,27 @@
  *   the component invokes with the download payload. In production the
  *   PublishEngine passes a real browser-download implementation; in tests
  *   a spy is injected. This pattern mirrors the onCopyText injection from S1.
+ *
+ * Upload-path choice (S10): proxy-through-API.
+ *   The video file is uploaded to the API route which streams it to YouTube.
+ *   The OAuth token never leaves the API boundary. onPublish callback receives
+ *   the form values; the parent (PublishEngine) calls the route.
  */
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Tooltip,
   TooltipContent,
@@ -43,8 +60,14 @@ import {
   Hash,
   Type,
   Camera,
+  Upload,
+  AlertCircle,
+  ExternalLink,
+  RefreshCcw,
+  Clock,
 } from 'lucide-react';
 import type { VideoAssetBundle } from '@brighttale/shared/schemas/videoAssetBundle';
+import type { PublishTarget } from '@brighttale/shared';
 import { buildZipBlob } from '@/lib/video-bundle/zip';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -70,6 +93,22 @@ interface ThumbnailIdea {
   title: string;
 }
 
+/**
+ * Result shape returned by the onPublish callback.
+ * Mirrors the discriminated union from publishToYouTube.
+ */
+export type YouTubePublishResult =
+  | { ok: true; videoId: string; url: string }
+  | { ok: false; code: 'YOUTUBE_AUTH_FAILED' | 'YOUTUBE_QUOTA_EXCEEDED' | 'YOUTUBE_REJECTED'; message: string };
+
+export interface DirectFormValues {
+  visibility: 'public' | 'unlisted' | 'private';
+  categoryId: string;
+  madeForKids: boolean;
+  language: string;
+  videoFile?: File;
+}
+
 interface VideoPublishPanelProps {
   /**
    * draft_json from the content_drafts row — may be empty on first mount.
@@ -78,11 +117,21 @@ interface VideoPublishPanelProps {
    */
   draftJson: unknown;
   /**
+   * The content_draft id — passed to the publish route.
+   */
+  draftId?: string;
+  /**
    * Optional VideoAssetBundle manifest from AssetsEngine (S4).
    * When present with ≥1 entry, enables the "Download bundle (.zip)" CTA
    * and per-image download buttons.
    */
   manifest?: VideoAssetBundle;
+  /**
+   * Connected YouTube publish target from S8.
+   * When present: Direct mode renders the form.
+   * When absent: Direct mode renders "Connect YouTube" prompt.
+   */
+  youtubeTarget?: PublishTarget;
   /**
    * Optional override for clipboard write — injected in tests since jsdom
    * does not implement navigator.clipboard. Defaults to navigator.clipboard.writeText.
@@ -106,6 +155,12 @@ interface VideoPublishPanelProps {
    * Defaults to a real browser-download implementation when not provided.
    */
   onDownloadImage?: (url: string, filename: string) => void;
+  /**
+   * Callback called when the user submits the Direct publish form.
+   * Parent (PublishEngine) is responsible for calling the API route.
+   * Returns a discriminated union so the component can display the correct state.
+   */
+  onPublish?: (values: DirectFormValues) => Promise<YouTubePublishResult>;
 }
 
 const COMING_NEXT_TOOLTIP = 'Coming next — ZIP download lands in #218';
@@ -163,10 +218,13 @@ function browserDownloadUrl(url: string, filename: string) {
 
 export function VideoPublishPanel({
   draftJson,
+  draftId,
   manifest,
+  youtubeTarget,
   onCopyText,
   onDownloadZip,
   onDownloadImage,
+  onPublish,
 }: VideoPublishPanelProps) {
   const [mode, setMode] = useState<PublishMode>('bundle');
   const [isDownloading, setIsDownloading] = useState(false);
@@ -388,7 +446,18 @@ export function VideoPublishPanel({
             onDownload={handleDownloadBundle}
           />
         )
-        : <DirectPlaceholder />}
+        : (
+          youtubeTarget
+            ? (
+              <DirectPublishForm
+                draftId={draftId}
+                draftJson={draftJson}
+                youtubeTarget={youtubeTarget}
+                onPublish={onPublish}
+              />
+            )
+            : <ConnectYouTubePrompt />
+        )}
     </div>
   );
 }
@@ -603,17 +672,275 @@ function BundleActions({
   );
 }
 
-function DirectPlaceholder() {
+// ── Direct mode: Connect YouTube prompt ───────────────────────────────────────
+
+function ConnectYouTubePrompt() {
   return (
     <div
-      className="rounded-lg border border-dashed p-6 flex flex-col items-center justify-center gap-2 text-center"
-      data-testid="video-publish-direct-placeholder"
+      className="rounded-lg border border-dashed p-6 flex flex-col items-center justify-center gap-3 text-center"
+      data-testid="yt-connect-prompt"
     >
       <Youtube className="h-8 w-8 text-muted-foreground" />
-      <p className="text-sm font-medium">Direct publish — coming soon</p>
+      <p className="text-sm font-medium">Connect YouTube to publish directly</p>
       <p className="text-xs text-muted-foreground">
-        Full direct-publish wiring lands in issue #222.
+        Link your YouTube channel in Channel Settings to enable direct publish.
       </p>
+      <Button variant="outline" size="sm" className="gap-2 mt-1">
+        <ExternalLink className="h-3.5 w-3.5" />
+        Connect YouTube
+      </Button>
+    </div>
+  );
+}
+
+// ── Direct mode: Publish form ─────────────────────────────────────────────────
+
+type DirectPublishState =
+  | { kind: 'idle' }
+  | { kind: 'submitting' }
+  | { kind: 'success'; videoId: string; url: string }
+  | { kind: 'error'; code: string; message: string };
+
+interface DirectPublishFormProps {
+  draftId?: string;
+  draftJson: unknown;
+  youtubeTarget: PublishTarget;
+  onPublish?: (values: DirectFormValues) => Promise<YouTubePublishResult>;
+}
+
+function DirectPublishForm({ draftJson, onPublish }: DirectPublishFormProps) {
+  const [state, setState] = useState<DirectPublishState>({ kind: 'idle' });
+  const [visibility, setVisibility] = useState<'public' | 'unlisted' | 'private'>('private');
+  const [categoryId, setCategoryId] = useState('22');
+  const [madeForKids, setMadeForKids] = useState(false);
+  const [language, setLanguage] = useState('en');
+  const [videoFile, setVideoFile] = useState<File | undefined>(undefined);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Pre-fill title from draft_json
+  const draftTitle =
+    draftJson !== null && typeof draftJson === 'object' && 'video_title' in (draftJson as object)
+      ? String((draftJson as Record<string, unknown>).video_title ?? '')
+      : '';
+
+  async function handlePublish() {
+    setState({ kind: 'submitting' });
+    const values: DirectFormValues = { visibility, categoryId, madeForKids, language, videoFile };
+    if (onPublish) {
+      const result = await onPublish(values);
+      if (result.ok) {
+        setState({ kind: 'success', videoId: result.videoId, url: result.url });
+      } else {
+        setState({ kind: 'error', code: result.code, message: result.message });
+      }
+    } else {
+      // No onPublish provided — dry-run stub for standalone renders
+      setState({ kind: 'success', videoId: 'preview-only', url: '#' });
+    }
+  }
+
+  if (state.kind === 'success') {
+    return (
+      <div
+        className="rounded-lg border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 p-5 flex flex-col gap-3"
+        data-testid="yt-success-card"
+      >
+        <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
+          <Check className="h-5 w-5" />
+          <p className="text-sm font-medium">Published to YouTube</p>
+        </div>
+        <a
+          href={state.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs underline text-emerald-700 dark:text-emerald-400 break-all"
+        >
+          {state.url}
+        </a>
+      </div>
+    );
+  }
+
+  if (state.kind === 'error') {
+    if (state.code === 'YOUTUBE_AUTH_FAILED') {
+      return (
+        <div
+          className="rounded-lg border border-destructive/40 bg-destructive/5 p-5 flex flex-col gap-3"
+          data-testid="yt-error-auth-failed"
+        >
+          <div className="flex items-center gap-2 text-destructive">
+            <AlertCircle className="h-5 w-5" />
+            <p className="text-sm font-medium">Authentication failed</p>
+          </div>
+          <p className="text-xs text-muted-foreground">{state.message}</p>
+          <Button variant="outline" size="sm" className="gap-2 self-start">
+            <RefreshCcw className="h-3.5 w-3.5" />
+            Reconnect channel
+          </Button>
+        </div>
+      );
+    }
+
+    if (state.code === 'YOUTUBE_QUOTA_EXCEEDED') {
+      return (
+        <div
+          className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 p-5 flex flex-col gap-3"
+          data-testid="yt-error-quota"
+        >
+          <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+            <Clock className="h-5 w-5" />
+            <p className="text-sm font-medium">YouTube quota exceeded</p>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Try again tomorrow — YouTube resets daily upload quotas at midnight Pacific.
+          </p>
+        </div>
+      );
+    }
+
+    // YOUTUBE_REJECTED — surface reason verbatim
+    return (
+      <div
+        className="rounded-lg border border-destructive/40 bg-destructive/5 p-5 flex flex-col gap-3"
+        data-testid="yt-error-rejected"
+      >
+        <div className="flex items-center gap-2 text-destructive">
+          <AlertCircle className="h-5 w-5" />
+          <p className="text-sm font-medium">YouTube rejected the upload</p>
+        </div>
+        <p className="text-xs text-muted-foreground break-all">{state.message}</p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setState({ kind: 'idle' })}
+          className="self-start"
+        >
+          Try again
+        </Button>
+      </div>
+    );
+  }
+
+  const isSubmitting = state.kind === 'submitting';
+
+  return (
+    <div className="space-y-4" data-testid="video-publish-direct-form">
+      {/* Video file dropzone */}
+      <div
+        className="rounded-lg border-2 border-dashed p-6 flex flex-col items-center gap-2 cursor-pointer hover:border-primary/50 transition-colors"
+        data-testid="yt-video-dropzone"
+        onClick={() => fileInputRef.current?.click()}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
+        role="button"
+        tabIndex={0}
+      >
+        <Upload className="h-6 w-6 text-muted-foreground" />
+        <p className="text-sm font-medium">
+          {videoFile ? videoFile.name : 'Click or drag to upload video (.mp4)'}
+        </p>
+        <p className="text-xs text-muted-foreground">Max 2 GB — proxied via API</p>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="video/mp4,video/*"
+          className="hidden"
+          onChange={(e) => setVideoFile(e.target.files?.[0])}
+        />
+      </div>
+
+      {/* Pre-filled title from draft */}
+      {draftTitle && (
+        <p className="text-xs text-muted-foreground">
+          Title: <span className="font-medium text-foreground">{draftTitle}</span>
+        </p>
+      )}
+
+      {/* YouTube-API-only fields */}
+      <div className="space-y-3">
+        {/* Visibility */}
+        <div className="space-y-1">
+          <Label htmlFor="yt-visibility" className="text-xs">Visibility</Label>
+          <Select
+            value={visibility}
+            onValueChange={(v) => setVisibility(v as typeof visibility)}
+          >
+            <SelectTrigger id="yt-visibility" data-testid="yt-field-visibility" className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="private">Private</SelectItem>
+              <SelectItem value="unlisted">Unlisted</SelectItem>
+              <SelectItem value="public">Public</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Category */}
+        <div className="space-y-1">
+          <Label htmlFor="yt-category" className="text-xs">Category</Label>
+          <Select value={categoryId} onValueChange={setCategoryId}>
+            <SelectTrigger id="yt-category" data-testid="yt-field-category" className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="22">People &amp; Blogs</SelectItem>
+              <SelectItem value="28">Science &amp; Technology</SelectItem>
+              <SelectItem value="27">Education</SelectItem>
+              <SelectItem value="24">Entertainment</SelectItem>
+              <SelectItem value="25">News &amp; Politics</SelectItem>
+              <SelectItem value="26">Howto &amp; Style</SelectItem>
+              <SelectItem value="19">Travel &amp; Events</SelectItem>
+              <SelectItem value="17">Sports</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Language */}
+        <div className="space-y-1">
+          <Label htmlFor="yt-language" className="text-xs">Language</Label>
+          <Input
+            id="yt-language"
+            data-testid="yt-field-language"
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            placeholder="en"
+            className="h-8 text-xs"
+          />
+        </div>
+
+        {/* Made for kids */}
+        <div className="flex items-center gap-2" data-testid="yt-field-made-for-kids">
+          <Checkbox
+            id="yt-made-for-kids"
+            checked={madeForKids}
+            onCheckedChange={(v) => setMadeForKids(Boolean(v))}
+          />
+          <Label htmlFor="yt-made-for-kids" className="text-xs cursor-pointer">
+            Made for kids (COPPA)
+          </Label>
+        </div>
+      </div>
+
+      {/* Publish CTA */}
+      <Button
+        data-testid="yt-publish-cta"
+        onClick={handlePublish}
+        disabled={isSubmitting}
+        className="w-full gap-2"
+        size="lg"
+      >
+        {isSubmitting ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Publishing…
+          </>
+        ) : (
+          <>
+            <Youtube className="h-4 w-4" />
+            Publish to YouTube
+          </>
+        )}
+      </Button>
     </div>
   );
 }
