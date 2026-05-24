@@ -30,6 +30,7 @@ import { YouTubePublishForm } from './publish-drivers/YouTubePublishForm';
 import { SpotifyPublishForm } from './publish-drivers/SpotifyPublishForm';
 import { ApplePodcastsPublishForm } from './publish-drivers/ApplePodcastsPublishForm';
 import { RssPublishForm } from './publish-drivers/RssPublishForm';
+import { VideoPublishPanel } from './publish-drivers/VideoPublishPanel';
 import { fetchPublishTarget } from '@/lib/api/publishTargets';
 import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { getTrackStageResults } from '@/lib/pipeline/stage-results-by-track';
@@ -42,6 +43,7 @@ interface DraftRow {
   status: string;
   wordpress_post_id?: number | null;
   published_url?: string | null;
+  draft_json?: Record<string, unknown> | null;
 }
 
 interface PublishEngineProps {
@@ -49,9 +51,16 @@ interface PublishEngineProps {
   publishTargetId?: string;
   /** Issue #210 — when set, draftId resolves from ctx.stageResultsByTrack[trackId]. */
   trackId?: string;
+  /**
+   * Issue #215 — when set to 'video', routes to the video bundle-mode publish
+   * surface (VideoPublishPanel) instead of the WordPress publish form.
+   * Consistent with the trackMedium prop pattern introduced on PreviewEngine (#214).
+   * NOTE: orchestrator wiring is a follow-up; this prop is set by the caller.
+   */
+  trackMedium?: 'blog' | 'video';
 }
 
-export function PublishEngine({ draft, publishTargetId, trackId }: PublishEngineProps) {
+export function PublishEngine({ draft, publishTargetId, trackId, trackMedium }: PublishEngineProps) {
   // ── Context from server-driven provider ───────────────────────────────────
   const { context, setStageStatus, signalStageComplete } = useProjectContext();
 
@@ -76,12 +85,14 @@ export function PublishEngine({ draft, publishTargetId, trackId }: PublishEngine
     ? perTrackDraft?.draftId ?? ''
     : perTrackDraft?.draftId ?? draftResult?.draftId ?? draft?.id ?? '';
 
-  // Self-hydrate the draft row when EngineHost mounts us without a `draft` prop.
-  // Mirrors ReviewEngine's pattern — EngineHost only forwards `stageRun`, so the
-  // engine must fetch its own draft via the draftId from ctx.stageResults.draft.
+  // Self-hydrate the draft row when EngineHost mounts us without a `draft`
+  // prop. Refetch on draftId change so navigating between tracks swaps the
+  // loaded draft (otherwise the heal effect below would fire blog's published
+  // URL onto a video track's publish row).
   const [localDraft, setLocalDraft] = useState<DraftRow | null>(draft ?? null);
   useEffect(() => {
-    if (localDraft || !draftId) return;
+    if (!draftId) return;
+    if (localDraft?.id === draftId) return;
     let cancelled = false;
     (async () => {
       try {
@@ -95,6 +106,7 @@ export function PublishEngine({ draft, publishTargetId, trackId }: PublishEngine
             status: (d.status as string) ?? 'draft',
             wordpress_post_id: (d.wordpress_post_id as number | null) ?? null,
             published_url: (d.published_url as string | null) ?? null,
+            draft_json: (d.draft_json as Record<string, unknown> | null) ?? null,
           });
         }
       } catch {
@@ -295,6 +307,18 @@ export function PublishEngine({ draft, publishTargetId, trackId }: PublishEngine
   };
 
   function renderDriverSection() {
+    // ── Issue #215 — video routing ────────────────────────────────────────────
+    // When the track medium is video, delegate to the video bundle-mode surface.
+    // The WordPress-specific flow (progress stream, panelProps) is irrelevant for
+    // video tracks and is intentionally bypassed here.
+    if (trackMedium === 'video') {
+      return (
+        <VideoPublishPanel
+          draftJson={localDraft?.draft_json ?? null}
+        />
+      );
+    }
+
     if (publishing && publishBody) {
       return (
         <PublishProgress
