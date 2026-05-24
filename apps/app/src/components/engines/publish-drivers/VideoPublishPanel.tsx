@@ -1,17 +1,22 @@
 'use client';
 
 /**
- * VideoPublishPanel — issue #215
+ * VideoPublishPanel — issue #215 (S3) + issue #218 (S5)
  *
  * Renders the video-track publish surface:
  * - Target channel card (shared between modes)
  * - Mode toggle: bundle (default) / direct
  * - Asset checklist (shared between modes)
- * - Bundle actions when in bundle mode (CTA disabled — ZIP lands in #218)
+ * - Bundle actions: CTA active when manifest has ≥1 entry (S5)
+ * - Per-image-row Download buttons: active when URL present in manifest (S5)
  * - Direct placeholder when in direct mode (full wiring lands in #222)
  *
- * Prototype reference: apps/app/src/app/[locale]/(app)/prototype/video-engines/PublishPanel.tsx
- * Labels translated from Portuguese to English.
+ * Download-trigger injection pattern (onDownloadZip / onDownloadImage):
+ *   jsdom does not implement URL.createObjectURL or anchor.click(), so
+ *   instead of calling those directly, we accept optional callbacks that
+ *   the component invokes with the download payload. In production the
+ *   PublishEngine passes a real browser-download implementation; in tests
+ *   a spy is injected. This pattern mirrors the onCopyText injection from S1.
  */
 
 import { useState } from 'react';
@@ -30,6 +35,7 @@ import {
   Check,
   Copy,
   Download,
+  Loader2,
   Rocket,
   Image as ImageIcon,
   FileText,
@@ -38,6 +44,8 @@ import {
   Type,
   Camera,
 } from 'lucide-react';
+import type { VideoAssetBundle } from '@brighttale/shared/schemas/videoAssetBundle';
+import { buildZipBlob } from '@/lib/video-bundle/zip';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -70,10 +78,34 @@ interface VideoPublishPanelProps {
    */
   draftJson: unknown;
   /**
+   * Optional VideoAssetBundle manifest from AssetsEngine (S4).
+   * When present with ≥1 entry, enables the "Download bundle (.zip)" CTA
+   * and per-image download buttons.
+   */
+  manifest?: VideoAssetBundle;
+  /**
    * Optional override for clipboard write — injected in tests since jsdom
    * does not implement navigator.clipboard. Defaults to navigator.clipboard.writeText.
    */
   onCopyText?: (text: string) => void;
+  /**
+   * Optional override for ZIP download trigger.
+   *
+   * Rationale: jsdom does not implement URL.createObjectURL or anchor.click(),
+   * so the component calls this callback with the ZIP Blob instead of directly
+   * triggering a browser download. In production, PublishEngine passes a real
+   * download implementation (createObjectURL + click). In tests, a spy is
+   * injected. This pattern mirrors the onCopyText injection from S1.
+   *
+   * Defaults to a real browser-download implementation when not provided.
+   */
+  onDownloadZip?: (blob: Blob, filename: string) => void;
+  /**
+   * Optional override for single-image download trigger (same rationale as onDownloadZip).
+   * Called with the image URL and suggested filename.
+   * Defaults to a real browser-download implementation when not provided.
+   */
+  onDownloadImage?: (url: string, filename: string) => void;
 }
 
 const COMING_NEXT_TOOLTIP = 'Coming next — ZIP download lands in #218';
@@ -106,8 +138,38 @@ function nested(obj: unknown, key: string): unknown {
   return null;
 }
 
-export function VideoPublishPanel({ draftJson, onCopyText }: VideoPublishPanelProps) {
+/** Trigger a browser download from a Blob. */
+function browserDownloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/** Trigger a browser download from a URL. */
+function browserDownloadUrl(url: string, filename: string) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.target = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+export function VideoPublishPanel({
+  draftJson,
+  manifest,
+  onCopyText,
+  onDownloadZip,
+  onDownloadImage,
+}: VideoPublishPanelProps) {
   const [mode, setMode] = useState<PublishMode>('bundle');
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Default to navigator.clipboard.writeText when not injected.
   // The try/catch guard handles environments where the Clipboard API is unavailable.
@@ -117,6 +179,14 @@ export function VideoPublishPanel({ draftJson, onCopyText }: VideoPublishPanelPr
     } catch {
       // silent — older browsers or non-HTTPS contexts
     }
+  });
+
+  const downloadZip = onDownloadZip ?? ((blob: Blob, filename: string) => {
+    browserDownloadBlob(blob, filename);
+  });
+
+  const downloadImage = onDownloadImage ?? ((url: string, filename: string) => {
+    browserDownloadUrl(url, filename);
   });
 
   const channelRaw = nested(draftJson, 'channel');
@@ -139,6 +209,35 @@ export function VideoPublishPanel({ draftJson, onCopyText }: VideoPublishPanelPr
     (acc, ch) => acc + (ch.broll?.length ?? 0),
     0,
   );
+
+  // Manifest presence determines CTA and per-image button states
+  const hasManifest = manifest !== undefined && (manifest.images.length + manifest.texts.length) > 0;
+
+  // Build a lookup of filename → url from manifest images
+  const imageUrlByFilename = new Map<string, string>(
+    (manifest?.images ?? [])
+      .filter((img) => img.url !== undefined)
+      .map((img) => [img.filename, img.url as string]),
+  );
+
+  async function handleDownloadBundle() {
+    if (!manifest || isDownloading) return;
+    setIsDownloading(true);
+    try {
+      const blob = await buildZipBlob(manifest);
+      const safeTitle = manifest.meta.title.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+      downloadZip(blob, `${safeTitle}-bundle.zip`);
+    } finally {
+      setIsDownloading(false);
+    }
+  }
+
+  function handleDownloadImage(filename: string) {
+    const url = imageUrlByFilename.get(filename);
+    if (url) {
+      downloadImage(url, filename);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -187,8 +286,11 @@ export function VideoPublishPanel({ draftJson, onCopyText }: VideoPublishPanelPr
             copyTestId={undefined}
             dlTestId="dl-btn-thumbnail"
             dlTooltipTestId="dl-tooltip-thumbnail"
+            dlFilename="thumbnail-01.png"
             copyContent={undefined}
             onCopyText={copyText}
+            onDownloadImage={handleDownloadImage}
+            imageUrlByFilename={imageUrlByFilename}
           />
           <AssetRow
             icon={<Camera className="h-4 w-4" />}
@@ -198,8 +300,11 @@ export function VideoPublishPanel({ draftJson, onCopyText }: VideoPublishPanelPr
             copyTestId={undefined}
             dlTestId="dl-btn-broll"
             dlTooltipTestId="dl-tooltip-broll"
+            dlFilename="broll-ch01-01.png"
             copyContent={undefined}
             onCopyText={copyText}
+            onDownloadImage={handleDownloadImage}
+            imageUrlByFilename={imageUrlByFilename}
           />
           <AssetRow
             icon={<Type className="h-4 w-4" />}
@@ -209,8 +314,11 @@ export function VideoPublishPanel({ draftJson, onCopyText }: VideoPublishPanelPr
             copyTestId="copy-btn-lower-thirds"
             dlTestId={undefined}
             dlTooltipTestId={undefined}
+            dlFilename={undefined}
             copyContent={lowerThirds.map((lt) => `${lt.at} ${lt.label}`).join('\n')}
             onCopyText={copyText}
+            onDownloadImage={handleDownloadImage}
+            imageUrlByFilename={imageUrlByFilename}
           />
           <AssetRow
             icon={<Type className="h-4 w-4" />}
@@ -220,8 +328,11 @@ export function VideoPublishPanel({ draftJson, onCopyText }: VideoPublishPanelPr
             copyTestId="copy-btn-title"
             dlTestId={undefined}
             dlTooltipTestId={undefined}
+            dlFilename={undefined}
             copyContent={videoTitle}
             onCopyText={copyText}
+            onDownloadImage={handleDownloadImage}
+            imageUrlByFilename={imageUrlByFilename}
           />
           <AssetRow
             icon={<FileText className="h-4 w-4" />}
@@ -231,8 +342,11 @@ export function VideoPublishPanel({ draftJson, onCopyText }: VideoPublishPanelPr
             copyTestId="copy-btn-description"
             dlTestId={undefined}
             dlTooltipTestId={undefined}
+            dlFilename={undefined}
             copyContent={videoDescription}
             onCopyText={copyText}
+            onDownloadImage={handleDownloadImage}
+            imageUrlByFilename={imageUrlByFilename}
           />
           <AssetRow
             icon={<Hash className="h-4 w-4" />}
@@ -242,8 +356,11 @@ export function VideoPublishPanel({ draftJson, onCopyText }: VideoPublishPanelPr
             copyTestId="copy-btn-tags"
             dlTestId={undefined}
             dlTooltipTestId={undefined}
+            dlFilename={undefined}
             copyContent={tags.join(', ')}
             onCopyText={copyText}
+            onDownloadImage={handleDownloadImage}
+            imageUrlByFilename={imageUrlByFilename}
           />
           <AssetRow
             icon={<MessageSquare className="h-4 w-4" />}
@@ -253,15 +370,24 @@ export function VideoPublishPanel({ draftJson, onCopyText }: VideoPublishPanelPr
             copyTestId="copy-btn-pinned-comment"
             dlTestId={undefined}
             dlTooltipTestId={undefined}
+            dlFilename={undefined}
             copyContent={pinnedComment}
             onCopyText={copyText}
+            onDownloadImage={handleDownloadImage}
+            imageUrlByFilename={imageUrlByFilename}
           />
         </CardContent>
       </Card>
 
       {/* Mode-specific actions */}
       {mode === 'bundle'
-        ? <BundleActions />
+        ? (
+          <BundleActions
+            hasManifest={hasManifest}
+            isDownloading={isDownloading}
+            onDownload={handleDownloadBundle}
+          />
+        )
         : <DirectPlaceholder />}
     </div>
   );
@@ -316,8 +442,11 @@ interface AssetRowProps {
   copyContent: string | undefined;
   dlTestId: string | undefined;
   dlTooltipTestId: string | undefined;
+  dlFilename: string | undefined;
+  imageUrlByFilename: Map<string, string>;
   /** Injected by parent — defaults to navigator.clipboard.writeText */
   onCopyText: (text: string) => void;
+  onDownloadImage: (filename: string) => void;
 }
 
 function AssetRow({
@@ -329,13 +458,18 @@ function AssetRow({
   copyContent,
   dlTestId,
   dlTooltipTestId,
+  dlFilename,
+  imageUrlByFilename,
   onCopyText,
+  onDownloadImage,
 }: AssetRowProps) {
   function handleCopy() {
     if (copyContent !== undefined) {
       onCopyText(copyContent);
     }
   }
+
+  const hasUrl = dlFilename !== undefined && imageUrlByFilename.has(dlFilename);
 
   return (
     <div className="flex items-center gap-3 py-2.5">
@@ -359,32 +493,44 @@ function AssetRow({
             <Copy className="h-3 w-3" /> Copy
           </Button>
         )}
-        {kind === 'image' && dlTestId && dlTooltipTestId && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                {/* Wrap in span so Tooltip works on disabled button */}
-                <span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 gap-1 text-xs"
-                    disabled
-                    data-testid={dlTestId}
-                    aria-describedby={dlTooltipTestId}
-                  >
-                    <Download className="h-3 w-3" />
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                {COMING_NEXT_TOOLTIP}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+        {kind === 'image' && dlTestId && dlTooltipTestId && dlFilename && (
+          hasUrl ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 text-xs"
+              onClick={() => onDownloadImage(dlFilename)}
+              data-testid={dlTestId}
+            >
+              <Download className="h-3 w-3" />
+            </Button>
+          ) : (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {/* Wrap in span so Tooltip works on disabled button */}
+                  <span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 text-xs"
+                      disabled
+                      data-testid={dlTestId}
+                      aria-describedby={dlTooltipTestId}
+                    >
+                      <Download className="h-3 w-3" />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {COMING_NEXT_TOOLTIP}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )
         )}
         {/* Tooltip text rendered inline for test accessibility (portals are hard to query) */}
-        {kind === 'image' && dlTooltipTestId && (
+        {kind === 'image' && dlTooltipTestId && !hasUrl && (
           <span className="sr-only" data-testid={dlTooltipTestId}>
             {COMING_NEXT_TOOLTIP}
           </span>
@@ -394,7 +540,15 @@ function AssetRow({
   );
 }
 
-function BundleActions() {
+function BundleActions({
+  hasManifest,
+  isDownloading,
+  onDownload,
+}: {
+  hasManifest: boolean;
+  isDownloading: boolean;
+  onDownload: () => void;
+}) {
   return (
     <div className="space-y-3" data-testid="video-publish-bundle-actions">
       <Card className="border-primary/30 bg-primary/5">
@@ -405,24 +559,41 @@ function BundleActions() {
               ZIP with images + .txt with title, description, tags, pinned comment, lower-third cues.
             </p>
           </div>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span>
-                  <Button size="lg" className="gap-2" disabled data-testid="bundle-download-cta">
-                    <Download className="h-4 w-4" /> Download bundle (.zip)
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
+          {hasManifest ? (
+            <Button
+              size="lg"
+              className="gap-2"
+              disabled={isDownloading}
+              onClick={onDownload}
+              data-testid="bundle-download-cta"
+            >
+              {isDownloading
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <Download className="h-4 w-4" />}
+              {isDownloading ? 'Building ZIP…' : 'Download bundle (.zip)'}
+            </Button>
+          ) : (
+            <>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button size="lg" className="gap-2" disabled data-testid="bundle-download-cta">
+                        <Download className="h-4 w-4" /> Download bundle (.zip)
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {COMING_NEXT_TOOLTIP}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              {/* Tooltip text rendered inline for test accessibility */}
+              <span className="sr-only" data-testid="bundle-download-tooltip">
                 {COMING_NEXT_TOOLTIP}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          {/* Tooltip text rendered inline for test accessibility */}
-          <span className="sr-only" data-testid="bundle-download-tooltip">
-            {COMING_NEXT_TOOLTIP}
-          </span>
+              </span>
+            </>
+          )}
         </CardContent>
       </Card>
       <p className="text-[11px] text-muted-foreground text-center">
