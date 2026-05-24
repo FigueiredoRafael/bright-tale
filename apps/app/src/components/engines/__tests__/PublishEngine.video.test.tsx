@@ -337,3 +337,146 @@ describe('PublishEngine — video routing (issue #215)', () => {
     expect(screen.queryByTestId('video-publish-mode-toggle')).not.toBeInTheDocument()
   })
 })
+
+// ── S5: ZIP exporter wiring (issue #218) ─────────────────────────────────────
+
+import type { VideoAssetBundle } from '@brighttale/shared/schemas/videoAssetBundle'
+
+const STUB_MANIFEST: VideoAssetBundle = {
+  meta: {
+    draftId: 'video-draft-1',
+    title: 'The China Copycat Trap',
+    channelName: 'Bright Curios',
+  },
+  images: [
+    {
+      kind: 'thumbnail',
+      prompt: 'Bold hero shot',
+      filename: 'thumbnail-01.png',
+      url: 'https://cdn.example.com/thumb.png',
+    },
+    {
+      kind: 'broll',
+      chapterIndex: 1,
+      prompt: 'Factory footage',
+      filename: 'broll-ch01-01.png',
+      // no url — prompt-only
+    },
+  ],
+  texts: [
+    { kind: 'title', body: 'The China Copycat Trap', filename: 'title.txt' },
+    { kind: 'description', body: 'Full description here.', filename: 'description.txt' },
+    { kind: 'tags', body: 'china, business', filename: 'tags.txt' },
+    { kind: 'pinned_comment', body: 'Sources below!', filename: 'pinned-comment.txt' },
+  ],
+}
+
+vi.mock('@/lib/video-bundle/zip', () => ({
+  buildZipBlob: vi.fn().mockResolvedValue(new Blob(['zip-data'], { type: 'application/zip' })),
+}))
+
+describe('VideoPublishPanel — S5 ZIP wiring (issue #218)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  // ── AC1: CTA enabled when manifest has entries ─────────────────────────────
+  it('bundle-download CTA is enabled when manifest has entries', () => {
+    const onDownloadZip = vi.fn()
+    render(
+      <VideoPublishPanel
+        draftJson={STUB_VIDEO_DRAFT_JSON}
+        manifest={STUB_MANIFEST}
+        onDownloadZip={onDownloadZip}
+      />,
+    )
+    const cta = screen.getByTestId('bundle-download-cta')
+    expect(cta).not.toBeDisabled()
+  })
+
+  // ── AC2: CTA click triggers buildZipBlob + onDownloadZip ──────────────────
+  it('clicking bundle CTA calls onDownloadZip with a Blob', async () => {
+    const user = userEvent.setup()
+    const onDownloadZip = vi.fn()
+    render(
+      <VideoPublishPanel
+        draftJson={STUB_VIDEO_DRAFT_JSON}
+        manifest={STUB_MANIFEST}
+        onDownloadZip={onDownloadZip}
+      />,
+    )
+    const cta = screen.getByTestId('bundle-download-cta')
+    await user.click(cta)
+    await waitFor(() => expect(onDownloadZip).toHaveBeenCalled())
+    const [blob, filename] = onDownloadZip.mock.calls[0]
+    expect(blob).toBeInstanceOf(Blob)
+    expect(typeof filename).toBe('string')
+    expect(filename).toMatch(/\.zip$/)
+  })
+
+  // ── AC3: CTA remains disabled with no manifest ─────────────────────────────
+  it('bundle-download CTA remains disabled when no manifest provided', () => {
+    render(<VideoPublishPanel draftJson={STUB_VIDEO_DRAFT_JSON} />)
+    const cta = screen.getByTestId('bundle-download-cta')
+    expect(cta).toBeDisabled()
+  })
+
+  // ── AC4: per-image Download button active when URL in manifest ─────────────
+  it('thumbnail Download button is enabled when manifest has a URL for it', () => {
+    const onDownloadImage = vi.fn()
+    render(
+      <VideoPublishPanel
+        draftJson={STUB_VIDEO_DRAFT_JSON}
+        manifest={STUB_MANIFEST}
+        onDownloadImage={onDownloadImage}
+      />,
+    )
+    const dlBtn = screen.getByTestId('dl-btn-thumbnail')
+    expect(dlBtn).not.toBeDisabled()
+  })
+
+  it('clicking thumbnail Download button calls onDownloadImage with correct URL and filename', async () => {
+    const user = userEvent.setup()
+    const onDownloadImage = vi.fn()
+    render(
+      <VideoPublishPanel
+        draftJson={STUB_VIDEO_DRAFT_JSON}
+        manifest={STUB_MANIFEST}
+        onDownloadImage={onDownloadImage}
+      />,
+    )
+    const dlBtn = screen.getByTestId('dl-btn-thumbnail')
+    await user.click(dlBtn)
+    // onDownloadImage is called as: onDownloadImage(url, filename)
+    // The VideoPublishPanel resolves the URL from the manifest and passes both
+    expect(onDownloadImage).toHaveBeenCalledWith(
+      'https://cdn.example.com/thumb.png',
+      'thumbnail-01.png',
+    )
+  })
+
+  // ── AC5: per-image Download disabled when no URL in manifest ───────────────
+  it('broll Download button remains disabled when no URL in manifest for that row', () => {
+    render(
+      <VideoPublishPanel
+        draftJson={STUB_VIDEO_DRAFT_JSON}
+        manifest={STUB_MANIFEST}
+      />,
+    )
+    // broll-ch01-01.png has no URL in STUB_MANIFEST
+    const dlBtn = screen.getByTestId('dl-btn-broll')
+    expect(dlBtn).toBeDisabled()
+  })
+
+  // ── AC6: tooltip absent when button is active ──────────────────────────────
+  it('no coming-next tooltip when thumbnail Download button is active', () => {
+    render(
+      <VideoPublishPanel
+        draftJson={STUB_VIDEO_DRAFT_JSON}
+        manifest={STUB_MANIFEST}
+      />,
+    )
+    // When URL present, tooltip element should NOT render
+    expect(screen.queryByTestId('dl-tooltip-thumbnail')).not.toBeInTheDocument()
+  })
+})
