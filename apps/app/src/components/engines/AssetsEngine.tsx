@@ -63,6 +63,10 @@ interface ContentAsset {
 interface AssetsEngineProps extends BaseEngineProps {
   draftId?: string;
   draftStatus?: string;
+  /** Content-level medium — 'video' routes to video layout, everything else uses blog layout */
+  trackMedium?: string;
+  /** Pre-loaded draft JSON (used by video layout to avoid an extra fetch in tests/standalone) */
+  draftJson?: Record<string, unknown>;
 }
 
 interface NoBriefSection {
@@ -168,9 +172,29 @@ interface PendingUpload {
   sourceUrl?: string;    // set for URL uploads
 }
 
-/* ── Component ── */
+/* ── Router: dispatches to the medium-appropriate layout ── */
 
-export function AssetsEngine({
+export function AssetsEngine(props: AssetsEngineProps) {
+  if (props.trackMedium === 'video') {
+    return (
+      <AssetsEngineVideo
+        mode={props.mode}
+        channelId={props.channelId}
+        context={props.context}
+        draftId={props.draftId}
+        draftStatus={props.draftStatus}
+        draftJson={props.draftJson}
+        onComplete={props.onComplete}
+        onBack={props.onBack}
+      />
+    );
+  }
+  return <AssetsEngineBlog {...props} />;
+}
+
+/* ── Blog layout (original implementation) ── */
+
+function AssetsEngineBlog({
   mode: engineMode,
   channelId,
   context,
@@ -1400,6 +1424,459 @@ function NoBriefImageSlotCard({
             <Upload className="h-5 w-5 mx-auto text-muted-foreground/60" />
             <div className="text-xs text-muted-foreground mt-1">Drag & drop image here</div>
           </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ── Video layout types ── */
+
+type VideoImageMode = 'generate' | 'prompts-only';
+
+interface VideoThumbnailIdea {
+  title: string;
+  brief: string;
+  mood?: string;
+}
+
+interface VideoChapter {
+  title: string;
+  duration: string;
+  broll: string[];
+  content?: string;
+}
+
+interface VideoLowerThird {
+  at: string;
+  label: string;
+}
+
+interface VideoThumbnail {
+  facePromptHint: string;
+  headline?: string;
+}
+
+interface VideoDraftJson {
+  thumbnail_ideas?: VideoThumbnailIdea[];
+  lower_thirds?: VideoLowerThird[];
+  title_options?: string[];
+  video_description?: string;
+  pinned_comment?: string;
+  tags?: string[];
+  script?: {
+    chapters?: VideoChapter[];
+  };
+  thumbnail?: VideoThumbnail;
+}
+
+interface AssetsEngineVideoProps {
+  mode: 'generate' | 'import';
+  channelId: string;
+  context: AssetsEngineProps['context'];
+  draftId?: string;
+  draftStatus?: string;
+  draftJson?: Record<string, unknown>;
+  onComplete: AssetsEngineProps['onComplete'];
+  onBack?: AssetsEngineProps['onBack'];
+}
+
+/* ── AssetsEngineVideo ── */
+
+export function AssetsEngineVideo({
+  context,
+  draftId,
+  draftJson: rawDraftJson,
+  onComplete,
+  onBack,
+}: AssetsEngineVideoProps) {
+  const [imageMode, setImageMode] = useState<VideoImageMode>('prompts-only');
+  const [fetchedDraftJson, setFetchedDraftJson] = useState<Record<string, unknown> | null>(null);
+  const [loading, setLoading] = useState(!rawDraftJson);
+  const tracker = usePipelineTracker('assets', context);
+
+  useEffect(() => {
+    if (rawDraftJson) return;
+    if (!draftId) { setLoading(false); return; }
+    async function fetchDraft() {
+      try {
+        const res = await fetch(`/api/content-drafts/${draftId}`);
+        const { data } = await res.json();
+        if (data?.draft_json) setFetchedDraftJson(data.draft_json as Record<string, unknown>);
+      } catch {
+        // non-fatal
+      } finally {
+        setLoading(false);
+      }
+    }
+    void fetchDraft();
+  }, [draftId, rawDraftJson]);
+
+  const draft = (rawDraftJson ?? fetchedDraftJson ?? {}) as VideoDraftJson;
+  const thumbnailIdeas = draft.thumbnail_ideas ?? [];
+  const chapters = draft.script?.chapters ?? [];
+  const lowerThirds = draft.lower_thirds ?? [];
+  const titleOptions = draft.title_options ?? [];
+  const videoDescription = draft.video_description ?? '';
+  const pinnedComment = draft.pinned_comment ?? '';
+  const tags = draft.tags ?? [];
+  const hookHint = draft.thumbnail?.facePromptHint ?? '';
+
+  function handleFinish() {
+    tracker.trackCompleted({ draftId, assetCount: 0, assetIds: [] });
+    onComplete({ assetIds: [], featuredImageUrl: undefined } as AssetsResult);
+  }
+
+  if (loading) {
+    return <div className="p-6 text-muted-foreground">Loading draft…</div>;
+  }
+
+  return (
+    <div className="space-y-5">
+      <ContextBanner stage="assets" context={context} onBack={onBack} />
+
+      <header className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-lg font-semibold">Asset bundle</h1>
+          <p className="text-xs text-muted-foreground">
+            Thumbnail concepts, chapter B-roll, hook visual, and text bundle.
+          </p>
+        </div>
+        <VideoModeToggle mode={imageMode} onChange={setImageMode} />
+      </header>
+
+      {/* Thumbnail concepts */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <ImageIcon className="h-4 w-4" /> Thumbnail
+            <Badge variant="outline" className="ml-auto text-[10px]">
+              {thumbnailIdeas.length} concepts
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {thumbnailIdeas.map((idea, i) => (
+              <VideoImageConcept
+                key={i}
+                mode={imageMode}
+                title={idea.title}
+                mood={idea.mood}
+                brief={idea.brief}
+                selected={i === 0}
+              />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Per-chapter cards */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <ImageIcon className="h-4 w-4" /> Chapters · B-roll + lower thirds
+            <Badge variant="outline" className="ml-auto text-[10px]">
+              {chapters.length} chapters
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto -mx-1 px-1 pb-2">
+            <div className="flex items-stretch gap-3 min-w-max">
+              {chapters.map((ch, i) => (
+                <VideoChapterCard
+                  key={i}
+                  mode={imageMode}
+                  index={i + 1}
+                  title={ch.title}
+                  duration={ch.duration}
+                  brollPrompts={ch.broll}
+                  lowerThird={lowerThirds[i + 1]?.label ?? ''}
+                  lowerThirdAt={lowerThirds[i + 1]?.at ?? ''}
+                />
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Hook visual */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Sparkles className="h-4 w-4" /> Hook visual (first 3 seconds)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <VideoImageConcept
+            mode={imageMode}
+            title="Opening frame"
+            mood="Pattern interrupt"
+            brief={hookHint}
+          />
+        </CardContent>
+      </Card>
+
+      {/* Text bundle */}
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <VideoTextBlock
+          title="Video title"
+          body={titleOptions[0] ?? ''}
+          alternatives={titleOptions.slice(1)}
+        />
+        <VideoTextBlock
+          title="Tags"
+          body={tags.join(', ')}
+          tagged
+        />
+        <VideoTextBlock
+          title="Description (with chapters)"
+          body={videoDescription}
+          big
+        />
+        <VideoTextBlock
+          title="Pinned comment"
+          body={pinnedComment}
+        />
+      </section>
+
+      <footer className="flex items-center justify-between border-t pt-3">
+        <p className="text-xs text-muted-foreground">
+          Mode: <strong>{imageMode === 'generate' ? 'generate here' : 'prompts-only'}</strong>
+        </p>
+        <Button onClick={handleFinish}>Finish assets</Button>
+      </footer>
+    </div>
+  );
+}
+
+/* ── Video sub-components ── */
+
+function VideoModeToggle({ mode, onChange }: { mode: VideoImageMode; onChange: (m: VideoImageMode) => void }) {
+  return (
+    <div className="inline-flex rounded-full border bg-muted p-0.5 text-xs">
+      <button
+        type="button"
+        aria-label="Generate here"
+        onClick={() => onChange('generate')}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition ${
+          mode === 'generate' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'
+        }`}
+      >
+        <Sparkles className="h-3.5 w-3.5" /> Generate
+        <span className="ml-1 text-[10px] text-amber-600 font-medium" title="Coming next">(coming next)</span>
+      </button>
+      <button
+        type="button"
+        aria-label="Prompts only"
+        onClick={() => onChange('prompts-only')}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition ${
+          mode === 'prompts-only' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'
+        }`}
+      >
+        <Copy className="h-3.5 w-3.5" /> Prompts only
+      </button>
+    </div>
+  );
+}
+
+interface VideoImageConceptProps {
+  mode: VideoImageMode;
+  title: string;
+  mood?: string;
+  brief: string;
+  selected?: boolean;
+}
+
+function VideoImageConcept({ mode, title, mood, brief, selected }: VideoImageConceptProps) {
+  async function handleCopy() {
+    await navigator.clipboard.writeText(brief);
+    toast.success('Prompt copied');
+  }
+
+  if (mode === 'prompts-only') {
+    return (
+      <div className="rounded border p-3 space-y-2 bg-muted/30">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-medium truncate">{title}</p>
+          {selected && <Badge className="text-[10px]">selected</Badge>}
+        </div>
+        {mood && <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{mood}</p>}
+        <Textarea defaultValue={brief} rows={3} className="font-mono text-[11px]" readOnly />
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-1.5 w-full text-xs"
+          onClick={handleCopy}
+          aria-label="Copy prompt"
+        >
+          <Copy className="h-3 w-3" /> Copy
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <figure className="space-y-1.5">
+      <div className={`aspect-video rounded border relative overflow-hidden bg-muted/30 flex items-center justify-center ${selected ? 'ring-2 ring-primary' : ''}`}>
+        <p className="text-[10px] text-muted-foreground text-center p-2">{title}</p>
+        {selected && <Badge className="absolute top-1 right-1 text-[9px]">selected</Badge>}
+      </div>
+      <figcaption className="text-[11px] text-muted-foreground line-clamp-2">{brief}</figcaption>
+      <div className="flex gap-1">
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs flex-1 gap-1"
+          disabled
+          title="Coming next"
+          aria-label="Regenerate (coming next)"
+        >
+          <Sparkles className="h-3 w-3" /> Regenerate
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs flex-1 gap-1"
+          onClick={handleCopy}
+          aria-label="Copy prompt"
+        >
+          <Copy className="h-3 w-3" /> Copy
+        </Button>
+      </div>
+    </figure>
+  );
+}
+
+interface VideoChapterCardProps {
+  mode: VideoImageMode;
+  index: number;
+  title: string;
+  duration: string;
+  brollPrompts: string[];
+  lowerThird: string;
+  lowerThirdAt: string;
+}
+
+function VideoChapterCard({
+  mode,
+  index,
+  title,
+  duration,
+  brollPrompts,
+  lowerThird,
+  lowerThirdAt,
+}: VideoChapterCardProps) {
+  async function handleCopyBroll(prompt: string) {
+    await navigator.clipboard.writeText(prompt);
+    toast.success('B-roll prompt copied');
+  }
+
+  return (
+    <Card className="w-[280px] shrink-0">
+      <CardContent className="p-3 space-y-2">
+        <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
+          <Badge variant="outline" className="text-[10px]">CH {index}</Badge>
+          <span>{duration}</span>
+        </div>
+        <p className="text-xs font-medium leading-snug line-clamp-2">{title}</p>
+
+        {/* B-roll prompts */}
+        <div className="space-y-1.5">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            B-roll · {brollPrompts.length}
+          </p>
+          {brollPrompts.slice(0, 2).map((b, i) => (
+            <div key={i} className="rounded border bg-muted/30 p-1.5 space-y-1">
+              {mode === 'generate' && (
+                <div className="aspect-video rounded bg-muted flex items-center justify-center">
+                  <ImageIcon className="h-4 w-4 opacity-40" />
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground line-clamp-2">{b}</p>
+              <button
+                type="button"
+                className="text-[10px] text-primary hover:underline w-full text-left flex items-center gap-1"
+                onClick={() => { void handleCopyBroll(b); }}
+                aria-label={`Copy B-roll prompt ${i + 1}`}
+              >
+                <Copy className="h-2.5 w-2.5" /> copy
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Lower third */}
+        {lowerThird && (
+          <div className="rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-2 py-1.5 space-y-0.5">
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="font-mono">{lowerThirdAt}</span>
+              <span className="uppercase tracking-wider opacity-70">lower third</span>
+            </div>
+            <p className="text-[11px] font-medium">{lowerThird}</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface VideoTextBlockProps {
+  title: string;
+  body: string;
+  alternatives?: string[];
+  tagged?: boolean;
+  big?: boolean;
+}
+
+function VideoTextBlock({ title, body, alternatives, tagged, big }: VideoTextBlockProps) {
+  async function handleCopy() {
+    await navigator.clipboard.writeText(body);
+    toast.success(`${title} copied`);
+  }
+
+  return (
+    <Card className={big ? 'md:col-span-2' : ''}>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          {title}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto h-7 gap-1 text-xs"
+            onClick={handleCopy}
+            aria-label={`Copy ${title}`}
+          >
+            <Copy className="h-3 w-3" /> Copy
+          </Button>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {tagged ? (
+          <div className="flex flex-wrap gap-1">
+            {body.split(',').map((t) => (
+              <Badge key={t} variant="outline" className="text-[10px]">
+                #{t.trim()}
+              </Badge>
+            ))}
+          </div>
+        ) : (
+          <Textarea defaultValue={body} rows={big ? 8 : 3} className="text-xs" readOnly />
+        )}
+        {alternatives && alternatives.length > 0 && (
+          <details className="text-xs">
+            <summary className="cursor-pointer text-muted-foreground flex items-center gap-1">
+              <ChevronDown className="h-3 w-3" /> {alternatives.length} alternatives
+            </summary>
+            <ul className="mt-1.5 space-y-1">
+              {alternatives.map((alt) => (
+                <li key={alt} className="rounded border px-2 py-1 hover:bg-muted cursor-pointer text-[11px]">
+                  {alt}
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
       </CardContent>
     </Card>
