@@ -268,14 +268,14 @@ describe('AssetsEngine — video routing (issue #213)', () => {
   })
 
   // ── AC7: Generate/Regenerate buttons disabled with tooltip ────────────────
-  it('generate button is disabled and shows coming-next affordance', async () => {
+  it('generate button is disabled in prompts-only mode and shows tooltip', async () => {
     mountVideoAssets()
     await screen.findByTestId('video-assets-generate-btn')
     const generateBtn = screen.getByTestId('video-assets-generate-btn')
     expect(generateBtn).toBeDisabled()
     // sr-only tooltip text for reliable assertion (Radix portal workaround)
     expect(screen.getByTestId('video-assets-generate-tooltip-text')).toBeInTheDocument()
-    expect(screen.getByTestId('video-assets-generate-tooltip-text').textContent).toMatch(/coming next/i)
+    expect(screen.getByTestId('video-assets-generate-tooltip-text').textContent).toMatch(/generate mode/i)
   })
 })
 
