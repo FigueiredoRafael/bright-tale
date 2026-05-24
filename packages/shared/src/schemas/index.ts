@@ -257,3 +257,11 @@ export {
   type PublishTargetType,
   type PublishTarget,
 } from "./publishTargets";
+
+// Video Asset Bundle schema (issue #216)
+export {
+  videoAssetBundleSchema,
+  type BundleImage,
+  type BundleText,
+  type VideoAssetBundle,
+} from "./videoAssetBundle";
