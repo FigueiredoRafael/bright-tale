@@ -24,7 +24,10 @@ import {
   blogProductionSettingsSchema,
   reviseSchema,
 } from "@brighttale/shared/schemas/pipeline";
-import { deriveDraftRequestSchema } from "@brighttale/shared/schemas/content-drafts";
+import {
+  deriveDraftRequestSchema,
+  assetSettingsSchema,
+} from "@brighttale/shared/schemas/content-drafts";
 import { deriveDraft } from "../lib/content-drafts/derive.js";
 import { inngest } from "../jobs/client.js";
 import { emitJobEvent } from "../jobs/emitter.js";
@@ -146,6 +149,8 @@ const updateSchema = z.object({
   scheduledAt: z.string().datetime().nullable().optional(),
   publishedAt: z.string().datetime().nullable().optional(),
   publishedUrl: z.string().url().nullable().optional(),
+  /** S6 — image-mode persistence: persists into draft_json.assetSettings */
+  assetSettings: assetSettingsSchema.optional(),
 });
 
 async function getOrgId(userId: string): Promise<string> {
@@ -497,6 +502,28 @@ export async function contentDraftsRoutes(
           update.published_at = body.publishedAt;
         if (body.publishedUrl !== undefined)
           update.published_url = body.publishedUrl;
+
+        // S6 — assetSettings: merge into draft_json.assetSettings.
+        // If draftJson was explicitly provided it takes precedence; otherwise
+        // we load the current draft_json and patch assetSettings into it.
+        if (body.assetSettings !== undefined) {
+          if (body.draftJson !== undefined) {
+            // Caller provided explicit draftJson — inject assetSettings into it
+            update.draft_json = {
+              ...(body.draftJson as Record<string, unknown>),
+              assetSettings: body.assetSettings,
+            };
+          } else {
+            // Load current draft_json and merge assetSettings
+            const existing = await loadDraft(id);
+            const existingDraftJson =
+              (existing.draft_json as Record<string, unknown> | null) ?? {};
+            update.draft_json = {
+              ...existingDraftJson,
+              assetSettings: body.assetSettings,
+            };
+          }
+        }
 
         const { data, error } = await (
           sb.from("content_drafts") as unknown as {
