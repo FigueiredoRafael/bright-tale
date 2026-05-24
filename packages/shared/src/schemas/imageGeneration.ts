@@ -71,7 +71,29 @@ export const suggestPromptsRequestSchema = z.object({
   agent_image_prompts: agentImagePromptsSchema.optional(),
 });
 
+/**
+ * S7 — Video image generation endpoint schema.
+ *
+ * Accepts a draft-scoped request with explicit slot + mode.
+ * mode='prompts-only' short-circuits the provider call entirely.
+ */
+export const generateVideoImageRequestSchema = z.object({
+  /** ID of the content_draft row (required for usage attribution). */
+  draftId: z.string().min(1, "draftId is required"),
+  /** Which visual slot this image belongs to. */
+  slot: z.enum(["thumbnail", "broll", "hook"]),
+  /** The image generation prompt. */
+  prompt: z.string().min(10, "Prompt must be at least 10 characters").max(2000),
+  /** For broll slots — which chapter this belongs to (0-indexed). */
+  chapterIndex: z.number().int().min(0).optional(),
+  /** 'generate' calls the provider; 'prompts-only' short-circuits. */
+  mode: z.enum(["generate", "prompts-only"]).default("prompts-only"),
+  /** Aspect ratio hint forwarded to the provider. */
+  aspectRatio: z.enum(["16:9", "1:1", "9:16", "4:3"]).default("16:9"),
+});
+
 export type GenerateImageRequest = z.infer<typeof generateImageRequestSchema>;
+export type GenerateVideoImageRequest = z.infer<typeof generateVideoImageRequestSchema>;
 export type ImageGeneratorConfig = z.infer<typeof imageGeneratorConfigSchema>;
 export type SuggestPromptsRequest = z.infer<typeof suggestPromptsRequestSchema>;
 export type AgentImagePrompts = z.infer<typeof agentImagePromptsSchema>;

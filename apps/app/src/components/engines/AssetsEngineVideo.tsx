@@ -18,7 +18,7 @@
  * Labels translated from Portuguese to English.
  */
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { toast as sonnerToast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -109,7 +109,10 @@ export interface AssetsEngineVideoProps {
   onToast?: (message: string) => void;
 }
 
-const COMING_NEXT_TOOLTIP = 'Coming next — image generation lands in S6/S7';
+const COMING_NEXT_TOOLTIP = 'Requires generate mode';
+
+/** Shape of a generated image keyed by slot+index string like "thumbnail-0", "broll-0-1". */
+type GeneratedImages = Record<string, string>; // slot-key → data URL
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -136,6 +139,11 @@ export function AssetsEngineVideo({ draftJson, draftId, onCopyText, onToast }: A
   const [mode, setMode] = useState<ImageMode>(
     () => readPersistedMode(draftJson) ?? 'prompts-only',
   );
+
+  // S7: per-concept generated image URLs, keyed by slot index string.
+  const [generatedImages, setGeneratedImages] = useState<GeneratedImages>({});
+  // S7: tracks which concepts are currently generating (to show loading state).
+  const [generatingSlots, setGeneratingSlots] = useState<Set<string>>(new Set());
 
   function fireToast(message: string) {
     if (onToast) {
@@ -178,6 +186,53 @@ export function AssetsEngineVideo({ draftJson, draftId, onCopyText, onToast }: A
     }
   }
 
+  // S7: Regenerate a single concept image by calling POST /api/assets/generate/video.
+  const handleRegenerate = useCallback(async (slotKey: string, slot: 'thumbnail' | 'broll' | 'hook', prompt: string, chapterIndex?: number) => {
+    if (!draftId || mode !== 'generate') return;
+
+    setGeneratingSlots((prev) => {
+      const next = new Set(prev);
+      next.add(slotKey);
+      return next;
+    });
+
+    function showError(message: string) {
+      if (onToast) {
+        onToast(message);
+      } else {
+        sonnerToast.error(message);
+      }
+    }
+
+    try {
+      const res = await fetch('/api/assets/generate/video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          draftId,
+          slot,
+          prompt,
+          chapterIndex,
+          mode: 'generate',
+        }),
+      });
+      const body = (await res.json()) as { data: { imageUrl?: string }; error: { message?: string } | null };
+      if (!res.ok || body.error) {
+        showError(body.error?.message ?? 'Image generation failed. Please try again.');
+      } else if (body.data.imageUrl) {
+        setGeneratedImages((prev) => ({ ...prev, [slotKey]: body.data.imageUrl as string }));
+      }
+    } catch {
+      showError('Image generation failed. Please try again.');
+    } finally {
+      setGeneratingSlots((prev) => {
+        const next = new Set(prev);
+        next.delete(slotKey);
+        return next;
+      });
+    }
+  }, [draftId, mode, onToast]);
+
   const primaryTitle = draft.video_title ?? draft.title_options?.[0] ?? '';
   const altTitles = draft.title_options?.slice(primaryTitle === draft.video_title ? 0 : 1) ?? [];
 
@@ -194,7 +249,7 @@ export function AssetsEngineVideo({ draftJson, draftId, onCopyText, onToast }: A
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Disabled generate button with tooltip */}
+          {/* Generate all button — disabled when mode is prompts-only */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -202,7 +257,7 @@ export function AssetsEngineVideo({ draftJson, draftId, onCopyText, onToast }: A
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled
+                    disabled={mode === 'prompts-only'}
                     data-testid="video-assets-generate-btn"
                     className="gap-1.5 text-xs"
                   >
@@ -212,7 +267,7 @@ export function AssetsEngineVideo({ draftJson, draftId, onCopyText, onToast }: A
                 </span>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                {COMING_NEXT_TOOLTIP}
+                {mode === 'prompts-only' ? COMING_NEXT_TOOLTIP : 'Generate all images'}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -221,7 +276,7 @@ export function AssetsEngineVideo({ draftJson, draftId, onCopyText, onToast }: A
             className="sr-only"
             data-testid="video-assets-generate-tooltip-text"
           >
-            {COMING_NEXT_TOOLTIP}
+            {mode === 'prompts-only' ? COMING_NEXT_TOOLTIP : 'Generate all images'}
           </span>
 
           <ModeToggle mode={mode} onChange={handleModeChange} />
@@ -243,17 +298,25 @@ export function AssetsEngineVideo({ draftJson, draftId, onCopyText, onToast }: A
             className="grid grid-cols-1 md:grid-cols-3 gap-3"
             data-testid="video-assets-thumbnail-grid"
           >
-            {(draft.thumbnail_ideas ?? []).map((t, i) => (
-              <ImageConcept
-                key={i}
-                mode={mode}
-                title={t.title}
-                mood={t.mood}
-                brief={t.brief}
-                selected={i === 0}
-                onCopyText={handleCopy}
-              />
-            ))}
+            {(draft.thumbnail_ideas ?? []).map((t, i) => {
+              const slotKey = `thumbnail-${i}`;
+              return (
+                <ImageConcept
+                  key={i}
+                  mode={mode}
+                  title={t.title}
+                  mood={t.mood}
+                  brief={t.brief}
+                  selected={i === 0}
+                  onCopyText={handleCopy}
+                  generatedImageUrl={generatedImages[slotKey]}
+                  isGenerating={generatingSlots.has(slotKey)}
+                  onRegenerate={() => handleRegenerate(slotKey, 'thumbnail', t.brief)}
+                  regenerateTestId={`video-assets-regenerate-${slotKey}`}
+                  generatedImageTestId={`video-assets-generated-image-${slotKey}`}
+                />
+              );
+            })}
           </div>
         </CardContent>
       </Card>
@@ -306,6 +369,11 @@ export function AssetsEngineVideo({ draftJson, draftId, onCopyText, onToast }: A
             mood="Pattern interrupt"
             brief={draft.thumbnail?.facePromptHint ?? ''}
             onCopyText={handleCopy}
+            generatedImageUrl={generatedImages['hook-0']}
+            isGenerating={generatingSlots.has('hook-0')}
+            onRegenerate={() => handleRegenerate('hook-0', 'hook', draft.thumbnail?.facePromptHint ?? '')}
+            regenerateTestId="video-assets-regenerate-hook-0"
+            generatedImageTestId="video-assets-generated-image-hook-0"
           />
         </CardContent>
       </Card>
@@ -395,6 +463,11 @@ function ImageConcept({
   brief,
   selected,
   onCopyText,
+  generatedImageUrl,
+  isGenerating,
+  onRegenerate,
+  regenerateTestId,
+  generatedImageTestId,
 }: {
   mode: ImageMode;
   title: string;
@@ -402,6 +475,11 @@ function ImageConcept({
   brief: string;
   selected?: boolean;
   onCopyText: (text: string) => void;
+  generatedImageUrl?: string;
+  isGenerating?: boolean;
+  onRegenerate?: () => void;
+  regenerateTestId?: string;
+  generatedImageTestId?: string;
 }) {
   if (mode === 'prompts-only') {
     return (
@@ -426,33 +504,47 @@ function ImageConcept({
     );
   }
 
-  // generate mode — placeholder preview
+  // generate mode — show generated image if available, else placeholder
   return (
     <figure className="space-y-1.5">
       <div
         className={`aspect-video rounded border relative overflow-hidden ${selected ? 'ring-2 ring-primary' : ''}`}
       >
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-900 to-rose-900 text-white flex items-center justify-center text-xs font-bold p-2 text-center">
-          {title}
-        </div>
-        {selected && (
+        {generatedImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={generatedImageUrl}
+            alt={title}
+            className="absolute inset-0 w-full h-full object-cover"
+            data-testid={generatedImageTestId}
+          />
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-900 to-rose-900 text-white flex items-center justify-center text-xs font-bold p-2 text-center">
+            {isGenerating ? (
+              <span className="animate-pulse">Generating…</span>
+            ) : (
+              title
+            )}
+          </div>
+        )}
+        {selected && !generatedImageUrl && (
           <Badge className="absolute top-1 right-1 text-[9px]">selected</Badge>
         )}
       </div>
       <figcaption className="text-[11px] text-muted-foreground line-clamp-2">{brief}</figcaption>
       <div className="flex gap-1">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="flex-1">
-                <Button size="sm" variant="ghost" disabled className="h-7 text-xs w-full gap-1">
-                  <Sparkles className="h-3 w-3" /> Regenerate
-                </Button>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{COMING_NEXT_TOOLTIP}</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        {/* S7: Regenerate button — enabled in generate mode */}
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={isGenerating}
+          className="h-7 text-xs flex-1 gap-1"
+          data-testid={regenerateTestId}
+          onClick={onRegenerate}
+        >
+          <Sparkles className="h-3 w-3" />
+          {isGenerating ? 'Generating…' : 'Regenerate'}
+        </Button>
         <Button
           size="sm"
           variant="ghost"
