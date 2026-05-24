@@ -27,6 +27,12 @@ import {
   type PublishTarget,
 } from '../lib/pipeline/publish-target-resolver.js';
 import { MEDIA, type Medium } from '@brighttale/shared/pipeline/inputs';
+import {
+  buildConsentUrl,
+  exchangeCode,
+  validateStateParam,
+  encryptTokens,
+} from '../lib/youtube/oauth.js';
 
 /** Helper: get user's org_id */
 async function getOrgId(userId: string): Promise<string> {
@@ -564,6 +570,119 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
       return sendError(reply, error);
     }
   });
+
+  /**
+   * POST /:id/youtube/connect — Begin YouTube OAuth flow.
+   * Returns { data: { url } } — caller redirects the user to that URL.
+   */
+  fastify.post<{ Params: { id: string } }>('/:id/youtube/connect', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
+
+      const orgId = await getOrgId(request.userId);
+      const { id } = request.params;
+
+      const { data: channel } = await sb.from('channels').select('id').eq('id', id).eq('org_id', orgId).single();
+      if (!channel) throw new ApiError(404, 'Channel not found', 'CHANNEL_NOT_FOUND');
+
+      const url = buildConsentUrl(id);
+      return reply.send({ data: { url }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * GET /:id/youtube/callback — Handle Google OAuth callback.
+   * Exchanges code for tokens, encrypts, upserts publish_targets row.
+   */
+  fastify.get<{ Params: { id: string }; Querystring: { code?: string; state?: string; error?: string } }>(
+    '/:id/youtube/callback',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        const sb = createServiceClient();
+        if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
+
+        const orgId = await getOrgId(request.userId);
+        const { id } = request.params;
+        const { code, state, error: oauthError } = request.query;
+
+        // Check for OAuth-level errors from Google (e.g. user denied consent)
+        if (oauthError) {
+          throw new ApiError(400, `OAuth error: ${oauthError}`, 'OAUTH_ERROR');
+        }
+
+        if (!code) {
+          throw new ApiError(400, 'code query parameter is required', 'MISSING_CODE');
+        }
+
+        // Validate state to prevent CSRF / channel mismatch
+        if (!state || !validateStateParam(state, id)) {
+          throw new ApiError(400, 'State parameter is invalid or does not match channel', 'STATE_MISMATCH');
+        }
+
+        // Verify channel ownership
+        const { data: channel } = await sb.from('channels').select('id').eq('id', id).eq('org_id', orgId).single();
+        if (!channel) throw new ApiError(404, 'Channel not found', 'CHANNEL_NOT_FOUND');
+
+        // Exchange the authorization code for tokens
+        const tokens = await exchangeCode(code);
+
+        // We need a stable row id for AAD — upsert first with a placeholder, then update.
+        // Simpler: upsert with a temporary placeholder credentials_encrypted, get the id, re-encrypt.
+        // Actually: we upsert with a generated display_name and update credentials_encrypted in-place.
+        // To avoid two round-trips: upsert with display_name only first, then update with encrypted creds.
+
+        // Step 1: upsert the publish_targets row (credentials will be added after we have the row id)
+        const { data: ptRow, error: upsertError } = await sb
+          .from('publish_targets')
+          .upsert(
+            {
+              channel_id: id,
+              type: 'youtube',
+              display_name: 'YouTube',
+              is_active: true,
+              // Temporarily store a placeholder — overwritten below once we have the row id
+              credentials_encrypted: '__pending__',
+            },
+            { onConflict: 'channel_id,type' },
+          )
+          .select()
+          .single();
+
+        if (upsertError || !ptRow) {
+          throw new ApiError(500, 'Failed to persist YouTube publish target', 'DB_ERROR');
+        }
+
+        // Step 2: encrypt tokens with the real row id as AAD
+        const encryptedCreds = encryptTokens(tokens, ptRow.id as string);
+
+        // Step 3: update with the properly-encrypted credentials
+        await sb
+          .from('publish_targets')
+          .update({ credentials_encrypted: encryptedCreds })
+          .eq('id', ptRow.id as string);
+
+        // Return the target without credentials
+        const safeTarget = {
+          id: ptRow.id,
+          channelId: ptRow.channel_id,
+          type: ptRow.type,
+          displayName: ptRow.display_name,
+          configJson: ptRow.config_json,
+          isActive: ptRow.is_active,
+          createdAt: ptRow.created_at,
+          updatedAt: ptRow.updated_at,
+        };
+
+        return reply.send({ data: safeTarget, error: null });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
 
   /**
    * POST /:id/wordpress/test — Test WP connection
