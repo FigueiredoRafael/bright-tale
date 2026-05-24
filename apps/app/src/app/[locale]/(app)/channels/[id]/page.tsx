@@ -52,6 +52,7 @@ import { NichePicker } from '@/components/channels/NichePicker';
 import { LogoUpload } from '@/components/channels/LogoUpload';
 import { VoiceConfigSection } from '@/components/channels/VoiceConfigSection';
 import { ReferenceNotifications } from '@/components/channels/ReferenceNotifications';
+import { YoutubeConnectButton } from '@/components/channels/YoutubeConnectButton';
 import { invalidateChannelCache } from '@/hooks/use-active-channel';
 
 function formatNumber(n: number): string {
@@ -134,6 +135,10 @@ export default function ChannelDetailPage() {
   const [editBlogUrl, setEditBlogUrl] = useState('');
   const [savingUrl, setSavingUrl] = useState(false);
 
+  // YouTube OAuth connection state (issue #217)
+  const [ytOauthConnected, setYtOauthConnected] = useState(false);
+  const [ytOauthDisplayName, setYtOauthDisplayName] = useState<string | undefined>(undefined);
+
   // Blog metrics
   const [blogMetrics, setBlogMetrics] = useState<BlogMetrics | null>(null);
   const [blogLoading, setBlogLoading] = useState(false);
@@ -168,12 +173,25 @@ export default function ChannelDetailPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [channelRes, refsRes] = await Promise.all([
+      const [channelRes, refsRes, publishTargetsRes] = await Promise.all([
         fetch(`/api/channels/${id}`),
         fetch(`/api/channels/${id}/references`),
+        fetch(`/api/channels/${id}/publish-targets`),
       ]);
       const channelJson = await channelRes.json();
       const refsJson = await refsRes.json();
+
+      // Check YouTube OAuth connection from publish_targets (issue #217)
+      const ptJson = await publishTargetsRes.json().catch(() => ({ data: null }));
+      if (ptJson.data) {
+        const targets = Array.isArray(ptJson.data) ? ptJson.data : (ptJson.data.items ?? []);
+        const ytTarget = (targets as Array<{ type: string; display_name: string; is_active: boolean }>)
+          .find((t) => t.type === 'youtube' && t.is_active);
+        if (ytTarget) {
+          setYtOauthConnected(true);
+          setYtOauthDisplayName(ytTarget.display_name !== 'YouTube' ? ytTarget.display_name : undefined);
+        }
+      }
 
       if (channelJson.data) {
         const c = channelJson.data;
@@ -704,6 +722,21 @@ export default function ChannelDetailPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
+                {/* YouTube OAuth connection (issue #217) */}
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border">
+                  <div>
+                    <p className="text-sm font-medium">Direct publish (OAuth)</p>
+                    <p className="text-xs text-muted-foreground">
+                      Connect your YouTube account to publish videos directly from BrightTale.
+                    </p>
+                  </div>
+                  <YoutubeConnectButton
+                    channelId={channel.id}
+                    isConnected={ytOauthConnected}
+                    displayName={ytOauthDisplayName}
+                  />
+                </div>
+
                 {/* YouTube URL input */}
                 <div className="space-y-2">
                   <Label>URL do canal</Label>
