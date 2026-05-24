@@ -395,3 +395,75 @@ describe('POST /content-drafts/:id/derive', () => {
     expect(res.statusCode).toBe(409);
   });
 });
+
+describe('PATCH /content-drafts/:id — assetSettings.imageMode (S6)', () => {
+  it('persists imageMode=generate via assetSettings patch', async () => {
+    const existingDraft = {
+      id: 'cd-1',
+      draft_json: {},
+    };
+    const updatedDraft = {
+      id: 'cd-1',
+      draft_json: { assetSettings: { imageMode: 'generate' } },
+    };
+    // loadDraft uses maybeSingle; the subsequent update uses single
+    mockChain.maybeSingle.mockResolvedValueOnce({ data: existingDraft, error: null });
+    mockChain.single.mockResolvedValueOnce({ data: updatedDraft, error: null });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/content-drafts/cd-1',
+      headers: AUTH_USER,
+      payload: { assetSettings: { imageMode: 'generate' } },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().error).toBeNull();
+  });
+
+  it('persists imageMode=prompts-only via assetSettings patch', async () => {
+    const existingDraft = {
+      id: 'cd-1',
+      draft_json: {},
+    };
+    const updatedDraft = {
+      id: 'cd-1',
+      draft_json: { assetSettings: { imageMode: 'prompts-only' } },
+    };
+    // loadDraft uses maybeSingle; the subsequent update uses single
+    mockChain.maybeSingle.mockResolvedValueOnce({ data: existingDraft, error: null });
+    mockChain.single.mockResolvedValueOnce({ data: updatedDraft, error: null });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/content-drafts/cd-1',
+      headers: AUTH_USER,
+      payload: { assetSettings: { imageMode: 'prompts-only' } },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().error).toBeNull();
+  });
+
+  it('returns 400 for invalid imageMode value', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/content-drafts/cd-1',
+      headers: AUTH_USER,
+      payload: { assetSettings: { imageMode: 'auto' } },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 400 for unknown keys inside assetSettings', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/content-drafts/cd-1',
+      headers: AUTH_USER,
+      payload: { assetSettings: { imageMode: 'generate', unknownKey: true } },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+});

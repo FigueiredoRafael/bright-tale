@@ -1,21 +1,25 @@
 'use client';
 
 /**
- * AssetsEngineVideo — issue #213
+ * AssetsEngineVideo — issue #213 / S6 (#219)
  *
  * Video-track read-only asset layout:
- * - Mode toggle (generate here / prompts-only) — local state only, defaults to prompts-only
+ * - Mode toggle (generate here / prompts-only) — persisted to draft_json.assetSettings.imageMode
  * - Thumbnail concept grid (draft_json.thumbnail_ideas)
  * - Per-chapter cards with b-roll prompts + lower-third (draft_json.script.chapters)
  * - Hook visual card (draft_json.thumbnail.facePromptHint)
  * - Text bundle: title, description, tags, pinned comment — each with a Copy button
- * - Generate/Regenerate buttons disabled with "Coming next" tooltip (S6/S7)
+ * - Generate/Regenerate buttons disabled with "Coming next" tooltip (S7)
+ *
+ * S6: imageMode persists to draft_json.assetSettings.imageMode via optimistic
+ * PATCH on toggle flip. Revert + toast on failure.
  *
  * Prototype reference: apps/app/src/app/[locale]/(app)/prototype/video-engines/AssetsPanel.tsx
  * Labels translated from Portuguese to English.
  */
 
 import { useState } from 'react';
+import { toast as sonnerToast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -89,20 +93,82 @@ export interface AssetsEngineVideoProps {
    */
   draftJson: unknown;
   /**
+   * ID of the content_draft row. Required for persisting imageMode via PATCH.
+   * When absent, mode changes are local-only (no persistence).
+   */
+  draftId?: string;
+  /**
    * Optional clipboard override — injected in tests since jsdom does not
    * implement navigator.clipboard. Defaults to navigator.clipboard.writeText.
    */
   onCopyText?: (text: string) => void;
+  /**
+   * Optional toast callback — injected in tests to capture error toasts.
+   * In production, falls back to the `sonner` toast library.
+   */
+  onToast?: (message: string) => void;
 }
 
 const COMING_NEXT_TOOLTIP = 'Coming next — image generation lands in S6/S7';
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Extract the persisted imageMode from draft_json.assetSettings, or undefined. */
+function readPersistedMode(draftJson: unknown): ImageMode | undefined {
+  if (!draftJson || typeof draftJson !== 'object') return undefined;
+  const obj = draftJson as Record<string, unknown>;
+  const settings = obj['assetSettings'];
+  if (!settings || typeof settings !== 'object') return undefined;
+  const mode = (settings as Record<string, unknown>)['imageMode'];
+  if (mode === 'generate' || mode === 'prompts-only') return mode;
+  return undefined;
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function AssetsEngineVideo({ draftJson, onCopyText }: AssetsEngineVideoProps) {
-  const [mode, setMode] = useState<ImageMode>('prompts-only');
-
+export function AssetsEngineVideo({ draftJson, draftId, onCopyText, onToast }: AssetsEngineVideoProps) {
   const draft = normalizeDraftJson(draftJson);
+
+  // S6: read persisted mode from draft_json.assetSettings.imageMode; default prompts-only.
+  // AssetsEngine passes key={localDraft ? draftId : 'pending'} so this component
+  // remounts once the draft loads — at that point draftJson carries the real data
+  // and the lazy initializer reads the persisted mode correctly.
+  const [mode, setMode] = useState<ImageMode>(
+    () => readPersistedMode(draftJson) ?? 'prompts-only',
+  );
+
+  function fireToast(message: string) {
+    if (onToast) {
+      onToast(message);
+    } else {
+      sonnerToast.error(message);
+    }
+  }
+
+  async function handleModeChange(newMode: ImageMode) {
+    const previous = mode;
+    // Optimistic update
+    setMode(newMode);
+
+    if (!draftId) return;
+
+    try {
+      const res = await fetch(`/api/content-drafts/${draftId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assetSettings: { imageMode: newMode } }),
+      });
+      const body = (await res.json()) as { data: unknown; error: unknown };
+      if (!res.ok || body.error) {
+        // Revert on failure
+        setMode(previous);
+        fireToast('Could not save image mode. Please try again.');
+      }
+    } catch {
+      setMode(previous);
+      fireToast('Could not save image mode. Please try again.');
+    }
+  }
 
   function handleCopy(text: string) {
     if (onCopyText) {
@@ -158,7 +224,7 @@ export function AssetsEngineVideo({ draftJson, onCopyText }: AssetsEngineVideoPr
             {COMING_NEXT_TOOLTIP}
           </span>
 
-          <ModeToggle mode={mode} onChange={setMode} />
+          <ModeToggle mode={mode} onChange={handleModeChange} />
         </div>
       </header>
 
@@ -296,6 +362,7 @@ function ModeToggle({ mode, onChange }: { mode: ImageMode; onChange: (m: ImageMo
     <div
       className="inline-flex rounded-full border bg-muted p-0.5 text-xs"
       data-testid="video-assets-mode-toggle"
+      data-mode={mode}
     >
       <button
         type="button"

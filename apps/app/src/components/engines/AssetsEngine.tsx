@@ -98,6 +98,11 @@ interface AssetsEngineProps {
    * implement navigator.clipboard. Propagated to AssetsEngineVideo.
    */
   onCopyText?: (text: string) => void;
+  /**
+   * S6 — optional toast callback injected in tests. Propagated to AssetsEngineVideo.
+   * In production, AssetsEngineVideo falls back to sonner.toast.error.
+   */
+  onToast?: (message: string) => void;
 }
 
 interface NoBriefSection {
@@ -213,7 +218,7 @@ interface PendingUpload {
 
 /* ── Component ── */
 
-export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProviderOverride, retrySignal = 0, trackId, trackMedium, onCopyText }: AssetsEngineProps) {
+export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProviderOverride, retrySignal = 0, trackId, trackMedium, onCopyText, onToast }: AssetsEngineProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -1074,10 +1079,15 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   // The blog image-upload flow (briefs/refine/approve) is irrelevant for
   // video tracks and is intentionally bypassed here.
   if (trackMedium === 'video') {
+    // key forces remount once the draft loads so the useState initializer in
+    // AssetsEngineVideo sees the real draftJson (with persisted assetSettings).
     return (
       <AssetsEngineVideo
+        key={localDraft ? String(draftId) : 'pending'}
         draftJson={localDraft?.draft_json ?? localDraft ?? null}
+        draftId={draftId}
         onCopyText={onCopyText}
+        onToast={onToast}
       />
     );
   }
