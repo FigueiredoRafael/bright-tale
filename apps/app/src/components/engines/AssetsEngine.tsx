@@ -27,6 +27,7 @@ import { getPersonaTheme } from './utils/personaTheme';
 import { fetchTracks, nextTrackStage, pushStage } from '@/lib/pipeline/advanceUrl';
 import { getTrackStageResults } from '@/lib/pipeline/stage-results-by-track';
 import type { AssetsResult, PipelineContext, PipelineStage } from './types';
+import { AssetsEngineVideo } from './AssetsEngineVideo';
 
 /* ── Types ── */
 
@@ -85,6 +86,18 @@ interface AssetsEngineProps {
   retrySignal?: number;
   /** Issue #210 — when set, draftId resolves from ctx.stageResultsByTrack[trackId]. */
   trackId?: string;
+  /**
+   * Issue #213 — when set to 'video', routes to the video asset layout
+   * (AssetsEngineVideo) instead of the blog image-upload surface.
+   * Consistent with the trackMedium prop pattern used on PreviewEngine (#214)
+   * and PublishEngine (#215).
+   */
+  trackMedium?: 'blog' | 'video';
+  /**
+   * Optional clipboard override — injected in tests since jsdom does not
+   * implement navigator.clipboard. Propagated to AssetsEngineVideo.
+   */
+  onCopyText?: (text: string) => void;
 }
 
 interface NoBriefSection {
@@ -200,7 +213,7 @@ interface PendingUpload {
 
 /* ── Component ── */
 
-export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProviderOverride, retrySignal = 0, trackId }: AssetsEngineProps) {
+export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProviderOverride, retrySignal = 0, trackId, trackMedium, onCopyText }: AssetsEngineProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -1054,6 +1067,19 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
 
   if (loading) {
     return <div className="p-6 text-muted-foreground">Loading assets...</div>;
+  }
+
+  // ── Issue #213 — video routing ────────────────────────────────────────────
+  // When the track medium is video, delegate to the video asset layout.
+  // The blog image-upload flow (briefs/refine/approve) is irrelevant for
+  // video tracks and is intentionally bypassed here.
+  if (trackMedium === 'video') {
+    return (
+      <AssetsEngineVideo
+        draftJson={localDraft?.draft_json ?? localDraft ?? null}
+        onCopyText={onCopyText}
+      />
+    );
   }
 
   const featuredPending = pendingUploads.find((p) => p.slot === 'featured');
