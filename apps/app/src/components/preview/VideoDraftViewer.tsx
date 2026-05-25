@@ -1,0 +1,1914 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { EditableText } from '@/components/preview/EditableText';
+import {
+  Clock,
+  Camera,
+  Film,
+  Image as ImageIcon,
+  Megaphone,
+  MessageSquare,
+  Mic,
+  Music,
+  Volume2,
+  Wand2,
+  Copy,
+  Check,
+  AlertTriangle,
+  Loader2,
+  Download,
+} from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { MarkdownPreview } from '@/components/preview/MarkdownPreview';
+import type {
+  VideoOutput,
+  VideoScriptSection,
+  VideoEditorSection,
+  ThumbnailIdea,
+} from '@brighttale/shared/types/agents';
+import { downloadTextFile } from '@/lib/exporters/editorBrief';
+import { useActiveChannel } from '@/hooks/use-active-channel';
+
+type Path = (string | number)[];
+
+interface VideoDraftViewerProps {
+  /**
+   * Raw draft_json from the API or a parsed user paste. The viewer unwraps
+   * common legacy wrappers (video_script, video, blog) before rendering, so
+   * callers don't have to know the exact storage shape.
+   */
+  output: VideoOutput | Record<string, unknown>;
+  className?: string;
+  /**
+   * When provided, fields become inline-editable. The callback is invoked
+   * (debounced) with the full updated draft_json after each change.
+   */
+  onSave?: (next: Record<string, unknown>) => void | Promise<void>;
+  /** Debounce delay before firing onSave (ms). Default 800. */
+  saveDebounceMs?: number;
+  /**
+   * Draft id — when present the Publish tab's "Generate Audio" button calls
+   * POST /api/content-drafts/:draftId/synthesize and renders an audio player
+   * inline. Without it the button stays disabled.
+   */
+  draftId?: string;
+}
+
+/**
+ * Immutable deep-set: returns a new object with `value` placed at `path`.
+ * Creates intermediate objects/arrays as needed based on the next key shape.
+ */
+function setIn<T extends Record<string, unknown>>(obj: T, path: Path, value: unknown): T {
+  if (path.length === 0) return value as T;
+  const [head, ...rest] = path;
+  if (Array.isArray(obj)) {
+    const copy = obj.slice() as unknown as T;
+    const idx = head as number;
+    (copy as unknown as unknown[])[idx] = setIn(
+      ((obj as unknown as unknown[])[idx] as Record<string, unknown>) ?? (typeof rest[0] === 'number' ? [] : {}),
+      rest,
+      value,
+    );
+    return copy;
+  }
+  const source = (obj as Record<string, unknown>) ?? {};
+  const nextChild = setIn(
+    (source[head as string] as Record<string, unknown>) ?? (typeof rest[0] === 'number' ? [] : {}),
+    rest,
+    value,
+  );
+  return { ...source, [head as string]: nextChild } as T;
+}
+
+function unwrapVideoOutput(raw: VideoOutput | Record<string, unknown>): VideoOutput {
+  const obj = raw as Record<string, unknown>;
+  // Top-level signals — if any of these are present, raw is already the VideoOutput.
+  const hasTopLevel =
+    'script' in obj ||
+    'teleprompter_script' in obj ||
+    'video_title' in obj ||
+    'thumbnail_ideas' in obj ||
+    'editor_script' in obj;
+  const unwrapped: Record<string, unknown> = hasTopLevel
+    ? obj
+    : (obj.video_script as Record<string, unknown> | undefined) ??
+      (obj.video as Record<string, unknown> | undefined) ??
+      obj;
+  return normalizeEditorScript(unwrapped) as unknown as VideoOutput;
+}
+
+/**
+ * Models frequently emit `editor_script` sections in snake_case (a_roll,
+ * sfx_cues, bgm, …) instead of the canonical Pascal/upper shape the UI reads
+ * (A_roll, SFX, BGM, …). Coerce both shapes so downstream rendering is
+ * uniform. Editor saves naturally migrate the row to the canonical shape.
+ */
+function normalizeEditorScript(input: Record<string, unknown>): Record<string, unknown> {
+  const es = input.editor_script as Record<string, unknown> | undefined;
+  if (!es || typeof es !== 'object') return input;
+
+  const normalizeSection = (raw: unknown): Record<string, unknown> | undefined => {
+    if (!raw || typeof raw !== 'object') return raw as undefined;
+    const sec = raw as Record<string, unknown>;
+    const pick = (...keys: string[]) => keys.map((k) => sec[k]).find((v) => v != null && v !== '');
+    const asString = (v: unknown): string | undefined => {
+      if (v == null) return undefined;
+      if (typeof v === 'string') return v;
+      if (Array.isArray(v)) return v.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join('\n');
+      return String(v);
+    };
+    const asStringArray = (v: unknown): string[] | undefined => {
+      if (Array.isArray(v)) return v.map((x) => (typeof x === 'string' ? x : JSON.stringify(x)));
+      if (typeof v === 'string' && v.length > 0) return v.split('\n').map((l) => l.trim()).filter(Boolean);
+      return undefined;
+    };
+    const out: Record<string, unknown> = { ...sec };
+    if (out.A_roll == null) out.A_roll = asString(pick('A_roll', 'a_roll'));
+    if (out.B_roll == null) out.B_roll = asStringArray(pick('B_roll', 'b_roll'));
+    if (out.SFX == null) out.SFX = asString(pick('SFX', 'sfx', 'sfx_cues'));
+    if (out.BGM == null) out.BGM = asString(pick('BGM', 'bgm'));
+    if (out.Transitions == null) out.Transitions = asString(pick('Transitions', 'transitions'));
+    if (out.Visual_effects == null) out.Visual_effects = asString(pick('Visual_effects', 'visual_effects'));
+    if (out.Pacing_notes == null) out.Pacing_notes = asString(pick('Pacing_notes', 'pacing_notes'));
+    if (out.text_overlays == null) out.text_overlays = pick('text_overlays');
+    return out;
+  };
+
+  const normalized: Record<string, unknown> = { ...es };
+  for (const key of ['hook', 'problem', 'teaser', 'affiliate_segment', 'outro']) {
+    const n = normalizeSection(es[key]);
+    if (n) normalized[key] = n;
+  }
+  if (Array.isArray(es.chapters)) {
+    normalized.chapters = es.chapters.map((c) => normalizeSection(c) ?? c);
+  }
+
+  // color_grading: hoist first per-section value to top-level if missing.
+  if (normalized.color_grading == null || normalized.color_grading === '') {
+    const sources = [
+      es.hook,
+      es.problem,
+      es.teaser,
+      ...(Array.isArray(es.chapters) ? es.chapters : []),
+      es.affiliate_segment,
+      es.outro,
+    ];
+    for (const src of sources) {
+      const cg = (src as Record<string, unknown> | undefined)?.color_grading;
+      if (typeof cg === 'string' && cg.length > 0) {
+        normalized.color_grading = cg;
+        break;
+      }
+    }
+  }
+
+  return { ...input, editor_script: normalized };
+}
+
+const EMOTION_VARIANT: Record<string, string> = {
+  curiosity: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30',
+  shock: 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30',
+  intrigue: 'bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/30',
+};
+
+export function VideoDraftViewer({
+  output: rawOutput,
+  className = '',
+  onSave,
+  saveDebounceMs = 800,
+  draftId,
+}: VideoDraftViewerProps) {
+  const editable = typeof onSave === 'function';
+
+  // Local state seeded from the unwrapped output so edits are immediate.
+  // Resync uses the React 19 "setState during render" pattern when the
+  // upstream prop reference changes — avoids setState-in-effect cascades.
+  const initialOutput = useMemo(
+    () => unwrapVideoOutput(rawOutput) as VideoOutput & Record<string, unknown>,
+    [rawOutput],
+  );
+  const [output, setOutput] = useState(initialOutput);
+  const [trackedUpstream, setTrackedUpstream] = useState(initialOutput);
+  if (initialOutput !== trackedUpstream) {
+    setTrackedUpstream(initialOutput);
+    setOutput(initialOutput);
+  }
+
+  // Debounced save: fires onSave with the full draft_json some ms after the
+  // last edit. Skip when output is identical to the latest upstream snapshot
+  // (no local changes pending — typically right after a resync).
+  useEffect(() => {
+    if (!editable) return;
+    if (output === trackedUpstream) return;
+    const timer = setTimeout(() => {
+      void onSave!(output);
+    }, saveDebounceMs);
+    return () => clearTimeout(timer);
+  }, [output, trackedUpstream, editable, onSave, saveDebounceMs]);
+
+  function update(path: Path, value: unknown) {
+    setOutput((prev) => setIn(prev, path, value));
+  }
+
+  const titlePrimary = output.video_title?.primary ?? output.title_options?.[0] ?? 'Untitled video';
+  const duration = output.estimated_duration ?? output.total_duration_estimate ?? null;
+
+  // Detect legacy / non-conforming drafts so we can prompt a regeneration.
+  const isLegacyShape =
+    !output.script &&
+    !output.teleprompter_script &&
+    !output.editor_script &&
+    !output.thumbnail_ideas &&
+    !output.video_description;
+  const titleAlternatives = useMemo(() => {
+    const alts = Array.isArray(output.video_title?.alternatives) ? output.video_title.alternatives : [];
+    const fromOptions = Array.isArray(output.title_options) ? output.title_options : [];
+    const merged = [...alts, ...fromOptions.filter((t) => t !== output.video_title?.primary)];
+    return Array.from(new Set(merged.filter((t): t is string => typeof t === 'string')));
+  }, [output.video_title, output.title_options]);
+
+  return (
+    <div className={`space-y-4 ${className}`}>
+      {/* Header */}
+      <div className="rounded-lg border bg-gradient-to-br from-primary/5 via-background to-background p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex-1 min-w-0">
+            {editable ? (
+              <EditableText
+                as="h2"
+                value={titlePrimary}
+                onChange={(v) => update(['video_title', 'primary'], v)}
+                placeholder="Untitled video"
+                staticClassName="block text-xl font-bold tracking-tight leading-tight mb-2 px-1"
+                inputClassName="text-xl font-bold tracking-tight leading-tight mb-2"
+                ariaLabel="Video title"
+              />
+            ) : (
+              <h2 className="text-xl font-bold tracking-tight leading-tight mb-2">{titlePrimary}</h2>
+            )}
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              {duration && (
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="h-3.5 w-3.5" />
+                  {duration}
+                </span>
+              )}
+              {output.thumbnail?.emotion && (
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${EMOTION_VARIANT[output.thumbnail.emotion] ?? 'border-border'}`}
+                >
+                  {output.thumbnail.emotion}
+                </span>
+              )}
+              {Array.isArray(output.lower_thirds) && output.lower_thirds.length > 0 && (
+                <span className="inline-flex items-center gap-1">
+                  <ImageIcon className="h-3.5 w-3.5" />
+                  {output.lower_thirds.length} lower thirds
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        {isLegacyShape && (
+          <div className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <div className="font-semibold">Legacy draft format</div>
+                <div>
+                  This draft was generated before the BC_VIDEO agent update. The structured
+                  fields (script, editor script, thumbnails, teleprompter) are missing.
+                  Click <strong>Produce Another Format</strong> below to regenerate with
+                  the updated prompt.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {output.content_warning && (
+          <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>{output.content_warning}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <Tabs defaultValue="script" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="script" className="gap-1.5">
+            <Film className="h-3.5 w-3.5" /> Script
+          </TabsTrigger>
+          <TabsTrigger value="editor" className="gap-1.5">
+            <Camera className="h-3.5 w-3.5" /> Editor
+          </TabsTrigger>
+          <TabsTrigger value="thumbnails" className="gap-1.5">
+            <ImageIcon className="h-3.5 w-3.5" /> Thumbnails
+          </TabsTrigger>
+          <TabsTrigger value="publish" className="gap-1.5">
+            <Megaphone className="h-3.5 w-3.5" /> Publish
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="script" className="space-y-3 mt-0">
+          <ScriptTab output={output} editable={editable} update={update} />
+        </TabsContent>
+        <TabsContent value="editor" className="space-y-3 mt-0">
+          <EditorTab output={output} editable={editable} update={update} />
+        </TabsContent>
+        <TabsContent value="thumbnails" className="space-y-3 mt-0">
+          <ThumbnailsTab output={output} editable={editable} update={update} />
+        </TabsContent>
+        <TabsContent value="publish" className="space-y-3 mt-0">
+          <PublishTab
+            output={output}
+            titleAlternatives={titleAlternatives}
+            editable={editable}
+            update={update}
+            draftId={draftId}
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+// ─── Tab: Script ──────────────────────────────────────────────────────────────
+
+interface EditingProps {
+  editable?: boolean;
+  update?: (path: Path, value: unknown) => void;
+}
+
+function ScriptTab({
+  output,
+  editable,
+  update,
+}: { output: VideoOutput } & EditingProps) {
+  const script = output.script as VideoOutput['script'] | undefined;
+  if (!script || typeof script !== 'object') {
+    return (
+      <EmptyState
+        icon={<Film className="h-5 w-5" />}
+        message="Structured script missing from this output. Check the Publish tab for the teleprompter."
+      />
+    );
+  }
+  const audioDirection = script.audio_direction;
+
+  return (
+    <div className="space-y-3">
+      {script.hook && (
+        <ScriptSectionCard
+          label="Hook"
+          tone="hook"
+          section={script.hook}
+          basePath={['script', 'hook']}
+          editable={editable}
+          update={update}
+        />
+      )}
+      {script.problem && (
+        <ScriptSectionCard
+          label="Problem"
+          tone="problem"
+          section={script.problem}
+          basePath={['script', 'problem']}
+          editable={editable}
+          update={update}
+        />
+      )}
+      {script.teaser && (
+        <ScriptSectionCard
+          label="Teaser"
+          tone="teaser"
+          section={script.teaser}
+          basePath={['script', 'teaser']}
+          editable={editable}
+          update={update}
+        />
+      )}
+
+      {Array.isArray(script.chapters) && script.chapters.length > 0 && (
+        <>
+          <SectionHeader>Chapters</SectionHeader>
+          <div className="space-y-2">
+            {script.chapters.map((ch, i) => (
+              <ChapterCard
+                key={`ch-${ch?.chapter_number ?? i}`}
+                chapter={ch}
+                basePath={['script', 'chapters', i]}
+                editable={editable}
+                update={update}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {script.affiliate_segment && (
+        <AffiliateCard
+          segment={script.affiliate_segment}
+          basePath={['script', 'affiliate_segment']}
+          editable={editable}
+          update={update}
+        />
+      )}
+
+      {script.outro && (
+        <OutroCard
+          outro={script.outro}
+          basePath={['script', 'outro']}
+          editable={editable}
+          update={update}
+        />
+      )}
+
+      {audioDirection && (
+        <Card className="bg-muted/40">
+          <CardContent className="py-3 flex items-start gap-2">
+            <Music className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+            <div className="text-xs text-muted-foreground leading-relaxed flex-1">
+              <span className="font-medium text-foreground">Audio direction · </span>
+              {editable && update ? (
+                <EditableText
+                  value={audioDirection}
+                  multiline
+                  onChange={(v) => update(['script', 'audio_direction'], v)}
+                  placeholder="Editor selects mood and music…"
+                  staticClassName="inline-block px-1"
+                />
+              ) : (
+                audioDirection
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+const TONE_BORDER: Record<string, string> = {
+  hook: 'border-l-4 border-l-orange-500/70',
+  problem: 'border-l-4 border-l-muted-foreground/40',
+  teaser: 'border-l-4 border-l-primary/70',
+};
+
+function ScriptSectionCard({
+  label,
+  tone,
+  section,
+  basePath,
+  editable,
+  update,
+}: {
+  label: string;
+  tone: keyof typeof TONE_BORDER;
+  section: VideoScriptSection;
+  basePath: Path;
+} & EditingProps) {
+  return (
+    <Card className={TONE_BORDER[tone]}>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            {label}
+          </CardTitle>
+          {section.duration && <DurationBadge value={section.duration} />}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {editable && update ? (
+          <EditableText
+            as="p"
+            multiline
+            value={section.content}
+            onChange={(v) => update([...basePath, 'content'], v)}
+            placeholder="Section content…"
+            staticClassName="block text-sm leading-relaxed whitespace-pre-line px-1 py-0.5"
+            inputClassName="text-sm leading-relaxed"
+          />
+        ) : (
+          <p className="text-sm leading-relaxed whitespace-pre-line">{section.content}</p>
+        )}
+        {(section.visual_notes || (editable && update)) && (
+          <div className="text-xs text-muted-foreground italic border-t pt-2">
+            <span className="font-medium not-italic">Visual notes · </span>
+            {editable && update ? (
+              <EditableText
+                value={section.visual_notes ?? ''}
+                multiline
+                onChange={(v) => update([...basePath, 'visual_notes'], v)}
+                placeholder="Add visual notes…"
+                staticClassName="inline-block px-1"
+              />
+            ) : (
+              section.visual_notes
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ChapterCard({
+  chapter,
+  basePath,
+  editable,
+  update,
+}: {
+  chapter: NonNullable<VideoOutput['script']['chapters']>[number];
+  basePath: Path;
+} & EditingProps) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold px-1.5">
+              {chapter.chapter_number}
+            </span>
+            {editable && update ? (
+              <EditableText
+                value={chapter.title}
+                onChange={(v) => update([...basePath, 'title'], v)}
+                placeholder="Chapter title…"
+                staticClassName="text-sm font-semibold truncate flex-1 px-1 py-0.5"
+                inputClassName="text-sm font-semibold"
+                ariaLabel="Chapter title"
+              />
+            ) : (
+              <CardTitle className="text-sm font-semibold truncate">{chapter.title}</CardTitle>
+            )}
+          </div>
+          {chapter.duration && <DurationBadge value={chapter.duration} />}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {(chapter.key_stat_or_quote || (editable && update)) && (
+          <div className="rounded-md border-l-4 border-l-primary bg-primary/5 px-3 py-2 text-xs">
+            <span className="font-semibold text-primary">Key stat · </span>
+            {editable && update ? (
+              <EditableText
+                value={chapter.key_stat_or_quote ?? ''}
+                onChange={(v) => update([...basePath, 'key_stat_or_quote'], v)}
+                placeholder="Key statistic or quote…"
+                staticClassName="inline-block px-1 text-foreground/90"
+              />
+            ) : (
+              <span className="text-foreground/90">{chapter.key_stat_or_quote}</span>
+            )}
+          </div>
+        )}
+        {editable && update ? (
+          <EditableText
+            as="p"
+            multiline
+            value={chapter.content}
+            onChange={(v) => update([...basePath, 'content'], v)}
+            placeholder="Chapter content…"
+            staticClassName="block text-sm leading-relaxed whitespace-pre-line px-1 py-0.5"
+            inputClassName="text-sm leading-relaxed"
+          />
+        ) : (
+          <p className="text-sm leading-relaxed whitespace-pre-line">{chapter.content}</p>
+        )}
+        {Array.isArray(chapter.b_roll_suggestions) && chapter.b_roll_suggestions.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              B-roll
+            </span>
+            {chapter.b_roll_suggestions.map((b, i) => (
+              <Badge key={i} variant="outline" className="text-[11px] font-normal">
+                {typeof b === 'string' ? b : JSON.stringify(b)}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function AffiliateCard({
+  segment,
+  basePath,
+  editable,
+  update,
+}: {
+  segment: NonNullable<VideoOutput['script']['affiliate_segment']>;
+  basePath: Path;
+} & EditingProps) {
+  const ed = editable && update;
+  return (
+    <Card className="border-l-4 border-l-amber-500/70 bg-amber-500/5">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+            Affiliate Segment
+          </CardTitle>
+          {segment.timestamp && <DurationBadge value={segment.timestamp} />}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {(segment.transition_in || ed) && (
+          <div className="text-xs text-muted-foreground italic">
+            <span className="font-medium not-italic">In · </span>
+            {ed ? (
+              <EditableText
+                value={segment.transition_in ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'transition_in'], v)}
+                placeholder="Transition in…"
+                staticClassName="inline-block px-1"
+              />
+            ) : (
+              segment.transition_in
+            )}
+          </div>
+        )}
+        {ed ? (
+          <EditableText
+            as="p"
+            multiline
+            value={segment.script}
+            onChange={(v) => update!([...basePath, 'script'], v)}
+            placeholder="Affiliate script…"
+            staticClassName="block text-sm leading-relaxed whitespace-pre-line px-1 py-0.5"
+            inputClassName="text-sm leading-relaxed"
+          />
+        ) : (
+          <p className="text-sm leading-relaxed whitespace-pre-line">{segment.script}</p>
+        )}
+        {(segment.transition_out || ed) && (
+          <div className="text-xs text-muted-foreground italic">
+            <span className="font-medium not-italic">Out · </span>
+            {ed ? (
+              <EditableText
+                value={segment.transition_out ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'transition_out'], v)}
+                placeholder="Transition out…"
+                staticClassName="inline-block px-1"
+              />
+            ) : (
+              segment.transition_out
+            )}
+          </div>
+        )}
+        {(segment.visual_notes || ed) && (
+          <div className="text-xs text-muted-foreground italic border-t pt-2">
+            <span className="font-medium not-italic">Visual notes · </span>
+            {ed ? (
+              <EditableText
+                value={segment.visual_notes ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'visual_notes'], v)}
+                placeholder="Visual notes…"
+                staticClassName="inline-block px-1"
+              />
+            ) : (
+              segment.visual_notes
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function OutroCard({
+  outro,
+  basePath,
+  editable,
+  update,
+}: {
+  outro: NonNullable<VideoOutput['script']['outro']>;
+  basePath: Path;
+} & EditingProps) {
+  const ed = editable && update;
+  return (
+    <Card className="border-l-4 border-l-emerald-500/70">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+            Outro
+          </CardTitle>
+          {outro.duration && <DurationBadge value={outro.duration} />}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {(outro.recap || ed) && (
+          ed ? (
+            <EditableText
+              as="p"
+              multiline
+              value={outro.recap ?? ''}
+              onChange={(v) => update!([...basePath, 'recap'], v)}
+              placeholder="Recap line…"
+              staticClassName="block text-sm leading-relaxed whitespace-pre-line italic px-1 py-0.5"
+              inputClassName="text-sm leading-relaxed italic"
+            />
+          ) : (
+            <p className="text-sm leading-relaxed whitespace-pre-line italic">{outro.recap}</p>
+          )
+        )}
+        {(outro.cta || ed) && (
+          <div className="rounded-md bg-muted/40 px-3 py-2 text-xs">
+            <span className="font-semibold">CTA · </span>
+            {ed ? (
+              <EditableText
+                value={outro.cta ?? ''}
+                onChange={(v) => update!([...basePath, 'cta'], v)}
+                placeholder="Subscribe call-to-action…"
+                staticClassName="inline-block px-1"
+              />
+            ) : (
+              outro.cta
+            )}
+          </div>
+        )}
+        {(outro.end_screen_prompt || ed) && (
+          <div className="rounded-md bg-muted/40 px-3 py-2 text-xs">
+            <span className="font-semibold">End screen prompt · </span>
+            {ed ? (
+              <EditableText
+                value={outro.end_screen_prompt ?? ''}
+                onChange={(v) => update!([...basePath, 'end_screen_prompt'], v)}
+                placeholder="End-screen comment prompt…"
+                staticClassName="inline-block px-1"
+              />
+            ) : (
+              outro.end_screen_prompt
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Tab: Editor ──────────────────────────────────────────────────────────────
+
+function EditorTab({
+  output,
+  editable,
+  update,
+}: { output: VideoOutput } & EditingProps) {
+  const editor = output.editor_script;
+  const ed = editable && update;
+  if (!editor && !ed) {
+    return (
+      <EmptyState
+        icon={<Camera className="h-5 w-5" />}
+        message="No editor script generated for this output."
+      />
+    );
+  }
+
+  const sections: Array<{ key: string; label: string; section?: VideoEditorSection; path: Path }> = [
+    { key: 'hook', label: 'Hook', section: editor?.hook, path: ['editor_script', 'hook'] },
+    { key: 'problem', label: 'Problem', section: editor?.problem, path: ['editor_script', 'problem'] },
+    { key: 'teaser', label: 'Teaser', section: editor?.teaser, path: ['editor_script', 'teaser'] },
+  ];
+
+  return (
+    <div className="space-y-3">
+      {(editor?.color_grading || ed) && (
+        <Card className="border-violet-500/30 bg-gradient-to-br from-violet-500/5 to-background">
+          <CardContent className="py-3 flex items-start gap-2">
+            <Wand2 className="h-4 w-4 text-violet-600 dark:text-violet-400 shrink-0 mt-0.5" />
+            <div className="text-xs leading-relaxed flex-1">
+              <span className="font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                Color grading ·{' '}
+              </span>
+              {ed ? (
+                <EditableText
+                  value={editor?.color_grading ?? ''}
+                  multiline
+                  onChange={(v) => update!(['editor_script', 'color_grading'], v)}
+                  placeholder="Color grading direction (mood, contrast, palette progression)…"
+                  staticClassName="inline-block px-1 text-foreground/90"
+                />
+              ) : (
+                <span className="text-foreground/90">{editor?.color_grading}</span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Accordion type="multiple" defaultValue={['hook']} className="space-y-2">
+        {sections.map(
+          ({ key, label, section, path }) =>
+            (section || ed) && (
+              <EditorAccordionItem
+                key={key}
+                value={key}
+                label={label}
+                section={section ?? {}}
+                basePath={path}
+                editable={editable}
+                update={update}
+              />
+            ),
+        )}
+
+        {Array.isArray(editor?.chapters) &&
+          editor!.chapters!.map((ch, idx) => (
+            <EditorAccordionItem
+              key={`ch-${idx}`}
+              value={`ch-${idx}`}
+              label={`Chapter ${idx + 1}`}
+              section={ch}
+              basePath={['editor_script', 'chapters', idx]}
+              editable={editable}
+              update={update}
+            />
+          ))}
+
+        {(editor?.affiliate_segment || ed) && (
+          <EditorAccordionItem
+            value="affiliate"
+            label="Affiliate Segment"
+            section={editor?.affiliate_segment ?? {}}
+            basePath={['editor_script', 'affiliate_segment']}
+            editable={editable}
+            update={update}
+          />
+        )}
+        {(editor?.outro || ed) && (
+          <EditorAccordionItem
+            value="outro"
+            label="Outro"
+            section={editor?.outro ?? {}}
+            basePath={['editor_script', 'outro']}
+            editable={editable}
+            update={update}
+          />
+        )}
+      </Accordion>
+    </div>
+  );
+}
+
+function EditorAccordionItem({
+  value,
+  label,
+  section,
+  basePath,
+  editable,
+  update,
+}: {
+  value: string;
+  label: string;
+  section: VideoEditorSection;
+  basePath: Path;
+} & EditingProps) {
+  const ed = editable && update;
+  return (
+    <AccordionItem value={value} className="rounded-md border bg-card px-3">
+      <AccordionTrigger className="py-3 hover:no-underline">
+        <span className="text-sm font-semibold">{label}</span>
+      </AccordionTrigger>
+      <AccordionContent className="pb-3 space-y-3 text-sm">
+        {(section.A_roll || ed) && (
+          <EditorRow icon={<Camera className="h-3.5 w-3.5" />} label="A-roll">
+            {ed ? (
+              <EditableText
+                value={section.A_roll ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'A_roll'], v)}
+                placeholder="Camera framing, subject blocking, mood…"
+                staticClassName="block px-1"
+              />
+            ) : (
+              section.A_roll
+            )}
+          </EditorRow>
+        )}
+        <EditorBRoll section={section} basePath={basePath} editable={editable} update={update} />
+        <EditorTextOverlays section={section} basePath={basePath} editable={editable} update={update} />
+        {(section.SFX || ed) && (
+          <EditorRow icon={<Volume2 className="h-3.5 w-3.5" />} label="SFX">
+            {ed ? (
+              <EditableText
+                value={section.SFX ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'SFX'], v)}
+                placeholder="Sound effects (whooshes, hits, foley)…"
+                staticClassName="block px-1"
+              />
+            ) : (
+              section.SFX
+            )}
+          </EditorRow>
+        )}
+        {(section.BGM || ed) && (
+          <EditorRow icon={<Music className="h-3.5 w-3.5" />} label="BGM">
+            {ed ? (
+              <EditableText
+                value={section.BGM ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'BGM'], v)}
+                placeholder="Background music mood, intensity, genre…"
+                staticClassName="block px-1"
+              />
+            ) : (
+              section.BGM
+            )}
+          </EditorRow>
+        )}
+        {(section.Transitions || ed) && (
+          <EditorRow label="Transitions">
+            {ed ? (
+              <EditableText
+                value={section.Transitions ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'Transitions'], v)}
+                placeholder="Hard cut, fade, swipe, dip-to-color…"
+                staticClassName="block px-1"
+              />
+            ) : (
+              section.Transitions
+            )}
+          </EditorRow>
+        )}
+        {(section.Visual_effects || ed) && (
+          <EditorRow label="Visual effects">
+            {ed ? (
+              <EditableText
+                value={section.Visual_effects ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'Visual_effects'], v)}
+                placeholder="Zoom, jump cut, overlay, parallax…"
+                staticClassName="block px-1"
+              />
+            ) : (
+              section.Visual_effects
+            )}
+          </EditorRow>
+        )}
+        {(section.Pacing_notes || ed) && (
+          <EditorRow label="Pacing">
+            {ed ? (
+              <EditableText
+                value={section.Pacing_notes ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'Pacing_notes'], v)}
+                placeholder="Tempo, dwell time, breath cues…"
+                staticClassName="block px-1"
+              />
+            ) : (
+              section.Pacing_notes
+            )}
+          </EditorRow>
+        )}
+      </AccordionContent>
+    </AccordionItem>
+  );
+}
+
+function EditorBRoll({
+  section,
+  basePath,
+  editable,
+  update,
+}: { section: VideoEditorSection; basePath: Path } & EditingProps) {
+  const br = section.B_roll as unknown;
+  const ed = editable && update;
+  if (Array.isArray(br) && br.length > 0) {
+    return (
+      <EditorRow icon={<Film className="h-3.5 w-3.5" />} label="B-roll">
+        {ed ? (
+          <ul className="space-y-1 text-foreground/90">
+            {br.map((b, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <span className="text-muted-foreground select-none mt-0.5">•</span>
+                <EditableText
+                  value={typeof b === 'string' ? b : JSON.stringify(b)}
+                  multiline
+                  onChange={(v) => {
+                    const next = (br as unknown[]).slice();
+                    next[i] = v;
+                    update!([...basePath, 'B_roll'], next);
+                  }}
+                  placeholder="B-roll shot description…"
+                  staticClassName="flex-1 px-1"
+                />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <ul className="list-disc list-inside space-y-0.5 text-foreground/90">
+            {br.map((b, i) => (
+              <li key={i}>{typeof b === 'string' ? b : JSON.stringify(b)}</li>
+            ))}
+          </ul>
+        )}
+      </EditorRow>
+    );
+  }
+  if (typeof br === 'string' && br.length > 0) {
+    return (
+      <EditorRow icon={<Film className="h-3.5 w-3.5" />} label="B-roll">
+        {ed ? (
+          <EditableText
+            value={br}
+            multiline
+            onChange={(v) => update!([...basePath, 'B_roll'], v)}
+            placeholder="B-roll shots (one per line)…"
+            staticClassName="block px-1"
+          />
+        ) : (
+          br
+        )}
+      </EditorRow>
+    );
+  }
+  if (ed) {
+    return (
+      <EditorRow icon={<Film className="h-3.5 w-3.5" />} label="B-roll">
+        <EditableText
+          value=""
+          multiline
+          onChange={(v) => {
+            // Convert single-paragraph input into a string[] split by newline.
+            const lines = v.split('\n').map((l) => l.trim()).filter(Boolean);
+            update!([...basePath, 'B_roll'], lines.length > 0 ? lines : v);
+          }}
+          placeholder="Add B-roll shot descriptions…"
+          staticClassName="block px-1 italic text-muted-foreground"
+        />
+      </EditorRow>
+    );
+  }
+  return null;
+}
+
+function EditorTextOverlays({
+  section,
+  basePath,
+  editable,
+  update,
+}: { section: VideoEditorSection; basePath: Path } & EditingProps) {
+  const to = section.text_overlays as unknown;
+  const ed = editable && update;
+  if (Array.isArray(to) && to.length > 0) {
+    return (
+      <EditorRow label="Text overlays">
+        <div className="space-y-1.5">
+          {to.map((raw, i) => {
+            if (!raw || typeof raw !== 'object') {
+              return (
+                <div key={i} className="rounded-sm bg-muted/40 px-2 py-1.5 text-sm">
+                  {ed ? (
+                    <EditableText
+                      value={String(raw)}
+                      onChange={(v) => {
+                        const next = (to as unknown[]).slice();
+                        next[i] = v;
+                        update!([...basePath, 'text_overlays'], next);
+                      }}
+                      placeholder="Overlay text…"
+                      staticClassName="block px-1"
+                    />
+                  ) : (
+                    String(raw)
+                  )}
+                </div>
+              );
+            }
+            const t = raw as { time?: string; text?: string; style?: string };
+            return (
+              <div key={i} className="flex items-start gap-2 rounded-sm bg-muted/40 px-2 py-1.5">
+                {(t.time || ed) && (
+                  ed ? (
+                    <EditableText
+                      value={t.time ?? ''}
+                      onChange={(v) => update!([...basePath, 'text_overlays', i, 'time'], v)}
+                      placeholder="0:05"
+                      staticClassName="font-mono text-[11px] inline-block px-1 border rounded-md min-w-[42px] text-center"
+                      inputClassName="font-mono text-[11px]"
+                    />
+                  ) : (
+                    <Badge variant="secondary" className="font-mono text-[11px]">
+                      {t.time}
+                    </Badge>
+                  )
+                )}
+                <div className="flex-1 min-w-0">
+                  {ed ? (
+                    <EditableText
+                      value={t.text ?? ''}
+                      onChange={(v) => update!([...basePath, 'text_overlays', i, 'text'], v)}
+                      placeholder="Overlay copy…"
+                      staticClassName="block text-sm font-medium px-1"
+                      inputClassName="text-sm font-medium"
+                    />
+                  ) : (
+                    <div className="text-sm font-medium">{t.text ?? ''}</div>
+                  )}
+                  {(t.style || ed) && (
+                    ed ? (
+                      <EditableText
+                        value={t.style ?? ''}
+                        onChange={(v) => update!([...basePath, 'text_overlays', i, 'style'], v)}
+                        placeholder="Style notes (bold, lower-third, etc.)…"
+                        staticClassName="block text-[11px] text-muted-foreground italic px-1"
+                      />
+                    ) : (
+                      <div className="text-[11px] text-muted-foreground italic">{t.style}</div>
+                    )
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </EditorRow>
+    );
+  }
+  if (typeof to === 'string' && to.length > 0) {
+    return (
+      <EditorRow label="Text overlays">
+        {ed ? (
+          <EditableText
+            value={to}
+            multiline
+            onChange={(v) => update!([...basePath, 'text_overlays'], v)}
+            placeholder="Text overlays (free-form note)…"
+            staticClassName="block text-sm italic px-1"
+          />
+        ) : (
+          <div className="text-sm italic text-foreground/90">{to}</div>
+        )}
+      </EditorRow>
+    );
+  }
+  if (ed) {
+    return (
+      <EditorRow label="Text overlays">
+        <EditableText
+          value=""
+          multiline
+          onChange={(v) => update!([...basePath, 'text_overlays'], v)}
+          placeholder="Add overlay copy or full notes…"
+          staticClassName="block px-1 italic text-muted-foreground"
+        />
+      </EditorRow>
+    );
+  }
+  return null;
+}
+
+function EditorRow({
+  icon,
+  label,
+  children,
+}: {
+  icon?: React.ReactNode;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <div className="flex items-center gap-1 min-w-[110px] text-[11px] font-medium uppercase tracking-wide text-muted-foreground shrink-0 pt-0.5">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <div className="flex-1 text-sm text-foreground/90 leading-relaxed">{children}</div>
+    </div>
+  );
+}
+
+// ─── Tab: Thumbnails ──────────────────────────────────────────────────────────
+
+function ThumbnailsTab({
+  output,
+  editable,
+  update,
+}: { output: VideoOutput } & EditingProps) {
+  const ideas = Array.isArray(output.thumbnail_ideas) ? output.thumbnail_ideas : [];
+  const primary = output.thumbnail;
+  const ed = editable && update;
+
+  if (!primary && ideas.length === 0 && !ed) {
+    return (
+      <EmptyState
+        icon={<ImageIcon className="h-5 w-5" />}
+        message="No thumbnail concepts generated."
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {(primary || ed) && (
+        <Card className="border-primary/30 bg-gradient-to-br from-primary/5 via-background to-background">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <CardTitle className="text-sm font-semibold uppercase tracking-wide text-primary">
+                Primary thumbnail
+              </CardTitle>
+              {(primary?.emotion || ed) && (
+                <EmotionBadge
+                  value={primary?.emotion}
+                  size="md"
+                  editable={Boolean(ed)}
+                  onChange={(v) => update!(['thumbnail', 'emotion'], v)}
+                />
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {ed ? (
+              <EditableText
+                value={primary?.text_overlay ?? ''}
+                onChange={(v) => update!(['thumbnail', 'text_overlay'], v)}
+                placeholder="Bold thumbnail copy…"
+                staticClassName="block text-2xl font-bold tracking-tight px-1 py-0.5"
+                inputClassName="text-2xl font-bold tracking-tight"
+              />
+            ) : (
+              <div className="text-2xl font-bold tracking-tight">{primary?.text_overlay}</div>
+            )}
+            {ed ? (
+              <EditableText
+                as="p"
+                multiline
+                value={primary?.visual_concept ?? ''}
+                onChange={(v) => update!(['thumbnail', 'visual_concept'], v)}
+                placeholder="What the viewer sees on the thumbnail…"
+                staticClassName="block text-sm leading-relaxed px-1 py-0.5"
+                inputClassName="text-sm leading-relaxed"
+              />
+            ) : (
+              <p className="text-sm leading-relaxed">{primary?.visual_concept}</p>
+            )}
+            <Separator />
+            <div className="text-xs italic text-muted-foreground">
+              <span className="font-medium not-italic">Why it works · </span>
+              {ed ? (
+                <EditableText
+                  value={primary?.why_it_works ?? ''}
+                  multiline
+                  onChange={(v) => update!(['thumbnail', 'why_it_works'], v)}
+                  placeholder="Why this thumbnail concept earns the click…"
+                  staticClassName="inline-block px-1"
+                />
+              ) : (
+                primary?.why_it_works
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {(ideas.length > 0 || ed) && (
+        <>
+          <SectionHeader>Concept variations · {ideas.length}</SectionHeader>
+          <div className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+            {ideas.map((idea, i) => (
+              <ThumbnailCard
+                key={i}
+                idea={idea}
+                basePath={['thumbnail_ideas', i]}
+                editable={editable}
+                update={update}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ThumbnailCard({
+  idea,
+  basePath,
+  editable,
+  update,
+}: { idea: ThumbnailIdea; basePath: Path } & EditingProps) {
+  const palette = parsePalette(idea.color_palette);
+  const ed = editable && update;
+  return (
+    <Card className="h-full">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          {ed ? (
+            <EditableText
+              value={idea.text_overlay}
+              onChange={(v) => update!([...basePath, 'text_overlay'], v)}
+              placeholder="Concept text overlay…"
+              staticClassName="text-base font-bold leading-tight px-1 py-0.5 flex-1 min-w-0"
+              inputClassName="text-base font-bold leading-tight"
+            />
+          ) : (
+            <CardTitle className="text-base font-bold leading-tight">{idea.text_overlay}</CardTitle>
+          )}
+          <EmotionBadge
+            value={idea.emotion}
+            size="sm"
+            editable={Boolean(ed)}
+            onChange={(v) => update!([...basePath, 'emotion'], v)}
+          />
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2 text-xs">
+        {ed ? (
+          <EditableText
+            as="p"
+            multiline
+            value={idea.concept}
+            onChange={(v) => update!([...basePath, 'concept'], v)}
+            placeholder="Visual concept description…"
+            staticClassName="block text-foreground/90 leading-relaxed px-1 py-0.5"
+            inputClassName="text-xs leading-relaxed"
+          />
+        ) : (
+          <p className="text-foreground/90 leading-relaxed">{idea.concept}</p>
+        )}
+        {(palette.length > 0 || ed) && (
+          <div className="flex items-center gap-1.5 flex-wrap pt-1">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              Palette
+            </span>
+            {ed ? (
+              <EditableText
+                value={idea.color_palette}
+                onChange={(v) => update!([...basePath, 'color_palette'], v)}
+                placeholder="Comma-separated colors (e.g. dark blue, white, neon green)…"
+                staticClassName="flex-1 inline-block px-1 text-[11px]"
+                inputClassName="text-[11px]"
+              />
+            ) : (
+              palette.map((c, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px]"
+                  title={c.label}
+                >
+                  <span
+                    className="h-2.5 w-2.5 rounded-full border"
+                    style={{ backgroundColor: c.hex }}
+                  />
+                  {c.label}
+                </span>
+              ))
+            )}
+          </div>
+        )}
+        {(idea.composition || ed) && (
+          <div className="text-[11px] text-muted-foreground italic border-t pt-2">
+            <span className="font-medium not-italic">Composition · </span>
+            {ed ? (
+              <EditableText
+                value={idea.composition ?? ''}
+                multiline
+                onChange={(v) => update!([...basePath, 'composition'], v)}
+                placeholder="Framing, layout, focal point…"
+                staticClassName="inline-block px-1"
+              />
+            ) : (
+              idea.composition
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+const EMOTION_VALUES = ['curiosity', 'shock', 'intrigue'] as const;
+
+function EmotionBadge({
+  value,
+  size,
+  editable,
+  onChange,
+}: {
+  value?: string;
+  size: 'sm' | 'md';
+  editable: boolean | undefined;
+  onChange?: (v: string) => void;
+}) {
+  const sizeClasses = size === 'sm' ? 'text-[10px] px-2 py-0.5' : 'text-[11px] px-2 py-0.5';
+  const variant = (value && EMOTION_VARIANT[value]) ?? 'border-border';
+  if (editable && onChange) {
+    return (
+      <select
+        value={value ?? 'curiosity'}
+        onChange={(e) => onChange(e.target.value)}
+        className={`rounded-full border bg-background font-medium uppercase tracking-wide outline-none ring-2 ring-transparent focus:ring-primary/40 ${sizeClasses} ${variant}`}
+      >
+        {EMOTION_VALUES.map((opt) => (
+          <option key={opt} value={opt}>
+            {opt}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border font-medium uppercase tracking-wide ${sizeClasses} ${variant}`}
+    >
+      {value}
+    </span>
+  );
+}
+
+// Best-effort parser: split palette string into labeled color chips.
+// Recognizes common color names; falls back to a neutral chip otherwise.
+const COLOR_NAME_TO_HEX: Record<string, string> = {
+  black: '#0a0a0a',
+  white: '#ffffff',
+  gray: '#9ca3af',
+  grey: '#9ca3af',
+  red: '#ef4444',
+  orange: '#f97316',
+  amber: '#f59e0b',
+  yellow: '#eab308',
+  green: '#22c55e',
+  emerald: '#10b981',
+  teal: '#14b8a6',
+  cyan: '#06b6d4',
+  blue: '#3b82f6',
+  indigo: '#6366f1',
+  violet: '#8b5cf6',
+  purple: '#a855f7',
+  pink: '#ec4899',
+  brown: '#92400e',
+  beige: '#f5f5dc',
+  gold: '#d4af37',
+  silver: '#c0c0c0',
+  navy: '#1e3a8a',
+  neon: '#39ff14',
+};
+
+function parsePalette(raw: string): Array<{ label: string; hex: string }> {
+  if (!raw) return [];
+  return raw
+    .split(/[,;|]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 5)
+    .map((label) => {
+      const lower = label.toLowerCase();
+      const match = Object.keys(COLOR_NAME_TO_HEX).find((name) => lower.includes(name));
+      return { label, hex: match ? COLOR_NAME_TO_HEX[match] : '#a3a3a3' };
+    });
+}
+
+// ─── Tab: Publish ─────────────────────────────────────────────────────────────
+
+interface SynthesisResult {
+  audioBase64: string;
+  mimeType: string;
+  estimatedSeconds: number;
+  provider: string;
+  voiceId: string;
+  characterCount: number;
+  chunkCount: number;
+}
+
+function PublishTab({
+  output,
+  titleAlternatives,
+  editable,
+  update,
+  draftId,
+}: {
+  output: VideoOutput;
+  titleAlternatives: string[];
+  draftId?: string;
+} & EditingProps) {
+  const ed = editable && update;
+  const teleprompter = output.teleprompter_script ?? '';
+  const wordCount = teleprompter ? teleprompter.split(/\s+/).filter(Boolean).length : 0;
+  const estMinutes = wordCount > 0 ? (wordCount / 150).toFixed(1) : null;
+
+  // Roteiro PDF needs the channel's language/name to localize the chrome.
+  const { activeChannel } = useActiveChannel();
+
+  const [synthesizing, setSynthesizing] = useState(false);
+  const [audio, setAudio] = useState<SynthesisResult | null>(null);
+  const [synthError, setSynthError] = useState<string | null>(null);
+  const [openingRoteiro, setOpeningRoteiro] = useState(false);
+
+  async function handleOpenRoteiro() {
+    setOpeningRoteiro(true);
+    try {
+      const { openVideoRoteiroForPrint } = await import('@/lib/exporters/video-roteiro');
+      openVideoRoteiroForPrint({
+        video: output,
+        language: activeChannel?.language,
+        channelName: activeChannel?.name,
+      });
+    } finally {
+      setOpeningRoteiro(false);
+    }
+  }
+
+  async function handleSynthesize() {
+    if (!draftId || synthesizing) return;
+    setSynthesizing(true);
+    setSynthError(null);
+    try {
+      const res = await fetch(`/api/content-drafts/${draftId}/synthesize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json();
+      if (!res.ok || json?.error) {
+        throw new Error(json?.error?.message ?? `Request failed (${res.status})`);
+      }
+      setAudio(json.data as SynthesisResult);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setSynthError(msg);
+    } finally {
+      setSynthesizing(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Title block */}
+      {(output.video_title || ed) && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Titles
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {ed ? (
+              <EditableText
+                value={output.video_title?.primary ?? ''}
+                onChange={(v) => update!(['video_title', 'primary'], v)}
+                placeholder="Primary title…"
+                staticClassName="block text-lg font-bold leading-tight px-1 py-0.5"
+                inputClassName="text-lg font-bold leading-tight"
+                ariaLabel="Primary title"
+              />
+            ) : (
+              <div className="text-lg font-bold leading-tight">{output.video_title?.primary}</div>
+            )}
+            {(titleAlternatives.length > 0 || ed) && (
+              <div className="space-y-1">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Alternatives (A/B test)
+                </span>
+                <ul className="space-y-1 text-sm">
+                  {titleAlternatives.map((t, i) => (
+                    <li key={i} className="rounded-sm border bg-muted/30 px-3 py-1.5">
+                      {ed ? (
+                        <EditableText
+                          value={t}
+                          onChange={(v) => {
+                            const alts = Array.isArray(output.video_title?.alternatives)
+                              ? [...output.video_title.alternatives]
+                              : [];
+                            // Find index of this alternative in source array (by string match)
+                            const srcIdx = alts.findIndex((a) => a === t);
+                            if (srcIdx >= 0) {
+                              alts[srcIdx] = v;
+                              update!(['video_title', 'alternatives'], alts);
+                            }
+                          }}
+                          placeholder="Alternative title…"
+                          staticClassName="inline-block px-1 w-full"
+                        />
+                      ) : (
+                        t
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Description */}
+      {(output.video_description || ed) && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              YouTube description
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {ed ? (
+              <EditableText
+                value={output.video_description ?? ''}
+                multiline
+                onChange={(v) => update!(['video_description'], v)}
+                placeholder="YouTube description (markdown)…"
+                staticClassName="block text-sm leading-relaxed whitespace-pre-wrap rounded-md border bg-muted/20 p-3 min-h-[120px]"
+                inputClassName="text-sm font-mono"
+                maxHeight={400}
+              />
+            ) : (
+              <ScrollArea className="h-[280px] rounded-md border bg-muted/20 p-3">
+                <MarkdownPreview content={output.video_description ?? ''} className="text-sm" />
+              </ScrollArea>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Pinned comment */}
+      {(output.pinned_comment || ed) && (
+        <Card className="border-l-4 border-l-blue-500/70">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <CardTitle className="text-sm font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+                Pinned comment
+              </CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {ed ? (
+              <EditableText
+                as="p"
+                multiline
+                value={output.pinned_comment ?? ''}
+                onChange={(v) => update!(['pinned_comment'], v)}
+                placeholder="Engagement comment…"
+                staticClassName="block text-sm leading-relaxed whitespace-pre-line px-1 py-0.5"
+                inputClassName="text-sm leading-relaxed"
+              />
+            ) : (
+              <p className="text-sm leading-relaxed whitespace-pre-line">{output.pinned_comment}</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Teleprompter */}
+      {(teleprompter || ed) && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Mic className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Teleprompter script
+                </CardTitle>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span>{wordCount.toLocaleString()} words</span>
+                {estMinutes && (
+                  <>
+                    <span>·</span>
+                    <span>~{estMinutes} min @ 150 wpm</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <CopyButton text={teleprompter} />
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={handleOpenRoteiro}
+                disabled={openingRoteiro}
+                title="Open the full script in a new tab — ready to print / save as PDF"
+              >
+                {openingRoteiro ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+                Script (PDF)
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => {
+                  if (!teleprompter.trim()) return;
+                  const titleForFile = output.video_title?.primary ?? output.title_options?.[0] ?? 'teleprompter';
+                  const slug = slugifyForFilename(titleForFile);
+                  downloadTextFile({ content: teleprompter, filename: `${slug}-teleprompter.txt` });
+                }}
+                disabled={!teleprompter.trim()}
+                title={!teleprompter.trim() ? 'Empty teleprompter — nothing to download.' : 'Download teleprompter as .txt'}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Teleprompter .txt
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={handleSynthesize}
+                disabled={!draftId || !teleprompter.trim() || synthesizing}
+                title={
+                  !draftId
+                    ? 'Save the draft first to enable TTS.'
+                    : !teleprompter.trim()
+                      ? 'Empty teleprompter — generate or paste a script first.'
+                      : 'Generate audio narration'
+                }
+              >
+                {synthesizing ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Volume2 className="h-3.5 w-3.5" />
+                )}
+                {synthesizing ? 'Synthesizing…' : 'Generate Audio'}
+              </Button>
+            </div>
+            {audio && (
+              <div className="rounded-md border bg-muted/20 p-3 space-y-2">
+                <audio
+                  controls
+                  src={`data:${audio.mimeType};base64,${audio.audioBase64}`}
+                  className="w-full"
+                />
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                  <span>~{Math.round(audio.estimatedSeconds)}s</span>
+                  <span>·</span>
+                  <span>{audio.provider}</span>
+                  <span>·</span>
+                  <span className="font-mono">voice {audio.voiceId.slice(0, 12)}{audio.voiceId.length > 12 ? '…' : ''}</span>
+                  {audio.chunkCount > 1 && (
+                    <>
+                      <span>·</span>
+                      <span>{audio.chunkCount} chunks</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+            {synthError && (
+              <div className="rounded-md border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-700 dark:text-red-300">
+                <span className="font-semibold">Audio generation failed · </span>
+                {synthError}
+              </div>
+            )}
+            {ed ? (
+              <EditableText
+                multiline
+                value={teleprompter}
+                onChange={(v) => update!(['teleprompter_script'], v)}
+                placeholder="Teleprompter script…"
+                staticClassName="block font-mono text-xs leading-relaxed whitespace-pre-wrap rounded-md border bg-muted/20 p-3 min-h-[200px]"
+                inputClassName="font-mono text-xs leading-relaxed"
+                maxHeight={500}
+              />
+            ) : (
+              <ScrollArea className="h-[320px] rounded-md border bg-muted/20 p-3">
+                <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground/90">
+                  {teleprompter}
+                </pre>
+              </ScrollArea>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Lower thirds (only if present) */}
+      {Array.isArray(output.lower_thirds) && output.lower_thirds.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Lower thirds · {output.lower_thirds.length}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1.5">
+              {output.lower_thirds.map((lt, i) => (
+                <div key={i} className="flex items-start gap-2 rounded-sm border bg-muted/20 px-2.5 py-2">
+                  <Badge variant="secondary" className="font-mono text-[11px]">
+                    {lt.timestamp}
+                  </Badge>
+                  <div className="flex-1 min-w-0">
+                    {ed ? (
+                      <EditableText
+                        value={lt.line1}
+                        onChange={(v) => update!(['lower_thirds', i, 'line1'], v)}
+                        placeholder="Primary text…"
+                        staticClassName="block text-sm font-semibold px-1"
+                        inputClassName="text-sm font-semibold"
+                      />
+                    ) : (
+                      <div className="text-sm font-semibold">{lt.line1}</div>
+                    )}
+                    {(lt.line2 || ed) && (
+                      ed ? (
+                        <EditableText
+                          value={lt.line2 ?? ''}
+                          onChange={(v) => update!(['lower_thirds', i, 'line2'], v)}
+                          placeholder="Secondary text (optional)…"
+                          staticClassName="block text-xs text-muted-foreground px-1"
+                        />
+                      ) : (
+                        <div className="text-xs text-muted-foreground">{lt.line2}</div>
+                      )
+                    )}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground shrink-0 pt-1">
+                    {lt.duration_seconds}s
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="gap-1.5"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1800);
+        } catch {
+          // ignore — older browsers without clipboard API
+        }
+      }}
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      {copied ? 'Copied' : 'Copy'}
+    </Button>
+  );
+}
+
+// ─── Shared bits ──────────────────────────────────────────────────────────────
+
+function SectionHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 pt-1">
+      <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+        {children}
+      </span>
+      <Separator className="flex-1" />
+    </div>
+  );
+}
+
+function DurationBadge({ value }: { value: string }) {
+  return (
+    <Badge variant="secondary" className="font-mono text-[11px] gap-1">
+      <Clock className="h-3 w-3" />
+      {value}
+    </Badge>
+  );
+}
+
+function EmptyState({ icon, message }: { icon: React.ReactNode; message: string }) {
+  return (
+    <div className="rounded-md border border-dashed py-10 text-center text-sm text-muted-foreground">
+      <div className="flex flex-col items-center gap-2">
+        {icon}
+        <span>{message}</span>
+      </div>
+    </div>
+  );
+}
+
+function slugifyForFilename(raw: string): string {
+  const cleaned = raw
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+  return cleaned || 'untitled';
+}

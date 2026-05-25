@@ -12,9 +12,8 @@ import { authenticateWithUser } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
-import { encrypt, decrypt } from '../lib/crypto.js';
+import { getWordPressCredentials } from '../lib/publishing/wordpress-config.js';
 import { markdownToHtml } from '../lib/utils.js';
-import { convertToWebP } from '../lib/image/webp.js';
 import { getKeyByToken, createKey, consumeKey, deleteKey } from '../lib/idempotency.js';
 import {
   publishToWordPressSchema,
@@ -451,19 +450,15 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         password = body.password;
       } else if (project.channel_id) {
         // Derive from project's channel
-        const { data: wpCfg } = await sb
-          .from('wordpress_configs')
-          .select('site_url, username, password')
-          .eq('channel_id', project.channel_id as string)
-          .maybeSingle();
+        const wpCfg = await getWordPressCredentials(project.channel_id as string, sb);
 
         if (!wpCfg) {
           throw new ApiError(400, 'Channel has no WordPress configured', 'NO_WP_CONFIG');
         }
 
-        site_url = wpCfg.site_url as string;
-        username = wpCfg.username as string;
-        password = decrypt(wpCfg.password as string);
+        site_url = wpCfg.siteUrl;
+        username = wpCfg.username;
+        password = wpCfg.password;
       } else {
         throw new ApiError(
           400,
@@ -711,18 +706,14 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
           throw new ApiError(400, 'Draft has no channel', 'VALIDATION_ERROR');
         }
 
-        const { data: wpCfg } = await sb
-          .from('wordpress_configs')
-          .select('site_url, username, password')
-          .eq('channel_id', draft.channel_id as string)
-          .maybeSingle();
+        const wpCfg = await getWordPressCredentials(draft.channel_id as string, sb);
         if (!wpCfg) {
           throw new ApiError(400, 'Channel has no WordPress configured', 'NO_WP_CONFIG');
         }
 
-        const site_url = wpCfg.site_url as string;
-        const username = wpCfg.username as string;
-        const password = decrypt(wpCfg.password as string);
+        const site_url = wpCfg.siteUrl;
+        const username = wpCfg.username;
+        const password = wpCfg.password;
         const auth = Buffer.from(`${username}:${password}`).toString('base64');
         const headers = {
           Authorization: `Basic ${auth}`,
@@ -738,7 +729,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         let featuredAssetId: string | undefined;
         if (body.imageMap?.['featured_image']) {
           featuredAssetId = body.imageMap['featured_image'] as string;
-          const { data: assets, error: assetsErr } = await sb
+          const { data: assets } = await sb
             .from('assets')
             .select('*')
             .eq('content_id', body.draftId);
@@ -1071,22 +1062,17 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       let password: string;
 
       if (params.config_id) {
+        // config_id is treated as a channel_id for lookup via the helper
         const sb = createServiceClient();
-        const { data: config, error } = await sb
-          .from('wordpress_configs')
-          .select('*')
-          .eq('id', params.config_id)
-          .maybeSingle();
+        const creds = await getWordPressCredentials(params.config_id, sb);
 
-        if (error) throw error;
-
-        if (!config) {
+        if (!creds) {
           throw new ApiError(404, 'WordPress config not found');
         }
 
-        site_url = config.site_url;
-        username = config.username;
-        password = decrypt(config.password);
+        site_url = creds.siteUrl;
+        username = creds.username;
+        password = creds.password;
       } else if (params.site_url && params.username && params.password) {
         // Use provided credentials
         site_url = params.site_url;
@@ -1152,22 +1138,17 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
       let password: string;
 
       if (params.config_id) {
+        // config_id is treated as a channel_id for lookup via the helper
         const sb = createServiceClient();
-        const { data: config, error } = await sb
-          .from('wordpress_configs')
-          .select('*')
-          .eq('id', params.config_id)
-          .maybeSingle();
+        const creds = await getWordPressCredentials(params.config_id, sb);
 
-        if (error) throw error;
-
-        if (!config) {
+        if (!creds) {
           throw new ApiError(404, 'WordPress config not found');
         }
 
-        site_url = config.site_url;
-        username = config.username;
-        password = decrypt(config.password);
+        site_url = creds.siteUrl;
+        username = creds.username;
+        password = creds.password;
       } else if (params.site_url && params.username && params.password) {
         site_url = params.site_url;
         username = params.username;
@@ -1290,18 +1271,14 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         throw new ApiError(400, 'Draft has no channel', 'VALIDATION_ERROR');
       }
 
-      const { data: wpCfg } = await sb
-        .from('wordpress_configs')
-        .select('site_url, username, password')
-        .eq('channel_id', draft.channel_id as string)
-        .maybeSingle();
+      const wpCfg = await getWordPressCredentials(draft.channel_id as string, sb);
       if (!wpCfg) {
         throw new ApiError(400, 'Channel has no WordPress configured', 'NO_WP_CONFIG');
       }
 
-      const site_url = wpCfg.site_url as string;
-      const username = wpCfg.username as string;
-      const password = decrypt(wpCfg.password as string);
+      const site_url = wpCfg.siteUrl;
+      const username = wpCfg.username;
+      const password = wpCfg.password;
 
       const auth = Buffer.from(`${username}:${password}`).toString('base64');
       const headers = {

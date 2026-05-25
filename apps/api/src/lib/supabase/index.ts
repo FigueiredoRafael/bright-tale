@@ -3,7 +3,7 @@ import type { Database } from '@brighttale/shared/types/database';
 
 // Allows tests to inject a mock client by setting this global
 declare global {
-  // eslint-disable-next-line no-var
+   
   var __supabaseMock: ReturnType<typeof createClient<Database>> | undefined;
 }
 

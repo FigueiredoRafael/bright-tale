@@ -5,8 +5,8 @@ export const research: AgentDefinition = {
   slug: 'research',
   name: 'Research Agent',
   stage: 'research',
-  recommendedProvider: null,
-  recommendedModel: null,
+  recommendedProvider: 'openai',
+  recommendedModel: 'gpt-5.4-mini',
   tools: ['search_web', 'fetch_url'],
   sections: {
     header: {

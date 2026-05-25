@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useRouter } from '@/i18n/navigation'
 import { useForm, Controller, FormProvider, useFormContext } from 'react-hook-form'
 import type { Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -15,11 +16,11 @@ import {
   Send,
   BookOpen,
   ChevronRight,
-  LayoutGrid,
   X,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
@@ -31,27 +32,82 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { usePipelineActor } from '@/hooks/usePipelineActor'
-import { usePipelineSettings } from '@/providers/PipelineSettingsProvider'
+import { useToast } from '@/hooks/use-toast'
 import { MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker'
 import type { AutopilotConfig } from '@brighttale/shared'
-import { autopilotConfigSchema, setupProjectSchema } from '@brighttale/shared'
-import type { StartStage } from '@brighttale/shared'
-import type { StageResultMap } from '@/lib/pipeline/machine.types'
+import { autopilotConfigSchema } from '@brighttale/shared'
+import { MEDIA } from '@brighttale/shared/pipeline/inputs'
+import type { Medium } from '@brighttale/shared/pipeline/inputs'
 import { WizardModeCards } from './WizardModeCards'
 import { WizardSectionCard } from './WizardSectionCard'
 import { WizardRightSummary } from './WizardRightSummary'
+import { CostPreviewSlot } from './CostPreviewSlot'
 import { cn } from '@/lib/utils'
 
 // ─── Form schema ─────────────────────────────────────────────────────────────
 
 const wizardFormSchema = z.object({
+  title: z.string().min(3, 'Title must be at least 3 characters').max(200),
+  channelId: z.string().min(1, 'Pick a channel'),
+  media: z.array(z.enum(['blog', 'video', 'shorts', 'podcast'] as const)).min(1, 'Pick at least one medium'),
   mode: z.enum(['step-by-step', 'supervised', 'overview']),
   templateId: z.string().nullable(),
-  autopilotConfig: autopilotConfigSchema,
+  autopilotConfig: z.unknown(),
+  mediaConfig: z.record(z.string(), z.object({
+    // valueAsNumber on an empty input yields NaN. Stale entries can also linger
+    // in form state after a medium is deselected. Coerce NaN/null → undefined
+    // so optional() accepts those cases instead of failing with "Expected number, received nan".
+    wordCount: z.preprocess(
+      (v) => (typeof v === 'number' && Number.isNaN(v)) || v === null ? undefined : v,
+      z.number().int().min(100).max(20000).optional(),
+    ),
+    providerOverride: z.string().nullable().optional(),
+    modelOverride: z.string().nullable().optional(),
+  })).optional(),
+}).superRefine((data, ctx) => {
+  // Topic is the brainstorm seed — required in every mode so the server can
+  // dispatch a brainstorm stage_run after project creation.
+  const cfg = data.autopilotConfig as AutopilotConfig | undefined
+  const b = cfg?.brainstorm
+  if (!b || b.mode === 'topic_driven') {
+    const topic = typeof b?.topic === 'string' ? b.topic.trim() : ''
+    if (!topic) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['autopilotConfig', 'brainstorm', 'topic'],
+        message: 'Topic required to start the pipeline',
+      })
+    }
+  } else if (b.mode === 'reference_guided') {
+    const url = typeof b.referenceUrl === 'string' ? b.referenceUrl.trim() : ''
+    if (!url) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['autopilotConfig', 'brainstorm', 'referenceUrl'],
+        message: 'Reference URL required for reference-guided mode',
+      })
+    }
+  }
+  if (data.mode === 'step-by-step') return
+  const result = autopilotConfigSchema.safeParse(data.autopilotConfig)
+  if (!result.success) {
+    for (const issue of result.error.issues) {
+      ctx.addIssue({ ...issue, path: ['autopilotConfig', ...issue.path] })
+    }
+  }
 })
 
-type WizardFormValues = z.infer<typeof wizardFormSchema>
+type WizardFormValues = {
+  title: string
+  channelId: string
+  media: Medium[]
+  mode: 'step-by-step' | 'supervised' | 'overview'
+  templateId: string | null
+  autopilotConfig: AutopilotConfig
+  mediaConfig?: Record<string, { wordCount?: number; providerOverride?: string | null; modelOverride?: string | null }>
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const AI_PROVIDERS = ['recommended', 'openai', 'anthropic', 'gemini', 'ollama'] as const
 
@@ -90,6 +146,15 @@ const STAGE_ICONS: Record<WizardStage, React.ReactNode> = {
   publish: <Send className="h-3.5 w-3.5" />,
 }
 
+const MEDIUM_LABELS: Record<Medium, string> = {
+  blog: 'Blog post',
+  video: 'Long-form video',
+  shorts: 'Shorts / Reels',
+  podcast: 'Podcast episode',
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function sanitizeProviderModel(
   provider: string | null | undefined,
   model: string | null | undefined,
@@ -99,84 +164,47 @@ function sanitizeProviderModel(
   return validIds.includes(model) ? model : null
 }
 
-function deriveStartStage(stageResults: StageResultMap): StartStage {
-  const ordered: Array<keyof StageResultMap> = [
-    'brainstorm',
-    'research',
-    'draft',
-    'review',
-    'assets',
-    'preview',
-    'publish',
-  ]
-  for (const stage of ordered) {
-    if (!stageResults[stage]) {
-      return stage as StartStage
-    }
-  }
-  return 'brainstorm'
-}
-
-function buildDefaultAutopilotConfig(pipelineSettings: {
-  reviewRejectThreshold: number
-  reviewApproveScore: number
-  reviewMaxIterations: number
-  defaultProviders: Record<string, string | null>
-  defaultModels: Record<string, string>
-}): AutopilotConfig {
-  const dp = pipelineSettings.defaultProviders
-  const dm = pipelineSettings.defaultModels
-  const toProvider = (key: string) => {
-    const val = dp[key]
-    if (val === 'openai' || val === 'anthropic' || val === 'gemini' || val === 'ollama') return val
-    return null
-  }
-  const toModel = (key: string) => dm[key] || null
+function buildDefaultAutopilotConfig(): AutopilotConfig {
   return {
     defaultProvider: 'recommended',
     brainstorm: {
-      providerOverride: toProvider('brainstorm'),
-      modelOverride: toModel('brainstorm'),
+      providerOverride: null,
+      modelOverride: null,
       mode: 'topic_driven',
       topic: '',
       referenceUrl: null,
-      niche: '',
-      tone: '',
-      audience: '',
-      goal: '',
-      constraints: '',
     },
     research: {
-      providerOverride: toProvider('research'),
-      modelOverride: toModel('research'),
+      providerOverride: null,
+      modelOverride: null,
       depth: 'medium',
     },
     canonicalCore: {
-      providerOverride: toProvider('canonicalCore') ?? toProvider('draft'),
-      modelOverride: toModel('canonicalCore') || toModel('draft'),
+      providerOverride: null,
+      modelOverride: null,
       personaId: null,
     },
     draft: {
-      providerOverride: toProvider('draft'),
-      modelOverride: toModel('draft'),
+      providerOverride: null,
+      modelOverride: null,
       format: 'blog',
       wordCount: 1500,
     },
     review: {
-      providerOverride: toProvider('review'),
-      modelOverride: toModel('review'),
-      maxIterations: pipelineSettings.reviewMaxIterations,
-      autoApproveThreshold: pipelineSettings.reviewApproveScore,
-      hardFailThreshold: pipelineSettings.reviewRejectThreshold,
+      providerOverride: null,
+      modelOverride: null,
+      maxIterations: 5,
+      autoApproveThreshold: 90,
+      hardFailThreshold: 60,
     },
     assets: {
-      providerOverride: toProvider('assets'),
-      modelOverride: toModel('assets'),
+      providerOverride: null,
+      modelOverride: null,
       mode: 'briefs_only',
       imageScope: 'all',
     },
     preview: {
-      enabled: false,
+      enabled: true,
     },
     publish: {
       status: 'draft',
@@ -276,6 +304,45 @@ function UpdateConfirmDialog({ templateName, onConfirm, onCancel }: UpdateConfir
           </Button>
           <Button size="sm" onClick={onConfirm}>
             Confirm
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Overwrite confirm dialog ─────────────────────────────────────────────────
+
+interface OverwriteConfirmDialogProps {
+  onConfirm: () => void
+  onCancel: () => void
+}
+
+function OverwriteConfirmDialog({ onConfirm, onCancel }: OverwriteConfirmDialogProps) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onCancel])
+
+  return (
+    <div
+      role="dialog"
+      aria-label="Confirm overwrite settings"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onCancel}
+    >
+      <div className="bg-background rounded-lg p-6 shadow-xl w-80 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <h2 className="font-semibold text-lg">Apply channel defaults?</h2>
+        <p className="text-sm text-muted-foreground">
+          This will overwrite your current autopilot settings with the channel&apos;s defaults.
+        </p>
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" size="sm" onClick={onCancel}>
+            Keep mine
+          </Button>
+          <Button size="sm" onClick={onConfirm}>
+            Apply defaults
           </Button>
         </div>
       </div>
@@ -390,24 +457,6 @@ function BrainstormFields({ brainstormMode }: { brainstormMode: 'topic_driven' |
         />
       </div>
 
-      {brainstormMode === 'topic_driven' && (
-        <div>
-          <Label htmlFor="brainstorm-topic" className="text-xs font-medium text-muted-foreground mb-1.5 block">Topic</Label>
-          <input
-            id="brainstorm-topic"
-            type="text"
-            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            aria-label="Topic"
-            {...register('autopilotConfig.brainstorm.topic')}
-          />
-          {errors.autopilotConfig?.brainstorm?.topic && (
-            <p className="text-xs text-destructive mt-1">
-              {errors.autopilotConfig.brainstorm.topic.message}
-            </p>
-          )}
-        </div>
-      )}
-
       {brainstormMode === 'reference_guided' && (
         <div>
           <Label htmlFor="brainstorm-referenceUrl" className="text-xs font-medium text-muted-foreground mb-1.5 block">Reference URL</Label>
@@ -494,30 +543,30 @@ function CanonicalCoreFields() {
   return (
     <div className="space-y-3">
       <div>
-      <Label htmlFor="canonicalCore-personaId" className="text-xs font-medium text-muted-foreground mb-1.5 block">Persona (optional)</Label>
-      <Controller
-        control={control}
-        name="autopilotConfig.canonicalCore.personaId"
-        render={({ field }) => (
-          <Select
-            value={field.value ?? '__auto__'}
-            onValueChange={(v) => field.onChange(v === '__auto__' ? null : v)}
-            disabled={loading}
-          >
-            <SelectTrigger id="canonicalCore-personaId" className="w-full">
-              <SelectValue placeholder={loading ? 'Loading personas…' : 'Auto-select'} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__auto__">Auto-select</SelectItem>
-              {personas.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      />
+        <Label htmlFor="canonicalCore-personaId" className="text-xs font-medium text-muted-foreground mb-1.5 block">Persona (optional)</Label>
+        <Controller
+          control={control}
+          name="autopilotConfig.canonicalCore.personaId"
+          render={({ field }) => (
+            <Select
+              value={field.value ?? '__auto__'}
+              onValueChange={(v) => field.onChange(v === '__auto__' ? null : v)}
+              disabled={loading}
+            >
+              <SelectTrigger id="canonicalCore-personaId" className="w-full">
+                <SelectValue placeholder={loading ? 'Loading personas…' : 'Auto-select'} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__auto__">Auto-select</SelectItem>
+                {personas.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
       </div>
       <ProviderModelFields stage="canonicalCore" />
     </div>
@@ -799,28 +848,44 @@ function MobileSummarySheet({ open, onClose }: MobileSummarySheetProps) {
   )
 }
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type Channel = { id: string; name: string }
+
+interface TemplateRow {
+  id: string
+  name: string
+  config_json: AutopilotConfig
+  is_default: boolean
+}
+
+interface ChannelMergeData {
+  mediaConfig: Record<string, Record<string, unknown>> | null
+  defaultTemplate: TemplateRow | null
+}
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+
+interface Props {
+  initialChannelId?: string | null
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function PipelineWizard() {
-  const actor = usePipelineActor()
-  const { pipelineSettings } = usePipelineSettings()
+export function PipelineWizard({ initialChannelId }: Props) {
+  const router = useRouter()
+  const { toast } = useToast()
 
-  const snapshot = actor.getSnapshot()
-  const { projectId, channelId, stageResults } = snapshot.context as {
-    projectId: string
-    channelId: string | null
-    stageResults: StageResultMap
-  }
+  const baseConfig = buildDefaultAutopilotConfig()
 
-  const baseConfig = buildDefaultAutopilotConfig(pipelineSettings)
   const defaultValues: WizardFormValues = {
+    title: '',
+    channelId: '',
+    media: ['blog'],
     mode: 'step-by-step',
     templateId: null,
-    autopilotConfig: {
-      ...baseConfig,
-      brainstorm: stageResults.brainstorm ? null : baseConfig.brainstorm,
-      research: stageResults.research ? null : baseConfig.research,
-    },
+    autopilotConfig: baseConfig,
+    mediaConfig: {},
   }
 
   const methods = useForm<WizardFormValues>({
@@ -828,185 +893,258 @@ export function PipelineWizard() {
     defaultValues,
   })
 
-  const { handleSubmit, control, watch, formState: { errors }, getValues } = methods
+  const { handleSubmit, control, watch, formState: { errors, isDirty }, getValues, setValue } = methods
 
   const mode = watch('mode')
   const watchedValues = watch()
+  const watchedTitle = watch('title')
+  const watchedChannelId = watch('channelId')
+  const selectedMedia = watch('media')
   const brainstormMode = watch('autopilotConfig.brainstorm.mode') ?? 'topic_driven'
+  const watchedBrainstormTopic = watch('autopilotConfig.brainstorm.topic') ?? ''
+  const watchedWordCount = watch('autopilotConfig.draft.wordCount') ?? 1500
 
+  const isAutopilot = mode === 'supervised' || mode === 'overview'
+
+  const canSubmit =
+    watchedTitle.trim().length >= 3 &&
+    watchedChannelId.length > 0 &&
+    selectedMedia.length > 0 &&
+    (brainstormMode !== 'topic_driven' ||
+      watchedBrainstormTopic.trim().length > 0)
+
+  const [channels, setChannels] = useState<Channel[] | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
 
-  interface TemplateRow {
-    id: string
-    name: string
-    config_json: AutopilotConfig
-    is_default: boolean
-  }
+  // Template state
   const [templates, setTemplates] = useState<TemplateRow[]>([])
   const [loadedTemplateId, setLoadedTemplateId] = useState<string | null>(null)
   const [loadedTemplateName, setLoadedTemplateName] = useState<string | null>(null)
   const [templateActionError, setTemplateActionError] = useState<string | null>(null)
 
-  const [showSaveAsNew, setShowSaveAsNew] = useState(false)
+  // Dialog state
   const [showUpdateConfirm, setShowUpdateConfirm] = useState(false)
   const [showMobileSummary, setShowMobileSummary] = useState(false)
+  const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false)
+  const pendingChannelMerge = useRef<ChannelMergeData | null>(null)
 
-  // Channel name resolution
-  const [channelName, setChannelName] = useState<string | null>(null)
+  const sectionRefs = useRef<Partial<Record<WizardStage, HTMLDivElement | null>>>({})
+
+  // ── Fetch channels on mount ──────────────────────────────────────────────────
   useEffect(() => {
-    if (!channelId) return
     const ac = new AbortController()
     ;(async () => {
       try {
         const res = await fetch('/api/channels', { signal: ac.signal })
         const json = await res.json()
-        const items: Array<{ id: string; name: string }> = json?.data?.items ?? json?.data?.channels ?? []
-        const found = items.find((c) => c.id === channelId)
-        if (found) setChannelName(found.name)
-      } catch {
-        // best-effort
+        const list = (json?.data?.items ?? json?.data?.channels ?? []) as Channel[]
+        setChannels(list)
+        // Apply initialChannelId or single-channel preselect
+        if (initialChannelId && list.some((c) => c.id === initialChannelId)) {
+          setValue('channelId', initialChannelId, { shouldValidate: false })
+        } else if (!initialChannelId && list.length === 1) {
+          setValue('channelId', list[0].id, { shouldValidate: false })
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return
+        setChannels([])
       }
     })()
     return () => ac.abort()
-  }, [channelId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const refreshTemplates = async () => {
+  // ── Template refresh ─────────────────────────────────────────────────────────
+  const refreshTemplates = async (channelId: string | null) => {
     try {
-      const url = channelId
+      const channelUrl = channelId
         ? `/api/autopilot-templates?channelId=${encodeURIComponent(channelId)}`
         : '/api/autopilot-templates'
-      const res = await fetch(url)
-      const json = (await res.json()) as {
-        data: { items: TemplateRow[] } | null
-        error: { message?: string } | null
+      const globalUrl = '/api/autopilot-templates?channelId=null'
+      const [channelRes, globalRes] = await Promise.all([
+        fetch(channelUrl),
+        fetch(globalUrl),
+      ])
+      const channelJson = (await channelRes.json()) as { data: { items: TemplateRow[] } | null; error: unknown }
+      const globalJson = (await globalRes.json()) as { data: { items: TemplateRow[] } | null; error: unknown }
+      const channelItems = channelJson.data?.items ?? []
+      const globalItems = globalJson.data?.items ?? []
+      // Deduplicate by id
+      const seen = new Set<string>()
+      const merged: TemplateRow[] = []
+      for (const t of [...channelItems, ...globalItems]) {
+        if (!seen.has(t.id)) {
+          seen.add(t.id)
+          merged.push(t)
+        }
       }
-      if (json.error) {
-        setTemplateActionError(json.error.message ?? 'Failed to load templates')
-        return
-      }
-      setTemplates(json.data?.items ?? [])
+      setTemplates(merged)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Network error'
       setTemplateActionError(msg)
     }
   }
 
-  useEffect(() => {
-    void refreshTemplates()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channelId])
+  // ── Channel-select merge ─────────────────────────────────────────────────────
+  const applyChannelMerge = (data: ChannelMergeData) => {
+    const { mediaConfig, defaultTemplate } = data
+    // Start from base config
+    let merged: AutopilotConfig = { ...baseConfig }
+    // Apply default template if any
+    if (defaultTemplate) {
+      const raw = defaultTemplate.config_json as Partial<AutopilotConfig>
+      merged = {
+        ...merged,
+        ...raw,
+        preview: raw.preview ?? merged.preview,
+        publish: raw.publish ?? merged.publish,
+      }
+    }
+    // Apply channel media defaults (wordCount from mediaConfig.blog if present)
+    if (mediaConfig?.blog?.wordCount && typeof mediaConfig.blog.wordCount === 'number') {
+      merged = {
+        ...merged,
+        draft: {
+          ...merged.draft,
+          wordCount: mediaConfig.blog.wordCount as number,
+        },
+      }
+    }
+    // Preserve user-typed brainstorm seed fields across the merge — switching
+    // channels (or auto-loading a default template) shouldn't wipe a topic or
+    // reference URL the user already entered.
+    const existingBrainstorm = getValues('autopilotConfig.brainstorm') as
+      | AutopilotConfig['brainstorm']
+      | undefined
+    if (existingBrainstorm && merged.brainstorm) {
+      const userTopic = typeof existingBrainstorm.topic === 'string' ? existingBrainstorm.topic : ''
+      const userRefUrl = typeof existingBrainstorm.referenceUrl === 'string' ? existingBrainstorm.referenceUrl : ''
+      merged.brainstorm = {
+        ...merged.brainstorm,
+        topic: userTopic.length > 0 ? userTopic : merged.brainstorm.topic,
+        referenceUrl: userRefUrl.length > 0 ? userRefUrl : merged.brainstorm.referenceUrl,
+      }
+    }
+    // Sanitize provider/model pairs
+    if (merged.brainstorm) {
+      merged.brainstorm = { ...merged.brainstorm, modelOverride: sanitizeProviderModel(merged.brainstorm.providerOverride, merged.brainstorm.modelOverride) }
+    }
+    if (merged.research) {
+      merged.research = { ...merged.research, modelOverride: sanitizeProviderModel(merged.research.providerOverride, merged.research.modelOverride) }
+    }
+    merged.canonicalCore = { ...merged.canonicalCore, modelOverride: sanitizeProviderModel(merged.canonicalCore.providerOverride, merged.canonicalCore.modelOverride) }
+    merged.draft = { ...merged.draft, modelOverride: sanitizeProviderModel(merged.draft.providerOverride, merged.draft.modelOverride) }
+    merged.review = { ...merged.review, modelOverride: sanitizeProviderModel(merged.review.providerOverride, merged.review.modelOverride) }
+    merged.assets = { ...merged.assets, modelOverride: sanitizeProviderModel(merged.assets.providerOverride, merged.assets.modelOverride) }
 
-  const sectionRefs = useRef<Partial<Record<WizardStage, HTMLDivElement | null>>>({})
-
-  const isStageCompleted = (stage: WizardStage): boolean => {
-    if (stage === 'preview' || stage === 'publish') return false
-    const key = stage === 'canonicalCore' ? 'draft' : stage
-    return Boolean(stageResults[key as keyof StageResultMap])
+    methods.reset({
+      ...getValues(),
+      autopilotConfig: merged,
+      templateId: defaultTemplate?.id ?? null,
+    })
+    if (defaultTemplate) {
+      setLoadedTemplateId(defaultTemplate.id)
+      setLoadedTemplateName(defaultTemplate.name)
+    }
   }
 
-  const onValid = async (data: WizardFormValues) => {
-    setSubmitting(true)
-    setSubmitError(null)
+  const handleChannelSelect = async (channelId: string) => {
+    setValue('channelId', channelId, { shouldValidate: true })
+    // Parallel fetch channel defaults + templates + personas
+    await refreshTemplates(channelId)
+    try {
+      const [mediaConfigRes, templateRes, personasRes] = await Promise.allSettled([
+        fetch(`/api/channels/${channelId}/default-media-config`),
+        fetch(`/api/autopilot-templates?channelId=${encodeURIComponent(channelId)}`),
+        fetch(`/api/channels/${channelId}/personas`),
+      ])
 
-    const startStage = deriveStartStage(stageResults)
-    const payload = {
-      mode: data.mode,
-      autopilotConfig: data.mode === 'step-by-step' ? null : data.autopilotConfig,
-      templateId: data.templateId,
-      startStage,
+      let mediaConfig: Record<string, Record<string, unknown>> | null = null
+      if (mediaConfigRes.status === 'fulfilled' && mediaConfigRes.value.ok) {
+        try {
+          const json = await mediaConfigRes.value.json()
+          mediaConfig = json?.data?.default_media_config_json ?? null
+        } catch {
+          console.warn('[PipelineWizard] Failed to parse channel media config')
+        }
+      }
+
+      let defaultTemplate: TemplateRow | null = null
+      if (templateRes.status === 'fulfilled' && templateRes.value.ok) {
+        try {
+          const json = (await templateRes.value.json()) as { data: { items: TemplateRow[] } | null }
+          const items = json.data?.items ?? []
+          defaultTemplate = items.find((t) => t.is_default) ?? null
+        } catch {
+          console.warn('[PipelineWizard] Failed to parse templates response')
+        }
+      }
+
+      if (personasRes.status === 'rejected' || (personasRes.status === 'fulfilled' && !personasRes.value.ok)) {
+        console.warn('[PipelineWizard] Failed to fetch channel personas')
+      }
+
+      const mergeData: ChannelMergeData = { mediaConfig, defaultTemplate }
+
+      // If autopilot fields are dirty, confirm overwrite
+      if (isDirty && isAutopilot) {
+        pendingChannelMerge.current = mergeData
+        setShowOverwriteConfirm(true)
+      } else {
+        applyChannelMerge(mergeData)
+      }
+    } catch (err) {
+      console.warn('[PipelineWizard] Channel merge failed:', err instanceof Error ? err.message : err)
     }
+  }
 
-    const parsed = setupProjectSchema.safeParse(payload)
-    if (!parsed.success) {
-      setSubmitError('Validation error: ' + parsed.error.issues.map((i) => i.message).join(', '))
-      setSubmitting(false)
+  const handleOverwriteConfirm = () => {
+    setShowOverwriteConfirm(false)
+    if (pendingChannelMerge.current) {
+      applyChannelMerge(pendingChannelMerge.current)
+      pendingChannelMerge.current = null
+    }
+  }
+
+  const handleOverwriteCancel = () => {
+    setShowOverwriteConfirm(false)
+    pendingChannelMerge.current = null
+  }
+
+  // ── Template handling ────────────────────────────────────────────────────────
+  const handleLoadTemplate = (id: string) => {
+    setTemplateActionError(null)
+    if (!id || id === 'none') {
+      setLoadedTemplateId(null)
+      setLoadedTemplateName(null)
       return
     }
-
-    try {
-      const res = await fetch(`/api/projects/${projectId}/setup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parsed.data),
-      })
-
-      if (!res.ok) {
-        const json = (await res.json()) as { error?: { message?: string } }
-        setSubmitError(json.error?.message ?? 'Request failed')
-        setSubmitting(false)
-        return
-      }
-
-      actor.send({
-        type: 'SETUP_COMPLETE',
-        mode: parsed.data.mode,
-        autopilotConfig: parsed.data.autopilotConfig,
-        templateId: parsed.data.templateId,
-        startStage: parsed.data.startStage,
-      })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error'
-      setSubmitError(msg)
-    } finally {
-      setSubmitting(false)
+    const template = templates.find((t) => t.id === id)
+    if (!template) return
+    setLoadedTemplateId(template.id)
+    setLoadedTemplateName(template.name)
+    const raw = template.config_json as Partial<AutopilotConfig>
+    const merged: AutopilotConfig = {
+      ...baseConfig,
+      ...raw,
+      preview: raw.preview ?? baseConfig.preview,
+      publish: raw.publish ?? baseConfig.publish,
     }
-  }
-
-  const onInvalid = () => {
-    const configErrors =
-      (errors.autopilotConfig as Record<string, unknown> | undefined) ?? {}
-    for (const stage of STAGE_ORDER) {
-      if (configErrors[stage]) {
-        const ref = sectionRefs.current[stage]
-        if (ref) {
-          // Open the section by dispatching a click on the trigger button
-          const trigger = ref.querySelector('button[aria-expanded]') as HTMLButtonElement | null
-          if (trigger && trigger.getAttribute('aria-expanded') === 'false') {
-            trigger.click()
-          }
-          if (typeof ref.scrollIntoView === 'function') {
-            ref.scrollIntoView({ behavior: 'smooth', block: 'start' })
-          }
-        }
-        break
-      }
+    if (merged.brainstorm) {
+      merged.brainstorm = { ...merged.brainstorm, modelOverride: sanitizeProviderModel(merged.brainstorm.providerOverride, merged.brainstorm.modelOverride) }
     }
-  }
-
-  const handleSaveAsNew = async (name: string, isDefault: boolean) => {
-    const config = getValues('autopilotConfig')
-    setShowSaveAsNew(false)
-    setTemplateActionError(null)
-    try {
-      const res = await fetch('/api/autopilot-templates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          channelId: channelId ?? null,
-          configJson: config,
-          isDefault,
-        }),
-      })
-      const json = (await res.json()) as {
-        data: TemplateRow | null
-        error: { message?: string } | null
-      }
-      if (!res.ok || json.error) {
-        setTemplateActionError(json.error?.message ?? 'Failed to save template')
-        return
-      }
-      if (json.data) {
-        setTemplates((prev) => [...prev, json.data!])
-        setLoadedTemplateId(json.data.id)
-        setLoadedTemplateName(json.data.name)
-      }
-      await refreshTemplates()
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Network error'
-      setTemplateActionError(msg)
+    if (merged.research) {
+      merged.research = { ...merged.research, modelOverride: sanitizeProviderModel(merged.research.providerOverride, merged.research.modelOverride) }
     }
+    merged.canonicalCore = { ...merged.canonicalCore, modelOverride: sanitizeProviderModel(merged.canonicalCore.providerOverride, merged.canonicalCore.modelOverride) }
+    merged.draft = { ...merged.draft, modelOverride: sanitizeProviderModel(merged.draft.providerOverride, merged.draft.modelOverride) }
+    merged.review = { ...merged.review, modelOverride: sanitizeProviderModel(merged.review.providerOverride, merged.review.modelOverride) }
+    merged.assets = { ...merged.assets, modelOverride: sanitizeProviderModel(merged.assets.providerOverride, merged.assets.modelOverride) }
+    methods.reset({
+      ...getValues(),
+      templateId: template.id,
+      autopilotConfig: merged,
+    })
   }
 
   const handleUpdateTemplate = async () => {
@@ -1028,95 +1166,135 @@ export function PipelineWizard() {
         setTemplateActionError(json.error?.message ?? 'Failed to update template')
         return
       }
-      await refreshTemplates()
+      await refreshTemplates(getValues('channelId') || null)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Network error'
       setTemplateActionError(msg)
     }
   }
 
-  const handleLoadTemplate = (id: string) => {
-    setTemplateActionError(null)
-    if (!id || id === 'none') {
-      setLoadedTemplateId(null)
-      setLoadedTemplateName(null)
-      return
+  // ── Validation expand on submit error ────────────────────────────────────────
+  const onInvalid = (validationErrors: typeof errors) => {
+    const configErrors =
+      (validationErrors.autopilotConfig as Record<string, unknown> | undefined) ?? {}
+    let firstStageWithError: WizardStage | null = null
+    for (const stage of STAGE_ORDER) {
+      if (configErrors[stage]) {
+        firstStageWithError = stage
+        const ref = sectionRefs.current[stage]
+        if (ref) {
+          const trigger = ref.querySelector('button[aria-expanded]') as HTMLButtonElement | null
+          if (trigger && trigger.getAttribute('aria-expanded') === 'false') {
+            trigger.click()
+          }
+          if (typeof ref.scrollIntoView === 'function') {
+            ref.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
+        }
+        break
+      }
     }
-    const template = templates.find((t) => t.id === id)
-    if (!template) return
-    setLoadedTemplateId(template.id)
-    setLoadedTemplateName(template.name)
-    // Merge template config over current defaults so legacy templates (saved
-    // before preview/publish slots existed) still produce a valid form state.
-    const raw = template.config_json as Partial<AutopilotConfig>
-    const merged: AutopilotConfig = {
-      ...baseConfig,
-      ...raw,
-      preview: raw.preview ?? baseConfig.preview,
-      publish: raw.publish ?? baseConfig.publish,
+
+    // Walk the entire error tree and collect dotted paths for the toast.
+    const paths: string[] = []
+    const walk = (node: unknown, trail: string[]): void => {
+      if (!node || typeof node !== 'object') return
+      const obj = node as Record<string, unknown>
+      if (typeof obj.message === 'string' && obj.message.length > 0) {
+        paths.push(`${trail.join('.')}: ${obj.message}`)
+        return
+      }
+      for (const [k, v] of Object.entries(obj)) {
+        if (k === 'ref' || k === 'type') continue
+        walk(v, [...trail, k])
+      }
     }
-    // Sanitize every stage: nullify modelOverride when it doesn't belong to the
-    // current providerOverride (prevents stale cross-provider pairs like
-    // { provider: 'openai', model: 'gemini-2.5-flash' } from surviving a re-config).
-    if (merged.brainstorm) {
-      merged.brainstorm = { ...merged.brainstorm, modelOverride: sanitizeProviderModel(merged.brainstorm.providerOverride, merged.brainstorm.modelOverride) }
-    }
-    if (merged.research) {
-      merged.research = { ...merged.research, modelOverride: sanitizeProviderModel(merged.research.providerOverride, merged.research.modelOverride) }
-    }
-    merged.canonicalCore = { ...merged.canonicalCore, modelOverride: sanitizeProviderModel(merged.canonicalCore.providerOverride, merged.canonicalCore.modelOverride) }
-    merged.draft = { ...merged.draft, modelOverride: sanitizeProviderModel(merged.draft.providerOverride, merged.draft.modelOverride) }
-    merged.review = { ...merged.review, modelOverride: sanitizeProviderModel(merged.review.providerOverride, merged.review.modelOverride) }
-    merged.assets = { ...merged.assets, modelOverride: sanitizeProviderModel(merged.assets.providerOverride, merged.assets.modelOverride) }
-    methods.reset({
-      mode: methods.getValues('mode'),
-      templateId: template.id,
-      autopilotConfig: merged,
+    walk(validationErrors, [])
+
+    console.warn('[PipelineWizard] validation errors:', validationErrors, paths)
+    toast({
+      title: 'Fix required fields',
+      description: paths.length > 0
+        ? paths.slice(0, 3).join(' | ')
+        : 'Some required fields are missing.',
+      variant: 'destructive',
     })
   }
 
-  const startStage = deriveStartStage(stageResults)
-
-  const startStageLabel: Record<string, string> = {
-    brainstorm: 'brainstorm',
-    research: 'research',
-    draft: 'draft',
-    review: 'review',
-    assets: 'assets',
-    preview: 'preview',
-    publish: 'publish',
+  // ── Submit handler ───────────────────────────────────────────────────────────
+  const onValid = async (values: WizardFormValues) => {
+    setSubmitting(true)
+    const isAutopilotMode = values.mode !== 'step-by-step'
+    const payload = {
+      title: values.title.trim(),
+      channelId: values.channelId,
+      current_stage: 'brainstorm' as const,
+      status: 'active' as const,
+      winner: false,
+      mode: values.mode,
+      media: values.media,
+      mediaConfig: values.media.length >= 2 && isAutopilotMode ? values.mediaConfig : undefined,
+      autopilotConfigJson: values.autopilotConfig,
+    }
+    try {
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json()
+      if (!res.ok || json?.error) {
+        toast({ title: 'Failed to create project', description: json?.error?.message ?? 'Unknown error', variant: 'destructive' })
+        setSubmitting(false)
+        return
+      }
+      const id = json?.data?.id
+      if (!id) {
+        toast({ title: 'Failed to create project', variant: 'destructive' })
+        setSubmitting(false)
+        return
+      }
+      router.push(`/projects/${id}`)
+    } catch (err) {
+      toast({
+        title: 'Failed to create project',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'destructive',
+      })
+      setSubmitting(false)
+    }
   }
 
-  const submitLabel = (() => {
-    const stageName = startStageLabel[startStage] ?? startStage
-    if (mode === 'supervised') return `Start ${stageName} (supervised) →`
-    if (mode === 'overview') return `Start ${stageName} (overview) →`
-    return `Start ${stageName} →`
-  })()
-
-  // Template chips — show first 3 + a "More" popover trigger
+  // ── Template chips helpers ───────────────────────────────────────────────────
   const visibleTemplates = templates.slice(0, 3)
   const hasMoreTemplates = templates.length > 3
 
+  // ── Loading state ────────────────────────────────────────────────────────────
+  if (channels === null) {
+    return <p className="p-6 text-sm text-muted-foreground">Loading...</p>
+  }
+
   return (
     <FormProvider {...methods}>
+      {/* Dialogs rendered outside main form */}
+      {showOverwriteConfirm && (
+        <OverwriteConfirmDialog
+          onConfirm={handleOverwriteConfirm}
+          onCancel={handleOverwriteCancel}
+        />
+      )}
+      {showUpdateConfirm && loadedTemplateName && (
+        <UpdateConfirmDialog
+          templateName={loadedTemplateName}
+          onConfirm={handleUpdateTemplate}
+          onCancel={() => setShowUpdateConfirm(false)}
+        />
+      )}
+      {/* SaveAsNewDialog is kept in file but not rendered — save-as-template is deferred */}
+
+      <MobileSummarySheet open={showMobileSummary} onClose={() => setShowMobileSummary(false)} />
+
       <div data-testid="pipeline-wizard" className="relative flex flex-col min-h-0 h-full">
-        {showSaveAsNew && (
-          <SaveAsNewDialog
-            onSave={handleSaveAsNew}
-            onCancel={() => setShowSaveAsNew(false)}
-          />
-        )}
-        {showUpdateConfirm && loadedTemplateName && (
-          <UpdateConfirmDialog
-            templateName={loadedTemplateName}
-            onConfirm={handleUpdateTemplate}
-            onCancel={() => setShowUpdateConfirm(false)}
-          />
-        )}
-
-        <MobileSummarySheet open={showMobileSummary} onClose={() => setShowMobileSummary(false)} />
-
         {/* ── Main two-column layout ─────────────────────── */}
         <form
           id="pipeline-wizard-form"
@@ -1125,25 +1303,119 @@ export function PipelineWizard() {
         >
           {/* ── Left rail ─────────────────────────────────── */}
           <div className="flex flex-col w-full md:w-[42%] md:min-w-0 md:border-r overflow-y-auto">
-            {/* Channel card */}
-            {channelId && (
-              <div className="px-5 pt-5 pb-4">
-                <div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-4 py-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                    <LayoutGrid className="h-4 w-4" />
+            <div className="flex-1 overflow-y-auto px-5 pb-6 space-y-6 pt-5">
+
+              {/* ── Header card: title + channel + media ──────── */}
+              <div className="space-y-5 rounded-lg border bg-background p-5">
+                {/* Project title */}
+                <div className="space-y-2">
+                  <Label htmlFor="project-title">Project title</Label>
+                  <Input
+                    id="project-title"
+                    placeholder="e.g. Q2 launch announcement"
+                    maxLength={200}
+                    {...methods.register('title')}
+                    aria-invalid={!!errors.title}
+                  />
+                  {errors.title && (
+                    <p className="text-xs text-destructive">{errors.title.message}</p>
+                  )}
+                </div>
+
+                {/* Channel selection */}
+                <div className="space-y-2">
+                  <Label>Channel</Label>
+                  {channels.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No channels found. <button type="button" className="underline" onClick={() => router.push('/channels')}>Create one</button>
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {channels.map((ch) => {
+                        const selected = watch('channelId') === ch.id
+                        return (
+                          <button
+                            key={ch.id}
+                            type="button"
+                            data-testid="channel-option"
+                            onClick={() => void handleChannelSelect(ch.id)}
+                            className={cn(
+                              'rounded-lg border px-3 py-2 text-sm transition-all duration-150 text-left',
+                              'hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                              selected
+                                ? 'border-primary bg-primary/5 text-primary font-medium ring-1 ring-primary'
+                                : 'border-border bg-background text-foreground',
+                            )}
+                          >
+                            {ch.name}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {errors.channelId && (
+                    <p className="text-xs text-destructive">{errors.channelId.message}</p>
+                  )}
+                </div>
+
+                {/* Media selection */}
+                <div className="space-y-2">
+                  <Label>Media</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Pick which output formats to generate. Each medium runs its own track.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {MEDIA.map((m) => {
+                      const checked = selectedMedia.includes(m)
+                      return (
+                        <label
+                          key={m}
+                          className="flex items-center gap-2 rounded-md border px-3 py-2 cursor-pointer hover:bg-accent/30"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              const current = getValues('media')
+                              if (e.target.checked) {
+                                setValue('media', [...current, m], { shouldValidate: true })
+                              } else {
+                                setValue('media', current.filter((x) => x !== m), { shouldValidate: true })
+                              }
+                            }}
+                            aria-label={MEDIUM_LABELS[m]}
+                          />
+                          <span className="text-sm">{MEDIUM_LABELS[m]}</span>
+                        </label>
+                      )
+                    })}
                   </div>
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-sm font-medium truncate">
-                      {channelName ?? 'Loading…'}
-                    </span>
-                    <span className="text-xs text-muted-foreground font-mono truncate">{channelId}</span>
-                  </div>
+                  {errors.media && (
+                    <p className="text-xs text-destructive">{errors.media.message}</p>
+                  )}
+                </div>
+
+                {/* Brainstorm topic seed (required regardless of mode) */}
+                <div className="space-y-2">
+                  <Label htmlFor="wizard-brainstorm-topic">Topic</Label>
+                  <p className="text-xs text-muted-foreground">
+                    What should the pipeline brainstorm about? This seeds the first stage.
+                  </p>
+                  <Input
+                    id="wizard-brainstorm-topic"
+                    placeholder="e.g. retirement planning for freelancers"
+                    {...methods.register('autopilotConfig.brainstorm.topic')}
+                    aria-invalid={!!errors.autopilotConfig?.brainstorm?.topic}
+                  />
+                  {errors.autopilotConfig?.brainstorm?.topic && (
+                    <p className="text-xs text-destructive">
+                      {errors.autopilotConfig.brainstorm.topic.message}
+                    </p>
+                  )}
                 </div>
               </div>
-            )}
 
-            <div className="flex-1 overflow-y-auto px-5 pb-6 space-y-6">
-              {/* Mode cards */}
+              {/* ── Mode card ─────────────────────────────────── */}
               <section>
                 <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
                   Pipeline mode
@@ -1151,179 +1423,188 @@ export function PipelineWizard() {
                 <WizardModeCards />
               </section>
 
-              <Separator />
+              {/* ── Autopilot sections (supervised / overview only) ── */}
+              {isAutopilot && (
+                <>
+                  <Separator />
 
-              {/* Template chips */}
-              <section>
-                <div className="flex items-center justify-between mb-2">
-                  <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Template
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={() => setShowSaveAsNew(true)}
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    Save as new
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleLoadTemplate('none')}
-                    className={cn(
-                      'rounded-full border px-3 py-1 text-xs transition-all',
-                      !loadedTemplateId
-                        ? 'border-primary bg-primary/5 text-primary font-medium'
-                        : 'border-border text-muted-foreground hover:border-primary/50 hover:text-foreground',
+                  {/* Template chips */}
+                  <section>
+                    <div className="flex items-center justify-between mb-2">
+                      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Template
+                      </h2>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleLoadTemplate('none')}
+                        className={cn(
+                          'rounded-full border px-3 py-1 text-xs transition-all',
+                          !loadedTemplateId
+                            ? 'border-primary bg-primary/5 text-primary font-medium'
+                            : 'border-border text-muted-foreground hover:border-primary/50 hover:text-foreground',
+                        )}
+                      >
+                        Blank
+                      </button>
+                      {visibleTemplates.map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => handleLoadTemplate(t.id)}
+                          className={cn(
+                            'rounded-full border px-3 py-1 text-xs transition-all',
+                            loadedTemplateId === t.id
+                              ? 'border-primary bg-primary/5 text-primary font-medium'
+                              : 'border-border text-muted-foreground hover:border-primary/50 hover:text-foreground',
+                          )}
+                        >
+                          {t.name}
+                          {t.is_default && ' ★'}
+                        </button>
+                      ))}
+                      {hasMoreTemplates && (
+                        <Select
+                          value={loadedTemplateId ?? 'none'}
+                          onValueChange={handleLoadTemplate}
+                        >
+                          <SelectTrigger className="h-6 rounded-full border px-3 py-1 text-xs w-auto gap-1" aria-label="Load template">
+                            <SelectValue placeholder="More…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {templates.map((t) => (
+                              <SelectItem key={t.id} value={t.id}>
+                                {t.name}{t.is_default ? ' (default)' : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      {!hasMoreTemplates && templates.length > 0 && (
+                        <Select
+                          value={loadedTemplateId ?? 'none'}
+                          onValueChange={handleLoadTemplate}
+                        >
+                          <SelectTrigger className="sr-only" aria-label="Load template">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {templates.map((t) => (
+                              <SelectItem key={t.id} value={t.id}>
+                                {t.name}{t.is_default ? ' (default)' : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                    {loadedTemplateId && loadedTemplateName && (
+                      <button
+                        type="button"
+                        onClick={() => setShowUpdateConfirm(true)}
+                        className="mt-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Update template {loadedTemplateName}
+                      </button>
                     )}
-                  >
-                    Blank
-                  </button>
-                  {visibleTemplates.map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => handleLoadTemplate(t.id)}
-                      className={cn(
-                        'rounded-full border px-3 py-1 text-xs transition-all',
-                        loadedTemplateId === t.id
-                          ? 'border-primary bg-primary/5 text-primary font-medium'
-                          : 'border-border text-muted-foreground hover:border-primary/50 hover:text-foreground',
+                    {templateActionError && (
+                      <p
+                        role="alert"
+                        data-testid="template-action-error"
+                        className="mt-1.5 text-xs text-destructive"
+                      >
+                        {templateActionError}
+                      </p>
+                    )}
+                  </section>
+
+                  <Separator />
+
+                  {/* Default AI provider */}
+                  <section>
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                      Default AI provider
+                    </h2>
+                    <Controller
+                      control={control}
+                      name="autopilotConfig.defaultProvider"
+                      render={({ field }) => (
+                        <Select value={field.value ?? 'recommended'} onValueChange={field.onChange}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {AI_PROVIDERS.map((p) => (
+                              <SelectItem key={p} value={p}>
+                                {p.charAt(0).toUpperCase() + p.slice(1)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       )}
-                    >
-                      {t.name}
-                      {t.is_default && ' ★'}
-                    </button>
-                  ))}
-                  {hasMoreTemplates && (
-                    <Select
-                      value={loadedTemplateId ?? 'none'}
-                      onValueChange={handleLoadTemplate}
-                    >
-                      <SelectTrigger className="h-6 rounded-full border px-3 py-1 text-xs w-auto gap-1" aria-label="Load template">
-                        <SelectValue placeholder="More…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
-                        {templates.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>
-                            {t.name}{t.is_default ? ' (default)' : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                  {/* Hidden select for testing — always render when there are templates but fewer than 4 */}
-                  {!hasMoreTemplates && templates.length > 0 && (
-                    <Select
-                      value={loadedTemplateId ?? 'none'}
-                      onValueChange={handleLoadTemplate}
-                    >
-                      <SelectTrigger className="sr-only" aria-label="Load template">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
-                        {templates.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>
-                            {t.name}{t.is_default ? ' (default)' : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-                {loadedTemplateId && loadedTemplateName && (
-                  <button
-                    type="button"
-                    onClick={() => setShowUpdateConfirm(true)}
-                    className="mt-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    Update template {loadedTemplateName}
-                  </button>
-                )}
-                {templateActionError && (
-                  <p
-                    role="alert"
-                    data-testid="template-action-error"
-                    className="mt-1.5 text-xs text-destructive"
-                  >
-                    {templateActionError}
-                  </p>
-                )}
-              </section>
+                    />
+                  </section>
 
-              <Separator />
+                  <Separator />
 
-              {/* Default AI provider */}
-              <section>
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                  Default AI provider
-                </h2>
-                <Controller
-                  control={control}
-                  name="autopilotConfig.defaultProvider"
-                  render={({ field }) => (
-                    <Select value={field.value ?? 'recommended'} onValueChange={field.onChange}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {AI_PROVIDERS.map((p) => (
-                          <SelectItem key={p} value={p}>
-                            {p.charAt(0).toUpperCase() + p.slice(1)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </section>
+                  {/* Stage sections */}
+                  <section className="space-y-2">
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                      Stages
+                    </h2>
+                    {STAGE_ORDER.map((stage) => {
+                      const label = STAGE_LABELS[stage]
+                      const icon = STAGE_ICONS[stage]
+                      const summary = getStageSummary(stage, watchedValues)
 
-              <Separator />
+                      // Per-medium Draft tabs when multiple media selected in autopilot
+                      const isDraftStageWithMultiMedia = stage === 'draft' && selectedMedia.length >= 2
 
-              {/* Stage sections */}
-              <section className="space-y-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
-                  Stages
-                </h2>
-                {STAGE_ORDER.map((stage) => {
-                  const completed = isStageCompleted(stage)
-                  const label = STAGE_LABELS[stage]
-                  const icon = STAGE_ICONS[stage]
-                  const summary = getStageSummary(stage, watchedValues)
+                      return (
+                        <WizardSectionCard
+                          key={stage}
+                          stage={stage}
+                          label={label}
+                          icon={icon}
+                          defaultOpen={stage === 'brainstorm'}
+                          completed={false}
+                          summary={summary}
+                          sectionRef={(el) => {
+                            sectionRefs.current[stage] = el
+                          }}
+                        >
+                          {stage === 'brainstorm' && (
+                            <BrainstormFields brainstormMode={brainstormMode} />
+                          )}
+                          {stage === 'research' && <ResearchFields />}
+                          {stage === 'canonicalCore' && <CanonicalCoreFields />}
+                          {stage === 'draft' && !isDraftStageWithMultiMedia && <DraftFields />}
+                          {isDraftStageWithMultiMedia && (
+                            <MultiMediaDraftFields selectedMedia={selectedMedia} />
+                          )}
+                          {stage === 'review' && <ReviewFields />}
+                          {stage === 'assets' && <AssetsFields />}
+                          {stage === 'preview' && <PreviewFields />}
+                          {stage === 'publish' && <PublishFields />}
+                        </WizardSectionCard>
+                      )
+                    })}
+                  </section>
 
-                  return (
-                    <WizardSectionCard
-                      key={stage}
-                      stage={stage}
-                      label={label}
-                      icon={icon}
-                      defaultOpen={stage === 'brainstorm' && !completed}
-                      completed={completed}
-                      summary={summary}
-                      sectionRef={(el) => {
-                        sectionRefs.current[stage] = el
-                      }}
-                    >
-                      {stage === 'brainstorm' && (
-                        <BrainstormFields brainstormMode={brainstormMode} />
-                      )}
-                      {stage === 'research' && <ResearchFields />}
-                      {stage === 'canonicalCore' && <CanonicalCoreFields />}
-                      {stage === 'draft' && <DraftFields />}
-                      {stage === 'review' && <ReviewFields />}
-                      {stage === 'assets' && <AssetsFields />}
-                      {stage === 'preview' && <PreviewFields />}
-                      {stage === 'publish' && <PublishFields />}
-                    </WizardSectionCard>
-                  )
-                })}
-              </section>
-
-              {submitError && (
-                <p className="text-sm text-destructive">{submitError}</p>
+                  {/* Cost preview */}
+                  <section>
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                      Estimated cost
+                    </h2>
+                    <CostPreviewSlot
+                      selectedMedia={selectedMedia}
+                      wordCount={watchedWordCount}
+                    />
+                  </section>
+                </>
               )}
             </div>
           </div>
@@ -1357,11 +1638,11 @@ export function PipelineWizard() {
           </button>
 
           <Button
-            type="submit"
-            form="pipeline-wizard-form"
-            disabled={submitting}
+            type="button"
+            onClick={handleSubmit(onValid, onInvalid)}
+            disabled={submitting || !canSubmit}
           >
-            {submitting ? 'Saving…' : submitLabel}
+            {submitting ? 'Creating...' : 'Create project'}
           </Button>
         </div>
       </div>
@@ -1369,3 +1650,84 @@ export function PipelineWizard() {
   )
 }
 
+// ─── Multi-media draft fields ─────────────────────────────────────────────────
+
+function MultiMediaDraftFields({ selectedMedia }: { selectedMedia: Medium[] }) {
+  const [activeTab, setActiveTab] = useState<Medium>(selectedMedia[0] ?? 'blog')
+  const { register, formState: { errors } } = useFormContext<WizardFormValues>()
+
+  // Ensure active tab is always valid
+  const tab = selectedMedia.includes(activeTab) ? activeTab : selectedMedia[0] ?? 'blog'
+
+  return (
+    <div className="space-y-3">
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b">
+        {selectedMedia.map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setActiveTab(m)}
+            className={cn(
+              'px-3 py-1.5 text-xs font-medium capitalize border-b-2 -mb-px transition-colors',
+              tab === m
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {m}
+          </button>
+        ))}
+      </div>
+
+      {/* Active tab content */}
+      <div className="space-y-3">
+        <div>
+          <Label htmlFor={`mediaConfig-${tab}-wordCount`} className="text-xs font-medium text-muted-foreground mb-1.5 block">
+            Word count
+          </Label>
+          <input
+            id={`mediaConfig-${tab}-wordCount`}
+            type="number"
+            className="flex h-9 w-32 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            {...register(`mediaConfig.${tab}.wordCount`, {
+              setValueAs: (v) => {
+                if (v === '' || v === null || v === undefined) return undefined
+                const n = typeof v === 'number' ? v : Number(v)
+                return Number.isNaN(n) ? undefined : n
+              },
+            })}
+          />
+          {errors.mediaConfig?.[tab]?.wordCount && (
+            <p className="text-xs text-destructive mt-1">
+              {errors.mediaConfig[tab]?.wordCount?.message}
+            </p>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-3 pt-2 border-t">
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Provider override</Label>
+            <input
+              type="text"
+              placeholder="e.g. openai"
+              className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm"
+              {...register(`mediaConfig.${tab}.providerOverride`)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Model override</Label>
+            <input
+              type="text"
+              placeholder="e.g. gpt-4o"
+              className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm"
+              {...register(`mediaConfig.${tab}.modelOverride`)}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// T5.3: CostPreviewSlot — re-exported from its own file for consumers who import from PipelineWizard
+export { CostPreviewSlot } from './CostPreviewSlot'

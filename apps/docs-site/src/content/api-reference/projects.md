@@ -14,6 +14,7 @@ Container principal de conteúdo. Um projeto contém stages, drafts e assets.
 | POST | `/api/projects/bulk-create` | Criar em massa (discovery) |
 | POST | `/api/projects/bulk` | Operações em massa |
 | POST | `/api/projects/:id/winner` | Marcar como winner |
+| GET | `/api/projects/:id/graph` | DAG completo do pipeline (nodes + edges) |
 
 ## GET `/api/projects`
 
@@ -58,13 +59,83 @@ Container principal de conteúdo. Um projeto contém stages, drafts e assets.
 
 ## POST `/api/projects`
 
+Creates a project and one track per medium in a single atomic operation (T2.14). If the track inserts fail, the project is deleted (compensating rollback).
+
 **Body:**
 ```json
 {
   "title": "How Caffeine Actually Works",
-  "researchId": "uuid"  // opcional
+  "current_stage": "brainstorm",
+  "status": "active",
+  "winner": false,
+  "researchId": "uuid",
+  "media": ["blog", "video", "podcast"],
+  "mediaConfig": {
+    "blog": { "autopilotConfigJson": { "maxReviewIterations": 3 } },
+    "video": { "autopilotConfigJson": {} },
+    "podcast": { "autopilotConfigJson": {} }
+  }
 }
 ```
+
+- `media` — optional array of `blog | video | shorts | podcast`. Defaults to `["blog"]` when omitted (backward compat).
+- `mediaConfig` — optional per-medium config. Keys must be a subset of `media`. Each value is stored as `tracks.autopilot_config_json`.
+
+**Response:**
+```json
+{
+  "data": {
+    "id": "uuid",
+    "title": "How Caffeine Actually Works",
+    "tracks": [
+      { "id": "uuid", "medium": "blog", "status": "active" },
+      { "id": "uuid", "medium": "video", "status": "active" },
+      { "id": "uuid", "medium": "podcast", "status": "active" }
+    ]
+  },
+  "error": null
+}
+```
+
+## GET `/api/projects/:id/graph`
+
+Retorna o DAG completo do pipeline de um projeto no formato compatível com `@xyflow/react`.
+Requer ownership guard (mesmo usuário que criou o projeto ou canal vinculado).
+
+Seta o header `ETag` para caching no cliente.
+
+**Response:**
+```json
+{
+  "data": {
+    "nodes": [
+      {
+        "id": "sr-uuid",
+        "stage": "brainstorm",
+        "status": "completed",
+        "attemptNo": 1,
+        "trackId": null,
+        "publishTargetId": null,
+        "lane": "shared",
+        "label": "brainstorm #1"
+      }
+    ],
+    "edges": [
+      {
+        "id": "sequence:sr-uuid1->sr-uuid2",
+        "from": "sr-uuid1",
+        "to": "sr-uuid2",
+        "kind": "sequence"
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+**Tipos de nó (`lane`):** `shared` | `track` | `publish`
+
+**Tipos de aresta (`kind`):** `sequence` | `loop-confidence` | `loop-revision` | `fanout-canonical` | `fanout-publish`
 
 ## POST `/api/projects/bulk`
 

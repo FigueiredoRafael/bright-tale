@@ -52,6 +52,7 @@ import { NichePicker } from '@/components/channels/NichePicker';
 import { LogoUpload } from '@/components/channels/LogoUpload';
 import { VoiceConfigSection } from '@/components/channels/VoiceConfigSection';
 import { ReferenceNotifications } from '@/components/channels/ReferenceNotifications';
+import { MediaDefaultsForm } from '@/components/channels/MediaDefaultsForm';
 import { invalidateChannelCache } from '@/hooks/use-active-channel';
 import { recordChannelVisit } from '@/hooks/usePinnedChannels';
 
@@ -680,6 +681,19 @@ export default function ChannelDetailPage() {
               <Button variant="outline" size="sm" onClick={() => router.push('/personas')}>
                 <Users className="h-4 w-4 mr-2" /> Manage Personas
               </Button>
+            </CardContent>
+          </Card>
+
+          {/* Media Defaults */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Media Defaults</CardTitle>
+              <CardDescription>
+                Default configuration applied to new content for each medium.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <MediaDefaultsForm channelId={channel.id} />
             </CardContent>
           </Card>
         </TabsContent>

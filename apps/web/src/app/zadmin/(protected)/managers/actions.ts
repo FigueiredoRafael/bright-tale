@@ -81,7 +81,7 @@ async function requireAdminCaller(): Promise<
 // Audit actor is captured by the managers_emit_audit trigger via
 // `current_setting('app.audit_actor')`. Run set_config in the same tx
 // before the mutation so the trigger sees it.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 async function setAuditActor(db: any, actorUserId: string): Promise<void> {
   // set_config( , , true) = transaction-local; cleared after commit.
   await db.rpc('set_config', {

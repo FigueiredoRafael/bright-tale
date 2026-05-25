@@ -1,4 +1,22 @@
 import type { IdeaContext } from '../loadIdeaContext.js';
+import { getRubricForType } from '../scoring/computeRubricScore.js';
+
+/**
+ * Shape of a prior review attempt. Kept exported here because the production
+ * reproduce prompt (apps/api/src/lib/ai/prompts/production.ts) consumes the
+ * same type — the PRODUCER uses prior-attempts memory to see what fixes it
+ * already tried. The reviewer itself does NOT take priorAttempts anymore:
+ * giving the reviewer past criticals caused it to anchor on stale flags and
+ * stop seeing genuine improvements, even when the producer substantively
+ * rewrote the flagged sections. Reviewer is back to stateless per call.
+ */
+export interface PriorReviewAttempt {
+  attemptNo: number;
+  score: number | null;
+  verdict: string;
+  criticalIssues: string[];
+  minorIssues: string[];
+}
 
 export interface ReviewInput {
   type: string;
@@ -15,15 +33,57 @@ export function buildReviewMessage(input: ReviewInput): string {
   const lines: string[] = [];
 
   lines.push(`Review the following ${input.type} draft.`);
-  lines.push(`Title: "${input.title}"`);
+  // Guard against the database storing a null title (which template-literals
+  // coerce to the string "null"). Falls back to the draftJson.title when the
+  // top-level column is empty.
+  const resolvedTitle =
+    (typeof input.title === 'string' && input.title.trim().length > 0 && input.title !== 'null'
+      ? input.title
+      : null) ??
+    (input.draftJson && typeof input.draftJson === 'object'
+      ? (() => {
+          const root = input.draftJson as Record<string, unknown>;
+          const inner = (root[input.type] && typeof root[input.type] === 'object'
+            ? (root[input.type] as Record<string, unknown>)
+            : root) as Record<string, unknown>;
+          const t = inner.title ?? root.title;
+          return typeof t === 'string' && t.trim().length > 0 ? t : null;
+        })()
+      : null);
+  if (resolvedTitle) {
+    lines.push(`Title: "${resolvedTitle}"`);
+  }
 
   if (input.contentTypesRequested?.length) {
     lines.push(`Content types to review: ${input.contentTypesRequested.join(', ')}`);
   }
 
+  // The review agent's BC_REVIEW_INPUT contract expects the draft under
+  // `production.<type>.{...}` (see agents/agent-4-review.md). The producer
+  // stores draft_json flat (`{title, slug, full_draft, ...}` direct at root
+  // for blogs) because UI consumers read it that way. Without re-wrapping
+  // here, the reviewer reports "Missing required field: production.blog.full_draft"
+  // even though the field is present — it just lives at a different path.
+  // Normalize to the contract shape before serializing.
+  const draftForReview = (() => {
+    if (!input.draftJson || typeof input.draftJson !== 'object') {
+      return { production: { [input.type]: input.draftJson } };
+    }
+    const root = input.draftJson as Record<string, unknown>;
+    // Already wrapped (`{production: {blog: {...}}}`) — pass through.
+    if (root.production && typeof root.production === 'object') return root;
+    // Half-wrapped (`{blog: {...}}` or `{video: {...}}` etc.) — promote to
+    // `production.<type>`.
+    if (root[input.type] && typeof root[input.type] === 'object') {
+      return { production: { [input.type]: root[input.type] } };
+    }
+    // Flat (`{title, full_draft, ...}` direct) — wrap under production.<type>.
+    return { production: { [input.type]: root } };
+  })();
+
   lines.push('');
   lines.push('Draft to review:');
-  lines.push(typeof input.draftJson === 'string' ? input.draftJson : JSON.stringify(input.draftJson, null, 2));
+  lines.push(JSON.stringify(draftForReview, null, 2));
 
   if (input.canonicalCore) {
     lines.push('');
@@ -37,11 +97,12 @@ export function buildReviewMessage(input: ReviewInput): string {
     lines.push(typeof input.idea === 'string' ? input.idea : JSON.stringify(input.idea, null, 2));
   }
 
-  if (input.research) {
-    lines.push('');
-    lines.push('Research data:');
-    lines.push(typeof input.research === 'string' ? input.research : JSON.stringify(input.research, null, 2));
-  }
+  // Research data is intentionally NOT included in the reviewer prompt. The
+  // reviewer evaluates the draft against the canonical core and rubric, not
+  // the research session. Including the full research_sessions JSON (5-15KB)
+  // was inflating prompt size and pushing the model toward summarizing
+  // research instead of evaluating the draft. The `input.research` field is
+  // kept on the interface for backward compat with callers but ignored here.
 
   if (input.channel) {
     const ch = input.channel;
@@ -53,6 +114,57 @@ export function buildReviewMessage(input: ReviewInput): string {
       lines.push('');
       lines.push(parts.join('\n'));
     }
+  }
+
+  // Rubric injection: when a deterministic rubric exists for this content
+  // type, replace the LLM's opinionated 0-100 score with a binary pass/fail
+  // evaluation per criterion. Server computes the final score from the
+  // evaluation, so the reviewer never picks a number — it just answers yes/no
+  // per criterion with quoted evidence.
+  //
+  // IMPORTANT: the agent's system prompt (BC_REVIEW_OUTPUT contract in the
+  // DB-stored review agent instructions) shows an OLD example shape without
+  // a `rubric_evaluation` field. Without an authoritative override, the
+  // model copies the system-prompt example and omits rubric_evaluation —
+  // the server then treats every criterion as missing (= fail) and returns
+  // score=0. The block below overrides the contract by stating "MANDATORY
+  // SCHEMA OVERRIDE", showing the exact extended shape with a worked
+  // example, and listing every required key.
+  const rubric = getRubricForType(input.type);
+  if (rubric && rubric.length > 0) {
+    // Compact worked example: 2 entries (one pass, one fail) is enough to
+    // anchor the shape without listing all 10. The criteria block below
+    // tells the model the rest of the keys must follow this same shape.
+    const exampleEvaluation = {
+      [rubric[0].key]: {
+        pass: true,
+        evidence: `"<short quote from current draft demonstrating ${rubric[0].key} passes>"`,
+      },
+      [rubric[1].key]: {
+        pass: false,
+        evidence: `"<short quote that fails ${rubric[1].key} + why>"`,
+      },
+    };
+
+    lines.push('');
+    lines.push(
+      `MANDATORY SCHEMA OVERRIDE: your ${input.type}_review object MUST include a "rubric_evaluation" object with all ${rubric.length} keys listed below. Do NOT include a "score" field — the server computes it. Missing keys count as fail.`,
+    );
+    lines.push('');
+    lines.push(`Example shape (apply same {pass, evidence} structure to every key):`);
+    lines.push('```json');
+    lines.push(JSON.stringify({ rubric_evaluation: exampleEvaluation }, null, 2));
+    lines.push('```');
+    lines.push('');
+    lines.push(`Criteria — for each, mark pass=true only if the PASS condition holds, with a current-draft quote as evidence:`);
+    for (const c of rubric) {
+      const failEx = c.failExamples[0] ? ` Fail example: ${c.failExamples[0]}` : '';
+      lines.push(`- ${c.key}: ${c.passWhen}${failEx}`);
+    }
+    lines.push('');
+    lines.push(
+      'Calibration: aesthetic preference for one rhetorical device over another is NOT a fail. "Consider starting with a question" is preference, not defect — that criterion PASSES.',
+    );
   }
 
   lines.push('');

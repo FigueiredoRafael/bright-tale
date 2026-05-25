@@ -342,6 +342,7 @@ export type DbContentDraft = {
   draft_json: unknown | null;
   review_feedback_json: unknown | null;
   production_settings_json: unknown | null;
+  production_params: unknown | null;
   status: string;
   review_score: number | null;
   review_verdict: string;
@@ -370,6 +371,7 @@ export type DomainContentDraft = {
   draftJson: unknown | null;
   reviewFeedbackJson: unknown | null;
   productionSettingsJson: unknown | null;
+  productionParams: unknown | null;
   status: string;
   reviewScore: number | null;
   reviewVerdict: string;
@@ -399,6 +401,7 @@ export function mapContentDraftFromDb(row: DbContentDraft): DomainContentDraft {
     draftJson: row.draft_json,
     reviewFeedbackJson: row.review_feedback_json,
     productionSettingsJson: row.production_settings_json,
+    productionParams: row.production_params,
     status: row.status,
     reviewScore: row.review_score,
     reviewVerdict: row.review_verdict,

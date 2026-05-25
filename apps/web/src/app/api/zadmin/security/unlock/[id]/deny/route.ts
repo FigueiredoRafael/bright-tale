@@ -24,7 +24,7 @@ export async function POST(
   }
 
   const db = createAdminClient();
-  const dbAny = db as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const dbAny = db as any;  
 
   const { data: req, error: fetchErr } = await dbAny
     .from('mfa_unlock_requests')

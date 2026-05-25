@@ -18,14 +18,17 @@ import {
   Loader2, ArrowRight, Eye, X, Plus, ImageIcon, AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useSelector } from '@xstate/react';
-import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { ContextBanner } from './ContextBanner';
 import { markdownToHtml } from '@/lib/utils';
 import { derivePreview } from '@/lib/pipeline/derivePreview';
+import { pushStage } from '@/lib/pipeline/advanceUrl';
+import { getTrackStageResults } from '@/lib/pipeline/stage-results-by-track';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { PipelineContext, PipelineStage, PreviewResult } from './types';
+import { PreviewEngineVideo } from './PreviewEngineVideo';
 
 interface ContentAsset {
   id: string;
@@ -183,21 +186,50 @@ function composedHtmlFromMarkdown(
 /* PreviewEngine reads everything from the pipeline actor — no pipeline-state props.
  * The component is rendered by PipelineOrchestrator only; standalone usage would
  * require <StandaloneEngineHost stage="preview"> like ReviewEngine/AssetsEngine. */
-export function PreviewEngine() {
-  const actor = usePipelineActor();
+
+/** Issue #210 — when set, draftId resolves from ctx.stageResultsByTrack[trackId]. */
+interface PreviewEngineProps {
+  trackId?: string;
+  /**
+   * Issue #214 — when set to 'video', routes to the video read-only layout
+   * (inventory pills + viewer card + teleprompter) instead of the WP HTML preview.
+   * Canonical prop name aligned with EngineHost (which passes medium={medium})
+   * and ProductionEngine. Renamed from trackMedium in fix/engine-host-medium-prop-wiring.
+   * NOTE: orchestrator wiring is a follow-up; this prop is set by the caller.
+   */
+  medium?: 'blog' | 'video';
+}
+
+export function PreviewEngine({ trackId, medium }: PreviewEngineProps = {}) {
+  const ctx = useProjectContext();
   const abortController = usePipelineAbort();
-  const channelId = useSelector(actor, (s) => s.context.channelId);
-  const projectId = useSelector(actor, (s) => s.context.projectId);
-  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
-  const researchResult  = useSelector(actor, (s) => s.context.stageResults.research);
-  const draftResult     = useSelector(actor, (s) => s.context.stageResults.draft);
-  const reviewResult    = useSelector(actor, (s) => s.context.stageResults.review);
-  const assetsResult    = useSelector(actor, (s) => s.context.stageResults.assets);
-  const draftId = draftResult?.draftId ?? '';
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  function advanceToPublish() {
+    const trackId = searchParams?.get('track') ?? null;
+    pushStage({ router, pathname, searchParams, stage: 'publish', trackId });
+  }
+
+  const channelId = ctx.context.channelId;
+  const projectId = ctx.context.projectId ?? undefined;
+  const brainstormResult = ctx.context.stageResults?.brainstorm as { ideaId?: string; ideaTitle?: string; ideaVerdict?: string; ideaCoreTension?: string; brainstormSessionId?: string } | undefined;
+  const researchResult = ctx.context.stageResults?.research as { researchSessionId?: string; researchLevel?: string; primaryKeyword?: string; secondaryKeywords?: string[]; searchIntent?: string } | undefined;
+  const draftResult = ctx.context.stageResults?.draft as { draftId?: string; draftTitle?: string; personaId?: string; personaName?: string; personaSlug?: string; personaWpAuthorId?: number | null } | undefined;
+  const reviewResult = ctx.context.stageResults?.review as { score?: number; verdict?: string; feedbackJson?: unknown } | undefined;
+  const assetsResult = ctx.context.stageResults?.assets as { assetIds?: string[]; featuredImageUrl?: string } | undefined;
+  // Issue #210 — per-track bucket wins. When trackId is provided, never fall
+  // back to the flat ctx.stageResults.draft (canonical/blog leak). Flat is only
+  // safe for legacy single-track projects where trackId is absent.
+  const perTrackDraft = getTrackStageResults(ctx.context.stageResultsByTrack, trackId ?? null).draft;
+  const draftId = trackId
+    ? perTrackDraft?.draftId ?? ''
+    : perTrackDraft?.draftId ?? draftResult?.draftId ?? '';
 
   // Overview-mode / autopilot selectors
-  const overviewMode = useSelector(actor, (s) => s.context.mode === 'overview');
-  const previewEnabled = useSelector(actor, (s) => s.context.autopilotConfig?.preview?.enabled);
+  const overviewMode = ctx.context.mode === 'overview';
+  const previewEnabled = (ctx.context.autopilotConfig as { preview?: { enabled?: boolean } } | null | undefined)?.preview?.enabled;
 
   const trackerContext: PipelineContext = {
     channelId: channelId ?? undefined,
@@ -224,8 +256,8 @@ export function PreviewEngine() {
     featuredImageUrl: assetsResult?.featuredImageUrl,
   };
 
-  function navigate(toStage?: PipelineStage) {
-    actor.send({ type: 'NAVIGATE', toStage: toStage ?? 'assets' });
+  function navigate(_toStage?: PipelineStage) {
+    // no-op: orchestrator reads server state to decide next stage
   }
 
   // Fetch state
@@ -383,14 +415,14 @@ export function PreviewEngine() {
     initialBehaviorRef.current = true;
 
     if (previewEnabled === true) {
-      actor.send({ type: 'STAGE_PROGRESS', stage: 'preview', partial: { status: 'Awaiting your review' } });
-      actor.send({ type: 'PREVIEW_GATE_TRIGGERED' });
+      ctx.setStageStatus('preview', { status: 'Awaiting your review' });
+      // PREVIEW_GATE_TRIGGERED was actor-only; orchestrator reads server state
       return;
     }
 
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'preview', partial: { status: 'Composing preview' } });
+    ctx.setStageStatus('preview', { status: 'Composing preview' });
     // Auto-derive path: build a full PreviewResult from feedback + loaded assets.
-    const feedbackJson = reviewResult?.feedbackJson ?? null;
+    const feedbackJson = (reviewResult?.feedbackJson ?? null) as Record<string, unknown> | null;
     const derivedMeta = derivePreview(feedbackJson, assets);
 
     // Build imageMap and altTexts from auto-assigned assets (role → id).
@@ -419,8 +451,8 @@ export function PreviewEngine() {
       autoDerived: true,
     };
 
-    actor.send({ type: 'PREVIEW_COMPLETE', result });
-  }, [overviewMode, previewEnabled, busy, draft, actor, assets, reviewResult, draftResult]);
+    ctx.signalStageComplete('preview', result as unknown as Record<string, unknown>, trackId);
+  }, [overviewMode, previewEnabled, busy, draft, assets, reviewResult, draftResult, ctx, trackId]);
 
   // Build asset map for quick lookup
   const assetMap = useMemo(() => {
@@ -497,14 +529,15 @@ export function PreviewEngine() {
       seoOverrides: result.seoOverrides,
     });
 
-    actor.send({ type: 'PREVIEW_COMPLETE', result });
+    ctx.signalStageComplete('preview', result as unknown as Record<string, unknown>, trackId);
+    advanceToPublish();
   };
 
   /* ── Render ── */
 
   if (loadError) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4" data-testid="preview-engine-root">
         <ContextBanner stage="preview" context={trackerContext} onBack={navigate} />
         <Card className="border-destructive">
           <CardContent className="pt-6">
@@ -523,7 +556,7 @@ export function PreviewEngine() {
 
   if (busy || !draft) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4" data-testid="preview-engine-root">
         <ContextBanner stage="preview" context={trackerContext} onBack={navigate} />
         <Card>
           <CardContent className="pt-6 flex items-center gap-2 text-muted-foreground">
@@ -531,6 +564,20 @@ export function PreviewEngine() {
             <span>Loading preview data...</span>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  // ── Video routing (issue #214) ──────────────────────────────────────────────
+  // When the track medium is video, delegate to the read-only video layout.
+  if (medium === 'video') {
+    return (
+      <div className="space-y-4">
+        <ContextBanner stage="preview" context={trackerContext} onBack={navigate} />
+        <PreviewEngineVideo
+          draftJson={draft.draft_json}
+          onApprove={handleApprove}
+        />
       </div>
     );
   }
@@ -726,10 +773,10 @@ export function PreviewEngine() {
 
           {/* Action Buttons */}
           <div className="flex gap-2 sticky bottom-4">
-            <Button variant="outline" onClick={() => navigate('assets')} size="sm">
+            <Button variant="outline" onClick={() => navigate('assets')} size="sm" data-testid="preview-action-back">
               Back
             </Button>
-            <Button onClick={handleApprove} size="sm" className="flex-1 gap-2">
+            <Button onClick={handleApprove} size="sm" className="flex-1 gap-2" data-testid="preview-action-approve">
               Approve & Publish <ArrowRight className="h-3.5 w-3.5" />
             </Button>
           </div>

@@ -5,8 +5,8 @@ export const blog: AgentDefinition = {
   slug: 'blog',
   name: 'Agent 3b: Blog',
   stage: 'production',
-  recommendedProvider: null,
-  recommendedModel: null,
+  recommendedProvider: 'openai',
+  recommendedModel: 'gpt-5.4-mini',
   sections: {
     header: {
       role: 'You are BrightCurios\' Blog Format Agent. Your job is to receive a `BC_CANONICAL_CORE` — the validated narrative contract — and produce one complete, publish-ready blog post. You do NOT brainstorm, research, or choose topics. The thesis, argument structure, evidence, and emotional arc are already decided. Your job is to express them in long-form written content.',

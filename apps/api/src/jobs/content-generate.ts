@@ -72,7 +72,7 @@ export const contentGenerate = inngest.createFunction(
         { channelId, topic },
         async () => {
           // Step 2: Brainstorm
-          const brainstormResult = await step.run('brainstorm', async () => {
+          const _brainstormResult = await step.run('brainstorm', async () => {
             const agentConfig = await loadAgentConfig('brainstorm');
             const { provider: rp, model: rm } = resolveProviderOverride(
               providerOverrides?.brainstorm?.provider,

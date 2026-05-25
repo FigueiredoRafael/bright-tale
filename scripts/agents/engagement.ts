@@ -5,8 +5,8 @@ export const engagement: AgentDefinition = {
   slug: 'engagement',
   name: 'Agent 3b',
   stage: 'production',
-  recommendedProvider: null,
-  recommendedModel: null,
+  recommendedProvider: 'openai',
+  recommendedModel: 'gpt-5.4-mini',
   sections: {
     header: {
       role: 'You are BrightCurios\' Engagement Format Agent. Your job is to receive a `BC_ENGAGEMENT_INPUT` — the validated narrative contract — and produce three distinct engagement assets: a pinned YouTube comment, a community post, and a Twitter thread.',

@@ -47,16 +47,19 @@ function generateUpsertSQL(): string {
       `  ${jsonQuote(agent.sections)},`,
       agent.recommendedProvider ? `  ${dollarQuote(agent.recommendedProvider)},` : `  null,`,
       agent.recommendedModel ? `  ${dollarQuote(agent.recommendedModel)},` : `  null,`,
-      agent.tools && agent.tools.length > 0 ? `  ${jsonQuote(agent.tools)},` : `  null,`,
+      agent.tools && agent.tools.length > 0 ? `  ${jsonQuote(agent.tools)},` : `  '[]'::jsonb,`,
       `  now(),`,
       `  now()`,
       `)`,
+      // Note: recommended_provider and recommended_model are intentionally NOT
+      // overwritten on conflict. Those columns are admin-managed via
+      // /zadmin/agents/[slug]/editor — the .ts agent definitions ship with null
+      // and the seed only seeds them on first insert. Adding them to the SET
+      // clause would wipe the admin's per-stage provider/model picks every regen.
       `on conflict (slug) do update set`,
       `  name = excluded.name,`,
       `  instructions = excluded.instructions,`,
       `  sections_json = excluded.sections_json,`,
-      `  recommended_provider = excluded.recommended_provider,`,
-      `  recommended_model = excluded.recommended_model,`,
       `  tools_json = excluded.tools_json,`,
       `  updated_at = now();`,
     ].join('\n');
@@ -74,8 +77,27 @@ function main() {
 
 `;
 
-  writeFileSync(SEED_PATH, header + sql);
-  writeFileSync(MIGRATION_PATH, header + sql);
+  // Seed-only preamble: when supabase db reset runs seed.sql AFTER all
+  // migrations the column already exists. Belt-and-suspenders.
+  const seedPreamble = `-- Ensure tools_json column exists (referenced by the INSERTs below).
+ALTER TABLE public.agent_prompts ADD COLUMN IF NOT EXISTS tools_json JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+`;
+
+  // Migration preamble: this file's timestamp (20260417210000) predates the
+  // 20260430100000_agent_prompts_tools.sql migration that originally added
+  // tools_json — so a fresh \`db:reset\` would fail without an idempotent
+  // ALTER TABLE before the INSERTs.
+  const migrationPreamble = `-- Idempotently ensure schema columns exist before INSERT — protects local
+-- \`db:reset\` (strict timestamp order) when this regenerated file predates
+-- the 20260430100000_agent_prompts_tools migration that originally added
+-- tools_json. No-op on environments that already have the column.
+ALTER TABLE public.agent_prompts ADD COLUMN IF NOT EXISTS tools_json JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+`;
+
+  writeFileSync(SEED_PATH, header + seedPreamble + sql);
+  writeFileSync(MIGRATION_PATH, header + migrationPreamble + sql);
 
   console.log(`Wrote ${ALL_AGENTS.length} agents to:`);
   console.log(`  - ${SEED_PATH}`);

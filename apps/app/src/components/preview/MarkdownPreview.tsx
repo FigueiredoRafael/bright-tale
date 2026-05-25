@@ -10,7 +10,7 @@ interface MarkdownPreviewProps {
 export function MarkdownPreview({ content, className = '' }: MarkdownPreviewProps) {
   if (!content) {
     return (
-      <div className={`text-sm text-muted-foreground italic ${className}`}>
+      <div data-testid="markdown-preview-empty" className={`text-sm text-muted-foreground italic ${className}`}>
         No content to preview
       </div>
     );
@@ -18,6 +18,8 @@ export function MarkdownPreview({ content, className = '' }: MarkdownPreviewProp
 
   return (
     <article
+      data-testid="markdown-preview"
+      data-length={content.length}
       className={`
         prose prose-sm dark:prose-invert max-w-none
         prose-headings:font-bold prose-headings:tracking-tight

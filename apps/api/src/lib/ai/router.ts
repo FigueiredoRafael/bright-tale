@@ -7,6 +7,9 @@
  * - Provider availability (skip if API key missing OR disabled in DB)
  * - Runtime fallback: getProviderChain returns an ordered list so callers can
  *   retry on 429/5xx without losing context.
+ *
+ * When MOCK_AI_PROVIDER=1 (test-only, never production), generateWithFallback
+ * short-circuits to the in-memory mock queue defined in ./__mocks__/queue.ts.
  */
 
 import type { AgentType, AIProvider, GenerateContentParams, TokenUsage } from './provider.js';
@@ -20,6 +23,8 @@ import { sleepCancellable } from './abortable.js';
 import { createServiceClient } from '../supabase/index.js';
 import { decrypt } from '../crypto.js';
 import { captureError } from '../logger.js';
+import { acquire as acquireSemaphore } from '../pipeline/provider-semaphore.js';
+import { getMaxConcurrent } from './concurrency.js';
 
 // ---------------------------------------------------------------------------
 // Active-provider cache
@@ -351,11 +356,15 @@ export async function getRouteForStage(stage: AgentType, tier: string = 'standar
  * Validation/auth errors (400/401/403) are NOT retryable — the caller's input
  * is the problem, not the provider.
  */
-/** Should we try a different provider after this error? */
-function isProviderFailover(err: unknown): boolean {
+/**
+ * Quota / rate-limit / billing — this provider is unusable right now until
+ * the quota refills or the operator tops up credits. Distinct from generic
+ * capacity blips because dispatchers translate this into
+ * `awaiting_reason='provider_quota_exhausted'` so the orchestrator can park
+ * the stage for the user to resolve, rather than terminating as `failed`.
+ */
+export function isQuotaExhausted(err: unknown): boolean {
   const msg = String((err as { message?: string })?.message ?? err ?? '').toLowerCase();
-  // Quota / rate-limit / billing — this provider is unusable right now,
-  // try the next one.
   if (msg.includes('429')) return true;
   if (msg.includes('quota')) return true;
   if (msg.includes('resource_exhausted')) return true;
@@ -364,6 +373,15 @@ function isProviderFailover(err: unknown): boolean {
   if (msg.includes('insufficient_quota')) return true;
   if (msg.includes('insufficient credits')) return true;
   if (msg.includes('billing')) return true;
+  return false;
+}
+
+/** Should we try a different provider after this error? */
+function isProviderFailover(err: unknown): boolean {
+  const msg = String((err as { message?: string })?.message ?? err ?? '').toLowerCase();
+  // Quota / rate-limit / billing — this provider is unusable right now,
+  // try the next one.
+  if (isQuotaExhausted(err)) return true;
   // Capacity / network issues — also worth trying a different provider.
   if (msg.includes('overloaded')) return true;
   if (msg.includes('unavailable')) return true;
@@ -382,12 +400,25 @@ function shouldRetrySameProvider(err: unknown): boolean {
   if (msg.includes('high demand')) return true;
   if (/\b5\d{2}\b/.test(msg)) return true;
   if (msg.includes('econn') || msg.includes('etimedout') || msg.includes('network')) return true;
+  // Malformed JSON from the model (truncated stream, stray trailing comma,
+  // missing quote, etc.) — V8's JSON.parse throws "Expected ',' or ']'…",
+  // "Unexpected token … in JSON", etc. Almost always transient; one retry
+  // with the same model produces a clean payload.
+  if (
+    (err as { name?: string })?.name === 'SyntaxError' &&
+    (msg.includes('json') || msg.includes('position') || msg.includes('token'))
+  ) {
+    return true;
+  }
   return false;
 }
 
 /**
  * Run generateContent with runtime fallback through the provider chain.
  * Stops at the first success; rethrows the LAST error if every provider fails.
+ *
+ * When MOCK_AI_PROVIDER=1 (and not production), skips the real provider chain
+ * and consumes from the in-memory mock queue instead.
  */
 export async function generateWithFallback(
   stage: AgentType,
@@ -395,6 +426,63 @@ export async function generateWithFallback(
   params: GenerateContentParams,
   options: ChainOptions = {},
 ): Promise<{ result: unknown; providerName: string; model: string; attempts: number; usage?: TokenUsage }> {
+  // ── Mock AI provider intercept (T1.13) ──────────────────────────────────
+  // Active only when MOCK_AI_PROVIDER=1 AND not in production.
+  // The queue module is imported lazily so it does not load in prod builds.
+  if (process.env.MOCK_AI_PROVIDER === '1' && process.env.NODE_ENV !== 'production') {
+    const { dequeue, nextCallNumber } = await import('./__mocks__/queue.js');
+    const mockStage = stage as import('./__mocks__/queue.js').MockStage;
+    const callNo = nextCallNumber(mockStage);
+
+    // Input payload summary — keeps the trail visible for e2e diagnostics.
+    // Truncate so review/production prompts don't flood the log.
+    const inputSummary = JSON.stringify({
+      tier,
+      systemPrompt: params.systemPrompt?.slice(0, 120),
+      userMessage: params.userMessage?.slice(0, 120),
+      hasSchema: Boolean(params.schema),
+      toolCount: params.tools?.length ?? 0,
+    }).slice(0, 280);
+    console.log(`[MOCK-AI][${stage}][${callNo}] ← input: ${inputSummary}`);
+
+    const entry = dequeue(mockStage);
+
+    if (!entry) {
+      const err = new Error(
+        `[MOCK-AI] Queue empty for stage="${stage}" call#${callNo}. ` +
+        `Seed the queue via POST /api/_test/mock-ai/queue before the call.`,
+      );
+      console.log(`[MOCK-AI][${stage}][${callNo}] mock/mock → ERROR: queue empty`);
+      throw err;
+    }
+
+    if (entry.kind === 'failure') {
+      const { failureKind, message } = entry;
+      const statusCode = failureKind === 'quota_429' ? 429 : failureKind === 'auth_401' ? 401 : 0;
+      const errMsg = statusCode
+        ? `${statusCode} ${message || failureKind}`
+        : `TIMEOUT ${message || 'request timed out'}`;
+      console.log(`[MOCK-AI][${stage}][${callNo}] mock/mock → FAIL: ${errMsg}`);
+      throw new Error(errMsg);
+    }
+
+    // entry.kind === 'success'
+    const resultSummary =
+      typeof entry.payload === 'string'
+        ? entry.payload.slice(0, 80)
+        : JSON.stringify(entry.payload).slice(0, 80);
+    console.log(`[MOCK-AI][${stage}][${callNo}] mock/mock → ${resultSummary}`);
+
+    return {
+      result: entry.payload,
+      providerName: 'mock',
+      model: 'mock',
+      attempts: 1,
+      usage: { inputTokens: 0, outputTokens: 0 },
+    };
+  }
+  // ── End mock intercept ──────────────────────────────────────────────────
+
   const chain = await getProviderChain(stage, tier, options);
   if (chain.length === 0) {
     throw new Error(
@@ -415,8 +503,25 @@ export async function generateWithFallback(
     const route = chain[i];
     let attempt = 0;
     while (attempt <= SAME_PROVIDER_RETRIES) {
+      // provider-semaphore caps in-flight calls per (userId, provider, model).
+      // Released before per-attempt backoff so a sibling Track can use the slot
+      // while we wait; re-acquired on retry. Multi-track autopilot relies on
+      // this to avoid 429s on free-tier providers.
+      const release = await acquireSemaphore(
+        {
+          userId: options.logContext?.userId ?? 'anon',
+          provider: route.providerName,
+          model: route.model,
+        },
+        getMaxConcurrent(route.providerName, route.model),
+      );
+      let result: unknown;
       try {
-        const result = await route.provider.generateContent(params);
+        try {
+          result = await route.provider.generateContent(params);
+        } finally {
+          release();
+        }
         const usage = route.provider.lastUsage;
         const durationMs = Date.now() - startTime;
         if (options.logContext) {

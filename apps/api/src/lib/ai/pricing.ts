@@ -17,6 +17,7 @@ const PRICING: Record<string, ModelPrice> = {
   'claude-3-5-sonnet-20241022': { inputPerMillion: 3, outputPerMillion: 15 },
 
   // OpenAI
+  'gpt-5.4-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
   'gpt-4o': { inputPerMillion: 2.5, outputPerMillion: 10 },
   'gpt-4o-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
   'o1-mini': { inputPerMillion: 3, outputPerMillion: 12 },

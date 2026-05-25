@@ -163,11 +163,35 @@ describe('PATCH /projects/:id/abort', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(mockChain.update).toHaveBeenCalledWith({
-      abort_requested_at: expect.any(String),
+    // abortProject() goes through the writer: one UPDATE on stage_runs (mark
+    // every non-terminal aborted) followed by one UPDATE on projects (raise
+    // the legacy flag). Both flow through the shared mockChain.
+    expect(mockChain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ abort_requested_at: expect.any(String) }),
+    );
+    const projectsUpdate = (mockChain.update as any).mock.calls.find(
+      (c: unknown[]) => (c[0] as Record<string, unknown>).abort_requested_at !== undefined,
+    );
+    expect(projectsUpdate).toBeDefined();
+    expect((projectsUpdate![0] as { abort_requested_at: string }).abort_requested_at).toMatch(
+      /^\d{4}-\d{2}-\d{2}T/,
+    );
+  });
+
+  it('also marks every non-terminal Stage Run aborted (writer abortProject)', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/projects/p-1/abort',
+      headers: AUTH_USER,
     });
-    const updateCall = (mockChain.update as any).mock.calls[0][0];
-    expect(updateCall.abort_requested_at).toMatch(/^\d{4}-\d{2}-\d{2}T/); // ISO timestamp
+    expect(res.statusCode).toBe(200);
+    const stageRunsUpdate = (mockChain.update as any).mock.calls.find(
+      (c: unknown[]) => (c[0] as Record<string, unknown>).status === 'aborted',
+    );
+    expect(stageRunsUpdate).toBeDefined();
+    const patch = stageRunsUpdate![0] as Record<string, unknown>;
+    expect(patch.error_message).toMatch(/aborted/i);
+    expect(patch.finished_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('returns 200 with ok: true on success', async () => {

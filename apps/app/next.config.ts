@@ -45,6 +45,11 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   transpilePackages: ["@brighttale/shared"],
   serverExternalPackages: ["sharp"],
+  // Next.js 16 logs a deprecation warning for cross-origin /_next/* fetches
+  // (e.g. when the browser hits 127.0.0.1 while the server bound localhost,
+  // or vice versa). Future versions will block these by default — listing the
+  // dev hosts here keeps the loopback aliases interchangeable.
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   // OpenAI gpt-image-1 generations regularly take 30–90s; the default
   // dev-server rewrite proxy times out before the upstream replies, surfacing
   // as `socket hang up` / ECONNRESET. Bump to 5 minutes for image gen.

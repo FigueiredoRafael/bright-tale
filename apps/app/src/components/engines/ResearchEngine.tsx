@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Loader2,
   Search,
@@ -40,13 +41,15 @@ import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
 import { friendlyAiError } from '@/lib/ai/error-message';
-import { useSelector } from '@xstate/react';
-import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { hydrateResearchFromConfig } from '@/lib/pipeline/hydrateEngineFromConfig';
+import { pushStage } from '@/lib/pipeline/advanceUrl';
 import type { ResearchResult, PipelineContext } from './types';
+import type { StageRun } from '@brighttale/shared/pipeline/inputs';
+import type { AutopilotConfig } from '@brighttale/shared';
 
 type Level = 'surface' | 'medium' | 'deep';
 
@@ -69,6 +72,7 @@ interface ResearchEngineProps {
   initialCards?: Record<string, unknown>[];
   initialApproved?: number[];
   initialIdeaId?: string;
+  stageRun?: StageRun;
 }
 
 const FOCUS_OPTIONS = [
@@ -88,16 +92,24 @@ export function ResearchEngine({
   initialCards,
   initialApproved,
   initialIdeaId,
+  stageRun,
 }: ResearchEngineProps) {
-  const actor = usePipelineActor();
+  const ctx = useProjectContext();
   const abortController = usePipelineAbort();
-  const channelId = useSelector(actor, (s) => s.context.channelId);
-  const projectId = useSelector(actor, (s) => s.context.projectId);
-  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
-  const researchResult = useSelector(actor, (s) => s.context.stageResults.research);
-  const researchStatus = useSelector(actor, (s) => s.context.stageStatus?.research);
-  const isGenerating = useSelector(actor, (s) => s.matches({ research: 'generating' }));
-  const creditSettings = useSelector(actor, (s) => s.context.creditSettings);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const channelId = ctx.context.channelId;
+  const projectId = ctx.context.projectId ?? '';
+
+  function advanceUrl() {
+    pushStage({ router, pathname, searchParams, stage: 'canonical' });
+  }
+  const brainstormResult = ctx.context.stageResults.brainstorm as { ideaId?: string; ideaTitle?: string } | undefined;
+  const researchResult = ctx.context.stageResults.research as { researchSessionId?: string } | undefined;
+  const isGenerating = false;
+  const creditSettings = ctx.context.creditSettings as { costResearchSurface?: number; costResearchMedium?: number; costResearchDeep?: number } | undefined;
 
   const trackerContext: PipelineContext = {
     channelId: channelId ?? undefined,
@@ -108,9 +120,9 @@ export function ResearchEngine({
   };
 
   const levels = [
-    { id: 'surface' as Level, label: 'Surface', cost: creditSettings.costResearchSurface, description: 'Top 3 sources, basic statistics' },
-    { id: 'medium' as Level, label: 'Medium', cost: creditSettings.costResearchMedium, description: '5-8 sources, expert quotes, supporting data' },
-    { id: 'deep' as Level, label: 'Deep', cost: creditSettings.costResearchDeep, description: '10+ sources, counterarguments, cross-validation' },
+    { id: 'surface' as Level, label: 'Surface', cost: creditSettings?.costResearchSurface, description: 'Top 3 sources, basic statistics' },
+    { id: 'medium' as Level, label: 'Medium', cost: creditSettings?.costResearchMedium, description: '5-8 sources, expert quotes, supporting data' },
+    { id: 'deep' as Level, label: 'Deep', cost: creditSettings?.costResearchDeep, description: '10+ sources, counterarguments, cross-validation' },
   ];
 
   // Input mode
@@ -139,6 +151,11 @@ export function ResearchEngine({
   // Manual provider — open dialog when API responds with awaiting_manual
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
 
+  // T9.F152: selected attempt tab (defaults to the canonical/latest attempt id)
+  const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(
+    stageRun?.id ?? null,
+  );
+
   // Background generation tracking (Inngest job + SSE events)
   const [activeGenerationId, setActiveGenerationId] = useState<string | null>(null);
 
@@ -148,9 +165,9 @@ export function ResearchEngine({
   const isSessionDetail = !!initialSession;
 
   // Hydrate depth from autopilotConfig once on mount (wizard inputs take precedence).
-  const autopilotConfig = useSelector(actor, (s) => s.context.autopilotConfig);
+  const autopilotConfig: AutopilotConfig | null | undefined = ctx.context.autopilotConfig;
   useEffect(() => {
-    const h = hydrateResearchFromConfig(autopilotConfig);
+    const h = hydrateResearchFromConfig(autopilotConfig ?? null);
     if (h.researchDepth !== undefined) setLevel(h.researchDepth);
     if (h.provider) setProvider(h.provider as Parameters<typeof setProvider>[0]);
     if (h.model) setModel(h.model);
@@ -222,7 +239,9 @@ export function ResearchEngine({
     if (initialSession || initialCards) return;
     const ctxSessionId = researchResult?.researchSessionId;
     if (!ctxSessionId) return;
-    if (sessionId === ctxSessionId && (cards.length > 0 || findings)) return;
+    // Don't clobber a freshly-loaded local session (e.g. after regenerate)
+    // with whatever ctx still reports — ctx may be stale until mirror runs.
+    if (sessionId && (cards.length > 0 || findings)) return;
 
     (async () => {
       try {
@@ -235,6 +254,15 @@ export function ResearchEngine({
           // Check if session is awaiting manual output
           if (sess.status === 'awaiting_manual') {
             setManualSessionId(sess.id as string);
+            return;
+          }
+
+          // Idea mismatch — the session was generated for an older brainstorm
+          // pick. Skip hydrating so the user regenerates against the new idea
+          // instead of seeing stale findings as if they were current.
+          const sessIdeaId = (sess.idea_id as string | null) ?? null;
+          const currentIdeaId = trackerContext.ideaId ?? null;
+          if (sessIdeaId && currentIdeaId && sessIdeaId !== currentIdeaId) {
             return;
           }
 
@@ -267,24 +295,7 @@ export function ResearchEngine({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [researchResult?.researchSessionId]);
 
-  // Restore in-flight generation state when re-mounting after back-navigation.
-  // stageStatus.research lives in XState's in-memory snapshot only — it is NOT
-  // serialized into pipeline_state_json, so this effect's restoration path runs
-  // exclusively on in-session remounts, not after page reloads. `isGenerating`
-  // is read at mount-time from the same actor snapshot as researchStatus, so
-  // the two values are temporally consistent. Do not add `isGenerating` to the
-  // dep array — the effect must stay mount-only.
-  useEffect(() => {
-    if (!researchStatus?.isGenerating) return;
-    const activeId = researchStatus.activeSessionId as string | undefined;
-    if (!activeId) return;
-    if (researchResult?.researchSessionId) return; // already completed
-    setActiveGenerationId(activeId);
-    setRunning(true);
-    // Ensure machine substate matches data state.
-    if (!isGenerating) actor.send({ type: 'RESEARCH_STARTED' });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // intentionally mount-only — restoring snapshot from machine
+  // Restoration of in-flight generation state handled by server-driven context (stage_runs).
 
   // Fetch recommended agent
   useEffect(() => {
@@ -463,9 +474,7 @@ export function ResearchEngine({
       return;
     }
 
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'research', partial: { status: 'Researching topic' } });
-    actor.send({ type: 'STAGE_STATUS', stage: 'research', status: { isGenerating: true } });
-    actor.send({ type: 'RESEARCH_STARTED' });
+    ctx.setStageStatus('research', { status: 'Researching topic' });
     setRunning(true);
     setCards([]);
     setApproved(new Set());
@@ -537,8 +546,7 @@ export function ResearchEngine({
         // Background job — show progress float, hydrate on complete
         wentAsync = true;
         setActiveGenerationId(newSessionId);
-        // Persist session ID to machine so it survives component remounts.
-        actor.send({ type: 'STAGE_STATUS', stage: 'research', status: { isGenerating: true, activeSessionId: newSessionId } });
+        // Session ID persisted via server-driven context (stage_runs).
         return;
       } else {
         if (!overviewMode) toast.warning('No research data recognized in output', {
@@ -560,7 +568,6 @@ export function ResearchEngine({
       // handleGenerationComplete / handleGenerationFailed clear it.
       if (!wentAsync) {
         setRunning(false);
-        actor.send({ type: 'STAGE_STATUS', stage: 'research', status: { isGenerating: false } });
       }
     }
   }
@@ -602,14 +609,12 @@ export function ResearchEngine({
       toast.error('Failed to load research findings', { description: message });
     } finally {
       setRunning(false);
-      actor.send({ type: 'STAGE_STATUS', stage: 'research', status: { isGenerating: false } });
     }
   }
 
   function handleGenerationFailed(message: string) {
     setActiveGenerationId(null);
     setRunning(false);
-    actor.send({ type: 'STAGE_STATUS', stage: 'research', status: { isGenerating: false } });
     tracker.trackFailed(message);
     const friendly = friendlyAiError(message);
     toast.error(friendly.title, { description: friendly.hint });
@@ -617,9 +622,9 @@ export function ResearchEngine({
 
   // Auto-pilot: when findings render, auto-approve and advance to draft.
   const autoApprovedRef = useRef<string | null>(null);
-  const autoMode = useSelector(actor, (s) => s.context.mode);
+  const autoMode = ctx.context.mode;
   const overviewMode = autoMode === 'overview';
-  const autoPaused = useSelector(actor, (s) => s.context.paused);
+  const autoPaused = ctx.context.paused ?? false;
   useEffect(() => {
     if ((autoMode !== 'supervised' && autoMode !== 'overview') || autoPaused) return;
     if (researchResult?.researchSessionId) return;
@@ -631,7 +636,7 @@ export function ResearchEngine({
     if (autoApprovedRef.current === key) return;
     autoApprovedRef.current = key;
 
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'research', partial: { status: 'Approving cards' } });
+    ctx.setStageStatus('research', { status: 'Approving cards' });
     const signals = extractResearchSignals(findings);
     const result: ResearchResult = {
       researchSessionId: sessionId ?? '',
@@ -648,7 +653,7 @@ export function ResearchEngine({
       pivotRecommendation: signals.pivotRecommendation,
     };
     tracker.trackAction('findings.auto_approved', { sessionId });
-    actor.send({ type: 'RESEARCH_COMPLETE', result });
+    ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
   }, [
     autoMode,
     autoPaused,
@@ -658,7 +663,7 @@ export function ResearchEngine({
     regenerating,
     researchResult?.researchSessionId,
     level,
-    actor,
+    ctx,
     tracker,
   ]);
 
@@ -682,7 +687,7 @@ export function ResearchEngine({
       researchLevel: level,
     };
     tracker.trackAction('cards.auto_approved', { cardCount: cards.length });
-    actor.send({ type: 'RESEARCH_COMPLETE', result });
+    ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
   }, [
     autoMode,
     autoPaused,
@@ -693,7 +698,7 @@ export function ResearchEngine({
     regenerating,
     researchResult?.researchSessionId,
     level,
-    actor,
+    ctx,
     tracker,
   ]);
 
@@ -720,10 +725,21 @@ export function ResearchEngine({
     }
 
     setRegenerating(true);
+    // Clear stale findings so the UI doesn't render the prior session while
+    // the new one is in flight — matches user expectation when regenerating
+    // after a brainstorm idea swap.
+    setFindings(null);
+    setCards([]);
+    setApproved(new Set());
     try {
       const res = await fetch(`/api/research-sessions/${sessionId}/regenerate`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         signal: abortController?.signal,
+        body: JSON.stringify({
+          ...(trackerContext.ideaId ? { ideaId: trackerContext.ideaId } : {}),
+          ...(topic.trim() ? { topic: topic.trim() } : {}),
+        }),
       });
       const json = await res.json();
       if (json.error) {
@@ -803,7 +819,6 @@ export function ResearchEngine({
     }
 
     setManualSessionId(null);
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'research', partial: { researchSessionId: manualSessionId } });
   }
 
   async function handleManualAbandon() {
@@ -820,7 +835,6 @@ export function ResearchEngine({
     setManualSessionId(null);
     setCards([]);
     setSessionId(null);
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'research', partial: { researchSessionId: undefined } });
   }
 
   async function handleApprove() {
@@ -828,11 +842,7 @@ export function ResearchEngine({
     if (findings) {
       const isNewSession = sessionId !== null && sessionId !== researchResult?.researchSessionId;
 
-      // New research session with old result still in machine context: clear
-      // downstream stages so the pipeline reflects the fresh research.
-      if (isNewSession && researchResult?.researchSessionId) {
-        actor.send({ type: 'REDO_FROM', fromStage: 'research' });
-      }
+      // New research session — downstream stages will reset on next context refetch.
 
       tracker.trackAction('findings.approved', { sessionId: sessionId || '' });
 
@@ -851,15 +861,16 @@ export function ResearchEngine({
         researchSummary: signals.researchSummary,
         pivotRecommendation: signals.pivotRecommendation,
       };
-      actor.send({ type: 'RESEARCH_COMPLETE', result });
+      ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
       onComplete?.();
+      advanceUrl();
       return;
     }
 
     // No new findings but old research is already done — just navigate forward.
     if (researchResult?.researchSessionId) {
-      actor.send({ type: 'NAVIGATE', toStage: 'draft' });
       onComplete?.();
+      advanceUrl();
       return;
     }
 
@@ -894,8 +905,9 @@ export function ResearchEngine({
       approvedCardsCount: approvedCards.length,
       researchLevel: level,
     };
-    actor.send({ type: 'RESEARCH_COMPLETE', result });
+    ctx.signalStageComplete('research', result as unknown as Record<string, unknown>);
     onComplete?.();
+    advanceUrl();
   }
 
   const shouldPivot = refinedAngle && Boolean(refinedAngle.should_pivot);
@@ -908,7 +920,7 @@ export function ResearchEngine({
   // Import mode: show ImportPicker when mode='import' and no initial session
   if (engineMode === 'import' && !initialSession) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" data-testid="research-engine-root">
         <ContextBanner stage="research" context={trackerContext} />
 
         <div className="flex items-start justify-between gap-4">
@@ -946,15 +958,14 @@ export function ResearchEngine({
             </div>
           )}
           onSelect={(item) => {
-            const cards = (item.approved_cards_json ?? item.cards_json ?? []) as unknown[];
-            actor.send({
-              type: 'RESEARCH_COMPLETE',
-              result: {
-                researchSessionId: item.id as string,
-                approvedCardsCount: cards.length,
-                researchLevel: (item.level as string) ?? 'medium',
-              } as ResearchResult,
-            });
+            const importedCards = (item.approved_cards_json ?? item.cards_json ?? []) as unknown[];
+            const importResult: ResearchResult = {
+              researchSessionId: item.id as string,
+              approvedCardsCount: importedCards.length,
+              researchLevel: (item.level as string) ?? 'medium',
+            };
+            ctx.signalStageComplete('research', importResult as unknown as Record<string, unknown>);
+            advanceUrl();
           }}
         />
       </div>
@@ -962,7 +973,7 @@ export function ResearchEngine({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="research-engine-root">
       <ContextBanner stage="research" context={trackerContext} />
 
       <div className="flex items-start justify-between gap-4">
@@ -992,6 +1003,67 @@ export function ResearchEngine({
 
       {/* Always-rendered sr-only span for test queries (must live outside the isSessionDetail guard). */}
       <span data-testid="research-depth" className="sr-only">{level}</span>
+
+      {/* T9.F152: Attempt history tabs — rendered when this stage_run has multiple attempts */}
+      {stageRun?.allAttempts && stageRun.allAttempts.length > 1 && (
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+            Attempt history ({stageRun.allAttempts.length} attempts)
+          </p>
+          {/* T9.F172: disclose when server capped allAttempts[] at 20 */}
+          {stageRun.hasMoreAttempts === true && (
+            <p className="text-xs text-muted-foreground">Older attempts truncated</p>
+          )}
+          <Tabs
+            value={selectedAttemptId ?? stageRun.id}
+            onValueChange={setSelectedAttemptId}
+          >
+            <TabsList className="flex-wrap h-auto gap-1">
+              {stageRun.allAttempts.map((attempt) => {
+                const confidence =
+                  attempt.outcomeJson != null &&
+                  typeof attempt.outcomeJson === 'object' &&
+                  'confidence' in (attempt.outcomeJson as Record<string, unknown>)
+                    ? ((attempt.outcomeJson as Record<string, unknown>).confidence as number)
+                    : null;
+                return (
+                  <TabsTrigger
+                    key={attempt.id}
+                    value={attempt.id}
+                    data-testid={`attempt-tab-${attempt.attemptNo}`}
+                    className="gap-1.5 text-xs"
+                  >
+                    #{attempt.attemptNo}
+                    {confidence !== null && (
+                      <span className="text-muted-foreground">
+                        {Math.round(confidence * 100)}%
+                      </span>
+                    )}
+                    {attempt.finishedAt && (
+                      <span className="text-muted-foreground hidden sm:inline">
+                        · {new Date(attempt.finishedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+            {stageRun.allAttempts.map((attempt) => (
+              <TabsContent key={attempt.id} value={attempt.id}>
+                <Card>
+                  <CardContent className="pt-4 text-sm text-muted-foreground">
+                    <pre className="whitespace-pre-wrap break-words font-mono text-xs">
+                      {attempt.outcomeJson != null
+                        ? JSON.stringify(attempt.outcomeJson, null, 2)
+                        : 'No outcome data for this attempt.'}
+                    </pre>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            ))}
+          </Tabs>
+        </div>
+      )}
 
       {/* Show form only if not in session detail mode */}
       {!isSessionDetail && (
@@ -1075,7 +1147,7 @@ export function ResearchEngine({
                 }}
                 onModelChange={setModel}
               />
-              <Button onClick={handleRun} disabled={(isGenerating || running)}>
+              <Button onClick={handleRun} disabled={(isGenerating || running)} data-testid="research-action-generate">
                 {(isGenerating || running) ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />{' '}
@@ -1185,7 +1257,7 @@ export function ResearchEngine({
           )}
 
           <div className="flex justify-end pt-2">
-            <Button onClick={handleApprove} size="lg">
+            <Button onClick={handleApprove} size="lg" data-testid="research-action-approve-all">
               <Check className="h-4 w-4 mr-2" /> Continue{' '}
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
@@ -1539,7 +1611,7 @@ export function ResearchEngine({
           )}
 
           <div className="flex justify-end pt-2">
-            <Button onClick={handleApprove} size="lg">
+            <Button onClick={handleApprove} size="lg" data-testid="research-action-approve-all">
               <Check className="h-4 w-4 mr-2" /> Approve ({approved.size}){' '}
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>

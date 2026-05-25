@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Loader2, BookOpen, FileText, Video, Zap, Mic, Check, ClipboardPaste,
   ArrowRight, Sparkles, FolderOpen, ChevronDown, ChevronUp, Pencil,
@@ -21,7 +21,7 @@ import {
 import { ManualOutputDialog } from './ManualOutputDialog';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
-import { MarkdownPreview } from '@/components/preview/MarkdownPreview';
+import { DraftViewer } from '@/components/preview/DraftViewer';
 import { ContextBanner } from './ContextBanner';
 import { ContentWarningBanner } from './ContentWarningBanner';
 import { ImportPicker } from './ImportPicker';
@@ -31,12 +31,15 @@ import { rankPersonas, type RankedPersona } from './utils/personaScoring';
 import { getPersonaTheme } from './utils/personaTheme';
 import { PersonaCarousel } from './PersonaCarousel';
 import type { Persona } from '@brighttale/shared/types/agents';
-import { useSelector } from '@xstate/react';
-import { usePipelineActor } from '@/hooks/usePipelineActor';
+import type { VideoStyleConfig } from '@brighttale/shared/schemas/videoStyle';
+import VideoStyleSelector from '@/components/production/VideoStyleSelector';
+import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { hydrateDraftFromConfig } from '@/lib/pipeline/hydrateEngineFromConfig';
-import type { DraftResult, PipelineContext } from './types';
+import type { DraftResult, PipelineContext, CreditSettings } from './types';
+import type { AutopilotConfig } from '@brighttale/shared';
+import { DEFAULT_CREDIT_SETTINGS } from './types';
 
 type DraftType = 'blog' | 'video' | 'shorts' | 'podcast';
 type DraftMode = 'ai' | 'manual';
@@ -69,14 +72,15 @@ export function DraftEngine({
   onModeChange,
   initialDraft,
 }: DraftEngineProps) {
-  const actor = usePipelineActor();
+  const ctx = useProjectContext();
   const abortController = usePipelineAbort();
-  const channelId = useSelector(actor, (s) => s.context.channelId);
-  const projectId = useSelector(actor, (s) => s.context.projectId);
-  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
-  const researchResult = useSelector(actor, (s) => s.context.stageResults.research);
-  const draftResult = useSelector(actor, (s) => s.context.stageResults.draft);
-  const creditSettings = useSelector(actor, (s) => s.context.creditSettings);
+
+  const channelId = ctx.context.channelId;
+  const projectId = ctx.context.projectId ?? '';
+  const brainstormResult = ctx.context.stageResults.brainstorm as { ideaId?: string; ideaTitle?: string; ideaVerdict?: string; ideaCoreTension?: string; brainstormSessionId?: string } | undefined;
+  const researchResult = ctx.context.stageResults.research as { researchSessionId?: string; approvedCardsCount?: number; researchLevel?: string; primaryKeyword?: string; secondaryKeywords?: string[]; searchIntent?: string } | undefined;
+  const draftResult = ctx.context.stageResults.draft as { draftId?: string; draftContent?: string } | undefined;
+  const creditSettings: CreditSettings = (ctx.context.creditSettings as CreditSettings | undefined) ?? DEFAULT_CREDIT_SETTINGS;
 
   const trackerContext: PipelineContext = {
     channelId: channelId ?? undefined,
@@ -125,7 +129,17 @@ export function DraftEngine({
   const [targetWords, setTargetWords] = useState<number>(900);
   const [targetMinutes, setTargetMinutes] = useState<number>(8);
   const [targetShortsSeconds, setTargetShortsSeconds] = useState<number>(30);
+  const [videoStyleConfig, setVideoStyleConfig] = useState<VideoStyleConfig>({
+    template: 'talking_head_standard',
+    cut_frequency: 'moderate',
+    b_roll_density: 'low',
+    text_overlays: 'minimal',
+    music_style: 'calm_ambient',
+    presenter_notes: false,
+    b_roll_required: false,
+  });
   const [producedContent, setProducedContent] = useState<string>('');
+  const [producedDraftJson, setProducedDraftJson] = useState<Record<string, unknown> | null>(null);
   const [contentWarning, setContentWarning] = useState<string | null>(null);
 
   // Generation state
@@ -157,10 +171,10 @@ export function DraftEngine({
   // effect so wizard inputs take precedence over any stale restore. If
   // initialDraft is provided, the user is revisiting an existing draft — skip
   // hydration so the live draft values are not overwritten.
-  const autopilotConfig = useSelector(actor, (s) => s.context.autopilotConfig);
+  const autopilotConfig: AutopilotConfig | null | undefined = ctx.context.autopilotConfig as AutopilotConfig | null | undefined;
   useEffect(() => {
     if (initialDraft) return;
-    const h = hydrateDraftFromConfig(autopilotConfig);
+    const h = hydrateDraftFromConfig(autopilotConfig ?? null);
     if (h.format !== undefined) setType(h.format);
     if (h.wordCount !== undefined && h.wordCount !== null) setTargetWords(h.wordCount);
     if (h.selectedPersonaId !== undefined && h.selectedPersonaId !== null) {
@@ -254,6 +268,7 @@ export function DraftEngine({
             const content = extractProducedContent(d, (d.type as DraftType) ?? 'blog');
             if (content && content !== '{}') {
               setProducedContent(content);
+              setProducedDraftJson(draftJson);
               setPhase('done');
               setCoreApproved(true);
               restoredAndDone = true;
@@ -300,6 +315,10 @@ export function DraftEngine({
 
   // Fetch recommended model
   const [recommendationLoaded, setRecommendationLoaded] = useState(false);
+  const [recommended, setRecommended] = useState<{ provider: string | null; model: string | null }>({
+    provider: null,
+    model: null,
+  });
   useEffect(() => {
     (async () => {
       try {
@@ -309,6 +328,12 @@ export function DraftEngine({
           (a) => a.slug === 'content-core'
         );
         if (agent?.recommended_provider) {
+          // Always expose the admin recommendation to ModelPicker so the dropdown
+          // can inject admin-default models that aren't in the hardcoded list.
+          setRecommended({
+            provider: agent.recommended_provider as string,
+            model: (agent.recommended_model as string) || null,
+          });
           if (!autopilotConfig?.draft?.providerOverride) {
             setProvider(agent.recommended_provider as ProviderId);
             if (agent.recommended_model && !autopilotConfig?.draft?.modelOverride) {
@@ -326,9 +351,9 @@ export function DraftEngine({
   }, [abortController?.signal, autopilotConfig?.draft?.providerOverride, autopilotConfig?.draft?.modelOverride]);
 
   // ── Auto-pilot wiring ─────────────────────────────────────────────
-  const autoMode = useSelector(actor, (s) => s.context.mode);
+  const autoMode = ctx.context.mode as string | null | undefined;
   const overviewMode = autoMode === 'overview';
-  const autoPaused = useSelector(actor, (s) => s.context.paused);
+  const autoPaused = ctx.context.paused as boolean | undefined;
 
   // Phase 1: auto-fire canonical core generation when prerequisites are ready
   useAutoPilotTrigger({
@@ -401,7 +426,7 @@ export function DraftEngine({
       personaSlug: selectedPersona?.slug,
       personaWpAuthorId: selectedPersona?.wpAuthorId ?? null,
     };
-    actor.send({ type: 'DRAFT_COMPLETE', result });
+    ctx.signalStageComplete('draft', result as unknown as Record<string, unknown>);
   }, [
     autoMode,
     autoPaused,
@@ -414,7 +439,7 @@ export function DraftEngine({
     selectedPersona,
     draftResult?.draftId,
     draftResult?.draftContent,
-    actor,
+    ctx,
     tracker,
   ]);
 
@@ -446,7 +471,7 @@ export function DraftEngine({
     if (!title.trim()) { toast.error('Enter a title'); return; }
     if (!selectedPersonaId) { toast.error('Select a persona'); return; }
 
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { status: 'Building outline' } });
+    ctx.setStageStatus('draft', { status: 'Building outline' });
     tracker.trackStarted({
       draftId: draftId || '',
       phase: 'core',
@@ -471,7 +496,7 @@ export function DraftEngine({
             type,
             title,
             personaId: selectedPersonaId,
-            productionParams: {},
+            productionParams: type === 'video' ? { video_style_config: videoStyleConfig } : {},
           }),
           signal: abortController?.signal,
         })
@@ -483,11 +508,7 @@ export function DraftEngine({
       // Persist the draftId on the project's pipeline state so a reload before
       // produce finishes can still rehydrate the canonical core. DraftEngine's
       // restore effect keys off draftResult.draftId.
-      actor.send({
-        type: 'STAGE_PROGRESS',
-        stage: 'draft',
-        partial: { draftId: newDraftId, draftTitle: title },
-      });
+      ctx.setStageStatus('draft', { draftId: newDraftId, draftTitle: title });
     }
 
     // For manual provider, call canonical-core endpoint which will return awaiting_manual status
@@ -565,11 +586,15 @@ export function DraftEngine({
           extractProducedContent({ draft_json: parsedObj }, fmt) ||
           '';
         setProducedContent(content);
+        setProducedDraftJson(
+          (apiDraft && extractDraftJson(apiDraft)) ||
+          (Object.keys(parsedObj).length > 0 ? parsedObj : null),
+        );
         setPhase('done');
         if (!overviewMode) toast.success(`${manualState.phase.charAt(0).toUpperCase() + manualState.phase.slice(1)} content submitted`);
       }
       setManualState(null);
-      actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: manualState.draftId } });
+      ctx.setStageStatus('draft', { draftId: manualState.draftId });
     } catch (err) {
       toast.error('Submit failed', { description: err instanceof Error ? err.message : 'Unknown error' });
     } finally {
@@ -591,7 +616,7 @@ export function DraftEngine({
     } finally {
       setBusy(false);
       setManualState(null);
-      actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { draftId: undefined } });
+      ctx.setStageStatus('draft', { draftId: undefined });
     }
   }
 
@@ -619,7 +644,7 @@ export function DraftEngine({
           type,
           title,
           personaId: selectedPersonaId,
-          productionParams: {},
+          productionParams: type === 'video' ? { video_style_config: videoStyleConfig } : {},
         }),
         signal: abortController?.signal,
       })
@@ -630,11 +655,7 @@ export function DraftEngine({
 
     // Persist the draftId on the project's pipeline state so a reload before
     // produce finishes can still rehydrate the imported canonical core.
-    actor.send({
-      type: 'STAGE_PROGRESS',
-      stage: 'draft',
-      partial: { draftId: newDraftId, draftTitle: title },
-    });
+    ctx.setStageStatus('draft', { draftId: newDraftId, draftTitle: title });
 
     // Save canonical core to draft
     const updated = await runStep('save canonical core', () =>
@@ -695,6 +716,7 @@ export function DraftEngine({
             const content = extractProducedContent(draftRow, type);
             if (content && content !== '{}') {
               setProducedContent(content);
+              setProducedDraftJson((draftJson as Record<string, unknown>) ?? null);
               setCoreApproved(true);
               setPhase('done');
               const warning = typeof draftJson?.content_warning === 'string' ? draftJson.content_warning : null;
@@ -713,6 +735,7 @@ export function DraftEngine({
           const content = extractProducedContent(draftRow, type);
           if (content && content !== '{}') {
             setProducedContent(content);
+            setProducedDraftJson((draftJson as Record<string, unknown>) ?? null);
             setPhase('done');
             if (!overviewMode) toast.success('Content generated');
           } else {
@@ -744,11 +767,12 @@ export function DraftEngine({
   async function handleProduce() {
     if (busy || !draftId) return;
 
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { status: 'Writing draft' } });
+    ctx.setStageStatus('draft', { status: 'Writing draft' });
     const productionParams: Record<string, unknown> = {};
     if (type === 'blog') productionParams.target_word_count = targetWords;
     if (type === 'video' || type === 'podcast') productionParams.target_duration_minutes = targetMinutes;
     if (type === 'shorts') productionParams.target_duration_minutes = targetShortsSeconds / 60;
+    if (type === 'video') productionParams.video_style_config = videoStyleConfig;
 
     tracker.trackStarted({
       draftId,
@@ -842,7 +866,9 @@ export function DraftEngine({
     } else if (type === 'video') {
       const video = (obj.video_script ?? obj.video ?? obj) as Record<string, unknown>;
       content = typeof video.script === 'string' ? video.script
-        : typeof video.full_script === 'string' ? video.full_script : '';
+        : typeof video.full_script === 'string' ? video.full_script
+        : typeof video.teleprompter_script === 'string' ? video.teleprompter_script
+        : typeof obj.teleprompter_script === 'string' ? (obj.teleprompter_script as string) : '';
     } else if (type === 'shorts') {
       const shorts = (obj.shorts ?? obj.scripts) as unknown[];
       if (Array.isArray(shorts)) {
@@ -864,7 +890,10 @@ export function DraftEngine({
       }
     }
 
-    if (!content) {
+    // Video v0.3 BC_VIDEO_OUTPUT can be structurally rich (script as object) without
+    // a single canonical "content" string — VideoDraftViewer renders the structured
+    // object directly. Accept the import as long as we have a parsed object.
+    if (!content && type !== 'video') {
       toast.error('Could not extract content. Expected full_draft (blog), script (video), or outline (podcast).');
       return;
     }
@@ -882,6 +911,7 @@ export function DraftEngine({
     }
 
     setProducedContent(content);
+    setProducedDraftJson(obj);
     tracker.trackAction('imported', {
       phase: 'produce',
       source: 'manual',
@@ -901,6 +931,79 @@ export function DraftEngine({
    * - shorts: { shorts: [...] }
    * - podcast: { podcast_outline: { outline: "..." } } or { outline: "..." }
    */
+  // Wave 3 (G7): derive a Shorts draft from the produced video. Calls
+  // POST /:id/derive-shorts which seeds a new content_drafts row of
+  // type='shorts' with canonical_core_json pre-filled by
+  // mapVideoOutputToShortsInput. The user still has to run /produce on the
+  // new draft — this just skips the canonical-core regeneration.
+  const [derivingShorts, setDerivingShorts] = useState(false);
+  const handleDeriveShorts = useCallback(async () => {
+    if (!draftId || derivingShorts) return;
+    setDerivingShorts(true);
+    try {
+      const res = await fetch(`/api/content-drafts/${draftId}/derive-shorts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json();
+      if (!res.ok || json?.error) {
+        throw new Error(json?.error?.message ?? `Request failed (${res.status})`);
+      }
+      const newDraft = json.data?.draft as { id?: string; title?: string; channel_id?: string | null } | undefined;
+      const link = newDraft?.channel_id && newDraft.id
+        ? `/channels/${newDraft.channel_id}/drafts/${newDraft.id}`
+        : null;
+      toast.success('Shorts draft created from this video', {
+        description: link
+          ? `Open the new draft and click "Produce" to generate the 3 shorts.`
+          : `Find the new draft (type "shorts") in your channel drafts list.`,
+        action: link ? { label: 'Open', onClick: () => { window.location.href = link; } } : undefined,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      toast.error('Failed to derive shorts', { description: msg });
+    } finally {
+      setDerivingShorts(false);
+    }
+  }, [draftId, derivingShorts]);
+
+  // Persist inline edits made in VideoDraftViewer back to the draft row.
+  // Updates local cache optimistically; toasts on PATCH failure but does not
+  // roll back — the viewer keeps the latest user input so they can retry.
+  const handleVideoSave = useCallback(
+    async (next: Record<string, unknown>) => {
+      if (!draftId) return;
+      setProducedDraftJson(next);
+      try {
+        const res = await fetch(`/api/content-drafts/${draftId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ draftJson: next }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (json?.error) throw new Error(json.error.message ?? 'Save failed');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        toast.error('Failed to save draft', { description: msg });
+      }
+    },
+    [draftId],
+  );
+
+  // Returns the structured draft_json from an API row or a parsed user object.
+  // VideoDraftViewer consumes this for type='video' instead of the markdown string.
+  function extractDraftJson(data: Record<string, unknown>): Record<string, unknown> | null {
+    const fromRow = (data.draft_json ?? data.draftJson) as Record<string, unknown> | null | undefined;
+    if (fromRow && typeof fromRow === 'object' && Object.keys(fromRow).length > 0) return fromRow;
+    // Manual paste path: the parsed object IS the draft_json (no row wrapper).
+    if (data && typeof data === 'object' && !data.draft_json && !data.draftJson) {
+      return data as Record<string, unknown>;
+    }
+    return null;
+  }
+
   function extractProducedContent(data: Record<string, unknown>, fmt: DraftType): string {
     // Try produced_content first (direct field if API sets it)
     if (typeof data.produced_content === 'string') return data.produced_content;
@@ -916,11 +1019,15 @@ export function DraftEngine({
       if (typeof draftJson.full_draft === 'string') return draftJson.full_draft;
     }
 
-    // Video: look for script
+    // Video: look for script (legacy: string) or teleprompter_script (v0.3 BC_VIDEO_OUTPUT).
+    // The structured object form is rendered by VideoDraftViewer, but we still need a
+    // markdown fallback so the existing string-based pipeline (tracker, word count) works.
     if (fmt === 'video') {
       const video = (draftJson.video_script ?? draftJson.video) as Record<string, unknown> | undefined;
       if (typeof video?.script === 'string') return video.script;
       if (typeof draftJson.script === 'string') return draftJson.script;
+      if (typeof draftJson.teleprompter_script === 'string') return draftJson.teleprompter_script;
+      if (typeof video?.teleprompter_script === 'string') return video.teleprompter_script;
     }
 
     // Shorts: format as readable text
@@ -1220,7 +1327,7 @@ export function DraftEngine({
   // ── Import mode ───────────────────────────────────────────────
   if (engineMode === 'import' && !initialDraft) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" data-testid="draft-engine-root">
         {srOnlyHooks}
         <ContextBanner stage="draft" context={trackerContext} />
 
@@ -1258,14 +1365,12 @@ export function DraftEngine({
           )}
           onSelect={(item) => {
             const draftJson = item.draft_json as Record<string, unknown> | null;
-            actor.send({
-              type: 'DRAFT_COMPLETE',
-              result: {
-                draftId: item.id as string,
-                draftTitle: (item.title as string) ?? 'Untitled',
-                draftContent: (draftJson?.full_draft as string) ?? '',
-              } as DraftResult,
-            });
+            const importResult: DraftResult = {
+              draftId: item.id as string,
+              draftTitle: (item.title as string) ?? 'Untitled',
+              draftContent: (draftJson?.full_draft as string) ?? '',
+            };
+            ctx.signalStageComplete('draft', importResult as unknown as Record<string, unknown>);
           }}
         />
       </div>
@@ -1274,7 +1379,7 @@ export function DraftEngine({
 
   // ── Main render ───────────────────────────────────────────────
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="draft-engine-root">
       {srOnlyHooks}
 
       <ContextBanner stage="draft" context={trackerContext} />
@@ -1407,7 +1512,7 @@ export function DraftEngine({
                   providers={DRAFT_PROVIDERS}
                   provider={provider}
                   model={model}
-                  recommended={{ provider: null, model: null }}
+                  recommended={recommended}
                   onProviderChange={(p) => {
                     setProvider(p);
                     if (p === 'manual') {
@@ -1418,7 +1523,7 @@ export function DraftEngine({
                   }}
                   onModelChange={setModel}
                 />
-                <Button onClick={handleGenerateCore} disabled={busy || !research || !title.trim() || !selectedPersonaId}>
+                <Button onClick={handleGenerateCore} disabled={busy || !research || !title.trim() || !selectedPersonaId} data-testid="draft-action-generate-core">
                   {busy ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating Core...</>
                   ) : (
@@ -1491,6 +1596,7 @@ export function DraftEngine({
                     setCoreApproved(false);
                   }}
                   className="text-xs gap-1"
+                  data-testid="draft-action-regenerate-core"
                 >
                   <Pencil className="h-3 w-3" /> Regenerate
                 </Button>
@@ -1512,7 +1618,7 @@ export function DraftEngine({
                   <div className="text-xs text-muted-foreground">
                     Review the core narrative. Approve to unlock content production, or regenerate to try again.
                   </div>
-                  <Button size="sm" onClick={() => setCoreApproved(true)} className="shrink-0 gap-1.5">
+                  <Button size="sm" onClick={() => setCoreApproved(true)} className="shrink-0 gap-1.5" data-testid="draft-action-approve-core">
                     <Check className="h-4 w-4" /> Approve &amp; Continue
                   </Button>
                 </div>
@@ -1604,6 +1710,13 @@ export function DraftEngine({
                 </div>
               </div>
             )}
+            {type === 'video' && (
+              <VideoStyleSelector
+                value={videoStyleConfig}
+                onChange={setVideoStyleConfig}
+                disabled={phase === 'produce'}
+              />
+            )}
             {type === 'shorts' && (
               <div className="space-y-2">
                 <Label>Duration</Label>
@@ -1633,7 +1746,7 @@ export function DraftEngine({
                   providers={DRAFT_PROVIDERS}
                   provider={provider}
                   model={model}
-                  recommended={{ provider: null, model: null }}
+                  recommended={recommended}
                   onProviderChange={(p) => {
                     setProvider(p);
                     if (p === 'manual') {
@@ -1647,7 +1760,7 @@ export function DraftEngine({
                 {canonicalCore && typeof canonicalCore.content_warning === 'string' && canonicalCore.content_warning && (
                   <ContentWarningBanner warning={canonicalCore.content_warning} />
                 )}
-                <Button onClick={handleProduce} disabled={busy || phase === 'produce'}>
+                <Button onClick={handleProduce} disabled={busy || phase === 'produce'} data-testid="draft-action-produce">
                   {phase === 'produce' ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Producing...</>
                   ) : (
@@ -1663,24 +1776,48 @@ export function DraftEngine({
       <ContentWarningBanner warning={contentWarning} />
 
       {/* ═══ Final Content Preview ═══ */}
-      {phase === 'done' && producedContent && (
+      {phase === 'done' && (producedContent || (type === 'video' && producedDraftJson)) && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Preview</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <MarkdownPreview content={producedContent} className="bg-muted/20 p-4 rounded" />
-            <div className="flex justify-end gap-2">
+            <DraftViewer
+              type={type}
+              bodyMarkdown={producedContent}
+              draftJson={producedDraftJson}
+              draftId={draftId ?? undefined}
+              onVideoSave={handleVideoSave}
+              className="bg-muted/20 p-4 rounded"
+            />
+            <div className="flex justify-end gap-2 flex-wrap">
+              {type === 'video' && producedDraftJson && (
+                <Button
+                  variant="outline"
+                  onClick={handleDeriveShorts}
+                  disabled={derivingShorts || !draftId}
+                  title={!draftId ? 'Save the draft first to enable shorts derivation.' : 'Spawn a shorts draft from this video'}
+                >
+                  {derivingShorts ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Zap className="h-4 w-4 mr-2" />
+                  )}
+                  {derivingShorts ? 'Generating…' : 'Generate Shorts'}
+                </Button>
+              )}
               <Button
                 variant="outline"
                 onClick={() => {
                   setPhase('core-ready');
                   setProducedContent('');
+                  setProducedDraftJson(null);
                 }}
+                data-testid="draft-action-produce-another"
               >
                 <Pencil className="h-4 w-4 mr-2" /> Produce Another Format
               </Button>
-              <Button onClick={() => {
+              <Button data-testid="draft-action-done" onClick={() => {
                 const wordCount = producedContent.split(/\s+/).length;
                 tracker.trackCompleted({
                   draftId: draftId || '',
@@ -1697,7 +1834,7 @@ export function DraftEngine({
                   personaSlug: selectedPersona?.slug,
                   personaWpAuthorId: selectedPersona?.wpAuthorId ?? null,
                 };
-                actor.send({ type: 'DRAFT_COMPLETE', result });
+                ctx.signalStageComplete('draft', result as unknown as Record<string, unknown>);
               }}>
                 <Check className="h-4 w-4 mr-2" /> Done <ArrowRight className="h-4 w-4 ml-2" />
               </Button>

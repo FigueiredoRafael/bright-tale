@@ -32,7 +32,7 @@ export const sendFraudAdminAlert: OnAdminAlert = async (payload) => {
     });
   } catch (err) {
     // Alerts are best-effort; DB flags are the source of truth.
-    // eslint-disable-next-line no-console
+     
     console.error('[fraud:alert] email send failed (swallowed):', err);
   }
 };

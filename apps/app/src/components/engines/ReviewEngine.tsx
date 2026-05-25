@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Loader2, Sparkles, Check, AlertCircle, ArrowRight, ClipboardPaste, MessageSquare } from 'lucide-react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Loader2, Sparkles, Check, AlertCircle, ArrowRight, ClipboardPaste, MessageSquare, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
-import { useSelector } from '@xstate/react';
-import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,8 +19,11 @@ import { friendlyAiError } from '@/lib/ai/error-message';
 import { useUpgrade } from '@/components/billing/UpgradeProvider';
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
+import { fetchTracks, nextTrackStage, pushStage } from '@/lib/pipeline/advanceUrl';
+import { getTrackStageResults } from '@/lib/pipeline/stage-results-by-track';
 import type { PipelineContext, PipelineStage, ReviewResult } from './types';
 import { deriveTier, isApprovedTier } from '@brighttale/shared';
+import type { AutopilotConfig } from '@brighttale/shared';
 
 /**
  * Non-null invariant — orchestrator gates render until draft is hydrated.
@@ -28,6 +31,9 @@ import { deriveTier, isApprovedTier } from '@brighttale/shared';
  */
 interface ReviewEngineProps {
   draft: Record<string, unknown> | null;
+  /** Issue #210 — when set, the engine reads draftId from the per-track bucket
+   *  in ctx.stageResultsByTrack[trackId] instead of the flat stageResults.draft. */
+  trackId?: string;
 }
 
 const REVIEW_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
@@ -48,27 +54,50 @@ const TIER_COLOR: Record<string, string> = {
   not_requested: 'bg-gray-500/20 text-gray-700 border-gray-500/50',
 };
 
-export function ReviewEngine({ draft }: ReviewEngineProps) {
-  const actor = usePipelineActor();
+export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
+  const ctx = useProjectContext();
   const abortController = usePipelineAbort();
-  const channelId = useSelector(actor, (s) => s.context.channelId);
-  const projectId = useSelector(actor, (s) => s.context.projectId);
-  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
-  const researchResult = useSelector(actor, (s) => s.context.stageResults.research);
-  const draftResult = useSelector(actor, (s) => s.context.stageResults.draft);
-  const pipelineSettings = useSelector(actor, (s) => s.context.pipelineSettings);
-  const machineIterationCount = useSelector(actor, (s) => s.context.iterationCount);
-  const maxIterations = useSelector(
-    actor,
-    (s) => s.context.autopilotConfig?.review.maxIterations ?? s.context.pipelineSettings.reviewMaxIterations,
-  );
-  const autoApproveThreshold = useSelector(
-    actor,
-    (s) => s.context.autopilotConfig?.review.autoApproveThreshold ?? s.context.pipelineSettings.reviewApproveScore,
-  );
-  const autoMode = useSelector(actor, (s) => s.context.mode);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Step-by-step URL advance: review → next non-skipped track stage. Walks
+  // (assets → preview → publish) and skips any stage_run marked 'skipped'
+  // (e.g. wizard chose to skip assets). Supervised mode is handled by
+  // PipelineWorkspace's auto-advance.
+  async function advanceFromReview() {
+    const trackId = searchParams?.get('track') ?? null;
+    if (!ctx.context.projectId) {
+      pushStage({ router, pathname, searchParams, stage: 'assets', trackId });
+      return;
+    }
+    const tracks = await fetchTracks(ctx.context.projectId);
+    const track = trackId ? tracks.find((t) => t.id === trackId) ?? null : tracks[0] ?? null;
+    const stage = nextTrackStage('review', track);
+    pushStage({ router, pathname, searchParams, stage, trackId: track?.id ?? trackId });
+  }
+
+  const channelId = ctx.context.channelId;
+  const projectId = ctx.context.projectId ?? '';
+  const brainstormResult = ctx.context.stageResults.brainstorm as { ideaId?: string; ideaTitle?: string; ideaVerdict?: string; ideaCoreTension?: string; brainstormSessionId?: string } | undefined;
+  const researchResult = ctx.context.stageResults.research as { researchSessionId?: string; approvedCardsCount?: number; researchLevel?: string; primaryKeyword?: string; secondaryKeywords?: string[]; searchIntent?: string } | undefined;
+  const draftResult = ctx.context.stageResults.draft as { draftId?: string; draftTitle?: string } | undefined;
+  // Issue #210 — per-track bucket wins. When trackId is provided we must NEVER
+  // fall back to the flat ctx.stageResults.draft — that points at the
+  // canonical/blog draft and leaks blog content into the wrong track's review
+  // (same leak we removed from ProductionEngine). The flat fallback is only
+  // safe for legacy single-track projects where trackId is absent.
+  const perTrackDraft = getTrackStageResults(ctx.context.stageResultsByTrack, trackId ?? null).draft;
+  const pipelineSettings = ctx.context.pipelineSettings;
+  const machineIterationCount = ctx.context.iterationCount ?? 0;
+  const autopilotConfig: AutopilotConfig | null | undefined = ctx.context.autopilotConfig;
+  const maxIterations = autopilotConfig?.review?.maxIterations ?? pipelineSettings?.reviewMaxIterations ?? 5;
+  const autoApproveThreshold = autopilotConfig?.review?.autoApproveThreshold ?? pipelineSettings?.reviewApproveScore ?? 90;
+  const autoMode = ctx.context.mode;
   const overviewMode = autoMode === 'overview';
-  const draftId = draftResult?.draftId ?? '';
+  const draftId = trackId
+    ? perTrackDraft?.draftId ?? ''
+    : perTrackDraft?.draftId ?? draftResult?.draftId ?? '';
 
   // Local mutable view of the draft — initialized from the prop, kept in sync as
   // the engine refetches after status changes (review API, manual import, override).
@@ -76,6 +105,31 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
   useEffect(() => {
     setLocalDraft(draft);
   }, [draft]);
+
+  // Self-hydrate the draft when the prop is null but ctx.stageResults.draft
+  // already carries a draftId (server-driven path via EngineHost — EngineHost
+  // doesn't pass `draft`, only `stageRun`). Without this the engine would
+  // render the "Draft not loaded" defensive banner indefinitely.
+  useEffect(() => {
+    if (localDraft || !draftId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/content-drafts/${draftId}`, {
+          signal: abortController?.signal,
+        });
+        const json = await res.json();
+        if (!cancelled && json?.data) {
+          setLocalDraft(json.data as Record<string, unknown>);
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [localDraft, draftId, abortController?.signal]);
 
   const trackerContext: PipelineContext = {
     channelId: channelId ?? undefined,
@@ -95,11 +149,13 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
     draftTitle: draftResult?.draftTitle,
   };
 
-  const autopilotConfig = useSelector(actor, (s) => s.context.autopilotConfig);
-
   const [provider, setProvider] = useState<ProviderId>('gemini');
   const [model, setModel] = useState<string>(MODELS_BY_PROVIDER.gemini[0].id);
   const [recommendationLoaded, setRecommendationLoaded] = useState(false);
+  const [recommended, setRecommended] = useState<{ provider: string | null; model: string | null }>({
+    provider: null,
+    model: null,
+  });
 
   // Seed provider/model from the autopilot wizard's review slot override.
   // Only fires when a non-null override is present; never resets to null.
@@ -114,6 +170,12 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
   }, [providerOverride, modelOverride]); // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const [draftPreviewExpanded, setDraftPreviewExpanded] = useState(false);
+  // 'revising' → /produce reproduce-mode is in flight; on completion we chain
+  //   into /review automatically so the user sees a fresh score.
+  // 'reviewing' → /review is in flight; modal shows scoring progress.
+  // null → idle.
+  const [revisePhase, setRevisePhase] = useState<'revising' | 'reviewing' | null>(null);
   // Anchor the SSE event filter to the moment the action started so the modal
   // doesn't replay a previous stage's `completed` event (events are keyed by
   // draftId across stages).
@@ -161,6 +223,12 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
           (a) => a.slug === 'review',
         );
         if (agent?.recommended_provider) {
+          // Always expose the admin recommendation to ModelPicker so the dropdown
+          // can inject admin-default models that aren't in the hardcoded list.
+          setRecommended({
+            provider: agent.recommended_provider as string,
+            model: (agent.recommended_model as string) || null,
+          });
           // Only apply agent defaults when autopilotConfig has no per-slot override.
           if (!autopilotConfig?.review?.providerOverride) {
             setProvider(agent.recommended_provider as ProviderId);
@@ -203,8 +271,11 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
     rearmKey: (localDraft as { iteration_count?: number } | null)?.iteration_count ?? 0,
   });
 
-  function navigate(toStage?: PipelineStage) {
-    actor.send({ type: 'NAVIGATE', toStage: toStage ?? 'draft' });
+  // navigate: no-op in context mode — orchestrator handles stage transitions
+  // via server state. Kept as a function signature so ContextBanner and
+  // revision buttons compile without change.
+  function navigate(_toStage?: PipelineStage) {
+    // no-op: orchestrator reads server state to decide next stage
   }
 
   // Defensive guard — orchestrator gates render until draft hydrates, but if a
@@ -267,14 +338,10 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
       try {
         tracker.trackStarted({ draftId, iterationCount: draftView.iteration_count });
 
-        actor.send({
-          type: 'STAGE_PROGRESS',
-          stage: 'review',
-          partial: {
-            status: `Iteration ${machineIterationCount + 1}/${maxIterations}: scoring`,
-            current: machineIterationCount,
-            total: maxIterations,
-          },
+        ctx.setStageStatus('review', {
+          status: `Iteration ${machineIterationCount + 1}/${maxIterations}: scoring`,
+          current: machineIterationCount,
+          total: maxIterations,
         });
 
         // First, set status to in_review
@@ -353,7 +420,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
         // would unmount ReviewEngine immediately (orchestrator transitions
         // out of the review state on REVIEW_COMPLETE) and the user would
         // never see the modal's checkmark.
-        const mode = actor.getSnapshot().context.mode
+        const mode = ctx.context.mode;
         if (mode === 'supervised' || mode === 'overview') {
           const fb = feedbackObj ?? {};
           const fmt = (fb.blog_review ?? fb.video_review ?? fb.podcast_review ?? fb.shorts_review) as Record<string, unknown> | undefined;
@@ -406,7 +473,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
       setManualState(null);
       await refetchDraft();
       if (!overviewMode) toast.success('Review submitted');
-      actor.send({ type: 'STAGE_PROGRESS', stage: 'review', partial: { score, verdict } as Record<string, unknown> });
+      ctx.setStageStatus('review', { score, verdict });
     } catch (err) {
       toast.error('Submit failed', { description: err instanceof Error ? err.message : 'Unknown error' });
     } finally {
@@ -428,7 +495,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
     } finally {
       setBusy(false);
       setManualState(null);
-      actor.send({ type: 'STAGE_PROGRESS', stage: 'review', partial: { score: undefined, verdict: undefined } as Record<string, unknown> });
+      ctx.setStageStatus('review', { score: undefined, verdict: undefined });
     }
   }
 
@@ -515,17 +582,37 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
     });
   }
 
-  async function handleRevise() {
+  // Featured action in the revision-required panel — labelled "Start AI Review".
+  // Feeds the production content with the current review feedback (calls
+  // `/produce` with `productionParams.review_feedback`, which flips
+  // production-produce.ts into reproduce-prompt mode). When the production
+  // job emits a `completed` event the SSE `onComplete` hook chains into
+  // `handleSubmitForReview` so the user gets a fresh score in one click.
+  async function handleReviseAndReview() {
     await withGuard(async () => {
+      if (!draftId) return;
       try {
+        tracker.trackStarted({ draftId, iterationCount: draftView.iteration_count });
+        ctx.setStageStatus('review', {
+          status: `Iteration ${machineIterationCount + 1}/${maxIterations}: revising`,
+          current: machineIterationCount,
+          total: maxIterations,
+        });
+
+        const body: Record<string, unknown> = {
+          provider,
+          productionParams: { review_feedback: draftView.review_feedback_json },
+        };
+        if (model && !isManual) body.model = model;
+
         setReviewSince(new Date(Date.now() - 1_000).toISOString());
         setReviewing(true);
-        const res = await fetch(`/api/content-drafts/${draftId}/revise`, {
+        setRevisePhase('revising');
+
+        const res = await fetch(`/api/content-drafts/${draftId}/produce`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            feedback: draftView.review_feedback_json,
-          }),
+          body: JSON.stringify(body),
           signal: abortController?.signal,
         });
         const json = await res.json();
@@ -533,20 +620,37 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
         if (json?.error) {
           if (handleMaybeCreditsError(json.error)) {
             setReviewing(false);
+            setRevisePhase(null);
             return;
           }
           const f = friendlyAiError(json.error.message ?? '');
           toast.error(f.title, { description: f.hint });
           setReviewing(false);
+          setRevisePhase(null);
           return;
         }
 
-        await refetchDraft();
-        setReviewing(false);
-        if (!overviewMode) toast.success('Draft revised based on feedback');
+        // Manual provider parks the draft at awaiting_manual — break out of
+        // the chained flow and surface the paste dialog. The user submits via
+        // ManualOutputDialog → /:id/manual-output, which writes draft_json
+        // and flips production stage_run to completed (content-drafts.ts).
+        // After manual paste they can hit "Retry Review" to score it.
+        if (isManual && json.data?.status === 'awaiting_manual') {
+          setManualState({ draftId });
+          toast.info('Production prompt copied to Axiom. Paste output when ready.');
+          setReviewing(false);
+          setRevisePhase(null);
+          return;
+        }
+        // SSE modal is open; onComplete chains into the review.
       } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') { setReviewing(false); return; }
+        if (err instanceof Error && err.name === 'AbortError') {
+          setReviewing(false);
+          setRevisePhase(null);
+          return;
+        }
         setReviewing(false);
+        setRevisePhase(null);
         toast.error('Failed to revise draft');
       }
     });
@@ -612,9 +716,81 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
   const hasReview = !!draftView.review_feedback_json;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="review-engine-root">
       <ContextBanner stage="review" context={trackerContext} onBack={navigate} />
       <ContentWarningBanner warning={typeof (draftView.review_feedback_json as Record<string, unknown> | null)?.content_warning === 'string' ? (draftView.review_feedback_json as Record<string, unknown>).content_warning as string : undefined} />
+
+      {/* Production draft preview — confirms the reviewer sees the produced body */}
+      {(() => {
+        const dj = draftView.draft_json as Record<string, unknown> | null;
+        if (!dj) {
+          return (
+            <Card data-testid="review-draft-preview" className="border-amber-500/30 bg-amber-500/5">
+              <CardContent className="py-3 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                No production draft loaded — review will fail until production completes.
+              </CardContent>
+            </Card>
+          );
+        }
+        const fullDraft = typeof dj.full_draft === 'string' ? (dj.full_draft as string) : '';
+        const outline = Array.isArray(dj.outline) ? (dj.outline as unknown[]) : null;
+        const slug = typeof dj.slug === 'string' ? (dj.slug as string) : null;
+        const wordCount = fullDraft ? fullDraft.trim().split(/\s+/).length : 0;
+        const previewBody = draftPreviewExpanded || fullDraft.length <= 800
+          ? fullDraft
+          : `${fullDraft.slice(0, 800).trimEnd()}…`;
+        const displayTitle = (typeof dj.title === 'string' && dj.title) || draftView.title || 'Untitled';
+        return (
+          <Card data-testid="review-draft-preview">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileText className="h-4 w-4" /> Draft to review
+              </CardTitle>
+              <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground mt-1">
+                <span className="font-medium text-foreground">{displayTitle}</span>
+                {slug && <span>· /{slug}</span>}
+                {wordCount > 0 && <span>· {wordCount.toLocaleString()} words</span>}
+                {outline && outline.length > 0 && <span>· {outline.length} sections</span>}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {fullDraft ? (
+                <>
+                  <div
+                    data-testid="review-draft-body"
+                    className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed max-h-[420px] overflow-y-auto"
+                  >
+                    {previewBody}
+                  </div>
+                  {fullDraft.length > 800 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 text-xs"
+                      onClick={() => setDraftPreviewExpanded((v) => !v)}
+                    >
+                      {draftPreviewExpanded ? (
+                        <>
+                          <ChevronUp className="h-3 w-3" /> Collapse
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="h-3 w-3" /> Expand full draft
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground italic">
+                  Draft body is empty — production may have failed to write content.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* No review yet — submit for review */}
       {!hasReview && (
@@ -632,7 +808,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
               providers={manualEnabled ? REVIEW_PROVIDERS : REVIEW_PROVIDERS.filter((p) => p !== 'manual')}
               provider={provider}
               model={model}
-              recommended={{ provider: null, model: null }}
+              recommended={recommended}
               onProviderChange={(p) => {
                 setProvider(p);
                 if (p === 'manual') setModel('manual');
@@ -652,6 +828,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
                 disabled={busy || reviewing || !draftView.draft_json}
                 size="lg"
                 className="gap-2 shrink-0"
+                data-testid="review-action-run"
               >
                 {busy || reviewing ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -727,9 +904,15 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
                         feedbackJson: fb,
                         iterationCount: draftView.iteration_count,
                       };
-                      actor.send({ type: 'REVIEW_COMPLETE', result });
+                      ctx.signalStageComplete(
+                        'review',
+                        result as unknown as Record<string, unknown>,
+                        trackId,
+                      );
+                      await advanceFromReview();
                     }}
                     className="gap-2"
+                    data-testid="review-action-next"
                   >
                     <Check className="h-4 w-4" />
                     Next: Assets <ArrowRight className="h-4 w-4" />
@@ -752,14 +935,17 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
                   <span>{needsRevision ? 'Revision required.' : 'Draft rejected.'} Choose an action:</span>
                 </div>
 
-                {/* Re-review section */}
+                {/* Primary: revise the draft with the review feedback, then
+                    score it automatically (chained handleReviseAndReview). */}
                 <div className="space-y-3">
-                  <p className="text-xs font-medium text-muted-foreground">Run a new review:</p>
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Apply review feedback and re-score the draft:
+                  </p>
                   <ModelPicker
                     providers={manualEnabled ? REVIEW_PROVIDERS : REVIEW_PROVIDERS.filter((p) => p !== 'manual')}
                     provider={provider}
                     model={model}
-                    recommended={{ provider: null, model: null }}
+                    recommended={recommended}
                     onProviderChange={(p) => {
                       setProvider(p);
                       if (p === 'manual') setModel('manual');
@@ -769,17 +955,17 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
                   />
                   <div className="flex justify-end">
                     <Button
-                      onClick={handleSubmitForReview}
+                      onClick={handleReviseAndReview}
                       disabled={busy || reviewing}
-                      size="sm"
-                      className="gap-1.5"
+                      className="gap-2"
+                      data-testid="review-action-revise"
                     >
                       {busy || reviewing ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <Loader2 className="h-4 w-4 animate-spin" />
                       ) : isManual ? (
-                        <ClipboardPaste className="h-3.5 w-3.5" />
+                        <ClipboardPaste className="h-4 w-4" />
                       ) : (
-                        <Sparkles className="h-3.5 w-3.5" />
+                        <Sparkles className="h-4 w-4" />
                       )}
                       {isManual ? 'Get Manual Prompt' : 'Start AI Review'}
                     </Button>
@@ -788,22 +974,23 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
 
                 <div className="h-px bg-border" />
 
-                {/* Go back options */}
+                {/* Secondary: re-score the existing draft without rewriting it. */}
                 <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground">Or go back to revise content:</p>
+                  <p className="text-xs font-medium text-muted-foreground">Other options:</p>
                   <div className="grid grid-cols-2 gap-2">
                     <Button
-                      onClick={handleRevise}
-                      disabled={busy}
+                      onClick={handleSubmitForReview}
+                      disabled={busy || reviewing}
                       variant="outline"
                       size="sm"
+                      data-testid="review-action-retry"
                     >
-                      {busy ? (
+                      {busy || reviewing ? (
                         <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
                       ) : (
                         <Sparkles className="h-4 w-4 mr-1.5" />
                       )}
-                      AI Revision
+                      Retry Review
                     </Button>
                     <Button
                       onClick={() => navigate('draft')}
@@ -837,6 +1024,7 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
                   variant="ghost"
                   size="sm"
                   className="w-full"
+                  data-testid="review-action-override-approve"
                 >
                   Override Approve
                 </Button>
@@ -872,33 +1060,55 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
           sessionId={draftId}
           sseUrl={`/api/content-drafts/${draftId}/events`}
           since={reviewSince ?? undefined}
-          title="Running AI Review"
+          title={revisePhase === 'revising' ? 'Revising draft from feedback' : 'Running AI Review'}
           onComplete={async () => {
+            // Chained flow: when "Start AI Review" is the trigger, the first
+            // SSE `completed` event comes from the /produce job. Refetch the
+            // draft, then kick off the actual /review so the user gets a
+            // fresh score without a second click.
+            if (revisePhase === 'revising') {
+              await refetchDraft();
+              setRevisePhase('reviewing');
+              setReviewSince(new Date(Date.now() - 1_000).toISOString());
+              // handleSubmitForReview reopens the SSE flow (sets reviewing=true
+              // again after this onComplete settles) and posts /review.
+              void handleSubmitForReview();
+              return;
+            }
             // Fetch fresh values — the /review POST returned 202 and ran async,
             // so json.data at POST-time had NULL score/verdict. Reading them now
             // from the DB gives the real results.
             const fresh = await refetchDraft();
-            if (actor.getSnapshot().context.mode !== 'overview') toast.success('Review completed');
+            const currentMode = ctx.context.mode;
+            if (currentMode !== 'overview') toast.success('Review completed');
             pendingReviewResultRef.current = null; // no longer needed
             setReviewing(false);
             setReviewSince(null);
-            const mode = actor.getSnapshot().context.mode;
-            if (fresh && (mode === 'supervised' || mode === 'overview')) {
+            setRevisePhase(null);
+            if (fresh && (currentMode === 'supervised' || currentMode === 'overview')) {
               const fb = (fresh.review_feedback_json as Record<string, unknown> | null) ?? {};
               const fmt = (fb.blog_review ?? fb.video_review ?? fb.podcast_review ?? fb.shorts_review) as Record<string, unknown> | undefined;
               const score = typeof fmt?.score === 'number' ? fmt.score as number : (fresh.review_score as number | null) ?? 0;
               const verdict = (fresh.review_verdict as string | null) ?? 'pending';
               const tier = deriveTier(fmt ?? fb);
               const iterationCount = (fresh.iteration_count as number | null) ?? 1;
-              actor.send({
-                type: 'REVIEW_COMPLETE',
-                result: { score, qualityTier: tier, verdict, feedbackJson: fb, iterationCount },
-              });
+              ctx.signalStageComplete(
+                'review',
+                {
+                  score,
+                  qualityTier: tier,
+                  verdict,
+                  feedbackJson: fb,
+                  iterationCount,
+                },
+                trackId,
+              );
             }
           }}
           onFailed={(msg) => {
             setReviewing(false);
             setReviewSince(null);
+            setRevisePhase(null);
             pendingReviewResultRef.current = null;
             const f = friendlyAiError(msg);
             toast.error(f.title, { description: f.hint });
@@ -907,8 +1117,8 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
             // If the user dismisses the modal while autopilot is in flight,
             // still attempt to dispatch REVIEW_COMPLETE with fresh values so
             // the machine doesn't stall in the reviewing state.
-            const mode = actor.getSnapshot().context.mode;
-            if (mode === 'supervised' || mode === 'overview') {
+            const closeMode = ctx.context.mode;
+            if (closeMode === 'supervised' || closeMode === 'overview') {
               const fresh = await refetchDraft();
               pendingReviewResultRef.current = null;
               setReviewing(false);
@@ -920,10 +1130,17 @@ export function ReviewEngine({ draft }: ReviewEngineProps) {
                 const verdict = (fresh.review_verdict as string | null) ?? 'pending';
                 const tier = deriveTier(fmt ?? fb);
                 const iterationCount = (fresh.iteration_count as number | null) ?? 1;
-                actor.send({
-                  type: 'REVIEW_COMPLETE',
-                  result: { score, qualityTier: tier, verdict, feedbackJson: fb, iterationCount },
-                });
+                ctx.signalStageComplete(
+                  'review',
+                  {
+                    score,
+                    qualityTier: tier,
+                    verdict,
+                    feedbackJson: fb,
+                    iterationCount,
+                  },
+                  trackId,
+                );
               }
             } else {
               setReviewing(false);

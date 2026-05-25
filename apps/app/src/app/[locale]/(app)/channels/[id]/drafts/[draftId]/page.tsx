@@ -10,7 +10,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { MarkdownPreview } from '@/components/preview/MarkdownPreview';
 import { ManualModePanel } from '@/components/ai/ManualModePanel';
 import { useManualMode } from '@/hooks/use-manual-mode';
-import { Sparkles, ClipboardPaste, Loader2 } from 'lucide-react';
+import { Sparkles, ClipboardPaste, Loader2, ArrowLeft } from 'lucide-react';
+import { Link } from '@/i18n/navigation';
 import { PipelineStages, type PipelineStep } from '@/components/pipeline/PipelineStages';
 import { ReviewEngine } from '@/components/engines/ReviewEngine';
 import { AssetsEngine } from '@/components/engines/AssetsEngine';
@@ -179,6 +180,16 @@ export default function DraftDetailPage() {
 
   return (
     <div>
+      {projectId ? (
+        <div className="px-6 pt-4">
+          <Link
+            href={`/projects/${projectId}?v=2`}
+            className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
+          >
+            <ArrowLeft className="h-3 w-3" /> Back to pipeline view
+          </Link>
+        </div>
+      ) : null}
       <PipelineStages
         currentStep={pipelineStep}
         channelId={channelId}

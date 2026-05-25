@@ -19,6 +19,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { healthRoutes } from "./routes/health.js";
 import { authRoutes } from "./routes/auth.js";
 import { projectsRoutes } from "./routes/projects.js";
+import { stageRunsRoutes } from "./routes/stage-runs.js";
+import { tracksRoutes } from "./routes/tracks.js";
 import { projectSetupRoutes } from "./routes/project-setup.js";
 import { researchRoutes } from "./routes/research.js";
 import { ideasRoutes } from "./routes/ideas.js";
@@ -29,6 +31,7 @@ import { shortsRoutes } from "./routes/shorts.js";
 import { stagesRoutes } from "./routes/stages.js";
 import { templatesRoutes } from "./routes/templates.js";
 import { assetsRoutes } from "./routes/assets.js";
+import { assetsGenerateVideoRoutes } from "./routes/assets-generate-video.js";
 import { canonicalCoreRoutes } from "./routes/canonical-core.js";
 import { agentsRoutes } from "./routes/agents.js";
 import { aiConfigRoutes } from "./routes/ai-config.js";
@@ -48,11 +51,13 @@ import { contentRoutes } from "./routes/content.js";
 import { brainstormRoutes } from "./routes/brainstorm.js";
 import { researchSessionsRoutes } from "./routes/research-sessions.js";
 import { contentDraftsRoutes } from "./routes/content-drafts.js";
+import { contentDraftsYouTubeRoutes } from "./routes/content-drafts-youtube.js";
 import { usageRoutes } from "./routes/usage.js";
 import { billingRoutes } from "./routes/billing.js";
 import { bulkRoutes } from "./routes/bulk.js";
 import { voiceRoutes } from "./routes/voice.js";
 import { publishingDestinationsRoutes } from "./routes/publishing-destinations.js";
+import { feedsRoutes } from "./routes/feeds.js";
 import { notificationsRoutes, userNotificationsRoutes } from "./routes/notifications.js";
 import { supportRoutes } from "./routes/support.js";
 import { adminFinanceRoutes } from "./routes/admin-finance.js";
@@ -68,6 +73,7 @@ import { aiProvidersRoutes } from "./routes/ai-providers.js";
 import { moduleAiAssignmentsRoutes } from "./routes/module-ai-assignments.js";
 import { chatRoutes } from "./routes/chat.js";
 import { adminCreditSettingsRoutes } from "./routes/admin-credit-settings.js";
+import { testMockAiRoutes } from "./routes/test-mock-ai.js";
 import { currencyRefreshRoutes } from "./routes/currency-refresh.js";
 import rateLimit from "@fastify/rate-limit";
 // Side-effect import: activates `rawBody?: boolean` on FastifyContextConfig
@@ -118,8 +124,10 @@ const server = Fastify({
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:3002",
+  "http://localhost:3100",
   "http://127.0.0.1:3000",
   "http://127.0.0.1:3002",
+  "http://127.0.0.1:3100",
   process.env.APP_ORIGIN ?? "https://app.brighttale.io",
 ];
 
@@ -287,6 +295,8 @@ server.register(healthRoutes);
 server.register(authRoutes);
 server.register(projectsRoutes, { prefix: "/projects" });
 server.register(projectSetupRoutes, { prefix: "/projects" });
+server.register(stageRunsRoutes, { prefix: "/projects" });
+server.register(tracksRoutes, { prefix: "/projects" });
 server.register(researchRoutes, { prefix: "/research" });
 server.register(ideasRoutes, { prefix: "/ideas" });
 server.register(blogsRoutes, { prefix: "/blogs" });
@@ -296,6 +306,7 @@ server.register(shortsRoutes, { prefix: "/shorts" });
 server.register(stagesRoutes, { prefix: "/stages" });
 server.register(templatesRoutes, { prefix: "/templates" });
 server.register(assetsRoutes, { prefix: "/assets" });
+server.register(assetsGenerateVideoRoutes, { prefix: "/assets" });
 server.register(canonicalCoreRoutes, { prefix: "/canonical-core" });
 server.register(agentsRoutes, { prefix: "/agents" });
 server.register(aiConfigRoutes, { prefix: "/ai" });
@@ -315,6 +326,7 @@ server.register(contentRoutes, { prefix: "/content" });
 server.register(brainstormRoutes, { prefix: "/brainstorm" });
 server.register(researchSessionsRoutes, { prefix: "/research-sessions" });
 server.register(contentDraftsRoutes, { prefix: "/content-drafts" });
+server.register(contentDraftsYouTubeRoutes, { prefix: "/content-drafts" });
 server.register(usageRoutes, { prefix: "/usage" });
 server.register(billingRoutes, { prefix: "/billing" });
 server.register(bulkRoutes, { prefix: "/bulk" });
@@ -322,6 +334,7 @@ server.register(voiceRoutes, { prefix: "/voice" });
 server.register(publishingDestinationsRoutes, {
   prefix: "/publishing-destinations",
 });
+server.register(feedsRoutes, { prefix: "/feeds" });
 server.register(notificationsRoutes, { prefix: "/channels" });
 server.register(personasRoutes, { prefix: "/personas" });
 server.register(channelPersonasRoutes, { prefix: "/channels" });
@@ -339,6 +352,9 @@ server.register(supportRoutes, { prefix: "/support" });
 server.register(adminFinanceRoutes, { prefix: "/admin/finance" });
 server.register(refundsRoutes);
 server.register(couponsRoutes, { prefix: "/coupons" });
+
+// Test-only: mock AI queue endpoints — only registered when MOCK_AI_PROVIDER=1 and not production.
+server.register(testMockAiRoutes);
 
 // Affiliate platform — @tn-figueiredo/affiliate@0.4.0 (Phase 2A.3 wires /ref + /internal)
 const affiliateContainer = buildAffiliateContainer();

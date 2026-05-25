@@ -1308,6 +1308,7 @@ export type Database = {
           channel_type: string
           created_at: string
           custom_model_config_json: Json | null
+          default_media_config_json: Json | null
           estimated_revenue_brl: number | null
           id: string
           is_evergreen: boolean
@@ -1341,6 +1342,7 @@ export type Database = {
           channel_type?: string
           created_at?: string
           custom_model_config_json?: Json | null
+          default_media_config_json?: Json | null
           estimated_revenue_brl?: number | null
           id?: string
           is_evergreen?: boolean
@@ -1374,6 +1376,7 @@ export type Database = {
           channel_type?: string
           created_at?: string
           custom_model_config_json?: Json | null
+          default_media_config_json?: Json | null
           estimated_revenue_brl?: number | null
           id?: string
           is_evergreen?: boolean
@@ -1764,7 +1767,9 @@ export type Database = {
           id: string
           metadata_json: Json | null
           org_id: string
+          publish_target_id: string | null
           source: string
+          track_id: string | null
           user_id: string
         }
         Insert: {
@@ -1775,7 +1780,9 @@ export type Database = {
           id?: string
           metadata_json?: Json | null
           org_id: string
+          publish_target_id?: string | null
           source?: string
+          track_id?: string | null
           user_id: string
         }
         Update: {
@@ -1786,7 +1793,9 @@ export type Database = {
           id?: string
           metadata_json?: Json | null
           org_id?: string
+          publish_target_id?: string | null
           source?: string
+          track_id?: string | null
           user_id?: string
         }
         Relationships: [
@@ -1795,6 +1804,20 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_usage_publish_target_id_fkey"
+            columns: ["publish_target_id"]
+            isOneToOne: false
+            referencedRelation: "publish_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_usage_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
             referencedColumns: ["id"]
           },
         ]
@@ -2238,6 +2261,7 @@ export type Database = {
           id: string
           message: string
           metadata: Json | null
+          project_id: string | null
           session_id: string
           session_type: string
           stage: string
@@ -2247,6 +2271,7 @@ export type Database = {
           id?: string
           message: string
           metadata?: Json | null
+          project_id?: string | null
           session_id: string
           session_type: string
           stage: string
@@ -2256,11 +2281,20 @@ export type Database = {
           id?: string
           message?: string
           metadata?: Json | null
+          project_id?: string | null
           session_id?: string
           session_type?: string
           stage?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "job_events_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       managers: {
         Row: {
@@ -3168,6 +3202,79 @@ export type Database = {
           },
         ]
       }
+      podcast_episodes: {
+        Row: {
+          audio_url: string
+          channel_id: string
+          created_at: string
+          description: string
+          duration_sec: number | null
+          guid: string
+          id: string
+          itunes_explicit: boolean
+          itunes_image_url: string | null
+          publish_target_id: string
+          published_at: string
+          stage_run_id: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          audio_url: string
+          channel_id: string
+          created_at?: string
+          description: string
+          duration_sec?: number | null
+          guid: string
+          id?: string
+          itunes_explicit?: boolean
+          itunes_image_url?: string | null
+          publish_target_id: string
+          published_at?: string
+          stage_run_id?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          audio_url?: string
+          channel_id?: string
+          created_at?: string
+          description?: string
+          duration_sec?: number | null
+          guid?: string
+          id?: string
+          itunes_explicit?: boolean
+          itunes_image_url?: string | null
+          publish_target_id?: string
+          published_at?: string
+          stage_run_id?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "podcast_episodes_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "podcast_episodes_publish_target_id_fkey"
+            columns: ["publish_target_id"]
+            isOneToOne: false
+            referencedRelation: "publish_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "podcast_episodes_stage_run_id_fkey"
+            columns: ["stage_run_id"]
+            isOneToOne: false
+            referencedRelation: "stage_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pricing_config: {
         Row: {
           extra_block_credits: number
@@ -3217,8 +3324,10 @@ export type Database = {
           created_at: string
           current_stage: string
           id: string
+          migrated_to_stage_runs_at: string | null
           mode: string | null
           org_id: string | null
+          paused: boolean
           pipeline_state_json: Json | null
           research_id: string | null
           status: string
@@ -3237,8 +3346,10 @@ export type Database = {
           created_at?: string
           current_stage: string
           id?: string
+          migrated_to_stage_runs_at?: string | null
           mode?: string | null
           org_id?: string | null
+          paused?: boolean
           pipeline_state_json?: Json | null
           research_id?: string | null
           status: string
@@ -3257,8 +3368,10 @@ export type Database = {
           created_at?: string
           current_stage?: string
           id?: string
+          migrated_to_stage_runs_at?: string | null
           mode?: string | null
           org_id?: string | null
+          paused?: boolean
           pipeline_state_json?: Json | null
           research_id?: string | null
           status?: string
@@ -3295,6 +3408,60 @@ export type Database = {
             columns: ["research_id"]
             isOneToOne: false
             referencedRelation: "research_archives"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      publish_targets: {
+        Row: {
+          channel_id: string | null
+          config_json: Json | null
+          created_at: string
+          credentials_encrypted: string | null
+          display_name: string
+          id: string
+          is_active: boolean
+          org_id: string | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          channel_id?: string | null
+          config_json?: Json | null
+          created_at?: string
+          credentials_encrypted?: string | null
+          display_name: string
+          id?: string
+          is_active?: boolean
+          org_id?: string | null
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          channel_id?: string | null
+          config_json?: Json | null
+          created_at?: string
+          credentials_encrypted?: string | null
+          display_name?: string
+          id?: string
+          is_active?: boolean
+          org_id?: string | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "publish_targets_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "publish_targets_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -3843,6 +4010,7 @@ export type Database = {
           project_id: string | null
           short_count: number
           shorts_json: string
+          source_content_draft_id: string | null
           status: string
           total_duration: string | null
           updated_at: string
@@ -3856,6 +4024,7 @@ export type Database = {
           project_id?: string | null
           short_count?: number
           shorts_json: string
+          source_content_draft_id?: string | null
           status?: string
           total_duration?: string | null
           updated_at?: string
@@ -3869,6 +4038,7 @@ export type Database = {
           project_id?: string | null
           short_count?: number
           shorts_json?: string
+          source_content_draft_id?: string | null
           status?: string
           total_duration?: string | null
           updated_at?: string
@@ -3880,6 +4050,92 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shorts_drafts_source_content_draft_id_fkey"
+            columns: ["source_content_draft_id"]
+            isOneToOne: false
+            referencedRelation: "content_drafts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stage_runs: {
+        Row: {
+          attempt_no: number
+          awaiting_reason: string | null
+          created_at: string
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          input_json: Json | null
+          outcome_json: Json | null
+          payload_ref: Json | null
+          project_id: string
+          publish_target_id: string | null
+          stage: string
+          started_at: string | null
+          status: string
+          track_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          attempt_no?: number
+          awaiting_reason?: string | null
+          created_at?: string
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          input_json?: Json | null
+          outcome_json?: Json | null
+          payload_ref?: Json | null
+          project_id: string
+          publish_target_id?: string | null
+          stage: string
+          started_at?: string | null
+          status: string
+          track_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attempt_no?: number
+          awaiting_reason?: string | null
+          created_at?: string
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          input_json?: Json | null
+          outcome_json?: Json | null
+          payload_ref?: Json | null
+          project_id?: string
+          publish_target_id?: string | null
+          stage?: string
+          started_at?: string | null
+          status?: string
+          track_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stage_runs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_runs_publish_target_id_fkey"
+            columns: ["publish_target_id"]
+            isOneToOne: false
+            referencedRelation: "publish_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_runs_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
             referencedColumns: ["id"]
           },
         ]
@@ -4213,6 +4469,47 @@ export type Database = {
           },
         ]
       }
+      tracks: {
+        Row: {
+          autopilot_config_json: Json | null
+          created_at: string
+          id: string
+          medium: string
+          paused: boolean
+          project_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          autopilot_config_json?: Json | null
+          created_at?: string
+          id?: string
+          medium: string
+          paused?: boolean
+          project_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          autopilot_config_json?: Json | null
+          created_at?: string
+          id?: string
+          medium?: string
+          paused?: boolean
+          project_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tracks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       usage_events: {
         Row: {
           channel_id: string | null
@@ -4523,44 +4820,6 @@ export type Database = {
           },
         ]
       }
-      wordpress_configs: {
-        Row: {
-          channel_id: string
-          created_at: string
-          id: string
-          password: string
-          site_url: string
-          updated_at: string
-          username: string
-        }
-        Insert: {
-          channel_id: string
-          created_at?: string
-          id?: string
-          password: string
-          site_url: string
-          updated_at?: string
-          username: string
-        }
-        Update: {
-          channel_id?: string
-          created_at?: string
-          id?: string
-          password?: string
-          site_url?: string
-          updated_at?: string
-          username?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "wordpress_configs_channel_id_fkey"
-            columns: ["channel_id"]
-            isOneToOne: false
-            referencedRelation: "channels"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       youtube_niche_analyses: {
         Row: {
           analyzed_at: string
@@ -4652,6 +4911,10 @@ export type Database = {
       }
       increment_affiliate_referrals: {
         Args: { aff_id: string }
+        Returns: undefined
+      }
+      recompute_project_status: {
+        Args: { p_project_id: string }
         Returns: undefined
       }
       show_limit: { Args: never; Returns: number }

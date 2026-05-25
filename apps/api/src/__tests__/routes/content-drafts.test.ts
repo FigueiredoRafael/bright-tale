@@ -59,8 +59,12 @@ vi.mock('@/lib/ai/channelContext', () => ({
 vi.mock('@/lib/axiom', () => ({
   logAiUsage: vi.fn(),
 }));
+vi.mock('@/lib/content-drafts/derive', () => ({
+  deriveDraft: vi.fn(),
+}));
 
 import { contentDraftsRoutes } from '@/routes/content-drafts';
+import { deriveDraft } from '@/lib/content-drafts/derive';
 
 const AUTH_USER = { 'x-internal-key': 'test-key', 'x-user-id': 'user-1' };
 
@@ -140,8 +144,10 @@ describe('POST /content-drafts/:id/canonical-core', () => {
 });
 
 describe('POST /content-drafts/:id/produce', () => {
-  it('runs agent-3b-{type} and stores draft_json', async () => {
-    // loadDraft → maybeSingle returns draft; loadCreditSettings → maybeSingle returns null (uses defaults)
+  it('enqueues the production-produce job and returns 202 with queued status', async () => {
+    // Route is now async: dispatches `production/produce` to Inngest and
+    // returns 202 immediately. SSE on /:id/events streams progress; the
+    // worker is responsible for writing the final draft_json.
     mockChain.maybeSingle
       .mockResolvedValueOnce({
         data: {
@@ -154,20 +160,7 @@ describe('POST /content-drafts/:id/produce', () => {
         error: null,
       })
       .mockResolvedValueOnce({ data: null, error: null });
-    mockChain.single
-      .mockResolvedValueOnce({ data: { org_id: 'org-1' }, error: null })
-      .mockResolvedValueOnce({
-        data: { id: 'cd-1', draft_json: { stage: 'produce', produced: true }, status: 'in_review' },
-        error: null,
-      });
-    // override generateWithFallback to avoid relying on params.input.stage
-    const router = await import('@/lib/ai/router');
-    (router.generateWithFallback as any).mockResolvedValueOnce({
-      result: { stage: 'produce', produced: true, body: 'content' },
-      providerName: 'mock',
-      model: 'mock',
-      attempts: 1,
-    });
+    mockChain.single.mockResolvedValueOnce({ data: { org_id: 'org-1' }, error: null });
 
     const res = await app.inject({
       method: 'POST',
@@ -175,10 +168,11 @@ describe('POST /content-drafts/:id/produce', () => {
       headers: AUTH_USER,
     });
 
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(202);
     const body = res.json();
-    expect(body.data.status).toBe('in_review');
-    expect(body.data.draft_json.stage).toBe('produce');
+    expect(body.data.draftId).toBe('cd-1');
+    expect(body.data.status).toBe('queued');
+    expect(body.error).toBeNull();
   });
 });
 
@@ -351,5 +345,126 @@ describe('POST /content-drafts/:id/generate-asset-prompts', () => {
     expect(res.statusCode).toBe(500);
     const body = JSON.parse(res.payload);
     expect(body.error).toBeTruthy();
+  });
+});
+
+describe('POST /content-drafts/:id/derive', () => {
+  it('validates body and returns the derived draft id', async () => {
+    (deriveDraft as any).mockResolvedValueOnce({ id: 'derived-1', created: true });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/content-drafts/src-1/derive',
+      headers: AUTH_USER,
+      payload: { trackId: '11111111-1111-1111-1111-111111111111', medium: 'video' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ data: { id: 'derived-1', created: true }, error: null });
+    expect(deriveDraft).toHaveBeenCalledWith(expect.anything(), {
+      sourceId: 'src-1',
+      trackId: '11111111-1111-1111-1111-111111111111',
+      medium: 'video',
+      userId: 'user-1',
+    });
+  });
+
+  it('returns 400 on invalid medium', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/content-drafts/src-1/derive',
+      headers: AUTH_USER,
+      payload: { trackId: '11111111-1111-1111-1111-111111111111', medium: 'newsletter' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('propagates ApiError status from the helper', async () => {
+    const err: any = new Error('Track does not belong');
+    err.status = 409;
+    err.statusCode = 409;
+    err.code = 'CONFLICT';
+    (deriveDraft as any).mockRejectedValueOnce(err);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/content-drafts/src-1/derive',
+      headers: AUTH_USER,
+      payload: { trackId: '11111111-1111-1111-1111-111111111111', medium: 'video' },
+    });
+
+    expect(res.statusCode).toBe(409);
+  });
+});
+
+describe('PATCH /content-drafts/:id — assetSettings.imageMode (S6)', () => {
+  it('persists imageMode=generate via assetSettings patch', async () => {
+    const existingDraft = {
+      id: 'cd-1',
+      draft_json: {},
+    };
+    const updatedDraft = {
+      id: 'cd-1',
+      draft_json: { assetSettings: { imageMode: 'generate' } },
+    };
+    // loadDraft uses maybeSingle; the subsequent update uses single
+    mockChain.maybeSingle.mockResolvedValueOnce({ data: existingDraft, error: null });
+    mockChain.single.mockResolvedValueOnce({ data: updatedDraft, error: null });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/content-drafts/cd-1',
+      headers: AUTH_USER,
+      payload: { assetSettings: { imageMode: 'generate' } },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().error).toBeNull();
+  });
+
+  it('persists imageMode=prompts-only via assetSettings patch', async () => {
+    const existingDraft = {
+      id: 'cd-1',
+      draft_json: {},
+    };
+    const updatedDraft = {
+      id: 'cd-1',
+      draft_json: { assetSettings: { imageMode: 'prompts-only' } },
+    };
+    // loadDraft uses maybeSingle; the subsequent update uses single
+    mockChain.maybeSingle.mockResolvedValueOnce({ data: existingDraft, error: null });
+    mockChain.single.mockResolvedValueOnce({ data: updatedDraft, error: null });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/content-drafts/cd-1',
+      headers: AUTH_USER,
+      payload: { assetSettings: { imageMode: 'prompts-only' } },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().error).toBeNull();
+  });
+
+  it('returns 400 for invalid imageMode value', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/content-drafts/cd-1',
+      headers: AUTH_USER,
+      payload: { assetSettings: { imageMode: 'auto' } },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 400 for unknown keys inside assetSettings', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/content-drafts/cd-1',
+      headers: AUTH_USER,
+      payload: { assetSettings: { imageMode: 'generate', unknownKey: true } },
+    });
+
+    expect(res.statusCode).toBe(400);
   });
 });

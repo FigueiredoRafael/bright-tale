@@ -74,7 +74,51 @@ vi.mock('../../lib/supabase/index.js', () => ({
             insertedIdeas.push(...rows);
             return { error: null };
           },
-          select: () => ({ count: 0 }),
+          // Two callers: the existing count probe used to build idea_id
+          // sequence (returns `count`), and the post-upsert re-query that
+          // fetches the persisted rows (returns array via order()).
+          select: (cols?: string) => {
+            if (cols && cols.includes('id,')) {
+              return {
+                eq: () => ({
+                  order: async () => ({
+                    data: insertedIdeas.map((r, i) => ({
+                      id: `archive-${i + 1}`,
+                      idea_id: r.idea_id,
+                      title: r.title,
+                      core_tension: r.core_tension,
+                      target_audience: r.target_audience,
+                      verdict: r.verdict,
+                      discovery_data: r.discovery_data,
+                    })),
+                    error: null,
+                  }),
+                }),
+              };
+            }
+            return { count: 0 };
+          },
+        };
+      }
+      if (table === 'stage_runs') {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                order: () => ({
+                  limit: () => ({
+                    maybeSingle: async () => ({ data: null, error: null }),
+                  }),
+                }),
+              }),
+            }),
+          }),
+          update: () => ({ eq: async () => ({ data: null, error: null }) }),
+        };
+      }
+      if (table === 'projects') {
+        return {
+          update: () => ({ eq: async () => ({ data: null, error: null }) }),
         };
       }
       if (table === 'channels') {

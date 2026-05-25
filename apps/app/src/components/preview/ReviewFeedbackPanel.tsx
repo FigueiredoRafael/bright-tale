@@ -80,19 +80,34 @@ export function ReviewFeedbackPanel({
   const reviewNotes = typeof blogReview?.notes === 'string' ? blogReview.notes as string : '';
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="review-feedback-panel">
       {/* Score + Verdict header */}
       <div className="flex items-center gap-4">
         {displayScore !== null && (
           <div className="flex items-center gap-2">
-            <span className="text-3xl font-bold tabular-nums">{displayScore}</span>
+            <span
+              data-testid="review-score"
+              data-value={displayScore}
+              className="text-3xl font-bold tabular-nums"
+            >
+              {displayScore}
+            </span>
             <span className="text-sm text-muted-foreground">/100</span>
           </div>
         )}
-        <Badge className={verdictColor[displayVerdict] ?? verdictColor.pending} variant="outline">
+        <Badge
+          data-testid="review-verdict"
+          data-value={displayVerdict}
+          className={verdictColor[displayVerdict] ?? verdictColor.pending}
+          variant="outline"
+        >
           {verdictLabel[displayVerdict] ?? displayVerdict.replace(/_/g, ' ')}
         </Badge>
-        <span className="text-sm text-muted-foreground">
+        <span
+          data-testid="review-iteration"
+          data-value={iterationCount}
+          className="text-sm text-muted-foreground"
+        >
           Iteration {iterationCount}
         </span>
       </div>
@@ -115,7 +130,11 @@ export function ReviewFeedbackPanel({
 
       {/* Critical issues */}
       {criticalIssues.length > 0 && (
-        <Card className="border-red-500/20">
+        <Card
+          data-testid="review-feedback-critical"
+          data-count={criticalIssues.length}
+          className="border-red-500/20"
+        >
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-red-600 dark:text-red-400">
               Critical Issues ({criticalIssues.length})
@@ -123,7 +142,7 @@ export function ReviewFeedbackPanel({
           </CardHeader>
           <CardContent className="space-y-3">
             {criticalIssues.map((item, i) => (
-              <div key={i} className="space-y-1">
+              <div key={i} data-testid="review-feedback-issue" className="space-y-1">
                 {item.location && (
                   <Badge variant="outline" className="text-[10px] mb-1">{item.location}</Badge>
                 )}

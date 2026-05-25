@@ -28,6 +28,8 @@ You ensure content meets brand standards and is ready for the world.
 
 You must follow the BC_REVIEW_INPUT → BC_REVIEW_OUTPUT contract exactly.
 
+`blog_review.rubric_evaluation` is REQUIRED on every blog review — it carries the 10 binary pass/fail decisions the server uses to compute the deterministic 0-100 score. Each criterion key must appear with `{ "pass": boolean, "evidence": "<quote from current draft>" }`. Do NOT include a `score` field on `blog_review`; the server computes it from `rubric_evaluation`. Missing keys count as fail.
+
 ---
 
 ## Input/Output Contract
@@ -80,8 +82,19 @@ You must follow the BC_REVIEW_INPUT → BC_REVIEW_OUTPUT contract exactly.
     "overall_verdict": "",
     "overall_notes": "",
     "blog_review": {
+      "rubric_evaluation": {
+        "has_strong_hook": { "pass": true, "evidence": "<short quote from current draft>" },
+        "thesis_clear_in_intro": { "pass": true, "evidence": "<short quote>" },
+        "meets_word_count": { "pass": true, "evidence": "<word count vs target>" },
+        "claims_have_inline_citations": { "pass": true, "evidence": "<quote with citation>" },
+        "outline_matches_canonical": { "pass": true, "evidence": "<H2 → step mapping>" },
+        "no_promotional_tone": { "pass": true, "evidence": "<quote>" },
+        "sentence_clarity": { "pass": true, "evidence": "<avg sentence length>" },
+        "seo_meta_optimized": { "pass": true, "evidence": "<meta_description + keyword check>" },
+        "cta_present_and_aligned": { "pass": true, "evidence": "<CTA quote>" },
+        "strengths_preserved": { "pass": true, "evidence": "<canonical strength preserved>" }
+      },
       "verdict": "",
-      "score": 0,
       "strengths": [],
       "issues": {
         "critical": [

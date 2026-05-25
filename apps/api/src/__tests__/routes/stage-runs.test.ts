@@ -1,0 +1,992 @@
+/**
+ * Slice 2 (#10) — Generic Stage Run intake endpoint + Brainstorm dispatcher.
+ *
+ * Covers:
+ *   POST /projects/:projectId/stage-runs    — create a Stage Run
+ *   GET  /projects/:projectId/stages         — snapshot of latest Stage Runs
+ *
+ * Strategy: mock the orchestrator module so route logic can be tested
+ * in isolation from DB. (Orchestrator behaviour is covered separately
+ * in apps/api/src/lib/pipeline/__tests__/orchestrator.test.ts.)
+ */
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import Fastify, { type FastifyInstance } from 'fastify';
+
+// ─── Mock orchestrator + supabase before importing the route ────────────────
+
+const { requestStageRunMock } = vi.hoisted(() => ({ requestStageRunMock: vi.fn() }));
+
+vi.mock('@/lib/pipeline/orchestrator', async () => {
+  const actual = await vi.importActual<typeof import('../../lib/pipeline/orchestrator')>(
+    '@/lib/pipeline/orchestrator',
+  );
+  return {
+    ...actual,
+    requestStageRun: requestStageRunMock,
+  };
+});
+
+// Snapshot endpoint reads stage_runs through supabase directly. Provide a chain.
+const sbChain: Record<string, any> = {};
+['from', 'select', 'eq', 'in', 'order', 'update'].forEach((m) => {
+  sbChain[m] = vi.fn().mockReturnValue(sbChain);
+});
+sbChain.maybeSingle = vi.fn();
+sbChain.then = undefined; // not a thenable except via terminal ops
+
+vi.mock('@/lib/supabase', () => ({
+  createServiceClient: () => sbChain,
+}));
+
+// Stub assertProjectOwner so route tests don't have to mock projects + channels.
+const { assertProjectOwnerMock } = vi.hoisted(() => ({ assertProjectOwnerMock: vi.fn(async () => undefined) }));
+vi.mock('@/lib/projects/ownership', () => ({
+  assertProjectOwner: assertProjectOwnerMock,
+}));
+
+// Stub inngest so Continue endpoint can dispatch without a real client.
+const { inngestSendMock } = vi.hoisted(() => ({ inngestSendMock: vi.fn(async () => ({ ids: ['evt-1'] })) }));
+vi.mock('@/jobs/client', () => ({
+  inngest: { send: inngestSendMock },
+}));
+
+vi.mock('@/middleware/authenticate', () => ({
+  authenticate: vi.fn(async (request: any, reply: any) => {
+    const key = request.headers['x-internal-key'];
+    if (!key || key !== process.env.INTERNAL_API_KEY) {
+      return reply.status(401).send({ data: null, error: { message: 'Unauthorized', code: 'UNAUTHORIZED' } });
+    }
+    request.userId = request.headers['x-user-id'];
+  }),
+}));
+
+import { stageRunsRoutes } from '@/routes/stage-runs';
+import {
+  StageNotMigratedError,
+  StageInputValidationError,
+  PredecessorNotDoneError,
+  ConcurrentStageRunError,
+} from '@/lib/pipeline/orchestrator';
+import { ApiError } from '@/lib/api/errors';
+
+const AUTH = { 'x-internal-key': 'test-key', 'x-user-id': 'user-1' };
+const PROJECT_ID = 'proj-1';
+
+let app: FastifyInstance;
+
+beforeEach(async () => {
+  process.env.INTERNAL_API_KEY = 'test-key';
+  vi.clearAllMocks();
+  // Reset chain methods (preserve self-return semantics)
+  ['from', 'select', 'eq', 'in', 'order', 'update'].forEach((m) => {
+    sbChain[m] = vi.fn().mockReturnValue(sbChain);
+  });
+  sbChain.maybeSingle = vi.fn();
+  assertProjectOwnerMock.mockResolvedValue(undefined);
+
+  app = Fastify({ logger: false });
+  await app.register(stageRunsRoutes, { prefix: '/projects' });
+  await app.ready();
+});
+
+// ─── POST /:projectId/stage-runs ─────────────────────────────────────────────
+
+describe('POST /projects/:projectId/stage-runs', () => {
+  it('creates a queued brainstorm Stage Run and returns the row in the envelope', async () => {
+    requestStageRunMock.mockResolvedValueOnce({
+      id: 'sr-1',
+      projectId: PROJECT_ID,
+      stage: 'brainstorm',
+      status: 'queued',
+      attemptNo: 1,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs`,
+      headers: AUTH,
+      payload: { stage: 'brainstorm', input: { mode: 'topic_driven', topic: 'deep work' } },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.error).toBeNull();
+    expect(body.data.stageRun.id).toBe('sr-1');
+    expect(body.data.stageRun.stage).toBe('brainstorm');
+    expect(body.data.stageRun.status).toBe('queued');
+    expect(requestStageRunMock).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'brainstorm',
+      { mode: 'topic_driven', topic: 'deep work' },
+      'user-1',
+    );
+  });
+
+  it('returns 400 STAGE_NOT_MIGRATED when stage is not yet migrated', async () => {
+    requestStageRunMock.mockRejectedValueOnce(new StageNotMigratedError('research'));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs`,
+      headers: AUTH,
+      payload: { stage: 'research', input: {} },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('STAGE_NOT_MIGRATED');
+  });
+
+  it('returns 403 when the caller does not own the project', async () => {
+    requestStageRunMock.mockRejectedValueOnce(new ApiError(403, 'Forbidden', 'FORBIDDEN'));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs`,
+      headers: AUTH,
+      payload: { stage: 'brainstorm', input: { mode: 'topic_driven', topic: 'x' } },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('FORBIDDEN');
+  });
+
+  it('returns 409 CONCURRENT_STAGE_RUN when a non-terminal run already exists', async () => {
+    requestStageRunMock.mockRejectedValueOnce(new ConcurrentStageRunError('brainstorm'));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs`,
+      headers: AUTH,
+      payload: { stage: 'brainstorm', input: { mode: 'topic_driven', topic: 'x' } },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('CONCURRENT_STAGE_RUN');
+  });
+
+  it('returns 409 PREDECESSOR_NOT_DONE when predecessor stage has no terminal-OK run', async () => {
+    requestStageRunMock.mockRejectedValueOnce(new PredecessorNotDoneError('research', 'brainstorm'));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs`,
+      headers: AUTH,
+      payload: { stage: 'research', input: {} },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('PREDECESSOR_NOT_DONE');
+  });
+
+  it('returns 400 when input fails schema validation', async () => {
+    requestStageRunMock.mockRejectedValueOnce(
+      new StageInputValidationError('brainstorm', 'mode is required'),
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs`,
+      headers: AUTH,
+      payload: { stage: 'brainstorm', input: {} },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('STAGE_INPUT_VALIDATION');
+  });
+
+  it('returns 400 when request body itself is malformed (no stage)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs`,
+      headers: AUTH,
+      payload: { input: {} },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+    expect(requestStageRunMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 401 without the internal API key', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs`,
+      headers: { 'x-user-id': 'user-1' },
+      payload: { stage: 'brainstorm', input: { mode: 'topic_driven', topic: 'x' } },
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+// ─── GET /:projectId/stages ──────────────────────────────────────────────────
+
+describe('GET /projects/:projectId/stages', () => {
+  it('returns the latest Stage Run per Stage', async () => {
+    // Snapshot endpoint queries `stage_runs` ordered by created_at desc.
+    // The route is responsible for de-duping to one per stage.
+    // It ALSO fetches the project's mode/paused via maybeSingle.
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { mode: 'autopilot', paused: false },
+      error: null,
+    });
+    sbChain.order = vi.fn().mockResolvedValueOnce({
+      data: [
+        {
+          id: 'sr-3',
+          project_id: PROJECT_ID,
+          stage: 'brainstorm',
+          status: 'completed',
+          awaiting_reason: null,
+          payload_ref: { kind: 'brainstorm_draft', id: 'bd-1' },
+          attempt_no: 2,
+          input_json: null,
+          error_message: null,
+          started_at: '2026-05-11T16:00:00Z',
+          finished_at: '2026-05-11T16:01:00Z',
+          created_at: '2026-05-11T16:00:00Z',
+          updated_at: '2026-05-11T16:01:00Z',
+        },
+        {
+          id: 'sr-2',
+          project_id: PROJECT_ID,
+          stage: 'brainstorm',
+          status: 'failed',
+          awaiting_reason: null,
+          payload_ref: null,
+          attempt_no: 1,
+          input_json: null,
+          error_message: null,
+          started_at: '2026-05-11T15:00:00Z',
+          finished_at: '2026-05-11T15:01:00Z',
+          created_at: '2026-05-11T15:00:00Z',
+          updated_at: '2026-05-11T15:01:00Z',
+        },
+        {
+          id: 'sr-1',
+          project_id: PROJECT_ID,
+          stage: 'research',
+          status: 'queued',
+          awaiting_reason: null,
+          payload_ref: null,
+          attempt_no: 1,
+          input_json: null,
+          error_message: null,
+          started_at: null,
+          finished_at: null,
+          created_at: '2026-05-11T16:02:00Z',
+          updated_at: '2026-05-11T16:02:00Z',
+        },
+      ],
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${PROJECT_ID}/stages`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const { data, error } = res.json();
+    expect(error).toBeNull();
+    // De-duped: one row per stage (the latest attempt) — so 2 rows for 2 stages
+    expect(data.stageRuns).toHaveLength(2);
+    const byStage = Object.fromEntries(data.stageRuns.map((r: any) => [r.stage, r]));
+    expect(byStage.brainstorm.id).toBe('sr-3'); // attempt_no 2 wins over 1
+    expect(byStage.research.id).toBe('sr-1');
+  });
+
+  it('returns an empty array when the project has no Stage Runs yet', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { mode: 'autopilot', paused: false },
+      error: null,
+    });
+    sbChain.order = vi.fn().mockResolvedValueOnce({ data: [], error: null });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${PROJECT_ID}/stages`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.stageRuns).toEqual([]);
+  });
+
+  // ── T9.F157: tracks[] in snapshot response ───────────────────────────────
+
+  it('includes tracks[] in the snapshot response (T9.F157)', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { mode: 'autopilot', paused: false },
+      error: null,
+    });
+    // stage_runs query (order call 1) then tracks query (order call 2)
+    sbChain.order = vi.fn()
+      .mockResolvedValueOnce({
+        data: [
+          {
+            id: 'sr-prod-1',
+            project_id: PROJECT_ID,
+            stage: 'production',
+            status: 'completed',
+            awaiting_reason: null,
+            payload_ref: null,
+            attempt_no: 1,
+            input_json: null,
+            error_message: null,
+            started_at: null,
+            finished_at: null,
+            track_id: 'track-blog-1',
+            publish_target_id: null,
+            created_at: '2026-05-16T00:00:00Z',
+            updated_at: '2026-05-16T00:00:00Z',
+          },
+          {
+            id: 'sr-pub-1',
+            project_id: PROJECT_ID,
+            stage: 'publish',
+            status: 'completed',
+            awaiting_reason: null,
+            payload_ref: null,
+            attempt_no: 1,
+            input_json: null,
+            error_message: null,
+            started_at: null,
+            finished_at: null,
+            track_id: 'track-blog-1',
+            publish_target_id: 'pt-wp-1',
+            created_at: '2026-05-16T00:01:00Z',
+            updated_at: '2026-05-16T00:01:00Z',
+          },
+        ],
+        error: null,
+      })
+      // tracks query
+      .mockResolvedValueOnce({
+        data: [
+          { id: 'track-blog-1', medium: 'blog', status: 'active', paused: false },
+        ],
+        error: null,
+      })
+      // publish_targets query (via in/order or similar)
+      .mockResolvedValueOnce({
+        data: [
+          { id: 'pt-wp-1', display_name: 'WordPress (Test)' },
+        ],
+        error: null,
+      });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${PROJECT_ID}/stages`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const { data } = res.json();
+    expect(data.tracks).toBeDefined();
+    expect(Array.isArray(data.tracks)).toBe(true);
+    expect(data.tracks).toHaveLength(1);
+    expect(data.tracks[0].id).toBe('track-blog-1');
+    expect(data.tracks[0].publishTargets).toHaveLength(1);
+    expect(data.tracks[0].publishTargets[0].displayName).toBe('WordPress (Test)');
+  });
+
+  it('includes tracks=[] for legacy project with no tracks (T9.F157 backward compat)', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { mode: 'manual', paused: false },
+      error: null,
+    });
+    sbChain.order = vi.fn()
+      .mockResolvedValueOnce({ data: [], error: null }) // stage_runs
+      .mockResolvedValueOnce({ data: [], error: null }); // tracks
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${PROJECT_ID}/stages`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const { data } = res.json();
+    expect(data.tracks).toEqual([]);
+  });
+
+  // ── T9.F152: allAttempts[] per stage_run in snapshot response ────────────
+
+  it('populates allAttempts on each stage_run with full history ordered by attempt_no ASC (T9.F152)', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { mode: 'autopilot', paused: false },
+      error: null,
+    });
+    // 3 research attempts + 1 brainstorm attempt
+    sbChain.order = vi.fn()
+      .mockResolvedValueOnce({
+        data: [
+          // research attempt 3 (latest → canonical)
+          {
+            id: 'sr-res-3',
+            project_id: PROJECT_ID,
+            stage: 'research',
+            status: 'completed',
+            awaiting_reason: null,
+            payload_ref: null,
+            attempt_no: 3,
+            input_json: null,
+            error_message: null,
+            started_at: '2026-05-16T03:00:00Z',
+            finished_at: '2026-05-16T03:10:00Z',
+            track_id: null,
+            publish_target_id: null,
+            outcome_json: { confidence: 0.84 },
+            created_at: '2026-05-16T03:00:00Z',
+            updated_at: '2026-05-16T03:10:00Z',
+          },
+          // research attempt 2
+          {
+            id: 'sr-res-2',
+            project_id: PROJECT_ID,
+            stage: 'research',
+            status: 'failed',
+            awaiting_reason: null,
+            payload_ref: null,
+            attempt_no: 2,
+            input_json: null,
+            error_message: null,
+            started_at: '2026-05-16T02:00:00Z',
+            finished_at: '2026-05-16T02:10:00Z',
+            track_id: null,
+            publish_target_id: null,
+            outcome_json: { confidence: 0.62 },
+            created_at: '2026-05-16T02:00:00Z',
+            updated_at: '2026-05-16T02:10:00Z',
+          },
+          // research attempt 1
+          {
+            id: 'sr-res-1',
+            project_id: PROJECT_ID,
+            stage: 'research',
+            status: 'failed',
+            awaiting_reason: null,
+            payload_ref: null,
+            attempt_no: 1,
+            input_json: null,
+            error_message: null,
+            started_at: '2026-05-16T01:00:00Z',
+            finished_at: '2026-05-16T01:10:00Z',
+            track_id: null,
+            publish_target_id: null,
+            outcome_json: { confidence: 0.42 },
+            created_at: '2026-05-16T01:00:00Z',
+            updated_at: '2026-05-16T01:10:00Z',
+          },
+          // brainstorm (only 1 attempt)
+          {
+            id: 'sr-brain-1',
+            project_id: PROJECT_ID,
+            stage: 'brainstorm',
+            status: 'completed',
+            awaiting_reason: null,
+            payload_ref: null,
+            attempt_no: 1,
+            input_json: null,
+            error_message: null,
+            started_at: '2026-05-16T00:00:00Z',
+            finished_at: '2026-05-16T00:05:00Z',
+            track_id: null,
+            publish_target_id: null,
+            outcome_json: null,
+            created_at: '2026-05-16T00:00:00Z',
+            updated_at: '2026-05-16T00:05:00Z',
+          },
+        ],
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: [], error: null }); // tracks
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${PROJECT_ID}/stages`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const { data, error } = res.json();
+    expect(error).toBeNull();
+
+    // De-duped to 2 stage_runs (research + brainstorm)
+    expect(data.stageRuns).toHaveLength(2);
+    const byStage = Object.fromEntries(data.stageRuns.map((r: { stage: string }) => [r.stage, r]));
+
+    // Research canonical run is attempt 3
+    expect(byStage.research.id).toBe('sr-res-3');
+    expect(byStage.research.attemptNo).toBe(3);
+
+    // allAttempts contains all 3 research attempts, ordered ASC
+    expect(byStage.research.allAttempts).toHaveLength(3);
+    expect(byStage.research.allAttempts[0].id).toBe('sr-res-1');
+    expect(byStage.research.allAttempts[0].attemptNo).toBe(1);
+    expect(byStage.research.allAttempts[1].id).toBe('sr-res-2');
+    expect(byStage.research.allAttempts[1].attemptNo).toBe(2);
+    expect(byStage.research.allAttempts[2].id).toBe('sr-res-3');
+    expect(byStage.research.allAttempts[2].attemptNo).toBe(3);
+
+    // Brainstorm canonical run has only 1 attempt
+    expect(byStage.brainstorm.id).toBe('sr-brain-1');
+    expect(byStage.brainstorm.allAttempts).toHaveLength(1);
+    expect(byStage.brainstorm.allAttempts[0].id).toBe('sr-brain-1');
+  });
+});
+
+// ─── POST /:projectId/stage-runs/:stageRunId/continue ────────────────────────
+
+describe('POST /projects/:projectId/stage-runs/:stageRunId/continue', () => {
+  it('flips awaiting_user → queued and emits pipeline/stage.requested', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: {
+        id: 'sr-pub',
+        project_id: PROJECT_ID,
+        stage: 'publish',
+        status: 'awaiting_user',
+        awaiting_reason: 'manual_advance',
+      },
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-pub/continue`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.error).toBeNull();
+    expect(body.data.stageRunId).toBe('sr-pub');
+    expect(body.data.status).toBe('queued');
+    expect(body.data.stage).toBe('publish');
+
+    expect(inngestSendMock).toHaveBeenCalledTimes(1);
+    const event = (inngestSendMock as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(event.name).toBe('pipeline/stage.requested');
+    expect(event.data.stageRunId).toBe('sr-pub');
+    expect(event.data.stage).toBe('publish');
+  });
+
+  it('returns 409 INVALID_STATUS when Stage Run is not awaiting_user', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { id: 'sr-pub', project_id: PROJECT_ID, stage: 'publish', status: 'running' },
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-pub/continue`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('INVALID_STATUS');
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the Stage Run is not found', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({ data: null, error: null });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-missing/continue`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.code).toBe('NOT_FOUND');
+  });
+
+  it('returns 403 when caller does not own the project', async () => {
+    const { ApiError } = await import('@/lib/api/errors');
+    assertProjectOwnerMock.mockRejectedValueOnce(new ApiError(403, 'Forbidden', 'FORBIDDEN'));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-pub/continue`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('FORBIDDEN');
+  });
+});
+
+// ─── PATCH /:projectId/stage-runs/:stageRunId (abort) ────────────────────────
+
+describe('PATCH /projects/:projectId/stage-runs/:stageRunId (abort)', () => {
+  it('transitions a running Stage Run to aborted and emits finished', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { id: 'sr-1', project_id: PROJECT_ID, stage: 'brainstorm', status: 'running' },
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-1`,
+      headers: AUTH,
+      payload: { action: 'abort' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.status).toBe('aborted');
+    const updateCall = (sbChain.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(updateCall.status).toBe('aborted');
+
+    const finishedCall = (inngestSendMock as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => (c[0] as { name: string }).name === 'pipeline/stage.run.finished',
+    );
+    expect(finishedCall).toBeDefined();
+  });
+
+  it('returns 409 when the Stage Run is already terminal', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { id: 'sr-1', project_id: PROJECT_ID, stage: 'brainstorm', status: 'completed' },
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-1`,
+      headers: AUTH,
+      payload: { action: 'abort' },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('INVALID_STATUS');
+  });
+
+  it('returns 400 when action is not "abort"', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-1`,
+      headers: AUTH,
+      payload: { action: 'something_else' },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 404 when the Stage Run does not belong to the project', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { id: 'sr-1', project_id: 'OTHER_PROJECT', stage: 'brainstorm', status: 'running' },
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-1`,
+      headers: AUTH,
+      payload: { action: 'abort' },
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+// ─── POST /:projectId/stage-runs/:stageRunId/manual-output ───────────────────
+
+describe('POST /projects/:projectId/stage-runs/:stageRunId/manual-output', () => {
+  it('forwards to the legacy endpoint and marks the Stage Run completed', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: {
+        id: 'sr-1',
+        project_id: PROJECT_ID,
+        stage: 'brainstorm',
+        status: 'awaiting_user',
+        awaiting_reason: 'manual_paste',
+        payload_ref: { kind: 'brainstorm_session', id: 'bs-sess-1' },
+      },
+      error: null,
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: { draftIds: ['bd-1'] }, error: null }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    process.env.API_URL = 'http://api.test';
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-1/manual-output`,
+      headers: AUTH,
+      payload: { output: 'BC_BRAINSTORM_OUTPUT:\n...' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.status).toBe('completed');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://api.test/brainstorm/sessions/bs-sess-1/manual-output',
+      expect.objectContaining({ method: 'POST' }),
+    );
+
+    const updateCall = (sbChain.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(updateCall.status).toBe('completed');
+    expect(updateCall.payload_ref).toEqual({ kind: 'brainstorm_draft', id: 'bd-1' });
+  });
+
+  it('returns 409 when the Stage Run is not awaiting_user(manual_paste)', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: {
+        id: 'sr-1',
+        project_id: PROJECT_ID,
+        stage: 'brainstorm',
+        status: 'running',
+        awaiting_reason: null,
+        payload_ref: null,
+      },
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-1/manual-output`,
+      headers: AUTH,
+      payload: { output: 'x' },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('INVALID_STATUS');
+  });
+
+  it('returns 400 STAGE_NOT_SUPPORTED for non-brainstorm stages', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: {
+        id: 'sr-1',
+        project_id: PROJECT_ID,
+        stage: 'research',
+        status: 'awaiting_user',
+        awaiting_reason: 'manual_paste',
+        payload_ref: { kind: 'research_session', id: 'rs-1' },
+      },
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs/sr-1/manual-output`,
+      headers: AUTH,
+      payload: { output: 'x' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('STAGE_NOT_SUPPORTED');
+  });
+});
+
+// ─── T9.F156 — publish_target_id per-target retry ────────────────────────────
+// RED: route must accept publish_target_id and pass it through to requestStageRun
+// so the orchestrator can scope attempt_no to the specific publish target only.
+
+describe('POST /projects/:projectId/stage-runs — publish_target_id (T9.F156)', () => {
+  const TARGET_ID = 'target-apple-123';
+
+  it('accepts publish_target_id and forwards it to requestStageRun as a dims argument', async () => {
+    requestStageRunMock.mockResolvedValueOnce({
+      id: 'sr-pub',
+      projectId: PROJECT_ID,
+      stage: 'publish',
+      status: 'queued',
+      attemptNo: 1,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs`,
+      headers: AUTH,
+      payload: { stage: 'publish', input: {}, publish_target_id: TARGET_ID },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json().error).toBeNull();
+    // Orchestrator must receive dims as the 5th argument (or as an object)
+    expect(requestStageRunMock).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'publish',
+      {},
+      'user-1',
+      expect.objectContaining({ publishTargetId: TARGET_ID }),
+    );
+  });
+
+  it('accepts track_id together with publish_target_id', async () => {
+    const TRACK_ID = 'track-blog-456';
+    requestStageRunMock.mockResolvedValueOnce({
+      id: 'sr-pub-2',
+      projectId: PROJECT_ID,
+      stage: 'publish',
+      status: 'queued',
+      attemptNo: 2,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs`,
+      headers: AUTH,
+      payload: {
+        stage: 'publish',
+        input: {},
+        track_id: TRACK_ID,
+        publish_target_id: TARGET_ID,
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(requestStageRunMock).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'publish',
+      {},
+      'user-1',
+      expect.objectContaining({ trackId: TRACK_ID, publishTargetId: TARGET_ID }),
+    );
+  });
+
+  it('omits dims when neither track_id nor publish_target_id are supplied (backward compat)', async () => {
+    requestStageRunMock.mockResolvedValueOnce({
+      id: 'sr-brainstorm',
+      projectId: PROJECT_ID,
+      stage: 'brainstorm',
+      status: 'queued',
+      attemptNo: 1,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/stage-runs`,
+      headers: AUTH,
+      payload: { stage: 'brainstorm', input: { mode: 'topic_driven', topic: 'ai' } },
+    });
+
+    expect(res.statusCode).toBe(201);
+    // Without dims, orchestrator called with exactly 4 args (no 5th dims arg)
+    expect(requestStageRunMock).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'brainstorm',
+      { mode: 'topic_driven', topic: 'ai' },
+      'user-1',
+    );
+    // Ensure the mock was NOT called with 5 args
+    const callArgs = (requestStageRunMock as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(callArgs).toHaveLength(4);
+  });
+});
+
+// ─── T9.F172 — allAttempts[] cap at 20 ───────────────────────────────────────
+
+describe('GET /projects/:projectId/stages — allAttempts cap (T9.F172)', () => {
+  /**
+   * Build a minimal stage_run DB row for (stage='research', trackId=null)
+   * with the given attemptNo. created_at is set in descending order so the
+   * route's "latest first" ordering puts the highest attemptNo first.
+   */
+  function makeResearchRow(attemptNo: number): Record<string, unknown> {
+    // Descending created_at: attempt 21 is the newest, attempt 1 is the oldest.
+    const ts = new Date(2026, 0, 1, 0, attemptNo, 0).toISOString();
+    return {
+      id: `sr-res-${attemptNo}`,
+      project_id: PROJECT_ID,
+      stage: 'research',
+      status: 'completed',
+      awaiting_reason: null,
+      payload_ref: null,
+      attempt_no: attemptNo,
+      input_json: null,
+      error_message: null,
+      started_at: ts,
+      finished_at: ts,
+      track_id: null,
+      publish_target_id: null,
+      outcome_json: null,
+      created_at: ts,
+      updated_at: ts,
+    };
+  }
+
+  it('caps allAttempts at 20 and sets hasMoreAttempts=true when there are 21 rows', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { mode: 'manual', paused: false },
+      error: null,
+    });
+    // 21 rows — server returns them newest-first as Supabase order(created_at,desc) would
+    const rows = Array.from({ length: 21 }, (_, i) => makeResearchRow(21 - i));
+    sbChain.order = vi.fn()
+      .mockResolvedValueOnce({ data: rows, error: null }) // stage_runs
+      .mockResolvedValueOnce({ data: [], error: null });  // tracks
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${PROJECT_ID}/stages`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const { data, error } = res.json();
+    expect(error).toBeNull();
+    expect(data.stageRuns).toHaveLength(1);
+
+    const research = data.stageRuns[0];
+    expect(research.stage).toBe('research');
+    // Cap enforced
+    expect(research.allAttempts).toHaveLength(20);
+    expect(research.hasMoreAttempts).toBe(true);
+    // The 20 kept attempts are the highest 20 (2–21), ordered ASC by attemptNo
+    expect(research.allAttempts[0].attemptNo).toBe(2);
+    expect(research.allAttempts[19].attemptNo).toBe(21);
+  });
+
+  it('keeps all attempts and sets hasMoreAttempts=false when there are exactly 20 rows', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { mode: 'manual', paused: false },
+      error: null,
+    });
+    const rows = Array.from({ length: 20 }, (_, i) => makeResearchRow(20 - i));
+    sbChain.order = vi.fn()
+      .mockResolvedValueOnce({ data: rows, error: null }) // stage_runs
+      .mockResolvedValueOnce({ data: [], error: null });  // tracks
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${PROJECT_ID}/stages`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const { data } = res.json();
+    const research = data.stageRuns[0];
+    expect(research.allAttempts).toHaveLength(20);
+    expect(research.hasMoreAttempts).toBe(false);
+  });
+
+  it('keeps all attempts and sets hasMoreAttempts=false when there are fewer than 20 rows', async () => {
+    sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
+      data: { mode: 'manual', paused: false },
+      error: null,
+    });
+    const rows = Array.from({ length: 3 }, (_, i) => makeResearchRow(3 - i));
+    sbChain.order = vi.fn()
+      .mockResolvedValueOnce({ data: rows, error: null }) // stage_runs
+      .mockResolvedValueOnce({ data: [], error: null });  // tracks
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${PROJECT_ID}/stages`,
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const { data } = res.json();
+    const research = data.stageRuns[0];
+    expect(research.allAttempts).toHaveLength(3);
+    expect(research.hasMoreAttempts).toBe(false);
+  });
+});

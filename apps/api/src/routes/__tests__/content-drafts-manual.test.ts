@@ -72,7 +72,7 @@ vi.mock('../../lib/supabase/index.js', () => ({
             };
           },
           update: (updateData: Record<string, unknown>) => ({
-            eq: (col: string, val: string) => {
+            eq: (_col: string, _val: string) => {
               // Apply update to nextDraft
               Object.assign(nextDraft, updateData);
               return {

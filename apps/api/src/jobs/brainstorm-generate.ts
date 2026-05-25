@@ -6,7 +6,7 @@
  * can show live progress ("Calling Ollama…", "Parsing output…", "Saving…").
  */
 import { inngest } from './client.js';
-import { STAGE_COSTS, generateWithFallback } from '../lib/ai/router.js';
+import { STAGE_COSTS, generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
 import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
 import { withReservation } from './utils/with-reservation.js';
@@ -30,6 +30,8 @@ interface BrainstormGenerateEvent {
     provider?: 'gemini' | 'openai' | 'anthropic' | 'ollama';
     model?: string;
     targetCount?: number;
+    /** Set when this run was launched via the new Pipeline Orchestrator. */
+    stageRunId?: string;
   };
 }
 
@@ -82,7 +84,7 @@ export const brainstormGenerate = inngest.createFunction(
     triggers: [{ event: 'brainstorm/generate' }],
   },
   async ({ event, step }: { event: BrainstormGenerateEvent; step: { run: (name: string, fn: () => Promise<unknown>) => Promise<unknown> } }) => {
-    const { sessionId, orgId, userId, channelId, inputJson, modelTier, provider, model, targetCount } = event.data;
+    const { sessionId, orgId, userId, channelId, inputJson, modelTier, provider, model, targetCount, stageRunId } = event.data;
     const sb = createServiceClient();
 
     // Load projectId from brainstorm_sessions if available
@@ -279,16 +281,83 @@ export const brainstormGenerate = inngest.createFunction(
         { ideaCount: persisted },
       );
 
+      // Pipeline Orchestrator handoff: write terminal status to the Stage Run
+      // and emit `pipeline/stage.run.finished` so `pipeline-advance` can react.
+      if (stageRunId) {
+        const { data: firstDraft } = await sb
+          .from('brainstorm_drafts')
+          .select('id, title, verdict, core_tension')
+          .eq('session_id', sessionId)
+          .order('position', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        const now = new Date().toISOString();
+        // Seed outcome_json with the first draft's metadata so downstream
+        // engines (ResearchEngine reads brainstormResult.ideaTitle from
+        // stage_runs.outcome_json via deriveStageResults) have a sensible
+        // default. The user can override the choice via the UI; that path
+        // goes through a separate selection endpoint (or no-ops when picking
+        // the first card, which is the same as the auto-default).
+        const seedOutcome = firstDraft?.id
+          ? {
+              ideaId: firstDraft.id,
+              ideaTitle: firstDraft.title as string,
+              ideaVerdict: (firstDraft.verdict as string) ?? '',
+              ideaCoreTension: (firstDraft.core_tension as string) ?? '',
+              brainstormSessionId: sessionId,
+            }
+          : null;
+        await (sb.from('stage_runs') as unknown as {
+          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+        })
+          .update({
+            status: 'completed',
+            payload_ref: firstDraft?.id ? { kind: 'brainstorm_draft', id: firstDraft.id } : null,
+            ...(seedOutcome ? { outcome_json: seedOutcome } : {}),
+            finished_at: now,
+            updated_at: now,
+          })
+          .eq('id', stageRunId);
+        if (projectId && firstDraft?.title) {
+          await (sb.from('projects') as unknown as {
+            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+          })
+            .update({ title: firstDraft.title as string })
+            .eq('id', projectId);
+        }
+        await inngest.send({
+          name: 'pipeline/stage.run.finished',
+          data: { stageRunId, projectId },
+        });
+      }
+
       return { success: true, ideas: persisted };
     } catch (err) {
       if (err instanceof JobAborted) {
         // brainstorm_sessions.status does not support 'paused' status yet,
         // so we only emit the abort event (no database update)
         await emitJobEvent(sessionId, 'brainstorm', 'aborted', 'Sessão cancelada pelo usuário');
+        if (stageRunId) {
+          const now = new Date().toISOString();
+          await (sb.from('stage_runs') as unknown as {
+            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+          })
+            .update({ status: 'aborted', finished_at: now, updated_at: now })
+            .eq('id', stageRunId);
+          await inngest.send({
+            name: 'pipeline/stage.run.finished',
+            data: { stageRunId, projectId },
+          });
+        }
         return;
       }
 
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      const quotaExhausted = isQuotaExhausted(err);
+
+      // Provider quota exhausted: park the stage awaiting user (not failed) so
+      // the operator can top up credits / swap providers and resume. Leave the
+      // upstream session row in 'failed' — the orchestrator only reads stage_runs.
       await (sb.from('brainstorm_sessions') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
       })
@@ -296,6 +365,37 @@ export const brainstormGenerate = inngest.createFunction(
         .eq('id', sessionId);
 
       await emitJobEvent(sessionId, 'brainstorm', 'failed', message.slice(0, 200), { error: message });
+
+      if (stageRunId) {
+        const now = new Date().toISOString();
+        const patch: Record<string, unknown> = quotaExhausted
+          ? {
+              status: 'awaiting_user',
+              awaiting_reason: 'provider_quota_exhausted',
+              updated_at: now,
+            }
+          : {
+              status: 'failed',
+              error_message: message.slice(0, 500),
+              finished_at: now,
+              updated_at: now,
+            };
+        await (sb.from('stage_runs') as unknown as {
+          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+        })
+          .update(patch)
+          .eq('id', stageRunId);
+        // Quota-park is non-terminal — no advance event; orchestrator resumes
+        // via the explicit /continue path when the user clears the block.
+        if (!quotaExhausted) {
+          await inngest.send({
+            name: 'pipeline/stage.run.finished',
+            data: { stageRunId, projectId },
+          });
+        }
+      }
+
+      if (quotaExhausted) return;
       throw err;
     }
   },

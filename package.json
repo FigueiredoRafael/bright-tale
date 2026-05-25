@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "dev:local": "bash scripts/dev-local.sh",
+    "env:switch": "bash scripts/switch-env.sh",
     "predev": "bash scripts/db-drift-check.sh || true",
     "dev": "concurrently -n app,api,web,docs,inngest,ollama -c blue,green,cyan,yellow,magenta,gray \"npm:dev:app\" \"npm:dev:api\" \"npm:dev:web\" \"npm:dev:docs\" \"npm:dev:inngest\" \"npm:dev:ollama\"",
     "dev:app": "NODE_OPTIONS='--max-old-space-size=512' npm run dev --workspace=@brighttale/app",
@@ -25,6 +26,7 @@
     "test:app": "npm run test --workspace=@brighttale/app",
     "test:api": "npm run test --workspace=@brighttale/api",
     "test:shared": "npm run test --workspace=@brighttale/shared",
+    "test:e2e:regression": "npm run test:e2e:regression --workspace=@brighttale/app",
     "smoke:affiliate": "tsx scripts/smoke-affiliate.ts",
     "test:smoke:unit": "vitest run --config vitest.smoke.config.ts",
     "typecheck": "npm run typecheck --workspaces --if-present",
@@ -62,7 +64,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.0.0",
     "playwright": "1.59.1",
-    "supabase": "^2.45.0",
+    "supabase": "2.99.0",
     "tsx": "^4.21.0",
     "typescript": "^5.6.0"
   },

@@ -1,147 +1,161 @@
 /**
- * ReviewEngine per-iteration history tests (Task 2.11)
- *
- * These tests verify that saveReviewResult appends to the iterations array
- * on each REVIEW_COMPLETE event, rather than overwriting the previous result.
+ * ReviewEngine stage advance tests
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { createActor } from 'xstate'
-import { pipelineMachine } from '@/lib/pipeline/machine'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
+import { ReviewEngine } from '@/components/engines/ReviewEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '@/components/engines/types'
-import type { PipelineMachineInput } from '@/lib/pipeline/machine.types'
+import { makeReviewDraftRow } from './fixtures/review'
 
-const input: PipelineMachineInput = {
-  projectId: 'proj-review-test',
-  channelId: 'ch-1',
-  projectTitle: 'Review History Test',
-  pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-  creditSettings: DEFAULT_CREDIT_SETTINGS,
-}
+vi.mock('@/hooks/use-analytics', () => ({
+  useAnalytics: () => ({ track: vi.fn() }),
+}))
 
-const brainstormResult = {
-  ideaId: 'idea-1', ideaTitle: 'Test Idea', ideaVerdict: 'viable', ideaCoreTension: 'tension',
-}
-const researchResult = {
-  researchSessionId: 'rs-1', approvedCardsCount: 5, researchLevel: 'medium',
-}
-const draftResult = {
-  draftId: 'd-1', draftTitle: 'Draft', draftContent: 'content',
-}
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}))
 
-function reachReviewIdle() {
-  const actor = createActor(pipelineMachine, { input })
-  actor.start()
-  actor.send({ type: 'SETUP_COMPLETE', mode: 'step-by-step', autopilotConfig: null, templateId: null, startStage: 'brainstorm' })
-  actor.send({ type: 'BRAINSTORM_COMPLETE', result: brainstormResult })
-  actor.send({ type: 'RESEARCH_COMPLETE', result: researchResult })
-  actor.send({ type: 'DRAFT_COMPLETE', result: draftResult })
-  // Enter reviewing sub-state
-  actor.send({ type: 'RESUME' })
-  return actor
-}
+vi.mock('@/components/pipeline/PipelineAbortProvider', () => ({
+  usePipelineAbort: () => null,
+}))
 
-describe('review iterations array accumulates across REVIEW_COMPLETE events', () => {
+vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
+  useAutoPilotTrigger: vi.fn(),
+}))
+
+describe('ReviewEngine — stage advance', () => {
   beforeEach(() => {
-    // Stub fetch for reproduce calls during needs_revision path
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: {}, error: null }),
-    }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        const u = String(url)
+        if (u.includes('/api/agents') || u.includes('/api/agent-prompts')) {
+          return { ok: true, json: async () => ({ data: { agents: [] }, error: null }) } as Response
+        }
+        if (u.includes('/api/projects/') && u.includes('/stages')) {
+          return {
+            ok: true,
+            json: async () => ({
+              data: {
+                tracks: [
+                  {
+                    id: 'track-1',
+                    medium: 'blog',
+                    status: 'active',
+                    paused: false,
+                    stageRuns: {
+                      production: { status: 'completed' },
+                      review: { status: 'completed' },
+                      assets: { status: 'queued' },
+                      preview: { status: 'queued' },
+                      publish: { status: 'queued' },
+                    },
+                  },
+                ],
+              },
+              error: null,
+            }),
+          } as Response
+        }
+        return { ok: true, json: async () => ({ data: null, error: null }) } as Response
+      }),
+    )
   })
 
-  it('first REVIEW_COMPLETE creates iterations array with one entry', () => {
-    const actor = reachReviewIdle()
-    actor.send({
-      type: 'REVIEW_COMPLETE',
-      result: { score: 60, verdict: 'needs_revision', feedbackJson: { summary: 'Intro too weak, needs stronger hook.' }, iterationCount: 1 },
-    })
-    const review = actor.getSnapshot().context.stageResults.review
-    expect(review?.iterations).toHaveLength(1)
-    expect(review?.iterations?.[0].score).toBe(60)
-    expect(review?.iterations?.[0].verdict).toBe('needs_revision')
-    expect(review?.iterations?.[0].oneLineSummary).toBe('Intro too weak, needs stronger hook.')
-    expect(review?.iterations?.[0].iterationNum).toBe(1)
-    expect(review?.latestFeedbackJson).toEqual({ summary: 'Intro too weak, needs stronger hook.' })
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
-  it('second REVIEW_COMPLETE appends a second entry, preserving the first', async () => {
-    const actor = reachReviewIdle()
-    actor.send({
-      type: 'REVIEW_COMPLETE',
-      result: { score: 60, verdict: 'needs_revision', feedbackJson: { summary: 'Intro too weak.' }, iterationCount: 1 },
+  it('signals stage complete with review outcome when user approves and clicks Next: Assets', async () => {
+    const user = userEvent.setup()
+    const approvedDraft = makeReviewDraftRow({ verdict: 'approved', score: 92 })
+    const completedStages: Array<{ stage: string; result: Record<string, unknown> }> = []
+
+    render(
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        autopilotConfig={null}
+        initialStageResults={{
+          draft: { draftId: approvedDraft.id, draftTitle: approvedDraft.title, draftContent: '', completedAt: new Date().toISOString() },
+        }}
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+        onStageComplete={(stage, result) => completedStages.push({ stage, result })}
+      >
+        <ReviewEngine draft={approvedDraft} />
+      </StandaloneProjectContextProvider>,
+    )
+
+    const approveBtn = await screen.findByRole('button', { name: /next.*assets/i })
+    await user.click(approveBtn)
+
+    await waitFor(() => {
+      expect(
+        completedStages.some((e) => e.stage === 'review' && e.result.score === 92),
+      ).toBe(true)
     })
-    // After needs_revision, machine starts reproducing — wait for it then resume
-    await vi.waitFor(() => {
-      const v = actor.getSnapshot().value
-      return typeof v === 'object' && 'review' in v
-    })
-    // Re-enter reviewing for second iteration
-    actor.send({ type: 'RESUME' })
-    actor.send({
-      type: 'REVIEW_COMPLETE',
-      result: { score: 78, verdict: 'needs_revision', feedbackJson: { summary: 'SEO meta too short.' }, iterationCount: 2 },
-    })
-    const review = actor.getSnapshot().context.stageResults.review
-    expect(review?.iterations).toHaveLength(2)
-    expect(review?.iterations?.[0].score).toBe(60)
-    expect(review?.iterations?.[1].score).toBe(78)
-    expect(review?.iterations?.[1].oneLineSummary).toBe('SEO meta too short.')
-    expect(review?.latestFeedbackJson).toEqual({ summary: 'SEO meta too short.' })
+  })
+})
+
+// ---- issue #210 / Slice 4 — per-track draftId routing ----
+
+describe('ReviewEngine — issue #210: per-track draftId', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        const u = String(url)
+        if (u.includes('/api/agents') || u.includes('/api/agent-prompts')) {
+          return { ok: true, json: async () => ({ data: { agents: [] }, error: null }) } as Response
+        }
+        if (u.match(/\/api\/content-drafts\/[^/?]+$/)) {
+          // Echo the requested id back so the engine has a populated draft row.
+          const id = u.match(/\/api\/content-drafts\/([^/?]+)/)![1]
+          return { ok: true, json: async () => ({ data: { id, title: 't', draft_json: {} }, error: null }) } as Response
+        }
+        return { ok: true, json: async () => ({ data: null, error: null }) } as Response
+      }),
+    )
   })
 
-  it('final REVIEW_COMPLETE with score >= 90 appends the approved iteration', async () => {
-    const actor = reachReviewIdle()
-    actor.send({
-      type: 'REVIEW_COMPLETE',
-      result: { score: 60, verdict: 'needs_revision', feedbackJson: { summary: 'Iter 1 issues.' }, iterationCount: 1 },
-    })
-    await vi.waitFor(() => {
-      const v = actor.getSnapshot().value
-      return typeof v === 'object' && 'review' in v
-    })
-    actor.send({ type: 'RESUME' })
-    actor.send({
-      type: 'REVIEW_COMPLETE',
-      result: { score: 78, verdict: 'needs_revision', feedbackJson: { summary: 'Iter 2 issues.' }, iterationCount: 2 },
-    })
-    await vi.waitFor(() => {
-      const v = actor.getSnapshot().value
-      return typeof v === 'object' && 'review' in v
-    })
-    actor.send({ type: 'RESUME' })
-    actor.send({
-      type: 'REVIEW_COMPLETE',
-      result: { score: 92, verdict: 'approved', feedbackJson: { summary: 'All issues resolved, publish ready.' }, iterationCount: 3 },
-    })
-    // Machine transitions to assets on approval
-    expect(actor.getSnapshot().value).toMatchObject({ assets: 'idle' })
-    const review = actor.getSnapshot().context.stageResults.review
-    expect(review?.iterations).toHaveLength(3)
-    expect(review?.iterations?.[0].score).toBe(60)
-    expect(review?.iterations?.[1].score).toBe(78)
-    expect(review?.iterations?.[2].score).toBe(92)
-    expect(review?.iterations?.[2].verdict).toBe('approved')
-    expect(review?.latestFeedbackJson).toEqual({ summary: 'All issues resolved, publish ready.' })
-  })
+  afterEach(() => { vi.restoreAllMocks() })
 
-  it('oneLineSummary falls back to "Score N, verdict" when feedbackJson.summary absent', () => {
-    const actor = reachReviewIdle()
-    actor.send({
-      type: 'REVIEW_COMPLETE',
-      result: { score: 55, verdict: 'needs_revision', feedbackJson: {}, iterationCount: 1 },
-    })
-    const review = actor.getSnapshot().context.stageResults.review
-    expect(review?.iterations?.[0].oneLineSummary).toBe('Score 55, needs_revision')
-  })
+  it('hydrates the draft from the per-track draftId (not the flat shape)', async () => {
+    render(
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        initialStageResults={{
+          // Flat shape points at a wrong id (e.g. canonical / different track).
+          draft: { draftId: 'wrong-flat-id', draftTitle: 'flat', draftContent: '', completedAt: new Date().toISOString() },
+        }}
+        initialStageResultsByTrack={{
+          shared: {},
+          tracks: {
+            't-video': {
+              draft: { draftId: 'video-track-id', draftTitle: 'video', draftContent: '', completedAt: new Date().toISOString() },
+            },
+          },
+        }}
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
+        {/* No `draft` prop → engine self-hydrates via /api/content-drafts/{draftId} */}
+        <ReviewEngine draft={null} trackId="t-video" />
+      </StandaloneProjectContextProvider>,
+    )
 
-  it('oneLineSummary is capped at 120 characters', () => {
-    const longSummary = 'A'.repeat(200)
-    const actor = reachReviewIdle()
-    actor.send({
-      type: 'REVIEW_COMPLETE',
-      result: { score: 70, verdict: 'needs_revision', feedbackJson: { summary: longSummary }, iterationCount: 1 },
+    await waitFor(() => {
+      const fetchMock = vi.mocked(global.fetch)
+      const urls = fetchMock.mock.calls.map((c) => String(c[0]))
+      expect(urls.some((u) => u.includes('/api/content-drafts/video-track-id'))).toBe(true)
     })
-    const review = actor.getSnapshot().context.stageResults.review
-    expect(review?.iterations?.[0].oneLineSummary).toHaveLength(120)
+    const urls = vi.mocked(global.fetch).mock.calls.map((c) => String(c[0]))
+    expect(urls.some((u) => u.includes('/api/content-drafts/wrong-flat-id'))).toBe(false)
   })
 })

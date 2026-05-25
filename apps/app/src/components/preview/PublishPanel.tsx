@@ -49,8 +49,14 @@ export function PublishPanel({
   const [wpConfig, setWpConfig] = useState<WordPressConfig | null>(null);
   const [loadingConfigs, setLoadingConfigs] = useState(true);
 
-  const canPublish = draftStatus === 'approved' && hasAssets;
+  const canPublish = draftStatus === 'approved';
   const isPublished = draftStatus === 'published' || draftStatus === 'scheduled';
+  // "Publish as WP draft" creates a real WordPress post (returning a published_url
+  // + wordpress_post_id) but leaves our content_drafts.status='approved'. Surface
+  // the success banner whenever a WP post exists, regardless of draftStatus.
+  const hasWordPressPost = !!publishedUrl && wordpressPostId != null;
+  const successLabel =
+    draftStatus === 'scheduled' ? 'Scheduled' : draftStatus === 'published' ? 'Published' : 'Draft created in WordPress';
 
   useEffect(() => {
     async function fetchConfig() {
@@ -79,11 +85,16 @@ export function PublishPanel({
         <CardTitle className="text-sm">WordPress Publishing</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {isPublished && publishedUrl && (
-          <div className="rounded-md bg-green-50 dark:bg-green-950 p-3 text-sm">
-            <span className="font-medium">Published!</span>{' '}
+        {hasWordPressPost && (
+          <div
+            data-testid="publish-success"
+            data-url={publishedUrl}
+            className="rounded-md bg-green-50 dark:bg-green-950 p-3 text-sm"
+          >
+            <span className="font-medium">{successLabel}!</span>{' '}
             <a
-              href={publishedUrl}
+              data-testid="publish-success-url"
+              href={publishedUrl ?? '#'}
               target="_blank"
               rel="noopener noreferrer"
               className="underline text-green-700 dark:text-green-300"
@@ -91,30 +102,40 @@ export function PublishPanel({
               View post
             </a>
             {wordpressPostId && (
-              <span className="text-muted-foreground ml-2">(WP #{wordpressPostId})</span>
+              <span
+                data-testid="publish-success-wp-id"
+                data-value={wordpressPostId}
+                className="text-muted-foreground ml-2"
+              >
+                (WP #{wordpressPostId})
+              </span>
             )}
           </div>
         )}
 
         {!canPublish && !isPublished && (
           <p className="text-sm text-muted-foreground">
-            {draftStatus !== 'approved'
-              ? 'Draft must be approved before publishing.'
-              : 'Upload or generate assets before publishing.'}
+            Draft must be approved before publishing.
+          </p>
+        )}
+
+        {canPublish && !isPublished && !hasAssets && (
+          <p className="text-xs text-muted-foreground">
+            No assets attached — post will publish without a featured image.
           </p>
         )}
 
         {(canPublish || isPublished) && (
           <>
             {previewData && (
-              <div className="space-y-3 p-3 rounded-md border bg-muted/30">
+              <div data-testid="publish-summary" className="space-y-3 p-3 rounded-md border bg-muted/30">
                 <p className="text-xs font-medium">Publishing Summary</p>
                 <div className="space-y-1.5 text-xs">
-                  <div><span className="text-muted-foreground">Title:</span> {previewData.seo.title}</div>
-                  <div><span className="text-muted-foreground">Slug:</span> /{previewData.seo.slug}</div>
-                  <div><span className="text-muted-foreground">Images:</span> {previewData.imageCount}</div>
+                  <div><span className="text-muted-foreground">Title:</span> <span data-testid="publish-summary-title">{previewData.seo.title}</span></div>
+                  <div><span className="text-muted-foreground">Slug:</span> /<span data-testid="publish-summary-slug">{previewData.seo.slug}</span></div>
+                  <div><span className="text-muted-foreground">Images:</span> <span data-testid="publish-summary-image-count" data-value={previewData.imageCount}>{previewData.imageCount}</span></div>
                   {previewData.categories.length > 0 && (
-                    <div className="flex items-center gap-1 flex-wrap">
+                    <div data-testid="publish-summary-categories" data-count={previewData.categories.length} className="flex items-center gap-1 flex-wrap">
                       <span className="text-muted-foreground">Categories:</span>
                       {previewData.categories.map((c) => (
                         <Badge key={c} variant="secondary" className="text-[10px]">{c}</Badge>
@@ -122,7 +143,7 @@ export function PublishPanel({
                     </div>
                   )}
                   {previewData.tags.length > 0 && (
-                    <div className="flex items-center gap-1 flex-wrap">
+                    <div data-testid="publish-summary-tags" data-count={previewData.tags.length} className="flex items-center gap-1 flex-wrap">
                       <span className="text-muted-foreground">Tags:</span>
                       {previewData.tags.map((t) => (
                         <Badge key={t} variant="outline" className="text-[10px]">{t}</Badge>
@@ -141,12 +162,17 @@ export function PublishPanel({
                   Loading...
                 </div>
               ) : wpConfig ? (
-                <div className="rounded-md border px-3 py-2 text-sm">
+                <div
+                  data-testid="publish-wp-target"
+                  data-site-url={wpConfig.site_url}
+                  data-username={wpConfig.username}
+                  className="rounded-md border px-3 py-2 text-sm"
+                >
                   {wpConfig.site_url}
                   <span className="text-muted-foreground ml-2">({wpConfig.username})</span>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">
+                <p data-testid="publish-wp-target-missing" className="text-sm text-muted-foreground">
                   No WordPress configured for this channel.{' '}
                   <Link href="/channels" className="underline">Configure it here.</Link>
                 </p>
@@ -155,13 +181,15 @@ export function PublishPanel({
 
             <div className="space-y-2">
               <Label>Publishing Mode</Label>
-              <div className="flex gap-2">
+              <div data-testid="publish-mode-group" data-value={mode} className="flex gap-2">
                 {(['draft', 'publish', 'schedule'] as const).map((m) => (
                   <Button
                     key={m}
                     size="sm"
                     variant={mode === m ? 'default' : 'outline'}
                     onClick={() => setMode(m)}
+                    data-testid={`publish-mode-${m}`}
+                    data-active={mode === m ? 'true' : 'false'}
                   >
                     {m.charAt(0).toUpperCase() + m.slice(1)}
                   </Button>
@@ -173,6 +201,7 @@ export function PublishPanel({
               <div className="space-y-2">
                 <Label>Schedule Date</Label>
                 <Input
+                  data-testid="publish-schedule-date"
                   type="datetime-local"
                   value={scheduledDate}
                   onChange={(e) => setScheduledDate(e.target.value)}
@@ -189,6 +218,7 @@ export function PublishPanel({
                   scheduledDate: mode === 'schedule' ? new Date(scheduledDate).toISOString() : undefined,
                 })
               }
+              data-testid="publish-action-confirm"
             >
               {isPublishing
                 ? 'Publishing...'

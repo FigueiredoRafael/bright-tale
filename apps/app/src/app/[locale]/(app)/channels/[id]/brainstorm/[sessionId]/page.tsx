@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useRouter } from '@/i18n/navigation';
+import { useRouter, Link } from '@/i18n/navigation';
+import { ArrowLeft } from 'lucide-react';
 import { PipelineStages } from '@/components/pipeline/PipelineStages';
 import { BrainstormEngine } from '@/components/engines/BrainstormEngine';
 import { StandaloneEngineHost } from '@/components/engines/StandaloneEngineHost';
@@ -21,6 +22,7 @@ export default function BrainstormSessionPage() {
   const router = useRouter();
   const [session, setSession] = useState<Record<string, unknown> | null>(null);
   const [ideas, setIdeas] = useState<Record<string, unknown>[]>([]);
+  const [pickedDraftId, setPickedDraftId] = useState<string | null>(null);
   const [pipeline, setPipeline] = useState<PipelineCtx>({});
   const [loading, setLoading] = useState(true);
 
@@ -32,6 +34,7 @@ export default function BrainstormSessionPage() {
         if (json.data) {
           setSession(json.data.session);
           setIdeas(json.data.ideas ?? []);
+          setPickedDraftId((json.data.pickedDraftId as string | null) ?? null);
 
           const projectId = (json.data.session as Record<string, unknown>)?.project_id;
           if (projectId) {
@@ -63,6 +66,16 @@ export default function BrainstormSessionPage() {
 
   return (
     <div>
+      {pipeline.projectId ? (
+        <div className="px-6 pt-4">
+          <Link
+            href={`/projects/${pipeline.projectId}?v=2`}
+            className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
+          >
+            <ArrowLeft className="h-3 w-3" /> Back to pipeline view
+          </Link>
+        </div>
+      ) : null}
       <PipelineStages
         currentStep="brainstorm"
         channelId={channelId}
@@ -97,7 +110,7 @@ export default function BrainstormSessionPage() {
             mode="generate"
             initialSession={session}
             initialIdeas={ideas}
-            preSelectedIdeaId={pipeline.ideaId}
+            preSelectedIdeaId={pickedDraftId ?? pipeline.ideaId}
           />
         </StandaloneEngineHost>
       </div>

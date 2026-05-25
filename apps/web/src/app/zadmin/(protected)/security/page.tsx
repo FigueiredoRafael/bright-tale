@@ -13,7 +13,7 @@ export default async function SecurityPage() {
   if (!user || !await isAdminUser(supabase, user.id)) redirect(adminPath('/login'));
 
   const db = createAdminClient();
-  const dbAny = db as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const dbAny = db as any;  
 
   const { data: requests } = await dbAny
     .from('mfa_unlock_requests')

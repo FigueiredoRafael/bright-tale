@@ -9,13 +9,30 @@ import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
 import {
+  getWordPressConfig,
+  upsertWordPressConfig,
+  deleteWordPressConfig,
+  getWordPressCredentials,
+} from '../lib/publishing/wordpress-config.js';
+import {
   createChannelSchema,
   updateChannelSchema,
   listChannelsQuerySchema,
 } from '@brighttale/shared/schemas/channels';
 import { ensureOrgId } from '../lib/orgs.js';
 import { uploadFile } from '../lib/storage.js';
-import { encrypt, decrypt } from '../lib/crypto.js';
+import { decrypt } from '../lib/crypto.js';
+import {
+  resolvePublishTargets,
+  type PublishTarget,
+} from '../lib/pipeline/publish-target-resolver.js';
+import { MEDIA, type Medium } from '@brighttale/shared/pipeline/inputs';
+import {
+  buildConsentUrl,
+  exchangeCode,
+  validateStateParam,
+  encryptTokens,
+} from '../lib/youtube/oauth.js';
 
 /** Helper: get user's org_id */
 async function getOrgId(userId: string): Promise<string> {
@@ -51,19 +68,37 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
 
       const { data: channels, error, count } = await sb
         .from('channels')
-        .select('*, wordpress_configs(id)', { count: 'exact' })
+        .select('*', { count: 'exact' })
         .eq('org_id', orgId)
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
       if (error) throw error;
 
-      const items = (channels ?? []).map(c => {
-        const { wordpress_configs: wpc, ...rest } = c as typeof c & { wordpress_configs: { id: string } | null };
-        return { ...rest, has_wordpress: wpc !== null };
+      // Derive has_wordpress by checking publish_targets for each channel.
+      // We batch-query to avoid N+1: fetch all active wordpress publish_targets
+      // for the channels in this page, then index by channel_id.
+      const channelIds = (channels ?? []).map((c: { id: string }) => c.id);
+      let wpChannelIds = new Set<string>();
+      if (channelIds.length > 0) {
+        const { data: ptRows } = await sb
+          .from('publish_targets')
+          .select('channel_id')
+          .in('channel_id', channelIds)
+          .eq('type', 'wordpress')
+          .eq('is_active', true);
+        wpChannelIds = new Set(
+          (ptRows ?? [])
+            .map((r) => r.channel_id)
+            .filter((id): id is string => id !== null)
+        );
+      }
+
+      const items = (channels ?? []).map((c: { id: string }) => {
+        return { ...c, has_wordpress: wpChannelIds.has(c.id) };
       });
 
-      reply.header('Cache-Control', 'private, max-age=60');
+      reply.header('Cache-Control', 'private, no-store');
       return reply.send({
         data: { items, total: count, page, limit },
         error: null,
@@ -188,6 +223,7 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
           ...(body.modelTier !== undefined && { model_tier: body.modelTier }),
           ...(body.tone !== undefined && { tone: body.tone }),
           ...(body.templateId !== undefined && { template_id: body.templateId }),
+          ...(body.defaultMediaConfig !== undefined && { default_media_config_json: body.defaultMediaConfig as unknown as import('@brighttale/shared/types/database').Json }),
         })
         .eq('id', id)
         .eq('org_id', orgId)
@@ -272,6 +308,105 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   /**
+   * GET /:id/publish-targets — List publish targets for a channel.
+   * Optional ?medium= (blog | video | shorts | podcast) filter.
+   * Excludes credentials_encrypted from the response.
+   */
+  fastify.get<{ Params: { id: string }; Querystring: { medium?: string } }>(
+    '/:id/publish-targets',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        const sb = createServiceClient();
+        if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
+
+        const orgId = await getOrgId(request.userId);
+        const { id } = request.params;
+        const { medium: mediumRaw } = request.query;
+
+        // Validate ?medium= if provided
+        if (mediumRaw !== undefined && !(MEDIA as readonly string[]).includes(mediumRaw)) {
+          throw new ApiError(
+            400,
+            `Invalid medium "${mediumRaw}". Must be one of: ${MEDIA.join(', ')}`,
+            'VALIDATION_ERROR',
+          );
+        }
+
+        // Verify the channel belongs to the caller's org (ownership guard)
+        const { data: channel } = await sb
+          .from('channels')
+          .select('id')
+          .eq('id', id)
+          .eq('org_id', orgId)
+          .single();
+
+        if (!channel) throw new ApiError(404, 'Channel not found', 'CHANNEL_NOT_FOUND');
+
+        // Resolved items before stripping secrets (loose type; secrets stripped below)
+        let rawItems: Array<Record<string, unknown>>;
+
+        if (mediumRaw !== undefined) {
+          // Medium-filtered resolution via resolver
+          const resolved: PublishTarget[] = await resolvePublishTargets(
+            sb,
+            id,
+            orgId,
+            mediumRaw as Medium,
+          );
+          rawItems = resolved as unknown as Array<Record<string, unknown>>;
+        } else {
+          // No medium filter — return all active targets for this channel/org
+          const scopeFilter = `channel_id.eq.${id},and(org_id.eq.${orgId},channel_id.is.null)`;
+          const { data: rows, error: rowsError } = await sb
+            .from('publish_targets')
+            .select(
+              'id, channel_id, org_id, type, display_name, config_json, is_active, created_at, updated_at',
+            )
+            .or(scopeFilter)
+            .eq('is_active', true);
+
+          if (rowsError) throw rowsError;
+          rawItems = (rows ?? []).map(
+            (r: {
+              id: string;
+              channel_id: string | null;
+              org_id: string | null;
+              type: string;
+              display_name: string;
+              config_json: unknown;
+              is_active: boolean;
+              created_at: string;
+              updated_at: string;
+            }) => ({
+              id: r.id,
+              channelId: r.channel_id,
+              orgId: r.org_id,
+              type: r.type,
+              displayName: r.display_name,
+              configJson: r.config_json,
+              isActive: r.is_active,
+              createdAt: r.created_at,
+              updatedAt: r.updated_at,
+            }),
+          );
+        }
+
+        // Explicitly strip credentials_encrypted (security: never expose ciphertext)
+        const safeItems = rawItems.map((target) => {
+          const t = { ...target };
+          delete t['credentials_encrypted'];
+          return t;
+        });
+
+        return reply.send({ data: { items: safeItems }, error: null });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  /**
    * DELETE /:id — Delete a channel
    */
   fastify.delete<{ Params: { id: string } }>('/:id', { preHandler: [authenticate] }, async (request, reply) => {
@@ -309,10 +444,20 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
       const { data: channel } = await sb.from('channels').select('id').eq('id', id).eq('org_id', orgId).single();
       if (!channel) throw new ApiError(404, 'Channel not found', 'CHANNEL_NOT_FOUND');
 
-      const { data: config } = await sb.from('wordpress_configs').select('id, site_url, username, created_at, updated_at').eq('channel_id', id).maybeSingle();
+      const config = await getWordPressConfig(id, sb);
       if (!config) throw new ApiError(404, 'No WordPress config on this channel', 'WP_CONFIG_NOT_FOUND');
 
-      return reply.send({ data: { ...config, password: '••••••••' }, error: null });
+      return reply.send({
+        data: {
+          id: config.id,
+          site_url: config.siteUrl,
+          username: config.username,
+          created_at: config.createdAt,
+          updated_at: config.updatedAt,
+          password: '••••••••',
+        },
+        error: null,
+      });
     } catch (error) {
       return sendError(reply, error);
     }
@@ -336,18 +481,22 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
         throw new ApiError(400, 'site_url, username, and password are required', 'VALIDATION_ERROR');
       }
 
-      const { data: config, error } = await sb
-        .from('wordpress_configs')
-        .insert({ channel_id: id, site_url: body.site_url.replace(/\/$/, ''), username: body.username, password: encrypt(body.password) })
-        .select('id, site_url, username, created_at, updated_at')
-        .single();
+      await upsertWordPressConfig(id, { siteUrl: body.site_url, username: body.username, password: body.password }, sb);
 
-      if (error) {
-        if (error.code === '23505') throw new ApiError(409, 'This channel already has WordPress configured', 'WP_CONFIG_EXISTS');
-        throw error;
-      }
+      const config = await getWordPressConfig(id, sb);
+      if (!config) throw new ApiError(500, 'WordPress config not found after write', 'INTERNAL_ERROR');
 
-      return reply.status(201).send({ data: { ...config, password: '••••••••' }, error: null });
+      return reply.status(201).send({
+        data: {
+          id: config.id,
+          site_url: config.siteUrl,
+          username: config.username,
+          created_at: config.createdAt,
+          updated_at: config.updatedAt,
+          password: '••••••••',
+        },
+        error: null,
+      });
     } catch (error) {
       return sendError(reply, error);
     }
@@ -367,22 +516,35 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
       if (!channel) throw new ApiError(404, 'Channel not found', 'CHANNEL_NOT_FOUND');
 
       const body = request.body as { site_url?: string; username?: string; password?: string };
-      const updates = {} as any;
-      if (body.site_url) updates.site_url = body.site_url.replace(/\/$/, '');
-      if (body.username) updates.username = body.username;
-      if (body.password) updates.password = encrypt(body.password);
 
-      const { data: config, error } = await sb
-        .from('wordpress_configs')
-        .update(updates)
-        .eq('channel_id', id)
-        .select('id, site_url, username, created_at, updated_at')
-        .maybeSingle();
+      const existing = await getWordPressConfig(id, sb);
+      if (!existing) throw new ApiError(404, 'No WordPress config on this channel', 'WP_CONFIG_NOT_FOUND');
 
-      if (error) throw error;
-      if (!config) throw new ApiError(404, 'No WordPress config on this channel', 'WP_CONFIG_NOT_FOUND');
+      // Merge partial updates on top of current config, then upsert both tables
+      await upsertWordPressConfig(id, {
+        siteUrl: body.site_url ?? existing.siteUrl,
+        username: body.username ?? existing.username,
+        // If password not supplied, re-use the existing encrypted value as plaintext won't be
+        // available — caller must supply password to change it; otherwise it's preserved via
+        // a fresh read-then-write in upsertWordPressConfig which encrypts whatever is passed.
+        // We pass a sentinel flag: when password is absent we preserve the stored encrypted value.
+        password: body.password ?? decrypt(existing.credentialsEncrypted),
+      }, sb);
 
-      return reply.send({ data: { ...config, password: '••••••••' }, error: null });
+      const updated = await getWordPressConfig(id, sb);
+      if (!updated) throw new ApiError(500, 'WordPress config not found after update', 'INTERNAL_ERROR');
+
+      return reply.send({
+        data: {
+          id: updated.id,
+          site_url: updated.siteUrl,
+          username: updated.username,
+          created_at: updated.createdAt,
+          updated_at: updated.updatedAt,
+          password: '••••••••',
+        },
+        error: null,
+      });
     } catch (error) {
       return sendError(reply, error);
     }
@@ -401,13 +563,126 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
       const { data: channel } = await sb.from('channels').select('id').eq('id', id).eq('org_id', orgId).single();
       if (!channel) throw new ApiError(404, 'Channel not found', 'CHANNEL_NOT_FOUND');
 
-      await sb.from('wordpress_configs').delete().eq('channel_id', id);
+      await deleteWordPressConfig(id, sb);
 
       return reply.send({ data: { deleted: true }, error: null });
     } catch (error) {
       return sendError(reply, error);
     }
   });
+
+  /**
+   * POST /:id/youtube/connect — Begin YouTube OAuth flow.
+   * Returns { data: { url } } — caller redirects the user to that URL.
+   */
+  fastify.post<{ Params: { id: string } }>('/:id/youtube/connect', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
+
+      const orgId = await getOrgId(request.userId);
+      const { id } = request.params;
+
+      const { data: channel } = await sb.from('channels').select('id').eq('id', id).eq('org_id', orgId).single();
+      if (!channel) throw new ApiError(404, 'Channel not found', 'CHANNEL_NOT_FOUND');
+
+      const url = buildConsentUrl(id);
+      return reply.send({ data: { url }, error: null });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * GET /:id/youtube/callback — Handle Google OAuth callback.
+   * Exchanges code for tokens, encrypts, upserts publish_targets row.
+   */
+  fastify.get<{ Params: { id: string }; Querystring: { code?: string; state?: string; error?: string } }>(
+    '/:id/youtube/callback',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        const sb = createServiceClient();
+        if (!request.userId) throw new ApiError(401, 'User not authenticated', 'UNAUTHORIZED');
+
+        const orgId = await getOrgId(request.userId);
+        const { id } = request.params;
+        const { code, state, error: oauthError } = request.query;
+
+        // Check for OAuth-level errors from Google (e.g. user denied consent)
+        if (oauthError) {
+          throw new ApiError(400, `OAuth error: ${oauthError}`, 'OAUTH_ERROR');
+        }
+
+        if (!code) {
+          throw new ApiError(400, 'code query parameter is required', 'MISSING_CODE');
+        }
+
+        // Validate state to prevent CSRF / channel mismatch
+        if (!state || !validateStateParam(state, id)) {
+          throw new ApiError(400, 'State parameter is invalid or does not match channel', 'STATE_MISMATCH');
+        }
+
+        // Verify channel ownership
+        const { data: channel } = await sb.from('channels').select('id').eq('id', id).eq('org_id', orgId).single();
+        if (!channel) throw new ApiError(404, 'Channel not found', 'CHANNEL_NOT_FOUND');
+
+        // Exchange the authorization code for tokens
+        const tokens = await exchangeCode(code);
+
+        // We need a stable row id for AAD — upsert first with a placeholder, then update.
+        // Simpler: upsert with a temporary placeholder credentials_encrypted, get the id, re-encrypt.
+        // Actually: we upsert with a generated display_name and update credentials_encrypted in-place.
+        // To avoid two round-trips: upsert with display_name only first, then update with encrypted creds.
+
+        // Step 1: upsert the publish_targets row (credentials will be added after we have the row id)
+        const { data: ptRow, error: upsertError } = await sb
+          .from('publish_targets')
+          .upsert(
+            {
+              channel_id: id,
+              type: 'youtube',
+              display_name: 'YouTube',
+              is_active: true,
+              // Temporarily store a placeholder — overwritten below once we have the row id
+              credentials_encrypted: '__pending__',
+            },
+            { onConflict: 'channel_id,type' },
+          )
+          .select()
+          .single();
+
+        if (upsertError || !ptRow) {
+          throw new ApiError(500, 'Failed to persist YouTube publish target', 'DB_ERROR');
+        }
+
+        // Step 2: encrypt tokens with the real row id as AAD
+        const encryptedCreds = encryptTokens(tokens, ptRow.id as string);
+
+        // Step 3: update with the properly-encrypted credentials
+        await sb
+          .from('publish_targets')
+          .update({ credentials_encrypted: encryptedCreds })
+          .eq('id', ptRow.id as string);
+
+        // Return the target without credentials
+        const safeTarget = {
+          id: ptRow.id,
+          channelId: ptRow.channel_id,
+          type: ptRow.type,
+          displayName: ptRow.display_name,
+          configJson: ptRow.config_json,
+          isActive: ptRow.is_active,
+          createdAt: ptRow.created_at,
+          updatedAt: ptRow.updated_at,
+        };
+
+        return reply.send({ data: safeTarget, error: null });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
 
   /**
    * POST /:id/wordpress/test — Test WP connection
@@ -422,12 +697,12 @@ export async function channelsRoutes(fastify: FastifyInstance): Promise<void> {
       const { data: channel } = await sb.from('channels').select('id').eq('id', id).eq('org_id', orgId).single();
       if (!channel) throw new ApiError(404, 'Channel not found', 'CHANNEL_NOT_FOUND');
 
-      const { data: config } = await sb.from('wordpress_configs').select('site_url, username, password').eq('channel_id', id).maybeSingle();
-      if (!config) throw new ApiError(404, 'No WordPress config on this channel', 'WP_CONFIG_NOT_FOUND');
+      const creds = await getWordPressCredentials(id, sb);
+      if (!creds) throw new ApiError(404, 'No WordPress config on this channel', 'WP_CONFIG_NOT_FOUND');
 
-      const auth = Buffer.from(`${config.username}:${decrypt(config.password)}`).toString('base64');
+      const auth = Buffer.from(`${creds.username}:${creds.password}`).toString('base64');
       try {
-        const res = await fetch(`${config.site_url.replace(/\/$/, '')}/wp-json/wp/v2/users/me`, {
+        const res = await fetch(`${creds.siteUrl.replace(/\/$/, '')}/wp-json/wp/v2/users/me`, {
           headers: { Authorization: `Basic ${auth}` },
           signal: AbortSignal.timeout(10000),
         });

@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import Fastify, { FastifyInstance } from 'fastify';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 const mockChain: Record<string, any> = {};
 ['from', 'select', 'insert', 'update', 'eq', 'order', 'limit', 'in'].forEach((m) => {
   mockChain[m] = vi.fn().mockReturnValue(mockChain);
@@ -14,7 +14,7 @@ mockChain.maybeSingle = vi.fn();
 
 vi.mock('@/lib/supabase', () => ({ createServiceClient: () => mockChain }));
 vi.mock('@/middleware/authenticate', () => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   authenticate: vi.fn(async (req: any, reply: any) => {
     const key = req.headers['x-internal-key'];
     if (!key || key !== process.env.INTERNAL_API_KEY) {
@@ -24,7 +24,7 @@ vi.mock('@/middleware/authenticate', () => ({
   }),
 }));
 vi.mock('@/lib/api/fastify-errors', () => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   sendError: vi.fn(async (reply: any, error: any) => {
     const status = error?.status ?? error?.statusCode;
     if (status) return reply.status(status).send({ data: null, error: { message: error.message, code: error.code } });

@@ -11,6 +11,11 @@ import { ApiError } from '../lib/api/errors.js';
 import { createKey, getKeyByToken, consumeKey } from '../lib/idempotency.js';
 import { ENABLE_BULK_LIMITS, MAX_BULK_CREATE } from '../lib/config.js';
 import { createProjectsFromDiscovery } from '../lib/queries/discovery.js';
+import { assertProjectOwner } from '../lib/projects/ownership.js';
+import { buildGraph } from '../lib/pipeline/graph-builder.js';
+import type { RunNode } from '../lib/pipeline/graph-builder.js';
+import type { Track } from '../lib/pipeline/fan-out-planner.js';
+import type { PublishTarget } from '../lib/pipeline/publish-target-resolver.js';
 import {
   createProjectSchema,
   listProjectsQuerySchema,
@@ -18,8 +23,127 @@ import {
   bulkOperationSchema,
   markWinnerSchema,
 } from '@brighttale/shared/schemas/projects';
+import type { MediaConfig } from '@brighttale/shared/schemas/projects';
 import { bulkCreateSchema } from '@brighttale/shared/schemas/discovery';
 import type { Json } from '@brighttale/shared/types/database';
+import type { Medium } from '@brighttale/shared/pipeline/inputs';
+import { isAutopilotMode, resumeProject, requestStageRun } from '../lib/pipeline/orchestrator.js';
+import { markAwaitingUser } from '../lib/pipeline/stage-run-writer.js';
+
+/**
+ * Pause transition (paused: false → true): stamp the currently-running
+ * stage_run row with awaiting_reason='user_paused' so the UI banner can
+ * surface why the pipeline is parked and the orchestrator can resume from
+ * a known state. No-op if no stage is mid-flight.
+ */
+ 
+async function stampUserPausedOnActiveStage(sb: any, projectId: string): Promise<void> {
+  const { data: active } = await sb
+    .from('stage_runs')
+    .select('id, stage, track_id, publish_target_id')
+    .eq('project_id', projectId)
+    .eq('status', 'running')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!active) return;
+  await markAwaitingUser(sb, active.id as string, {
+    projectId,
+    stage: active.stage as string,
+    trackId: (active.track_id as string | null) ?? null,
+    publishTargetId: (active.publish_target_id as string | null) ?? null,
+    awaitingReason: 'user_paused',
+  });
+}
+
+// ─── Track shape returned from the DB ────────────────────────────────────────
+interface TrackRow {
+  id: string;
+  project_id: string;
+  medium: Medium;
+  status: 'active' | 'aborted' | 'completed';
+  paused: boolean;
+  autopilot_config_json: unknown;
+  created_at: string;
+  updated_at: string;
+}
+
+function rowToTrack(row: TrackRow) {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    medium: row.medium,
+    status: row.status,
+    paused: Boolean(row.paused),
+    autopilotConfigJson: row.autopilot_config_json ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/**
+ * Insert one track per medium under projectId.
+ * Uses a compensating delete on the project if any track insert fails
+ * (Supabase JS client does not expose true transactions).
+ *
+ * Returns the inserted track objects or throws ApiError.
+ */
+/**
+ * Deep-merge an incoming `pipelineStateJson` patch into the existing row.
+ *
+ * `stageResults` is the only nested field the engines update incrementally:
+ * each engine calls signalStageComplete with `{ stageResults: { [stage]: {...} } }`,
+ * and a naive replace wipes out the prior stages. We merge that key by stage,
+ * but leave all other top-level keys as full replacements (the engines that
+ * write those — currentStage, autoConfig — always send the complete value).
+ */
+function mergePipelineStateJson(
+  existing: Record<string, unknown> | null | undefined,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const base = (existing ?? {}) as Record<string, unknown>;
+  const merged: Record<string, unknown> = { ...base, ...patch };
+  if (patch.stageResults && typeof patch.stageResults === 'object') {
+    merged.stageResults = {
+      ...((base.stageResults as Record<string, unknown> | undefined) ?? {}),
+      ...(patch.stageResults as Record<string, unknown>),
+    };
+  }
+  return merged;
+}
+
+async function insertTracksForProject(
+  sb: any,  
+  projectId: string,
+  media: Medium[],
+  mediaConfig: Record<string, MediaConfig> | undefined,
+): Promise<ReturnType<typeof rowToTrack>[]> {
+  const tracks: ReturnType<typeof rowToTrack>[] = [];
+
+  for (const medium of media) {
+    const config = mediaConfig?.[medium];
+    const { data: inserted, error: insertErr } = await sb
+      .from('tracks')
+      .insert({
+        project_id: projectId,
+        medium,
+        autopilot_config_json: (config?.autopilotConfigJson as Json | undefined) ?? null,
+      })
+      .select('*')
+      .single();
+
+    if (insertErr ?? !inserted) {
+      // Compensating rollback: delete the project (cascades to any tracks
+      // already inserted since tracks.project_id has ON DELETE CASCADE).
+      await sb.from('projects').delete().eq('id', projectId);
+      throw new ApiError(500, 'Failed to create track', 'TRACK_INSERT_FAILED');
+    }
+
+    tracks.push(rowToTrack(inserted as TrackRow));
+  }
+
+  return tracks;
+}
 
 export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
   /**
@@ -124,7 +248,63 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
         }
       }
 
-      return reply.status(201).send({ data: project, error: null });
+      // T2.14: Insert one track per medium. Defaults to ['blog'] for backward compat.
+      const media: Medium[] = (data.media as Medium[] | undefined) ?? ['blog'];
+      const tracks = await insertTracksForProject(
+        sb,
+        project.id,
+        media,
+        data.mediaConfig as Record<string, MediaConfig> | undefined,
+      );
+
+      // Auto-dispatch the brainstorm stage so the Focus view has something to
+      // render the moment the user lands on /projects/[id]. Skipped when
+      // seed_idea_id pre-completes brainstorm (pipeline_state_json above
+      // already advances current_stage to 'research'). Best-effort: a
+      // dispatch failure must not roll back project creation.
+      if (!data.seed_idea_id && request.userId) {
+        const bs = (data.autopilotConfigJson as Record<string, unknown> | undefined)?.brainstorm as
+          | Record<string, unknown>
+          | undefined;
+        const mode = (bs?.mode as 'topic_driven' | 'reference_guided' | undefined) ?? 'topic_driven';
+        const topic = typeof bs?.topic === 'string' ? bs.topic.trim() : '';
+        const referenceUrl = typeof bs?.referenceUrl === 'string' ? bs.referenceUrl.trim() : '';
+        const niche = typeof bs?.niche === 'string' ? bs.niche.trim() : '';
+        const tone = typeof bs?.tone === 'string' ? bs.tone.trim() : '';
+        const audience = typeof bs?.audience === 'string' ? bs.audience.trim() : '';
+        const goal = typeof bs?.goal === 'string' ? bs.goal.trim() : '';
+        const constraints = typeof bs?.constraints === 'string' ? bs.constraints.trim() : '';
+
+        const brainstormInput: Record<string, unknown> = { mode };
+        if (topic) brainstormInput.topic = topic;
+        if (referenceUrl) brainstormInput.referenceUrl = referenceUrl;
+        if (niche) brainstormInput.niche = niche;
+        if (tone) brainstormInput.tone = tone;
+        if (audience) brainstormInput.audience = audience;
+        if (goal) brainstormInput.goal = goal;
+        if (constraints) brainstormInput.constraints = constraints;
+
+        // Carry the wizard's per-stage provider/model overrides into the
+        // dispatcher input. AutopilotConfig uses verbose `providerOverride`/
+        // `modelOverride` field names; the dispatcher reads `provider`/`model`.
+        // Without this remap the wizard's choice is silently dropped and every
+        // brainstorm run falls back to the admin recommended values.
+        const providerOverride = typeof bs?.providerOverride === 'string' ? bs.providerOverride : '';
+        const modelOverride = typeof bs?.modelOverride === 'string' ? bs.modelOverride : '';
+        if (providerOverride) brainstormInput.provider = providerOverride;
+        if (modelOverride) brainstormInput.model = modelOverride;
+
+        try {
+          await requestStageRun(project.id, 'brainstorm', brainstormInput, request.userId);
+        } catch (dispatchErr) {
+          request.log.warn(
+            { err: dispatchErr, projectId: project.id },
+            'Failed to auto-dispatch brainstorm stage run',
+          );
+        }
+      }
+
+      return reply.status(201).send({ data: { ...project, tracks }, error: null });
     } catch (error) {
       return sendError(reply, error);
     }
@@ -244,6 +424,17 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       const { id } = request.params as { id: string };
       const data = updateProjectSchema.parse(request.body);
 
+      // Reject legacy nested mode/paused writes — they used to live in
+      // pipeline_state_json before Slice 12 promoted them to columns.
+      const psj = data.pipelineStateJson as Record<string, unknown> | undefined;
+      if (psj && (Object.prototype.hasOwnProperty.call(psj, 'mode') || Object.prototype.hasOwnProperty.call(psj, 'paused'))) {
+        throw new ApiError(
+          400,
+          'Writing mode/paused via pipelineStateJson is deprecated — use the top-level `mode` and `paused` fields instead.',
+          'DEPRECATED_FIELD',
+        );
+      }
+
       // Check if project exists
       const { data: existing, error: findErr } = await sb
         .from('projects')
@@ -351,12 +542,17 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       if (data.research_id !== undefined) updateData.research_id = data.research_id;
       if (data.current_stage) updateData.current_stage = data.current_stage;
       if (data.mode !== undefined) updateData.mode = data.mode;
+      if (data.paused !== undefined) updateData.paused = data.paused;
       if (data.status) updateData.status = data.status;
       if (data.winner !== undefined) updateData.winner = data.winner;
       if (data.completed_stages !== undefined)
         updateData.completed_stages = data.completed_stages;
-      if (data.pipelineStateJson !== undefined)
-        updateData.pipeline_state_json = data.pipelineStateJson;
+      if (data.pipelineStateJson !== undefined) {
+        updateData.pipeline_state_json = mergePipelineStateJson(
+          existing.pipeline_state_json as Record<string, unknown> | null | undefined,
+          data.pipelineStateJson as Record<string, unknown>,
+        );
+      }
       if (data.channelId !== undefined)
         updateData.channel_id = data.channelId;
 
@@ -368,6 +564,28 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
         .single();
 
       if (error) throw error;
+
+      // Pause transition (false → true): stamp the currently-running stage_run
+      // with awaiting_reason='user_paused' so the UI banner can read data-reason
+      // and the orchestrator resumes from a known parked state. No-op if no
+      // stage is mid-flight.
+      const becamePaused = data.paused === true && existing.paused !== true;
+      if (becamePaused) {
+        await stampUserPausedOnActiveStage(sb, id);
+      }
+
+      // If the update flipped the project into an autopilot-eligible state
+      // (mode → autopilot/legacy-autopilot OR paused → false), re-evaluate
+      // the pipeline so the orchestrator picks up wherever it left off.
+      const becameAutopilot =
+        data.mode !== undefined &&
+        isAutopilotMode(data.mode as string | null) &&
+        !isAutopilotMode(existing.mode as string | null);
+      const becameUnpaused =
+        data.paused === false && existing.paused === true;
+      if (becameAutopilot || becameUnpaused) {
+        await resumeProject(id);
+      }
 
       return reply.send({ data: project, error: null });
     } catch (error) {
@@ -383,6 +601,17 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       const sb = createServiceClient();
       const { id } = request.params as { id: string };
       const data = updateProjectSchema.parse(request.body);
+
+      // Reject legacy nested mode/paused writes — they used to live in
+      // pipeline_state_json before Slice 12 promoted them to columns.
+      const psj = data.pipelineStateJson as Record<string, unknown> | undefined;
+      if (psj && (Object.prototype.hasOwnProperty.call(psj, 'mode') || Object.prototype.hasOwnProperty.call(psj, 'paused'))) {
+        throw new ApiError(
+          400,
+          'Writing mode/paused via pipelineStateJson is deprecated — use the top-level `mode` and `paused` fields instead.',
+          'DEPRECATED_FIELD',
+        );
+      }
 
       // Check if project exists
       const { data: existing, error: findErr } = await sb
@@ -485,12 +714,17 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       if (data.research_id !== undefined) updateData.research_id = data.research_id;
       if (data.current_stage) updateData.current_stage = data.current_stage;
       if (data.mode !== undefined) updateData.mode = data.mode;
+      if (data.paused !== undefined) updateData.paused = data.paused;
       if (data.status) updateData.status = data.status;
       if (data.winner !== undefined) updateData.winner = data.winner;
       if (data.completed_stages !== undefined)
         updateData.completed_stages = data.completed_stages;
-      if (data.pipelineStateJson !== undefined)
-        updateData.pipeline_state_json = data.pipelineStateJson;
+      if (data.pipelineStateJson !== undefined) {
+        updateData.pipeline_state_json = mergePipelineStateJson(
+          existing.pipeline_state_json as Record<string, unknown> | null | undefined,
+          data.pipelineStateJson as Record<string, unknown>,
+        );
+      }
 
       const { data: project, error } = await sb
         .from('projects')
@@ -500,6 +734,28 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
         .single();
 
       if (error) throw error;
+
+      // Pause transition (false → true): stamp the currently-running stage_run
+      // with awaiting_reason='user_paused' so the UI banner can read data-reason
+      // and the orchestrator resumes from a known parked state. No-op if no
+      // stage is mid-flight.
+      const becamePaused = data.paused === true && existing.paused !== true;
+      if (becamePaused) {
+        await stampUserPausedOnActiveStage(sb, id);
+      }
+
+      // If the update flipped the project into an autopilot-eligible state
+      // (mode → autopilot/legacy-autopilot OR paused → false), re-evaluate
+      // the pipeline so the orchestrator picks up wherever it left off.
+      const becameAutopilot =
+        data.mode !== undefined &&
+        isAutopilotMode(data.mode as string | null) &&
+        !isAutopilotMode(existing.mode as string | null);
+      const becameUnpaused =
+        data.paused === false && existing.paused === true;
+      if (becameAutopilot || becameUnpaused) {
+        await resumeProject(id);
+      }
 
       return reply.send({ data: project, error: null });
     } catch (error) {
@@ -951,6 +1207,120 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
         },
         error: null,
       });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  /**
+   * GET /:id/graph — Full DAG (nodes + edges) for the Graph view (T2.12).
+   *
+   * Loads all stage_runs, tracks, and publish_targets for the project in
+   * parallel, passes them through `buildGraph`, and returns the result in the
+   * standard `{ data, error }` envelope.
+   *
+   * The ETag is derived from the node and edge counts so the client can skip
+   * a re-render when the graph shape hasn't changed (lightweight; a
+   * content-hash would require serialisation on every request).
+   */
+  fastify.get('/:id/graph', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const sb = createServiceClient();
+      const { id } = request.params as { id: string };
+
+      // 1. Ownership guard — must precede any data reads.
+      await assertProjectOwner(id, request.userId ?? '', sb);
+
+      // 2. Verify project exists (assertProjectOwner already throws 404, but
+      //    we need the row to confirm it's a real project before fetching runs).
+      const { data: project, error: projErr } = await sb
+        .from('projects')
+        .select('id')
+        .eq('id', id)
+        .maybeSingle();
+      if (projErr) throw projErr;
+      if (!project) throw new ApiError(404, 'Project not found', 'NOT_FOUND');
+
+      // 3. Load stage_runs and tracks in parallel.
+      const [stageRunsResult, tracksResult] = await Promise.all([
+        sb
+          .from('stage_runs')
+          .select('id, stage, status, track_id, publish_target_id, attempt_no')
+          .eq('project_id', id)
+          .order('created_at', { ascending: true }),
+        sb
+          .from('tracks')
+          .select('id, project_id, medium, status, paused, autopilot_config_json')
+          .eq('project_id', id)
+          .order('created_at', { ascending: true }),
+      ]);
+
+      if (stageRunsResult.error) throw stageRunsResult.error;
+      if (tracksResult.error) throw tracksResult.error;
+
+      // 4. Map DB rows to graph-builder input types.
+      const stageRuns: RunNode[] = (stageRunsResult.data ?? []).map(
+        (r: Record<string, unknown>) => ({
+          id: r.id as string,
+          stage: r.stage as RunNode['stage'],
+          status: r.status as RunNode['status'],
+          trackId: (r.track_id as string | null) ?? null,
+          publishTargetId: (r.publish_target_id as string | null) ?? null,
+          attemptNo: r.attempt_no as number,
+        }),
+      );
+
+      const tracks: Track[] = (tracksResult.data ?? []).map(
+        (r: Record<string, unknown>) => ({
+          id: r.id as string,
+          projectId: r.project_id as string,
+          medium: r.medium as Track['medium'],
+          status: r.status as Track['status'],
+          paused: Boolean(r.paused),
+          autopilotConfigJson: r.autopilot_config_json ?? undefined,
+        }),
+      );
+
+      // 5. Load publish_targets referenced by stage_runs. The publish_targets
+      //    table has no project_id column — it is scoped by channel/org.
+      //    We collect the distinct IDs referenced in stage_runs and load only
+      //    those rows so the graph-builder can group fan-out edges correctly.
+      const publishTargetIds = [
+        ...new Set(
+          stageRuns
+            .map((r) => r.publishTargetId)
+            .filter((tid): tid is string => tid !== null),
+        ),
+      ];
+
+      let publishTargets: PublishTarget[] = [];
+      if (publishTargetIds.length > 0) {
+        const { data: ptRows, error: ptErr } = await sb
+          .from('publish_targets')
+          .select('id, channel_id, org_id, type, display_name, config_json, is_active, created_at, updated_at')
+          .in('id', publishTargetIds);
+        if (ptErr) throw ptErr;
+        publishTargets = (ptRows ?? []).map((r: Record<string, unknown>) => ({
+          id: r.id as string,
+          channelId: (r.channel_id as string | null) ?? null,
+          orgId: (r.org_id as string | null) ?? null,
+          type: r.type as PublishTarget['type'],
+          displayName: r.display_name as string,
+          configJson: (r.config_json as Record<string, unknown> | null) ?? null,
+          isActive: Boolean(r.is_active),
+          createdAt: r.created_at as string,
+          updatedAt: r.updated_at as string,
+        }));
+      }
+
+      // 6. Build the DAG.
+      const graph = buildGraph({ stageRuns, tracks, publishTargets });
+
+      // 7. ETag — lightweight fingerprint; avoids re-serialisation on no-change.
+      const etag = `"${graph.nodes.length}n${graph.edges.length}e"`;
+      reply.header('ETag', etag);
+
+      return reply.send({ data: graph, error: null });
     } catch (error) {
       return sendError(reply, error);
     }

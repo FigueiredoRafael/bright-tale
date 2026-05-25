@@ -24,6 +24,11 @@ import {
   blogProductionSettingsSchema,
   reviseSchema,
 } from "@brighttale/shared/schemas/pipeline";
+import {
+  deriveDraftRequestSchema,
+  assetSettingsSchema,
+} from "@brighttale/shared/schemas/content-drafts";
+import { deriveDraft } from "../lib/content-drafts/derive.js";
 import { inngest } from "../jobs/client.js";
 import { emitJobEvent } from "../jobs/emitter.js";
 import {
@@ -38,6 +43,12 @@ import {
 } from "../lib/personas.js";
 import { validateProducedDraft } from "../lib/ai/validators/index.js";
 import { buildReviewMessage } from "../lib/ai/prompts/review.js";
+import {
+  computeRubricScore,
+  deriveVerdictFromScore,
+  extractRubricEvaluation,
+  getRubricForType,
+} from "../lib/ai/scoring/computeRubricScore.js";
 import { buildAssetsMessage } from "../lib/ai/prompts/assets.js";
 import {
   loadIdeaContext,
@@ -47,6 +58,9 @@ import { logAiUsage } from "../lib/axiom.js";
 import { deriveTier } from "@brighttale/shared/utils/reviewTierCompat";
 import { loadCreditSettings } from "../lib/credit-settings.js";
 import { calculateDraftCost } from "../lib/calculate-draft-cost.js";
+import { getVoiceProvider } from "../lib/voice/index.js";
+import { mapVideoOutputToShortsInput } from "@brighttale/shared/mappers/video-to-shorts";
+import type { CanonicalCore, VideoOutput } from "@brighttale/shared/types/agents";
 
 
 const createSchema = z.object({
@@ -69,6 +83,48 @@ const providerOverrideSchema = z.object({
   modelTier: z.string().optional(),
   productionParams: z.record(z.unknown()).optional(),
 });
+
+const synthesizeDraftSchema = z.object({
+  voiceId: z.string().optional(),
+  provider: z.enum(["elevenlabs", "openai"]).optional(),
+  speed: z.number().min(0.5).max(2).optional(),
+  format: z.enum(["mp3", "wav"]).default("mp3"),
+  style: z.string().optional(),
+});
+
+/**
+ * Splits a long script into chunks ≤ maxChars at sentence boundaries.
+ * Falls back to hard-cut on whitespace when a single sentence exceeds the
+ * limit. Output preserves whitespace between sentences.
+ */
+function chunkTeleprompter(text: string, maxChars = 3800): string[] {
+  if (text.length <= maxChars) return [text];
+  const sentences = text.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) ?? [text];
+  const chunks: string[] = [];
+  let current = "";
+  for (const s of sentences) {
+    if ((current + s).length > maxChars) {
+      if (current) chunks.push(current.trim());
+      if (s.length > maxChars) {
+        // Single sentence longer than the cap — hard split on whitespace.
+        let remaining = s;
+        while (remaining.length > maxChars) {
+          const cut = remaining.lastIndexOf(" ", maxChars);
+          const at = cut > maxChars / 2 ? cut : maxChars;
+          chunks.push(remaining.slice(0, at).trim());
+          remaining = remaining.slice(at);
+        }
+        current = remaining;
+      } else {
+        current = s;
+      }
+    } else {
+      current += s;
+    }
+  }
+  if (current.trim()) chunks.push(current.trim());
+  return chunks;
+}
 
 const updateSchema = z.object({
   title: z.string().optional(),
@@ -93,6 +149,8 @@ const updateSchema = z.object({
   scheduledAt: z.string().datetime().nullable().optional(),
   publishedAt: z.string().datetime().nullable().optional(),
   publishedUrl: z.string().url().nullable().optional(),
+  /** S6 — image-mode persistence: persists into draft_json.assetSettings */
+  assetSettings: assetSettingsSchema.optional(),
 });
 
 async function getOrgId(userId: string): Promise<string> {
@@ -445,6 +503,28 @@ export async function contentDraftsRoutes(
         if (body.publishedUrl !== undefined)
           update.published_url = body.publishedUrl;
 
+        // S6 — assetSettings: merge into draft_json.assetSettings.
+        // If draftJson was explicitly provided it takes precedence; otherwise
+        // we load the current draft_json and patch assetSettings into it.
+        if (body.assetSettings !== undefined) {
+          if (body.draftJson !== undefined) {
+            // Caller provided explicit draftJson — inject assetSettings into it
+            update.draft_json = {
+              ...(body.draftJson as Record<string, unknown>),
+              assetSettings: body.assetSettings,
+            };
+          } else {
+            // Load current draft_json and merge assetSettings
+            const existing = await loadDraft(id);
+            const existingDraftJson =
+              (existing.draft_json as Record<string, unknown> | null) ?? {};
+            update.draft_json = {
+              ...existingDraftJson,
+              assetSettings: body.assetSettings,
+            };
+          }
+        }
+
         const { data, error } = await (
           sb.from("content_drafts") as unknown as {
             update: (row: Record<string, unknown>) => {
@@ -486,7 +566,20 @@ export async function contentDraftsRoutes(
         const { id } = request.params as { id: string };
         const override = providerOverrideSchema.parse(request.body ?? {});
         const draft = (await loadDraft(id)) as Record<string, unknown>;
-        const orgId = await getOrgId(request.userId);
+        // Ownership guard: /generate overwrites canonical_core_json and bills
+        // the draft's org. Mirrors the guard on /produce.
+        if (draft.user_id && draft.user_id !== request.userId) {
+          throw new ApiError(
+            403,
+            `Forbidden: this draft belongs to user ${String(draft.user_id).slice(0, 8)}… and the current session is user ${String(request.userId).slice(0, 8)}…. Log in as the draft owner.`,
+            "FORBIDDEN",
+          );
+        }
+        // Prefer draft.org_id over a fresh org_memberships lookup — see
+        // /produce for the rationale (OAuth/admin sessions without a
+        // membership row would otherwise hit "No organization found").
+        const orgId =
+          (draft.org_id as string | null) ?? (await getOrgId(request.userId));
 
         const creditSettings = await loadCreditSettings(createServiceClient());
         const CANONICAL_CORE_COST = creditSettings.costCanonicalCore;
@@ -494,7 +587,7 @@ export async function contentDraftsRoutes(
         const type =
           (draft.type as "blog" | "video" | "shorts" | "podcast") ?? "blog";
         // Local Ollama runs cost us nothing → no internal credit charge.
-        const totalCost =
+        const _totalCost =
           override.provider === "ollama"
             ? 0
             : calculateDraftCost(type, creditSettings) + CANONICAL_CORE_COST;
@@ -941,12 +1034,30 @@ export async function contentDraftsRoutes(
         const { id } = request.params as { id: string };
         const override = providerOverrideSchema.parse(request.body ?? {});
         const draft = (await loadDraft(id)) as Record<string, unknown>;
-        const orgId = await getOrgId(request.userId);
+        // Ownership guard: produce mutates the draft (and bills its org), so
+        // require the session user own the row. Surface the mismatching IDs in
+        // the error message — without them the operator can't tell whether the
+        // wrong account is logged in or a session got swapped.
+        if (draft.user_id && draft.user_id !== request.userId) {
+          throw new ApiError(
+            403,
+            `Forbidden: this draft belongs to user ${String(draft.user_id).slice(0, 8)}… and the current session is user ${String(request.userId).slice(0, 8)}…. Log in as the draft owner.`,
+            "FORBIDDEN",
+          );
+        }
+        // Prefer the draft's org_id over a fresh org_memberships lookup. Some
+        // users (OAuth signups, admin impersonation) hit /produce without an
+        // org_membership row and getOrgId throws "No organization found" even
+        // though the draft itself has a valid org_id. Falling back to the
+        // membership lookup keeps the legacy path intact when draft.org_id is
+        // null (pre-org-scoping migration drafts).
+        const orgId =
+          (draft.org_id as string | null) ?? (await getOrgId(request.userId));
 
         const creditSettings = await loadCreditSettings(sb);
 
         const type = (draft.type as string) ?? "blog";
-        const cost = calculateDraftCost(type, creditSettings);
+        const _cost = calculateDraftCost(type, creditSettings);
 
         // Manual provider short-circuits the LLM call: build the prompt
         // synchronously, emit the full payload to Axiom, persist the draft in
@@ -1250,6 +1361,59 @@ export async function contentDraftsRoutes(
             `Failed to mark draft as draft: ${String((updErr as { message?: string })?.message ?? updErr)}`,
             "DB_ERROR",
           );
+        }
+
+        // Pipeline Orchestrator handoff for manual production/canonical writes:
+        // flip the matching project stage_run to `completed`. Without this,
+        // stage_runs.production stays `queued`/`running` after the user pastes
+        // output — the v2 sidebar / advance polling keeps the run open and
+        // downstream stages never trigger. Mirror of brainstorm manual-output
+        // fix and production-produce.ts:300 (AI dispatcher path).
+        const projectId = row.project_id as string | null | undefined;
+        if (projectId) {
+          const targetStage = body.phase === "core" ? "canonical" : "production";
+          const { data: matchingRun } = await sb
+            .from("stage_runs")
+            .select("id, payload_ref")
+            .eq("project_id", projectId)
+            .eq("stage", targetStage)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const runRef = (matchingRun?.payload_ref ?? null) as
+            | { kind?: string; id?: string }
+            | null;
+          // Only flip when the stage_run's payload_ref points at THIS draft —
+          // protects against multi-track projects where production has
+          // multiple draftIds and we don't want to clobber a sibling track.
+          if (
+            matchingRun?.id &&
+            (runRef?.id === id || runRef?.kind !== "content_draft")
+          ) {
+            const now = new Date().toISOString();
+            await (sb.from("stage_runs") as unknown as {
+              update: (row: Record<string, unknown>) => {
+                eq: (col: string, val: string) => Promise<unknown>;
+              };
+            })
+              .update({
+                status: "completed",
+                awaiting_reason: null,
+                error_message: null,
+                outcome_json: {
+                  draftId: id,
+                  draftTitle: (row.title as string) ?? "",
+                },
+                payload_ref: { kind: "content_draft", id },
+                finished_at: now,
+                updated_at: now,
+              })
+              .eq("id", matchingRun.id as string);
+            await inngest.send({
+              name: "pipeline/stage.run.finished",
+              data: { stageRunId: matchingRun.id as string, projectId },
+            });
+          }
         }
 
         logAiUsage({
@@ -1570,8 +1734,16 @@ export async function contentDraftsRoutes(
           throw agentError;
         }
 
-        // Extract verdict and score from agent response
-        const overallVerdict =
+        // Extract verdict and score from agent response.
+        //
+        // Score derivation: if a rubric is defined for this content type
+        // (currently blog), the server computes score deterministically from
+        // rubric_evaluation (Σ weight over passing criteria). This replaces
+        // the LLM's opinionated 0-100 number, which was unreliable — the
+        // model would settle on round numbers like 60 regardless of actual
+        // quality. When no rubric exists for the type, fall back to the
+        // legacy LLM score or the quality_tier mapping.
+        const overallVerdictRaw =
           (result.overall_verdict as string) ?? "revision_required";
         const draftType = draft.type as string;
         const formatReview = result[`${draftType}_review`] as
@@ -1585,9 +1757,28 @@ export async function contentDraftsRoutes(
           reject: 20,
           not_requested: 0,
         };
-        const rawScore = (formatReview?.score as number | undefined) ?? null;
-        const reviewScore: number | null =
-          rawScore !== null ? rawScore : (legacyScoreMap[tier] ?? null);
+
+        const rubric = getRubricForType(draftType);
+        let reviewScore: number | null;
+        let computedFromRubric: ReturnType<typeof computeRubricScore> | null = null;
+        if (rubric) {
+          const rubricEval = extractRubricEvaluation(result, draftType);
+          computedFromRubric = computeRubricScore(rubric, rubricEval);
+          reviewScore = computedFromRubric.score;
+        } else {
+          const rawScore = (formatReview?.score as number | undefined) ?? null;
+          reviewScore =
+            rawScore !== null ? rawScore : (legacyScoreMap[tier] ?? null);
+        }
+
+        // Verdict: if we computed from rubric, the score determines verdict
+        // (90+ = approved). Otherwise honor the model's overall_verdict.
+        const overallVerdict = computedFromRubric
+          ? deriveVerdictFromScore(
+              computedFromRubric.score,
+              computedFromRubric.maxScore,
+            )
+          : overallVerdictRaw;
         const iterationCount = ((draft.iteration_count as number) ?? 0) + 1;
 
         // Determine status based on agent verdict
@@ -1764,7 +1955,7 @@ export async function contentDraftsRoutes(
           formatReview && typeof formatReview.score === "number"
             ? formatReview.score
             : null;
-        let reviewScore: number | null =
+        const reviewScore: number | null =
           rawScore2 !== null ? rawScore2 : (legacyScoreMap2[tier2] ?? null);
         let reviewVerdict = "revision_required";
 
@@ -2377,6 +2568,268 @@ export async function contentDraftsRoutes(
         const { error } = await sb.from("content_drafts").delete().eq("id", id);
         if (error) throw error;
         return reply.send({ data: { deleted: true }, error: null });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  /**
+   * POST /:id/derive-shorts — spawn a new shorts draft from a video draft (G7).
+   * Reuses the source video's canonical core + chapter signals to seed the
+   * shorts pipeline so the user doesn't burn another canonical-core LLM call.
+   * The new content_drafts row carries production_params.source_content_draft_id
+   * so the eventual shorts_drafts insert can populate the FK column added in
+   * supabase/migrations/20260508130000_shorts_drafts_source_video.sql.
+   */
+  fastify.post(
+    "/:id/derive-shorts",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        if (!request.userId)
+          throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        const { id } = request.params as { id: string };
+        const sb = createServiceClient();
+        const source = (await loadDraft(id)) as Record<string, unknown>;
+
+        if (source.user_id && source.user_id !== request.userId) {
+          throw new ApiError(403, "Forbidden", "FORBIDDEN");
+        }
+        if (source.type !== "video") {
+          throw new ApiError(
+            422,
+            `Source draft must be type=video (got "${source.type}").`,
+            "BAD_SOURCE_TYPE",
+          );
+        }
+
+        const draftJson = source.draft_json as Record<string, unknown> | null;
+        const canonicalCoreJson = source.canonical_core_json as Record<string, unknown> | null;
+        if (!draftJson || Object.keys(draftJson).length === 0) {
+          throw new ApiError(
+            422,
+            "Source video has no produced output (draft_json is empty).",
+            "NO_VIDEO_OUTPUT",
+          );
+        }
+        if (!canonicalCoreJson || Object.keys(canonicalCoreJson).length === 0) {
+          throw new ApiError(
+            422,
+            "Source video is missing its canonical core.",
+            "NO_CANONICAL_CORE",
+          );
+        }
+
+        // Unwrap legacy wrappers before passing to the mapper, mirroring what
+        // VideoDraftViewer does so the same drafts work in either path.
+        const inner =
+          (draftJson.video_script as Record<string, unknown> | undefined) ??
+          (draftJson.video as Record<string, unknown> | undefined) ??
+          draftJson;
+        const shortsInput = mapVideoOutputToShortsInput(
+          inner as unknown as VideoOutput,
+          canonicalCoreJson as unknown as CanonicalCore,
+        );
+
+        const sourceTitle = (source.title as string) ?? "Untitled video";
+        const inheritedParams =
+          (source.production_params as Record<string, unknown> | null | undefined) ?? {};
+        const newProductionParams: Record<string, unknown> = {
+          ...inheritedParams,
+          source_content_draft_id: id,
+        };
+
+        const { data: created, error: insertErr } = await (
+          sb.from("content_drafts") as unknown as {
+            insert: (row: Record<string, unknown>) => {
+              select: (cols: string) => {
+                single: () => Promise<{ data: unknown; error: unknown }>;
+              };
+            };
+          }
+        )
+          .insert({
+            channel_id: (source.channel_id as string | null) ?? null,
+            idea_id: (source.idea_id as string | null) ?? null,
+            research_session_id: (source.research_session_id as string | null) ?? null,
+            project_id: (source.project_id as string | null) ?? null,
+            persona_id: (source.persona_id as string | null) ?? null,
+            user_id: source.user_id as string | null,
+            org_id: source.org_id as string | null,
+            type: "shorts",
+            title: `Shorts from: ${sourceTitle}`,
+            canonical_core_json: shortsInput,
+            production_params: newProductionParams,
+            status: "draft",
+          })
+          .select("id, type, title, project_id, channel_id")
+          .single();
+
+        if (insertErr) throw insertErr;
+
+        return reply.send({
+          data: {
+            draft: created,
+            shortsInput,
+            sourceContentDraftId: id,
+          },
+          error: null,
+        });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  /**
+   * POST /:id/derive — derive a per-track draft from a canonical/source draft.
+   * Copies canonical_core_json + identity fields, sets type/track_id, and is idempotent
+   * per (project_id, track_id). Used by ProductionEngine when a track first runs.
+   */
+  fastify.post(
+    "/:id/derive",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        if (!request.userId)
+          throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        const { id } = request.params as { id: string };
+        const body = deriveDraftRequestSchema.parse(request.body ?? {});
+
+        const sb = createServiceClient();
+        const result = await deriveDraft(sb, {
+          sourceId: id,
+          trackId: body.trackId,
+          medium: body.medium,
+          userId: request.userId,
+        });
+
+        return reply.send({ data: result, error: null });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  /**
+   * POST /:id/synthesize — generate TTS audio from the draft's teleprompter_script.
+   * Channel voice settings act as defaults; body params override per-call.
+   * Long scripts are chunked at sentence boundaries and concatenated client-side
+   * (mp3 frames are independently decodable, so a raw concat is acceptable).
+   */
+  fastify.post(
+    "/:id/synthesize",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        if (!request.userId)
+          throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        const { id } = request.params as { id: string };
+        const body = synthesizeDraftSchema.parse(request.body ?? {});
+
+        const sb = createServiceClient();
+        const draft = (await loadDraft(id)) as Record<string, unknown>;
+
+        // Ownership: content_drafts.user_id is the authoritative scope.
+        if (draft.user_id && draft.user_id !== request.userId) {
+          throw new ApiError(403, "Forbidden", "FORBIDDEN");
+        }
+
+        const draftJson = (draft.draft_json ?? {}) as Record<string, unknown>;
+        // Unwrap legacy shapes (video_script / video) before reading the script.
+        const inner =
+          (draftJson.video_script as Record<string, unknown> | undefined) ??
+          (draftJson.video as Record<string, unknown> | undefined) ??
+          draftJson;
+        const teleprompter =
+          typeof inner.teleprompter_script === "string"
+            ? inner.teleprompter_script
+            : typeof draftJson.teleprompter_script === "string"
+              ? (draftJson.teleprompter_script as string)
+              : "";
+        if (!teleprompter.trim()) {
+          throw new ApiError(
+            422,
+            "Draft has no teleprompter_script. Produce or paste a video draft first.",
+            "NO_TELEPROMPTER",
+          );
+        }
+
+        // Channel defaults
+        let channelDefaults: {
+          voice_id?: string | null;
+          voice_provider?: string | null;
+          voice_speed?: number | null;
+        } = {};
+        if (draft.channel_id) {
+          const { data: ch } = await sb
+            .from("channels")
+            .select("voice_id, voice_provider, voice_speed")
+            .eq("id", draft.channel_id as string)
+            .maybeSingle();
+          if (ch) channelDefaults = ch as typeof channelDefaults;
+        }
+
+        const voiceId = body.voiceId ?? channelDefaults.voice_id ?? null;
+        if (!voiceId) {
+          throw new ApiError(
+            422,
+            "No voiceId provided and the channel has no default voice. Set channel.voice_id or pass voiceId in the body.",
+            "NO_VOICE_ID",
+          );
+        }
+        const providerName =
+          body.provider ?? (channelDefaults.voice_provider as "elevenlabs" | "openai" | null) ?? "elevenlabs";
+        const speed =
+          body.speed ?? (typeof channelDefaults.voice_speed === "number" ? channelDefaults.voice_speed : undefined);
+
+        const provider = getVoiceProvider(providerName);
+        if (!provider) {
+          throw new ApiError(
+            500,
+            `Voice provider "${providerName}" is not configured. Set ELEVENLABS_API_KEY or OPENAI_API_KEY in apps/api/.env.local.`,
+            "CONFIG_ERROR",
+          );
+        }
+
+        const chunks = chunkTeleprompter(teleprompter);
+        const results = [] as Array<{
+          audio: Buffer;
+          mimeType: string;
+          estimatedSeconds: number;
+          providerName: string;
+          voiceId: string;
+        }>;
+        for (const chunk of chunks) {
+          const r = await provider.synthesize({
+            text: chunk,
+            voiceId,
+            speed,
+            format: body.format,
+            style: body.style,
+          });
+          results.push(r);
+        }
+
+        const combined = Buffer.concat(results.map((r) => r.audio));
+        const totalSeconds = results.reduce(
+          (acc, r) => acc + (r.estimatedSeconds || 0),
+          0,
+        );
+
+        return reply.send({
+          data: {
+            audioBase64: combined.toString("base64"),
+            mimeType: results[0]?.mimeType ?? "audio/mpeg",
+            estimatedSeconds: totalSeconds,
+            provider: results[0]?.providerName ?? providerName,
+            voiceId,
+            characterCount: teleprompter.length,
+            chunkCount: chunks.length,
+          },
+          error: null,
+        });
       } catch (error) {
         return sendError(reply, error);
       }

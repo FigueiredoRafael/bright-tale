@@ -317,6 +317,50 @@ export interface VideoScript {
     sound_effects?: string;
     background_music?: string;
   };
+  /** Top-level mood/genre direction for the editor (BC_VIDEO_OUTPUT v0.3). */
+  audio_direction?: string;
+}
+
+export interface VideoTextOverlay {
+  text: string;
+  time: string;
+  style?: string;
+}
+
+export interface VideoEditorSection {
+  A_roll?: string;
+  B_roll?: string[];
+  text_overlays?: VideoTextOverlay[];
+  SFX?: string;
+  BGM?: string;
+  Transitions?: string;
+  Visual_effects?: string;
+  Pacing_notes?: string;
+}
+
+export interface VideoEditorScript {
+  hook?: VideoEditorSection;
+  problem?: VideoEditorSection;
+  teaser?: VideoEditorSection;
+  chapters?: VideoEditorSection[];
+  affiliate_segment?: VideoEditorSection;
+  outro?: VideoEditorSection;
+  color_grading?: string;
+}
+
+export interface ThumbnailIdea {
+  concept: string;
+  text_overlay: string;
+  emotion: "curiosity" | "shock" | "intrigue";
+  color_palette: string;
+  composition: string;
+}
+
+export interface LowerThird {
+  timestamp: string;
+  line1: string;
+  line2?: string;
+  duration_seconds: number;
 }
 
 export interface VideoOutput {
@@ -328,7 +372,7 @@ export interface VideoOutput {
     why_it_works: string;
   };
   script: VideoScript;
-  total_duration_estimate: string;
+  total_duration_estimate?: string;
   /** AI-generated Imagen-optimised prompts for video assets */
   image_prompts?: {
     thumbnail_option_1: string;
@@ -339,6 +383,19 @@ export interface VideoOutput {
     }>;
   };
   content_warning?: string;
+
+  // v0.3 BC_VIDEO_OUTPUT fields (Wave 1 of yt-pipeline-v2)
+  teleprompter_script?: string;
+  editor_script?: VideoEditorScript;
+  video_title?: {
+    primary: string;
+    alternatives?: string[];
+  };
+  thumbnail_ideas?: ThumbnailIdea[];
+  pinned_comment?: string;
+  video_description?: string;
+  estimated_duration?: string;
+  lower_thirds?: LowerThird[];
 }
 
 export interface ShortOutput {

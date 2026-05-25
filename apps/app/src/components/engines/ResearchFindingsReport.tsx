@@ -91,10 +91,14 @@ export function ResearchFindingsReport({ findings }: ResearchFindingsReportProps
   const shouldPivot = f.refined_angle?.should_pivot ?? false;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="research-findings-report">
       {/* Research Summary & Idea Validation */}
       {(f.research_summary || f.idea_validation) && (
-        <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-transparent">
+        <Card
+          data-testid="research-findings-summary"
+          data-confidence={confidenceScore ?? ''}
+          className="border-primary/30 bg-gradient-to-br from-primary/5 to-transparent"
+        >
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
@@ -211,7 +215,7 @@ export function ResearchFindingsReport({ findings }: ResearchFindingsReportProps
 
       {/* Sources */}
       {f.sources && f.sources.length > 0 && (
-        <div>
+        <div data-testid="research-findings-sources" data-count={f.sources.length}>
           <div className="flex items-center gap-2 mb-3">
             <BookOpen className="h-4 w-4 text-blue-500" />
             <h3 className="font-semibold text-sm">Sources</h3>
@@ -221,7 +225,7 @@ export function ResearchFindingsReport({ findings }: ResearchFindingsReportProps
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             {f.sources.map((source, idx) => (
-              <Card key={`source-${idx}`} className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
+              <Card key={`source-${idx}`} data-testid="research-source-card" className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
                 <CardContent className="pt-4">
                   <div className="space-y-2">
                     <div className="flex items-start justify-between gap-2">
@@ -298,7 +302,7 @@ export function ResearchFindingsReport({ findings }: ResearchFindingsReportProps
 
       {/* Statistics */}
       {f.statistics && f.statistics.length > 0 && (
-        <div>
+        <div data-testid="research-findings-statistics" data-count={f.statistics.length}>
           <div className="flex items-center gap-2 mb-3">
             <BarChart3 className="h-4 w-4 text-emerald-500" />
             <h3 className="font-semibold text-sm">Key Statistics</h3>
@@ -308,7 +312,7 @@ export function ResearchFindingsReport({ findings }: ResearchFindingsReportProps
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             {f.statistics.map((stat, idx) => (
-              <Card key={`stat-${idx}`} className="border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20">
+              <Card key={`stat-${idx}`} data-testid="research-statistic-card" className="border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20">
                 <CardContent className="pt-4">
                   <div className="space-y-1">
                     <div className="text-3xl font-bold text-emerald-600 dark:text-emerald-400 leading-tight">
@@ -333,7 +337,7 @@ export function ResearchFindingsReport({ findings }: ResearchFindingsReportProps
 
       {/* Expert Quotes */}
       {f.expert_quotes && f.expert_quotes.length > 0 && (
-        <div>
+        <div data-testid="research-findings-expert-quotes" data-count={f.expert_quotes.length}>
           <div className="flex items-center gap-2 mb-3">
             <Quote className="h-4 w-4 text-violet-500" />
             <h3 className="font-semibold text-sm">Expert Quotes</h3>
@@ -343,7 +347,7 @@ export function ResearchFindingsReport({ findings }: ResearchFindingsReportProps
           </div>
           <div className="space-y-3">
             {f.expert_quotes.map((quote, idx) => (
-              <Card key={`quote-${idx}`} className="border-violet-200 bg-violet-50 dark:bg-violet-950/20">
+              <Card key={`quote-${idx}`} data-testid="research-expert-quote-card" className="border-violet-200 bg-violet-50 dark:bg-violet-950/20">
                 <CardContent className="pt-4">
                   <blockquote className="text-sm italic text-muted-foreground leading-relaxed border-l-4 border-violet-400 pl-4 mb-3">
                     &ldquo;{quote.quote}&rdquo;
@@ -370,7 +374,7 @@ export function ResearchFindingsReport({ findings }: ResearchFindingsReportProps
 
       {/* Counterarguments & Rebuttals */}
       {f.counterarguments && f.counterarguments.length > 0 && (
-        <div>
+        <div data-testid="research-findings-counterarguments" data-count={f.counterarguments.length}>
           <div className="flex items-center gap-2 mb-3">
             <ShieldAlert className="h-4 w-4 text-amber-500" />
             <h3 className="font-semibold text-sm">Counterarguments & Rebuttals</h3>
@@ -380,7 +384,7 @@ export function ResearchFindingsReport({ findings }: ResearchFindingsReportProps
           </div>
           <div className="space-y-3">
             {f.counterarguments.map((counter, idx) => (
-              <Card key={`counter-${idx}`} className="border-amber-200 bg-amber-50 dark:bg-amber-950/20">
+              <Card key={`counter-${idx}`} data-testid="research-counterargument-card" className="border-amber-200 bg-amber-50 dark:bg-amber-950/20">
                 <CardContent className="pt-4">
                   <div className="grid md:grid-cols-2 gap-4">
                     <div>
@@ -429,7 +433,7 @@ export function ResearchFindingsReport({ findings }: ResearchFindingsReportProps
 
       {/* Knowledge Gaps */}
       {f.knowledge_gaps && f.knowledge_gaps.length > 0 && (
-        <div>
+        <div data-testid="research-findings-knowledge-gaps" data-count={f.knowledge_gaps.length}>
           <div className="flex items-center gap-2 mb-3">
             <Lightbulb className="h-4 w-4 text-rose-500" />
             <h3 className="font-semibold text-sm">Knowledge Gaps</h3>

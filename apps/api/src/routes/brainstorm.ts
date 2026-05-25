@@ -11,7 +11,6 @@ import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
 import { STAGE_COSTS, generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
-import { buildChannelContext } from '../lib/ai/channelContext.js';
 import { reserve, commit, release } from '../lib/credits/reservations.js';
 import { inngest } from '../jobs/client.js';
 import { emitJobEvent } from '../jobs/emitter.js';
@@ -294,6 +293,85 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         throw new ApiError(500, `Failed to mark session completed: ${String((updErr as { message?: string })?.message ?? updErr)}`, 'DB_ERROR');
       }
 
+      // Re-query the persisted idea_archives rows so we can return real UUIDs to
+      // the client AND seed the brainstorm Stage Run outcome with a proper FK.
+      // The upsert above used onConflict:'idea_id' + ignoreDuplicates so we did
+      // not get returning rows; reading by brainstorm_session_id is the
+      // canonical source.
+      const { data: persistedIdeas } = await sb
+        .from('idea_archives')
+        .select('id, idea_id, title, core_tension, target_audience, verdict, discovery_data')
+        .eq('brainstorm_session_id', id)
+        .order('created_at', { ascending: true });
+      const ideas = (persistedIdeas ?? []) as Array<Record<string, unknown>>;
+
+      // Pipeline Orchestrator handoff for manual brainstorms: flip the matching
+      // brainstorm Stage Run to `completed` and seed `outcome_json` so
+      // deriveStageResults picks it up (it skips rows where status !== 'completed').
+      // Without this, a stage_run stuck in `failed` (e.g. initial run died because
+      // no AI provider was configured) keeps the UI thinking brainstorm never
+      // finished even after the user pasted output.
+      const projectId = row.project_id as string | null | undefined;
+      if (projectId && ideas.length > 0) {
+        // Prefer the AI's `recommendation.pick` (matched by title) so autopilot
+        // promotes the winning idea, not just the first card. Fall back to the
+        // first `viable` verdict, then the first idea overall.
+        const pickTitle = recommendation?.pick?.trim().toLowerCase();
+        const byPick = pickTitle
+          ? ideas.find((i) => ((i.title as string) ?? '').trim().toLowerCase() === pickTitle)
+          : undefined;
+        const firstViable = ideas.find((i) => i.verdict === 'viable');
+        const winner = byPick ?? firstViable ?? ideas[0];
+        const winnerId = winner.id as string;
+        const winnerTitle = (winner.title as string) ?? '';
+        const seedOutcome = {
+          ideaId: winnerId,
+          ideaTitle: winnerTitle,
+          ideaVerdict: (winner.verdict as string) ?? '',
+          ideaCoreTension: (winner.core_tension as string) ?? '',
+          brainstormSessionId: id,
+        };
+
+        const { data: latestRun } = await sb
+          .from('stage_runs')
+          .select('id')
+          .eq('project_id', projectId)
+          .eq('stage', 'brainstorm')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (latestRun?.id) {
+          const now = new Date().toISOString();
+          await (sb.from('stage_runs') as unknown as {
+            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+          })
+            .update({
+              status: 'completed',
+              awaiting_reason: null,
+              error_message: null,
+              outcome_json: seedOutcome,
+              payload_ref: { kind: 'idea_archive', id: winnerId },
+              finished_at: now,
+              updated_at: now,
+            })
+            .eq('id', latestRun.id as string);
+
+          await inngest.send({
+            name: 'pipeline/stage.run.finished',
+            data: { stageRunId: latestRun.id as string, projectId },
+          });
+        }
+
+        if (winnerTitle) {
+          await (sb.from('projects') as unknown as {
+            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+          })
+            .update({ title: winnerTitle })
+            .eq('id', projectId);
+        }
+      }
+
       logAiUsage({
         userId: request.userId,
         orgId: (row.org_id as string) ?? null,
@@ -313,7 +391,10 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         },
       });
 
-      return reply.send({ data: { ideas: ideaRows, recommendation }, error: null });
+      return reply.send({
+        data: { ideas: ideas.length > 0 ? ideas : ideaRows, recommendation },
+        error: null,
+      });
     } catch (error) {
       return sendError(reply, error);
     }
@@ -554,13 +635,65 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       if (error) throw error;
       if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
 
-      const { data: ideas } = await sb
-        .from('idea_archives')
+      // Prefer the raw `brainstorm_drafts` rows (every generated idea) over
+      // `idea_archives` (only ideas the user has promoted). Older sessions
+      // that pre-date the drafts pipeline fall back to idea_archives.
+      const { data: drafts } = await sb
+        .from('brainstorm_drafts')
         .select('*')
-        .eq('brainstorm_session_id', id)
-        .order('created_at', { ascending: true });
+        .eq('session_id', id)
+        .order('position', { ascending: true });
 
-      return reply.send({ data: { session, ideas: ideas ?? [] }, error: null });
+      let ideas: Array<Record<string, unknown>> = [];
+      let pickedDraftId: string | null = null;
+      if (drafts && drafts.length > 0) {
+        ideas = drafts as Array<Record<string, unknown>>;
+
+        // Resolve which brainstorm_draft was picked. Two signals:
+        //   1) Project's brainstorm Stage Run payload_ref → brainstorm_draft.id
+        //   2) Title match against idea_archives created from this session
+        // The Stage Run signal is the new pipeline source-of-truth; we keep
+        // the title-match fallback for projects that pre-date Stage Runs.
+        const projectId = (session as Record<string, unknown>).project_id as
+          | string
+          | null
+          | undefined;
+        if (projectId) {
+          const { data: srRow } = await sb
+            .from('stage_runs')
+            .select('payload_ref')
+            .eq('project_id', projectId)
+            .eq('stage', 'brainstorm')
+            .eq('status', 'completed')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const ref = srRow?.payload_ref as { kind?: string; id?: string } | null | undefined;
+          if (ref?.kind === 'brainstorm_draft' && ref.id) pickedDraftId = ref.id;
+        }
+        if (!pickedDraftId) {
+          const { data: archived } = await sb
+            .from('idea_archives')
+            .select('title')
+            .eq('brainstorm_session_id', id);
+          const archivedTitles = new Set(
+            ((archived ?? []) as Array<Record<string, unknown>>).map((a) => a.title as string),
+          );
+          const winner = (drafts as Array<Record<string, unknown>>).find((d) =>
+            archivedTitles.has(d.title as string),
+          );
+          if (winner) pickedDraftId = winner.id as string;
+        }
+      } else {
+        const { data: archived } = await sb
+          .from('idea_archives')
+          .select('*')
+          .eq('brainstorm_session_id', id)
+          .order('created_at', { ascending: true });
+        ideas = (archived ?? []) as Array<Record<string, unknown>>;
+      }
+
+      return reply.send({ data: { session, ideas, pickedDraftId }, error: null });
     } catch (error) {
       return sendError(reply, error);
     }
@@ -723,13 +856,19 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
     try {
       const sb = createServiceClient();
       const { id } = request.params as { id: string };
-      const { data, error } = await sb
-        .from('brainstorm_drafts')
-        .select('*')
-        .eq('session_id', id)
-        .order('position', { ascending: true });
-      if (error) throw error;
-      return reply.send({ data: { drafts: data ?? [] }, error: null });
+      const [draftsRes, sessionRes] = await Promise.all([
+        sb.from('brainstorm_drafts').select('*').eq('session_id', id).order('position', { ascending: true }),
+        sb.from('brainstorm_sessions').select('recommendation_json').eq('id', id).maybeSingle(),
+      ]);
+      if (draftsRes.error) throw draftsRes.error;
+      if (sessionRes.error) throw sessionRes.error;
+      return reply.send({
+        data: {
+          drafts: draftsRes.data ?? [],
+          recommendation: sessionRes.data?.recommendation_json ?? null,
+        },
+        error: null,
+      });
     } catch (error) {
       return sendError(reply, error);
     }

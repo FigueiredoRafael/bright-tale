@@ -1,3 +1,5 @@
+ 
+// /parceiros/* routes live on a separate app — using <Link> would 404 client-side.
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {

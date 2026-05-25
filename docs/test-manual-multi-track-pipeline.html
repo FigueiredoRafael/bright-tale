@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Manual de Testes — Multi-Track Pipeline · Bright Tale</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f9fafb;
+      color: #111827;
+      margin: 0;
+      padding: 0;
+      line-height: 1.55;
+    }
+
+    /* Layout */
+    .layout { display: flex; min-height: 100vh; }
+    nav {
+      width: 260px;
+      flex-shrink: 0;
+      background: #fff;
+      border-right: 1px solid #e5e7eb;
+      padding: 28px 18px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    nav h2 { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #9ca3af; margin: 18px 0 6px; }
+    nav h2:first-child { margin-top: 0; }
+    nav a {
+      display: block;
+      font-size: 0.8rem;
+      color: #374151;
+      text-decoration: none;
+      padding: 4px 8px;
+      border-radius: 6px;
+      margin-bottom: 1px;
+      line-height: 1.4;
+    }
+    nav a:hover { background: #f3f4f6; color: #111827; }
+    nav a .num { display: inline-block; width: 32px; font-size: 0.7rem; color: #9ca3af; }
+    main { flex: 1; padding: 40px 48px; max-width: 1100px; }
+
+    /* Header */
+    .page-header { margin-bottom: 36px; padding-bottom: 22px; border-bottom: 1px solid #e5e7eb; }
+    .page-header h1 { font-size: 1.7rem; font-weight: 700; margin: 0 0 6px; }
+    .page-header p { font-size: 0.92rem; color: #6b7280; margin: 0; }
+    .meta-row { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .meta-pill {
+      font-size: 0.72rem;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #4338ca;
+      font-weight: 500;
+    }
+    .meta-pill.warn { background: #fef3c7; color: #92400e; }
+    .meta-pill.ok { background: #d1fae5; color: #065f46; }
+
+    /* Sections */
+    section { margin-bottom: 56px; scroll-margin-top: 24px; }
+    section h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin: 0 0 6px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid #111827;
+    }
+    section .desc { font-size: 0.88rem; color: #6b7280; margin: 0 0 18px; }
+    section h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 28px 0 8px;
+      color: #1f2937;
+    }
+    section h4 {
+      font-size: 0.86rem;
+      font-weight: 600;
+      margin: 18px 0 6px;
+      color: #374151;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    p { margin: 0 0 10px; font-size: 0.9rem; }
+
+    /* Code & paths */
+    code {
+      font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 0.82em;
+      background: #f3f4f6;
+      padding: 1px 5px;
+      border-radius: 4px;
+      color: #1f2937;
+    }
+    pre {
+      background: #1f2937;
+      color: #f3f4f6;
+      padding: 12px 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      margin: 8px 0 14px;
+    }
+    pre code { background: transparent; color: inherit; padding: 0; }
+
+    /* Test items (checkboxes) */
+    .test {
+      display: flex;
+      gap: 12px;
+      padding: 12px 14px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      align-items: flex-start;
+    }
+    .test input[type="checkbox"] {
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+      margin-top: 2px;
+      cursor: pointer;
+      accent-color: #4f46e5;
+    }
+    .test-body { flex: 1; min-width: 0; }
+    .test-title { font-weight: 600; font-size: 0.92rem; margin: 0 0 4px; color: #111827; }
+    .test-steps { font-size: 0.85rem; color: #4b5563; margin: 0; }
+    .test-steps ol { margin: 4px 0 0; padding-left: 20px; }
+    .test-steps li { margin-bottom: 2px; }
+    .test-meta {
+      margin-top: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      font-size: 0.72rem;
+      color: #6b7280;
+    }
+    .test-meta .tag {
+      background: #f3f4f6;
+      color: #4b5563;
+      padding: 1px 7px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+    .test-meta .tag.id { background: #ede9fe; color: #5b21b6; }
+    .test-meta .tag.ref { background: #fef3c7; color: #92400e; }
+    .test-meta .tag.testid { background: #ecfdf5; color: #065f46; font-family: ui-monospace, monospace; font-size: 0.7rem; }
+    .test input[type="checkbox"]:checked + .test-body .test-title {
+      text-decoration: line-through;
+      color: #6b7280;
+    }
+
+    /* Callouts */
+    .callout {
+      border-left: 4px solid #4f46e5;
+      background: #eef2ff;
+      padding: 10px 14px;
+      border-radius: 0 8px 8px 0;
+      margin: 12px 0 18px;
+      font-size: 0.85rem;
+      color: #312e81;
+    }
+    .callout.warn { border-color: #d97706; background: #fef3c7; color: #78350f; }
+    .callout.danger { border-color: #dc2626; background: #fee2e2; color: #7f1d1d; }
+    .callout strong { font-weight: 700; }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      margin: 8px 0 18px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th {
+      text-align: left;
+      background: #f9fafb;
+      padding: 8px 12px;
+      font-weight: 600;
+      color: #374151;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #f3f4f6;
+      vertical-align: top;
+    }
+    tr:last-child td { border-bottom: none; }
+
+    /* Progress widget */
+    .progress-bar {
+      position: sticky;
+      top: 0;
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 10px 18px;
+      font-size: 0.8rem;
+      color: #374151;
+      z-index: 10;
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }
+    .progress-bar .count { font-weight: 700; color: #4f46e5; }
+    .progress-bar button {
+      margin-left: auto;
+      font-size: 0.75rem;
+      padding: 4px 10px;
+      border: 1px solid #d1d5db;
+      background: #fff;
+      border-radius: 6px;
+      cursor: pointer;
+      color: #374151;
+    }
+    .progress-bar button:hover { background: #f3f4f6; }
+
+    /* Status pills next to section titles */
+    .status {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 500;
+      vertical-align: middle;
+      margin-left: 8px;
+    }
+    .status.recent { background: #fef3c7; color: #92400e; }
+    .status.critical { background: #fee2e2; color: #991b1b; }
+    .status.smoke { background: #d1fae5; color: #065f46; }
+
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      nav { width: 100%; height: auto; position: relative; }
+      main { padding: 24px 18px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="layout">
+  <nav>
+    <h2>Pré-voo</h2>
+    <a href="#setup"><span class="num">0</span>Setup ambiente</a>
+    <a href="#smoke"><span class="num">1</span>Smoke tests</a>
+
+    <h2>Pipeline Core</h2>
+    <a href="#wizard"><span class="num">2</span>Wizard + novo projeto</a>
+    <a href="#modes"><span class="num">3</span>Modos de pipeline</a>
+    <a href="#views"><span class="num">4</span>Focus / Graph / Sidebar</a>
+    <a href="#mode-controls"><span class="num">5</span>Controles de modo</a>
+
+    <h2>Engines (por estágio)</h2>
+    <a href="#engine-brainstorm"><span class="num">6.1</span>Brainstorm</a>
+    <a href="#engine-research"><span class="num">6.2</span>Research</a>
+    <a href="#engine-canonical"><span class="num">6.3</span>Canonical</a>
+    <a href="#engine-production"><span class="num">6.4</span>Production</a>
+    <a href="#engine-review"><span class="num">6.5</span>Review (loop)</a>
+    <a href="#engine-assets"><span class="num">6.6</span>Assets</a>
+    <a href="#engine-preview"><span class="num">6.7</span>Preview</a>
+    <a href="#engine-publish"><span class="num">6.8</span>Publish</a>
+
+    <h2>Multi-Track</h2>
+    <a href="#add-medium"><span class="num">7</span>Add medium em vôo</a>
+    <a href="#per-track-pause"><span class="num">8</span>Pausa por Track</a>
+    <a href="#track-abort"><span class="num">9</span>Abort de Track</a>
+    <a href="#cost-badges"><span class="num">10</span>Custos por Track</a>
+
+    <h2>Awaiting & Recovery</h2>
+    <a href="#awaiting"><span class="num">11</span>Awaiting banner + resume</a>
+    <a href="#publish-retry"><span class="num">12</span>Publish target retry</a>
+    <a href="#refresh-resilience"><span class="num">13</span>Refresh resilience</a>
+    <a href="#quota"><span class="num">14</span>Quota / Provider exhausted</a>
+
+    <h2>Loops & History</h2>
+    <a href="#attempt-history"><span class="num">15</span>Attempt history zoom</a>
+    <a href="#review-loop"><span class="num">16</span>Loop de review</a>
+    <a href="#research-loop"><span class="num">17</span>Loop de research</a>
+
+    <h2>Drivers / Canais</h2>
+    <a href="#wordpress"><span class="num">18.1</span>WordPress</a>
+    <a href="#youtube"><span class="num">18.2</span>YouTube</a>
+    <a href="#spotify"><span class="num">18.3</span>Spotify</a>
+    <a href="#apple"><span class="num">18.4</span>Apple Podcasts</a>
+    <a href="#rss"><span class="num">18.5</span>RSS</a>
+
+    <h2>Billing</h2>
+    <a href="#upgrade"><span class="num">19</span>Upgrade modal</a>
+    <a href="#credits-settings"><span class="num">20</span>Credit settings</a>
+
+    <h2>Edge Cases</h2>
+    <a href="#concurrent-tracks"><span class="num">21</span>Tracks concorrentes</a>
+    <a href="#edge-cases"><span class="num">22</span>Misc edge cases</a>
+  </nav>
+
+  <main>
+    <div class="progress-bar">
+      Progresso: <span class="count" id="progress-count">0 / 0</span>
+      <button id="reset-btn">Resetar checkboxes</button>
+    </div>
+
+    <header class="page-header">
+      <h1>Manual de Testes — Multi-Track Pipeline</h1>
+      <p>Roteiro manual de validação ponta-a-ponta do que foi entregue na integração <code>integration/multi-track-pipeline</code>. Cobre engines, modos, multi-track, recovery, drivers e billing.</p>
+      <div class="meta-row">
+        <span class="meta-pill">Branch: integration/multi-track-pipeline</span>
+        <span class="meta-pill ok">Wave-5 server orchestration</span>
+        <span class="meta-pill warn">xstate removido (T14.6)</span>
+        <span class="meta-pill">Data: 2026-05-17</span>
+      </div>
+      <div class="callout">
+        <strong>Como usar:</strong> abra este arquivo no browser. Cada item tem checkbox que persiste em <code>localStorage</code>. Atalhos: use o índice à esquerda para navegar; o contador no topo mostra seu progresso. Os <code>data-testid</code> citados servem tanto para inspeção manual no DevTools quanto para automatizar depois em Playwright.
+      </div>
+    </header>
+
+    <!-- =================================================================== -->
+    <section id="setup">
+      <h2>0. Setup do ambiente</h2>
+      <p class="desc">Pré-requisitos para rodar o app localmente antes de qualquer teste.</p>
+
+      <h3>0.1 Variáveis de ambiente</h3>
+      <p>Garantir os <code>.env.local</code> de cada workspace estão preenchidos:</p>
+      <table>
+        <thead><tr><th>Arquivo</th><th>Chaves obrigatórias</th></tr></thead>
+        <tbody>
+          <tr><td><code>.env.local</code> (raiz)</td><td><code>SUPABASE_ACCESS_TOKEN</code></td></tr>
+          <tr><td><code>apps/app/.env.local</code></td><td><code>API_URL</code>, <code>INTERNAL_API_KEY</code>, <code>NEXT_PUBLIC_SUPABASE_URL</code>, <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code></td></tr>
+          <tr><td><code>apps/api/.env.local</code></td><td><code>INTERNAL_API_KEY</code>, <code>SUPABASE_URL</code>, <code>SUPABASE_SERVICE_ROLE_KEY</code>, <code>AXIOM_TOKEN</code>, <code>POSTHOG_API_KEY</code></td></tr>
+        </tbody>
+      </table>
+
+      <h3>0.2 Iniciar servidores</h3>
+      <pre><code>cd /home/hectorlutero/hectorsiman/bright-tale
+git checkout integration/multi-track-pipeline
+git pull
+npm install
+npm run typecheck    # sanity, sem erros
+npm run dev          # app:3000 + api:3001 em paralelo</code></pre>
+
+      <div class="test"><input type="checkbox" id="s-0-1"><label for="s-0-1" class="test-body">
+        <div class="test-title">Servers sobem sem erros</div>
+        <div class="test-steps"><code>app</code> em http://localhost:3000, <code>api</code> em http://localhost:3001. Console limpo dos dois lados.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-0-2"><label for="s-0-2" class="test-body">
+        <div class="test-title">Typecheck passa</div>
+        <div class="test-steps"><code>npm run typecheck</code> retorna 0 em <code>apps/app</code>, <code>apps/api</code>, <code>packages/shared</code>.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-0-3"><label for="s-0-3" class="test-body">
+        <div class="test-title">Suite de testes verde</div>
+        <div class="test-steps"><code>npm run test</code> roda todos os workspaces sem falhas.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="smoke">
+      <h2>1. Smoke tests <span class="status smoke">5 min</span></h2>
+      <p class="desc">Validação rápida que login, dashboards e listas básicas funcionam antes de mergulhar em pipeline.</p>
+
+      <div class="test"><input type="checkbox" id="s-1-1"><label for="s-1-1" class="test-body">
+        <div class="test-title">Login funciona</div>
+        <div class="test-steps">Acessar <code>/auth/login</code> → completa fluxo Supabase auth → redireciona pra <code>/channels</code> (ou onboarding se primeira vez).</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-1-2"><label for="s-1-2" class="test-body">
+        <div class="test-title">Lista de channels carrega</div>
+        <div class="test-steps">Rota <code>/channels</code> mostra cards de channels existentes ou estado vazio com CTA "Create channel".</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-1-3"><label for="s-1-3" class="test-body">
+        <div class="test-title">Lista de projetos carrega</div>
+        <div class="test-steps">Rota <code>/projects</code> mostra projetos existentes com status (active, paused, awaiting, done).</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-1-4"><label for="s-1-4" class="test-body">
+        <div class="test-title">Settings renderiza</div>
+        <div class="test-steps"><code>/settings/profile</code>, <code>/settings/billing</code>, <code>/settings/integrations</code>, <code>/settings/credits</code> abrem sem 500.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-1-5"><label for="s-1-5" class="test-body">
+        <div class="test-title">Páginas standalone abrem</div>
+        <div class="test-steps">Rota <code>/channels/[id]/brainstorm/new</code>, <code>/research/new</code>, <code>/drafts/new</code> carregam engines isoladas (slice T14.4 migrado pra ctx provider).</div>
+        <div class="test-meta"><span class="tag ref">apps/app/src/components/engines/StandaloneEngineHost.tsx</span></div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="wizard">
+      <h2>2. Wizard + novo projeto</h2>
+      <p class="desc">Fluxo de criação que escolhe channel, mediums e autopilot config.</p>
+
+      <div class="test"><input type="checkbox" id="s-2-1"><label for="s-2-1" class="test-body">
+        <div class="test-title">Wizard de novo projeto: passo a passo</div>
+        <div class="test-steps">
+          <ol>
+            <li><code>/projects/new</code> abre.</li>
+            <li>Escolher channel.</li>
+            <li>Escolher 1+ mediums (blog, video, shorts, podcast).</li>
+            <li>Aplicar autopilot template (opcional) ou pular.</li>
+            <li>Confirma → redireciona pra <code>/projects/[id]</code> com PipelineWorkspace.</li>
+          </ol>
+        </div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-2-2"><label for="s-2-2" class="test-body">
+        <div class="test-title">Autopilot template carrega config</div>
+        <div class="test-steps">Selecionar template em <code>/channels/[id]/autopilot-templates</code> → cria projeto → topic/niche já preenchidos no BrainstormEngine.</div>
+        <div class="test-meta"><span class="tag ref">packages/shared/src/schemas/autopilotConfig.ts</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-2-3"><label for="s-2-3" class="test-body">
+        <div class="test-title">Mediums geram tracks isolados</div>
+        <div class="test-steps">Projeto criado com 2 mediums → sidebar mostra 2 tracks separadas (cada uma tem seu próprio Production/Review/Assets/Preview/Publish).</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="modes">
+      <h2>3. Modos de pipeline</h2>
+      <p class="desc">Step-by-step, supervised (auto-pilot), overview. Toggle via <code>ProjectModeControls</code>.</p>
+
+      <h3>3.1 Step-by-step</h3>
+      <div class="test"><input type="checkbox" id="s-3-1"><label for="s-3-1" class="test-body">
+        <div class="test-title">Modo step-by-step: usuário dispara cada estágio</div>
+        <div class="test-steps">
+          <ol>
+            <li>Selecionar modo "step-by-step" no header.</li>
+            <li>BrainstormEngine espera input manual; nada auto-roda.</li>
+            <li>Após Brainstorm complete, próximo estágio fica "queued" mas só dispara quando o usuário clica Run.</li>
+          </ol>
+        </div>
+        <div class="test-meta"><span class="tag testid">mode-toggle</span></div>
+      </label></div>
+
+      <h3>3.2 Supervised (auto-pilot)</h3>
+      <div class="test"><input type="checkbox" id="s-3-2"><label for="s-3-2" class="test-body">
+        <div class="test-title">Modo supervised: engines auto-disparam quando prontas</div>
+        <div class="test-steps">
+          <ol>
+            <li>Selecionar modo "supervised".</li>
+            <li>Topic já preenchido (via autopilot) → BrainstormEngine auto-dispara.</li>
+            <li>Cada estágio subsequente auto-roda assim que dependências resolvem.</li>
+            <li>Usuário pode pausar a qualquer momento.</li>
+          </ol>
+        </div>
+        <div class="test-meta"><span class="tag ref">apps/app/src/hooks/use-auto-pilot-trigger.ts</span></div>
+      </label></div>
+
+      <h3>3.3 Overview</h3>
+      <div class="test"><input type="checkbox" id="s-3-3"><label for="s-3-3" class="test-body">
+        <div class="test-title">Modo overview: mostra todos os estágios já completos read-only</div>
+        <div class="test-steps">Projeto com estágios completos → modo overview consolida resultados em página única, navegável sem disparar runs.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="views">
+      <h2>4. Focus / Graph / Sidebar</h2>
+      <p class="desc">3 views do PipelineWorkspace e a sidebar de tracks.</p>
+
+      <div class="test"><input type="checkbox" id="s-4-1"><label for="s-4-1" class="test-body">
+        <div class="test-title">Toggle Focus / Graph</div>
+        <div class="test-steps">Botões <code>view-toggle-focus</code> e <code>view-toggle-graph</code> alternam entre visão de foco (single stage) e graph (DAG de tracks).</div>
+        <div class="test-meta"><span class="tag testid">view-toggle-focus</span><span class="tag testid">view-toggle-graph</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-4-2"><label for="s-4-2" class="test-body">
+        <div class="test-title">Focus view com breadcrumb</div>
+        <div class="test-steps">FocusPanel mostra breadcrumb (channel → projeto → track → estágio) e abas de attempts (<code>focus-panel-attempt-tabs</code>).</div>
+        <div class="test-meta"><span class="tag testid">focus-panel-breadcrumb</span><span class="tag testid">focus-panel-attempt-tabs</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-4-3"><label for="s-4-3" class="test-body">
+        <div class="test-title">Focus panel vazio mostra placeholder</div>
+        <div class="test-steps">Sem estágio selecionado, FocusPanel renderiza <code>focus-panel-empty</code> com CTA.</div>
+        <div class="test-meta"><span class="tag testid">focus-panel-empty</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-4-4"><label for="s-4-4" class="test-body">
+        <div class="test-title">Graph: nó aborted destaca visualmente</div>
+        <div class="test-steps">Track abortado renderiza nó com estilo aborted (<code>graph-node-aborted-{trackId|shared}</code>) — cor diferente, ícone X.</div>
+        <div class="test-meta"><span class="tag testid">graph-node-aborted-*</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-4-5"><label for="s-4-5" class="test-body">
+        <div class="test-title">Click em nó do graph navega pro Focus</div>
+        <div class="test-steps">Clicar num nó (E12) abre FocusPanel daquele estágio com o último attempt selecionado.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-4-6"><label for="s-4-6" class="test-body">
+        <div class="test-title">Sidebar lista todos os tracks</div>
+        <div class="test-steps">FocusSidebar mostra Shared (Brainstorm/Research/Canonical) no topo, depois cada track com seus 5 estágios + publish targets aninhados.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="mode-controls">
+      <h2>5. Controles de modo (header)</h2>
+      <p class="desc">Toggle de mode + paused no topo do PipelineWorkspace.</p>
+
+      <div class="test"><input type="checkbox" id="s-5-1"><label for="s-5-1" class="test-body">
+        <div class="test-title">Toggle de modo persiste</div>
+        <div class="test-steps">Mudar modo (step-by-step ↔ supervised ↔ overview) salva em <code>projects.pipeline_state_json.mode</code> e sobrevive refresh.</div>
+        <div class="test-meta"><span class="tag testid">mode-toggle</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-5-2"><label for="s-5-2" class="test-body">
+        <div class="test-title">Botão Pause global</div>
+        <div class="test-steps">Em supervised mode, clicar pause congela auto-fire de todas engines. Resume retoma.</div>
+        <div class="test-meta"><span class="tag testid">paused-toggle</span></div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="engine-brainstorm">
+      <h2>6.1 BrainstormEngine</h2>
+      <p class="desc">Fase shared inicial — gera ou importa ideia.</p>
+
+      <div class="test"><input type="checkbox" id="s-6-1-1"><label for="s-6-1-1" class="test-body">
+        <div class="test-title">Generate mode: topic-driven</div>
+        <div class="test-steps">
+          <ol>
+            <li>Topic + niche preenchidos.</li>
+            <li>Clicar Run.</li>
+            <li>Esperar resposta com lista de ideias (cards: <code>idea_id</code>, title, verdict, audience, tension).</li>
+            <li>Selecionar idea → botão "Next: Research" aparece.</li>
+            <li>Confirmar → stage_runs.outcome_json gravado.</li>
+          </ol>
+        </div>
+        <div class="test-meta"><span class="tag ref">apps/app/src/components/engines/BrainstormEngine.tsx</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-1-2"><label for="s-6-1-2" class="test-body">
+        <div class="test-title">Generate mode: reference-guided</div>
+        <div class="test-steps">Trocar modo pra "reference_guided" → URL field aparece → preencher URL válida → Run gera ideias inspiradas no conteúdo da URL.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-1-3"><label for="s-6-1-3" class="test-body">
+        <div class="test-title">Import mode: seleção da idea library</div>
+        <div class="test-steps"><code>?mode=import</code> ou prop → lista ideias arquivadas → clicar uma seleciona e dispara stage complete.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-1-4"><label for="s-6-1-4" class="test-body">
+        <div class="test-title">Validação: topic obrigatório em topic-driven</div>
+        <div class="test-steps">Submit sem topic → Zod block, mensagem "Topic required for topic-driven mode".</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-1-5"><label for="s-6-1-5" class="test-body">
+        <div class="test-title">Sem botão Back (primeiro estágio)</div>
+        <div class="test-steps">BrainstormEngine não tem botão "Back" (é o primeiro estágio do pipeline).</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="engine-research">
+      <h2>6.2 ResearchEngine</h2>
+      <p class="desc">Shared — gera research cards a partir da idea.</p>
+
+      <div class="test"><input type="checkbox" id="s-6-2-1"><label for="s-6-2-1" class="test-body">
+        <div class="test-title">Gerar research cards</div>
+        <div class="test-steps">Após Brainstorm, ResearchEngine carrega context da idea → escolher depth (surface/medium/deep) → Run → cards aparecem com claims + sources.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-2-2"><label for="s-6-2-2" class="test-body">
+        <div class="test-title">Aprovar / reprovar cards individuais</div>
+        <div class="test-steps">Cada card tem toggle. Aprovados vão pra stage outcome; reprovados não.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-2-3"><label for="s-6-2-3" class="test-body">
+        <div class="test-title">Confidence score baixo dispara loop</div>
+        <div class="test-steps">Se confidence média &lt; threshold → engine sugere "Re-run com depth maior" (E5).</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-2-4"><label for="s-6-2-4" class="test-body">
+        <div class="test-title">Import: research archive</div>
+        <div class="test-steps">Modo import lista research arquivadas, seleciona uma → outcome consumido.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="engine-canonical">
+      <h2>6.3 CanonicalEngine (Canonical Core)</h2>
+      <p class="desc">Último estágio shared antes de divergir por track.</p>
+
+      <div class="test"><input type="checkbox" id="s-6-3-1"><label for="s-6-3-1" class="test-body">
+        <div class="test-title">Geração com persona</div>
+        <div class="test-steps">Selecionar persona (ou null pra default) → Run → gera canonical content (estrutura unificada que cada track expandirá em seu próprio formato).</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-3-2"><label for="s-6-3-2" class="test-body">
+        <div class="test-title">Migração ctx provider (slice 14.2)</div>
+        <div class="test-steps">Verificar engine consome context via <code>useProjectContext()</code> (não props legacy). Console sem warnings.</div>
+        <div class="test-meta"><span class="tag ref">apps/app/src/components/engines/CanonicalEngine.tsx</span><span class="tag id">slice 14.2</span></div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="engine-production">
+      <h2>6.4 ProductionEngine (per-Track)</h2>
+      <p class="desc">Cada track produz seu próprio conteúdo a partir do canonical core.</p>
+
+      <div class="test"><input type="checkbox" id="s-6-4-1"><label for="s-6-4-1" class="test-body">
+        <div class="test-title">Blog track: gera artigo</div>
+        <div class="test-steps">Track de blog produz draft com word count configurado.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-4-2"><label for="s-6-4-2" class="test-body">
+        <div class="test-title">Video track: gera roteiro</div>
+        <div class="test-steps">Track de video produz script + B-roll cues.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-4-3"><label for="s-6-4-3" class="test-body">
+        <div class="test-title">Shorts track: gera versão curta</div>
+        <div class="test-steps">Track shorts produz roteiro reduzido (60–90s).</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-4-4"><label for="s-6-4-4" class="test-body">
+        <div class="test-title">Podcast track: gera episode outline + script</div>
+        <div class="test-steps">Track podcast produz outline conversacional.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-4-5"><label for="s-6-4-5" class="test-body">
+        <div class="test-title">Provider override por track</div>
+        <div class="test-steps">Em supervised, configurar <code>autopilotConfig.draft.providerOverride</code> diferente em cada track → confirmar uso correto.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="engine-review">
+      <h2>6.5 ReviewEngine (loop) <span class="status critical">Crítico</span></h2>
+      <p class="desc">Itera até score ≥ auto-approve threshold ou max iterations.</p>
+
+      <div class="test"><input type="checkbox" id="s-6-5-1"><label for="s-6-5-1" class="test-body">
+        <div class="test-title">Primeiro review</div>
+        <div class="test-steps">Review automático após Production → score numérico exibido + breakdown por critério.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-5-2"><label for="s-6-5-2" class="test-body">
+        <div class="test-title">Loop até auto-approve threshold</div>
+        <div class="test-steps">Em supervised, score &lt; threshold (default 90) → re-roda Production+Review até passar ou bater max iterations (default 5).</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-5-3"><label for="s-6-5-3" class="test-body">
+        <div class="test-title">Hard fail threshold para o loop</div>
+        <div class="test-steps">Se score &lt; hardFailThreshold (default 40) → para o loop, marca track como needs-human-intervention.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-5-4"><label for="s-6-5-4" class="test-body">
+        <div class="test-title">Loop info card</div>
+        <div class="test-steps">UI mostra <code>loop-info-card</code> com iteração atual / max e último score.</div>
+        <div class="test-meta"><span class="tag testid">loop-info-card</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-5-5"><label for="s-6-5-5" class="test-body">
+        <div class="test-title">Max iterations atingido</div>
+        <div class="test-steps">Após max iterations sem aprovar → marca como awaiting (banner aparece pedindo decisão manual).</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="engine-assets">
+      <h2>6.6 AssetsEngine (per-Track)</h2>
+      <p class="desc">Geração ou upload de imagens / thumbnails.</p>
+
+      <div class="test"><input type="checkbox" id="s-6-6-1"><label for="s-6-6-1" class="test-body">
+        <div class="test-title">Mode skip</div>
+        <div class="test-steps"><code>assets.mode = 'skip'</code> → engine completa sem rodar nada.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-6-2"><label for="s-6-6-2" class="test-body">
+        <div class="test-title">Mode briefs_only</div>
+        <div class="test-steps">Gera apenas briefs textuais (sem chamar AI de imagem). Usuário pode usar pra criar manualmente.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-6-3"><label for="s-6-6-3" class="test-body">
+        <div class="test-title">Mode auto_generate</div>
+        <div class="test-steps">Gera imagens via provider configurado. Imagens aparecem em <code>/assets</code> e <code>/images</code>.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-6-4"><label for="s-6-6-4" class="test-body">
+        <div class="test-title">Upload manual</div>
+        <div class="test-steps">Modo import: upload de imagem local → vincula ao track.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="engine-preview">
+      <h2>6.7 PreviewEngine (per-Track)</h2>
+      <p class="desc">Render preview do conteúdo final antes de publish.</p>
+
+      <div class="test"><input type="checkbox" id="s-6-7-1"><label for="s-6-7-1" class="test-body">
+        <div class="test-title">Preview enabled</div>
+        <div class="test-steps"><code>preview.enabled = true</code> → engine renderiza preview HTML/video player conforme formato do track.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-7-2"><label for="s-6-7-2" class="test-body">
+        <div class="test-title">Preview disabled</div>
+        <div class="test-steps">Default <code>preview.enabled = false</code> → estágio pula direto pra publish.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="engine-publish">
+      <h2>6.8 PublishEngine (per-Track) <span class="status critical">Crítico</span></h2>
+      <p class="desc">Sempre exige confirmação humana, mesmo em supervised.</p>
+
+      <div class="test"><input type="checkbox" id="s-6-8-1"><label for="s-6-8-1" class="test-body">
+        <div class="test-title">Publish nunca auto-dispara</div>
+        <div class="test-steps">Mesmo em supervised, PublishEngine fica awaiting até usuário clicar "Publish now".</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-8-2"><label for="s-6-8-2" class="test-body">
+        <div class="test-title">Status draft vs published</div>
+        <div class="test-steps">Toggle <code>publish.status</code> entre draft (rascunho no destino) e published (vai ao ar).</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-6-8-3"><label for="s-6-8-3" class="test-body">
+        <div class="test-title">Multi-target por track</div>
+        <div class="test-steps">Track tem múltiplos publish targets (ex: blog → WordPress + RSS). Cada target tem seu próprio status.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="add-medium">
+      <h2>7. Add medium em vôo <span class="status recent">T5.4</span></h2>
+      <p class="desc">Adicionar um track mid-flight (depois que pipeline já começou).</p>
+
+      <div class="test"><input type="checkbox" id="s-7-1"><label for="s-7-1" class="test-body">
+        <div class="test-title">Botão add medium aparece</div>
+        <div class="test-steps">Sidebar mostra botão "+" (<code>sidebar-add-medium</code>) quando há mediums não usados.</div>
+        <div class="test-meta"><span class="tag testid">sidebar-add-medium</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-7-2"><label for="s-7-2" class="test-body">
+        <div class="test-title">Dialog de seleção</div>
+        <div class="test-steps">Clique abre <code>AddMediumDialog</code> com select dos mediums disponíveis.</div>
+        <div class="test-meta"><span class="tag testid">add-medium-select</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-7-3"><label for="s-7-3" class="test-body">
+        <div class="test-title">Submit cria novo track</div>
+        <div class="test-steps">Confirmar → novo track aparece na sidebar com estágios queued, herda canonical core já produzido.</div>
+        <div class="test-meta"><span class="tag testid">add-medium-submit</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-7-4"><label for="s-7-4" class="test-body">
+        <div class="test-title">Estado "all tracked"</div>
+        <div class="test-steps">Quando todos mediums já estão no projeto, mostra <code>add-medium-all-tracked</code> em vez do botão.</div>
+        <div class="test-meta"><span class="tag testid">add-medium-all-tracked</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-7-5"><label for="s-7-5" class="test-body">
+        <div class="test-title">Novo track auto-prossegue (supervised)</div>
+        <div class="test-steps">Em supervised mode, novo track começa Production automaticamente sem precisar pausar os outros.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="per-track-pause">
+      <h2>8. Pausa por Track <span class="status recent">T5.6</span></h2>
+      <p class="desc">Pausar 1 track específico sem afetar os outros.</p>
+
+      <div class="test"><input type="checkbox" id="s-8-1"><label for="s-8-1" class="test-body">
+        <div class="test-title">Botão pause individual</div>
+        <div class="test-steps">Cada track tem <code>sidebar-track-pause-{trackId}</code>. Click pausa só aquela track.</div>
+        <div class="test-meta"><span class="tag testid">sidebar-track-pause-*</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-8-2"><label for="s-8-2" class="test-body">
+        <div class="test-title">Badge "paused" aparece</div>
+        <div class="test-steps">Track pausada exibe <code>sidebar-track-paused-badge-{trackId}</code>; outros tracks continuam.</div>
+        <div class="test-meta"><span class="tag testid">sidebar-track-paused-badge-*</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-8-3"><label for="s-8-3" class="test-body">
+        <div class="test-title">Resume retoma só aquele track</div>
+        <div class="test-steps">Click novamente despausa, estado dos outros tracks intacto.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="track-abort">
+      <h2>9. Abort de Track <span class="status recent">T9.F154</span></h2>
+      <p class="desc">Abandonar 1 track permanentemente (não desfaz, marca como aborted).</p>
+
+      <div class="test"><input type="checkbox" id="s-9-1"><label for="s-9-1" class="test-body">
+        <div class="test-title">Botão abort com confirm dialog</div>
+        <div class="test-steps">Click em <code>track-abort-btn-{trackId}</code> → abre <code>track-abort-confirm-dialog</code> com warning destrutivo → <code>track-abort-confirm-btn</code> confirma.</div>
+        <div class="test-meta"><span class="tag testid">track-abort-btn-*</span><span class="tag testid">track-abort-confirm-dialog</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-9-2"><label for="s-9-2" class="test-body">
+        <div class="test-title">Badge aborted</div>
+        <div class="test-steps">Track exibe <code>sidebar-track-aborted-badge-{trackId}</code>; estágios pendentes não rodam mais.</div>
+        <div class="test-meta"><span class="tag testid">sidebar-track-aborted-badge-*</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-9-3"><label for="s-9-3" class="test-body">
+        <div class="test-title">Graph reflete aborted</div>
+        <div class="test-steps">Graph view mostra nós do track abortado com estilo aborted (<code>graph-node-aborted-{trackId}</code>).</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-9-4"><label for="s-9-4" class="test-body">
+        <div class="test-title">Demais tracks seguem rodando</div>
+        <div class="test-steps">Aborto de 1 track não pausa os outros; pipeline shared (canonical etc.) continua.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="cost-badges">
+      <h2>10. Custos por Track <span class="status recent">T7.2</span></h2>
+      <p class="desc">Badge mostrando custo acumulado em créditos por track.</p>
+
+      <div class="test"><input type="checkbox" id="s-10-1"><label for="s-10-1" class="test-body">
+        <div class="test-title">Badge de custo na sidebar</div>
+        <div class="test-steps">Cada track exibe <code>sidebar-track-cost-{trackId}</code> com créditos consumidos (atualiza após cada stage completion).</div>
+        <div class="test-meta"><span class="tag testid">sidebar-track-cost-*</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-10-2"><label for="s-10-2" class="test-body">
+        <div class="test-title">Custo soma todos os estágios</div>
+        <div class="test-steps">Production + Review (todas iterações) + Assets + Preview somados; Shared (Brainstorm/Research/Canonical) contabilizado separado.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="awaiting">
+      <h2>11. Awaiting banner + resume <span class="status recent">T9.F153 / T9.F171</span></h2>
+      <p class="desc">Pipeline para num estágio que precisa decisão humana.</p>
+
+      <div class="test"><input type="checkbox" id="s-11-1"><label for="s-11-1" class="test-body">
+        <div class="test-title">Banner awaiting aparece</div>
+        <div class="test-steps">Quando stage marca <code>awaiting_reason</code> (max iter review, ambiguous research etc.) → <code>awaiting-banner</code> renderiza no topo do FocusPanel.</div>
+        <div class="test-meta"><span class="tag testid">awaiting-banner</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-11-2"><label for="s-11-2" class="test-body">
+        <div class="test-title">Reason exibido no banner</div>
+        <div class="test-steps">Texto humano traduz <code>awaiting_reason</code> (ex: "Review não bateu threshold após 5 tentativas").</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-11-3"><label for="s-11-3" class="test-body">
+        <div class="test-title">Resume track button</div>
+        <div class="test-steps"><code>resume-track-btn</code> aparece → click reenfileira o estágio com flag de override (reseta awaiting_reason).</div>
+        <div class="test-meta"><span class="tag testid">resume-track-btn</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-11-4"><label for="s-11-4" class="test-body">
+        <div class="test-title">Pipeline retoma após resume</div>
+        <div class="test-steps">Engine re-roda; se completa → estágio segue, banner some.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="publish-retry">
+      <h2>12. Publish target retry <span class="status recent">T9.F156</span></h2>
+      <p class="desc">Retry individual de cada destino quando publish parcial falha.</p>
+
+      <div class="test"><input type="checkbox" id="s-12-1"><label for="s-12-1" class="test-body">
+        <div class="test-title">Targets aninhados na sidebar</div>
+        <div class="test-steps">Sob o nó de Publish do track, cada target aparece como <code>sidebar-item-{trackId}-publish-target-{ptId}</code> com status individual.</div>
+        <div class="test-meta"><span class="tag testid">sidebar-item-*-publish-target-*</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-12-2"><label for="s-12-2" class="test-body">
+        <div class="test-title">Botão retry por target</div>
+        <div class="test-steps">Target falhado mostra <code>retry-publish-target-{targetId}</code> → click re-publica só aquele destino sem refazer os que deram certo.</div>
+        <div class="test-meta"><span class="tag testid">retry-publish-target-*</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-12-3"><label for="s-12-3" class="test-body">
+        <div class="test-title">Idempotência</div>
+        <div class="test-steps">Retry usa token idempotente — não cria duplicata no destino.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="refresh-resilience">
+      <h2>13. Refresh resilience <span class="status recent">E13</span></h2>
+      <p class="desc">Page refresh no meio de execução não perde estado.</p>
+
+      <div class="test"><input type="checkbox" id="s-13-1"><label for="s-13-1" class="test-body">
+        <div class="test-title">F5 durante run</div>
+        <div class="test-steps">Pipeline rodando → F5 → page recarrega → <code>useProjectStream</code> reconecta SSE em <code>/api/projects/:id/stages</code> → estado reflete a posição correta.</div>
+        <div class="test-meta"><span class="tag ref">apps/app/src/hooks/use-project-stream.ts</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-13-2"><label for="s-13-2" class="test-body">
+        <div class="test-title">Modo persiste após refresh</div>
+        <div class="test-steps">Mudou pra supervised, refresh → mode continua supervised.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-13-3"><label for="s-13-3" class="test-body">
+        <div class="test-title">Aborted/awaiting persistem</div>
+        <div class="test-steps">Track abortado/awaiting → refresh → estado preservado (DB-backed).</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-13-4"><label for="s-13-4" class="test-body">
+        <div class="test-title">Standalone engine + refresh</div>
+        <div class="test-steps">Em <code>/channels/[id]/brainstorm/new</code>, completar idea, F5 → resultado persistido via <code>persistStageResult</code> em <code>StandaloneEngineHost</code>.</div>
+        <div class="test-meta"><span class="tag ref">StandaloneEngineHost.tsx:82-104</span></div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="quota">
+      <h2>14. Quota / Provider exhausted <span class="status recent">E6</span></h2>
+      <p class="desc">Provider sem cota → pipeline marca awaiting + sugere fallback.</p>
+
+      <div class="test"><input type="checkbox" id="s-14-1"><label for="s-14-1" class="test-body">
+        <div class="test-title">Provider sem cota dispara awaiting</div>
+        <div class="test-steps">Forçar erro 429 do provider (ou usar key esgotada) → stage marca <code>awaiting_reason = 'provider_exhausted'</code> com banner.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-14-2"><label for="s-14-2" class="test-body">
+        <div class="test-title">Fallback sugerido</div>
+        <div class="test-steps">Banner mostra CTA "Switch provider" → usuário escolhe outro → resume → retoma.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-14-3"><label for="s-14-3" class="test-body">
+        <div class="test-title">Erro não derruba outros tracks</div>
+        <div class="test-steps">Quota exhausted em 1 track não para outros que usam outro provider.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="attempt-history">
+      <h2>15. Attempt history zoom <span class="status recent">E11</span></h2>
+      <p class="desc">Ver/comparar tentativas anteriores de um estágio com loop.</p>
+
+      <div class="test"><input type="checkbox" id="s-15-1"><label for="s-15-1" class="test-body">
+        <div class="test-title">Tabs de attempts no FocusPanel</div>
+        <div class="test-steps">Estágio com múltiplos attempts mostra <code>attempt-tab-{attemptNo}</code> para cada um.</div>
+        <div class="test-meta"><span class="tag testid">attempt-tab-*</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-15-2"><label for="s-15-2" class="test-body">
+        <div class="test-title">Zoom em attempt antigo</div>
+        <div class="test-steps">Click numa tab antiga → painel mostra input + outcome daquele attempt, read-only.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-15-3"><label for="s-15-3" class="test-body">
+        <div class="test-title">Latest highlighted</div>
+        <div class="test-steps">Tab do último attempt está destacada por default.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="review-loop">
+      <h2>16. Loop de Review <span class="status recent">E4</span></h2>
+      <p class="desc">Iteração Production → Review até passar threshold (visualização full).</p>
+
+      <div class="test"><input type="checkbox" id="s-16-1"><label for="s-16-1" class="test-body">
+        <div class="test-title">Iteração visível na UI</div>
+        <div class="test-steps">Durante loop, <code>loop-info-card</code> mostra "Iteration N of M" + score atual.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-16-2"><label for="s-16-2" class="test-body">
+        <div class="test-title">Cada iteração cria attempt novo</div>
+        <div class="test-steps">Iteração N+1 gera <code>attempt-tab-{N+1}</code> tanto em Production quanto Review.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-16-3"><label for="s-16-3" class="test-body">
+        <div class="test-title">Convergência → próximo estágio</div>
+        <div class="test-steps">Score ≥ threshold → loop fecha → próximo estágio (Assets) inicia.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="research-loop">
+      <h2>17. Loop de Research <span class="status recent">E5</span></h2>
+      <p class="desc">Confidence baixa dispara nova passagem.</p>
+
+      <div class="test"><input type="checkbox" id="s-17-1"><label for="s-17-1" class="test-body">
+        <div class="test-title">Re-run automático por confidence</div>
+        <div class="test-steps">Em supervised, confidence média &lt; threshold → engine re-roda com depth maior, attempt incrementa.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-17-2"><label for="s-17-2" class="test-body">
+        <div class="test-title">Loop info exibido</div>
+        <div class="test-steps">UI sinaliza "Re-running research with deeper search".</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="wordpress">
+      <h2>18.1 Driver WordPress <span class="status recent">T6.1</span></h2>
+
+      <div class="test"><input type="checkbox" id="s-18-1-1"><label for="s-18-1-1" class="test-body">
+        <div class="test-title">Configurar publish target WP</div>
+        <div class="test-steps"><code>/settings/integrations</code> → adicionar site WP (URL + app password) → testa conexão OK.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-18-1-2"><label for="s-18-1-2" class="test-body">
+        <div class="test-title">Publish blog post</div>
+        <div class="test-steps">Track blog → publish target WP → post aparece no WP (rascunho ou publicado conforme status).</div>
+        <div class="test-meta"><span class="tag testid">driver-wordpress</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-18-1-3"><label for="s-18-1-3" class="test-body">
+        <div class="test-title">Featured image enviada</div>
+        <div class="test-steps">Asset principal vira featured_media do post WP.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-18-1-4"><label for="s-18-1-4" class="test-body">
+        <div class="test-title">Categorias + tags mapeadas</div>
+        <div class="test-steps">Channel config define cat/tag → enviadas no payload do post.</div>
+      </label></div>
+    </section>
+
+    <section id="youtube">
+      <h2>18.2 Driver YouTube <span class="status recent">T6.2</span></h2>
+
+      <div class="test"><input type="checkbox" id="s-18-2-1"><label for="s-18-2-1" class="test-body">
+        <div class="test-title">OAuth YouTube</div>
+        <div class="test-steps">Settings → conectar canal YouTube via OAuth → permissões aceitas.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-18-2-2"><label for="s-18-2-2" class="test-body">
+        <div class="test-title">Upload de vídeo</div>
+        <div class="test-steps">Track video com asset de vídeo → publish → upload começa, status atualiza.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-18-2-3"><label for="s-18-2-3" class="test-body">
+        <div class="test-title">Metadata enviada</div>
+        <div class="test-steps">Title, description, tags do canonical core viram metadata do vídeo.</div>
+      </label></div>
+    </section>
+
+    <section id="spotify">
+      <h2>18.3 Driver Spotify <span class="status recent">T6.3</span></h2>
+
+      <div class="test"><input type="checkbox" id="s-18-3-1"><label for="s-18-3-1" class="test-body">
+        <div class="test-title">Conectar show Spotify</div>
+        <div class="test-steps">Settings → vincular podcast via OAuth.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-18-3-2"><label for="s-18-3-2" class="test-body">
+        <div class="test-title">Publish episode</div>
+        <div class="test-steps">Track podcast → publish target Spotify → episode aparece no Spotify for Podcasters.</div>
+      </label></div>
+    </section>
+
+    <section id="apple">
+      <h2>18.4 Driver Apple Podcasts <span class="status recent">T6.4</span></h2>
+
+      <div class="test"><input type="checkbox" id="s-18-4-1"><label for="s-18-4-1" class="test-body">
+        <div class="test-title">Configurar feed Apple</div>
+        <div class="test-steps">Connect Apple Podcasts Connect → feed RSS público referenciado.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-18-4-2"><label for="s-18-4-2" class="test-body">
+        <div class="test-title">Episode propaga via RSS</div>
+        <div class="test-steps">Publish em track podcast → RSS feed atualizado → Apple pega na próxima sync.</div>
+      </label></div>
+    </section>
+
+    <section id="rss">
+      <h2>18.5 Driver RSS <span class="status recent">T3.3 / T6.x</span></h2>
+
+      <div class="test"><input type="checkbox" id="s-18-5-1"><label for="s-18-5-1" class="test-body">
+        <div class="test-title">Feed RSS gerado</div>
+        <div class="test-steps">Channel config tem feed URL pública → entries criadas a cada publish.</div>
+        <div class="test-meta"><span class="tag testid">driver-rss</span></div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-18-5-2"><label for="s-18-5-2" class="test-body">
+        <div class="test-title">Feed valida XML</div>
+        <div class="test-steps">Cole URL do feed em validator (https://validator.w3.org/feed/) → XML válido.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="upgrade">
+      <h2>19. Upgrade modal</h2>
+      <p class="desc">Trigger automático quando user fica sem créditos / atinge limite.</p>
+
+      <div class="test"><input type="checkbox" id="s-19-1"><label for="s-19-1" class="test-body">
+        <div class="test-title">Modal abre em ação sem créditos</div>
+        <div class="test-steps">Tentar disparar run sem créditos disponíveis → <code>UpgradeProvider</code> abre modal com plans.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-19-2"><label for="s-19-2" class="test-body">
+        <div class="test-title">Modal não bloqueia navegação</div>
+        <div class="test-steps">Fechar modal → user volta pra UI; pipeline fica paused em vez de quebrar.</div>
+      </label></div>
+    </section>
+
+    <section id="credits-settings">
+      <h2>20. Credit settings</h2>
+      <p class="desc">Página <code>/settings/credits</code> mostra saldo + custo por ação.</p>
+
+      <div class="test"><input type="checkbox" id="s-20-1"><label for="s-20-1" class="test-body">
+        <div class="test-title">Saldo correto</div>
+        <div class="test-steps">Saldo na página bate com últimas dedução de pipeline.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-20-2"><label for="s-20-2" class="test-body">
+        <div class="test-title">Tabela de custo por engine</div>
+        <div class="test-steps">Mostra cost-per-action de cada engine (research, draft, review etc.).</div>
+      </label></div>
+      <div class="callout warn">
+        <strong>Nota V2-006:</strong> credit reservations vivem na branch <code>feat/subscription-ready</code> (não mergeada). Se essa branch não estiver em uso, pule testes específicos de reserve/release.
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="concurrent-tracks">
+      <h2>21. Tracks concorrentes</h2>
+      <p class="desc">Múltiplos tracks rodando em paralelo no mesmo projeto.</p>
+
+      <div class="test"><input type="checkbox" id="s-21-1"><label for="s-21-1" class="test-body">
+        <div class="test-title">2+ tracks rodam ao mesmo tempo</div>
+        <div class="test-steps">Projeto com blog + video em supervised → ambos Productions disparam em paralelo (independentes).</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-21-2"><label for="s-21-2" class="test-body">
+        <div class="test-title">Pausa de 1 não afeta o outro</div>
+        <div class="test-steps">Pausar track blog → track video continua até completar.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-21-3"><label for="s-21-3" class="test-body">
+        <div class="test-title">SSE atualiza ambos</div>
+        <div class="test-steps">Sidebar reflete status de cada track em real time via stream.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-21-4"><label for="s-21-4" class="test-body">
+        <div class="test-title">Falha de 1 track isolada</div>
+        <div class="test-steps">Erro em Production de track blog não afeta video.</div>
+      </label></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <section id="edge-cases">
+      <h2>22. Misc edge cases</h2>
+
+      <h3>22.1 Idea legacy format</h3>
+      <div class="test"><input type="checkbox" id="s-22-1-1"><label for="s-22-1-1" class="test-body">
+        <div class="test-title">Idea no formato antigo carrega</div>
+        <div class="test-steps">Idea criada antes da migração (formato legacy) → <code>isLegacyIdea()</code> detecta → <code>normalizeLegacyIdea()</code> converte → engine consome normalmente.</div>
+      </label></div>
+
+      <h3>22.2 Channel sem publish target</h3>
+      <div class="test"><input type="checkbox" id="s-22-2-1"><label for="s-22-2-1" class="test-body">
+        <div class="test-title">Publish gracefully indisponível</div>
+        <div class="test-steps">Channel sem target configurado → PublishEngine mostra "No targets configured. Setup in /settings/integrations".</div>
+      </label></div>
+
+      <h3>22.3 Nav durante run</h3>
+      <div class="test"><input type="checkbox" id="s-22-3-1"><label for="s-22-3-1" class="test-body">
+        <div class="test-title">Navegar pra outro projeto e voltar</div>
+        <div class="test-steps">Mid-run → ir pra <code>/projects</code> → voltar pro projeto → estado intacto, stream reconecta.</div>
+      </label></div>
+
+      <h3>22.4 Mode change mid-flight</h3>
+      <div class="test"><input type="checkbox" id="s-22-4-1"><label for="s-22-4-1" class="test-body">
+        <div class="test-title">Trocar de supervised pra step-by-step com pipeline ativo</div>
+        <div class="test-steps">Auto-fire para; estágio em andamento completa normalmente; próximos esperam click manual.</div>
+      </label></div>
+
+      <h3>22.5 Stage com input inválido</h3>
+      <div class="test"><input type="checkbox" id="s-22-5-1"><label for="s-22-5-1" class="test-body">
+        <div class="test-title">Zod block na borda</div>
+        <div class="test-steps">Tentar avançar sem campo obrigatório → engine bloqueia com mensagem, não silencia.</div>
+      </label></div>
+
+      <h3>22.6 Sentry / logs</h3>
+      <div class="test"><input type="checkbox" id="s-22-6-1"><label for="s-22-6-1" class="test-body">
+        <div class="test-title">Console limpo</div>
+        <div class="test-steps">Navegar pelos fluxos principais — DevTools console sem erros React/Next ou warnings de provider faltando.</div>
+      </label></div>
+      <div class="test"><input type="checkbox" id="s-22-6-2"><label for="s-22-6-2" class="test-body">
+        <div class="test-title">Logs Axiom recebem requests</div>
+        <div class="test-steps">Após pipeline run, Axiom mostra entries de <code>/api/projects/*</code> e AI calls.</div>
+      </label></div>
+
+      <h3>22.7 Lista admin de ideas/research</h3>
+      <div class="test"><input type="checkbox" id="s-22-7-1"><label for="s-22-7-1" class="test-body">
+        <div class="test-title">/ideas, /research, /blogs, /assets carregam</div>
+        <div class="test-steps">Páginas listam recursos do user; filtros e search funcionam.</div>
+      </label></div>
+    </section>
+
+    <footer style="margin-top: 60px; padding-top: 24px; border-top: 1px solid #e5e7eb; font-size: 0.75rem; color: #9ca3af;">
+      <p>Gerado para a branch <code>integration/multi-track-pipeline</code> · 2026-05-17 · checkboxes salvos em <code>localStorage</code> deste browser.</p>
+    </footer>
+  </main>
+</div>
+
+<script>
+  (function() {
+    const STORAGE_KEY = 'bt-test-manual-mtp-v1';
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    const boxes = Array.from(document.querySelectorAll('input[type="checkbox"]'));
+    const counter = document.getElementById('progress-count');
+
+    function updateCounter() {
+      const checked = boxes.filter(b => b.checked).length;
+      counter.textContent = checked + ' / ' + boxes.length;
+    }
+
+    boxes.forEach(b => {
+      if (saved[b.id]) b.checked = true;
+      b.addEventListener('change', () => {
+        saved[b.id] = b.checked;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+        updateCounter();
+      });
+    });
+
+    document.getElementById('reset-btn').addEventListener('click', () => {
+      if (!confirm('Limpar todos os checkboxes?')) return;
+      boxes.forEach(b => b.checked = false);
+      localStorage.removeItem(STORAGE_KEY);
+      updateCounter();
+    });
+
+    updateCounter();
+  })();
+</script>
+
+</body>
+</html>

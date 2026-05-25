@@ -10,7 +10,8 @@ import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
 import { generateWithFallback } from '../lib/ai/router.js';
-import { loadAgentPrompt } from '../lib/ai/promptLoader.js';
+import { loadAgentPrompt, loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
+import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
 import { reserve, commit, release } from '../lib/credits/reservations.js';
 import { inngest } from '../jobs/client.js';
 import { emitJobEvent } from '../jobs/emitter.js';
@@ -805,9 +806,26 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       // Reserve credits upfront; commit on success, release on error.
       const regenToken = await reserve(orgId, request.userId, cost);
 
+      // Caller may pass the active brainstorm idea (and topic) so regen runs
+      // against the current pipeline pick, not the OLD session's stale idea.
+      const body = (request.body ?? {}) as { ideaId?: string; topic?: string };
+      const overrideIdeaId =
+        typeof body.ideaId === 'string' && body.ideaId.trim().length > 0 ? body.ideaId : null;
+      const overrideTopic =
+        typeof body.topic === 'string' && body.topic.trim().length > 0 ? body.topic : null;
+
+      const targetIdeaId =
+        (await resolveIdeaId(overrideIdeaId)) ??
+        (await resolveIdeaId(orig.idea_id as string | null));
+
       const focusTags = (orig.focus_tags as string[]) ?? [];
       const instruction = buildLevelInstruction(level, focusTags);
-      const inputJson = { ...(orig.input_json as Record<string, unknown>), instruction };
+      const baseInput = (orig.input_json as Record<string, unknown>) ?? {};
+      const inputJson = {
+        ...baseInput,
+        ...(overrideTopic ? { topic: overrideTopic } : {}),
+        instruction,
+      };
 
       const { data: session, error: insertErr } = await (
         sb.from('research_sessions') as unknown as {
@@ -821,7 +839,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           user_id: request.userId,
           channel_id: orig.channel_id ?? null,
           project_id: orig.project_id ?? null,
-          idea_id: await resolveIdeaId(orig.idea_id as string | null),
+          idea_id: targetIdeaId,
           level,
           focus_tags: focusTags,
           input_json: inputJson,
@@ -840,11 +858,11 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
         let ideaTitle: string | undefined;
         let coreTension: string | undefined;
         let targetAudience: string | undefined;
-        if (orig.idea_id) {
+        if (targetIdeaId) {
           const { data: idea } = await sb
             .from('idea_archives')
             .select('*')
-            .eq('id', orig.idea_id as string)
+            .eq('id', targetIdeaId)
             .maybeSingle();
           if (idea) {
             ideaTitle = (idea as Record<string, unknown>).title as string | undefined;
@@ -864,11 +882,19 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           if (ch) channelContext = ch as Record<string, unknown>;
         }
 
-        const baseSystem = (await loadAgentPrompt('research')) ?? '';
-        const systemPrompt = baseSystem;
+        const agentConfig = await loadAgentConfig('research');
+        const systemPrompt = agentConfig.instructions ?? '';
+        const { provider: resolvedProvider, model: resolvedModel } = resolveProviderOverride(
+          undefined,
+          undefined,
+          agentConfig,
+        );
+        const enabledTools = resolveTools(agentConfig.tools).filter(
+          () => resolvedProvider !== 'ollama',
+        );
 
         const userMessage = buildResearchMessage({
-          ideaId: (orig.idea_id as string) ?? undefined,
+          ideaId: targetIdeaId ?? undefined,
           ideaTitle: ideaTitle ?? ((inputJson as Record<string, unknown>).topic as string) ?? undefined,
           coreTension,
           targetAudience,
@@ -882,10 +908,14 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           (orig.model_tier as string) ?? 'standard',
           {
             agentType: 'research',
-            systemPrompt: systemPrompt ?? '',
+            systemPrompt,
             userMessage,
+            tools: enabledTools.length > 0 ? enabledTools : undefined,
+            toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
           },
           {
+            provider: resolvedProvider,
+            model: resolvedModel,
             logContext: {
               userId: request.userId!,
               orgId,

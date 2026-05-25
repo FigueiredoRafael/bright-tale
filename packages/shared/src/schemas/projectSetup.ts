@@ -1,7 +1,17 @@
 import { z } from 'zod'
 import { autopilotConfigSchema } from './autopilotConfig'
+import { MEDIA } from '../pipeline/inputs'
 
 export const startStageSchema = z.enum([
+  'brainstorm', 'research', 'canonical', 'production', 'review', 'assets', 'preview', 'publish',
+])
+
+/**
+ * @deprecated Pre-split start-stage union. Kept for legacy callers that still
+ * surface `draft` as a valid resume target on legacy projects. New code should
+ * use `startStageSchema`.
+ */
+export const legacyStartStageSchema = z.enum([
   'brainstorm', 'research', 'draft', 'review', 'assets', 'preview', 'publish',
 ])
 
@@ -10,6 +20,8 @@ export const setupProjectSchema = z.object({
   autopilotConfig: autopilotConfigSchema.nullable(),
   templateId: z.string().nullable(),
   startStage: startStageSchema,
+  media: z.array(z.enum(MEDIA)).optional(),
+  mediaConfig: z.record(z.enum(MEDIA), z.object({}).passthrough()).optional(),
 }).superRefine((v, ctx) => {
   if (v.mode !== 'step-by-step' && !v.autopilotConfig) {
     ctx.addIssue({

@@ -1,3 +1,6 @@
+-- projects.channel_id was first added by 20260412234959_channels.sql; guard
+-- with `if not exists` so this migration is idempotent across environments
+-- that already received the earlier column add.
 alter table projects
   add column if not exists channel_id              uuid references channels(id) on delete set null,
   add column if not exists mode                    text,

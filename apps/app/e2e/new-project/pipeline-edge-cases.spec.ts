@@ -1,0 +1,1391 @@
+/**
+ * pipeline-edge-cases.spec.ts — Edge-case e2e suite for the new-project pipeline.
+ *
+ * Tests are appended per issue:
+ *   Issue #193 — Review loop edge cases (8 tests)
+ *     - low-score-retry  (×3 modes): review iter 1 <90, iter 2 passes
+ *     - max-iterations   (×2 modes, supervised + overview): exhausted budget → awaiting_user(manual_review)
+ *     - hard-fail        (×3 modes): score <50 → status:failed
+ *
+ *   Issue #194 — Failure mode edge cases (12 tests)  [appended below]
+ *   Issue #195 — Intervention edge cases (5 tests)   [appended below]
+ *
+ * All tests use page.route() mocks (not MSW). No real AI calls.
+ */
+
+import { test, expect } from '@playwright/test'
+import { mockPipelineEdge } from '../fixtures/newProject/mockPipelineEdge'
+import { assertStageComplete } from '../fixtures/newProject/assertStageComplete'
+import { driveStageManual } from '../fixtures/newProject/driveStageManual'
+import type { HappyProjectSeed } from '../fixtures/newProject/mockPipelineHappy'
+
+// ─── Shared helpers ────────────────────────────────────────────────────────────
+
+const CHANNEL_ID = 'ch-e2e-edge'
+
+function seed(id: string, mode: HappyProjectSeed['mode'], title: string): HappyProjectSeed {
+  return { id, channelId: CHANNEL_ID, title, mode }
+}
+
+function attachConsoleListeners(page: import('@playwright/test').Page) {
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') console.log('[browser:error]', msg.text())
+  })
+  page.on('pageerror', (err) => console.log('[pageerror]', err.message))
+}
+
+// ─── Issue #193 — Review loop edge cases ──────────────────────────────────────
+
+// ── low-score-retry ───────────────────────────────────────────────────────────
+// Review iter 1 scores 65 (revision_required), iter 2 scores 95 (approved).
+// Orchestrator should loop back to production then re-review and eventually
+// reach completed state. Verified via the sidebar status icon for the review
+// stage reaching data-status="completed".
+
+test.describe('EC-R1 — low-score-retry (step-by-step)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard thresholds drive review loop: iter1 score 65 → iter2 score 95', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-lsr-1', 'step-by-step', 'EC Low-Score Retry Step-by-Step')
+
+    const mock = await mockPipelineEdge(page, 'low-score-retry', { project })
+
+    // ── Wizard ────────────────────────────────────────────────────────────────
+    // In step-by-step mode the wizard only exposes the project-scope inputs
+    // (title / channel / media / topic / mode). Per-stage review thresholds
+    // are gated behind `isAutopilot` and never render here — they fall back to
+    // pipeline_settings defaults at orchestrator time (autoApproveThreshold=90,
+    // hardFailThreshold=50, maxIterations=2). The grill confronts:
+    //   - mode = step-by-step  → engines must wait for user CTAs (no autopilot)
+    //   - default threshold=90 → mock score 65 must loop, score 95 must pass
+    //   - default hardFail=50  → score 65 must NOT mark stage as failed
+    await page.goto('/en/projects/new')
+    await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
+
+    await page.locator('#project-title').fill(project.title)
+    await page.getByTestId('channel-option').first().click()
+    await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+
+    // step-by-step is the default mode — click anyway to make the intent explicit
+    await page.getByRole('radio', { name: 'Step-by-step' }).click()
+
+    await page.getByRole('button', { name: /create project/i }).click()
+
+    await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+    await page.getByTestId('sidebar-item-brainstorm').waitFor({ state: 'visible', timeout: 20_000 })
+
+    // ── Shared stages: brainstorm → research → canonical ─────────────────────
+    await driveStageManual(page, 'brainstorm')
+    mock.completeStage('brainstorm')
+    await assertStageComplete(page, 'brainstorm', { timeout: 30_000 })
+
+    await driveStageManual(page, 'research')
+    mock.completeStage('research')
+    await assertStageComplete(page, 'research', { timeout: 30_000 })
+
+    await driveStageManual(page, 'canonical')
+    mock.completeStage('canonical')
+    await assertStageComplete(page, 'canonical', { timeout: 30_000 })
+
+    // ── Production iter 1 ────────────────────────────────────────────────────
+    await driveStageManual(page, 'production')
+    mock.completeStage('production')
+    await assertStageComplete(page, 'production', { timeout: 30_000 })
+
+    // ── Review iter 1 — wizard threshold=90 vs mock score=65 → revision_required
+    const reviewSidebar = page.locator('[data-testid*="sidebar-item-"][data-testid*="review"]').first()
+    await reviewSidebar.click()
+    await page.getByTestId('review-engine-root').waitFor({ state: 'visible', timeout: 20_000 })
+    await page.getByTestId('review-action-run').first().click()
+
+    // ReviewFeedbackPanel must render the iter 1 outcome
+    await page.getByTestId('review-feedback-panel').waitFor({ state: 'visible', timeout: 30_000 })
+    await expect(page.getByTestId('review-score')).toHaveAttribute('data-value', '65')
+    await expect(page.getByTestId('review-verdict')).toHaveAttribute('data-value', 'revision_required')
+    await expect(page.getByTestId('review-iteration')).toHaveAttribute('data-value', '1')
+    // Critical-issue feedback should be visible — drives the next iteration
+    await expect(page.getByTestId('review-feedback-critical')).toBeVisible()
+
+    // ── Review iter 2 — wizard threshold=90 vs mock score=95 → approved ──────
+    // ReviewEngine's needsRevision branch re-renders the same review-action-run
+    // testid; click it again to fire iter 2.
+    await page.getByTestId('review-action-run').first().click()
+
+    await expect(page.getByTestId('review-score')).toHaveAttribute('data-value', '95', { timeout: 30_000 })
+    await expect(page.getByTestId('review-verdict')).toHaveAttribute('data-value', 'approved')
+    await expect(page.getByTestId('review-iteration')).toHaveAttribute('data-value', '2')
+
+    // Approved branch should expose review-action-next; clicking writes the
+    // outcome back so the sidebar pill turns green.
+    await page.getByTestId('review-action-next').waitFor({ state: 'visible', timeout: 30_000 })
+    await page.getByTestId('review-action-next').click()
+    mock.completeStage('review')
+    await assertStageComplete(page, 'review', { timeout: 30_000 })
+
+    // ── Loop accounting ──────────────────────────────────────────────────────
+    // Exactly two reviews fired — one low-score loop + one approved pass.
+    expect(mock.reviewCallCount).toBe(2)
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-R1 — low-score-retry (supervised)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard supervised + threshold=90 → autopilot loops review iter1(65) → iter2(95)', async ({ page }) => {
+    test.setTimeout(240_000)
+    const project = seed('proj-ec-lsr-2', 'supervised', 'EC Low-Score Retry Supervised')
+
+    const mock = await mockPipelineEdge(page, 'low-score-retry', { project })
+
+    // ── Wizard ────────────────────────────────────────────────────────────────
+    // Supervised unlocks the per-stage threshold inputs (isAutopilot=true). The
+    // spec sets them explicitly so the loop semantics are anchored on wizard
+    // config, not on pipeline_settings defaults — a true wizard ↔ pipeline
+    // parity check.
+    await page.goto('/en/projects/new')
+    await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
+
+    await page.locator('#project-title').fill(project.title)
+    await page.getByTestId('channel-option').first().click()
+    await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+
+    await page.getByRole('radio', { name: 'Supervised' }).click()
+
+    // Expand Review section and confront the wizard inputs that drive the loop
+    await page.locator('[data-testid="stage-section-review"] button').first().click()
+    await page.locator('#review-maxIterations').fill('2')
+    await page.locator('#review-autoApproveThreshold').fill('90')
+    await page.locator('#review-hardFailThreshold').fill('50')
+
+    await page.getByRole('button', { name: /create project/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+
+    // ── Supervised walkthrough ───────────────────────────────────────────────
+    // In supervised mode each engine mounts and useAutoPilotTrigger fires its
+    // primary action. We assert the engine root + rich output rendered, then
+    // call mock.completeStage() to simulate the orchestrator persisting the
+    // outcome. The supervised auto-advance hook routes the URL forward.
+
+    // Brainstorm: idea cards must surface
+    await page.getByTestId('brainstorm-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+    await expect(page.getByTestId('idea-card').first()).toBeVisible({ timeout: 30_000 })
+    mock.completeStage('brainstorm')
+    await assertStageComplete(page, 'brainstorm', { timeout: 30_000 })
+
+    // Research: findings + at least one source card must render
+    await page.getByTestId('research-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+    await page.getByTestId('research-findings-report').waitFor({ state: 'visible', timeout: 30_000 })
+    await expect(page.getByTestId('research-source-card').first()).toBeVisible({ timeout: 30_000 })
+    mock.completeStage('research')
+    await assertStageComplete(page, 'research', { timeout: 30_000 })
+
+    // Canonical: thesis + argument chain must render
+    await page.getByTestId('canonical-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+    // canonical-core-preview is gated on autopilot finishing the generate step;
+    // in the mocked-AI run we only assert the engine mounted then sim-complete.
+    mock.completeStage('canonical')
+    await assertStageComplete(page, 'canonical', { timeout: 30_000 })
+
+    // Production iter 1 fires autopilot
+    await page.getByTestId('production-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+    mock.completeStage('production')
+    await assertStageComplete(page, 'production', { timeout: 30_000 })
+
+    // ── Review loop ──────────────────────────────────────────────────────────
+    // Review engine mounts; autopilot fires iter 1 (score 65), then rearms on
+    // iteration_count change and fires iter 2 (score 95) — no manual clicks.
+    await page.getByTestId('review-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+
+    // Iter 1 lands first
+    await expect(page.getByTestId('review-score')).toHaveAttribute('data-value', '65', { timeout: 30_000 })
+    await expect(page.getByTestId('review-verdict')).toHaveAttribute('data-value', 'revision_required')
+    await expect(page.getByTestId('review-iteration')).toHaveAttribute('data-value', '1')
+    await expect(page.getByTestId('review-feedback-critical')).toBeVisible()
+
+    // Iter 2 fires automatically when iteration_count flips to 2
+    await expect(page.getByTestId('review-score')).toHaveAttribute('data-value', '95', { timeout: 30_000 })
+    await expect(page.getByTestId('review-verdict')).toHaveAttribute('data-value', 'approved')
+    await expect(page.getByTestId('review-iteration')).toHaveAttribute('data-value', '2')
+
+    // Loop accounting: exactly two reviews fired, no more
+    expect(mock.reviewCallCount).toBe(2)
+
+    mock.completeStage('review')
+    await assertStageComplete(page, 'review', { timeout: 30_000 })
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-R1 — low-score-retry (overview)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard overview + thresholds → OverviewProgressView mounts, engines suppressed, stages advance', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-lsr-3', 'overview', 'EC Low-Score Retry Overview')
+
+    const mock = await mockPipelineEdge(page, 'low-score-retry', { project })
+
+    // ── Wizard ────────────────────────────────────────────────────────────────
+    // Overview mode unlocks per-stage threshold inputs (isAutopilot=true). The
+    // spec sets review thresholds explicitly so the POST /api/projects body
+    // carries them — confronting wizard config against the pipeline payload.
+    // In overview the backend autopilot owns the loop; the UI is watch-only.
+    await page.goto('/en/projects/new')
+    await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
+
+    await page.locator('#project-title').fill(project.title)
+    await page.getByTestId('channel-option').first().click()
+    await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+
+    await page.getByRole('radio', { name: 'Overview' }).click()
+
+    // Expand Review section and lock the loop thresholds
+    await page.locator('[data-testid="stage-section-review"] button').first().click()
+    await page.locator('#review-maxIterations').fill('2')
+    await page.locator('#review-autoApproveThreshold').fill('90')
+    await page.locator('#review-hardFailThreshold').fill('50')
+
+    await page.getByRole('button', { name: /create project/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+
+    // ── Wizard ↔ pipeline parity: thresholds round-trip into POST /api/projects ─
+    const createAction = mock.actions.find(
+      (a) => a.method === 'POST' && a.url === '/api/projects',
+    )
+    expect(createAction).toBeDefined()
+    const createBody = createAction!.body as {
+      mode?: string
+      autopilotConfigJson?: { review?: { maxIterations?: number; autoApproveThreshold?: number; hardFailThreshold?: number } }
+    }
+    expect(createBody.mode).toBe('overview')
+    expect(createBody.autopilotConfigJson?.review?.maxIterations).toBe(2)
+    expect(createBody.autopilotConfigJson?.review?.autoApproveThreshold).toBe(90)
+    expect(createBody.autopilotConfigJson?.review?.hardFailThreshold).toBe(50)
+
+    // ── Overview view mounts; engines must NOT mount (watch-only contract) ───
+    await page.getByTestId('overview-progress-view').waitFor({ state: 'visible', timeout: 20_000 })
+    await expect(page.getByTestId('brainstorm-engine-root')).toHaveCount(0)
+    await expect(page.getByTestId('research-engine-root')).toHaveCount(0)
+    await expect(page.getByTestId('canonical-engine-root')).toHaveCount(0)
+    await expect(page.getByTestId('production-engine-root')).toHaveCount(0)
+    await expect(page.getByTestId('review-engine-root')).toHaveCount(0)
+
+    // ── Backend autopilot simulation: seed stages and watch the stepper advance.
+    // The review loop semantics (iter1 65 → iter2 95) are owned by the backend
+    // in overview mode; the front-end only observes the final completed state
+    // surfaced via stage_runs. Mock.completeStage('review') writes the final
+    // approved outcome row that the OverviewProgressView reads.
+    mock.completeStage('brainstorm')
+    await expect(page.getByTestId('overview-stage-brainstorm')).toHaveAttribute('data-status', 'completed', { timeout: 20_000 })
+
+    mock.completeStage('research')
+    await expect(page.getByTestId('overview-stage-research')).toHaveAttribute('data-status', 'completed', { timeout: 20_000 })
+
+    mock.completeStage('canonical')
+    await expect(page.getByTestId('overview-stage-canonical')).toHaveAttribute('data-status', 'completed', { timeout: 20_000 })
+
+    mock.completeStage('production')
+    await expect(page.getByTestId('overview-stage-production')).toHaveAttribute('data-status', 'completed', { timeout: 20_000 })
+
+    mock.completeStage('review')
+    await expect(page.getByTestId('overview-stage-review')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
+
+    await mock.unroute()
+  })
+})
+
+// ── max-iterations ────────────────────────────────────────────────────────────
+// Every review iteration returns score 70 (revision_required). After maxIterations=2
+// the review dispatcher parks the run in awaiting_user(max_iterations).
+// UI must show awaiting-banner with data-reason="max_iterations".
+// Production emit site: apps/api/src/jobs/pipeline-review-dispatch.ts budget branch
+// (`iterationCount >= maxIterations` → `awaitingReason: 'max_iterations'`, since #204).
+// Scope: supervised and overview only (step-by-step has no auto-loop).
+
+test.describe('EC-R2 — max-iterations (supervised)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard supervised + maxIter=2 → autopilot loops 2× then parks awaiting_user(max_iterations)', async ({ page }) => {
+    test.setTimeout(240_000)
+    const project = seed('proj-ec-max-1', 'supervised', 'EC Max Iterations Supervised')
+
+    const mock = await mockPipelineEdge(page, 'max-iterations', { project })
+
+    // ── Wizard ────────────────────────────────────────────────────────────────
+    // The grill confronts maxIterations=2: every review iter returns score 70
+    // (below auto-approve 90, above hard-fail 50). After iter 2 the dispatcher
+    // parks the run in awaiting_user(max_iterations) — see #204 budget branch.
+    await page.goto('/en/projects/new')
+    await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
+
+    await page.locator('#project-title').fill(project.title)
+    await page.getByTestId('channel-option').first().click()
+    await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+
+    await page.getByRole('radio', { name: 'Supervised' }).click()
+
+    // Lock review thresholds — parity with the mock's budget
+    await page.locator('[data-testid="stage-section-review"] button').first().click()
+    await page.locator('#review-maxIterations').fill('2')
+    await page.locator('#review-autoApproveThreshold').fill('90')
+    await page.locator('#review-hardFailThreshold').fill('50')
+
+    await page.getByRole('button', { name: /create project/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+
+    // ── Wizard ↔ pipeline parity: thresholds round-trip into POST /api/projects
+    const createAction = mock.actions.find(
+      (a) => a.method === 'POST' && a.url === '/api/projects',
+    )
+    expect(createAction).toBeDefined()
+    const createBody = createAction!.body as {
+      mode?: string
+      autopilotConfigJson?: { review?: { maxIterations?: number; autoApproveThreshold?: number; hardFailThreshold?: number } }
+    }
+    expect(createBody.mode).toBe('supervised')
+    expect(createBody.autopilotConfigJson?.review?.maxIterations).toBe(2)
+    expect(createBody.autopilotConfigJson?.review?.autoApproveThreshold).toBe(90)
+    expect(createBody.autopilotConfigJson?.review?.hardFailThreshold).toBe(50)
+
+    // ── Supervised walkthrough ───────────────────────────────────────────────
+    await page.getByTestId('brainstorm-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+    mock.completeStage('brainstorm')
+    await assertStageComplete(page, 'brainstorm', { timeout: 30_000 })
+
+    await page.getByTestId('research-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+    mock.completeStage('research')
+    await assertStageComplete(page, 'research', { timeout: 30_000 })
+
+    await page.getByTestId('canonical-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+    mock.completeStage('canonical')
+    await assertStageComplete(page, 'canonical', { timeout: 30_000 })
+
+    await page.getByTestId('production-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+    mock.completeStage('production')
+    await assertStageComplete(page, 'production', { timeout: 30_000 })
+
+    // ── Review loop ──────────────────────────────────────────────────────────
+    // Autopilot fires iter1 (score 70), rearm→iter2 (score 70, budget exhausted).
+    // The mock parks the stage_run on iter2 → workspace-level AwaitingBanner
+    // renders with data-reason="max_iterations".
+    await page.getByTestId('review-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+
+    const banner = page.getByTestId('awaiting-banner')
+    await banner.waitFor({ state: 'visible', timeout: 60_000 })
+    await expect(banner).toHaveAttribute('data-reason', 'max_iterations')
+
+    // Loop accounting: at least two reviews fired (the budget). The cap on
+    // iteration_count in the mock prevents the rearmKey from advancing past 2,
+    // so autopilot can't loop indefinitely after the parking.
+    expect(mock.reviewCallCount).toBeGreaterThanOrEqual(2)
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-R2 — max-iterations (overview)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard overview + maxIter=2 → OverviewProgressView surfaces awaiting_user(max_iterations)', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-max-2', 'overview', 'EC Max Iterations Overview')
+
+    const mock = await mockPipelineEdge(page, 'max-iterations', { project })
+
+    // ── Wizard ────────────────────────────────────────────────────────────────
+    // Overview is watch-only: the front-end never fires /review — the backend
+    // autopilot owns the loop and writes awaiting_user(max_iterations) into
+    // stage_runs. The grill seeds that final state directly to mirror what the
+    // real orchestrator would persist after exhausting iterations.
+    await page.goto('/en/projects/new')
+    await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
+
+    await page.locator('#project-title').fill(project.title)
+    await page.getByTestId('channel-option').first().click()
+    await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+
+    await page.getByRole('radio', { name: 'Overview' }).click()
+
+    await page.locator('[data-testid="stage-section-review"] button').first().click()
+    await page.locator('#review-maxIterations').fill('2')
+    await page.locator('#review-autoApproveThreshold').fill('90')
+    await page.locator('#review-hardFailThreshold').fill('50')
+
+    await page.getByRole('button', { name: /create project/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+
+    // ── Parity: thresholds → POST /api/projects body
+    const createAction = mock.actions.find(
+      (a) => a.method === 'POST' && a.url === '/api/projects',
+    )
+    expect(createAction).toBeDefined()
+    const createBody = createAction!.body as {
+      mode?: string
+      autopilotConfigJson?: { review?: { maxIterations?: number; autoApproveThreshold?: number; hardFailThreshold?: number } }
+    }
+    expect(createBody.mode).toBe('overview')
+    expect(createBody.autopilotConfigJson?.review?.maxIterations).toBe(2)
+
+    // ── Overview view mounts; engines must NOT mount ─────────────────────────
+    await page.getByTestId('overview-progress-view').waitFor({ state: 'visible', timeout: 20_000 })
+    await expect(page.getByTestId('review-engine-root')).toHaveCount(0)
+    await expect(page.getByTestId('production-engine-root')).toHaveCount(0)
+
+    // ── Simulate backend autopilot completing shared+production stages and
+    // ── then parking review on max-iterations
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+    mock.completeStage('production')
+    mock.parkReviewMax()
+
+    await expect(page.getByTestId('overview-stage-brainstorm')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
+    await expect(page.getByTestId('overview-stage-production')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
+
+    // emitted by apps/api/src/jobs/pipeline-review-dispatch.ts budget branch — see #185 reason taxonomy
+    const banner = page.getByTestId('awaiting-banner')
+    await banner.waitFor({ state: 'visible', timeout: 30_000 })
+    await expect(banner).toHaveAttribute('data-reason', 'max_iterations')
+
+    await mock.unroute()
+  })
+})
+
+// ── hard-fail ─────────────────────────────────────────────────────────────────
+// Review returns score 30 which is below hardFailThreshold=50.
+// The stage run status must be 'failed' (not awaiting_user).
+// UI should show an error/failed indicator on the review stage, NOT an awaiting banner.
+
+test.describe('EC-R3 — hard-fail (step-by-step)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard step-by-step + manual review fires hard-fail (score 30 < 50) → verdict=rejected, no banner', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-hf-1', 'step-by-step', 'EC Hard Fail Step-by-Step')
+
+    const mock = await mockPipelineEdge(page, 'hard-fail', { project })
+
+    // ── Wizard ────────────────────────────────────────────────────────────────
+    // step-by-step gates per-stage threshold inputs behind isAutopilot=false, so
+    // the hardFail=50 default from pipeline_settings governs the outcome.
+    await page.goto('/en/projects/new')
+    await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
+
+    await page.locator('#project-title').fill(project.title)
+    await page.getByTestId('channel-option').first().click()
+    await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+    await page.getByRole('radio', { name: 'Step-by-step' }).click()
+
+    await page.getByRole('button', { name: /create project/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+    await page.getByTestId('sidebar-item-brainstorm').waitFor({ state: 'visible', timeout: 20_000 })
+
+    // ── Walk shared + production manually ────────────────────────────────────
+    await driveStageManual(page, 'brainstorm')
+    mock.completeStage('brainstorm')
+    await assertStageComplete(page, 'brainstorm', { timeout: 30_000 })
+
+    await driveStageManual(page, 'research')
+    mock.completeStage('research')
+    await assertStageComplete(page, 'research', { timeout: 30_000 })
+
+    await driveStageManual(page, 'canonical')
+    mock.completeStage('canonical')
+    await assertStageComplete(page, 'canonical', { timeout: 30_000 })
+
+    await driveStageManual(page, 'production')
+    mock.completeStage('production')
+    await assertStageComplete(page, 'production', { timeout: 30_000 })
+
+    // ── Review: user clicks Run → POST /review returns score 30 rejected ────
+    const reviewSidebar = page.locator('[data-testid*="sidebar-item-"][data-testid*="review"]').first()
+    await reviewSidebar.click()
+    await page.getByTestId('review-engine-root').waitFor({ state: 'visible', timeout: 20_000 })
+    await page.getByTestId('review-action-run').first().click()
+
+    // Engine renders the rejected outcome
+    await page.getByTestId('review-feedback-panel').waitFor({ state: 'visible', timeout: 30_000 })
+    await expect(page.getByTestId('review-score')).toHaveAttribute('data-value', '30')
+    await expect(page.getByTestId('review-verdict')).toHaveAttribute('data-value', 'rejected')
+
+    // Awaiting banner must NOT show — hard-fail ≠ awaiting_user
+    const banner = page.getByTestId('awaiting-banner')
+    expect(await banner.isVisible().catch(() => false)).toBe(false)
+
+    // Sidebar review pill must reach data-status="failed"
+    await expect.poll(
+      async () => {
+        const el = page.locator('[data-testid*="sidebar-status-"][data-testid*="review"]').first()
+        return el.getAttribute('data-status').catch(() => null)
+      },
+      { timeout: 30_000, message: 'Review stage did not reach failed status' },
+    ).toBe('failed')
+
+    expect(mock.reviewCallCount).toBeGreaterThanOrEqual(1)
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-R3 — hard-fail (supervised)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard supervised + hardFail=50 → autopilot fires once, verdict=rejected, no banner', async ({ page }) => {
+    test.setTimeout(240_000)
+    const project = seed('proj-ec-hf-2', 'supervised', 'EC Hard Fail Supervised')
+
+    const mock = await mockPipelineEdge(page, 'hard-fail', { project })
+
+    // ── Wizard ────────────────────────────────────────────────────────────────
+    await page.goto('/en/projects/new')
+    await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
+
+    await page.locator('#project-title').fill(project.title)
+    await page.getByTestId('channel-option').first().click()
+    await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+    await page.getByRole('radio', { name: 'Supervised' }).click()
+
+    await page.locator('[data-testid="stage-section-review"] button').first().click()
+    await page.locator('#review-maxIterations').fill('2')
+    await page.locator('#review-autoApproveThreshold').fill('90')
+    await page.locator('#review-hardFailThreshold').fill('50')
+
+    await page.getByRole('button', { name: /create project/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+
+    // ── Parity: thresholds round-trip
+    const createAction = mock.actions.find((a) => a.method === 'POST' && a.url === '/api/projects')
+    expect(createAction).toBeDefined()
+    const createBody = createAction!.body as {
+      mode?: string
+      autopilotConfigJson?: { review?: { hardFailThreshold?: number; autoApproveThreshold?: number } }
+    }
+    expect(createBody.mode).toBe('supervised')
+    expect(createBody.autopilotConfigJson?.review?.hardFailThreshold).toBe(50)
+    expect(createBody.autopilotConfigJson?.review?.autoApproveThreshold).toBe(90)
+
+    // ── Walk shared + production via supervised auto-advance ─────────────────
+    await page.getByTestId('brainstorm-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+    mock.completeStage('brainstorm')
+    await assertStageComplete(page, 'brainstorm', { timeout: 30_000 })
+
+    await page.getByTestId('research-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+    mock.completeStage('research')
+    await assertStageComplete(page, 'research', { timeout: 30_000 })
+
+    await page.getByTestId('canonical-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+    mock.completeStage('canonical')
+    await assertStageComplete(page, 'canonical', { timeout: 30_000 })
+
+    await page.getByTestId('production-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+    mock.completeStage('production')
+    await assertStageComplete(page, 'production', { timeout: 30_000 })
+
+    // ── Review autopilot fires → score 30 < hardFail=50 → rejected ──────────
+    await page.getByTestId('review-engine-root').waitFor({ state: 'visible', timeout: 30_000 })
+
+    await expect(page.getByTestId('review-score')).toHaveAttribute('data-value', '30', { timeout: 30_000 })
+    await expect(page.getByTestId('review-verdict')).toHaveAttribute('data-value', 'rejected')
+
+    // No banner for hard-fail
+    const banner = page.getByTestId('awaiting-banner')
+    expect(await banner.isVisible().catch(() => false)).toBe(false)
+
+    await expect.poll(
+      async () => {
+        const el = page.locator('[data-testid*="sidebar-status-"][data-testid*="review"]').first()
+        return el.getAttribute('data-status').catch(() => null)
+      },
+      { timeout: 30_000, message: 'Review stage did not reach failed status' },
+    ).toBe('failed')
+
+    // Engine fires at least once. Capped iteration_count=1 prevents runaway.
+    expect(mock.reviewCallCount).toBeGreaterThanOrEqual(1)
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-R3 — hard-fail (overview)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard overview + hardFail=50 → OverviewProgressView surfaces failed review, no banner', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-hf-3', 'overview', 'EC Hard Fail Overview')
+
+    const mock = await mockPipelineEdge(page, 'hard-fail', { project })
+
+    // ── Wizard ────────────────────────────────────────────────────────────────
+    await page.goto('/en/projects/new')
+    await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
+
+    await page.locator('#project-title').fill(project.title)
+    await page.getByTestId('channel-option').first().click()
+    await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+    await page.getByRole('radio', { name: 'Overview' }).click()
+
+    await page.locator('[data-testid="stage-section-review"] button').first().click()
+    await page.locator('#review-hardFailThreshold').fill('50')
+
+    await page.getByRole('button', { name: /create project/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+
+    // ── Parity ───────────────────────────────────────────────────────────────
+    const createAction = mock.actions.find((a) => a.method === 'POST' && a.url === '/api/projects')
+    expect(createAction).toBeDefined()
+    const createBody = createAction!.body as {
+      mode?: string
+      autopilotConfigJson?: { review?: { hardFailThreshold?: number } }
+    }
+    expect(createBody.mode).toBe('overview')
+    expect(createBody.autopilotConfigJson?.review?.hardFailThreshold).toBe(50)
+
+    // ── Watch-only contract ──────────────────────────────────────────────────
+    await page.getByTestId('overview-progress-view').waitFor({ state: 'visible', timeout: 20_000 })
+    await expect(page.getByTestId('review-engine-root')).toHaveCount(0)
+
+    // Backend autopilot would have run shared+production stages then failed review
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+    mock.completeStage('production')
+    mock.failReview()
+
+    await expect(page.getByTestId('overview-stage-brainstorm')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
+    await expect(page.getByTestId('overview-stage-production')).toHaveAttribute('data-status', 'completed', { timeout: 30_000 })
+
+    await expect.poll(
+      async () => {
+        const el = page.getByTestId('overview-stage-review')
+        return el.getAttribute('data-status').catch(() => null)
+      },
+      { timeout: 30_000, message: 'Overview review stage did not reach failed status' },
+    ).toBe('failed')
+
+    // No awaiting-banner for hard-fail
+    const banner = page.getByTestId('awaiting-banner')
+    expect(await banner.isVisible().catch(() => false)).toBe(false)
+
+    await mock.unroute()
+  })
+})
+
+// ─── Issue #194 — Failure mode edge cases ─────────────────────────────────────
+// 4 scenarios × 3 modes = 12 tests
+//   provider-quota:      429 → awaiting-banner[data-reason="provider_quota_exhausted"] + Resume
+//   manual-paste:        422 → manual paste affordance visible
+//   stage-failure-retry: 500 once → retry CTA → success
+//   malformed-json:      200 but parse failure → manual_paste recovery
+
+// ── provider-quota ────────────────────────────────────────────────────────────
+
+// Wizard ↔ pipeline parity for failure scenarios: the wizard's `mode` and the
+// project payload are what the workspace boots from. The provider/model fields
+// are part of autopilotConfigJson but are scenario-agnostic for the failure
+// mocks (the mock returns the error regardless of provider). The grill below
+// confronts:
+//   1. POST /api/projects body has the wizard-selected mode
+//   2. Workspace renders the awaiting-banner with the correct reason
+//   3. Resume button triggers recovery via POST /api/projects/:id/resume
+
+async function submitWizard(
+  page: import('@playwright/test').Page,
+  project: HappyProjectSeed,
+  modeLabel: 'Step-by-step' | 'Supervised' | 'Overview',
+) {
+  await page.goto('/en/projects/new')
+  await page.getByTestId('pipeline-wizard').waitFor({ state: 'visible', timeout: 30_000 })
+  await page.locator('#project-title').fill(project.title)
+  await page.getByTestId('channel-option').first().click()
+  await page.locator('#wizard-brainstorm-topic').fill('retirement planning for freelancers')
+  await page.getByRole('radio', { name: modeLabel }).click()
+  await page.getByRole('button', { name: /create project/i }).click()
+  await page.waitForURL(new RegExp(`/projects/${project.id}\\b`), { timeout: 20_000 })
+}
+
+function assertWizardModeRoundtrip(
+  mock: { actions: Array<{ method: string; url: string; body: unknown }> },
+  expectedMode: HappyProjectSeed['mode'],
+) {
+  const createAction = mock.actions.find(
+    (a) => a.method === 'POST' && a.url === '/api/projects',
+  )
+  expect(createAction).toBeDefined()
+  const createBody = createAction!.body as { mode?: string }
+  expect(createBody.mode).toBe(expectedMode)
+}
+
+test.describe('EC-F1 — provider-quota (step-by-step)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard step-by-step → production quota 429 → awaiting-banner → resume completes', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-pq-1', 'step-by-step', 'EC Provider Quota Step-by-Step')
+
+    const mock = await mockPipelineEdge(page, 'provider-quota', { project })
+
+    await submitWizard(page, project, 'Step-by-step')
+    assertWizardModeRoundtrip(mock, 'step-by-step')
+
+    // Backend would normally drive shared stages; we seed them so the test
+    // focuses on the quota recovery path (the actual failure surface).
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    // The awaiting-banner appears as soon as /stages reflects the synthetic
+    // production awaiting_user(provider_quota_exhausted) row.
+    const banner = page.getByTestId('awaiting-banner')
+    await banner.waitFor({ state: 'visible', timeout: 30_000 })
+    await expect(banner).toHaveAttribute('data-reason', 'provider_quota_exhausted')
+
+    const resumeBtn = page.getByTestId('resume-track-btn')
+    await resumeBtn.waitFor({ state: 'visible', timeout: 10_000 })
+    await resumeBtn.click()
+
+    // POST /resume seeds production=completed → next /stages poll surfaces it
+    await assertStageComplete(page, 'production', { timeout: 20_000 })
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-F1 — provider-quota (supervised)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard supervised → production quota 429 → awaiting-banner → resume completes', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-pq-2', 'supervised', 'EC Provider Quota Supervised')
+
+    const mock = await mockPipelineEdge(page, 'provider-quota', { project })
+
+    await submitWizard(page, project, 'Supervised')
+    assertWizardModeRoundtrip(mock, 'supervised')
+
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    const banner = page.getByTestId('awaiting-banner')
+    await banner.waitFor({ state: 'visible', timeout: 30_000 })
+    await expect(banner).toHaveAttribute('data-reason', 'provider_quota_exhausted')
+
+    const resumeBtn = page.getByTestId('resume-track-btn')
+    await resumeBtn.waitFor({ state: 'visible', timeout: 10_000 })
+    await resumeBtn.click()
+
+    await assertStageComplete(page, 'production', { timeout: 20_000 })
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-F1 — provider-quota (overview)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard overview → production quota 429 → awaiting-banner → resume completes', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-pq-3', 'overview', 'EC Provider Quota Overview')
+
+    const mock = await mockPipelineEdge(page, 'provider-quota', { project })
+
+    // Pre-seed shared stages so the first /stages poll already has them
+    // (avoids a serial-suite race where the 4s poll misaligns with the test
+    // budget under sustained dev-server load).
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    await submitWizard(page, project, 'Overview')
+    assertWizardModeRoundtrip(mock, 'overview')
+
+    // Watch-only contract — no engine mounts
+    await page.getByTestId('overview-progress-view').waitFor({ state: 'visible', timeout: 20_000 })
+    await expect(page.getByTestId('production-engine-root')).toHaveCount(0)
+
+    const banner = page.getByTestId('awaiting-banner')
+    await banner.waitFor({ state: 'visible', timeout: 60_000 })
+    await expect(banner).toHaveAttribute('data-reason', 'provider_quota_exhausted')
+
+    const resumeBtn = page.getByTestId('resume-track-btn')
+    await resumeBtn.waitFor({ state: 'visible', timeout: 10_000 })
+    await resumeBtn.click()
+
+    await expect(page.getByTestId('overview-stage-production')).toHaveAttribute('data-status', 'completed', { timeout: 20_000 })
+
+    await mock.unroute()
+  })
+})
+
+// ── manual-paste ─────────────────────────────────────────────────────────────
+
+test.describe('EC-F2 — manual-paste (step-by-step)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard step-by-step → no-provider 422 → awaiting-banner(manual_paste)', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-mp-1', 'step-by-step', 'EC Manual Paste Step-by-Step')
+
+    const mock = await mockPipelineEdge(page, 'manual-paste', { project })
+
+    await submitWizard(page, project, 'Step-by-step')
+    assertWizardModeRoundtrip(mock, 'step-by-step')
+
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    // emitted by apps/api/src/jobs/pipeline-assets-dispatch.ts:87 (mode === 'manual_upload') — see #185 reason taxonomy
+    const banner = page.getByTestId('awaiting-banner')
+    await banner.waitFor({ state: 'visible', timeout: 30_000 })
+    await expect(banner).toHaveAttribute('data-reason', 'manual_paste')
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-F2 — manual-paste (supervised)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard supervised → no-provider 422 → awaiting-banner(manual_paste)', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-mp-2', 'supervised', 'EC Manual Paste Supervised')
+
+    const mock = await mockPipelineEdge(page, 'manual-paste', { project })
+
+    await submitWizard(page, project, 'Supervised')
+    assertWizardModeRoundtrip(mock, 'supervised')
+
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    const banner = page.getByTestId('awaiting-banner')
+    await banner.waitFor({ state: 'visible', timeout: 30_000 })
+    await expect(banner).toHaveAttribute('data-reason', 'manual_paste')
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-F2 — manual-paste (overview)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard overview → no-provider 422 → OverviewProgressView surfaces awaiting-banner(manual_paste)', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-mp-3', 'overview', 'EC Manual Paste Overview')
+
+    const mock = await mockPipelineEdge(page, 'manual-paste', { project })
+
+    // Pre-seed shared stages so the first /stages poll after page load already
+    // contains them — avoids a race window where useProjectStream's 4s poll
+    // misaligns with the test's banner waitFor under sustained suite load.
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    await submitWizard(page, project, 'Overview')
+    assertWizardModeRoundtrip(mock, 'overview')
+
+    await page.getByTestId('overview-progress-view').waitFor({ state: 'visible', timeout: 20_000 })
+    await expect(page.getByTestId('production-engine-root')).toHaveCount(0)
+
+    const banner = page.getByTestId('awaiting-banner')
+    await banner.waitFor({ state: 'visible', timeout: 60_000 })
+    await expect(banner).toHaveAttribute('data-reason', 'manual_paste')
+
+    await mock.unroute()
+  })
+})
+
+// ── stage-failure-retry ───────────────────────────────────────────────────────
+// Retry CTA wired by apps/app/src/components/pipeline/FocusPanel.tsx:308
+// (handleRestartConfirmed → POST /api/projects/:id/stage-runs {stage, cascade:true, input}).
+// Production testids: `restart-stage-button` (trigger) → `restart-stage-confirm` (dialog action).
+
+// Production failure surface is pre-seeded by the mock (no engine fires
+// POST /stage-runs in step-by-step / overview), so the retry path is what
+// the test confronts. The wizard parity check is the project mode itself.
+async function navigateToProductionStage(page: import('@playwright/test').Page, projectId: string) {
+  const url = `/en/projects/${projectId}?stage=production&track=track-e2e-blog-1`
+  await page.goto(url)
+}
+
+test.describe('EC-F3 — stage-failure-retry (step-by-step)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard step-by-step → production failed → restart-stage CTA → completed', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-sfr-1', 'step-by-step', 'EC Stage Failure Retry Step-by-Step')
+
+    const mock = await mockPipelineEdge(page, 'stage-failure-retry', { project })
+
+    // Pre-seed shared stages so navigation to ?stage=production lands on a
+    // page where /stages already shows brainstorm/research/canonical complete
+    // + production failed in a single response — avoids serial-suite races.
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    await submitWizard(page, project, 'Step-by-step')
+    assertWizardModeRoundtrip(mock, 'step-by-step')
+
+    // Navigate to the production stage URL so FocusPanel mounts the restart CTA
+    // for the failed production target.
+    await navigateToProductionStage(page, project.id)
+
+    await expect.poll(
+      async () => {
+        const el = page.locator('[data-testid*="sidebar-status-"][data-testid*="production"]').first()
+        return el.getAttribute('data-status').catch(() => null)
+      },
+      { timeout: 60_000, message: 'Production stage did not reach failed status' },
+    ).toBe('failed')
+
+    // Restart CTA fires POST /api/projects/:id/stage-runs {stage, cascade:true}
+    // wired by FocusPanel.tsx (handleRestartConfirmed).
+    const retryCta = page.getByTestId('restart-stage-button')
+    await retryCta.waitFor({ state: 'visible', timeout: 15_000 })
+    await retryCta.click()
+    const confirmCta = page.getByTestId('restart-stage-confirm')
+    await confirmCta.waitFor({ state: 'visible', timeout: 10_000 })
+    await confirmCta.click()
+
+    await assertStageComplete(page, 'production', { timeout: 20_000 })
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-F3 — stage-failure-retry (supervised)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard supervised → production failed → restart-stage CTA → completed', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-sfr-2', 'supervised', 'EC Stage Failure Retry Supervised')
+
+    const mock = await mockPipelineEdge(page, 'stage-failure-retry', { project })
+
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    await submitWizard(page, project, 'Supervised')
+    assertWizardModeRoundtrip(mock, 'supervised')
+
+    await navigateToProductionStage(page, project.id)
+
+    await expect.poll(
+      async () => {
+        const el = page.locator('[data-testid*="sidebar-status-"][data-testid*="production"]').first()
+        return el.getAttribute('data-status').catch(() => null)
+      },
+      { timeout: 60_000, message: 'Production stage did not reach failed status' },
+    ).toBe('failed')
+
+    const retryCta = page.getByTestId('restart-stage-button')
+    await retryCta.waitFor({ state: 'visible', timeout: 15_000 })
+    await retryCta.click()
+    const confirmCta = page.getByTestId('restart-stage-confirm')
+    await confirmCta.waitFor({ state: 'visible', timeout: 10_000 })
+    await confirmCta.click()
+
+    await assertStageComplete(page, 'production', { timeout: 20_000 })
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-F3 — stage-failure-retry (overview)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard overview → production failed → OverviewProgressView surfaces failed → mock seed recovers', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-sfr-3', 'overview', 'EC Stage Failure Retry Overview')
+
+    const mock = await mockPipelineEdge(page, 'stage-failure-retry', { project })
+
+    await submitWizard(page, project, 'Overview')
+    assertWizardModeRoundtrip(mock, 'overview')
+
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    // Watch-only contract — no engine, no restart CTA accessible from here.
+    await page.getByTestId('overview-progress-view').waitFor({ state: 'visible', timeout: 20_000 })
+    await expect(page.getByTestId('production-engine-root')).toHaveCount(0)
+
+    await expect.poll(
+      async () => {
+        const el = page.getByTestId('overview-stage-production')
+        return el.getAttribute('data-status').catch(() => null)
+      },
+      { timeout: 30_000, message: 'Overview production stage did not reach failed status' },
+    ).toBe('failed')
+
+    // Backend autopilot would internally retry; here we simulate it by
+    // seeding production=completed directly via the mock.
+    mock.completeStage('production')
+    await expect(page.getByTestId('overview-stage-production')).toHaveAttribute('data-status', 'completed', { timeout: 20_000 })
+
+    await mock.unroute()
+  })
+})
+
+// ── malformed-json ────────────────────────────────────────────────────────────
+// Production reality (apps/api/src/lib/ai/router.ts + apps/api/src/jobs/production-generate.ts):
+// a Zod parse error on the provider output triggers shouldRetrySameProvider; on
+// exhaustion the worker calls markFailed with the parse-error message. The stage run
+// ends in status='failed'. There is NO manual_paste park for malformed JSON —
+// manual_paste only fires from pipeline-assets-dispatch.ts when mode === 'manual_upload'.
+
+test.describe('EC-F4 — malformed-json (step-by-step)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard step-by-step → production parse error → status=failed, no banner', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-mj-1', 'step-by-step', 'EC Malformed JSON Step-by-Step')
+
+    const mock = await mockPipelineEdge(page, 'malformed-json', { project })
+
+    await submitWizard(page, project, 'Step-by-step')
+    assertWizardModeRoundtrip(mock, 'step-by-step')
+
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    await navigateToProductionStage(page, project.id)
+
+    // Parse failure → markFailed (status:'failed'), NOT awaiting_user(manual_paste).
+    await expect.poll(
+      async () => {
+        const el = page.locator('[data-testid*="sidebar-status-"][data-testid*="production"]').first()
+        return el.getAttribute('data-status').catch(() => null)
+      },
+      { timeout: 30_000, message: 'Production stage did not reach failed status after malformed JSON' },
+    ).toBe('failed')
+
+    // No awaiting-banner — parse failures emit status='failed', not awaiting_user.
+    const banner = page.getByTestId('awaiting-banner')
+    expect(await banner.isVisible().catch(() => false)).toBe(false)
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-F4 — malformed-json (supervised)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard supervised → production parse error → status=failed, no banner', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-mj-2', 'supervised', 'EC Malformed JSON Supervised')
+
+    const mock = await mockPipelineEdge(page, 'malformed-json', { project })
+
+    await submitWizard(page, project, 'Supervised')
+    assertWizardModeRoundtrip(mock, 'supervised')
+
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    await navigateToProductionStage(page, project.id)
+
+    await expect.poll(
+      async () => {
+        const el = page.locator('[data-testid*="sidebar-status-"][data-testid*="production"]').first()
+        return el.getAttribute('data-status').catch(() => null)
+      },
+      { timeout: 30_000, message: 'Production stage did not reach failed status after malformed JSON' },
+    ).toBe('failed')
+
+    const banner = page.getByTestId('awaiting-banner')
+    expect(await banner.isVisible().catch(() => false)).toBe(false)
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-F4 — malformed-json (overview)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard overview → production parse error → OverviewProgressView surfaces failed, no banner', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-mj-3', 'overview', 'EC Malformed JSON Overview')
+
+    const mock = await mockPipelineEdge(page, 'malformed-json', { project })
+
+    await submitWizard(page, project, 'Overview')
+    assertWizardModeRoundtrip(mock, 'overview')
+
+    await page.getByTestId('overview-progress-view').waitFor({ state: 'visible', timeout: 20_000 })
+    await expect(page.getByTestId('production-engine-root')).toHaveCount(0)
+
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    await expect.poll(
+      async () => {
+        const el = page.getByTestId('overview-stage-production')
+        return el.getAttribute('data-status').catch(() => null)
+      },
+      { timeout: 30_000, message: 'Overview production stage did not reach failed status after malformed JSON' },
+    ).toBe('failed')
+
+    const banner = page.getByTestId('awaiting-banner')
+    const bannerVisible = await banner.isVisible().catch(() => false)
+    expect(bannerVisible).toBe(false)
+
+    await mock.unroute()
+  })
+})
+
+// ─── Issue #195 — Intervention edge cases ─────────────────────────────────────
+// 2 scenarios:
+//   manual-pause-resume (×2 modes: supervised + overview): pause mid-flight → awaiting banner → resume same attempt
+//   manual-abort        (×3 modes): abort during production → project aborted + no downstream dispatches
+
+// ── manual-pause-resume ───────────────────────────────────────────────────────
+// Production: PATCH /api/projects/:id {paused:true} → stampUserPausedOnActiveStage
+// at apps/api/src/routes/projects.ts:40-57 marks the currently-running stage_run
+// awaiting_user(user_paused) via markAwaitingUser. The fixture does NOT model that
+// side-effect (no running row in the snapshot at pause time), so the test asserts
+// the PATCH was sent rather than the awaiting-banner data-reason. Adding banner
+// coverage would require extending the fixture to seed a running production row
+// and transition it on pause.
+
+test.describe('EC-I1 — manual-pause-resume (supervised)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard supervised → sidebar track pause PATCH then resume → production completes', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-mpr-1', 'supervised', 'EC Manual Pause Resume Supervised')
+
+    const mock = await mockPipelineEdge(page, 'manual-pause-resume', { project })
+
+    await submitWizard(page, project, 'Supervised')
+    assertWizardModeRoundtrip(mock, 'supervised')
+
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+    // Supervised sidebar pause/resume only renders alongside an active track.
+    // Seeding production='running' mirrors the mid-flight pause moment.
+    mock.seedProductionRunning()
+
+    // Sidebar track pause toggle (FocusSidebar TrackSection)
+    const trackPauseBtn = page.locator('[data-testid^="sidebar-track-pause-"]').first()
+    await trackPauseBtn.waitFor({ state: 'visible', timeout: 15_000 })
+    await trackPauseBtn.click()
+
+    await expect.poll(
+      () => mock.patchBodies.some(
+        (b) => (b.body as { paused?: boolean })?.paused === true && b.url.includes('/tracks/'),
+      ),
+      { timeout: 10_000, message: 'Track PATCH with paused:true was not sent' },
+    ).toBe(true)
+
+    // Resume — same button toggles back
+    await trackPauseBtn.click()
+    await expect.poll(
+      () => mock.patchBodies.some(
+        (b) => (b.body as { paused?: boolean })?.paused === false && b.url.includes('/tracks/'),
+      ),
+      { timeout: 10_000, message: 'Track PATCH with paused:false (resume) was not sent' },
+    ).toBe(true)
+
+    mock.completeStage('production')
+    await assertStageComplete(page, 'production', { timeout: 20_000 })
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-I1 — manual-pause-resume (overview)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard overview → pause PATCH then resume → production completes', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-mpr-2', 'overview', 'EC Manual Pause Resume Overview')
+
+    const mock = await mockPipelineEdge(page, 'manual-pause-resume', { project })
+
+    await submitWizard(page, project, 'Overview')
+    assertWizardModeRoundtrip(mock, 'overview')
+
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    await page.getByTestId('overview-progress-view').waitFor({ state: 'visible', timeout: 20_000 })
+
+    const pauseBtn = page.getByTestId('overview-pause-btn')
+    await pauseBtn.waitFor({ state: 'visible', timeout: 10_000 })
+    await pauseBtn.click()
+
+    await expect.poll(
+      () => mock.patchBodies.some((b) => (b.body as { paused?: boolean })?.paused === true),
+      { timeout: 10_000, message: 'PATCH with paused:true was not sent' },
+    ).toBe(true)
+
+    // Same button toggles back to resume
+    await pauseBtn.click()
+
+    mock.completeStage('production')
+    await expect(page.getByTestId('overview-stage-production')).toHaveAttribute('data-status', 'completed', { timeout: 20_000 })
+
+    await mock.unroute()
+  })
+})
+
+// ── manual-abort ──────────────────────────────────────────────────────────────
+// Fixture/UI drift: the OverviewProgressView abort handler PATCHes
+// /api/projects/:id with {status:'aborted', paused:true}, but updateProjectSchema
+// in packages/shared/src/schemas/projects.ts only allows
+// status ∈ {'active'|'paused'|'completed'|'archived'} — 'aborted' would fail Zod
+// validation in production. The real abort path is abortProject() at
+// apps/api/src/lib/pipeline/stage-run-writer.ts:482, invoked from project-setup
+// routes (cascade-cancels downstream runs). Asserting the PATCH body here verifies
+// the UI-side trigger only; downstream-suppression assertions still match
+// production guarantees (no review/publish dispatch after abort).
+
+async function clickTrackAbortAndConfirm(page: import('@playwright/test').Page) {
+  // Sidebar track-level abort surfaces only while a track stage_run is
+  // running or awaiting_user. Tests seed production=running before calling.
+  const abortBtn = page.locator('[data-testid^="track-abort-btn-"]').first()
+  await abortBtn.waitFor({ state: 'visible', timeout: 15_000 })
+  await abortBtn.click()
+  const confirmBtn = page.getByTestId('track-abort-confirm-btn')
+  await confirmBtn.waitFor({ state: 'visible', timeout: 10_000 })
+  await confirmBtn.click()
+}
+
+function assertNoDownstreamAfterAbort(
+  mock: { actions: Array<{ method: string; url: string; body: unknown }> },
+) {
+  const downstream = mock.actions.filter(
+    (a) => a.method === 'POST' && (a.url.includes('review') || a.url.includes('publish')),
+  )
+  expect(downstream.length).toBe(0)
+}
+
+test.describe('EC-I2 — manual-abort (step-by-step)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard step-by-step → abort PATCH sent + no downstream review/publish dispatch', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-ma-1', 'step-by-step', 'EC Manual Abort Step-by-Step')
+
+    const mock = await mockPipelineEdge(page, 'manual-abort', { project })
+
+    await submitWizard(page, project, 'Step-by-step')
+    assertWizardModeRoundtrip(mock, 'step-by-step')
+
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+    // The sidebar abort button gates on hasActiveStageRun — seed production as
+    // 'running' to mirror the real-world abort moment (user clicks abort
+    // mid-flight on the blog track).
+    mock.seedProductionRunning()
+
+    await clickTrackAbortAndConfirm(page)
+
+    await expect.poll(
+      () => mock.patchBodies.some(
+        (b) =>
+          (b.body as { status?: string })?.status === 'aborted' ||
+          b.url.includes('/stage-runs/'),
+      ),
+      { timeout: 15_000, message: 'Abort PATCH was not sent' },
+    ).toBe(true)
+
+    assertNoDownstreamAfterAbort(mock)
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-I2 — manual-abort (supervised)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard supervised → abort PATCH sent + no downstream review/publish dispatch', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-ma-2', 'supervised', 'EC Manual Abort Supervised')
+
+    const mock = await mockPipelineEdge(page, 'manual-abort', { project })
+
+    await submitWizard(page, project, 'Supervised')
+    assertWizardModeRoundtrip(mock, 'supervised')
+
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+    mock.seedProductionRunning()
+
+    await clickTrackAbortAndConfirm(page)
+
+    await expect.poll(
+      () => mock.patchBodies.some(
+        (b) =>
+          (b.body as { status?: string })?.status === 'aborted' ||
+          b.url.includes('/stage-runs/'),
+      ),
+      { timeout: 15_000, message: 'Abort PATCH was not sent' },
+    ).toBe(true)
+
+    assertNoDownstreamAfterAbort(mock)
+
+    await mock.unroute()
+  })
+})
+
+test.describe('EC-I2 — manual-abort (overview)', () => {
+  test.beforeEach(async ({ page }) => { attachConsoleListeners(page) })
+
+  test('wizard overview → abort PATCH + production reaches aborted in OverviewProgressView', async ({ page }) => {
+    test.setTimeout(180_000)
+    const project = seed('proj-ec-ma-3', 'overview', 'EC Manual Abort Overview')
+
+    const mock = await mockPipelineEdge(page, 'manual-abort', { project })
+
+    await submitWizard(page, project, 'Overview')
+    assertWizardModeRoundtrip(mock, 'overview')
+
+    mock.completeStage('brainstorm')
+    mock.completeStage('research')
+    mock.completeStage('canonical')
+
+    await page.getByTestId('overview-progress-view').waitFor({ state: 'visible', timeout: 20_000 })
+
+    await page.getByTestId('overview-abort-btn').waitFor({ state: 'visible', timeout: 10_000 })
+    await page.getByTestId('overview-abort-btn').click()
+
+    await page.getByTestId('overview-abort-confirm').waitFor({ state: 'visible', timeout: 10_000 })
+    await page.getByTestId('overview-abort-confirm').click()
+
+    await expect.poll(
+      () => mock.patchBodies.some((b) => (b.body as { status?: string })?.status === 'aborted'),
+      { timeout: 15_000, message: 'PATCH with status:aborted was not sent' },
+    ).toBe(true)
+
+    await expect.poll(
+      async () => {
+        const el = page.getByTestId('overview-stage-production')
+        return el.getAttribute('data-status').catch(() => null)
+      },
+      { timeout: 30_000, message: 'Overview production stage did not reach aborted status' },
+    ).toBe('aborted')
+
+    assertNoDownstreamAfterAbort(mock)
+
+    await mock.unroute()
+  })
+})

@@ -1,5 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { contentGenerate } from '../content-generate.js'
 
 // Mock dependencies
 vi.mock('../client.js', () => ({

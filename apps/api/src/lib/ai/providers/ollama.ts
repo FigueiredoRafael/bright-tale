@@ -134,13 +134,17 @@ export class OllamaProvider implements AIProvider {
 
       console.log(`[Ollama] Raw response (${this.model}, ${text.length} chars):\n${text.slice(0, 1000)}`);
 
+      // Many local models wrap structured output in ```json ... ``` fences
+      // despite the format=json request. Strip them before parsing.
+      const unfenced = stripCodeFence(text);
+
       let parsed: unknown;
       try {
-        parsed = JSON.parse(text);
+        parsed = JSON.parse(unfenced);
       } catch {
         // Attempt to repair truncated JSON (small models run out of tokens mid-output)
         console.warn(`[Ollama] JSON parse failed, attempting repair for ${this.model}...`);
-        const repaired = repairTruncatedJson(text);
+        const repaired = repairTruncatedJson(unfenced);
         if (repaired) {
           console.log(`[Ollama] JSON repaired successfully`);
           parsed = repaired;
@@ -160,6 +164,16 @@ export class OllamaProvider implements AIProvider {
     }
   }
 
+}
+
+/**
+ * Strip markdown code fences (```json ... ``` or ``` ... ```) so JSON.parse
+ * can consume the inner payload. Returns the original text if no fence is found.
+ */
+function stripCodeFence(text: string): string {
+  const trimmed = text.trim();
+  const fenceMatch = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/);
+  return fenceMatch ? fenceMatch[1].trim() : trimmed;
 }
 
 /**

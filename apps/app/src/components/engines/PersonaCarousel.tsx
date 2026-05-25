@@ -138,6 +138,11 @@ function PersonaCard({ persona, isRecommended, isCenter, offset, onClick }: Card
       role="option"
       aria-selected={isCenter}
       tabIndex={isCenter ? 0 : -1}
+      data-testid="persona-card"
+      data-persona-id={persona.id}
+      data-persona-slug={persona.slug}
+      data-selected={isCenter ? 'true' : 'false'}
+      data-recommended={isRecommended ? 'true' : 'false'}
       className="absolute left-1/2 top-1/2 w-[88%] max-w-md cursor-pointer"
       style={{
         transform: `translate(-50%, -50%) ${carouselTransform}`,

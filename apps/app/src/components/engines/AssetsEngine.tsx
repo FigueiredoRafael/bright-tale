@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,14 +18,16 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ManualOutputDialog } from './ManualOutputDialog';
 import { ModelPicker, MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
-import { useSelector } from '@xstate/react';
-import { usePipelineActor } from '@/hooks/usePipelineActor';
+import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
 import { ContextBanner } from './ContextBanner';
 import { ImportPicker } from './ImportPicker';
 import { getPersonaTheme } from './utils/personaTheme';
+import { fetchTracks, nextTrackStage, pushStage } from '@/lib/pipeline/advanceUrl';
+import { getTrackStageResults } from '@/lib/pipeline/stage-results-by-track';
 import type { AssetsResult, PipelineContext, PipelineStage } from './types';
+import { AssetsEngineVideo } from './AssetsEngineVideo';
 import { getScopedSlots } from '@/lib/assets/scopeFilter';
 
 /* ── Types ── */
@@ -82,6 +85,25 @@ interface AssetsEngineProps {
   imageProviderOverride?: ImageProvider;
   /** Bumped by orchestrator to re-arm autopilot after a quota error recovery. */
   retrySignal?: number;
+  /** Issue #210 — when set, draftId resolves from ctx.stageResultsByTrack[trackId]. */
+  trackId?: string;
+  /**
+   * Issue #213 — when set to 'video', routes to the video asset layout
+   * (AssetsEngineVideo) instead of the blog image-upload surface.
+   * Canonical prop name aligned with EngineHost (which passes medium={medium})
+   * and ProductionEngine. Renamed from trackMedium in fix/engine-host-medium-prop-wiring.
+   */
+  medium?: 'blog' | 'video';
+  /**
+   * Optional clipboard override — injected in tests since jsdom does not
+   * implement navigator.clipboard. Propagated to AssetsEngineVideo.
+   */
+  onCopyText?: (text: string) => void;
+  /**
+   * S6 — optional toast callback injected in tests. Propagated to AssetsEngineVideo.
+   * In production, AssetsEngineVideo falls back to sonner.toast.error.
+   */
+  onToast?: (message: string) => void;
 }
 
 interface NoBriefSection {
@@ -197,31 +219,89 @@ interface PendingUpload {
 
 /* ── Component ── */
 
-export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProviderOverride, retrySignal = 0 }: AssetsEngineProps) {
-  const actor = usePipelineActor();
+export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProviderOverride, retrySignal = 0, trackId, medium, onCopyText, onToast }: AssetsEngineProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const ctx = useProjectContext();
   const abortController = usePipelineAbort();
-  const channelId = useSelector(actor, (s) => s.context.channelId);
-  const projectId = useSelector(actor, (s) => s.context.projectId);
-  const brainstormResult = useSelector(actor, (s) => s.context.stageResults.brainstorm);
-  const researchResult = useSelector(actor, (s) => s.context.stageResults.research);
-  const draftResult = useSelector(actor, (s) => s.context.stageResults.draft);
-  const draftId = draftResult?.draftId;
-  const draftStatus = draft?.status as string | undefined;
+
+  const channelId = ctx.context.channelId;
+  const projectId = ctx.context.projectId ?? undefined;
+
+  // Step-by-step URL advance: assets → next non-skipped track stage
+  // (preview → publish). Supervised mode auto-routes via PipelineWorkspace.
+  async function advanceFromAssets() {
+    const trackId = searchParams?.get('track') ?? null;
+    if (!projectId) {
+      pushStage({ router, pathname, searchParams, stage: 'preview', trackId });
+      return;
+    }
+    const tracks = await fetchTracks(projectId);
+    const track = trackId ? tracks.find((t) => t.id === trackId) ?? null : tracks[0] ?? null;
+    const stage = nextTrackStage('assets', track);
+    pushStage({ router, pathname, searchParams, stage, trackId: track?.id ?? trackId });
+  }
+  const brainstormResult = ctx.context.stageResults?.brainstorm as Record<string, unknown> | undefined;
+  const researchResult = ctx.context.stageResults?.research as Record<string, unknown> | undefined;
+  const draftResult = ctx.context.stageResults?.draft as { draftId?: string; draftTitle?: string; personaId?: string; personaName?: string; personaSlug?: string; personaWpAuthorId?: number | null } | undefined;
+  // Issue #210 — per-track bucket wins. When trackId is provided, never fall
+  // back to the flat ctx.stageResults.draft (canonical/blog leak). Flat is only
+  // safe for legacy single-track projects where trackId is absent.
+  const perTrackDraft = getTrackStageResults(ctx.context.stageResultsByTrack, trackId ?? null).draft;
+  const draftId = trackId
+    ? perTrackDraft?.draftId
+    : perTrackDraft?.draftId ?? draftResult?.draftId;
+
+  // Self-hydrate the draft when the prop is null but ctx.stageResults.draft
+  // already carries a draftId (server-driven path via EngineHost — EngineHost
+  // doesn't pass `draft`, only `stageRun`). Without this the engine renders
+  // the "Draft not loaded" defensive banner indefinitely. Mirrors the same
+  // pattern used in ReviewEngine.
+  const [localDraft, setLocalDraft] = useState<Record<string, unknown> | null>(draft);
+  useEffect(() => {
+    setLocalDraft(draft);
+  }, [draft]);
+  useEffect(() => {
+    if (localDraft || !draftId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/content-drafts/${draftId}`, {
+          signal: abortController?.signal,
+        });
+        const json = await res.json();
+        if (!cancelled && json?.data) {
+          setLocalDraft(json.data as Record<string, unknown>);
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [localDraft, draftId, abortController?.signal]);
+
+  const draftStatus = localDraft?.status as string | undefined;
+
+  const bResult = brainstormResult as { ideaId?: string; ideaTitle?: string; ideaVerdict?: string; ideaCoreTension?: string; brainstormSessionId?: string } | undefined;
+  const rResult = researchResult as { researchSessionId?: string; approvedCardsCount?: number; researchLevel?: string; primaryKeyword?: string; secondaryKeywords?: string[]; searchIntent?: string } | undefined;
 
   const trackerContext: PipelineContext = {
     channelId: channelId ?? undefined,
     projectId,
-    ideaId: brainstormResult?.ideaId,
-    ideaTitle: brainstormResult?.ideaTitle,
-    ideaVerdict: brainstormResult?.ideaVerdict,
-    ideaCoreTension: brainstormResult?.ideaCoreTension,
-    brainstormSessionId: brainstormResult?.brainstormSessionId,
-    researchSessionId: researchResult?.researchSessionId,
-    approvedCardsCount: researchResult?.approvedCardsCount,
-    researchLevel: researchResult?.researchLevel,
-    researchPrimaryKeyword: researchResult?.primaryKeyword,
-    researchSecondaryKeywords: researchResult?.secondaryKeywords,
-    researchSearchIntent: researchResult?.searchIntent,
+    ideaId: bResult?.ideaId,
+    ideaTitle: bResult?.ideaTitle,
+    ideaVerdict: bResult?.ideaVerdict,
+    ideaCoreTension: bResult?.ideaCoreTension,
+    brainstormSessionId: bResult?.brainstormSessionId,
+    researchSessionId: rResult?.researchSessionId,
+    approvedCardsCount: rResult?.approvedCardsCount,
+    researchLevel: rResult?.researchLevel,
+    researchPrimaryKeyword: rResult?.primaryKeyword,
+    researchSecondaryKeywords: rResult?.secondaryKeywords,
+    researchSearchIntent: rResult?.searchIntent,
     draftId: draftResult?.draftId,
     draftTitle: draftResult?.draftTitle,
     personaId: draftResult?.personaId,
@@ -230,8 +310,9 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     personaWpAuthorId: draftResult?.personaWpAuthorId,
   };
 
-  function navigate(toStage?: PipelineStage) {
-    actor.send({ type: 'NAVIGATE', toStage: toStage ?? 'review' });
+  // navigate: no-op in context mode — orchestrator handles stage transitions
+  function navigate(_toStage?: PipelineStage) {
+    // no-op: orchestrator reads server state to decide next stage
   }
 
   // Sync-init from the draft prop so re-entry from a later stage lands
@@ -240,7 +321,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   // or has no asset_briefs, we fall through to Briefs and let the effect
   // promote later.
   const initialBriefs = (
-    (draft?.draft_json as { asset_briefs?: { visualDirection?: VisualDirection | null; slots?: SlotCard[] } } | undefined)
+    (localDraft?.draft_json as { asset_briefs?: { visualDirection?: VisualDirection | null; slots?: SlotCard[] } } | undefined)
       ?.asset_briefs
   );
   const [phase, setPhase] = useState<AssetPhase>(() =>
@@ -276,35 +357,37 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   //   handleFinish dispatches ASSETS_COMPLETE.
   // Path B — existing assets already present: handleFinish dispatches
   //   immediately with the existing IDs.
-  const autoMode = useSelector(actor, (s) => s.context.mode);
-  const autoPaused = useSelector(actor, (s) => s.context.paused);
-  const assetsResult = useSelector(actor, (s) => s.context.stageResults.assets);
-  // STAGE_PROGRESS partial updates also populate stageResults.assets (e.g. { status: 'Generating images' }).
+  const autoMode = ctx.context.mode;
+  const autoPaused = ctx.context.paused ?? false;
+  const assetsResult = ctx.context.stageResults?.assets;
   // Only treat the stage as complete when the real AssetsResult with `assetIds` has been dispatched.
   const assetsComplete = assetsResult != null && 'assetIds' in Object(assetsResult);
   // A persisted errorCode (e.g. 'QUOTA_EXCEEDED') also blocks autopilot — prevents re-dispatch on reload.
-  // The user must explicitly choose to skip or retry with a different provider.
   const assetsErrored = assetsResult != null && !assetsComplete && !!(assetsResult as { errorCode?: string }).errorCode;
   const assetsBlocked = assetsComplete || assetsErrored;
-  const assetsConfig = useSelector(actor, (s) => s.context.autopilotConfig?.assets);
+  type AssetsScope = 'all' | 'featured_only' | 'featured_and_conclusion';
+  const assetsConfig = (ctx.context.autopilotConfig as { assets?: { mode?: string; providerOverride?: string | null; imageScope?: AssetsScope } } | null | undefined)?.assets as { mode?: string; providerOverride?: string | null; imageScope?: AssetsScope } | null | undefined;
   const scopedSlotCards = useMemo(
-    () => getScopedSlots(slotCards, assetsConfig?.imageScope),
+    () => getScopedSlots(slotCards, assetsConfig?.imageScope ?? undefined),
     [slotCards, assetsConfig?.imageScope],
   );
-  const autopilotConfig = useSelector(actor, (s) => s.context.autopilotConfig);
-  const overviewMode = useSelector(actor, (s) => s.context.mode === 'overview');
-  const isGeneratingBriefs = useSelector(actor, (s) => s.matches({ assets: 'generatingBriefs' }));
-  const isRefining = useSelector(actor, (s) => s.matches({ assets: 'refining' }));
-  const isGeneratingImages = useSelector(actor, (s) => s.matches({ assets: 'generatingImages' }));
+  const autopilotConfig = ctx.context.autopilotConfig;
+  const overviewMode = autoMode === 'overview';
+  // actor.matches substates (generatingBriefs, refining, generatingImages) are actor-only concepts.
+  // In context mode these are always false — the server state drives progress instead.
+  const isGeneratingBriefs = false;
+  const isRefining = false;
+  const isGeneratingImages = false;
 
   // Seed provider/model from autopilot wizard config when an override is present.
   // Only fires when providerOverride is non-null to avoid clobbering the user's
   // manual selection on subsequent renders.
-  const assetsProviderOverride = autopilotConfig?.assets?.providerOverride ?? null;
+  const autopilotConfigTyped = autopilotConfig as { assets?: { providerOverride?: string | null; modelOverride?: string | null } } | null | undefined;
+  const assetsProviderOverride = autopilotConfigTyped?.assets?.providerOverride ?? null;
   useEffect(() => {
     if (!assetsProviderOverride) return;
     setProvider(assetsProviderOverride as ProviderId);
-    const modelOverride = autopilotConfig?.assets?.modelOverride ?? null;
+    const modelOverride = autopilotConfigTyped?.assets?.modelOverride ?? null;
     const resolvedModel = modelOverride ?? MODELS_BY_PROVIDER[assetsProviderOverride as ProviderId]?.[0]?.id;
     if (resolvedModel) setModel(resolvedModel);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -320,12 +403,10 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     if (gateRef.current) return;
     if (!overviewMode || !assetsConfig) return;
     gateRef.current = true;
-    if (assetsConfig.mode === 'briefs_only') {
-      actor.send({ type: 'ASSETS_GATE_TRIGGERED' });
-    }
+    // 'briefs_only' gate: in context mode the orchestrator reads server state so no send needed.
     // 'auto_generate' falls through to useAutoPilotTrigger which fires handleGenerateBriefs()
-    // 'skip' is handled by the machine (shouldSkipAssets guard on assets.idle entry)
-  }, [overviewMode, assetsConfig, actor]);
+    // 'skip' is handled by the orchestrator reading server state
+  }, [overviewMode, assetsConfig]);
 
   useAutoPilotTrigger({
     stage: 'assets',
@@ -355,9 +436,9 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     if (isRefining && slotCards.length > 0) {
       setImagesMode('brief');
       setPhase('images');
-      actor.send({ type: 'ASSETS_IMAGES_STARTED' });
+      // ASSETS_IMAGES_STARTED was actor-only; context mode drives images phase via local state
     }
-  }, [autoMode, autoPaused, isRefining, slotCards.length, assetsBlocked, assetsConfig?.mode, actor]);
+  }, [autoMode, autoPaused, isRefining, slotCards.length, assetsBlocked, assetsConfig?.mode]);
 
   const autoGenAllRef = useRef(false);
   useEffect(() => {
@@ -416,7 +497,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     async function fetchAssets() {
       try {
         const persistedBriefs = (
-          (draft?.draft_json as { asset_briefs?: { visualDirection?: VisualDirection | null; slots?: SlotCard[] } } | undefined)
+          (localDraft?.draft_json as { asset_briefs?: { visualDirection?: VisualDirection | null; slots?: SlotCard[] } } | undefined)
             ?.asset_briefs
         );
 
@@ -586,18 +667,18 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     }
     setVisualDirection(result.visual);
     setSlotCards(result.slots);
-    actor.send({ type: 'ASSETS_BRIEFS_COMPLETE' });
+    // ASSETS_BRIEFS_COMPLETE was actor-only; briefs state is tracked locally
     setImagesMode('brief');
     setPhase('refine');
     void persistBriefs(result.visual, result.slots);
     if (!overviewMode) toast.success(`Imported ${result.slots.length} prompt briefs`);
-  }, [persistBriefs, overviewMode, actor]);
+  }, [persistBriefs, overviewMode]);
 
   /* ── Generate briefs via AI or manual ── */
   async function handleGenerateBriefs() {
     if (!draftId || generatingBriefs) return;
-    actor.send({ type: 'ASSETS_BRIEFS_STARTED' });
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'assets', partial: { status: 'Generating images' } });
+    // ASSETS_BRIEFS_STARTED was actor-only; context mode tracks via local generatingBriefs state
+    ctx.setStageStatus('assets', { status: 'Generating briefs' });
     setGeneratingBriefs(true);
     try {
       const body: Record<string, unknown> = { provider };
@@ -612,7 +693,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
       if (json.error) {
         const msg = json.error.message ?? 'Failed to generate briefs';
         toast.error(msg);
-        actor.send({ type: 'STAGE_ERROR', error: msg });
+        // STAGE_ERROR was actor-only; errors surface via toast in context mode
         return;
       }
       if (json.data?.status === 'awaiting_manual') {
@@ -624,7 +705,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
       if (e instanceof Error && e.name === 'AbortError') return;
       const msg = e instanceof Error ? e.message : 'Failed to generate briefs';
       toast.error(msg);
-      actor.send({ type: 'STAGE_ERROR', error: msg });
+      // STAGE_ERROR was actor-only; errors surface via toast in context mode
     } finally {
       setGeneratingBriefs(false);
     }
@@ -751,7 +832,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
       }
       if (quotaErrorCode) {
         // Persist error state so autopilot does not re-dispatch on reload.
-        actor.send({ type: 'STAGE_PROGRESS', stage: 'assets', partial: { errorCode: quotaErrorCode, status: 'Quota exceeded' } });
+        ctx.setStageStatus('assets', { errorCode: quotaErrorCode, status: 'Quota exceeded' });
       } else if ((imageProviderOverride ?? imageProvider) !== 'manual') {
         toast.success('All images generated');
       } else {
@@ -803,7 +884,9 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
         const assetIds = existingAssets.map((a) => a.id);
         const featuredUrl = existingAssets.find((a) => a.role === 'featured_image')?.url;
         tracker.trackCompleted({ draftId, assetCount: existingAssets.length, assetIds, featuredImageUrl: featuredUrl });
-        actor.send({ type: 'ASSETS_COMPLETE', result: { assetIds, featuredImageUrl: featuredUrl } as AssetsResult });
+        const noUploadResult: AssetsResult = { assetIds, featuredImageUrl: featuredUrl };
+        ctx.signalStageComplete('assets', noUploadResult as unknown as Record<string, unknown>, trackId);
+        await advanceFromAssets();
         return;
       }
 
@@ -908,7 +991,9 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
         assetIds,
         featuredImageUrl: featuredUrl,
       });
-      actor.send({ type: 'ASSETS_COMPLETE', result: { assetIds, featuredImageUrl: featuredUrl } as AssetsResult });
+      const uploadResult: AssetsResult = { assetIds, featuredImageUrl: featuredUrl };
+      ctx.signalStageComplete('assets', uploadResult as unknown as Record<string, unknown>, trackId);
+      await advanceFromAssets();
     } catch (e) {
       tracker.trackFailed(e instanceof Error ? e.message : 'Failed to save images');
       toast.error('Failed to save images');
@@ -919,7 +1004,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   }
 
   /* ── Defensive guard — orchestrator gates render until draft hydrates ── */
-  if (!draft) {
+  if (!localDraft) {
     return (
       <Card>
         <CardContent className="py-6">
@@ -932,7 +1017,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   /* ── Import mode ── */
   if (engineMode === 'import' && !draftId) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" data-testid="assets-engine-root">
         <ContextBanner stage="assets" context={trackerContext} onBack={navigate} />
         <div className="space-y-4">
           <div className="flex items-start justify-between gap-4">
@@ -979,13 +1064,12 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
               );
             }}
             onSelect={(item) => {
-              actor.send({
-                type: 'ASSETS_COMPLETE',
-                result: {
-                  assetIds: [item.id as string],
-                  featuredImageUrl: (item.url as string | undefined) || undefined,
-                } as AssetsResult,
-              });
+              const importResult: AssetsResult = {
+                assetIds: [item.id as string],
+                featuredImageUrl: (item.url as string | undefined) || undefined,
+              };
+              ctx.signalStageComplete('assets', importResult as unknown as Record<string, unknown>, trackId);
+              void advanceFromAssets();
             }}
           />
         </div>
@@ -997,12 +1081,30 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     return <div className="p-6 text-muted-foreground">Loading assets...</div>;
   }
 
+  // ── Issue #213 — video routing ────────────────────────────────────────────
+  // When the track medium is video, delegate to the video asset layout.
+  // The blog image-upload flow (briefs/refine/approve) is irrelevant for
+  // video tracks and is intentionally bypassed here.
+  if (medium === 'video') {
+    // key forces remount once the draft loads so the useState initializer in
+    // AssetsEngineVideo sees the real draftJson (with persisted assetSettings).
+    return (
+      <AssetsEngineVideo
+        key={localDraft ? String(draftId) : 'pending'}
+        draftJson={localDraft?.draft_json ?? localDraft ?? null}
+        draftId={draftId}
+        onCopyText={onCopyText}
+        onToast={onToast}
+      />
+    );
+  }
+
   const featuredPending = pendingUploads.find((p) => p.slot === 'featured');
   const totalSlots = slotCards.length;
   const pendingCount = pendingUploads.length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="assets-engine-root">
       <ContextBanner stage="assets" context={trackerContext} onBack={navigate} />
 
       <div className="flex items-start justify-between gap-4">
@@ -1135,6 +1237,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
                   onClick={handleGenerateBriefs}
                   disabled={(isGeneratingBriefs || generatingBriefs) || !draftId}
                   className="gap-2 shrink-0"
+                  data-testid="assets-action-generate-briefs"
                 >
                   {(isGeneratingBriefs || generatingBriefs) ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -1159,7 +1262,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
                   Pick images yourself using each section&apos;s title + content as context.
                 </p>
               </div>
-              <Button variant="outline" className="gap-2 shrink-0" onClick={handleSkipBriefs}>
+              <Button variant="outline" className="gap-2 shrink-0" onClick={handleSkipBriefs} data-testid="assets-action-skip-briefs">
                 <SkipForward className="h-4 w-4" />
                 Skip Briefs
               </Button>
@@ -1223,7 +1326,12 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
 
           {/* Per-slot prompt editors */}
           {slotCards.map((card, i) => (
-            <Card key={card.slot}>
+            <Card
+              key={card.slot}
+              data-testid="asset-brief-card"
+              data-slot={card.slot}
+              data-featured={card.slot === 'featured' ? 'true' : 'false'}
+            >
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
                   <Badge variant={card.slot === 'featured' ? 'default' : 'outline'} className="text-[10px]">
@@ -1466,7 +1574,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
           })}
 
           <div className="flex items-center gap-3">
-            <Button onClick={handleFinish} disabled={finishing} className="gap-2">
+            <Button onClick={handleFinish} disabled={finishing} className="gap-2" data-testid="assets-action-finish">
               {finishing ? (
                 <><Loader2 className="h-4 w-4 animate-spin" />Saving…</>
               ) : (
@@ -1511,7 +1619,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
           })}
 
           <div className="flex items-center gap-3">
-            <Button onClick={handleFinish} disabled={finishing} className="gap-2">
+            <Button onClick={handleFinish} disabled={finishing} className="gap-2" data-testid="assets-action-finish">
               {finishing ? (
                 <><Loader2 className="h-4 w-4 animate-spin" />Saving…</>
               ) : (

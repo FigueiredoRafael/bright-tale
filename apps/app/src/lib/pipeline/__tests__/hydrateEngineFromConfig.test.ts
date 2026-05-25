@@ -45,6 +45,8 @@ describe('hydrateBrainstormFromConfig', () => {
       audience: 'developers',
       goal: 'inform',
       constraints: 'no jargon',
+      provider: null,
+      model: null,
     })
   })
 
@@ -60,7 +62,11 @@ describe('hydrateBrainstormFromConfig', () => {
 
 describe('hydrateResearchFromConfig', () => {
   it('returns researchDepth from depth', () => {
-    expect(hydrateResearchFromConfig(fullConfig)).toEqual({ researchDepth: 'medium' })
+    expect(hydrateResearchFromConfig(fullConfig)).toEqual({
+      researchDepth: 'medium',
+      provider: null,
+      model: null,
+    })
   })
   it('null config → empty', () => {
     expect(hydrateResearchFromConfig(null)).toEqual({})
@@ -73,6 +79,10 @@ describe('hydrateDraftFromConfig', () => {
       format: 'blog',
       wordCount: 1500,
       selectedPersonaId: 'p1',
+      provider: null,
+      model: null,
+      canonicalCoreProvider: null,
+      canonicalCoreModel: null,
     })
   })
   it('null personaId stays null', () => {
@@ -81,6 +91,10 @@ describe('hydrateDraftFromConfig', () => {
       format: 'blog',
       wordCount: 1500,
       selectedPersonaId: null,
+      provider: null,
+      model: null,
+      canonicalCoreProvider: null,
+      canonicalCoreModel: null,
     })
   })
 })
@@ -91,6 +105,8 @@ describe('hydrateReviewFromConfig', () => {
       maxIterations: 5,
       autoApproveThreshold: 90,
       hardFailThreshold: 40,
+      provider: null,
+      model: null,
     })
   })
   it('null config → empty', () => {

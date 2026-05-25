@@ -70,6 +70,7 @@ export function EngineLogsClient() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchLogs(filters, page);
   }, [filters, page, fetchLogs]);
 

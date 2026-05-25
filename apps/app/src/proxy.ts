@@ -46,6 +46,14 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // RSC payload requests piggyback on the same cookies as the parent page
+  // navigation that already ran through this middleware. Re-verifying the
+  // JWT and re-running locale logic on every RSC fetch is dead weight that
+  // multiplies per page load — skip it.
+  if (request.headers.get('rsc') === '1') {
+    return NextResponse.next();
+  }
+
   // Build a response we'll mutate with cookie updates
   let response = NextResponse.next({ request });
 
@@ -83,9 +91,11 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  // OAuth codes that miss the callback route (Supabase fell back to site_url root)
-  // land as ?code= on an arbitrary page. Redirect them to the proper handler so
-  // the PKCE exchange completes without requiring a second user interaction.
+  // OAuth codes that miss the callback route (Supabase fell back to site_url
+  // root) land as ?code= on an arbitrary page. Redirect them to the proper
+  // handler so the PKCE exchange completes without requiring a second user
+  // interaction. Without this, the code never reaches exchangeCodeForSession,
+  // no session cookie is set, and the visitor bounces straight back to login.
   const oauthCode = request.nextUrl.searchParams.get('code');
   if (oauthCode && !pathname.includes('/auth/callback')) {
     const callbackUrl = new URL('/auth/callback', request.url);
@@ -93,7 +103,17 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(callbackUrl);
   }
 
-  const { data: { user: realUser } } = await supabase.auth.getUser();
+  // getClaims() verifies the JWT locally via JWKS (no network call) on
+  // projects with asymmetric signing keys, which Supabase has used by default
+  // since mid-2024. getUser() always hits the network — using it on every
+  // request adds a round-trip per page + per RSC fetch. When getClaims()
+  // returns null the visitor is anonymous; calling getUser() as a fallback
+  // would only attempt a refresh, log a noisy AuthApiError when no refresh
+  // cookie exists, and arrive at the same answer.
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const realUser: { id: string } | null = claimsData?.claims?.sub
+    ? { id: claimsData.claims.sub }
+    : null;
 
   // E2E mode may inject a fake user-id so live API calls authorize without
   // needing a real Supabase session. Production never sets these vars.
@@ -168,6 +188,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|_next/data|favicon.ico|monitoring|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|map|css|js|woff2?|ttf)$).*)',
   ],
 };

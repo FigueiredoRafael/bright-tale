@@ -119,6 +119,16 @@ export {
   type PodcastQuery,
 } from "./podcasts";
 
+// Content Drafts (cross-medium) schemas
+export {
+  mediumSchema,
+  deriveDraftRequestSchema,
+  deriveDraftResponseSchema,
+  type Medium,
+  type DeriveDraftRequest,
+  type DeriveDraftResponse,
+} from "./content-drafts";
+
 // Ideas Library schemas
 export {
   listIdeasQuerySchema,
@@ -231,3 +241,33 @@ export * from "./autopilotTemplates";
 
 // Project Setup schemas
 export * from "./projectSetup";
+
+// Tracks API schemas
+export {
+  addTrackSchema,
+  updateTrackSchema,
+  type AddTrackInput,
+  type UpdateTrackInput,
+} from "./tracks";
+
+// Publish-target schemas
+export {
+  PUBLISH_TARGET_TYPES,
+  publishTargetSchema,
+  type PublishTargetType,
+  type PublishTarget,
+} from "./publishTargets";
+
+// Video Asset Bundle schema (issue #216)
+export {
+  videoAssetBundleSchema,
+  type BundleImage,
+  type BundleText,
+  type VideoAssetBundle,
+} from "./videoAssetBundle";
+
+// YouTube Publish params schema (issue #222 / S10)
+export {
+  youtubePublishParams,
+  type YouTubePublishParams,
+} from "./youtubePublishParams";

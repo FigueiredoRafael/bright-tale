@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { createActor } from 'xstate'
-import React from 'react'
-import { pipelineMachine } from '@/lib/pipeline/machine'
-import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
+import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
 import { DraftEngine } from '../DraftEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
 import type { AutopilotConfig } from '@brighttale/shared'
@@ -14,6 +11,14 @@ vi.mock('@/hooks/use-analytics', () => ({
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}))
+
+vi.mock('@/components/pipeline/PipelineAbortProvider', () => ({
+  usePipelineAbort: () => null,
+}))
+
+vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
+  useAutoPilotTrigger: vi.fn(),
 }))
 
 const STUB_PERSONA = {
@@ -83,27 +88,17 @@ afterEach(() => {
 
 describe('DraftEngine', () => {
   it('hydrates format + wordCount + selectedPersonaId from autopilotConfig on mount', () => {
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start()
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'overview',
-      autopilotConfig: FULL_AUTOPILOT_CONFIG,
-      templateId: null,
-      startStage: 'draft',
-    })
-
     render(
-      <PipelineActorProvider value={actor}>
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="overview"
+        autopilotConfig={FULL_AUTOPILOT_CONFIG}
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
         <DraftEngine mode="generate" />
-      </PipelineActorProvider>,
+      </StandaloneProjectContextProvider>,
     )
 
     // sr-only spans carry the current state values for test queries.
@@ -113,60 +108,21 @@ describe('DraftEngine', () => {
   })
 
   it('defaults to blog format and no selectedPersonaId when no autopilotConfig is provided', () => {
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start()
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'step-by-step',
-      autopilotConfig: null,
-      templateId: null,
-      startStage: 'draft',
-    })
-
     render(
-      <PipelineActorProvider value={actor}>
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        autopilotConfig={null}
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
         <DraftEngine mode="generate" />
-      </PipelineActorProvider>,
+      </StandaloneProjectContextProvider>,
     )
 
     expect(screen.getByTestId('draft-type')).toHaveTextContent('blog')
     expect(screen.getByTestId('persona-select')).toBeEmptyDOMElement()
   })
 
-  it('machine accepts STAGE_PROGRESS with status=Building outline for draft stage', () => {
-    // This test verifies the machine wiring for the STAGE_PROGRESS dispatch that
-    // handleGenerateCore fires at its entry point. Full UI interaction is skipped
-    // because the Generate Core button requires a research session + persona loaded
-    // (async prerequisites). We test the actor contract directly.
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start()
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'step-by-step',
-      autopilotConfig: null,
-      templateId: null,
-      startStage: 'draft',
-    })
-
-    // STAGE_PROGRESS for draft with { status } merges into stageResults.draft
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'draft', partial: { status: 'Building outline' } })
-
-    // The status field is merged — stageResults.draft should have it
-    const draftPartial = actor.getSnapshot().context.stageResults.draft as { status?: string } | undefined
-    expect(draftPartial?.status).toBe('Building outline')
-  })
 })

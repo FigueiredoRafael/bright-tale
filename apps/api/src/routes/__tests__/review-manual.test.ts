@@ -65,7 +65,7 @@ vi.mock('../../lib/supabase/index.js', () => ({
       if (table === 'content_drafts') {
         return {
           update: (updateData: Record<string, unknown>) => ({
-            eq: (col: string, val: string) => {
+            eq: (_col: string, _val: string) => {
               // Apply update to nextDraft
               Object.assign(nextDraft, updateData);
               return {
@@ -96,6 +96,19 @@ vi.mock('../../lib/supabase/index.js', () => ({
       }
       if (table === 'credit_settings') {
         return { select: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) };
+      }
+      if (table === 'stage_runs') {
+        // loadPriorReviewAttempts touches stage_runs first. No history in this
+        // test — return empty so it falls back to content_drafts.review_feedback_json.
+        return {
+          select: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: async () => ({ data: [], error: null }),
+              }),
+            }),
+          }),
+        };
       }
       return {} as never;
     },

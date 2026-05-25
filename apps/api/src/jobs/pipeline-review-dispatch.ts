@@ -1,0 +1,346 @@
+/**
+ * pipeline-review-dispatch — handles `pipeline/stage.requested` for the
+ * Review Stage. Unlike brainstorm/research/draft, Review has no separate
+ * session table — feedback persists directly on `content_drafts`. The
+ * dispatcher therefore acts as both dispatcher AND worker: it loads the
+ * prior draft, calls agent-4 once, writes the verdict back to the draft,
+ * and transitions the Stage Run to terminal.
+ *
+ * Skip-when-maxIterations-0 is enforced by `advanceAfter` in the
+ * orchestrator (Slice 1) — this function only runs when the orchestrator
+ * actually queues a review Stage Run.
+ */
+import { inngest } from './client.js';
+import { generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
+import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
+import { createServiceClient } from '../lib/supabase/index.js';
+import { buildReviewMessage } from '../lib/ai/prompts/review.js';
+import {
+  computeRubricScore,
+  deriveVerdictFromScore,
+  extractRubricEvaluation,
+  getRubricForType,
+} from '../lib/ai/scoring/computeRubricScore.js';
+import {
+  markAwaitingUser,
+  markCompleted,
+  markFailed,
+} from '../lib/pipeline/stage-run-writer.js';
+
+interface StageRequestedEvent {
+  name: 'pipeline/stage.requested';
+  data: {
+    stageRunId: string;
+    stage: string;
+    projectId: string;
+  };
+}
+
+ 
+type Sb = any;
+
+const AUTO_APPROVE_DEFAULT = 90;
+const HARD_FAIL_DEFAULT = 40;
+const MAX_ITERATIONS_DEFAULT = 5;
+
+export const pipelineReviewDispatch = inngest.createFunction(
+  {
+    id: 'pipeline-review-dispatch',
+    retries: 0,
+    // Review agents see the entire draft + canonical core + JSON schema, so
+    // the LLM call regularly runs 1-2 min. Default Inngest function timeout
+    // is too short for this; bump finish timeout to 5 min so the function
+    // completes naturally instead of being killed mid-call.
+    timeouts: { finish: '5m' },
+    // See pipeline-brainstorm-dispatch for the rationale behind `if:`.
+    triggers: [{ event: 'pipeline/stage.requested', if: "event.data.stage == 'review'" }],
+  },
+  async ({ event, step }: { event: StageRequestedEvent; step: { run: <T>(id: string, fn: () => Promise<T>) => Promise<T> } }) => {
+    if (event.data.stage !== 'review') return;
+
+    const sb: Sb = createServiceClient();
+    const { stageRunId, projectId } = event.data;
+    const ctx = { projectId, stage: 'review' as const };
+
+    const { data: stageRun } = await sb
+      .from('stage_runs')
+      .select('id, project_id, stage, status, input_json')
+      .eq('id', stageRunId)
+      .maybeSingle();
+    if (!stageRun) return;
+    // Idempotency: bail on TERMINAL statuses. `queued` is the normal entry
+    // and `running` means we already claimed this row on an earlier replay
+    // of the same Inngest invocation (Inngest re-executes the function from
+    // the top after each `step.run` and reads cached step results) — letting
+    // it through is required so the post-LLM verdict logic actually runs.
+    if (stageRun.status !== 'queued' && stageRun.status !== 'running') return;
+
+    const input = (stageRun.input_json ?? {}) as Record<string, unknown>;
+    const provider = input.provider as string | undefined;
+    const model = input.model as string | undefined;
+
+    // Load review config from the project's autopilot config so the dispatcher
+    // can honour the user's chosen thresholds + iteration cap.
+    const { data: projectRow } = await sb
+      .from('projects')
+      .select('autopilot_config_json')
+      .eq('id', projectId)
+      .maybeSingle();
+    const reviewConfig =
+      ((projectRow?.autopilot_config_json as Record<string, Record<string, unknown>> | null | undefined)
+        ?.review as Record<string, unknown> | undefined) ?? {};
+    const autoApproveThreshold =
+      (input.autoApproveThreshold as number | undefined) ??
+      (reviewConfig.autoApproveThreshold as number | undefined) ??
+      AUTO_APPROVE_DEFAULT;
+    const hardFailThreshold =
+      (input.hardFailThreshold as number | undefined) ??
+      (reviewConfig.hardFailThreshold as number | undefined) ??
+      HARD_FAIL_DEFAULT;
+    const maxIterations =
+      (input.maxIterations as number | undefined) ??
+      (reviewConfig.maxIterations as number | undefined) ??
+      MAX_ITERATIONS_DEFAULT;
+
+    // Atomic compare-and-swap inside step.run so the claim only happens on
+    // the FIRST Inngest invocation; replays see the cached `claimed: true`
+    // result and skip past instead of re-running the CAS (which would lose
+    // since the row is now `running`).
+    const claimed = await step.run('claim-stage-run', async () => {
+      const startedAt = new Date().toISOString();
+      const { data } = await sb
+        .from('stage_runs')
+        .update({ status: 'running', started_at: startedAt, updated_at: startedAt })
+        .eq('id', stageRunId)
+        .eq('status', 'queued')
+        .select('id');
+      return { won: !!(data && (data as unknown[]).length > 0) };
+    });
+    if (!claimed.won) return;
+
+    // Resolve the draft to review from the prior draft Stage Run.
+    const { data: priorDraft } = await sb
+      .from('stage_runs')
+      .select('id, stage, status, payload_ref')
+      .eq('project_id', projectId)
+      .eq('stage', 'draft')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const draftRef = priorDraft?.payload_ref as { kind?: string; id?: string } | null | undefined;
+    if (draftRef?.kind !== 'content_draft' || !draftRef.id) {
+      await markFailed(sb, stageRunId, { ...ctx, errorMessage: 'No prior draft Stage Run to review' });
+      return;
+    }
+    const draftId = draftRef.id;
+
+    const { data: draft } = await sb
+      .from('content_drafts')
+      .select('*')
+      .eq('id', draftId)
+      .maybeSingle();
+    if (!draft) {
+      await markFailed(sb, stageRunId, { ...ctx, errorMessage: `content_draft ${draftId} not found` });
+      return;
+    }
+
+    // Defensive: backfill track_id if the stage_run was created without one.
+    // Legacy review stage_runs created before the per-track architecture was
+    // consolidated end up with track_id=null. The sidebar groups stage_runs
+    // by track.id (see /:projectId/stages → tracks[].stageRuns), so a
+    // completed review with null track_id never shows as done in the UI
+    // even though the score is recorded on the draft. We derive the missing
+    // track_id from the latest production stage_run on the same project
+    // that points at the same content_draft.
+    if (!(stageRun as { track_id?: string | null }).track_id) {
+      const { data: priorProduction } = await sb
+        .from('stage_runs')
+        .select('track_id, payload_ref')
+        .eq('project_id', projectId)
+        .eq('stage', 'production')
+        .order('created_at', { ascending: false })
+        .limit(10);
+      const inheritedTrackId = ((priorProduction ?? []) as Array<{
+        track_id: string | null;
+        payload_ref: { id?: string } | null;
+      }>)
+        .find((r) => r.track_id && r.payload_ref?.id === draftId)?.track_id ?? null;
+      if (inheritedTrackId) {
+        await sb
+          .from('stage_runs')
+          .update({ track_id: inheritedTrackId })
+          .eq('id', stageRunId);
+      }
+    }
+
+    try {
+      const agentConfig = await loadAgentConfig('review');
+      const { provider: resolvedProvider, model: resolvedModel } = resolveProviderOverride(
+        provider,
+        model,
+        agentConfig,
+      );
+
+      const userMessage = buildReviewMessage({
+        type: draft.type as string,
+        title: draft.title as string,
+        draftJson: draft.draft_json,
+        canonicalCore: draft.canonical_core_json,
+        idea: null,
+        research: null,
+        contentTypesRequested: [draft.type as string],
+        channel: undefined,
+      });
+
+      // Wrap the LLM call in `step.run` so Inngest treats it as a long-running
+      // step. Without this the function executes inline and dev-mode kills it
+      // before the OpenAI/Anthropic response comes back (~10s default), which
+      // leaves the Stage Run orphaned in `running` with no error_message.
+      const response = await step.run('call-review-agent', () =>
+        generateWithFallback(
+          'review',
+          (draft.model_tier as string) ?? 'standard',
+          {
+            agentType: 'review',
+            systemPrompt: agentConfig.instructions ?? '',
+            userMessage,
+          },
+          {
+            provider: resolvedProvider,
+            model: resolvedModel,
+            logContext: {
+              userId: (draft.user_id as string) ?? '',
+              orgId: (draft.org_id as string) ?? '',
+              channelId: (draft.channel_id as string) ?? null,
+              sessionId: draftId,
+              sessionType: 'review',
+            },
+          },
+        ),
+      );
+
+      const result = response.result as Record<string, unknown>;
+      const overallVerdictRaw = (result.overall_verdict as string) ?? 'revision_required';
+      const draftType = draft.type as string;
+      const formatReview = result[`${draftType}_review`] as Record<string, unknown> | undefined;
+
+      // Score derivation: prefer deterministic rubric-based scoring (Σ weight
+      // over passing criteria) when a rubric exists for the content type.
+      // Falls back to the LLM's score field when the type has no rubric.
+      const rubric = getRubricForType(draftType);
+      let reviewScore: number | null;
+      let overallVerdict: string;
+      if (rubric) {
+        const rubricEval = extractRubricEvaluation(result, draftType);
+        const computed = computeRubricScore(rubric, rubricEval);
+        reviewScore = computed.score;
+        overallVerdict = deriveVerdictFromScore(computed.score, computed.maxScore);
+      } else {
+        reviewScore = (formatReview?.score as number | undefined) ?? null;
+        overallVerdict = overallVerdictRaw;
+      }
+
+      const iterationCount = ((draft.iteration_count as number) ?? 0) + 1;
+
+      // Verdict + Stage Run terminal decision. Four lanes:
+      //   approved        → draft.approved + Stage Run completed (advance → assets)
+      //   hard-rejected   → draft.failed   + Stage Run failed
+      //   revise + budget → draft.in_review + Stage Run completed (advance loops back to draft)
+      //   revise + out    → draft.in_review + Stage Run awaiting_user(max_iterations)
+      let newVerdict: 'approved' | 'revision_required' | 'rejected';
+      let newDraftStatus: 'approved' | 'in_review' | 'failed';
+      let approvedAt: string | null = null;
+      type RunOutcome =
+        | { status: 'completed' }
+        | { status: 'failed'; errorMessage: string }
+        | { status: 'awaiting_user'; awaitingReason: 'max_iterations' };
+      let runOutcome: RunOutcome;
+
+      const hardReject =
+        overallVerdict === 'rejected' ||
+        (reviewScore !== null && reviewScore < hardFailThreshold);
+      const approved =
+        overallVerdict === 'approved' ||
+        (reviewScore !== null && reviewScore >= autoApproveThreshold);
+
+      if (approved) {
+        newVerdict = 'approved';
+        newDraftStatus = 'approved';
+        approvedAt = new Date().toISOString();
+        runOutcome = { status: 'completed' };
+      } else if (hardReject) {
+        newVerdict = 'rejected';
+        newDraftStatus = 'failed';
+        runOutcome = {
+          status: 'failed',
+          errorMessage: `Review rejected${reviewScore != null ? ` (score ${reviewScore} < ${hardFailThreshold})` : ''}`,
+        };
+      } else if (iterationCount >= maxIterations) {
+        newVerdict = 'revision_required';
+        newDraftStatus = 'in_review';
+        runOutcome = { status: 'awaiting_user', awaitingReason: 'max_iterations' };
+      } else {
+        newVerdict = 'revision_required';
+        newDraftStatus = 'in_review';
+        runOutcome = { status: 'completed' };
+      }
+
+      const updateData: Record<string, unknown> = {
+        review_feedback_json: result,
+        review_score: reviewScore,
+        review_verdict: newVerdict,
+        iteration_count: iterationCount,
+        status: newDraftStatus,
+      };
+      if (approvedAt) updateData.approved_at = approvedAt;
+
+      await sb.from('content_drafts').update(updateData).eq('id', draftId);
+
+      const payloadRef = { kind: 'content_draft', id: draftId };
+      // Carry the verdict + feedback in the Stage Run itself so the
+      // orchestrator never has to open `payload_ref → content_drafts` to
+      // decide loop-vs-forward. `draftType` lets the orchestrator build the
+      // revision draft's `input_json.productionParams` without another lookup.
+      const outcome: Record<string, unknown> = {
+        verdict: newVerdict,
+        draftType: draft.type as string,
+        iterationCount,
+        score: reviewScore,
+        feedbackJson: result,
+      };
+      if (runOutcome.status === 'completed') {
+        await markCompleted(sb, stageRunId, { ...ctx, payloadRef, outcome });
+      } else if (runOutcome.status === 'failed') {
+        await markFailed(sb, stageRunId, {
+          ...ctx,
+          errorMessage: runOutcome.errorMessage,
+          payloadRef,
+          outcome,
+        });
+      } else {
+        await markAwaitingUser(sb, stageRunId, {
+          ...ctx,
+          awaitingReason: runOutcome.awaitingReason,
+          payloadRef,
+          outcome,
+        });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      console.error(err);
+      // Provider quota exhaustion isn't a stage failure — the operator just
+      // needs to top up credits or swap providers. Park awaiting_user so the
+      // user can resume after fixing it, instead of burning the Stage Run.
+      if (isQuotaExhausted(err)) {
+        await markAwaitingUser(sb, stageRunId, {
+          ...ctx,
+          awaitingReason: 'provider_quota_exhausted',
+          markStarted: true,
+        });
+        return;
+      }
+      await markFailed(sb, stageRunId, { ...ctx, errorMessage: message });
+      throw err;
+    }
+  },
+);

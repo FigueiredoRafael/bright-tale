@@ -75,9 +75,6 @@ export default function ProjectCard({ project, checked = false, onCheck, onDelet
                     </DropdownMenu>
                 </div>
             </CardHeader>
-            <CardContent>
-                {/* placeholder for summary or quick actions */}
-            </CardContent>
         </Card>
     );
 }

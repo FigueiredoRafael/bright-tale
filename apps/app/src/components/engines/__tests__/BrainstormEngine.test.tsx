@@ -1,13 +1,17 @@
+/**
+ * BrainstormEngine tests — post slice-14.6 (no xstate actor).
+ * Uses StandaloneProjectContextProvider.
+ */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { createActor } from 'xstate'
 import React from 'react'
-import { pipelineMachine } from '@/lib/pipeline/machine'
-import { PipelineActorProvider } from '@/providers/PipelineActorProvider'
+import { StandaloneProjectContextProvider } from '@/components/pipeline/ProjectContextProvider'
 import { BrainstormEngine } from '../BrainstormEngine'
 import { DEFAULT_PIPELINE_SETTINGS, DEFAULT_CREDIT_SETTINGS } from '../types'
 import type { AutopilotConfig } from '@brighttale/shared'
+import type { StageRun } from '@brighttale/shared/pipeline/inputs'
 
 vi.mock('@/hooks/use-analytics', () => ({
   useAnalytics: () => ({ track: vi.fn() }),
@@ -17,42 +21,52 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }))
 
+vi.mock('@/hooks/use-pipeline-tracker', () => ({
+  usePipelineTracker: () => ({
+    trackStarted: vi.fn(),
+    trackCompleted: vi.fn(),
+    trackFailed: vi.fn(),
+    trackAction: vi.fn(),
+  }),
+}))
+
+vi.mock('@/components/pipeline/PipelineAbortProvider', () => ({
+  usePipelineAbort: () => null,
+}))
+
+vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
+  useAutoPilotTrigger: vi.fn(),
+}))
+
 const STUB_IDEAS = [
   { id: 'idea-1', idea_id: 'BC-IDEA-001', title: 'Test Idea', verdict: 'viable', target_audience: 'devs', core_tension: 'tension' },
 ]
 const STUB_SESSION = { id: 'bs-1', input_json: { topic: 'test topic' } }
 
-function mountWithActor(mode: 'generate' | 'import' = 'generate') {
-  const actor = createActor(pipelineMachine, {
-    input: {
-      projectId: 'proj-1',
-      channelId: 'ch-1',
-      projectTitle: 'T',
-      pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-      creditSettings: DEFAULT_CREDIT_SETTINGS,
-    },
-  }).start()
-  // Machine spawns in `setup`. Park it at `brainstorm` before mounting the engine.
-  actor.send({
-    type: 'SETUP_COMPLETE',
-    mode: 'step-by-step',
-    autopilotConfig: null,
-    templateId: null,
-    startStage: 'brainstorm',
-  })
-  const utils = render(
-    <PipelineActorProvider value={actor}>
+function mountWithCtx(opts: {
+  mode?: 'step-by-step' | 'supervised' | 'overview'
+  autopilotConfig?: AutopilotConfig | null
+  ideaMode?: 'generate' | 'import'
+  onStageComplete?: (stage: string, result: Record<string, unknown>) => void
+} = {}) {
+  const { mode = 'step-by-step', autopilotConfig = null, ideaMode = 'generate', onStageComplete } = opts
+  return render(
+    <StandaloneProjectContextProvider
+      projectId="proj-1"
+      channelId="ch-1"
+      mode={mode}
+      pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+      creditSettings={DEFAULT_CREDIT_SETTINGS}
+      onStageComplete={onStageComplete}
+    >
       <BrainstormEngine
-        mode={mode}
-        // Pre-populate ideas and session to bypass the SSE generation flow in tests.
-        // The test verifies the machine-level dispatch, not the generate flow itself.
-        initialIdeas={mode === 'generate' ? STUB_IDEAS : undefined}
-        initialSession={mode === 'generate' ? STUB_SESSION : undefined}
-        preSelectedIdeaId={mode === 'generate' ? 'idea-1' : undefined}
+        mode={ideaMode}
+        initialIdeas={ideaMode === 'generate' ? STUB_IDEAS : undefined}
+        initialSession={ideaMode === 'generate' ? STUB_SESSION : undefined}
+        preSelectedIdeaId={ideaMode === 'generate' ? 'idea-1' : undefined}
       />
-    </PipelineActorProvider>,
+    </StandaloneProjectContextProvider>,
   )
-  return { actor, ...utils }
 }
 
 beforeEach(() => {
@@ -81,71 +95,108 @@ afterEach(() => {
 })
 
 describe('BrainstormEngine', () => {
-  it('dispatches BRAINSTORM_COMPLETE and advances to research when user confirms idea', async () => {
+  it('signals stage complete and renders confirm button when user confirms idea', async () => {
     const user = userEvent.setup()
-    const { actor } = mountWithActor('generate')
+    const completedStages: Array<{ stage: string; result: Record<string, unknown> }> = []
+    mountWithCtx({
+      onStageComplete: (stage, result) => completedStages.push({ stage, result }),
+    })
 
     const confirmBtn = await screen.findByRole('button', { name: /next.*research/i })
     await user.click(confirmBtn)
 
-    expect(actor.getSnapshot().context.stageResults.brainstorm?.ideaId).toBe('idea-1')
-    expect(actor.getSnapshot().value).toMatchObject({ research: 'idle' })
+    await waitFor(() => {
+      expect(completedStages.some((e) => e.stage === 'brainstorm' && e.result.ideaId === 'idea-1')).toBe(true)
+    })
   })
 
   it('does not render a Back button on brainstorm (first stage, no navigation back)', () => {
-    mountWithActor('generate')
-    // Brainstorm is the first stage — there is no previous stage to go back to.
+    mountWithCtx()
     expect(screen.queryByRole('button', { name: /^back$/i })).toBeNull()
   })
 
-  it('import mode dispatches BRAINSTORM_COMPLETE from ImportPicker selection', async () => {
+  it('import mode signals stage complete from ImportPicker selection', async () => {
     const user = userEvent.setup()
-    const { actor } = mountWithActor('import')
+    const completedStages: Array<{ stage: string; result: Record<string, unknown> }> = []
+    mountWithCtx({ ideaMode: 'import', onStageComplete: (stage, result) => completedStages.push({ stage, result }) })
 
     const item = await screen.findByText('Library Idea')
     await user.click(item)
 
-    expect(actor.getSnapshot().context.stageResults.brainstorm?.ideaId).toBe('lib-idea-1')
-    expect(actor.getSnapshot().value).toMatchObject({ research: 'idle' })
+    await waitFor(() => {
+      expect(completedStages.some((e) => e.stage === 'brainstorm' && e.result.ideaId === 'lib-idea-1')).toBe(true)
+    })
+  })
+
+  it('pre-selects the AI-recommended idea by title when ideas hydrate in step-by-step mode', async () => {
+    const completedStages: Array<{ stage: string; result: Record<string, unknown> }> = []
+    render(
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+        onStageComplete={(stage, result) => completedStages.push({ stage, result })}
+      >
+        <BrainstormEngine
+          mode="generate"
+          initialIdeas={[
+            { id: 'idea-1', idea_id: 'BC-IDEA-001', title: 'Top Pick', verdict: 'viable', target_audience: 'devs', core_tension: 't1' },
+            { id: 'idea-2', idea_id: 'BC-IDEA-002', title: 'Runner Up', verdict: 'viable', target_audience: 'devs', core_tension: 't2' },
+          ]}
+          initialSession={{
+            id: 'bs-1',
+            input_json: { topic: 'test topic' },
+            recommendation_json: { pick: 'Top Pick', rationale: 'best fit' },
+          }}
+        />
+      </StandaloneProjectContextProvider>,
+    )
+
+    // Recommended idea ends up visually selected without user interaction.
+    await waitFor(() => {
+      const cards = screen.getAllByTestId('idea-card')
+      const top = cards.find((c) => c.textContent?.includes('Top Pick'))
+      expect(top?.getAttribute('data-selected')).toBe('true')
+    })
+    // Sticky footer's confirm CTA appears because an idea is selected.
+    expect(screen.getByRole('button', { name: /next.*research/i })).toBeInTheDocument()
+    // No auto-advance in step-by-step — user still has to click.
+    expect(completedStages).toEqual([])
   })
 
   it('hydrates topic + niche from autopilotConfig.brainstorm on mount', () => {
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
+    const autopilotConfig: AutopilotConfig = {
+      defaultProvider: 'recommended',
+      brainstorm: {
+        providerOverride: null,
+        mode: 'topic_driven',
+        topic: 'AI agents in 2026',
+        referenceUrl: null,
+        niche: 'enterprise',
+        tone: '', audience: '', goal: '', constraints: '',
       },
-    }).start()
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'overview',
-      autopilotConfig: {
-        defaultProvider: 'recommended',
-        brainstorm: {
-          providerOverride: null,
-          mode: 'topic_driven',
-          topic: 'AI agents in 2026',
-          referenceUrl: null,
-          niche: 'enterprise',
-          tone: '', audience: '', goal: '', constraints: '',
-        },
-        research: { providerOverride: null, depth: 'medium' },
-        canonicalCore: { providerOverride: null, personaId: null },
-        draft: { providerOverride: null, format: 'blog', wordCount: 1500 },
-        review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
-        assets: { providerOverride: null, mode: 'skip' },
-      } as AutopilotConfig,
-      templateId: null,
-      startStage: 'brainstorm',
-    })
+      research: { providerOverride: null, depth: 'medium' },
+      canonicalCore: { providerOverride: null, personaId: null },
+      draft: { providerOverride: null, format: 'blog', wordCount: 1500 },
+      review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
+      assets: { providerOverride: null, mode: 'skip', imageScope: 'all' as const },
+      preview: { enabled: false },
+      publish: { status: 'draft' },
+    }
 
     render(
-      <PipelineActorProvider value={actor}>
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="overview"
+        autopilotConfig={autopilotConfig}
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+      >
         <BrainstormEngine mode="generate" />
-      </PipelineActorProvider>,
+      </StandaloneProjectContextProvider>,
     )
 
     expect((screen.getByLabelText(/topic/i) as HTMLInputElement).value)
@@ -154,30 +205,76 @@ describe('BrainstormEngine', () => {
       .toBe('enterprise')
   })
 
-  it('machine accepts STAGE_PROGRESS with status=Generating ideas for brainstorm stage', () => {
-    // Verifies the actor wiring for the STAGE_PROGRESS dispatch that handleRun fires.
-    // Full UI click is skipped because clicking "Generate ideas" triggers EventSource
-    // (SSE) which is not available in jsdom. We test the machine contract directly.
-    const actor = createActor(pipelineMachine, {
-      input: {
-        projectId: 'proj-1',
-        channelId: 'ch-1',
-        projectTitle: 'T',
-        pipelineSettings: DEFAULT_PIPELINE_SETTINGS,
-        creditSettings: DEFAULT_CREDIT_SETTINGS,
-      },
-    }).start()
-    actor.send({
-      type: 'SETUP_COMPLETE',
-      mode: 'step-by-step',
-      autopilotConfig: null,
-      templateId: null,
-      startStage: 'brainstorm',
+})
+
+describe('BrainstormEngine — stageRun binding (T3.5)', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        if (String(url).includes('/api/ideas/library')) {
+          return {
+            ok: true,
+            json: async () => ({
+              data: { ideas: [] },
+              error: null,
+            }),
+          } as Response
+        }
+        return { ok: true, json: async () => ({ data: null, error: null }) } as Response
+      }),
+    )
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('signals stage complete with selected idea when stageRun prop is provided and user confirms', async () => {
+    const user = userEvent.setup()
+    const stageRun = {
+      id: 'sr-1',
+      projectId: 'proj-1',
+      stage: 'brainstorm',
+      status: 'queued',
+      attemptNo: 1,
+      awaitingReason: null,
+      payloadRef: null,
+      inputJson: null,
+      errorMessage: null,
+      startedAt: null,
+      finishedAt: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as StageRun
+    const completedStages: Array<{ stage: string; result: Record<string, unknown> }> = []
+
+    render(
+      <StandaloneProjectContextProvider
+        projectId="proj-1"
+        channelId="ch-1"
+        mode="step-by-step"
+        pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
+        creditSettings={DEFAULT_CREDIT_SETTINGS}
+        onStageComplete={(stage, result) => completedStages.push({ stage, result })}
+      >
+        <BrainstormEngine
+          mode="generate"
+          stageRun={stageRun}
+          initialIdeas={[{ id: 'idea-1', idea_id: 'BC-IDEA-001', title: 'Test Idea', verdict: 'viable', target_audience: 'devs', core_tension: 'tension' }]}
+          initialSession={{ id: 'bs-1', input_json: { topic: 'test topic' } }}
+          preSelectedIdeaId="idea-1"
+        />
+      </StandaloneProjectContextProvider>,
+    )
+
+    const confirmBtn = await screen.findByRole('button', { name: /next.*research/i })
+    await user.click(confirmBtn)
+
+    await waitFor(() => {
+      expect(
+        completedStages.some((e) => e.stage === 'brainstorm' && e.result.ideaId === 'idea-1'),
+      ).toBe(true)
     })
-
-    actor.send({ type: 'STAGE_PROGRESS', stage: 'brainstorm', partial: { status: 'Generating ideas' } })
-
-    const partial = actor.getSnapshot().context.stageResults.brainstorm as { status?: string } | undefined
-    expect(partial?.status).toBe('Generating ideas')
   })
 })

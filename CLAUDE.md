@@ -126,7 +126,7 @@ Brainstorm -> Research -> Draft -> Review Loop (score >= 90) -> Assets -> Publis
 
 Supabase (PostgreSQL). 18 tables, RLS enabled on all (deny-all — only `service_role` can read/write). `moddatetime` extension + `handle_updated_at()` trigger for `updated_at` columns.
 
-Key tables: `projects`, `stages`, `research_archives`, `blog_drafts`, `idea_archives`, `templates` (self-referencing), `agent_prompts`, `wordpress_configs`, `ai_provider_configs`.
+Key tables: `projects`, `stages`, `research_archives`, `blog_drafts`, `idea_archives`, `templates` (self-referencing), `agent_prompts`, `publish_targets`, `ai_provider_configs`.
 
 After schema changes: edit `supabase/migrations/`, run `npm run db:push:dev`, then `npm run db:types`.
 

@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { useSelector } from '@xstate/react'
-import { usePipelineActor } from './usePipelineActor'
+import { useOptionalProjectContext } from '@/components/pipeline/ProjectContextProvider'
 import type { PipelineStage } from '@/components/engines/types'
 
 interface AutoPilotTriggerOptions {
@@ -24,10 +23,18 @@ interface AutoPilotTriggerOptions {
 }
 
 /**
- * Drives auto-pilot for an engine. Watches the machine state and invokes
- * `fire()` exactly once per `(stage active, mode='auto', not paused, canFire)`
- * activation. Resets when the user navigates away, pauses, or `rearmKey`
+ * Drives auto-pilot for an engine. Watches the ProjectContextProvider state
+ * and invokes `fire()` exactly once per `(mode='supervised'|'overview', not
+ * paused, canFire)` activation. Resets when the user pauses or `rearmKey`
  * changes (used for review-loop re-iteration).
+ *
+ * Slice 14.3: ctx-only path — xstate actor fallback removed.
+ *   - When ProjectContextProvider is present, reads mode + paused from it.
+ *     The host mounts engines at the correct stage, so "current stage" is
+ *     always the engine's own stage.
+ *   - When ProjectContextProvider is absent (e.g. StandaloneEngineHost with
+ *     synthetic projectId, or tests without a provider), auto-pilot is a
+ *     no-op — standalone engines are always manual.
  */
 export function useAutoPilotTrigger({
   stage,
@@ -35,18 +42,15 @@ export function useAutoPilotTrigger({
   fire,
   rearmKey,
 }: AutoPilotTriggerOptions) {
-  const actor = usePipelineActor()
-  const mode = useSelector(actor, (s) => s.context.mode)
-  const paused = useSelector(actor, (s) => s.context.paused)
-  const stateValue = useSelector(actor, (s) => s.value)
+  const projectCtx = useOptionalProjectContext()
+
+  const mode = projectCtx?.context.mode ?? null
+  const paused = projectCtx?.context.paused ?? false
 
   const firedRef = useRef<string | number | null>(null)
 
-  const currentStage =
-    typeof stateValue === 'string' ? stateValue : Object.keys(stateValue)[0]
-
   useEffect(() => {
-    if ((mode !== 'supervised' && mode !== 'overview') || paused || currentStage !== stage) {
+    if ((mode !== 'supervised' && mode !== 'overview') || paused) {
       firedRef.current = null
       return
     }
@@ -55,5 +59,5 @@ export function useAutoPilotTrigger({
     if (!canFire()) return
     firedRef.current = arm
     void fire()
-  }, [mode, paused, currentStage, stage, rearmKey, canFire, fire])
+  }, [mode, paused, stage, rearmKey, canFire, fire])
 }

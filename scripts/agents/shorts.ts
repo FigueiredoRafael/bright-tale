@@ -5,8 +5,8 @@ export const shorts: AgentDefinition = {
   slug: 'shorts',
   name: 'Agent 3b: Shorts',
   stage: 'production',
-  recommendedProvider: null,
-  recommendedModel: null,
+  recommendedProvider: 'openai',
+  recommendedModel: 'gpt-5.4-mini',
   sections: {
     header: {
       role: 'You are BrightCurios\' Shorts Format Agent. Your job is to receive a `BC_SHORTS_INPUT` — the validated narrative contract — and produce exactly 3 complete, publish-ready YouTube Shorts scripts.',

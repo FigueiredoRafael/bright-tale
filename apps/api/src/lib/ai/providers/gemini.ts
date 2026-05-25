@@ -96,7 +96,12 @@ export class GeminiProvider implements AIProvider {
 
       if (rawText) return text;
 
-      const parsed = JSON.parse(text);
+      // Some models wrap the structured response in ```json ... ``` despite
+      // responseMimeType: 'application/json'. Strip fences before parsing.
+      const trimmed = text.trim();
+      const fenceMatch = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/);
+      const unfenced = fenceMatch ? fenceMatch[1].trim() : trimmed;
+      const parsed = JSON.parse(unfenced);
       if (schema && typeof (schema as { parse?: unknown }).parse === 'function') {
         return (schema as { parse: (v: unknown) => unknown }).parse(parsed);
       }

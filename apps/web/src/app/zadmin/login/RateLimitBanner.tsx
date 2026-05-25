@@ -38,6 +38,7 @@ export function RateLimitBanner() {
   const m = Math.floor(remaining / 60)
   const s = remaining % 60
   const label = m > 0 ? `${m}m ${String(s).padStart(2, '0')}s` : `${s}s`
+  // eslint-disable-next-line react-hooks/refs
   const pct = totalRef.current > 0 ? (100 * remaining) / totalRef.current : 100
 
   return (

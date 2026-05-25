@@ -47,6 +47,18 @@ export const videoStyleConfigSchema = z.object({
 
   /** Whether to include screen annotation cues (relevant for screen_record_tutorial) */
   screen_annotations: z.boolean().optional(),
+
+  /** Channel format — `presenter` for face/talking-head channels, `dark` for faceless/TTS-narrated channels */
+  channel_type: z.enum(["presenter", "dark"]).optional(),
+
+  /** Number of cameras used in the recording. Determines whether editor_script uses multi-angle language. */
+  camera_count: z.number().int().min(1).max(6).optional(),
+
+  /** Whether to generate lower_thirds[] overlays in editor_script (names, titles, source badges) */
+  lower_thirds_enabled: z.boolean().optional(),
+
+  /** Whether the teleprompter_script must be TTS-clean (no bracketed performance cues, no physical references) */
+  tts_enabled: z.boolean().optional(),
 });
 
 /** Output type — all defaults applied, all base fields present */

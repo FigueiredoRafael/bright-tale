@@ -211,6 +211,17 @@ export default function ResearchSessionPage() {
 
   return (
     <div className="pb-24">
+      {session.project_id ? (
+        <div className="px-6 pt-4">
+          <button
+            type="button"
+            onClick={() => router.push(`/projects/${session.project_id}?v=2`)}
+            className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
+          >
+            <ArrowLeft className="h-3 w-3" /> Back to pipeline view
+          </button>
+        </div>
+      ) : null}
       <PipelineStages
         currentStep="research"
         channelId={channelId}

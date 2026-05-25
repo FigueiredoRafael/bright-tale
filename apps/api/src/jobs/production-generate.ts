@@ -3,8 +3,9 @@
  * One Inngest job runs both stages so the user sees a single modal end-to-end.
  */
 import { inngest } from './client.js';
-import { generateWithFallback } from '../lib/ai/router.js';
-import { loadAgentConfig, loadAgentPrompt, resolveProviderOverride } from '../lib/ai/promptLoader.js';
+import { markCompleted } from '../lib/pipeline/stage-run-writer.js';
+import { generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
+import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
 import { loadIdeaContext } from '../lib/ai/loadIdeaContext.js';
 import { withReservation } from './utils/with-reservation.js';
@@ -52,6 +53,17 @@ interface ProductionGenerateEvent {
     provider?: 'gemini' | 'openai' | 'anthropic' | 'ollama';
     model?: string;
     productionParams?: Record<string, unknown> | null;
+    /** Set when launched via the new Pipeline Orchestrator. */
+    stageRunId?: string;
+    /**
+     * T2.6 — disambiguates the two callers:
+     *   'canonical' (pipeline-canonical-dispatch): terminal-write the
+     *     canonical Stage Run after save-core; do NOT chain to produce.
+     *   'draft'     (legacy pipeline-draft-dispatch): chain into produce
+     *     so the legacy Draft Stage Run stays running through the body.
+     *   undefined   (legacy callers / pre-T2.6 events): treated as 'draft'.
+     */
+    phase?: 'canonical' | 'draft';
   };
 }
 
@@ -62,7 +74,7 @@ export const productionGenerate = inngest.createFunction(
     triggers: [{ event: 'production/generate' }],
   },
   async ({ event, step }: { event: ProductionGenerateEvent; step: { run: (name: string, fn: () => Promise<unknown>) => Promise<unknown> } }) => {
-    const { draftId, orgId, userId, type, modelTier, provider, model, productionParams } = event.data;
+    const { draftId, orgId, userId, type, modelTier, provider, model, productionParams, stageRunId, phase } = event.data;
     const sb = createServiceClient();
 
     // Load projectId from content_drafts
@@ -226,10 +238,30 @@ export const productionGenerate = inngest.createFunction(
             const coreToSave = draft.idea_id && canonicalCore && typeof canonicalCore === 'object' && !Array.isArray(canonicalCore)
               ? { ...(canonicalCore as Record<string, unknown>), idea_id: draft.idea_id }
               : canonicalCore;
+            // Regenerating the canonical core invalidates anything downstream that
+            // was derived from the previous core. Clear `draft_json` (the produced
+            // body) and the review fields so the user is forced to re-produce +
+            // re-review against the new core. Without this, ProductionEngine's
+            // hydration finds stale `draft_json` from the previous run and
+            // renders phase=done — masking the fact that production never ran
+            // against the new canonical. Only clears when the previous run had
+            // already produced content (draft_json non-empty); first canonical
+            // generation is a no-op for these fields.
+            const prevDraftJson = draft.draft_json as Record<string, unknown> | null | undefined;
+            const hasPrevProduction =
+              prevDraftJson && typeof prevDraftJson === 'object' && Object.keys(prevDraftJson).length > 0;
+            const updateRow: Record<string, unknown> = { canonical_core_json: coreToSave };
+            if (hasPrevProduction) {
+              updateRow.draft_json = null;
+              updateRow.review_score = null;
+              updateRow.review_verdict = 'pending';
+              updateRow.review_feedback_json = null;
+              updateRow.iteration_count = 0;
+            }
             await (sb.from('content_drafts') as unknown as {
               update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
             })
-              .update({ canonical_core_json: coreToSave })
+              .update(updateRow)
               .eq('id', draftId);
             // Credit debit handled by withReservation (commit on success, release on throw).
           });
@@ -241,11 +273,61 @@ export const productionGenerate = inngest.createFunction(
       // review feedback as deliberate steps. The /produce and /review
       // routes own those stages.
       await emitJobEvent(draftId, 'production', 'completed', 'Canonical core gerado!', { draftId, type, stage: 'canonical-core' });
+
+      // Pipeline Orchestrator handoff. Two routes:
+      //   phase='canonical' (T2.6 canonical-dispatch): the canonical Stage
+      //     Run is project-scoped and ends at canonical-core. Terminal-write
+      //     it now; the per-Track production Stage Runs (owned by
+      //     pipeline-production-dispatch + production-produce) carry the
+      //     pipeline forward from here.
+      //   phase='draft' / undefined (legacy draft-dispatch): canonical-core
+      //     is only HALF of the Draft Stage — chain into produce so the
+      //     Stage Run stays running until the body is written.
+      if (stageRunId) {
+        if (phase === 'canonical') {
+          if (projectId) {
+            await markCompleted(sb, stageRunId, {
+              projectId,
+              stage: 'canonical',
+              payloadRef: { kind: 'content_draft', id: draftId },
+              outcome: { draftId, type },
+            });
+          }
+        } else {
+          await inngest.send({
+            name: 'production/produce',
+            data: {
+              draftId,
+              orgId,
+              userId,
+              type,
+              modelTier,
+              provider,
+              model,
+              productionParams,
+              stageRunId,
+            },
+          });
+        }
+      }
+
       return { success: true, draftId };
     } catch (err) {
       if (err instanceof JobAborted) {
         await sb.from('content_drafts').update({ status: 'paused' }).eq('id', draftId);
         await emitJobEvent(draftId, 'production', 'aborted', 'Sessão cancelada pelo usuário');
+        if (stageRunId) {
+          const now = new Date().toISOString();
+          await (sb.from('stage_runs') as unknown as {
+            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+          })
+            .update({ status: 'aborted', finished_at: now, updated_at: now })
+            .eq('id', stageRunId);
+          await inngest.send({
+            name: 'pipeline/stage.run.finished',
+            data: { stageRunId, projectId },
+          });
+        }
         return;
       }
 
@@ -255,12 +337,42 @@ export const productionGenerate = inngest.createFunction(
       // selected "Ollama: ECONNREFUSED").
       const providerLabel = provider ? `[${provider}${model ? `/${model}` : ''}] ` : '';
       const message = `${providerLabel}${rawMessage}`;
+      const quotaExhausted = isQuotaExhausted(err);
       await (sb.from('content_drafts') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
       })
         .update({ status: 'failed' })
         .eq('id', draftId);
       await emitJobEvent(draftId, 'production', 'failed', message.slice(0, 240), { error: rawMessage, provider, model });
+
+      if (stageRunId) {
+        const now = new Date().toISOString();
+        const patch: Record<string, unknown> = quotaExhausted
+          ? {
+              status: 'awaiting_user',
+              awaiting_reason: 'provider_quota_exhausted',
+              updated_at: now,
+            }
+          : {
+              status: 'failed',
+              error_message: message.slice(0, 500),
+              finished_at: now,
+              updated_at: now,
+            };
+        await (sb.from('stage_runs') as unknown as {
+          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+        })
+          .update(patch)
+          .eq('id', stageRunId);
+        if (!quotaExhausted) {
+          await inngest.send({
+            name: 'pipeline/stage.run.finished',
+            data: { stageRunId, projectId },
+          });
+        }
+      }
+
+      if (quotaExhausted) return;
       throw err;
     }
   },

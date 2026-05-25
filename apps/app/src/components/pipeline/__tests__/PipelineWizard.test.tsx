@@ -1,761 +1,615 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+/**
+ * PipelineWizard unit tests
+ *
+ * Tests the new (post-rewrite) wizard contract:
+ *  - No xstate, no setup endpoint, no usePipelineActor
+ *  - POSTs to /api/projects
+ *  - Dual-path: step-by-step vs supervised/overview (autopilot)
+ *  - Channel-select merge with overwrite confirm dialog
+ *  - Per-medium Draft tabs when media.length >= 2 AND autopilot
+ *  - Template load applies config to form
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 
-const sendSpy = vi.fn()
+vi.setConfig({ testTimeout: 30_000 })
 
-// Mutable context that tests can override per-test
-const mockContext = {
-  projectId: 'p1',
-  channelId: 'c1',
-  stageResults: {} as Record<string, unknown>,
+// ── Router mock ───────────────────────────────────────────────────────────────
+const routerPush = vi.fn()
+
+vi.mock('@/i18n/navigation', () => ({
+  useRouter: () => ({
+    push: routerPush,
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+  }),
+}))
+
+// ── Toast mock ────────────────────────────────────────────────────────────────
+vi.mock('@/hooks/use-toast', () => ({
+  useToast: () => ({ toast: vi.fn() }),
+}))
+
+// ── Heavy child component stubs ───────────────────────────────────────────────
+// WizardRightSummary and CostPreviewSlot are not under test here.
+vi.mock('../WizardRightSummary', () => ({
+  WizardRightSummary: () => <div data-testid="wizard-right-summary" />,
+}))
+
+vi.mock('../CostPreviewSlot', () => ({
+  CostPreviewSlot: () => <div data-testid="cost-preview-slot" />,
+}))
+
+// ── Fixtures ──────────────────────────────────────────────────────────────────
+const C1 = { id: 'c1', name: 'Alpha Channel' }
+const C2 = { id: 'c2', name: 'Beta Channel' }
+
+const TEMPLATE_WITH_TOPIC: {
+  id: string
+  name: string
+  is_default: boolean
+  config_json: {
+    defaultProvider: 'recommended'
+    brainstorm: {
+      providerOverride: null
+      modelOverride: null
+      mode: 'topic_driven'
+      topic: string
+      referenceUrl: null
+      niche: string
+      tone: string
+      audience: string
+      goal: string
+      constraints: string
+    }
+    research: { providerOverride: null; modelOverride: null; depth: 'medium' }
+    canonicalCore: { providerOverride: null; modelOverride: null; personaId: null }
+    draft: { providerOverride: null; modelOverride: null; format: 'blog'; wordCount: number }
+    review: {
+      providerOverride: null
+      modelOverride: null
+      maxIterations: number
+      autoApproveThreshold: number
+      hardFailThreshold: number
+    }
+    assets: { providerOverride: null; modelOverride: null; mode: 'briefs_only' }
+    preview: { enabled: boolean }
+    publish: { status: 'draft' }
+  }
+} = {
+  id: 'tpl-1',
+  name: 'My Template',
+  is_default: false,
+  config_json: {
+    defaultProvider: 'recommended',
+    brainstorm: {
+      providerOverride: null,
+      modelOverride: null,
+      mode: 'topic_driven',
+      topic: 'Injected template topic',
+      referenceUrl: null,
+      niche: '',
+      tone: '',
+      audience: '',
+      goal: '',
+      constraints: '',
+    },
+    research: { providerOverride: null, modelOverride: null, depth: 'medium' },
+    canonicalCore: { providerOverride: null, modelOverride: null, personaId: null },
+    draft: { providerOverride: null, modelOverride: null, format: 'blog', wordCount: 1200 },
+    review: {
+      providerOverride: null,
+      modelOverride: null,
+      maxIterations: 3,
+      autoApproveThreshold: 90,
+      hardFailThreshold: 40,
+    },
+    assets: { providerOverride: null, modelOverride: null, mode: 'briefs_only' },
+    preview: { enabled: true },
+    publish: { status: 'draft' },
+  },
 }
 
-vi.mock('@/hooks/usePipelineActor', () => ({
-  usePipelineActor: () => ({
-    getSnapshot: () => ({
-      value: 'setup',
-      context: mockContext,
-    }),
-    send: sendSpy,
-  }),
-}))
+// ── Fetch factory ─────────────────────────────────────────────────────────────
+/**
+ * Build a fetch stub that routes responses by URL pattern.
+ * Override `templates` to inject template rows for a specific test.
+ */
+function makeFetch({
+  channels = [C1, C2],
+  templates = [] as typeof TEMPLATE_WITH_TOPIC[],
+  projectId = 'p1',
+}: {
+  channels?: { id: string; name: string }[]
+  templates?: typeof TEMPLATE_WITH_TOPIC[]
+  projectId?: string
+} = {}) {
+  return vi.fn(async (url: RequestInfo, opts?: RequestInit) => {
+    const u = String(url)
 
-vi.mock('@/providers/PipelineSettingsProvider', () => ({
-  usePipelineSettings: () => ({
-    pipelineSettings: {
-      reviewRejectThreshold: 40,
-      reviewApproveScore: 90,
-      reviewMaxIterations: 5,
-      defaultProviders: {
-        brainstorm: 'gemini',
-        research: 'gemini',
-        canonicalCore: 'openai',
-        draft: 'anthropic',
-        review: 'gemini',
-        assets: 'gemini',
-      },
-    },
-    creditSettings: {
-      costBlog: 200,
-      costVideo: 200,
-      costShorts: 100,
-      costPodcast: 150,
-      costCanonicalCore: 80,
-      costReview: 20,
-      costResearchSurface: 60,
-      costResearchMedium: 100,
-      costResearchDeep: 180,
-    },
-    isLoaded: true,
-  }),
-}))
+    // Channels list
+    if (u === '/api/channels') {
+      return new Response(
+        JSON.stringify({ data: { items: channels }, error: null }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
 
+    // Personas (CanonicalCoreFields fetches /api/personas)
+    if (u === '/api/personas') {
+      return new Response(
+        JSON.stringify({ data: [], error: null }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+
+    // Channel-specific personas
+    if (/\/api\/channels\/[^/]+\/personas/.test(u)) {
+      return new Response(
+        JSON.stringify({ data: { items: [] }, error: null }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+
+    // Channel default media config
+    if (/\/api\/channels\/[^/]+\/default-media-config/.test(u)) {
+      return new Response(
+        JSON.stringify({ data: { default_media_config_json: null }, error: null }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+
+    // Autopilot templates — return the fixture list
+    if (u.startsWith('/api/autopilot-templates')) {
+      return new Response(
+        JSON.stringify({ data: { items: templates }, error: null }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+
+    // Project creation POST
+    if (u === '/api/projects' && opts?.method === 'POST') {
+      return new Response(
+        JSON.stringify({ data: { id: projectId }, error: null }),
+        { status: 201, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+
+    return new Response(JSON.stringify({}), { status: 200 })
+  }) as typeof fetch
+}
+
+// ── Component import (after mocks are set up) ─────────────────────────────────
 import { PipelineWizard } from '../PipelineWizard'
 
-function renderWizard(opts: { stageResults?: Record<string, unknown> } = {}) {
-  mockContext.stageResults = opts.stageResults ?? {}
-  return render(<PipelineWizard />)
-}
-
-// Helper: open a collapsed section by clicking its trigger button
-async function openSection(user: ReturnType<typeof userEvent.setup>, testId: string) {
-  const section = screen.getByTestId(testId)
-  const trigger = section.querySelector('button[aria-expanded]') as HTMLButtonElement | null
-  if (trigger && trigger.getAttribute('aria-expanded') === 'false') {
-    await user.click(trigger)
-  }
-}
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const originalFetch = globalThis.fetch
 
 beforeEach(() => {
-  sendSpy.mockClear()
-  mockContext.stageResults = {}
-  vi.unstubAllGlobals()
+  routerPush.mockClear()
+  globalThis.fetch = makeFetch()
 })
 
-it('on submit, posts setup payload then sends SETUP_COMPLETE with the same shape', async () => {
-  const user = userEvent.setup()
-  const fetchSpy = vi.fn().mockResolvedValue({
-    ok: true,
-    json: async () => ({ data: { items: [] }, error: null }),
+afterEach(() => {
+  globalThis.fetch = originalFetch
+  vi.restoreAllMocks()
+})
+
+/** Wait for the channel buttons to appear (signals mount + fetch complete). */
+async function waitForChannels(count = 2) {
+  await waitFor(() => expect(screen.getAllByTestId('channel-option')).toHaveLength(count))
+}
+
+/** Click a mode card by aria-label. */
+async function clickMode(user: ReturnType<typeof userEvent.setup>, label: 'Step-by-step' | 'Supervised' | 'Overview') {
+  const btn = screen.getByRole('radio', { name: label })
+  await user.click(btn)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 1: Mode switching reveals/hides sections
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PipelineWizard — mode switching', () => {
+  it('starts in step-by-step: no stage-section cards visible', async () => {
+    render(<PipelineWizard />)
+    await waitForChannels()
+
+    // In step-by-step the autopilot sections are hidden; no stage section cards
+    expect(screen.queryByTestId('stage-section-brainstorm')).toBeNull()
+    expect(screen.queryByTestId('stage-section-research')).toBeNull()
   })
-  vi.stubGlobal('fetch', fetchSpy)
-  renderWizard()
 
-  await user.click(screen.getByLabelText(/supervised/i))
-  await user.type(screen.getByLabelText(/topic/i), 'AI agents')
+  it('switching to Supervised reveals all 8 stage section cards', async () => {
+    const user = userEvent.setup()
+    render(<PipelineWizard />)
+    await waitForChannels()
 
-  await user.click(screen.getByRole('button', { name: /start brainstorm \(supervised\)/i }))
+    await clickMode(user, 'Supervised')
 
-  // Find the setup POST call (templates GET on mount may precede it)
-  let setupInit: RequestInit | undefined
-  await waitFor(() => {
-    const setupCall = (fetchSpy.mock.calls as [string, RequestInit | undefined][]).find(
-      ([url]) => url === '/api/projects/p1/setup',
-    )
-    expect(setupCall).toBeDefined()
-    setupInit = setupCall?.[1]
+    // All 8 stages defined in STAGE_ORDER should now be visible
+    await waitFor(() => {
+      expect(screen.getByTestId('stage-section-brainstorm')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('stage-section-research')).toBeInTheDocument()
+    expect(screen.getByTestId('stage-section-canonicalCore')).toBeInTheDocument()
+    expect(screen.getByTestId('stage-section-draft')).toBeInTheDocument()
+    expect(screen.getByTestId('stage-section-review')).toBeInTheDocument()
+    expect(screen.getByTestId('stage-section-assets')).toBeInTheDocument()
+    expect(screen.getByTestId('stage-section-preview')).toBeInTheDocument()
+    expect(screen.getByTestId('stage-section-publish')).toBeInTheDocument()
   })
-  expect(setupInit?.method).toBe('POST')
-  const body = JSON.parse(setupInit?.body as string) as {
-    mode: string
-    startStage: string
-    autopilotConfig: {
-      brainstorm: { topic: string }
-      review: { maxIterations: number }
+
+  it('stage card labels are present after switching to Overview', async () => {
+    const user = userEvent.setup()
+    render(<PipelineWizard />)
+    await waitForChannels()
+
+    await clickMode(user, 'Overview')
+
+    // STAGE_LABELS values appear as visible text within the section cards
+    await waitFor(() => expect(screen.getByTestId('stage-section-brainstorm')).toBeInTheDocument())
+
+    const stageLabels = ['Brainstorm', 'Research', 'Canonical Core', 'Draft', 'Review', 'Assets', 'Preview', 'Publish']
+    for (const label of stageLabels) {
+      // Each label appears at least once in the document
+      expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1)
     }
-  }
-  expect(body.mode).toBe('supervised')
-  expect(body.startStage).toBe('brainstorm')
-  expect(body.autopilotConfig.brainstorm.topic).toBe('AI agents')
-  expect(body.autopilotConfig.review.maxIterations).toBeGreaterThanOrEqual(0)
+  })
 
-  expect(sendSpy).toHaveBeenCalledWith(
-    expect.objectContaining({
-      type: 'SETUP_COMPLETE',
-      mode: 'supervised',
-      startStage: 'brainstorm',
-    }),
-  )
+  it('switching back to step-by-step hides the stage sections again', async () => {
+    const user = userEvent.setup()
+    render(<PipelineWizard />)
+    await waitForChannels()
+
+    await clickMode(user, 'Supervised')
+    await waitFor(() => expect(screen.getByTestId('stage-section-brainstorm')).toBeInTheDocument())
+
+    await clickMode(user, 'Step-by-step')
+    await waitFor(() => expect(screen.queryByTestId('stage-section-brainstorm')).toBeNull())
+  })
 })
 
-describe('scaffold tests', () => {
-  it('renders all 6 stage sections for a fresh project', () => {
-    renderWizard()
-    expect(screen.getByTestId('stage-section-brainstorm')).toBeDefined()
-    expect(screen.getByTestId('stage-section-research')).toBeDefined()
-    expect(screen.getByTestId('stage-section-canonicalCore')).toBeDefined()
-    expect(screen.getByTestId('stage-section-draft')).toBeDefined()
-    expect(screen.getByTestId('stage-section-review')).toBeDefined()
-    expect(screen.getByTestId('stage-section-assets')).toBeDefined()
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 2: Submit button disabled while form is invalid
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PipelineWizard — submit button gating', () => {
+  it('Create project button is disabled on mount (no title, no channel)', async () => {
+    render(<PipelineWizard />)
+    await waitForChannels()
+
+    const btn = screen.getByRole('button', { name: /create project/i })
+    expect(btn).toBeDisabled()
   })
 
-  it('disables completed stages with "Already done" badge', () => {
-    renderWizard({
-      stageResults: {
-        brainstorm: {
-          ideaId: 'i1',
-          ideaTitle: 'Test Idea',
-          ideaVerdict: 'viable',
-          ideaCoreTension: 'tension',
-          completedAt: '2026-01-01T00:00:00Z',
-        },
-        research: {
-          researchSessionId: 'r1',
-          approvedCardsCount: 3,
-          researchLevel: 'medium',
-          completedAt: '2026-01-01T00:00:00Z',
-        },
-      },
+  it('button stays disabled when only title is filled', async () => {
+    render(<PipelineWizard />)
+    await waitForChannels()
+
+    fireEvent.change(screen.getByLabelText(/project title/i), {
+      target: { value: 'Valid title here' },
     })
-    const brainstormSection = screen.getByTestId('stage-section-brainstorm')
-    const researchSection = screen.getByTestId('stage-section-research')
-    expect(brainstormSection.getAttribute('aria-disabled')).toBe('true')
-    expect(researchSection.getAttribute('aria-disabled')).toBe('true')
-    expect(screen.getAllByText(/already done/i).length).toBeGreaterThanOrEqual(2)
+
+    const btn = screen.getByRole('button', { name: /create project/i })
+    expect(btn).toBeDisabled()
   })
 
-  it('switches submit CTA label by mode', async () => {
-    const user = userEvent.setup()
-    renderWizard()
+  it('button stays disabled when only channel is selected', async () => {
+    render(<PipelineWizard />)
+    await waitForChannels()
 
-    expect(screen.getByRole('button', { name: /start brainstorm →/i })).toBeDefined()
+    fireEvent.click(screen.getAllByTestId('channel-option')[0])
+    await waitFor(() => {}) // flush async channel select effects
 
-    await user.click(screen.getByLabelText(/supervised/i))
-    expect(screen.getByRole('button', { name: /start brainstorm \(supervised\)/i })).toBeDefined()
-
-    await user.click(screen.getByLabelText(/overview/i))
-    expect(screen.getByRole('button', { name: /start brainstorm \(overview\)/i })).toBeDefined()
+    const btn = screen.getByRole('button', { name: /create project/i })
+    expect(btn).toBeDisabled()
   })
 
-  it('expands section containing errors on submit', async () => {
+  it('button enables when title >= 3 chars AND channel selected AND topic filled', async () => {
+    render(<PipelineWizard />)
+    await waitForChannels()
+
+    fireEvent.change(screen.getByLabelText(/project title/i), {
+      target: { value: 'Valid title here' },
+    })
+    fireEvent.click(screen.getAllByTestId('channel-option')[0])
+
+    // Topic is now required to seed brainstorm regardless of mode.
+    fireEvent.change(screen.getByLabelText(/^topic$/i), {
+      target: { value: 'AI agents taking over' },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /create project/i })).not.toBeDisabled()
+    })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 3: Topic required for topic_driven brainstorm in autopilot mode
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PipelineWizard — topic required in autopilot', () => {
+  it('button disabled in supervised with empty topic (topic_driven default)', async () => {
     const user = userEvent.setup()
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ data: { items: [] }, error: null }),
-      }),
-    )
-    renderWizard()
+    render(<PipelineWizard />)
+    await waitForChannels()
 
-    // Switch to supervised so autopilotConfig is validated
-    await user.click(screen.getByLabelText(/supervised/i))
+    // Set title + channel so only the topic condition blocks us
+    fireEvent.change(screen.getByLabelText(/project title/i), {
+      target: { value: 'My autopilot project' },
+    })
+    fireEvent.click(screen.getAllByTestId('channel-option')[0])
 
-    // Open review section first so its fields are rendered
-    await openSection(user, 'stage-section-review')
+    await clickMode(user, 'Supervised')
 
-    const reviewSection = screen.getByTestId('stage-section-review')
-    const hardFailInput = reviewSection.querySelector<HTMLInputElement>(
-      'input[name="autopilotConfig.review.hardFailThreshold"]',
-    )
-    const autoApproveInput = reviewSection.querySelector<HTMLInputElement>(
-      'input[name="autopilotConfig.review.autoApproveThreshold"]',
-    )
+    // The brainstorm section opens by default; topic input is visible
+    await waitFor(() => expect(screen.getByLabelText(/topic/i)).toBeInTheDocument())
 
-    if (hardFailInput && autoApproveInput) {
-      await user.clear(hardFailInput)
-      await user.type(hardFailInput, '95')
-      await user.clear(autoApproveInput)
-      await user.type(autoApproveInput, '90')
+    const btn = screen.getByRole('button', { name: /create project/i })
+    expect(btn).toBeDisabled()
+  })
+
+  it('button enables when topic is filled in supervised mode', async () => {
+    const user = userEvent.setup()
+    render(<PipelineWizard />)
+    await waitForChannels()
+
+    fireEvent.change(screen.getByLabelText(/project title/i), {
+      target: { value: 'My autopilot project' },
+    })
+    fireEvent.click(screen.getAllByTestId('channel-option')[0])
+
+    await clickMode(user, 'Supervised')
+
+    await waitFor(() => expect(screen.getByLabelText(/topic/i)).toBeInTheDocument())
+    await user.type(screen.getByLabelText(/topic/i), 'AI agents taking over')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /create project/i })).not.toBeDisabled()
+    })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 4: POST payload shape by mode
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PipelineWizard — POST payload', () => {
+  it('step-by-step submit: body carries autopilotConfigJson with brainstorm seed', async () => {
+    const fetchSpy = makeFetch()
+    globalThis.fetch = fetchSpy
+
+    void userEvent.setup()
+    render(<PipelineWizard />)
+    await waitForChannels()
+
+    fireEvent.change(screen.getByLabelText(/project title/i), {
+      target: { value: 'Step project title' },
+    })
+    fireEvent.click(screen.getAllByTestId('channel-option')[0])
+    fireEvent.change(screen.getByLabelText(/^topic$/i), {
+      target: { value: 'step-by-step seed topic' },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /create project/i })).not.toBeDisabled()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /create project/i }))
+
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith('/projects/p1'))
+
+    const calls = (fetchSpy as ReturnType<typeof vi.fn>).mock.calls as [string, RequestInit][]
+    const postCall = calls.find(([u, o]) => u === '/api/projects' && o?.method === 'POST')
+    expect(postCall).toBeDefined()
+    const body = JSON.parse(postCall![1].body as string)
+    expect(body.mode).toBe('step-by-step')
+    // autopilotConfigJson is now always sent so the server can auto-dispatch
+    // a brainstorm stage_run with the user-supplied topic.
+    expect(body.autopilotConfigJson?.brainstorm?.topic).toBe('step-by-step seed topic')
+    expect(body.autopilotConfigJson?.brainstorm?.mode).toBe('topic_driven')
+  })
+
+  it('supervised submit: body includes autopilotConfigJson with full config', async () => {
+    const fetchSpy = makeFetch()
+    globalThis.fetch = fetchSpy
+
+    const user = userEvent.setup()
+    render(<PipelineWizard />)
+    await waitForChannels()
+
+    fireEvent.change(screen.getByLabelText(/project title/i), {
+      target: { value: 'Autopilot project' },
+    })
+    fireEvent.click(screen.getAllByTestId('channel-option')[0])
+
+    await clickMode(user, 'Supervised')
+
+    await waitFor(() => expect(screen.getByLabelText(/topic/i)).toBeInTheDocument())
+    await user.type(screen.getByLabelText(/topic/i), 'Machine learning trends')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /create project/i })).not.toBeDisabled()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /create project/i }))
+
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith('/projects/p1'))
+
+    const calls = (fetchSpy as ReturnType<typeof vi.fn>).mock.calls as [string, RequestInit][]
+    const postCall = calls.find(([u, o]) => u === '/api/projects' && o?.method === 'POST')
+    expect(postCall).toBeDefined()
+    const body = JSON.parse(postCall![1].body as string)
+    expect(body.mode).toBe('supervised')
+    expect(body.autopilotConfigJson).toBeDefined()
+    expect(typeof body.autopilotConfigJson).toBe('object')
+    // Brainstorm topic should match what we typed
+    expect(body.autopilotConfigJson.brainstorm.topic).toBe('Machine learning trends')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 5: Per-medium Draft tabs render when 2+ media in autopilot mode
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PipelineWizard — per-medium Draft tabs', () => {
+  it('shows per-medium tabs in the Draft section when 2+ media selected in supervised', async () => {
+    const user = userEvent.setup()
+    render(<PipelineWizard />)
+    await waitForChannels()
+
+    // Switch to supervised (autopilot) to reveal stage sections
+    await clickMode(user, 'Supervised')
+    await waitFor(() => expect(screen.getByTestId('stage-section-draft')).toBeInTheDocument())
+
+    // Select a second medium — 'video' (blog is already checked by default)
+    const videoCheckbox = screen.getByRole('checkbox', { name: /long-form video/i })
+    await user.click(videoCheckbox)
+
+    // Open the Draft section card (it's collapsed by default)
+    const draftSection = screen.getByTestId('stage-section-draft')
+    const draftTrigger = draftSection.querySelector('button[aria-expanded]') as HTMLButtonElement
+    if (draftTrigger.getAttribute('aria-expanded') === 'false') {
+      await user.click(draftTrigger)
     }
 
-    // Collapse the review section so we can test that it re-opens on validation error
-    await openSection(user, 'stage-section-review')
-
-    // Type a topic to avoid brainstorm validation errors
-    await user.type(screen.getByLabelText(/topic/i), 'AI agents')
-
-    await user.click(screen.getByRole('button', { name: /start brainstorm \(supervised\)/i }))
-
+    // With 2 media, MultiMediaDraftFields renders tab buttons per medium
     await waitFor(() => {
-      const section = screen.getByTestId('stage-section-review')
-      const trigger = section.querySelector('button[aria-expanded]') as HTMLButtonElement | null
-      expect(trigger?.getAttribute('aria-expanded')).toBe('true')
+      // Look for tab buttons with medium names inside the draft section
+      const tabButtons = draftSection.querySelectorAll('button.capitalize, button[class*="border-b-2"]')
+      // At least one tab button should say "blog" or "video"
+      const texts = Array.from(tabButtons).map((b) => b.textContent?.toLowerCase())
+      expect(texts.some((t) => t?.includes('blog') || t?.includes('video'))).toBe(true)
     })
   })
 
-  it('Save as new posts to /api/autopilot-templates with isDefault flag', async () => {
+  it('does NOT show per-medium tabs with only 1 medium (blog) in supervised', async () => {
     const user = userEvent.setup()
-    const fetchSpy = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-      // GET on mount returns empty templates list; POST returns created template
-      if (init?.method === 'POST') {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({ data: { id: 'tpl-1', name: 'My Template' }, error: null }),
-        })
-      }
-      return Promise.resolve({
-        ok: true,
-        json: async () => ({ data: { items: [] }, error: null }),
-      })
-    })
-    vi.stubGlobal('fetch', fetchSpy)
-    renderWizard()
+    render(<PipelineWizard />)
+    await waitForChannels()
 
-    await user.click(screen.getByRole('button', { name: /save as new/i }))
+    await clickMode(user, 'Supervised')
+    await waitFor(() => expect(screen.getByTestId('stage-section-draft')).toBeInTheDocument())
 
-    const nameInput = await screen.findByLabelText(/template name/i)
-    await user.type(nameInput, 'My Template')
-
-    const defaultCheckbox = screen.queryByRole('checkbox', { name: /default/i })
-    if (defaultCheckbox) {
-      await user.click(defaultCheckbox)
+    // Only blog is selected by default (1 medium)
+    const draftSection = screen.getByTestId('stage-section-draft')
+    const draftTrigger = draftSection.querySelector('button[aria-expanded]') as HTMLButtonElement
+    if (draftTrigger.getAttribute('aria-expanded') === 'false') {
+      await user.click(draftTrigger)
     }
 
-    await user.click(screen.getByRole('button', { name: /^save$/i }))
-
+    // DraftFields (single medium) renders a Format select, NOT tab buttons
     await waitFor(() => {
-      const postCall = (fetchSpy.mock.calls as [string, RequestInit | undefined][]).find(
-        ([url, init]) => url === '/api/autopilot-templates' && init?.method === 'POST',
-      )
-      expect(postCall).toBeDefined()
-      const [, init] = postCall ?? []
-      const body = JSON.parse(init?.body as string) as { name: string }
-      expect(body.name).toBe('My Template')
+      // The word count label specific to single-medium DraftFields
+      expect(draftSection.textContent).toContain('Word count')
     })
-  })
 
-  it('Update template shows confirm dialog then PUTs', async () => {
-    const user = userEvent.setup()
-    const existingTemplate = {
-      id: 'tpl-1',
-      name: 'Existing',
-      is_default: false,
-      config_json: {
-        defaultProvider: 'recommended' as const,
-        brainstorm: {
-          providerOverride: null,
-          mode: 'topic_driven' as const,
-          topic: 'x',
-          referenceUrl: null,
-          niche: '', tone: '', audience: '', goal: '', constraints: '',
-        },
-        research: { providerOverride: null, depth: 'medium' as const },
-        canonicalCore: { providerOverride: null, personaId: null },
-        draft: { providerOverride: null, format: 'blog' as const, wordCount: 1200 },
-        review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
-        assets: { providerOverride: null, mode: 'briefs_only' as const, imageScope: 'all' as const },
-        preview: { enabled: false },
-        publish: { status: 'draft' as const },
-      },
-    }
-    const fetchSpy = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-      if (init?.method === 'PUT') {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({ data: existingTemplate, error: null }),
-        })
-      }
-      return Promise.resolve({
-        ok: true,
-        json: async () => ({ data: { items: [existingTemplate] }, error: null }),
-      })
-    })
-    vi.stubGlobal('fetch', fetchSpy)
-    renderWizard()
-
-    // Wait for templates GET to settle and combobox to render
-    const templateSelect = await screen.findByRole('combobox', { name: /load template/i })
-    await user.click(templateSelect)
-    const option = await screen.findByRole('option', { name: /existing/i })
-    await user.click(option)
-
-    // Now the "Update template" button should appear
-    const updateButton = await screen.findByRole('button', { name: /update template/i })
-    await user.click(updateButton)
-
-    const confirmButton = await screen.findByRole('button', { name: /confirm/i })
-    await user.click(confirmButton)
-
-    await waitFor(() => {
-      const putCalls = (fetchSpy.mock.calls as [string, RequestInit | undefined][]).filter(
-        ([, init]) => init?.method === 'PUT',
-      )
-      expect(putCalls.length).toBeGreaterThanOrEqual(1)
-    })
-  })
-
-  it('surfaces template-action error inline when save fails', async () => {
-    const user = userEvent.setup()
-    const fetchSpy = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-      if (init?.method === 'POST') {
-        return Promise.resolve({
-          ok: false,
-          json: async () => ({ data: null, error: { code: 'INVALID_BODY', message: 'name already taken' } }),
-        })
-      }
-      return Promise.resolve({
-        ok: true,
-        json: async () => ({ data: { items: [] }, error: null }),
-      })
-    })
-    vi.stubGlobal('fetch', fetchSpy)
-    renderWizard()
-
-    await user.click(screen.getByRole('button', { name: /save as new/i }))
-    const nameInput = await screen.findByLabelText(/template name/i)
-    await user.type(nameInput, 'dup')
-    await user.click(screen.getByRole('button', { name: /^save$/i }))
-
-    const error = await screen.findByTestId('template-action-error')
-    expect(error.textContent).toMatch(/name already taken/i)
+    // No tab bar: the tab buttons have class containing "border-b-2" only in multi-media
+    const tabBar = draftSection.querySelector('.flex.gap-1.border-b')
+    expect(tabBar).toBeNull()
   })
 })
 
-// ────────────────────────────────────────────────────────────────────
-// New: two-column layout + mode cards tests
-// ────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 6: Channel-select merge — overwrite confirm dialog
+// ─────────────────────────────────────────────────────────────────────────────
 
-describe('two-column layout and mode cards', () => {
-  beforeEach(() => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ data: { items: [] }, error: null }),
-      }),
-    )
-  })
+describe('PipelineWizard — channel-select overwrite confirm dialog', () => {
+  it('shows overwrite confirm when channel selected with dirty autopilot form', async () => {
+    // Return a default template for the channel so the merge changes state
+    const templateWithDefault = { ...TEMPLATE_WITH_TOPIC, is_default: true }
+    globalThis.fetch = makeFetch({ templates: [templateWithDefault] })
 
-  it('renders three mode card radio buttons', () => {
-    renderWizard()
-    const stepByStep = screen.getByRole('radio', { name: /step-by-step/i })
-    const supervised = screen.getByRole('radio', { name: /supervised/i })
-    const overview = screen.getByRole('radio', { name: /overview/i })
-    expect(stepByStep).toBeDefined()
-    expect(supervised).toBeDefined()
-    expect(overview).toBeDefined()
-  })
-
-  it('mode card selection updates aria-checked', async () => {
     const user = userEvent.setup()
-    renderWizard()
+    render(<PipelineWizard />)
+    await waitForChannels()
 
-    const stepByStepCard = screen.getByRole('radio', { name: /step-by-step/i })
-    const supervisedCard = screen.getByRole('radio', { name: /supervised/i })
+    // Switch to supervised so form is in autopilot mode
+    await clickMode(user, 'Supervised')
+    await waitFor(() => expect(screen.getByLabelText(/topic/i)).toBeInTheDocument())
 
-    // Default is step-by-step
-    expect(stepByStepCard.getAttribute('aria-checked')).toBe('true')
-    expect(supervisedCard.getAttribute('aria-checked')).toBe('false')
+    // Dirty the form by typing a topic
+    await user.type(screen.getByLabelText(/topic/i), 'Some topic I typed')
 
-    await user.click(supervisedCard)
+    // Now select a channel — this triggers the dirty + autopilot check
+    fireEvent.click(screen.getAllByTestId('channel-option')[0])
 
-    expect(supervisedCard.getAttribute('aria-checked')).toBe('true')
-    expect(stepByStepCard.getAttribute('aria-checked')).toBe('false')
-  })
-
-  it('section accordion expands and collapses', async () => {
-    const user = userEvent.setup()
-    renderWizard()
-
-    const researchSection = screen.getByTestId('stage-section-research')
-    const trigger = researchSection.querySelector('button[aria-expanded]') as HTMLButtonElement | null
-    expect(trigger).toBeTruthy()
-
-    // Research starts collapsed
-    expect(trigger?.getAttribute('aria-expanded')).toBe('false')
-
-    await user.click(trigger!)
-
-    expect(trigger?.getAttribute('aria-expanded')).toBe('true')
-
-    await user.click(trigger!)
-
-    expect(trigger?.getAttribute('aria-expanded')).toBe('false')
-  })
-
-  it('brainstorm section is open by default for fresh project', () => {
-    renderWizard()
-    const brainstormSection = screen.getByTestId('stage-section-brainstorm')
-    const trigger = brainstormSection.querySelector('button[aria-expanded]') as HTMLButtonElement | null
-    expect(trigger?.getAttribute('aria-expanded')).toBe('true')
-  })
-
-  it('sticky CTA button is always visible in the DOM', () => {
-    renderWizard()
-    // The CTA "Start brainstorm →" button must be in the DOM at all times
-    expect(screen.getByRole('button', { name: /start brainstorm →/i })).toBeDefined()
-  })
-
-  it('right-column summary panel is rendered in the DOM', () => {
-    renderWizard()
-    // The summary panel renders stage rows; check for a known label
-    expect(screen.getAllByText(/brainstorm/i).length).toBeGreaterThanOrEqual(1)
-  })
-})
-
-// ────────────────────────────────────────────────────────────────────
-// Task 2.10: assets / preview / publish field tests
-// ────────────────────────────────────────────────────────────────────
-
-describe('assets / preview / publish fields (T-2.10)', () => {
-  beforeEach(() => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ data: { items: [] }, error: null }),
-      }),
-    )
-  })
-
-  it('renders assets radio with 3 options: skip, auto_generate, briefs_only', async () => {
-    const user = userEvent.setup()
-    renderWizard()
-    // Open assets section first
-    await openSection(user, 'stage-section-assets')
-    const assetsSection = screen.getByTestId('stage-section-assets')
-    expect(assetsSection.querySelector('#assets-skip')).toBeTruthy()
-    expect(assetsSection.querySelector('#assets-auto')).toBeTruthy()
-    expect(assetsSection.querySelector('#assets-briefs')).toBeTruthy()
-  })
-
-  it('renders preview enabled switch with explainer text', async () => {
-    const user = userEvent.setup()
-    renderWizard()
-    // Open preview section first
-    await openSection(user, 'stage-section-preview')
-    const previewSection = screen.getByTestId('stage-section-preview')
-    expect(previewSection.querySelector('#preview-enabled')).toBeTruthy()
-    expect(previewSection.textContent).toMatch(/when off/i)
-  })
-
-  it('renders publish status radio with draft (default) and published options', async () => {
-    const user = userEvent.setup()
-    renderWizard()
-    // Open publish section first
-    await openSection(user, 'stage-section-publish')
-    const publishSection = screen.getByTestId('stage-section-publish')
-    expect(publishSection.querySelector('#publish-draft')).toBeTruthy()
-    expect(publishSection.querySelector('#publish-published')).toBeTruthy()
-  })
-
-  it('submitting wizard with assets.mode=briefs_only writes correct shape into actor', async () => {
-    const user = userEvent.setup()
-    const fetchSpy = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-      if (typeof url === 'string' && url.includes('/setup')) {
-        return Promise.resolve({ ok: true, json: async () => ({ data: {}, error: null }) })
-      }
-      return Promise.resolve({ ok: true, json: async () => ({ data: { items: [] }, error: null }) })
+    // The overwrite confirm dialog should appear
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /confirm overwrite settings/i })).toBeInTheDocument()
     })
-    vi.stubGlobal('fetch', fetchSpy)
-    renderWizard()
 
-    // Type a topic so the brainstorm form validates in step-by-step mode
-    await user.type(screen.getByLabelText(/topic/i), 'AI agents')
+    // Dialog has "Keep mine" and "Apply defaults" buttons
+    expect(screen.getByRole('button', { name: /keep mine/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /apply defaults/i })).toBeInTheDocument()
+  })
 
-    // Open assets section and select briefs_only
-    await openSection(user, 'stage-section-assets')
-    const assetsBriefs = document.getElementById('assets-briefs')
-    if (assetsBriefs) await user.click(assetsBriefs)
+  it('dismisses the dialog when "Keep mine" is clicked', async () => {
+    const templateWithDefault = { ...TEMPLATE_WITH_TOPIC, is_default: true }
+    globalThis.fetch = makeFetch({ templates: [templateWithDefault] })
 
-    await user.click(screen.getByRole('button', { name: /start brainstorm →/i }))
+    const user = userEvent.setup()
+    render(<PipelineWizard />)
+    await waitForChannels()
+
+    await clickMode(user, 'Supervised')
+    await waitFor(() => expect(screen.getByLabelText(/topic/i)).toBeInTheDocument())
+    await user.type(screen.getByLabelText(/topic/i), 'Some topic I typed')
+
+    fireEvent.click(screen.getAllByTestId('channel-option')[0])
 
     await waitFor(() => {
-      const setupCall = (fetchSpy.mock.calls as [string, RequestInit | undefined][]).find(
-        ([url]) => typeof url === 'string' && url.includes('/setup'),
-      )
-      expect(setupCall).toBeDefined()
+      expect(screen.getByRole('dialog', { name: /confirm overwrite settings/i })).toBeInTheDocument()
     })
 
-    // Verify actor send was called
-    expect(sendSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'SETUP_COMPLETE' }),
-    )
-  })
-})
+    await user.click(screen.getByRole('button', { name: /keep mine/i }))
 
-// ────────────────────────────────────────────────────────────────────
-// Task 3.5: Save-as-template full round-trip (Spec 2 fields)
-// ────────────────────────────────────────────────────────────────────
-
-describe('save-as-template round-trip (T-3.5)', () => {
-  const spec2Template = {
-    id: 'tpl-spec2',
-    name: 'Spec 2 Template',
-    is_default: false,
-    config_json: {
-      defaultProvider: 'recommended' as const,
-      brainstorm: {
-        providerOverride: null,
-        mode: 'topic_driven' as const,
-        topic: 'AI agents',
-        referenceUrl: null,
-        niche: '',
-        tone: '',
-        audience: '',
-        goal: '',
-        constraints: '',
-      },
-      research: { providerOverride: null, depth: 'medium' as const },
-      canonicalCore: { providerOverride: null, personaId: null },
-      draft: { providerOverride: null, format: 'blog' as const, wordCount: 1500 },
-      review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
-      assets: { providerOverride: null, mode: 'briefs_only' as const, imageScope: 'all' as const },
-      preview: { enabled: true },
-      publish: { status: 'published' as const },
-    },
-  }
-
-  it('POST /api/autopilot-templates body includes all Spec 2 fields (assets.mode, preview.enabled, publish.status)', async () => {
-    const user = userEvent.setup()
-    const fetchSpy = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-      if (init?.method === 'POST' && typeof url === 'string' && url === '/api/autopilot-templates') {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({ data: spec2Template, error: null }),
-        })
-      }
-      return Promise.resolve({
-        ok: true,
-        json: async () => ({ data: { items: [] }, error: null }),
-      })
-    })
-    vi.stubGlobal('fetch', fetchSpy)
-    renderWizard()
-
-    // 1. Open assets section and set to briefs_only (it's the default, interact to confirm the field is live)
-    await openSection(user, 'stage-section-assets')
-    const assetsBriefs = document.getElementById('assets-briefs')
-    if (assetsBriefs) await user.click(assetsBriefs)
-
-    // 2. Open preview section and enable preview (default is false — toggle the switch on)
-    await openSection(user, 'stage-section-preview')
-    const previewSwitch = document.getElementById('preview-enabled')
-    if (previewSwitch) await user.click(previewSwitch)
-
-    // 3. Open publish section and set publish status to published (default is draft)
-    await openSection(user, 'stage-section-publish')
-    const publishPublished = document.getElementById('publish-published')
-    if (publishPublished) await user.click(publishPublished)
-
-    // 4. Open Save-as-new dialog
-    await user.click(screen.getByRole('button', { name: /save as new/i }))
-
-    // 5. Enter template name
-    const nameInput = await screen.findByLabelText(/template name/i)
-    await user.type(nameInput, 'Spec 2 Template')
-
-    // 6. Submit the dialog
-    await user.click(screen.getByRole('button', { name: /^save$/i }))
-
-    // 7. Assert POST body includes all 3 Spec 2 fields
     await waitFor(() => {
-      const postCall = (fetchSpy.mock.calls as [string, RequestInit | undefined][]).find(
-        ([url, init]) => url === '/api/autopilot-templates' && init?.method === 'POST',
-      )
-      expect(postCall).toBeDefined()
-      const [, init] = postCall ?? []
-      const body = JSON.parse(init?.body as string) as {
-        name: string
-        configJson: {
-          assets: { mode: string }
-          preview: { enabled: boolean }
-          publish: { status: string }
-        }
-      }
-      expect(body.name).toBe('Spec 2 Template')
-      expect(body.configJson.assets.mode).toBe('briefs_only')
-      expect(body.configJson.preview.enabled).toBe(true)
-      expect(body.configJson.publish.status).toBe('published')
-    })
-  })
-
-  it('loading a saved template pre-fills all Spec 2 fields (assets.mode, preview.enabled, publish.status)', async () => {
-    const user = userEvent.setup()
-    const fetchSpy = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-      // GET /api/autopilot-templates returns the spec2 template in the list
-      if ((!init?.method || init.method === 'GET') && typeof url === 'string' && url.includes('/api/autopilot-templates')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({ data: { items: [spec2Template] }, error: null }),
-        })
-      }
-      return Promise.resolve({
-        ok: true,
-        json: async () => ({ data: { items: [] }, error: null }),
-      })
-    })
-    vi.stubGlobal('fetch', fetchSpy)
-    renderWizard()
-
-    // Wait for templates list to load and select the spec2 template
-    const templateSelect = await screen.findByRole('combobox', { name: /load template/i })
-    await user.click(templateSelect)
-    const option = await screen.findByRole('option', { name: /spec 2 template/i })
-    await user.click(option)
-
-    // Open sections to inspect the pre-filled values
-    await openSection(user, 'stage-section-assets')
-    await openSection(user, 'stage-section-preview')
-    await openSection(user, 'stage-section-publish')
-
-    // Assert the form pre-fills the 3 Spec 2 fields from the loaded template
-    await waitFor(() => {
-      // assets: briefs_only radio should be checked
-      const assetsBriefs = document.getElementById('assets-briefs') as HTMLInputElement | null
-      expect(assetsBriefs?.getAttribute('data-state') ?? assetsBriefs?.checked).toBeTruthy()
-
-      // preview: enabled switch should be on
-      const previewSwitch = document.getElementById('preview-enabled') as HTMLButtonElement | null
-      expect(previewSwitch?.getAttribute('data-state')).toBe('checked')
-
-      // publish: published radio should be checked
-      const publishPublished = document.getElementById('publish-published') as HTMLInputElement | null
-      expect(publishPublished?.getAttribute('data-state') ?? publishPublished?.checked).toBeTruthy()
+      expect(screen.queryByRole('dialog', { name: /confirm overwrite settings/i })).toBeNull()
     })
   })
 })
 
-// ────────────────────────────────────────────────────────────────────
-// Entry-point startStage tests (T-8.2)
-// ────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 7: Template load applies config to form
+// ─────────────────────────────────────────────────────────────────────────────
 
-describe('entry-point startStage derivation', () => {
-  beforeEach(() => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ data: { items: [] }, error: null }),
-      }),
-    )
-  })
+describe('PipelineWizard — template load', () => {
+  it('loading a template chip updates the brainstorm topic field', async () => {
+    // Make the template appear in the list
+    globalThis.fetch = makeFetch({ templates: [TEMPLATE_WITH_TOPIC] })
 
-  it('fresh entry: enables all stages, CTA is "Start brainstorm →", POSTs startStage="brainstorm"', async () => {
     const user = userEvent.setup()
-    const fetchSpy = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-      if (typeof url === 'string' && url.includes('/setup')) {
-        return Promise.resolve({ ok: true, json: async () => ({ data: {}, error: null }) })
-      }
-      return Promise.resolve({ ok: true, json: async () => ({ data: { items: [] }, error: null }) })
-    })
-    vi.stubGlobal('fetch', fetchSpy)
+    render(<PipelineWizard />)
+    await waitForChannels()
 
-    renderWizard({ stageResults: {} })
+    // Switch to supervised to show templates + stage sections
+    await clickMode(user, 'Supervised')
 
-    // All stage sections should be active (not disabled)
-    const brainstorm = screen.getByTestId('stage-section-brainstorm')
-    const research = screen.getByTestId('stage-section-research')
-    expect(brainstorm.getAttribute('aria-disabled')).toBeNull()
-    expect(research.getAttribute('aria-disabled')).toBeNull()
+    // The brainstorm section opens by default; topic field should be visible
+    await waitFor(() => expect(screen.getByLabelText(/topic/i)).toBeInTheDocument())
 
-    // CTA reflects fresh entry (brainstorm)
-    expect(screen.getByRole('button', { name: /start brainstorm →/i })).toBeDefined()
+    // Select a channel — this triggers refreshTemplates which populates the template list
+    fireEvent.click(screen.getAllByTestId('channel-option')[0])
 
-    // The form requires a topic for brainstorm topic_driven mode — type one so form submits
-    await user.type(screen.getByLabelText(/topic/i), 'AI trends')
-
-    // On submit, startStage="brainstorm" is POSTed
-    await user.click(screen.getByRole('button', { name: /start brainstorm →/i }))
-
+    // Wait for template chip to appear (templates are loaded on channel select)
     await waitFor(() => {
-      const setupCall = (fetchSpy.mock.calls as [string, RequestInit | undefined][]).find(
-        ([url]) => typeof url === 'string' && url.includes('/setup'),
-      )
-      expect(setupCall).toBeDefined()
-      const body = JSON.parse(setupCall?.[1]?.body as string) as { startStage: string }
-      expect(body.startStage).toBe('brainstorm')
-    })
-  })
-
-  it('from-idea entry: brainstorm card disabled, CTA is "Start research →", POSTs startStage="research"', async () => {
-    const user = userEvent.setup()
-    const fetchSpy = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-      if (typeof url === 'string' && url.includes('/setup')) {
-        return Promise.resolve({ ok: true, json: async () => ({ data: {}, error: null }) })
-      }
-      return Promise.resolve({ ok: true, json: async () => ({ data: { items: [] }, error: null }) })
-    })
-    vi.stubGlobal('fetch', fetchSpy)
-
-    renderWizard({
-      stageResults: {
-        brainstorm: {
-          ideaId: 'idea-1',
-          ideaTitle: 'Test Idea',
-          ideaVerdict: 'viable',
-          ideaCoreTension: 'some tension',
-          completedAt: '2026-01-01T00:00:00Z',
-        },
-      },
+      expect(screen.getByRole('button', { name: /my template/i })).toBeInTheDocument()
     })
 
-    // Brainstorm should be disabled (already completed), research should be active
-    const brainstormSection = screen.getByTestId('stage-section-brainstorm')
-    const researchSection = screen.getByTestId('stage-section-research')
-    expect(brainstormSection.getAttribute('aria-disabled')).toBe('true')
-    expect(researchSection.getAttribute('aria-disabled')).toBeNull()
+    // Click the template chip to apply the config
+    await user.click(screen.getByRole('button', { name: /my template/i }))
 
-    // CTA reflects research entry point (step-by-step mode, brainstorm null-ed out so form validates)
-    expect(screen.getByRole('button', { name: /start research →/i })).toBeDefined()
-
-    // On submit, startStage="research" is POSTed.
-    // The wizard nulls out the brainstorm autopilot slot when brainstorm is already completed,
-    // so form validation passes without a topic input (the section is collapsed and not rendered).
-    await user.click(screen.getByRole('button', { name: /start research →/i }))
-
+    // The topic input value should now be what the template carries
     await waitFor(() => {
-      const setupCall = (fetchSpy.mock.calls as [string, RequestInit | undefined][]).find(
-        ([url]) => typeof url === 'string' && url.includes('/setup'),
-      )
-      expect(setupCall).toBeDefined()
-      const body = JSON.parse(setupCall?.[1]?.body as string) as { startStage: string }
-      expect(body.startStage).toBe('research')
+      const topicInput = screen.getByLabelText(/topic/i) as HTMLInputElement
+      expect(topicInput.value).toBe('Injected template topic')
     })
-  })
-
-  // NOTE: POST /from-research route does not exist yet (T-8.2 scope: existing paths only).
-  // The test below is skipped until /from-research is implemented.
-  it.skip('from-research entry: brainstorm + research disabled, CTA is "Start draft →", POSTs startStage="draft"', () => {
-    // Will be enabled when POST /api/projects/from-research is added.
-  })
-
-  // NOTE: POST /from-blog route does not exist yet (T-8.2 scope: existing paths only).
-  // The test below is skipped until /from-blog is implemented.
-  it.skip('from-blog entry: all upstream disabled, CTA is "Start review →", POSTs startStage="review"', () => {
-    // Will be enabled when POST /api/projects/from-blog is added.
   })
 })

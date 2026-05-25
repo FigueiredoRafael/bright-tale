@@ -21,7 +21,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const mockRpc = vi.fn();
 
 function createMockChain() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const chain: any = {};
   const methods = ['select', 'eq', 'single', 'update', 'order', 'limit', 'insert'];
   for (const method of methods) {

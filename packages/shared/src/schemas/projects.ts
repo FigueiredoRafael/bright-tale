@@ -3,6 +3,7 @@
  */
 
 import { z } from "zod";
+import { MEDIA } from "../pipeline/inputs";
 
 // Valid stage types (legacy and new names)
 const validStageTypes = [
@@ -17,18 +18,51 @@ const validStageTypes = [
   "published", // legacy status
 ] as const;
 
-// Create project schema
-export const createProjectSchema = z.object({
-  title: z.string().min(3).max(200),
-  research_id: z.string().uuid().optional(),
-  current_stage: z.enum(validStageTypes),
-  mode: z.enum(["step-by-step", "supervised", "overview"]).optional(),
-  status: z.enum(["active", "paused", "completed", "archived"]),
-  winner: z.boolean().default(false),
-  seed_idea_id: z.string().uuid().optional(),
-  channelId: z.string().uuid().optional(),
+/**
+ * Per-medium config passed at project-creation time (T2.14).
+ * Stored in tracks.autopilot_config_json.
+ */
+export const mediaConfigSchema = z.object({
   autopilotConfigJson: z.record(z.unknown()).optional(),
 });
+export type MediaConfig = z.infer<typeof mediaConfigSchema>;
+
+// Create project schema
+export const createProjectSchema = z
+  .object({
+    title: z.string().min(3).max(200),
+    research_id: z.string().uuid().optional(),
+    current_stage: z.enum(validStageTypes),
+    mode: z.enum(["step-by-step", "supervised", "overview"]).optional(),
+    status: z.enum(["active", "paused", "completed", "archived"]),
+    winner: z.boolean().default(false),
+    seed_idea_id: z.string().uuid().optional(),
+    channelId: z.string().uuid().optional(),
+    autopilotConfigJson: z.record(z.unknown()).optional(),
+    /**
+     * T2.14: Optional list of media to create tracks for.
+     * Defaults to ['blog'] if omitted (backward compat).
+     * Must have at least one entry when provided.
+     */
+    media: z.array(z.enum(MEDIA)).min(1).optional(),
+    /**
+     * T2.14: Per-medium config. When provided, keys must be a subset of `media`.
+     * Each value is stored as tracks.autopilot_config_json.
+     */
+    mediaConfig: z.record(z.enum(MEDIA), mediaConfigSchema).optional(),
+  })
+  .refine(
+    (v) => {
+      if (!v.mediaConfig) return true;
+      const media = v.media ?? ["blog"];
+      const configKeys = Object.keys(v.mediaConfig);
+      return configKeys.every((k) => media.includes(k as (typeof MEDIA)[number]));
+    },
+    {
+      message: "mediaConfig keys must be a subset of the media array",
+      path: ["mediaConfig"],
+    },
+  );
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
@@ -42,7 +76,14 @@ export const updateProjectSchema = z.object({
   completed_stages: z.array(z.string()).optional(),
   pipelineStateJson: z.record(z.unknown()).optional(),
   channelId: z.string().uuid().nullable().optional(),
-  mode: z.enum(["step-by-step", "supervised", "overview"]).nullable().optional(),
+  // mode is the new canonical taxonomy (autopilot|manual). Legacy values
+  // (step-by-step|supervised|overview) are still accepted while Slice 13's
+  // backfill is pending, but the orchestrator only honours autopilot|manual.
+  mode: z
+    .enum(["autopilot", "manual", "step-by-step", "supervised", "overview"])
+    .nullable()
+    .optional(),
+  paused: z.boolean().optional(),
   autopilotConfigJson: z.record(z.unknown()).nullable().optional(),
   autopilotTemplateId: z.string().nullable().optional(),
   abortRequestedAt: z.string().datetime().nullable().optional(),

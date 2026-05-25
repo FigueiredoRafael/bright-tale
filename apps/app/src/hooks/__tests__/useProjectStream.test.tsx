@@ -1,0 +1,334 @@
+/**
+ * Slice 4 (#12) — useProjectStream hook.
+ *
+ * Subscribes to `project:{projectId}` for Realtime stage_runs + job_events
+ * changes. Initialises stageRuns from the snapshot endpoint.
+ */
+import { renderHook, act, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// ─── Supabase Realtime channel mock ──────────────────────────────────────────
+
+interface ChannelMock {
+  on: ReturnType<typeof vi.fn>;
+  subscribe: ReturnType<typeof vi.fn>;
+  unsubscribe: ReturnType<typeof vi.fn>;
+  // Captured handlers for synthetic event emission.
+  handlers: Record<string, (payload: { new?: unknown; eventType?: string }) => void>;
+  statusListener: ((status: string) => void) | null;
+}
+
+const channelMock: ChannelMock = {
+  on: vi.fn(),
+  subscribe: vi.fn(),
+  unsubscribe: vi.fn(),
+  handlers: {},
+  statusListener: null,
+};
+
+function resetChannelMock() {
+  channelMock.handlers = {};
+  channelMock.statusListener = null;
+  channelMock.on = vi.fn((_evt: string, opts: { table?: string; event?: string }, handler: (payload: unknown) => void) => {
+    const key = `${opts.table}:${opts.event ?? '*'}`;
+    channelMock.handlers[key] = handler as (payload: { new?: unknown; eventType?: string }) => void;
+    return channelMock;
+  });
+  channelMock.subscribe = vi.fn((cb: (status: string) => void) => {
+    channelMock.statusListener = cb;
+    return channelMock;
+  });
+  channelMock.unsubscribe = vi.fn();
+}
+
+const supabaseMock = {
+  channel: vi.fn(() => channelMock),
+  removeChannel: vi.fn(),
+};
+
+vi.mock('@/lib/supabase/client', () => ({
+  createClient: () => supabaseMock,
+}));
+
+// ─── Snapshot fetch mock ─────────────────────────────────────────────────────
+
+const fetchMock = vi.fn();
+vi.stubGlobal('fetch', fetchMock);
+
+import { useProjectStream } from '../useProjectStream';
+
+const PROJECT_ID = 'proj-123';
+
+const baseSnapshotRow = (overrides: Record<string, unknown> = {}) => ({
+  id: 'sr-1',
+  projectId: PROJECT_ID,
+  stage: 'brainstorm' as const,
+  status: 'completed' as const,
+  awaitingReason: null,
+  payloadRef: null,
+  attemptNo: 1,
+  inputJson: null,
+  errorMessage: null,
+  startedAt: null,
+  finishedAt: null,
+  createdAt: '2026-05-11T00:00:00Z',
+  updatedAt: '2026-05-11T00:00:00Z',
+  ...overrides,
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  resetChannelMock();
+  fetchMock.mockReset();
+  fetchMock.mockResolvedValue({
+    ok: true,
+    json: async () => ({ data: { stageRuns: [] }, error: null }),
+  });
+});
+
+describe('useProjectStream', () => {
+  it('fetches the snapshot endpoint on mount and populates stageRuns by stage', async () => {
+    const snapshot = [
+      baseSnapshotRow({ id: 'sr-bs', stage: 'brainstorm', status: 'completed' }),
+      baseSnapshotRow({ id: 'sr-rs', stage: 'research', status: 'queued' }),
+    ];
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { stageRuns: snapshot }, error: null }),
+    });
+
+    const { result } = renderHook(() => useProjectStream(PROJECT_ID));
+
+    await waitFor(() => {
+      expect(result.current.stageRuns.brainstorm?.id).toBe('sr-bs');
+      expect(result.current.stageRuns.research?.id).toBe('sr-rs');
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(`/api/projects/${PROJECT_ID}/stages`);
+  });
+
+  it('opens a Realtime channel scoped to project:<id> (with per-instance suffix) and subscribes', async () => {
+    renderHook(() => useProjectStream(PROJECT_ID));
+
+    await waitFor(() => {
+      // Per-instance suffix prevents collisions when multiple consumers
+      // subscribe on the same page; we only assert the prefix here.
+      const channelName = (supabaseMock.channel as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      expect(channelName.startsWith(`project:${PROJECT_ID}`)).toBe(true);
+      expect(channelMock.subscribe).toHaveBeenCalled();
+    });
+  });
+
+  it('sets isConnected=true when the channel reports SUBSCRIBED status', async () => {
+    const { result } = renderHook(() => useProjectStream(PROJECT_ID));
+
+    await waitFor(() => {
+      expect(channelMock.statusListener).not.toBeNull();
+    });
+
+    act(() => {
+      channelMock.statusListener!('SUBSCRIBED');
+    });
+
+    expect(result.current.isConnected).toBe(true);
+  });
+
+  it('sets isConnected=false on CHANNEL_ERROR / CLOSED, and back to true on re-SUBSCRIBED', async () => {
+    const { result } = renderHook(() => useProjectStream(PROJECT_ID));
+
+    await waitFor(() => expect(channelMock.statusListener).not.toBeNull());
+
+    act(() => channelMock.statusListener!('SUBSCRIBED'));
+    expect(result.current.isConnected).toBe(true);
+
+    act(() => channelMock.statusListener!('CHANNEL_ERROR'));
+    expect(result.current.isConnected).toBe(false);
+
+    act(() => channelMock.statusListener!('SUBSCRIBED'));
+    expect(result.current.isConnected).toBe(true);
+  });
+
+  it('merges a stage_runs INSERT/UPDATE Realtime event into the reducer (by stage)', async () => {
+    const { result } = renderHook(() => useProjectStream(PROJECT_ID));
+
+    await waitFor(() => expect(channelMock.handlers['stage_runs:*']).toBeDefined());
+
+    act(() => {
+      channelMock.handlers['stage_runs:*']({
+        eventType: 'INSERT',
+        new: {
+          id: 'sr-rt',
+          project_id: PROJECT_ID,
+          stage: 'brainstorm',
+          status: 'running',
+          awaiting_reason: null,
+          payload_ref: null,
+          attempt_no: 1,
+          input_json: null,
+          error_message: null,
+          started_at: '2026-05-11T00:01:00Z',
+          finished_at: null,
+          created_at: '2026-05-11T00:00:00Z',
+          updated_at: '2026-05-11T00:01:00Z',
+        },
+      });
+    });
+
+    expect(result.current.stageRuns.brainstorm?.id).toBe('sr-rt');
+    expect(result.current.stageRuns.brainstorm?.status).toBe('running');
+  });
+
+  it('sets liveEvent on every job_events INSERT', async () => {
+    const { result } = renderHook(() => useProjectStream(PROJECT_ID));
+
+    await waitFor(() => expect(channelMock.handlers['job_events:INSERT']).toBeDefined());
+
+    act(() => {
+      channelMock.handlers['job_events:INSERT']({
+        new: {
+          id: 'je-1',
+          project_id: PROJECT_ID,
+          session_id: 'sess-1',
+          session_type: 'brainstorm',
+          stage: 'brainstorm',
+          message: 'Calling AI…',
+          metadata: { provider: 'openai' },
+          created_at: '2026-05-11T00:01:00Z',
+        },
+      });
+    });
+
+    expect(result.current.liveEvent?.id).toBe('je-1');
+    expect(result.current.liveEvent?.message).toBe('Calling AI…');
+  });
+
+  it('cleans up the channel on unmount', async () => {
+    const { unmount } = renderHook(() => useProjectStream(PROJECT_ID));
+
+    await waitFor(() => expect(channelMock.subscribe).toHaveBeenCalled());
+
+    unmount();
+
+    expect(supabaseMock.removeChannel).toHaveBeenCalledWith(channelMock);
+  });
+
+  // ── T9.F157: tracks[] exposure ────────────────────────────────────────────
+
+  it('exposes tracks[] from the snapshot response (multi-track snapshot)', async () => {
+    const tracks = [
+      { id: 'track-blog-1', medium: 'blog', status: 'active', paused: false, stageRuns: {}, publishTargets: [] },
+      { id: 'track-video-1', medium: 'video', status: 'active', paused: false, stageRuns: {}, publishTargets: [] },
+    ];
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { stageRuns: [], tracks }, error: null }),
+    });
+
+    const { result } = renderHook(() => useProjectStream(PROJECT_ID));
+
+    await waitFor(() => {
+      expect(result.current.tracks).toHaveLength(2);
+    });
+
+    expect(result.current.tracks[0].id).toBe('track-blog-1');
+    expect(result.current.tracks[1].id).toBe('track-video-1');
+  });
+
+  it('exposes tracks=[] when snapshot has no tracks field (backward compat)', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { stageRuns: [] }, error: null }),
+    });
+
+    const { result } = renderHook(() => useProjectStream(PROJECT_ID));
+
+    await waitFor(() => {
+      expect(result.current.tracks).toBeDefined();
+    });
+
+    expect(result.current.tracks).toEqual([]);
+  });
+
+  it('exposes podcast track with 3 publishTargets (fan-out)', async () => {
+    const tracks = [
+      {
+        id: 'track-podcast-1',
+        medium: 'podcast',
+        status: 'active',
+        paused: false,
+        stageRuns: {},
+        publishTargets: [
+          { id: 'pt-spotify-1', displayName: 'Spotify' },
+          { id: 'pt-yt-pod-1', displayName: 'YouTube Podcast' },
+          { id: 'pt-apple-1', displayName: 'Apple Podcasts' },
+        ],
+      },
+    ];
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { stageRuns: [], tracks }, error: null }),
+    });
+
+    const { result } = renderHook(() => useProjectStream(PROJECT_ID));
+
+    await waitFor(() => {
+      expect(result.current.tracks).toHaveLength(1);
+    });
+
+    expect(result.current.tracks[0].publishTargets).toHaveLength(3);
+  });
+
+  // ── T9.F152: allAttempts[] pass-through via stageRuns ─────────────────────
+
+  it('surfaces allAttempts on each stage_run from the snapshot (T9.F152)', async () => {
+    const baseRun = {
+      id: 'sr-res-3',
+      projectId: PROJECT_ID,
+      stage: 'research',
+      status: 'completed',
+      awaitingReason: null,
+      payloadRef: null,
+      attemptNo: 3,
+      inputJson: null,
+      errorMessage: null,
+      startedAt: null,
+      finishedAt: null,
+      trackId: null,
+      publishTargetId: null,
+      outcomeJson: { confidence: 0.84 },
+      createdAt: '2026-05-16T03:00:00Z',
+      updatedAt: '2026-05-16T03:10:00Z',
+    };
+    const attempt1 = { ...baseRun, id: 'sr-res-1', attemptNo: 1, outcomeJson: { confidence: 0.42 } };
+    const attempt2 = { ...baseRun, id: 'sr-res-2', attemptNo: 2, outcomeJson: { confidence: 0.62 } };
+    const attempt3 = { ...baseRun, id: 'sr-res-3', attemptNo: 3, outcomeJson: { confidence: 0.84 } };
+
+    const stageRunWithAttempts = {
+      ...baseRun,
+      allAttempts: [attempt1, attempt2, attempt3],
+    };
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: { stageRuns: [stageRunWithAttempts], tracks: [] },
+        error: null,
+      }),
+    });
+
+    const { result } = renderHook(() => useProjectStream(PROJECT_ID));
+
+    await waitFor(() => {
+      expect(result.current.stageRuns.research).not.toBeNull();
+    });
+
+    const researchRun = result.current.stageRuns.research;
+    expect(researchRun).not.toBeNull();
+    expect(researchRun?.allAttempts).toHaveLength(3);
+    expect(researchRun?.allAttempts?.[0].id).toBe('sr-res-1');
+    expect(researchRun?.allAttempts?.[0].attemptNo).toBe(1);
+    expect(researchRun?.allAttempts?.[2].id).toBe('sr-res-3');
+    expect(researchRun?.allAttempts?.[2].attemptNo).toBe(3);
+  });
+});

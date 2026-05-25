@@ -23,6 +23,9 @@ export default defineConfig({
     exclude: [
       'src/**/__tests__/**/_*.ts',
       'src/**/__tests__/**/_*.tsx',
+      // Fixture files live under __tests__/fixtures/ but are NOT test files —
+      // they export data builders consumed by sibling *.test.tsx specs.
+      'src/**/__tests__/**/fixtures/**',
     ],
     pool: 'forks',
   },

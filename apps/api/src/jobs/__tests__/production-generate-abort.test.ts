@@ -1,5 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { productionGenerate } from '../production-generate.js'
 
 // Mock dependencies
 vi.mock('../client.js', () => ({
@@ -45,8 +45,8 @@ vi.mock('../../lib/credit-settings.js', () => ({
 vi.mock('../../lib/supabase/index.js', () => ({
   createServiceClient: vi.fn(() => ({
     from: vi.fn((table: string) => ({
-      select: vi.fn((cols: string) => ({
-        eq: vi.fn((col: string, val: string) => ({
+      select: vi.fn((_cols: string) => ({
+        eq: vi.fn((_col: string, _val: string) => ({
           maybeSingle: vi.fn(() => {
             if (table === 'content_drafts') {
               return Promise.resolve({
@@ -65,8 +65,8 @@ vi.mock('../../lib/supabase/index.js', () => ({
           }),
         })),
       })),
-      update: vi.fn((row: Record<string, unknown>) => ({
-        eq: vi.fn((col: string, val: string) => {
+      update: vi.fn((_row: Record<string, unknown>) => ({
+        eq: vi.fn((_col: string, _val: string) => {
           return Promise.resolve({})
         }),
       })),
