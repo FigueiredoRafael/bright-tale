@@ -1,7 +1,7 @@
 'use client'
 
 import { AdminResetPassword } from '@tn-figueiredo/admin/login'
-import { adminPath } from '@/lib/admin-path'
+import { useAdminPaths } from '@/lib/use-admin-paths'
 import * as actions from '@/lib/auth/admin-actions'
 
 export const dynamic = 'force-dynamic'
@@ -17,6 +17,7 @@ const THEME = {
 } as const
 
 export default function ResetPasswordPage() {
+  const { adminPath } = useAdminPaths();
   return (
     <AdminResetPassword
       actions={{ resetPassword: actions.resetPassword }}

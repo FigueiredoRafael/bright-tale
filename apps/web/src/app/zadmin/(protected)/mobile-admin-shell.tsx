@@ -8,54 +8,12 @@ import {
   Database, TrendingUp, FileText, Bell, Globe, Headphones,
   BarChart3, ClipboardList, LogOut, ChevronRight,
 } from 'lucide-react';
-import { adminPath } from '@/lib/admin-path';
+import { useAdminPaths } from '@/lib/use-admin-paths';
 
 const ICON_MAP: Record<string, React.ElementType> = {
   Activity, Shield, Users, Package, Star, Settings, Database,
   TrendingUp, FileText, Bell, Globe, Headphones, BarChart3, ClipboardList,
 };
-
-const NAV_SECTIONS = [
-  {
-    group: 'Principal',
-    items: [{ label: 'Dashboard', path: adminPath(), icon: 'Activity' }],
-  },
-  {
-    group: 'Gestão',
-    items: [
-      { label: 'Managers', path: adminPath('/managers'), icon: 'Shield' },
-      { label: 'Usuários', path: adminPath('/users'), icon: 'Users' },
-      { label: 'Organizations', path: adminPath('/orgs'), icon: 'Package' },
-      { label: 'Agentes', path: adminPath('/agents'), icon: 'Star' },
-      { label: 'Providers', path: adminPath('/providers'), icon: 'Database' },
-      { label: 'Afiliados', path: adminPath('/affiliates'), icon: 'TrendingUp' },
-    ],
-  },
-  {
-    group: 'Monetização',
-    items: [
-      { label: 'Planos', path: adminPath('/plans'), icon: 'FileText' },
-      { label: 'Cupons', path: adminPath('/coupons'), icon: 'Bell' },
-    ],
-  },
-  {
-    group: 'Operações',
-    items: [
-      { label: 'Notificações', path: adminPath('/notifications'), icon: 'Bell' },
-      { label: 'Suporte', path: adminPath('/support'), icon: 'Headphones' },
-      { label: 'Refunds', path: adminPath('/refunds'), icon: 'Activity' },
-      { label: 'Finance', path: adminPath('/finance'), icon: 'BarChart3' },
-      { label: 'Audit Log', path: adminPath('/audit-log'), icon: 'ClipboardList' },
-    ],
-  },
-  {
-    group: 'Sistema',
-    items: [
-      { label: 'Analytics', path: adminPath('/analytics'), icon: 'BarChart3' },
-      { label: 'Settings', path: adminPath('/settings'), icon: 'Settings' },
-    ],
-  },
-];
 
 export function MobileAdminShell({
   userEmail,
@@ -64,6 +22,49 @@ export function MobileAdminShell({
   userEmail: string;
   children: React.ReactNode;
 }) {
+  const { adminPath } = useAdminPaths();
+  const NAV_SECTIONS = [
+    {
+      group: 'Principal',
+      items: [{ label: 'Dashboard', path: adminPath(), icon: 'Activity' }],
+    },
+    {
+      group: 'Gestão',
+      items: [
+        { label: 'Managers', path: adminPath('/managers'), icon: 'Shield' },
+        { label: 'Usuários', path: adminPath('/users'), icon: 'Users' },
+        { label: 'Organizations', path: adminPath('/orgs'), icon: 'Package' },
+        { label: 'Agentes', path: adminPath('/agents'), icon: 'Star' },
+        { label: 'Providers', path: adminPath('/providers'), icon: 'Database' },
+        { label: 'Afiliados', path: adminPath('/affiliates'), icon: 'TrendingUp' },
+      ],
+    },
+    {
+      group: 'Monetização',
+      items: [
+        { label: 'Planos', path: adminPath('/plans'), icon: 'FileText' },
+        { label: 'Cupons', path: adminPath('/coupons'), icon: 'Bell' },
+      ],
+    },
+    {
+      group: 'Operações',
+      items: [
+        { label: 'Notificações', path: adminPath('/notifications'), icon: 'Bell' },
+        { label: 'Suporte', path: adminPath('/support'), icon: 'Headphones' },
+        { label: 'Refunds', path: adminPath('/refunds'), icon: 'Activity' },
+        { label: 'Finance', path: adminPath('/finance'), icon: 'BarChart3' },
+        { label: 'Audit Log', path: adminPath('/audit-log'), icon: 'ClipboardList' },
+      ],
+    },
+    {
+      group: 'Sistema',
+      items: [
+        { label: 'Analytics', path: adminPath('/analytics'), icon: 'BarChart3' },
+        { label: 'Settings', path: adminPath('/settings'), icon: 'Settings' },
+      ],
+    },
+  ];
+
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 

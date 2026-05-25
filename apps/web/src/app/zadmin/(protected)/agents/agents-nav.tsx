@@ -2,20 +2,20 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { adminPath } from '@/lib/admin-path';
+import { useAdminPaths } from '@/lib/use-admin-paths';
 import { Bot, Wrench } from 'lucide-react';
 
-const TABS = [
-  { label: 'Agents', path: adminPath('/agents'), icon: Bot },
-  { label: 'Tools', path: adminPath('/agents/tools'), icon: Wrench },
-] as const;
-
 export function AgentsNav() {
+  const { adminPath } = useAdminPaths();
+  const tabs = [
+    { label: 'Agents', path: adminPath('/agents'), icon: Bot },
+    { label: 'Tools', path: adminPath('/agents/tools'), icon: Wrench },
+  ];
   const pathname = usePathname();
 
   return (
     <div className="flex gap-1 border-b border-border mb-6 -mt-2">
-      {TABS.map(({ label, path, icon: Icon }) => {
+      {tabs.map(({ label, path, icon: Icon }) => {
         const active = pathname === path || (path !== adminPath('/agents') && pathname.startsWith(path));
         return (
           <Link

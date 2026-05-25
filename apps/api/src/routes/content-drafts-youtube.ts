@@ -182,7 +182,7 @@ export async function contentDraftsYouTubeRoutes(fastify: FastifyInstance): Prom
         });
 
         // 7. Map adapter errors to HTTP responses
-        if (!result.ok) {
+        if (result.ok === false) {
           const { code, message } = result;
           if (code === 'YOUTUBE_AUTH_FAILED') {
             return reply.status(401).send({

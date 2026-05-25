@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { adminApi } from '@/lib/admin-path';
+import { useAdminPaths } from '@/lib/use-admin-paths';
 import { ClipboardList } from 'lucide-react';
 
 interface AuditLogItem {
@@ -146,6 +146,7 @@ function ActionBadge({ action }: { action: string }) {
 }
 
 export default function AuditLogPage() {
+  const { adminApi } = useAdminPaths();
   const [items, setItems] = useState<AuditLogItem[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -174,7 +175,7 @@ export default function AuditLogPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [adminApi]);
 
   useEffect(() => {
     void fetchData(page, actionFilter);

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { adminApi } from '@/lib/admin-path';
+import { useAdminPaths } from '@/lib/use-admin-paths';
 
 interface Org {
   id: string;
@@ -33,6 +33,7 @@ const PLAN_CREDITS: Record<string, number> = {
 
 export function OrgsTable({ orgs }: { orgs: Org[] }) {
   const router = useRouter();
+  const { adminApi } = useAdminPaths();
   const [editingOrg, setEditingOrg] = useState<Org | null>(null);
   const [saving, setSaving] = useState(false);
   const [formPlan, setFormPlan] = useState('');

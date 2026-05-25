@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { adminPath } from '@/lib/admin-path'
+import { useAdminPaths } from '@/lib/use-admin-paths'
 
 type State =
   | { kind: 'loading' }
@@ -31,6 +31,7 @@ const ISSUER = 'BrightTale Admin'
 
 export default function MfaPage() {
   const router = useRouter()
+  const { adminPath } = useAdminPaths()
   const [state, setState] = useState<State>({ kind: 'loading' })
   const [code, setCode] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -81,7 +82,7 @@ export default function MfaPage() {
     } catch (e) {
       setState({ kind: 'error', message: (e as Error).message })
     }
-  }, [router])
+  }, [router, adminPath])
 
   useEffect(() => {
     void init()

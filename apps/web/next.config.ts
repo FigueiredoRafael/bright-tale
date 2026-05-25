@@ -1,6 +1,6 @@
 import type { NextConfig } from 'next';
 
-const adminSlug = process.env.NEXT_PUBLIC_ADMIN_SLUG || 'admin';
+const adminSlug = process.env.ADMIN_SLUG || 'admin';
 const isDev = process.env.NODE_ENV !== 'production';
 
 // Security headers for apps/web. Applies to the landing page AND the

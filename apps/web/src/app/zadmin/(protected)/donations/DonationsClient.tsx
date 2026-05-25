@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { adminApi } from '@/lib/admin-path';
+import { useAdminPaths } from '@/lib/use-admin-paths';
 import { Gift, Clock, CheckCircle2, XCircle, ChevronDown, ThumbsUp, ThumbsDown } from 'lucide-react';
 
 type DonationStatus = 'pending_approval' | 'approved' | 'denied' | 'executed';
@@ -96,6 +96,7 @@ function ExpandedRow({ donation }: { donation: DonationRow }) {
 
 export function DonationsClient({ initialDonations, kpis: initialKpis }: Props) {
   const router = useRouter();
+  const { adminApi } = useAdminPaths();
   const [donations, setDonations] = useState(initialDonations);
   const [kpis, setKpis] = useState(initialKpis);
   const [filter, setFilter] = useState<'all' | DonationStatus>('all');
@@ -109,7 +110,7 @@ export function DonationsClient({ initialDonations, kpis: initialKpis }: Props) 
       setDonations(json.data.donations);
       setKpis(json.data.kpis);
     }
-  }, [filter]);
+  }, [filter, adminApi]);
 
   const handleApprove = async (id: string) => {
     setLoadingId(id);

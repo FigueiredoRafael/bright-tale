@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-vi.stubEnv('NEXT_PUBLIC_ADMIN_SLUG', 'admin');
+vi.stubEnv('ADMIN_SLUG', 'admin');
 
 import {
   approve, pause, proposeChange, cancelProposal, renewContract,

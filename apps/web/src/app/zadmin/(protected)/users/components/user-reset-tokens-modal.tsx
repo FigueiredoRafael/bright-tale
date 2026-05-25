@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { adminApi } from '@/lib/admin-path';
+import { useAdminPaths } from '@/lib/use-admin-paths';
 import type { UserListItem } from '@brighttale/shared/types/users';
 import { RotateCcw, X, AlertTriangle } from 'lucide-react';
 
@@ -13,6 +13,7 @@ interface Props {
 
 export function UserResetTokensModal({ user, onClose }: Props) {
   const router = useRouter();
+  const { adminApi } = useAdminPaths();
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
