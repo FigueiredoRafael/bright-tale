@@ -15,7 +15,7 @@ import { sendError } from '../lib/api/fastify-errors.js';
 import {
   createAutopilotTemplateSchema,
   updateAutopilotTemplateSchema,
-} from '@brighttale/shared/schemas/autopilotTemplates.js';
+} from '@brighttale/shared/schemas/autopilotTemplates';
 
 export async function autopilotTemplatesRoutes(
   fastify: FastifyInstance
