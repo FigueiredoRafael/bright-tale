@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@brighttale/shared/types/database'
 import type { IAffiliateRepository } from '@tn-figueiredo/affiliate'
-import { mapPayoutFromDb, mapPayoutToDbInsert } from './mappers'
+import { mapPayoutFromDb, mapPayoutToDbInsert } from './mappers.js'
 
 export function createPayoutsRepo(sb: SupabaseClient<Database>) {
   return {

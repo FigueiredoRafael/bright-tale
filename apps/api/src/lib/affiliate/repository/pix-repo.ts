@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@brighttale/shared/types/database'
 import type { IAffiliateRepository } from '@tn-figueiredo/affiliate'
-import { mapPixKeyFromDb, mapPixKeyToDbInsert } from './mappers'
+import { mapPixKeyFromDb, mapPixKeyToDbInsert } from './mappers.js'
 
 export function createPixRepo(sb: SupabaseClient<Database>) {
   return {

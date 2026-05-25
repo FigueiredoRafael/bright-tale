@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@brighttale/shared/types/database'
 import type { IAffiliateRepository } from '@tn-figueiredo/affiliate'
-import { mapContractHistoryFromDb, mapContractHistoryToDbInsert } from './mappers'
+import { mapContractHistoryFromDb, mapContractHistoryToDbInsert } from './mappers.js'
 
 export function createHistoryRepo(sb: SupabaseClient<Database>) {
   return {

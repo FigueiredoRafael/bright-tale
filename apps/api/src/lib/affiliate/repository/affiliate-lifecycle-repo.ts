@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@brighttale/shared/types/database'
 import type { Affiliate, IAffiliateRepository } from '@tn-figueiredo/affiliate'
-import { mapAffiliateFromDb, type DbAffiliate } from './mappers'
+import { mapAffiliateFromDb, type DbAffiliate } from './mappers.js'
 
 export function createLifecycleRepo(sb: SupabaseClient<Database>) {
   async function update(id: string, fields: Partial<DbAffiliate>): Promise<Affiliate> {

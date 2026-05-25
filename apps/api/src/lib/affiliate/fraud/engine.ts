@@ -3,9 +3,9 @@ import type { Affiliate } from '@tn-figueiredo/affiliate';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@brighttale/shared/types/database';
 import type { SupabaseAffiliateRepository } from '../repository';
-import { SupabaseFraudRepository } from './fraud-repo';
-import { AffiliateEntityAdapter } from './entity-adapter';
-import { sendFraudAdminAlert } from './alert';
+import { SupabaseFraudRepository } from './fraud-repo.js';
+import { AffiliateEntityAdapter } from './entity-adapter.js';
+import { sendFraudAdminAlert } from './alert.js';
 
 function parseIntEnv(name: string, fallback: number): number {
   const raw = process.env[name];

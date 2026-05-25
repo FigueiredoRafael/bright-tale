@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@brighttale/shared/types/database'
 import type { IAffiliateRepository } from '@tn-figueiredo/affiliate'
-import { mapContentSubmissionFromDb, mapContentSubmissionToDbInsert } from './mappers'
+import { mapContentSubmissionFromDb, mapContentSubmissionToDbInsert } from './mappers.js'
 
 export function createContentRepo(sb: SupabaseClient<Database>) {
   return {
