@@ -178,6 +178,38 @@ async function loadDraft(id: string) {
   return data;
 }
 
+/**
+ * Enforce the project's `review.maxIterations` cap before consuming credits on
+ * another review/revision. Mirrors the check in pipeline-review-dispatch so
+ * legacy direct-call routes can't blow past the wizard limit even when the
+ * orchestrator isn't in the loop. No-op for project-less drafts and projects
+ * whose autopilot config doesn't define the slot.
+ */
+async function assertWithinReviewCap(
+  projectId: string | null | undefined,
+  currentIterationCount: number,
+): Promise<void> {
+  if (!projectId) return;
+  const sb = createServiceClient();
+  const { data: project } = await sb
+    .from("projects")
+    .select("autopilot_config_json")
+    .eq("id", projectId)
+    .maybeSingle();
+  const cfg = (project as { autopilot_config_json?: Record<string, unknown> | null } | null)
+    ?.autopilot_config_json as Record<string, unknown> | null | undefined;
+  const review = cfg?.review as { maxIterations?: unknown } | undefined;
+  const maxIterations = review?.maxIterations;
+  if (typeof maxIterations !== "number" || maxIterations <= 0) return;
+  if (currentIterationCount + 1 > maxIterations) {
+    throw new ApiError(
+      409,
+      `Review iteration cap reached (${maxIterations}). Approve or hard-reject the draft to proceed.`,
+      "MAX_ITERATIONS",
+    );
+  }
+}
+
 function resolveSeoDefaults(draft: Record<string, unknown>): {
   title: string;
   slug: string;
@@ -1499,6 +1531,11 @@ export async function contentDraftsRoutes(
           );
         }
 
+        await assertWithinReviewCap(
+          (draft.project_id as string | null | undefined) ?? null,
+          (draft.iteration_count as number | null | undefined) ?? 0,
+        );
+
         // Manual provider short-circuits the LLM call: build the prompt
         // synchronously, emit the full payload to Axiom, persist the draft in
         // awaiting_manual state, and return early. The user pastes the output
@@ -1936,6 +1973,11 @@ export async function contentDraftsRoutes(
             "CONFLICT",
           );
         }
+
+        await assertWithinReviewCap(
+          (row.project_id as string | null | undefined) ?? null,
+          (row.iteration_count as number | null | undefined) ?? 0,
+        );
 
         // Extract verdict and score from the review output, matching AI review logic
         const draftType = row.type as string;
@@ -2415,6 +2457,11 @@ export async function contentDraftsRoutes(
             "NO_FEEDBACK",
           );
         }
+
+        await assertWithinReviewCap(
+          (draft.project_id as string | null | undefined) ?? null,
+          (draft.iteration_count as number | null | undefined) ?? 0,
+        );
 
         const creditSettings = await loadCreditSettings(sb);
 
