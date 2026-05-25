@@ -1,3 +1,4 @@
+import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { EngineHost } from '../EngineHost';
@@ -30,14 +31,33 @@ vi.mock('@/hooks/useStageRun', () => ({
 }));
 
 // Stub each engine so we can assert mounting without pulling in their internals.
+// The three video-capable engines (assets, preview, publish) are prop-aware:
+// they render a video testid when they receive medium="video". This verifies that
+// EngineHost forwards the medium prop correctly — the bug was engines reading
+// trackMedium but EngineHost sending medium (prop-name mismatch).
 vi.mock('@/components/engines/BrainstormEngine', () => ({ BrainstormEngine: () => <div data-testid="engine-brainstorm" /> }));
 vi.mock('@/components/engines/ResearchEngine', () => ({ ResearchEngine: () => <div data-testid="engine-research" /> }));
 vi.mock('@/components/engines/CanonicalEngine', () => ({ CanonicalEngine: () => <div data-testid="engine-canonical" /> }));
 vi.mock('@/components/engines/ProductionEngine', () => ({ ProductionEngine: () => <div data-testid="engine-production" /> }));
 vi.mock('@/components/engines/ReviewEngine', () => ({ ReviewEngine: () => <div data-testid="engine-review" /> }));
-vi.mock('@/components/engines/AssetsEngine', () => ({ AssetsEngine: () => <div data-testid="engine-assets" /> }));
-vi.mock('@/components/engines/PreviewEngine', () => ({ PreviewEngine: () => <div data-testid="engine-preview" /> }));
-vi.mock('@/components/engines/PublishEngine', () => ({ PublishEngine: () => <div data-testid="engine-publish" /> }));
+vi.mock('@/components/engines/AssetsEngine', () => ({
+  AssetsEngine: ({ medium }: { medium?: string }) =>
+    medium === 'video'
+      ? <div data-testid="engine-assets-video" />
+      : <div data-testid="engine-assets" />,
+}));
+vi.mock('@/components/engines/PreviewEngine', () => ({
+  PreviewEngine: ({ medium }: { medium?: string }) =>
+    medium === 'video'
+      ? <div data-testid="engine-preview-video" />
+      : <div data-testid="engine-preview" />,
+}));
+vi.mock('@/components/engines/PublishEngine', () => ({
+  PublishEngine: ({ medium }: { medium?: string }) =>
+    medium === 'video'
+      ? <div data-testid="engine-publish-video" />
+      : <div data-testid="engine-publish" />,
+}));
 
 describe('EngineHost', () => {
   it.each([
@@ -74,5 +94,25 @@ describe('EngineHost', () => {
     mockUseStageRun.mockReturnValueOnce({ data: null, isLoading: false, error: new Error('boom') });
     render(<EngineHost projectId="p1" stage="brainstorm" attemptNo={1} />);
     expect(screen.getByTestId('engine-host-error')).toBeInTheDocument();
+  });
+
+  // ── medium prop forwarding ─────────────────────────────────────────────────
+  // Regression guard: EngineHost must forward medium="video" to the engine so
+  // video UIs render. The bug was engines reading trackMedium but EngineHost
+  // sending medium (canonical name from ProductionEngine / Medium type).
+
+  it('forwards medium=video to AssetsEngine', () => {
+    render(<EngineHost projectId="p1" stage="assets" trackId="t1" attemptNo={1} medium="video" />);
+    expect(screen.getByTestId('engine-assets-video')).toBeInTheDocument();
+  });
+
+  it('forwards medium=video to PreviewEngine', () => {
+    render(<EngineHost projectId="p1" stage="preview" trackId="t1" attemptNo={1} medium="video" />);
+    expect(screen.getByTestId('engine-preview-video')).toBeInTheDocument();
+  });
+
+  it('forwards medium=video to PublishEngine', () => {
+    render(<EngineHost projectId="p1" stage="publish" trackId="t1" attemptNo={1} medium="video" />);
+    expect(screen.getByTestId('engine-publish-video')).toBeInTheDocument();
   });
 });

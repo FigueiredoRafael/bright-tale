@@ -193,13 +193,14 @@ interface PreviewEngineProps {
   /**
    * Issue #214 — when set to 'video', routes to the video read-only layout
    * (inventory pills + viewer card + teleprompter) instead of the WP HTML preview.
-   * Consistent with the trackMedium prop pattern used on AssetsEngine.
+   * Canonical prop name aligned with EngineHost (which passes medium={medium})
+   * and ProductionEngine. Renamed from trackMedium in fix/engine-host-medium-prop-wiring.
    * NOTE: orchestrator wiring is a follow-up; this prop is set by the caller.
    */
-  trackMedium?: 'blog' | 'video';
+  medium?: 'blog' | 'video';
 }
 
-export function PreviewEngine({ trackId, trackMedium }: PreviewEngineProps = {}) {
+export function PreviewEngine({ trackId, medium }: PreviewEngineProps = {}) {
   const ctx = useProjectContext();
   const abortController = usePipelineAbort();
   const router = useRouter();
@@ -569,7 +570,7 @@ export function PreviewEngine({ trackId, trackMedium }: PreviewEngineProps = {})
 
   // ── Video routing (issue #214) ──────────────────────────────────────────────
   // When the track medium is video, delegate to the read-only video layout.
-  if (trackMedium === 'video') {
+  if (medium === 'video') {
     return (
       <div className="space-y-4">
         <ContextBanner stage="preview" context={trackerContext} onBack={navigate} />

@@ -89,10 +89,10 @@ interface AssetsEngineProps {
   /**
    * Issue #213 — when set to 'video', routes to the video asset layout
    * (AssetsEngineVideo) instead of the blog image-upload surface.
-   * Consistent with the trackMedium prop pattern used on PreviewEngine (#214)
-   * and PublishEngine (#215).
+   * Canonical prop name aligned with EngineHost (which passes medium={medium})
+   * and ProductionEngine. Renamed from trackMedium in fix/engine-host-medium-prop-wiring.
    */
-  trackMedium?: 'blog' | 'video';
+  medium?: 'blog' | 'video';
   /**
    * Optional clipboard override — injected in tests since jsdom does not
    * implement navigator.clipboard. Propagated to AssetsEngineVideo.
@@ -218,7 +218,7 @@ interface PendingUpload {
 
 /* ── Component ── */
 
-export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProviderOverride, retrySignal = 0, trackId, trackMedium, onCopyText, onToast }: AssetsEngineProps) {
+export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProviderOverride, retrySignal = 0, trackId, medium, onCopyText, onToast }: AssetsEngineProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -1078,7 +1078,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   // When the track medium is video, delegate to the video asset layout.
   // The blog image-upload flow (briefs/refine/approve) is irrelevant for
   // video tracks and is intentionally bypassed here.
-  if (trackMedium === 'video') {
+  if (medium === 'video') {
     // key forces remount once the draft loads so the useState initializer in
     // AssetsEngineVideo sees the real draftJson (with persisted assetSettings).
     return (

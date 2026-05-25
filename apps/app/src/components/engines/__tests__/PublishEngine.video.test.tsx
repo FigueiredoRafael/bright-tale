@@ -2,7 +2,7 @@
  * PublishEngine — video routing + bundle mode UI (issue #215)
  *
  * TDD: red→green per acceptance criterion.
- * Blog regression: existing flow unchanged when trackMedium is absent.
+ * Blog regression: existing flow unchanged when medium is absent.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
@@ -134,7 +134,7 @@ function mountVideoPublish(opts: {
       pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
       creditSettings={DEFAULT_CREDIT_SETTINGS}
     >
-      <PublishEngine trackMedium="video" />
+      <PublishEngine medium="video" />
     </StandaloneProjectContextProvider>,
   )
 }
@@ -329,7 +329,7 @@ describe('PublishEngine — video routing (issue #215)', () => {
   })
 
   // ── Blog regression ─────────────────────────────────────────────────────────
-  it('blog track (no trackMedium) renders existing panel — no channel card, no mode toggle', async () => {
+  it('blog track (no medium) renders existing panel — no channel card, no mode toggle', async () => {
     mountBlogPublish()
     await screen.findByTestId('publish-engine-root')
     // The video-specific elements must NOT appear in blog mode
