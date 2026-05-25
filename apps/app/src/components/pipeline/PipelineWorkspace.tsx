@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { FocusSidebar } from './FocusSidebar';
 import { FocusPanel } from './FocusPanel';
@@ -81,6 +81,12 @@ export function PipelineWorkspace({ projectId }: Props) {
 
   const { stageRuns, project, tracks, refresh } = useProjectStream(projectId);
 
+  // Stage that the supervised auto-advance system last drove the URL to. When
+  // the URL stage diverges from this ref the user has manually navigated (e.g.
+  // clicked a prior stage in the sidebar to inspect it), so we surrender
+  // control until they explicitly resume.
+  const lastAutoRoutedStageRef = useRef<string | null>(null);
+
   // Cold-start auto-route: when the user lands on /projects/:id with no
   // ?stage= param (e.g. straight from the wizard), point them at the
   // brainstorm run that POST /api/projects auto-dispatched. Without this
@@ -93,6 +99,7 @@ export function PipelineWorkspace({ projectId }: Props) {
     const next = new URLSearchParams(searchParams.toString());
     next.set('stage', 'brainstorm');
     next.set('attempt', String(brainstorm.attemptNo ?? 1));
+    lastAutoRoutedStageRef.current = 'brainstorm';
     router.replace(`${pathname}?${next.toString()}`);
   }, [isGraph, hasStageParam, stageRuns.brainstorm, pathname, router, searchParams]);
 
@@ -109,6 +116,17 @@ export function PipelineWorkspace({ projectId }: Props) {
     if (project.paused) return;
     const currentStage = searchParams.get('stage');
     if (!currentStage) return;
+
+    // User-initiated navigation surrenders auto-advance until they hit a
+    // primary action again. We only walk forward when the URL still points at
+    // the stage WE last routed to — if it differs the user has clicked back
+    // to inspect something and we must not yank them forward.
+    if (lastAutoRoutedStageRef.current === null) return;
+    if (lastAutoRoutedStageRef.current !== currentStage) {
+      lastAutoRoutedStageRef.current = null;
+      return;
+    }
+
     const currentTrackId = searchParams.get('track');
 
     const SHARED_SEQ = ['brainstorm', 'research', 'canonical'] as const;
@@ -167,6 +185,7 @@ export function PipelineWorkspace({ projectId }: Props) {
       next.delete('track');
     }
     next.delete('target');
+    lastAutoRoutedStageRef.current = nextStage;
     router.replace(`${pathname}?${next.toString()}`);
   }, [
     isGraph,
