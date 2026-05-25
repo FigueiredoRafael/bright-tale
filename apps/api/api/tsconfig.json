@@ -6,5 +6,6 @@
       "@brighttale/shared": ["../../../packages/shared/src"],
       "@brighttale/shared/*": ["../../../packages/shared/src/*"]
     }
-  }
+  },
+  "include": ["./**/*"]
 }
