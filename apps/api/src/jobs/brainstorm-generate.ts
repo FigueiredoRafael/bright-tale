@@ -95,6 +95,26 @@ export const brainstormGenerate = inngest.createFunction(
       .maybeSingle();
     const projectId = session?.project_id ?? undefined;
 
+    // Resolve the stage_run to write back to. When the dispatcher gives one
+    // explicitly (autopilot path), use it. Otherwise — engine-driven retries
+    // and standalone runs that are still linked to a project — fall back to
+    // the most recent brainstorm stage_run for the project so a successful
+    // output always reconciles a leftover failed/queued/running row instead
+    // of leaving it stale.
+    const resolveEffectiveStageRunId = async (): Promise<string | undefined> => {
+      if (stageRunId) return stageRunId;
+      if (!projectId) return undefined;
+      const { data: latestRun } = await sb
+        .from('stage_runs')
+        .select('id')
+        .eq('project_id', projectId)
+        .eq('stage', 'brainstorm')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return (latestRun?.id as string | undefined) ?? undefined;
+    };
+
     try {
       await assertNotAborted(projectId, undefined, sb);
 
@@ -283,7 +303,8 @@ export const brainstormGenerate = inngest.createFunction(
 
       // Pipeline Orchestrator handoff: write terminal status to the Stage Run
       // and emit `pipeline/stage.run.finished` so `pipeline-advance` can react.
-      if (stageRunId) {
+      const successStageRunId = await resolveEffectiveStageRunId();
+      if (successStageRunId) {
         const { data: firstDraft } = await sb
           .from('brainstorm_drafts')
           .select('id, title, verdict, core_tension')
@@ -307,17 +328,21 @@ export const brainstormGenerate = inngest.createFunction(
               brainstormSessionId: sessionId,
             }
           : null;
+        // Clear awaiting_reason / error_message so a prior failed/awaiting
+        // row gets reconciled cleanly when this run was a retry.
         await (sb.from('stage_runs') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
           .update({
             status: 'completed',
+            awaiting_reason: null,
+            error_message: null,
             payload_ref: firstDraft?.id ? { kind: 'brainstorm_draft', id: firstDraft.id } : null,
             ...(seedOutcome ? { outcome_json: seedOutcome } : {}),
             finished_at: now,
             updated_at: now,
           })
-          .eq('id', stageRunId);
+          .eq('id', successStageRunId);
         if (projectId && firstDraft?.title) {
           await (sb.from('projects') as unknown as {
             update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
@@ -327,7 +352,7 @@ export const brainstormGenerate = inngest.createFunction(
         }
         await inngest.send({
           name: 'pipeline/stage.run.finished',
-          data: { stageRunId, projectId },
+          data: { stageRunId: successStageRunId, projectId },
         });
       }
 
@@ -337,16 +362,17 @@ export const brainstormGenerate = inngest.createFunction(
         // brainstorm_sessions.status does not support 'paused' status yet,
         // so we only emit the abort event (no database update)
         await emitJobEvent(sessionId, 'brainstorm', 'aborted', 'Sessão cancelada pelo usuário');
-        if (stageRunId) {
+        const abortStageRunId = await resolveEffectiveStageRunId();
+        if (abortStageRunId) {
           const now = new Date().toISOString();
           await (sb.from('stage_runs') as unknown as {
             update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
           })
             .update({ status: 'aborted', finished_at: now, updated_at: now })
-            .eq('id', stageRunId);
+            .eq('id', abortStageRunId);
           await inngest.send({
             name: 'pipeline/stage.run.finished',
-            data: { stageRunId, projectId },
+            data: { stageRunId: abortStageRunId, projectId },
           });
         }
         return;
@@ -366,7 +392,8 @@ export const brainstormGenerate = inngest.createFunction(
 
       await emitJobEvent(sessionId, 'brainstorm', 'failed', message.slice(0, 200), { error: message });
 
-      if (stageRunId) {
+      const failureStageRunId = await resolveEffectiveStageRunId();
+      if (failureStageRunId) {
         const now = new Date().toISOString();
         const patch: Record<string, unknown> = quotaExhausted
           ? {
@@ -384,13 +411,13 @@ export const brainstormGenerate = inngest.createFunction(
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
           .update(patch)
-          .eq('id', stageRunId);
+          .eq('id', failureStageRunId);
         // Quota-park is non-terminal — no advance event; orchestrator resumes
         // via the explicit /continue path when the user clears the block.
         if (!quotaExhausted) {
           await inngest.send({
             name: 'pipeline/stage.run.finished',
-            data: { stageRunId, projectId },
+            data: { stageRunId: failureStageRunId, projectId },
           });
         }
       }
