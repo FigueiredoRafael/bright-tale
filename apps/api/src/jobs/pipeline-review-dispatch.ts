@@ -300,6 +300,20 @@ export const pipelineReviewDispatch = inngest.createFunction(
 
       await sb.from('content_drafts').update(updateData).eq('id', draftId);
 
+      // Append a row to review_iterations so the picker UI can show every
+      // pass with its draft snapshot + feedback. The dispatcher previously
+      // wrote terminal status straight to content_drafts and skipped this
+      // table, which is why autopilot reviews never showed up in the
+      // history that the legacy /:id/review path was already populating.
+      await sb.from('review_iterations').insert({
+        draft_id: draftId,
+        iteration: iterationCount,
+        score: reviewScore,
+        verdict: newVerdict,
+        feedback_json: result,
+        draft_json: draft.draft_json,
+      });
+
       const payloadRef = { kind: 'content_draft', id: draftId };
       // Carry the verdict + feedback in the Stage Run itself so the
       // orchestrator never has to open `payload_ref → content_drafts` to

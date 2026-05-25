@@ -1878,6 +1878,7 @@ export async function contentDraftsRoutes(
           score: reviewScore,
           verdict: newVerdict,
           feedback_json: result,
+          draft_json: draft.draft_json,
         });
 
         // Commit credits on successful agent call
@@ -1957,7 +1958,7 @@ export async function contentDraftsRoutes(
         const { data: draft, error: fetchErr } = await sb
           .from("content_drafts")
           .select(
-            "id, status, channel_id, project_id, org_id, user_id, type, title, iteration_count",
+            "id, status, channel_id, project_id, org_id, user_id, type, title, iteration_count, draft_json",
           )
           .eq("id", id)
           .maybeSingle();
@@ -2076,6 +2077,7 @@ export async function contentDraftsRoutes(
           score: reviewScore,
           verdict: reviewVerdict,
           feedback_json: body,
+          draft_json: (row as { draft_json?: unknown }).draft_json ?? null,
         });
 
         logAiUsage({
@@ -2877,6 +2879,172 @@ export async function contentDraftsRoutes(
           },
           error: null,
         });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  /**
+   * GET /:id/iterations — list every review pass for a draft so the user
+   * can compare scores and pick the best (draft, review) pair when the
+   * autopilot loop finished without ever clearing the auto-approve
+   * threshold. Returns rows ordered by iteration ASC.
+   */
+  fastify.get(
+    "/:id/iterations",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        if (!request.userId)
+          throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        const sb = createServiceClient();
+        const { id } = request.params as { id: string };
+
+        const draft = (await loadDraft(id)) as Record<string, unknown>;
+        if (draft.user_id !== request.userId) {
+          throw new ApiError(403, "Forbidden", "FORBIDDEN");
+        }
+
+        const { data: rows, error } = await (
+          sb.from("review_iterations" as never) as unknown as {
+            select: (cols: string) => {
+              eq: (col: string, val: string) => {
+                order: (
+                  col: string,
+                  opts: { ascending: boolean },
+                ) => Promise<{ data: unknown[] | null; error: unknown }>;
+              };
+            };
+          }
+        )
+          .select(
+            "id, iteration, score, verdict, feedback_json, draft_json, created_at",
+          )
+          .eq("draft_id", id)
+          .order("iteration", { ascending: true });
+        if (error) throw error;
+
+        return reply.send({
+          data: {
+            draftId: id,
+            currentIterationCount:
+              (draft.iteration_count as number | null) ?? 0,
+            currentReviewScore:
+              (draft.review_score as number | null) ?? null,
+            currentReviewVerdict:
+              (draft.review_verdict as string | null) ?? null,
+            iterations: (rows ?? []).map((r) => ({
+              id: (r as { id: string }).id,
+              iteration: (r as { iteration: number }).iteration,
+              score: (r as { score: number | null }).score,
+              verdict: (r as { verdict: string | null }).verdict,
+              feedbackJson: (r as { feedback_json: unknown }).feedback_json,
+              draftJson: (r as { draft_json: unknown }).draft_json,
+              createdAt: (r as { created_at: string }).created_at,
+            })),
+          },
+          error: null,
+        });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  /**
+   * POST /:id/iterations/:iteration/promote — pick iteration N as the
+   * "winner". Copies its draft_json + review fields back onto the live
+   * content_drafts row and flips status/verdict to approved. Used when the
+   * autopilot loop finished without crossing the auto-approve threshold and
+   * the user wants to lock in the best-scoring pass to move downstream.
+   */
+  fastify.post(
+    "/:id/iterations/:iteration/promote",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        if (!request.userId)
+          throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
+        const sb = createServiceClient();
+        const { id, iteration } = request.params as {
+          id: string;
+          iteration: string;
+        };
+        const iterationNo = Number.parseInt(iteration, 10);
+        if (!Number.isFinite(iterationNo) || iterationNo < 1) {
+          throw new ApiError(
+            400,
+            "iteration must be a positive integer",
+            "INVALID_ITERATION",
+          );
+        }
+
+        const draft = (await loadDraft(id)) as Record<string, unknown>;
+        if (draft.user_id !== request.userId) {
+          throw new ApiError(403, "Forbidden", "FORBIDDEN");
+        }
+
+        const { data: row, error: fetchErr } = await (
+          sb.from("review_iterations" as never) as unknown as {
+            select: (cols: string) => {
+              eq: (col: string, val: string) => {
+                eq: (col: string, val: number) => {
+                  maybeSingle: () => Promise<{
+                    data: Record<string, unknown> | null;
+                    error: unknown;
+                  }>;
+                };
+              };
+            };
+          }
+        )
+          .select("iteration, score, verdict, feedback_json, draft_json")
+          .eq("draft_id", id)
+          .eq("iteration", iterationNo)
+          .maybeSingle();
+        if (fetchErr) throw fetchErr;
+        if (!row) {
+          throw new ApiError(
+            404,
+            `Iteration ${iterationNo} not found for draft ${id}`,
+            "NOT_FOUND",
+          );
+        }
+        if (!(row as { draft_json: unknown }).draft_json) {
+          throw new ApiError(
+            409,
+            "This iteration predates draft snapshots and can't be promoted.",
+            "NO_SNAPSHOT",
+          );
+        }
+
+        const approvedAt = new Date().toISOString();
+        const { data: updated, error } = await (
+          sb.from("content_drafts") as unknown as {
+            update: (row: Record<string, unknown>) => {
+              eq: (col: string, val: string) => {
+                select: () => {
+                  single: () => Promise<{ data: unknown; error: unknown }>;
+                };
+              };
+            };
+          }
+        )
+          .update({
+            draft_json: row.draft_json,
+            review_feedback_json: row.feedback_json,
+            review_score: row.score as number | null,
+            review_verdict: "approved",
+            status: "approved",
+            approved_at: approvedAt,
+          })
+          .eq("id", id)
+          .select()
+          .single();
+        if (error) throw error;
+
+        return reply.send({ data: updated, error: null });
       } catch (error) {
         return sendError(reply, error);
       }

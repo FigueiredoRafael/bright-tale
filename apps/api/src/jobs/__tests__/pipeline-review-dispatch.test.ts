@@ -146,6 +146,13 @@ vi.mock('../../lib/supabase/index.js', () => ({
           }),
         };
       }
+      // review_iterations is appended on each pass so the picker UI can show
+      // (draft, review) per iteration. Mock just needs to swallow inserts.
+      if (table === 'review_iterations') {
+        return {
+          insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+        };
+      }
       return {};
     },
   }),

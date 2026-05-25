@@ -36,6 +36,19 @@ vi.mock('../../lib/supabase/index.js', () => ({
             }
             return Promise.resolve({ data: null })
           }),
+          // resolveEffectiveStageRunId in brainstorm-generate now chains
+          // .eq('project_id').eq('stage').order().limit().maybeSingle() to
+          // find a fallback stage_run when the event omits stageRunId. The
+          // abort test doesn't care about the return value (the abort
+          // branch only enters if stageRunId is truthy in the event), so a
+          // null fixture is enough to keep the chain resolving.
+          eq: vi.fn((_col2: string, _val2: string) => ({
+            order: vi.fn(() => ({
+              limit: vi.fn(() => ({
+                maybeSingle: vi.fn(() => Promise.resolve({ data: null })),
+              })),
+            })),
+          })),
         })),
       })),
       delete: vi.fn(() => ({

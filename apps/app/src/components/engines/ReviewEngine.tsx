@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ReviewFeedbackPanel } from '@/components/preview/ReviewFeedbackPanel';
 import { ManualOutputDialog } from './ManualOutputDialog';
+import { ReviewIterationsPicker } from './ReviewIterationsPicker';
 import { useManualMode } from '@/hooks/use-manual-mode';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
@@ -719,6 +720,17 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
     <div className="space-y-6" data-testid="review-engine-root">
       <ContextBanner stage="review" context={trackerContext} onBack={navigate} />
       <ContentWarningBanner warning={typeof (draftView.review_feedback_json as Record<string, unknown> | null)?.content_warning === 'string' ? (draftView.review_feedback_json as Record<string, unknown>).content_warning as string : undefined} />
+
+      {/* Iteration history picker — surfaces past (draft, review) pairs and
+          lets the user promote the best-scoring one when the loop ran the
+          full budget without ever clearing autoApproveThreshold. Only renders
+          when at least 2 iterations exist. */}
+      <ReviewIterationsPicker
+        draftId={draftId}
+        onPromoted={async () => {
+          await refetchDraft();
+        }}
+      />
 
       {/* Production draft preview — confirms the reviewer sees the produced body */}
       {(() => {
