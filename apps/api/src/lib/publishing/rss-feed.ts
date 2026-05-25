@@ -9,7 +9,7 @@
  */
 
 import { createHash } from 'crypto';
-import { createServiceClient } from '@/lib/supabase/index.js';
+import { createServiceClient } from '../supabase/index.js';
 
 /** Shape returned from the channel metadata query. */
 interface ChannelRow {

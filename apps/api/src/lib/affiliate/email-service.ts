@@ -1,5 +1,5 @@
 import type { IAffiliateEmailService, AffiliateTier } from '@tn-figueiredo/affiliate'
-import { sendEmail } from '@/lib/email/provider'
+import { sendEmail } from '../email/provider.js'
 
 function adminEmail(): string {
   return process.env.AFFILIATE_ADMIN_EMAIL ?? 'admin@brighttale.io'

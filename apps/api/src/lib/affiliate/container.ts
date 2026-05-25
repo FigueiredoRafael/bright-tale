@@ -20,7 +20,7 @@ import type {
   AffiliateRouteDeps,
   AffiliateAdminRouteDeps,
 } from '@tn-figueiredo/affiliate/routes'
-import { createServiceClient } from '@/lib/supabase'
+import { createServiceClient } from '../supabase/index.js'
 import { SupabaseAffiliateRepository } from './repository/index.js'
 import { ResendAffiliateEmailService } from './email-service.js'
 import { StubTaxIdRepository } from './tax-id-service.js'
