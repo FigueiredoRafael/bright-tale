@@ -6,7 +6,7 @@
  * that fans out from the project's canonical core.
  */
 import { z } from 'zod';
-import { MEDIA } from '../pipeline/inputs';
+import { MEDIA } from '../pipeline/inputs.js';
 
 export const addTrackSchema = z.object({
   medium: z.enum(MEDIA),

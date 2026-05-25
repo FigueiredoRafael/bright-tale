@@ -11,7 +11,7 @@ export {
   validateDiscoveryOutput,
   type DiscoveryInput,
   type DiscoveryOutput,
-} from "./discovery";
+} from "./discovery.js";
 
 // Production Agent schemas
 export {
@@ -21,7 +21,7 @@ export {
   validateProductionOutput,
   type ProductionInput as ProductionSchemaInput,
   type ProductionOutput as ProductionSchemaOutput,
-} from "./production";
+} from "./production.js";
 
 // Review Agent schemas
 export {
@@ -32,7 +32,7 @@ export {
   type QualityTier,
   type RubricChecks,
   type ReviewOutput as ReviewSchemaOutput,
-} from "./review";
+} from "./review.js";
 
 // Research API schemas
 export {
@@ -40,7 +40,7 @@ export {
   updateResearchSchema,
   listResearchQuerySchema,
   addSourceSchema,
-} from "./research";
+} from "./research.js";
 
 // Projects API schemas
 export {
@@ -49,17 +49,17 @@ export {
   listProjectsQuerySchema,
   bulkOperationSchema,
   markWinnerSchema,
-} from "./projects";
+} from "./projects.js";
 
 // Stages API schemas
-export { createStageSchema, createRevisionSchema } from "./stages";
+export { createStageSchema, createRevisionSchema } from "./stages.js";
 
 // Templates API schemas
 export {
   createTemplateSchema,
   updateTemplateSchema,
   listTemplatesQuerySchema,
-} from "./templates";
+} from "./templates.js";
 
 // WordPress API schemas
 export {
@@ -75,7 +75,7 @@ export {
   type PublishToWordPress,
   type FetchCategoriesQuery,
   type FetchTagsQuery,
-} from "./wordpress";
+} from "./wordpress.js";
 
 // Assets API schemas
 export {
@@ -85,7 +85,7 @@ export {
   validateSaveAsset,
   type SearchUnsplashQuery,
   type SaveAsset,
-} from "./assets";
+} from "./assets.js";
 
 // Video Draft schemas
 export {
@@ -95,7 +95,7 @@ export {
   type CreateVideoInput,
   type UpdateVideoInput,
   type VideoQuery,
-} from "./videos";
+} from "./videos.js";
 
 // Shorts Draft schemas
 export {
@@ -106,7 +106,7 @@ export {
   type CreateShortsInput,
   type UpdateShortsInput,
   type ShortsQuery,
-} from "./shorts";
+} from "./shorts.js";
 
 // Podcast Draft schemas
 export {
@@ -117,7 +117,7 @@ export {
   type CreatePodcastInput,
   type UpdatePodcastInput,
   type PodcastQuery,
-} from "./podcasts";
+} from "./podcasts.js";
 
 // Content Drafts (cross-medium) schemas
 export {
@@ -127,7 +127,7 @@ export {
   type Medium,
   type DeriveDraftRequest,
   type DeriveDraftResponse,
-} from "./content-drafts";
+} from "./content-drafts.js";
 
 // Ideas Library schemas
 export {
@@ -146,7 +146,7 @@ export {
   type ImportIdeasInput,
   type SimilarityWarning,
   type CreateIdeaResponse,
-} from "./ideas";
+} from "./ideas.js";
 
 // Organizations schemas
 export {
@@ -162,7 +162,7 @@ export {
   type CreateInvite,
   type UpdateMemberRole,
   type UpdateMemberCreditLimit,
-} from "./organizations";
+} from "./organizations.js";
 
 // Channels schemas
 export {
@@ -180,7 +180,7 @@ export {
   type CreateChannel,
   type UpdateChannel,
   type ListChannelsQuery,
-} from "./channels";
+} from "./channels.js";
 
 // Personas schemas
 export {
@@ -190,7 +190,7 @@ export {
   type CreatePersonaInput,
   type UpdatePersonaInput,
   type TogglePersonaInput,
-} from "./personas";
+} from "./personas.js";
 
 // Persona Guardrails schemas
 export {
@@ -201,7 +201,7 @@ export {
   type CreateGuardrailInput,
   type UpdateGuardrailInput,
   type ToggleGuardrailInput,
-} from "./persona-guardrails";
+} from "./persona-guardrails.js";
 
 // Persona Archetypes schemas
 export {
@@ -211,7 +211,7 @@ export {
   type CreateArchetypeInput,
   type UpdateArchetypeInput,
   type ToggleArchetypeInput,
-} from "./persona-archetypes";
+} from "./persona-archetypes.js";
 
 // Channel Personas schemas
 export {
@@ -219,7 +219,7 @@ export {
   setPrimaryChannelPersonaSchema,
   type AssignChannelPersonaInput,
   type SetPrimaryChannelPersonaInput,
-} from "./channel-personas";
+} from "./channel-personas.js";
 
 // Pipeline Settings & Credit Settings schemas
 export {
@@ -231,16 +231,16 @@ export {
   type PipelineSettingsResponse,
   type UpdateCreditSettingsInput,
   type CreditSettingsResponse,
-} from "./pipeline-settings";
+} from "./pipeline-settings.js";
 
 // Autopilot Config schemas
-export * from "./autopilotConfig";
+export * from "./autopilotConfig.js";
 
 // Autopilot Templates schemas
-export * from "./autopilotTemplates";
+export * from "./autopilotTemplates.js";
 
 // Project Setup schemas
-export * from "./projectSetup";
+export * from "./projectSetup.js";
 
 // Tracks API schemas
 export {
@@ -248,7 +248,7 @@ export {
   updateTrackSchema,
   type AddTrackInput,
   type UpdateTrackInput,
-} from "./tracks";
+} from "./tracks.js";
 
 // Publish-target schemas
 export {
@@ -256,7 +256,7 @@ export {
   publishTargetSchema,
   type PublishTargetType,
   type PublishTarget,
-} from "./publishTargets";
+} from "./publishTargets.js";
 
 // Video Asset Bundle schema (issue #216)
 export {
@@ -264,10 +264,10 @@ export {
   type BundleImage,
   type BundleText,
   type VideoAssetBundle,
-} from "./videoAssetBundle";
+} from "./videoAssetBundle.js";
 
 // YouTube Publish params schema (issue #222 / S10)
 export {
   youtubePublishParams,
   type YouTubePublishParams,
-} from "./youtubePublishParams";
+} from "./youtubePublishParams.js";

@@ -6,7 +6,7 @@
 
 import type { Json } from "../types/database"
 import type { Persona, PersonaWritingVoice, PersonaEeatSignals, PersonaSoul, PersonaTraits, PersonaLanguage } from "../types/agents";
-import { DEFAULT_PERSONA_TRAITS } from "../types/agents";
+import { DEFAULT_PERSONA_TRAITS } from "../types/agents.js";
 
 // ─── Project ──────────────────────────────────────────────────────────────────
 

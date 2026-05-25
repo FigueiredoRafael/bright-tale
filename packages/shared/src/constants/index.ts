@@ -1,2 +1,2 @@
-export * from './wording';
-export * from './tools';
+export * from './wording.js';
+export * from './tools.js';

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { autopilotConfigSchema } from './autopilotConfig'
+import { autopilotConfigSchema } from './autopilotConfig.js'
 
 export const createAutopilotTemplateSchema = z.object({
   name:       z.string().trim().min(1).max(120),

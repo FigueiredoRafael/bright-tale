@@ -18,7 +18,7 @@ import type {
   CanonicalCoreArgumentStep,
   CanonicalCoreStat,
   VideoOutput,
-} from "../types/agents";
+} from "../types/agents.js";
 
 export interface ShortsInput {
   idea_id: string;
