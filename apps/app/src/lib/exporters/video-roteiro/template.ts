@@ -858,7 +858,16 @@ p { margin: 0 0 8pt; }
 }
 @media print { .toolbar { display: none !important; } }
 
-@page { size: A4; margin: 0; }
+/* @page margins give breathing room on EVERY page automatically (top +
+   bottom). Body background paints inside the content area on each page
+   thanks to print-color-adjust: exact, so the dark surface persists
+   across all pages. Trade-off: the strip outside the content area
+   (paper edge) shows the PDF viewer's paper color — the inner content
+   never collides with the page break, which is what matters. */
+@page { size: A4; margin: 14mm 12mm 18mm 12mm; }
+html, body {
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
 .page {
   max-width: 180mm; margin: 0 auto; padding: 24px;
   background: var(--bg);
@@ -867,14 +876,19 @@ p { margin: 0 0 8pt; }
 @media print {
   .page {
     max-width: 100%; margin: 0;
-    padding: 16mm 14mm 28mm 14mm; min-height: 100vh;
+    padding: 0;
+    background: var(--bg);
   }
+  /* Section breaks get extra top breathing room so the section header
+     doesn't sit flush against the page edge after a forced break. */
+  .section--new-page { padding-top: 4mm; }
 }
 
 .print-footer { display: none; }
 @media print {
+  /* Lives in the @page bottom margin band — appears on every page. */
   .print-footer {
-    display: block; position: fixed; bottom: 8mm; left: 14mm; right: 14mm;
+    display: block; position: fixed; bottom: 4mm; left: 12mm; right: 12mm;
     font-size: 8pt; color: var(--text-muted); font-family: var(--font-sans);
   }
   .print-footer__left { float: left; }
