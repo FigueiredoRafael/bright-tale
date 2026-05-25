@@ -39,6 +39,7 @@ import type {
   ThumbnailIdea,
 } from '@brighttale/shared/types/agents';
 import { downloadTextFile } from '@/lib/exporters/editorBrief';
+import { useActiveChannel } from '@/hooks/use-active-channel';
 
 type Path = (string | number)[];
 
@@ -100,13 +101,80 @@ function unwrapVideoOutput(raw: VideoOutput | Record<string, unknown>): VideoOut
     'video_title' in obj ||
     'thumbnail_ideas' in obj ||
     'editor_script' in obj;
-  if (hasTopLevel) return obj as unknown as VideoOutput;
-  // Legacy wrappers — earlier seeds emitted { video_script: { ... } } or { video: { ... } }.
-  const videoScript = obj.video_script as Record<string, unknown> | undefined;
-  if (videoScript && typeof videoScript === 'object') return videoScript as unknown as VideoOutput;
-  const video = obj.video as Record<string, unknown> | undefined;
-  if (video && typeof video === 'object') return video as unknown as VideoOutput;
-  return obj as unknown as VideoOutput;
+  const unwrapped: Record<string, unknown> = hasTopLevel
+    ? obj
+    : (obj.video_script as Record<string, unknown> | undefined) ??
+      (obj.video as Record<string, unknown> | undefined) ??
+      obj;
+  return normalizeEditorScript(unwrapped) as unknown as VideoOutput;
+}
+
+/**
+ * Models frequently emit `editor_script` sections in snake_case (a_roll,
+ * sfx_cues, bgm, …) instead of the canonical Pascal/upper shape the UI reads
+ * (A_roll, SFX, BGM, …). Coerce both shapes so downstream rendering is
+ * uniform. Editor saves naturally migrate the row to the canonical shape.
+ */
+function normalizeEditorScript(input: Record<string, unknown>): Record<string, unknown> {
+  const es = input.editor_script as Record<string, unknown> | undefined;
+  if (!es || typeof es !== 'object') return input;
+
+  const normalizeSection = (raw: unknown): Record<string, unknown> | undefined => {
+    if (!raw || typeof raw !== 'object') return raw as undefined;
+    const sec = raw as Record<string, unknown>;
+    const pick = (...keys: string[]) => keys.map((k) => sec[k]).find((v) => v != null && v !== '');
+    const asString = (v: unknown): string | undefined => {
+      if (v == null) return undefined;
+      if (typeof v === 'string') return v;
+      if (Array.isArray(v)) return v.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join('\n');
+      return String(v);
+    };
+    const asStringArray = (v: unknown): string[] | undefined => {
+      if (Array.isArray(v)) return v.map((x) => (typeof x === 'string' ? x : JSON.stringify(x)));
+      if (typeof v === 'string' && v.length > 0) return v.split('\n').map((l) => l.trim()).filter(Boolean);
+      return undefined;
+    };
+    const out: Record<string, unknown> = { ...sec };
+    if (out.A_roll == null) out.A_roll = asString(pick('A_roll', 'a_roll'));
+    if (out.B_roll == null) out.B_roll = asStringArray(pick('B_roll', 'b_roll'));
+    if (out.SFX == null) out.SFX = asString(pick('SFX', 'sfx', 'sfx_cues'));
+    if (out.BGM == null) out.BGM = asString(pick('BGM', 'bgm'));
+    if (out.Transitions == null) out.Transitions = asString(pick('Transitions', 'transitions'));
+    if (out.Visual_effects == null) out.Visual_effects = asString(pick('Visual_effects', 'visual_effects'));
+    if (out.Pacing_notes == null) out.Pacing_notes = asString(pick('Pacing_notes', 'pacing_notes'));
+    if (out.text_overlays == null) out.text_overlays = pick('text_overlays');
+    return out;
+  };
+
+  const normalized: Record<string, unknown> = { ...es };
+  for (const key of ['hook', 'problem', 'teaser', 'affiliate_segment', 'outro']) {
+    const n = normalizeSection(es[key]);
+    if (n) normalized[key] = n;
+  }
+  if (Array.isArray(es.chapters)) {
+    normalized.chapters = es.chapters.map((c) => normalizeSection(c) ?? c);
+  }
+
+  // color_grading: hoist first per-section value to top-level if missing.
+  if (normalized.color_grading == null || normalized.color_grading === '') {
+    const sources = [
+      es.hook,
+      es.problem,
+      es.teaser,
+      ...(Array.isArray(es.chapters) ? es.chapters : []),
+      es.affiliate_segment,
+      es.outro,
+    ];
+    for (const src of sources) {
+      const cg = (src as Record<string, unknown> | undefined)?.color_grading;
+      if (typeof cg === 'string' && cg.length > 0) {
+        normalized.color_grading = cg;
+        break;
+      }
+    }
+  }
+
+  return { ...input, editor_script: normalized };
 }
 
 const EMOTION_VARIANT: Record<string, string> = {
@@ -1436,9 +1504,27 @@ function PublishTab({
   const wordCount = teleprompter ? teleprompter.split(/\s+/).filter(Boolean).length : 0;
   const estMinutes = wordCount > 0 ? (wordCount / 150).toFixed(1) : null;
 
+  // Roteiro PDF needs the channel's language/name to localize the chrome.
+  const { activeChannel } = useActiveChannel();
+
   const [synthesizing, setSynthesizing] = useState(false);
   const [audio, setAudio] = useState<SynthesisResult | null>(null);
   const [synthError, setSynthError] = useState<string | null>(null);
+  const [openingRoteiro, setOpeningRoteiro] = useState(false);
+
+  async function handleOpenRoteiro() {
+    setOpeningRoteiro(true);
+    try {
+      const { openVideoRoteiroForPrint } = await import('@/lib/exporters/video-roteiro');
+      openVideoRoteiroForPrint({
+        video: output,
+        language: activeChannel?.language,
+        channelName: activeChannel?.name,
+      });
+    } finally {
+      setOpeningRoteiro(false);
+    }
+  }
 
   async function handleSynthesize() {
     if (!draftId || synthesizing) return;
@@ -1609,6 +1695,21 @@ function PublishTab({
                 variant="outline"
                 size="sm"
                 className="gap-1.5"
+                onClick={handleOpenRoteiro}
+                disabled={openingRoteiro}
+                title="Open the full script in a new tab — ready to print / save as PDF"
+              >
+                {openingRoteiro ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+                Script (PDF)
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
                 onClick={() => {
                   if (!teleprompter.trim()) return;
                   const titleForFile = output.video_title?.primary ?? output.title_options?.[0] ?? 'teleprompter';
@@ -1619,7 +1720,7 @@ function PublishTab({
                 title={!teleprompter.trim() ? 'Empty teleprompter — nothing to download.' : 'Download teleprompter as .txt'}
               >
                 <Download className="h-3.5 w-3.5" />
-                Download .txt
+                Teleprompter .txt
               </Button>
               <Button
                 variant="outline"

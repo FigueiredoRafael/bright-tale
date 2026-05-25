@@ -30,6 +30,7 @@ import type { VideoStyleConfig } from '@brighttale/shared/schemas/videoStyle';
 import type { AutopilotConfig } from '@brighttale/shared';
 import type { DraftResult } from './types';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
+import { useActiveChannel } from '@/hooks/use-active-channel';
 
 type Medium = 'blog' | 'video' | 'shorts' | 'podcast';
 type Phase = 'produce' | 'done';
@@ -119,6 +120,14 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
       }
     })();
   }, [canonicalDraftId, perTrackDraftId, trackId, medium, derivedDraftId, abortController?.signal, deriveRetryNonce]);
+
+  // Roteiro PDF needs the channel's language + display name to localize the
+  // chrome and stamp the footer. useActiveChannel keeps a module-level cache,
+  // so reads here are cheap.
+  const { channels } = useActiveChannel();
+  const activeChannelForExport = channelId
+    ? channels.find((c) => c.id === channelId) ?? null
+    : null;
 
   const creditSettings = ctx.context.creditSettings as { costBlog?: number; costVideo?: number; costShorts?: number; costPodcast?: number } | undefined;
   const autopilotConfig: AutopilotConfig | null | undefined = ctx.context.autopilotConfig;
@@ -752,6 +761,23 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
                 <Button
                   variant="outline"
                   onClick={async () => {
+                    // Video uses the HTML-print exporter (design-system fidelity,
+                    // dark mode, channel-language chrome). Shorts/podcast still go
+                    // through the legacy jsPDF brief until their templates land.
+                    if (medium === 'video') {
+                      const video = coerceVideoFromDraft(producedDraftJson);
+                      if (!video) return;
+                      const { openVideoRoteiroForPrint } = await import('@/lib/exporters/video-roteiro');
+                      const win = openVideoRoteiroForPrint({
+                        video,
+                        language: activeChannelForExport?.language,
+                        channelName: activeChannelForExport?.name,
+                      });
+                      if (!win) {
+                        toast.error('Enable popups to open the script PDF.');
+                      }
+                      return;
+                    }
                     const { downloadEditorBriefPdf } = await import('@/lib/exporters/editorBrief');
                     downloadEditorBriefPdf({
                       medium,
@@ -868,6 +894,24 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
       )}
     </section>
   );
+}
+
+/**
+ * Unwraps a draft_json payload into a VideoOutput. Accepts the flat
+ * shape (model emits VideoOutput directly) and the legacy nested
+ * shape (`{ production: { video: VideoOutput } }`).
+ */
+function coerceVideoFromDraft(
+  draftJson: Record<string, unknown> | null,
+): import('@brighttale/shared/types/agents').VideoOutput | null {
+  if (!draftJson) return null;
+  const flat = draftJson as Partial<import('@brighttale/shared/types/agents').VideoOutput>;
+  if (flat?.script || flat?.editor_script || flat?.title_options || flat?.video_title) {
+    return draftJson as unknown as import('@brighttale/shared/types/agents').VideoOutput;
+  }
+  const prod = (draftJson.production ?? draftJson) as Record<string, unknown>;
+  const v = (prod?.video ?? null) as Record<string, unknown> | null;
+  return (v as unknown as import('@brighttale/shared/types/agents').VideoOutput) ?? null;
 }
 
 function extractTitleForBrief(
