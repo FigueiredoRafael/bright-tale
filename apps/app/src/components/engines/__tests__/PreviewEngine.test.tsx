@@ -275,7 +275,7 @@ function mountVideoPreview(opts?: {
       pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
       creditSettings={DEFAULT_CREDIT_SETTINGS}
     >
-      <PreviewEngine trackMedium="video" />
+      <PreviewEngine medium="video" />
     </StandaloneProjectContextProvider>,
   )
 }
@@ -285,20 +285,20 @@ describe('PreviewEngine — issue #214: video routing', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders inventory pills strip when trackMedium=video', async () => {
+  it('renders inventory pills strip when medium=video', async () => {
     mountVideoPreview()
     // Inventory pills should appear — not the blog HTML preview
     await screen.findByTestId('preview-video-inventory')
   })
 
-  it('renders viewer-style card with video title when trackMedium=video', async () => {
+  it('renders viewer-style card with video title when medium=video', async () => {
     mountVideoPreview()
     const viewerCard = await screen.findByTestId('preview-video-viewer-card')
     // Multiple elements may contain the title (ContextBanner + card) — scope to viewer card
     expect(viewerCard.textContent).toMatch(/China Copycat Trap/i)
   })
 
-  it('renders teleprompter with chapter titles when trackMedium=video', async () => {
+  it('renders teleprompter with chapter titles when medium=video', async () => {
     mountVideoPreview()
     await screen.findByTestId('preview-video-teleprompter')
     await screen.findByText(/Yes, Copying Was Part of the Story/i)
@@ -342,7 +342,7 @@ describe('PreviewEngine — issue #214: video routing', () => {
         pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
         creditSettings={DEFAULT_CREDIT_SETTINGS}
       >
-        <PreviewEngine trackMedium="video" />
+        <PreviewEngine medium="video" />
       </StandaloneProjectContextProvider>,
     )
     await screen.findByTestId('preview-video-inventory')
@@ -373,7 +373,7 @@ describe('PreviewEngine — issue #214: video routing', () => {
         pipelineSettings={DEFAULT_PIPELINE_SETTINGS}
         creditSettings={DEFAULT_CREDIT_SETTINGS}
       >
-        <PreviewEngine trackMedium="video" />
+        <PreviewEngine medium="video" />
       </StandaloneProjectContextProvider>,
     )
     await screen.findByTestId('preview-video-inventory')
@@ -396,8 +396,8 @@ describe('PreviewEngine — issue #214: video routing', () => {
     })
   })
 
-  it('blog flow unchanged when trackMedium is absent', async () => {
-    // Mounting without trackMedium — should render the existing blog preview (Live Preview card)
+  it('blog flow unchanged when medium is absent', async () => {
+    // Mounting without medium — should render the existing blog preview (Live Preview card)
     mountAtPreviewStage()
     // Blog path renders the approve button (no video testids)
     await screen.findByRole('button', { name: /approve.*publish/i })

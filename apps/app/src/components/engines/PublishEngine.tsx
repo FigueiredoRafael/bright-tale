@@ -54,13 +54,14 @@ interface PublishEngineProps {
   /**
    * Issue #215 — when set to 'video', routes to the video bundle-mode publish
    * surface (VideoPublishPanel) instead of the WordPress publish form.
-   * Consistent with the trackMedium prop pattern introduced on PreviewEngine (#214).
+   * Canonical prop name aligned with EngineHost (which passes medium={medium})
+   * and ProductionEngine. Renamed from trackMedium in fix/engine-host-medium-prop-wiring.
    * NOTE: orchestrator wiring is a follow-up; this prop is set by the caller.
    */
-  trackMedium?: 'blog' | 'video';
+  medium?: 'blog' | 'video';
 }
 
-export function PublishEngine({ draft, publishTargetId, trackId, trackMedium }: PublishEngineProps) {
+export function PublishEngine({ draft, publishTargetId, trackId, medium }: PublishEngineProps) {
   // ── Context from server-driven provider ───────────────────────────────────
   const { context, setStageStatus, signalStageComplete } = useProjectContext();
 
@@ -311,7 +312,7 @@ export function PublishEngine({ draft, publishTargetId, trackId, trackMedium }: 
     // When the track medium is video, delegate to the video bundle-mode surface.
     // The WordPress-specific flow (progress stream, panelProps) is irrelevant for
     // video tracks and is intentionally bypassed here.
-    if (trackMedium === 'video') {
+    if (medium === 'video') {
       return (
         <VideoPublishPanel
           draftJson={localDraft?.draft_json ?? null}

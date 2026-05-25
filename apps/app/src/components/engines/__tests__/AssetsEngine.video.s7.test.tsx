@@ -145,7 +145,7 @@ function mountWithGenerateMode(fetchImpl?: (url: string, init?: RequestInit) => 
     >
       <AssetsEngine
         draft={null}
-        trackMedium="video"
+        medium="video"
         trackId="track-video-s7"
       />
     </StandaloneProjectContextProvider>,
@@ -211,7 +211,7 @@ describe('AssetsEngineVideo — S7 Regenerate button in generate mode (#220)', (
       >
         <AssetsEngine
           draft={null}
-          trackMedium="video"
+          medium="video"
           trackId="track-video-s7"
         />
       </StandaloneProjectContextProvider>,
@@ -307,7 +307,7 @@ describe('AssetsEngineVideo — S7 Regenerate button in prompts-only mode (#220)
       >
         <AssetsEngine
           draft={null}
-          trackMedium="video"
+          medium="video"
           trackId="track-video-s7"
         />
       </StandaloneProjectContextProvider>,

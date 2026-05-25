@@ -2,7 +2,7 @@
  * AssetsEngine — video routing + read-only layout (issue #213)
  *
  * TDD: red→green per acceptance criterion.
- * Blog regression: existing flow unchanged when trackMedium is absent.
+ * Blog regression: existing flow unchanged when medium is absent.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
@@ -145,7 +145,7 @@ function mountVideoAssets(opts: { onCopyText?: (text: string) => void } = {}) {
     >
       <AssetsEngine
         draft={null}
-        trackMedium="video"
+        medium="video"
         trackId="track-video-1"
         onCopyText={opts.onCopyText}
       />
@@ -280,7 +280,7 @@ describe('AssetsEngine — video routing (issue #213)', () => {
 })
 
 describe('AssetsEngine — blog regression (issue #213)', () => {
-  it('renders the existing blog layout when trackMedium is absent', async () => {
+  it('renders the existing blog layout when medium is absent', async () => {
     mountBlogAssets()
     // Video-specific test ID must NOT appear
     await new Promise((r) => setTimeout(r, 50))
@@ -340,7 +340,7 @@ function mountVideoAssetsWithMode(
     >
       <AssetsEngine
         draft={null}
-        trackMedium="video"
+        medium="video"
         trackId="track-video-1"
         onToast={onToast}
       />
@@ -438,7 +438,7 @@ describe('AssetsEngine — S6 image-mode persistence (issue #219)', () => {
       >
         <AssetsEngine
           draft={null}
-          trackMedium="video"
+          medium="video"
           trackId="track-video-1"
           onToast={onToast}
         />
