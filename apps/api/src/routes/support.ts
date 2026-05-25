@@ -59,11 +59,11 @@ type UntypedSupabase = {
 };
 
 function supportThreads(sb: ReturnType<typeof createServiceClient>) {
-  return (sb as unknown as UntypedSupabase).from('support_threads') as SupabaseQueryBuilder<SupportThreadRow>;
+  return (sb as unknown as UntypedSupabase).from('support_threads') as unknown as SupabaseQueryBuilder<SupportThreadRow>;
 }
 
 function supportMessages(sb: ReturnType<typeof createServiceClient>) {
-  return (sb as unknown as UntypedSupabase).from('support_messages') as SupabaseQueryBuilder<SupportMessageRow>;
+  return (sb as unknown as UntypedSupabase).from('support_messages') as unknown as SupabaseQueryBuilder<SupportMessageRow>;
 }
 
 // ---------------------------------------------------------------------------
