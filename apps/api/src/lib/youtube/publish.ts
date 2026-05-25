@@ -241,7 +241,7 @@ function makeLiveTransport(): YouTubeTransport {
           Authorization: `Bearer ${oauthToken}`,
           'Content-Type': 'video/*',
         },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         body: body as any,
         // Node 18+ fetch supports duplex for streaming
         // @ts-expect-error duplex is Node-specific

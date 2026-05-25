@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,6 +28,7 @@ import { fetchTracks, nextTrackStage, pushStage } from '@/lib/pipeline/advanceUr
 import { getTrackStageResults } from '@/lib/pipeline/stage-results-by-track';
 import type { AssetsResult, PipelineContext, PipelineStage } from './types';
 import { AssetsEngineVideo } from './AssetsEngineVideo';
+import { getScopedSlots } from '@/lib/assets/scopeFilter';
 
 /* ── Types ── */
 
@@ -364,7 +365,12 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   // A persisted errorCode (e.g. 'QUOTA_EXCEEDED') also blocks autopilot — prevents re-dispatch on reload.
   const assetsErrored = assetsResult != null && !assetsComplete && !!(assetsResult as { errorCode?: string }).errorCode;
   const assetsBlocked = assetsComplete || assetsErrored;
-  const assetsConfig = (ctx.context.autopilotConfig as { assets?: { mode?: string; providerOverride?: string | null } } | null | undefined)?.assets as { mode?: string; providerOverride?: string | null } | null | undefined;
+  type AssetsScope = 'all' | 'featured_only' | 'featured_and_conclusion';
+  const assetsConfig = (ctx.context.autopilotConfig as { assets?: { mode?: string; providerOverride?: string | null; imageScope?: AssetsScope } } | null | undefined)?.assets as { mode?: string; providerOverride?: string | null; imageScope?: AssetsScope } | null | undefined;
+  const scopedSlotCards = useMemo(
+    () => getScopedSlots(slotCards, assetsConfig?.imageScope ?? undefined),
+    [slotCards, assetsConfig?.imageScope],
+  );
   const autopilotConfig = ctx.context.autopilotConfig;
   const overviewMode = autoMode === 'overview';
   // actor.matches substates (generatingBriefs, refining, generatingImages) are actor-only concepts.
@@ -447,7 +453,7 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     void handleGenerateAllSlots();
   // handleGenerateAllSlots is a stable function declaration in this scope.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoMode, autoPaused, isGeneratingImages, slotCards.length, slotAssets, generatingAll, generatingSlot, assetsBlocked]);
+  }, [autoMode, autoPaused, isGeneratingImages, slotCards.length, scopedSlotCards.length, slotAssets, generatingAll, generatingSlot, assetsBlocked]);
 
   const autoFinishRef = useRef(false);
   useEffect(() => {
@@ -457,14 +463,15 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     if (finishing) return;
     if (autoFinishRef.current) return;
     const hasGeneratedAll =
-      slotCards.length > 0 && Object.keys(slotAssets).length >= slotCards.length;
+      slotCards.length > 0 &&
+      (scopedSlotCards.length === 0 || Object.keys(slotAssets).length >= scopedSlotCards.length);
     const hasExistingOnly = slotCards.length === 0 && existingAssets.length > 0;
     if (!hasGeneratedAll && !hasExistingOnly) return;
     autoFinishRef.current = true;
     void handleFinish();
   // handleFinish is a stable function declaration in this scope.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoMode, autoPaused, isGeneratingImages, slotCards.length, slotAssets, existingAssets.length, finishing, assetsBlocked]);
+  }, [autoMode, autoPaused, isGeneratingImages, slotCards.length, scopedSlotCards.length, slotAssets, existingAssets.length, finishing, assetsBlocked]);
 
   // When retrySignal is bumped by the orchestrator (user picked a new provider),
   // reset autopilot refs and clear generated images so the full flow re-runs.
@@ -812,11 +819,11 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   }
 
   async function handleGenerateAllSlots() {
-    if (generatingSlot || generatingAll || slotCards.length === 0) return;
+    if (generatingSlot || generatingAll || scopedSlotCards.length === 0) return;
     setGeneratingAll(true);
     let quotaErrorCode: string | null = null;
     try {
-      for (const card of slotCards) {
+      for (const card of scopedSlotCards) {
         setGeneratingSlot(card.slot);
         const result = await generateSlotImage(card);
         if (result.errorCode === 'QUOTA_EXCEEDED' && !quotaErrorCode) {

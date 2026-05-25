@@ -23,7 +23,7 @@
  */
 import { inngest } from '../../jobs/client.js';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type Sb = any;
 
 export type StageRunStatus =

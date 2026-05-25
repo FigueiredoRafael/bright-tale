@@ -1,4 +1,6 @@
 'use client';
+ 
+// Error boundary intentionally uses <a> for a hard reload (Link tries the cached router state).
 
 interface GlobalErrorProps {
   error: Error & { digest?: string };

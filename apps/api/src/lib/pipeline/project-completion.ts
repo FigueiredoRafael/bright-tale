@@ -20,7 +20,7 @@
  * Never opens content_drafts — honors ADR-0003.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type Sb = any;
 
 /**

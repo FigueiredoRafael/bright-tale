@@ -101,4 +101,71 @@ export async function aiProvidersRoutes(app: FastifyInstance) {
 
     return reply.send({ data: maskRow(data as unknown as Record<string, unknown>), error: null })
   })
+
+  // ── POST /api/ai-providers/:id/sync-models ─────────────────────────────
+  // Fetches the live model list from the provider API and returns it.
+  // Does NOT auto-save — the admin reviews and saves via PATCH.
+  app.post('/:id/sync-models', async (req, reply) => {
+    const sb = createServiceClient()
+    const denied = await assertAdmin(req, reply, sb)
+    if (denied) return
+
+    const { id } = req.params as { id: string }
+    const { data: row, error } = await sb
+      .from('ai_provider_configs')
+      .select('id, provider, api_key')
+      .eq('id', id)
+      .single()
+
+    if (error || !row) throw new ApiError(404, 'Provider not found', 'AI_PROVIDER_NOT_FOUND')
+
+    const { provider, api_key } = row as { provider: string; api_key: string | null }
+
+    if (!api_key || INTERNAL_KEYS.has(api_key)) {
+      throw new ApiError(400, 'No API key configured for this provider', 'NO_API_KEY')
+    }
+
+    let key: string
+    try {
+      key = decrypt(api_key, { aad: aad(id) })
+    } catch {
+      throw new ApiError(500, 'Failed to decrypt API key', 'DECRYPT_ERROR')
+    }
+
+    let models: string[] = []
+
+    if (provider === 'openai') {
+      const res = await fetch('https://api.openai.com/v1/models', {
+        headers: { Authorization: `Bearer ${key}` },
+      })
+      if (!res.ok) throw new ApiError(502, `OpenAI returned ${res.status}`, 'UPSTREAM_ERROR')
+      const json = await res.json() as { data: { id: string }[] }
+      models = json.data
+        .map(m => m.id)
+        .filter(id => /^(gpt|o1|o3|o4|chatgpt)/.test(id) && !/instruct|embed|dall|tts|whisper|realtime|search|audio/.test(id))
+        .sort()
+
+    } else if (provider === 'anthropic') {
+      const res = await fetch('https://api.anthropic.com/v1/models', {
+        headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      })
+      if (!res.ok) throw new ApiError(502, `Anthropic returned ${res.status}`, 'UPSTREAM_ERROR')
+      const json = await res.json() as { data: { id: string; display_name: string }[] }
+      models = json.data.map(m => m.id).sort()
+
+    } else if (provider === 'gemini') {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}&pageSize=100`)
+      if (!res.ok) throw new ApiError(502, `Gemini returned ${res.status}`, 'UPSTREAM_ERROR')
+      const json = await res.json() as { models: { name: string; supportedGenerationMethods?: string[] }[] }
+      models = (json.models ?? [])
+        .filter(m => (m.supportedGenerationMethods ?? []).includes('generateContent') && !/embed|aqa/.test(m.name))
+        .map(m => m.name.replace(/^models\//, ''))
+        .sort()
+
+    } else {
+      throw new ApiError(400, `Sync not supported for provider: ${provider}`, 'SYNC_NOT_SUPPORTED')
+    }
+
+    return reply.send({ data: { models }, error: null })
+  })
 }

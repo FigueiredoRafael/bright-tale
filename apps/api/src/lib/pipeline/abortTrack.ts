@@ -14,7 +14,7 @@
  */
 import { createServiceClient } from '../supabase/index.js';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type Sb = any;
 
 const IN_FLIGHT_STATUSES = ['queued', 'running', 'awaiting_user'] as const;

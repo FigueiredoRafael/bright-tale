@@ -40,7 +40,7 @@ vi.mock('../../lib/supabase/index.js', () => ({
       if (table === 'stage_runs') {
         return {
           select: (cols: string) => ({
-            eq: (col: string, val: unknown) => {
+            eq: (_col: string, _val: unknown) => {
               if (cols.includes('input_json')) {
                 return { maybeSingle: () => Promise.resolve({ data: stageRunRow, error: null }) };
               }

@@ -23,11 +23,11 @@ export function CreditsBanner() {
     const tier = pct >= 95 ? "critical" : pct >= 80 ? "warning" : null;
     if (!tier) return null;
 
-    const key = `${tier}-${status.credits.resetAt ?? ""}`;
+    const key = `${tier}-${status.credits.creditsResetAt ?? ""}`;
     if (dismissed === key) return null;
 
     const isCritical = tier === "critical";
-    const cap = status.credits.total + status.credits.addon;
+    const cap = status.credits.creditsTotal + status.credits.creditsAddon;
 
     function dismiss() {
         setDismissed(key);
@@ -48,7 +48,7 @@ export function CreditsBanner() {
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span className="truncate">
                     {isCritical
-                        ? `Só restam ${status.credits.remaining.toLocaleString("pt-BR")} créditos (${(100 - pct).toFixed(0)}% do plano).`
+                        ? `Só restam ${status.credits.available.toLocaleString("pt-BR")} créditos (${(100 - pct).toFixed(0)}% do plano).`
                         : `Você já usou ${pct.toFixed(0)}% dos ${cap.toLocaleString("pt-BR")} créditos do mês.`}
                 </span>
             </div>

@@ -33,7 +33,7 @@ import { mirrorFromLegacy } from '../lib/pipeline/mirror-from-legacy.js';
 import { ensureTracksForProject } from '../lib/pipeline/legacy-track-migrator.js';
 import { STAGES, type Stage, type StageRun } from '@brighttale/shared/pipeline/inputs';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type Sb = any;
 
 /**

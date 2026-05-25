@@ -1,0 +1,117 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildBillingStatus > (a) Free plan, no bonus — returns correct status payload with creditsReserved=0 1`] = `
+{
+  "credits": {
+    "available": 900,
+    "creditsAddon": 0,
+    "creditsReserved": 0,
+    "creditsResetAt": null,
+    "creditsTotal": 1000,
+    "creditsUsed": 100,
+    "signupBonusCredits": 0,
+    "signupBonusExpiresAt": null,
+    "unlimited": false,
+  },
+  "plan": {
+    "billingCycle": null,
+    "credits": 1000,
+    "displayName": "Free",
+    "id": "free",
+    "usdMonthly": 0,
+  },
+  "subscription": {
+    "planExpiresAt": null,
+    "planStartedAt": null,
+    "stripeCustomerId": null,
+    "stripeSubscriptionId": null,
+  },
+}
+`;
+
+exports[`buildBillingStatus > (b) Free plan with active signup bonus — bonus fields exposed in payload 1`] = `
+{
+  "credits": {
+    "available": 1400,
+    "creditsAddon": 0,
+    "creditsReserved": 0,
+    "creditsResetAt": null,
+    "creditsTotal": 1000,
+    "creditsUsed": 100,
+    "signupBonusCredits": 500,
+    "signupBonusExpiresAt": "2099-12-31T00:00:00.000Z",
+    "unlimited": false,
+  },
+  "plan": {
+    "billingCycle": null,
+    "credits": 1000,
+    "displayName": "Free",
+    "id": "free",
+    "usdMonthly": 0,
+  },
+  "subscription": {
+    "planExpiresAt": null,
+    "planStartedAt": null,
+    "stripeCustomerId": null,
+    "stripeSubscriptionId": null,
+  },
+}
+`;
+
+exports[`buildBillingStatus > (c) Pro plan with reservations — creditsReserved reflected in payload 1`] = `
+{
+  "credits": {
+    "available": 42750,
+    "creditsAddon": 5000,
+    "creditsReserved": 250,
+    "creditsResetAt": null,
+    "creditsTotal": 50000,
+    "creditsUsed": 12000,
+    "signupBonusCredits": 0,
+    "signupBonusExpiresAt": null,
+    "unlimited": false,
+  },
+  "plan": {
+    "billingCycle": "monthly",
+    "credits": 50000,
+    "displayName": "Pro",
+    "id": "pro",
+    "usdMonthly": 99,
+  },
+  "subscription": {
+    "planExpiresAt": null,
+    "planStartedAt": null,
+    "stripeCustomerId": "cus_pro",
+    "stripeSubscriptionId": "sub_pro",
+  },
+}
+`;
+
+exports[`buildBillingStatus > (d) VIP org — unlimited sentinel; creditsReserved still reported 1`] = `
+{
+  "credits": {
+    "available": Infinity,
+    "creditsAddon": 0,
+    "creditsReserved": 0,
+    "creditsResetAt": null,
+    "creditsTotal": 50000,
+    "creditsUsed": 0,
+    "signupBonusCredits": 0,
+    "signupBonusExpiresAt": null,
+    "unlimited": true,
+  },
+  "plan": {
+    "billingCycle": "annual",
+    "credits": 50000,
+    "displayName": "Pro",
+    "id": "pro",
+    "usdMonthly": 99,
+  },
+  "subscription": {
+    "planExpiresAt": null,
+    "planStartedAt": null,
+    "stripeCustomerId": null,
+    "stripeSubscriptionId": null,
+  },
+}
+`;

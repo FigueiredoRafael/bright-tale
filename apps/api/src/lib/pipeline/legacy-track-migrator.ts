@@ -7,7 +7,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type Sb = SupabaseClient<any, any, any>;
 
 export type Medium = 'blog' | 'video' | 'shorts' | 'podcast';

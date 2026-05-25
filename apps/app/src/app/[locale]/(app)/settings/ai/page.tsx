@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Plus, Trash2, CheckCircle2, XCircle, Sparkles } from "lucide-react";
+import { ModuleAssignmentsSection } from "@/components/settings/ModuleAssignmentsSection";
 
 interface AIConfig {
     id: string;
@@ -60,6 +61,7 @@ export default function AISettingsPage() {
 
     useEffect(() => {
         fetchConfigs();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     async function fetchConfigs() {
@@ -410,6 +412,11 @@ export default function AISettingsPage() {
                         </Card>
                     ))
                 )}
+            </div>
+
+            {/* Module AI Assignments */}
+            <div className="mt-6">
+                <ModuleAssignmentsSection />
             </div>
 
             {/* Info Card */}

@@ -23,7 +23,7 @@ interface StageRequestedEvent {
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type Sb = any;
 
 type Medium = 'blog' | 'video' | 'shorts' | 'podcast';

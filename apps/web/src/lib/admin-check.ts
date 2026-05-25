@@ -14,7 +14,7 @@ const MANAGER_ROLES: ReadonlySet<ManagerRole> = new Set([
   'readonly',
 ]);
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 export async function isAdminUser(supabase: any, userId: string): Promise<boolean> {
   const { data: manager } = await supabase
     .from('managers')
@@ -31,7 +31,7 @@ export async function isAdminUser(supabase: any, userId: string): Promise<boolea
  * needs the role / metadata, not just a boolean. Does NOT fall back to
  * user_roles (that table has no metadata to return).
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 export async function getManager(supabase: any, userId: string): Promise<{
   id: string;
   role: ManagerRole;

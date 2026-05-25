@@ -18,7 +18,7 @@
  */
 import type { Medium } from '@brighttale/shared/pipeline/inputs';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type Sb = any;
 
 export type PublishTargetType =

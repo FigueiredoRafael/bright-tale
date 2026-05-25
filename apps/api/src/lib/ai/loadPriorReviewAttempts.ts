@@ -16,7 +16,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { PriorReviewAttempt } from './prompts/review.js';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type Sb = SupabaseClient<any, any, any>;
 
 const MAX_PRIORS = 3;

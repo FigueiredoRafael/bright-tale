@@ -2,6 +2,7 @@
 
 import { createAdminLayout } from '@tn-figueiredo/admin'
 import { ADMIN_LAYOUT_CONFIG } from '@/lib/admin-layout-config'
+import { MobileAdminShell } from './mobile-admin-shell'
 
 const AdminLayout = createAdminLayout(ADMIN_LAYOUT_CONFIG)
 
@@ -12,5 +13,16 @@ export function AdminShell({
   userEmail: string
   children: React.ReactNode
 }) {
-  return <AdminLayout userEmail={userEmail}>{children}</AdminLayout>
+  return (
+    <>
+      {/* Mobile / tablet: custom hamburger shell */}
+      <div className="lg:hidden h-screen">
+        <MobileAdminShell userEmail={userEmail}>{children}</MobileAdminShell>
+      </div>
+      {/* Desktop: package layout */}
+      <div className="hidden lg:block">
+        <AdminLayout userEmail={userEmail}>{children}</AdminLayout>
+      </div>
+    </>
+  )
 }

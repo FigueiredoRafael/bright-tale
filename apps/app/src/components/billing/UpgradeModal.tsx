@@ -70,13 +70,13 @@ export function UpgradeModal({ open, reason, onClose }: Props) {
                         <div className="flex items-center justify-between text-xs">
                             <span className="text-muted-foreground">Créditos restantes</span>
                             <span className="font-mono tabular-nums">
-                                {status.credits.remaining.toLocaleString("pt-BR")} / {(status.credits.total + status.credits.addon).toLocaleString("pt-BR")}
+                                {status.credits.available.toLocaleString("pt-BR")} / {(status.credits.creditsTotal + status.credits.creditsAddon).toLocaleString("pt-BR")}
                             </span>
                         </div>
-                        {status.credits.resetAt && (
+                        {status.credits.creditsResetAt && (
                             <div className="text-[11px] text-muted-foreground flex items-center gap-1">
                                 <AlertCircle className="h-3 w-3" />
-                                Reseta em {new Date(status.credits.resetAt).toLocaleDateString("pt-BR")}
+                                Reseta em {new Date(status.credits.creditsResetAt).toLocaleDateString("pt-BR")}
                             </div>
                         )}
                     </div>

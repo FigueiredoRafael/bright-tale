@@ -12,7 +12,6 @@ import type { Database } from '@brighttale/shared/types/database';
 import { authenticate } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
-import { ApiError } from '../lib/api/errors.js';
 import {
   createAutopilotTemplateSchema,
   updateAutopilotTemplateSchema,

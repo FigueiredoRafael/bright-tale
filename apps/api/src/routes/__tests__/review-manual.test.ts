@@ -65,7 +65,7 @@ vi.mock('../../lib/supabase/index.js', () => ({
       if (table === 'content_drafts') {
         return {
           update: (updateData: Record<string, unknown>) => ({
-            eq: (col: string, val: string) => {
+            eq: (_col: string, _val: string) => {
               // Apply update to nextDraft
               Object.assign(nextDraft, updateData);
               return {
@@ -115,9 +115,10 @@ vi.mock('../../lib/supabase/index.js', () => ({
   }),
 }));
 
-vi.mock('../../lib/credits.js', () => ({
-  checkCredits: async () => ({ ok: true }),
-  debitCredits: async () => ({ ok: true }),
+vi.mock('../../lib/credits/reservations.js', () => ({
+  reserve: async () => 'mock-token',
+  commit: async () => undefined,
+  release: async () => undefined,
 }));
 
 // Fake authenticate middleware — sets userId so handlers proceed.

@@ -3,8 +3,20 @@
 import { useEffect, useState, useCallback } from "react";
 
 export interface BillingStatus {
-    plan: { id: "free" | "starter" | "creator" | "pro"; displayName: string; credits: number; billingCycle: "monthly" | "annual" | null };
-    credits: { total: number; used: number; addon: number; remaining: number; resetAt: string | null };
+    plan: { id: "free" | "starter" | "creator" | "pro"; displayName: string; credits: number; usdMonthly: number; billingCycle: "monthly" | "annual" | null };
+    /** Full CreditBalance from V2-006.4 — includes creditsReserved, signupBonus, unlimited sentinel */
+    credits: {
+        unlimited: boolean;
+        creditsTotal: number;
+        creditsUsed: number;
+        creditsAddon: number;
+        /** Credits currently reserved (held, not yet committed). V2-006. */
+        creditsReserved: number;
+        creditsResetAt: string | null;
+        available: number;
+        signupBonusCredits: number;
+        signupBonusExpiresAt: string | null;
+    };
     subscription: { stripeCustomerId: string | null; stripeSubscriptionId: string | null; planStartedAt: string | null; planExpiresAt: string | null };
 }
 
@@ -35,7 +47,7 @@ export function useBillingStatus(pollMs?: number) {
 
 export function creditUsagePct(status: BillingStatus | null): number {
     if (!status) return 0;
-    const cap = status.credits.total + status.credits.addon;
+    const cap = status.credits.creditsTotal + status.credits.creditsAddon;
     if (cap === 0) return 0;
-    return Math.min(100, (status.credits.used / cap) * 100);
+    return Math.min(100, (status.credits.creditsUsed / cap) * 100);
 }

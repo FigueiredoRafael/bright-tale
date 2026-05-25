@@ -5,10 +5,9 @@
  * for all 4 agent stages: Brainstorm → Research → Production → Review
  */
 
-import type { AIProvider, AgentType } from "./provider.js";
+import type { AIProvider } from "./provider.js";
 import type { AIAdapter } from "./adapter.js";
 import type { DiscoveryInput, DiscoveryOutput } from "@brighttale/shared/schemas/discovery";
-import { discoveryOutputSchema } from "@brighttale/shared/schemas/discovery";
 import type {
   BrainstormInput,
   BrainstormOutput,
@@ -19,37 +18,31 @@ import type {
   ReviewInput,
   ReviewOutput,
 } from "@brighttale/shared/types/agents";
-import {
-  brainstormOutputSchema,
-  researchOutputSchema,
-  productionOutputSchema,
-  reviewOutputSchema,
-} from "@brighttale/shared/schemas/agents";
 
 export class ProviderAIAdapter implements AIAdapter {
   constructor(private provider: AIProvider) {}
 
-  async generateDiscovery(input: DiscoveryInput): Promise<DiscoveryOutput> {
+  async generateDiscovery(_input: DiscoveryInput): Promise<DiscoveryOutput> {
     // This adapter is deprecated — use generateWithFallback + buildBrainstormMessage instead
     throw new Error('ProviderAIAdapter is deprecated. Use generateWithFallback + message builders.');
   }
 
-  async generateBrainstorm(input: BrainstormInput): Promise<BrainstormOutput> {
+  async generateBrainstorm(_input: BrainstormInput): Promise<BrainstormOutput> {
     // This adapter is deprecated — use generateWithFallback + buildBrainstormMessage instead
     throw new Error('ProviderAIAdapter is deprecated. Use generateWithFallback + message builders.');
   }
 
-  async generateResearch(input: ResearchInput): Promise<ResearchOutput> {
+  async generateResearch(_input: ResearchInput): Promise<ResearchOutput> {
     // This adapter is deprecated — use generateWithFallback + buildResearchMessage instead
     throw new Error('ProviderAIAdapter is deprecated. Use generateWithFallback + message builders.');
   }
 
-  async generateProduction(input: ProductionInput): Promise<ProductionOutput> {
+  async generateProduction(_input: ProductionInput): Promise<ProductionOutput> {
     // This adapter is deprecated — use generateWithFallback + buildProduceMessage instead
     throw new Error('ProviderAIAdapter is deprecated. Use generateWithFallback + message builders.');
   }
 
-  async generateReview(input: ReviewInput): Promise<ReviewOutput> {
+  async generateReview(_input: ReviewInput): Promise<ReviewOutput> {
     // This adapter is deprecated — use generateWithFallback + buildReviewMessage instead
     throw new Error('ProviderAIAdapter is deprecated. Use generateWithFallback + message builders.');
   }

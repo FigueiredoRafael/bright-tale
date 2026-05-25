@@ -27,11 +27,30 @@ Estabilizar o produto para uso diário real (Bright Curios blog + YouTube) e hab
 
 | Card | Nome | Prioridade | Dias | Status |
 |---|---|---|---:|---|
-| V2-006 | Credits hold/reserve + FOR UPDATE (race fix) | MUST | 3 | 🔲 |
+| V2-006 | Credits hold/reserve + FOR UPDATE (race fix) | MUST | 3 | ✅ |
 | V2-007 | Stripe Products/Prices setup + env wiring | MUST | 1 | 🔲 |
 | V2-008 | Checkout → webhook → credit grant e2e validation | MUST | 2 | 🔲 |
 | V2-009 | Billing settings page (plan + credits + Portal) | MUST | 2 | 🔲 |
 | | **Subtotal subscription** | | **8** | |
+
+### V2-006 — Credit Reservations (reserve/commit/release/expire)
+
+Status: **✅ Merged** (PR #115–#121 + #122)
+
+**Architecture:** Two-phase credit lifecycle to fix the race condition in concurrent AI job executions:
+
+1. **reserve** — `reserve_credits` RPC; `SELECT FOR UPDATE` on `organizations`; creates a `credit_reservations` row (`status=held`); increments `organizations.credits_reserved`.
+2. **commit** — `commit_reservation` RPC; debits `credits_used`, decrements `credits_reserved`, transitions row to `committed`.
+3. **release** — `release_reservation` RPC; decrements `credits_reserved`, transitions to `released`. Best-effort — callers swallow errors.
+4. **expire** — `expire_stale_reservations` RPC; Inngest cron (`expire-reservations`) sweeps rows where `expires_at < now()` and `status=held`.
+
+**TS boundary:** thin façade at `apps/api/src/lib/credits/reservations.ts` wraps RPCs and maps error codes (`INSUFFICIENT_CREDITS → 402`, `RESERVATION_NOT_FOUND → 404`). All locking logic is in SQL.
+
+**`withReservation` wrapper** (`apps/api/src/jobs/utils/with-reservation.ts`) used by all four generator jobs (brainstorm, research, content-generate, production-generate, production-produce).
+
+**V2-006.7 (cleanup):** feature-flag `use_credit_reservations` permanently flipped to `true`; legacy `checkCredits`/`debitCredits` call sites removed from all routes and jobs.
+
+PRs: #115 (migration + RPCs), #116 (balance façade), #117 (expire cron), #118 (withReservation + job migration), #119 (billing status), #120 (subscription release hook), #121 (integration merge), #122 (V2-006.7 cleanup).
 
 ## Cards — Segurança
 

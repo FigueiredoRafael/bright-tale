@@ -41,6 +41,7 @@ export async function stagesRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       // Check if stage already exists for this project and type
+      // eslint-disable-next-line prefer-const
       let { data: existingStage, error: stageErr } = await sb
         .from('stages')
         .select('*, revisions(count)')
@@ -216,6 +217,7 @@ export async function stagesRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         // Get the stage (try normalized first, then original)
+        // eslint-disable-next-line prefer-const
         let { data: stage, error: stageErr } = await sb
           .from('stages')
           .select('*, revisions(*)')
@@ -307,7 +309,8 @@ export async function stagesRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         // Get the existing stage
-        let { data: existingStage, error: stageErr } = await sb
+        // eslint-disable-next-line prefer-const
+      let { data: existingStage, error: stageErr } = await sb
           .from('stages')
           .select('*, revisions(count)')
           .eq('project_id', projectId)
@@ -418,7 +421,8 @@ export async function stagesRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         // Get the existing stage
-        let { data: existingStage, error: stageErr } = await sb
+        // eslint-disable-next-line prefer-const
+      let { data: existingStage, error: stageErr } = await sb
           .from('stages')
           .select('*, revisions(count)')
           .eq('project_id', projectId)

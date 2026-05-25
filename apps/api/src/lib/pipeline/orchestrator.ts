@@ -35,7 +35,7 @@ import type { AutopilotConfig } from '@brighttale/shared/schemas/autopilotConfig
 // The `stage_runs` table and the `projects.mode`/`paused`/`autopilot_config`
 // columns are introduced by the migration shipping with this slice. Until
 // `npm run db:types` regenerates `Database`, we cast around it.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type Sb = any;
 
 /**

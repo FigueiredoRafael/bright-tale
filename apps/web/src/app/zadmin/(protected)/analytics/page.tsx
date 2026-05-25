@@ -12,7 +12,7 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function val(result: PromiseSettledResult<any>): any {
   return result.status === 'fulfilled' ? result.value : { data: [], count: 0 };
 }

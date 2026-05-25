@@ -140,6 +140,7 @@ export default function MfaPage() {
             </p>
 
             <div style={s.qrBox}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 alt="TOTP QR code"
                 style={{ width: 196, height: 196, background: '#fff', padding: 6, borderRadius: 8 }}

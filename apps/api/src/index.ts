@@ -58,7 +58,11 @@ import { bulkRoutes } from "./routes/bulk.js";
 import { voiceRoutes } from "./routes/voice.js";
 import { publishingDestinationsRoutes } from "./routes/publishing-destinations.js";
 import { feedsRoutes } from "./routes/feeds.js";
-import { notificationsRoutes } from "./routes/notifications.js";
+import { notificationsRoutes, userNotificationsRoutes } from "./routes/notifications.js";
+import { supportRoutes } from "./routes/support.js";
+import { adminFinanceRoutes } from "./routes/admin-finance.js";
+import { refundsRoutes } from "./routes/refunds.js";
+import { couponsRoutes } from "./routes/coupons.js";
 import { personasRoutes } from "./routes/personas.js";
 import { channelPersonasRoutes } from "./routes/channel-personas.js";
 import { adminPersonaGuardrailsRoutes } from "./routes/admin-persona-guardrails.js";
@@ -66,6 +70,8 @@ import { autopilotTemplatesRoutes } from "./routes/autopilot-templates.js";
 import { adminPersonaArchetypesRoutes } from "./routes/admin-persona-archetypes.js";
 import { adminPipelineSettingsRoutes } from "./routes/admin-pipeline-settings.js";
 import { aiProvidersRoutes } from "./routes/ai-providers.js";
+import { moduleAiAssignmentsRoutes } from "./routes/module-ai-assignments.js";
+import { chatRoutes } from "./routes/chat.js";
 import { adminCreditSettingsRoutes } from "./routes/admin-credit-settings.js";
 import { testMockAiRoutes } from "./routes/test-mock-ai.js";
 import { currencyRefreshRoutes } from "./routes/currency-refresh.js";
@@ -336,9 +342,16 @@ server.register(adminPersonaGuardrailsRoutes, { prefix: "/agents/personas/guardr
 server.register(adminPersonaArchetypesRoutes, { prefix: "/agents/personas/archetypes" });
 server.register(adminPipelineSettingsRoutes, { prefix: "/admin/pipeline-settings" });
 server.register(aiProvidersRoutes, { prefix: "/ai-providers" });
+server.register(moduleAiAssignmentsRoutes, { prefix: "/ai-providers/module-assignments" });
+server.register(chatRoutes, { prefix: "/chat" });
 server.register(adminCreditSettingsRoutes, { prefix: "/admin/credit-settings" });
 server.register(autopilotTemplatesRoutes, { prefix: "/autopilot-templates" });
 server.register(currencyRefreshRoutes);
+server.register(userNotificationsRoutes, { prefix: "/notifications" });
+server.register(supportRoutes, { prefix: "/support" });
+server.register(adminFinanceRoutes, { prefix: "/admin/finance" });
+server.register(refundsRoutes);
+server.register(couponsRoutes, { prefix: "/coupons" });
 
 // Test-only: mock AI queue endpoints — only registered when MOCK_AI_PROVIDER=1 and not production.
 server.register(testMockAiRoutes);

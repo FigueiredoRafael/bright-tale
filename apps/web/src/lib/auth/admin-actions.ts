@@ -1,17 +1,39 @@
 'use server'
 
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 import {
-  signInWithPassword as _signInWithPassword,
   signInWithGoogle as _signInWithGoogle,
   forgotPassword as _forgotPassword,
   resetPassword as _resetPassword,
-  signOutAction as _signOut,
 } from '@tn-figueiredo/auth-nextjs/actions'
 import {
   gateAdminLogin,
   gateForgotPassword,
   finishWithUniformDelay,
 } from './admin-login-gate'
+
+// Must match the prefix used in server.ts and middleware.ts.
+const ADMIN_COOKIE_PREFIX = 'sb-admin'
+
+async function createAdminAnonClient() {
+  const cookieStore = await cookies()
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookieOptions: { name: ADMIN_COOKIE_PREFIX },
+      cookies: {
+        getAll() { return cookieStore.getAll() },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options),
+          )
+        },
+      },
+    },
+  )
+}
 
 function requireAppUrl(): string {
   const url = process.env.NEXT_PUBLIC_APP_URL
@@ -38,9 +60,20 @@ export async function signInWithPassword(input: { email: string; password: strin
   }
 
   try {
-    const result = await _signInWithPassword(input)
+    const supabase = await createAdminAnonClient()
+    const { error } = await supabase.auth.signInWithPassword({
+      email: input.email,
+      password: input.password,
+    })
     await finishWithUniformDelay(startedAt)
-    return result
+    if (error) {
+      if (/invalid login credentials/i.test(error.message) ||
+          /email not confirmed/i.test(error.message)) {
+        return { ok: false as const, error: 'Email ou senha incorretos.' }
+      }
+      return { ok: false as const, error: 'Erro ao entrar. Tente novamente.' }
+    }
+    return { ok: true as const }
   } catch (e) {
     await finishWithUniformDelay(startedAt)
     throw e
@@ -105,7 +138,21 @@ export async function resetPassword(input: { password: string }) {
 
 export async function signOut() {
   try {
-    return await _signOut()
+    const supabase = await createAdminAnonClient()
+    await supabase.auth.signOut()
+
+    // Also clear any default-prefixed Supabase cookies that may have been
+    // written before the 'sb-admin' isolation was introduced. Without this,
+    // a stale sb-{projectRef}-auth-token lingers and leaks into the user app.
+    const cookieStore = await cookies()
+    const allCookies = cookieStore.getAll()
+    for (const c of allCookies) {
+      if (/^sb-.+-auth-token/.test(c.name) && !c.name.startsWith('sb-admin')) {
+        cookieStore.set(c.name, '', { maxAge: 0, path: '/' })
+      }
+    }
+
+    return { ok: true as const }
   } catch {
     return { ok: true as const }
   }

@@ -19,7 +19,7 @@ import { ApiError } from "../lib/api/errors.js";
 import { generateWithFallback } from "../lib/ai/router.js";
 import { loadAgentPrompt } from "../lib/ai/promptLoader.js";
 import { buildChannelContext } from "../lib/ai/channelContext.js";
-import { checkCredits, debitCredits } from "../lib/credits.js";
+import { reserve, commit, release } from "../lib/credits/reservations.js";
 import {
   blogProductionSettingsSchema,
   reviseSchema,
@@ -587,12 +587,12 @@ export async function contentDraftsRoutes(
         const type =
           (draft.type as "blog" | "video" | "shorts" | "podcast") ?? "blog";
         // Local Ollama runs cost us nothing → no internal credit charge.
-        const totalCost =
+        const _totalCost =
           override.provider === "ollama"
             ? 0
             : calculateDraftCost(type, creditSettings) + CANONICAL_CORE_COST;
 
-        if (totalCost > 0) await checkCredits(orgId, request.userId, totalCost);
+        // Credit reservation handled per-job via withReservation inside production/generate.
         await emitJobEvent(id, "production", "queued", "Iniciando…");
 
         // Override params from this call take precedence over the ones saved on
@@ -714,6 +714,8 @@ export async function contentDraftsRoutes(
     "/:id/canonical-core",
     { preHandler: [authenticate] },
     async (request, reply) => {
+      let coreToken: string | null = null;
+      let coreReservationDone = false;
       try {
         if (!request.userId)
           throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
@@ -847,7 +849,8 @@ export async function contentDraftsRoutes(
           });
         }
 
-        await checkCredits(orgId, request.userId, CANONICAL_CORE_COST);
+        // Reserve credits upfront; commit on success, release on error.
+        coreToken = await reserve(orgId, request.userId, CANONICAL_CORE_COST);
 
         // Pull research approved cards if linked
         let approvedCards: unknown = null;
@@ -961,20 +964,17 @@ export async function contentDraftsRoutes(
           .single();
         if (error) throw error;
 
-        await debitCredits(
-          orgId,
-          request.userId,
-          "canonical-core",
-          "text",
-          CANONICAL_CORE_COST,
-          {
-            draftId: id,
-            type: draft.type,
-          },
-        );
+        await commit(coreToken, CANONICAL_CORE_COST, "canonical-core", "text", {
+          draftId: id,
+          type: draft.type,
+        });
+        coreReservationDone = true;
 
         return reply.send({ data: updated, error: null });
       } catch (error) {
+        if (!coreReservationDone && coreToken !== null) {
+          await release(coreToken).catch(() => { /* best-effort */ });
+        }
         return sendError(reply, error);
       }
     },
@@ -1057,7 +1057,7 @@ export async function contentDraftsRoutes(
         const creditSettings = await loadCreditSettings(sb);
 
         const type = (draft.type as string) ?? "blog";
-        const cost = calculateDraftCost(type, creditSettings);
+        const _cost = calculateDraftCost(type, creditSettings);
 
         // Manual provider short-circuits the LLM call: build the prompt
         // synchronously, emit the full payload to Axiom, persist the draft in
@@ -1208,8 +1208,7 @@ export async function contentDraftsRoutes(
           });
         }
 
-        await checkCredits(orgId, request.userId, cost);
-
+        // Credit reservation handled by production-produce job via withReservation.
         // Async path: dispatch the produce LLM call to the production-produce
         // Inngest worker so the route returns 202 quickly. The worker emits
         // SSE progress events; DraftEngine subscribes via /:id/events.
@@ -1478,6 +1477,8 @@ export async function contentDraftsRoutes(
     "/:id/review",
     { preHandler: [authenticate] },
     async (request, reply) => {
+      let reviewToken: string | null = null;
+      let reviewReservationDone = false;
       try {
         if (!request.userId)
           throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
@@ -1616,7 +1617,8 @@ export async function contentDraftsRoutes(
           });
         }
 
-        await checkCredits(orgId, request.userId, REVIEW_COST);
+        // Reserve credits upfront; commit on success, release on error.
+        reviewToken = await reserve(orgId, request.userId, REVIEW_COST);
 
         // Emit progress events so the SSE-driven modal in ReviewEngine has
         // something to render during this synchronous review run.
@@ -1841,19 +1843,13 @@ export async function contentDraftsRoutes(
           feedback_json: result,
         });
 
-        // Debit credits only on successful agent call
-        await debitCredits(
-          orgId,
-          request.userId,
-          "review",
-          "text",
-          REVIEW_COST,
-          {
-            draftId: id,
-            type: draftType,
-            iteration: iterationCount,
-          },
-        );
+        // Commit credits on successful agent call
+        await commit(reviewToken, REVIEW_COST, "review", "text", {
+          draftId: id,
+          type: draftType,
+          iteration: iterationCount,
+        });
+        reviewReservationDone = true;
 
         await emitJobEvent(
           id,
@@ -1868,6 +1864,9 @@ export async function contentDraftsRoutes(
           error: null,
         });
       } catch (error) {
+        if (!reviewReservationDone && reviewToken !== null) {
+          await release(reviewToken).catch(() => { /* best-effort */ });
+        }
         return sendError(reply, error);
       }
     },
@@ -1956,7 +1955,7 @@ export async function contentDraftsRoutes(
           formatReview && typeof formatReview.score === "number"
             ? formatReview.score
             : null;
-        let reviewScore: number | null =
+        const reviewScore: number | null =
           rawScore2 !== null ? rawScore2 : (legacyScoreMap2[tier2] ?? null);
         let reviewVerdict = "revision_required";
 
@@ -2399,6 +2398,8 @@ export async function contentDraftsRoutes(
     "/:id/reproduce",
     { preHandler: [authenticate] },
     async (request, reply) => {
+      let reviseToken: string | null = null;
+      let reviseReservationDone = false;
       try {
         if (!request.userId)
           throw new ApiError(401, "Not authenticated", "UNAUTHORIZED");
@@ -2419,7 +2420,8 @@ export async function contentDraftsRoutes(
 
         const type = (draft.type as string) ?? "blog";
         const cost = calculateDraftCost(type, creditSettings);
-        await checkCredits(orgId, request.userId, cost);
+        // Reserve credits upfront; commit on success, release on error.
+        reviseToken = await reserve(orgId, request.userId, cost);
 
         let systemPrompt =
           (await loadAgentPrompt(type)) ??
@@ -2535,21 +2537,18 @@ export async function contentDraftsRoutes(
           .single();
         if (error) throw error;
 
-        await debitCredits(
-          orgId,
-          request.userId,
-          `reproduce-${type}`,
-          "text",
-          cost,
-          {
-            draftId: id,
-            type,
-            iteration: iterationCount,
-          },
-        );
+        await commit(reviseToken, cost, `reproduce-${type}`, "text", {
+          draftId: id,
+          type,
+          iteration: iterationCount,
+        });
+        reviseReservationDone = true;
 
         return reply.send({ data: updated, error: null });
       } catch (error) {
+        if (!reviseReservationDone && reviseToken !== null) {
+          await release(reviseToken).catch(() => { /* best-effort */ });
+        }
         return sendError(reply, error);
       }
     },

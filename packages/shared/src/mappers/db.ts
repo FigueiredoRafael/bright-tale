@@ -4,8 +4,9 @@
  * Mappers are the ONLY place where this translation happens.
  */
 
-import type { Json } from "../types/database.js"
-import type { Persona, PersonaWritingVoice, PersonaEeatSignals, PersonaSoul } from "../types/agents.js";
+import type { Json } from "../types/database"
+import type { Persona, PersonaWritingVoice, PersonaEeatSignals, PersonaSoul, PersonaTraits } from "../types/agents";
+import { DEFAULT_PERSONA_TRAITS } from "../types/agents";
 
 // ─── Project ──────────────────────────────────────────────────────────────────
 
@@ -514,15 +515,22 @@ export interface DbPersona {
   id: string;
   slug: string;
   name: string;
+  org_id: string;
+  visibility: 'private' | 'global';
   avatar_url: string | null;
   bio_short: string;
   bio_long: string;
   primary_domain: string;
   domain_lens: string;
   approved_categories: string[];
+  nationality: string | null;
+  age: number | null;
+  gender: string | null;
+  languages_json: Json;
   writing_voice_json: Json;
   eeat_signals_json: Json;
   soul_json: Json;
+  traits_json: Json;
   wp_author_id: number | null;
   archetype_slug: string | null;
   avatar_params_json: Json | null | undefined;
@@ -536,15 +544,22 @@ export function mapPersonaFromDb(row: DbPersona): Persona {
     id: row.id,
     slug: row.slug,
     name: row.name,
+    orgId: row.org_id,
+    visibility: row.visibility ?? 'private',
     avatarUrl: row.avatar_url,
     bioShort: row.bio_short,
     bioLong: row.bio_long,
     primaryDomain: row.primary_domain,
     domainLens: row.domain_lens,
     approvedCategories: row.approved_categories,
+    nationality: row.nationality ?? null,
+    age: row.age ?? null,
+    gender: row.gender ?? null,
+    languagesJson: (row.languages_json as unknown as Persona['languagesJson']) ?? [],
     writingVoiceJson: (row.writing_voice_json ?? {}) as unknown as Persona['writingVoiceJson'],
     eeatSignalsJson: (row.eeat_signals_json ?? {}) as unknown as Persona['eeatSignalsJson'],
     soulJson: (row.soul_json ?? {}) as unknown as Persona['soulJson'],
+    traitsJson: { ...DEFAULT_PERSONA_TRAITS, ...(row.traits_json as unknown as Partial<PersonaTraits> ?? {}) },
     wpAuthorId: row.wp_author_id,
     archetypeSlug: row.archetype_slug,
     avatarParamsJson: (row.avatar_params_json ?? null) as unknown as Persona['avatarParamsJson'],
@@ -558,10 +573,11 @@ export function mapPersonaFromDb(row: DbPersona): Persona {
 // writingVoiceJson.writingStyle: string), but the update schema derives its
 // types from Zod's .partial() + .default('') combination, which makes nested
 // fields optional in the inferred type. This local type matches reality.
-type PersonaDbInput = Partial<Omit<Persona, 'writingVoiceJson' | 'eeatSignalsJson' | 'soulJson'>> & {
+type PersonaDbInput = Partial<Omit<Persona, 'writingVoiceJson' | 'eeatSignalsJson' | 'soulJson' | 'traitsJson'>> & {
   writingVoiceJson?: Partial<PersonaWritingVoice>
   eeatSignalsJson?: Partial<PersonaEeatSignals>
   soulJson?: Partial<PersonaSoul>
+  traitsJson?: Partial<PersonaTraits>
 }
 
 export function mapPersonaToDb(input: PersonaDbInput): Partial<DbPersona> {
@@ -574,9 +590,14 @@ export function mapPersonaToDb(input: PersonaDbInput): Partial<DbPersona> {
   if (input.primaryDomain !== undefined) out.primary_domain = input.primaryDomain;
   if (input.domainLens !== undefined) out.domain_lens = input.domainLens;
   if (input.approvedCategories !== undefined) out.approved_categories = input.approvedCategories;
+  if (input.nationality !== undefined) out.nationality = input.nationality;
+  if (input.age !== undefined) out.age = input.age;
+  if (input.gender !== undefined) out.gender = input.gender;
+  if (input.languagesJson !== undefined) out.languages_json = input.languagesJson as unknown as Json;
   if (input.writingVoiceJson !== undefined) out.writing_voice_json = input.writingVoiceJson as unknown as Json;
   if (input.eeatSignalsJson !== undefined) out.eeat_signals_json = input.eeatSignalsJson as unknown as Json;
   if (input.soulJson !== undefined) out.soul_json = input.soulJson as unknown as Json;
+  if (input.traitsJson !== undefined) out.traits_json = input.traitsJson as unknown as Json;
   if (input.wpAuthorId !== undefined) out.wp_author_id = input.wpAuthorId;
   if (input.archetypeSlug !== undefined) out.archetype_slug = input.archetypeSlug;
   if (input.avatarParamsJson !== undefined) out.avatar_params_json = input.avatarParamsJson as unknown as Json;
@@ -745,5 +766,30 @@ export function mapChannelPersonaFromDb(row: DbChannelPersona): DomainChannelPer
     personaId: row.persona_id,
     isPrimary: row.is_primary,
     createdAt: row.created_at,
+  };
+}
+
+// ─── ModuleAiAssignment ───────────────────────────────────────────────────────
+
+import type { ModuleAiAssignment, ModuleSlug } from '../schemas/module-ai-assignments.js';
+
+export interface DbModuleAiAssignment {
+  id: string;
+  module_slug: string;
+  provider: string;
+  model: string;
+  org_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function mapModuleAiAssignmentFromDb(row: DbModuleAiAssignment): ModuleAiAssignment {
+  return {
+    id: row.id,
+    moduleSlug: row.module_slug as ModuleSlug,
+    provider: row.provider,
+    model: row.model,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }

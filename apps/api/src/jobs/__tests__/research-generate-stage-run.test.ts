@@ -75,6 +75,15 @@ let stageRunsUpdateMock: ReturnType<typeof vi.fn>;
 
 vi.mock('../../lib/supabase/index.js', () => ({
   createServiceClient: vi.fn(() => ({
+    rpc: vi.fn((fn: string) => {
+      if (fn === 'reserve_credits') {
+        return Promise.resolve({ data: { token: 'tok', error_code: null }, error: null });
+      }
+      if (fn === 'commit_reservation') {
+        return Promise.resolve({ data: { success: true }, error: null });
+      }
+      return Promise.resolve({ data: null, error: null });
+    }),
     from: vi.fn((table: string) => {
       if (table === 'research_sessions') {
         return {

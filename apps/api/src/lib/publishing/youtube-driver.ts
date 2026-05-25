@@ -143,7 +143,7 @@ export class YouTubeDriver implements PublishDriver {
 
     let videoId: string;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const res = await (yt.videos.insert as (...args: any[]) => any)({
         part: ['snippet', 'status'],
         resource: {

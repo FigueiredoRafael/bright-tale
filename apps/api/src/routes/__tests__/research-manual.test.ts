@@ -78,9 +78,10 @@ vi.mock('../../lib/supabase/index.js', () => ({
   }),
 }));
 
-vi.mock('../../lib/credits.js', () => ({
-  checkCredits: async () => ({ ok: true }),
-  debitCredits: async () => ({ ok: true }),
+vi.mock('../../lib/credits/reservations.js', () => ({
+  reserve: async () => 'mock-token',
+  commit: async () => undefined,
+  release: async () => undefined,
 }));
 
 // Fake authenticate middleware — sets userId so handlers proceed.

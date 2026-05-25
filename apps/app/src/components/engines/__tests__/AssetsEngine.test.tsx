@@ -40,7 +40,7 @@ const BASE_AUTOPILOT: AutopilotConfig = {
   canonicalCore: { providerOverride: null, personaId: null },
   draft: { providerOverride: null, format: 'blog', wordCount: 1000 },
   review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
-  assets: { providerOverride: null, mode: 'briefs_only' },
+  assets: { providerOverride: null, mode: 'briefs_only', imageScope: 'all' as const },
   preview: { enabled: false },
   publish: { status: 'draft' },
 }
@@ -67,7 +67,7 @@ afterEach(() => {
 function makeAutopilotForMode(assetsMode: 'briefs_only' | 'auto_generate' | 'skip'): AutopilotConfig {
   return {
     ...BASE_AUTOPILOT,
-    assets: { providerOverride: null, mode: assetsMode },
+    assets: { providerOverride: null, mode: assetsMode, imageScope: 'all' as const },
   }
 }
 

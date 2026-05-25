@@ -158,6 +158,7 @@ export async function usersRoutes(fastify: FastifyInstance): Promise<void> {
       const update: Record<string, unknown> = {};
       if (body.firstName !== undefined) update.first_name = body.firstName;
       if (body.lastName !== undefined) update.last_name = body.lastName;
+      if (body.locale !== undefined) update.locale = body.locale;
       if (body.isActive !== undefined) update.is_active = body.isActive;
 
       if (body.isPremium !== undefined) {

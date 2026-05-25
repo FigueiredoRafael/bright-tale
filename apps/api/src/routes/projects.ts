@@ -36,7 +36,7 @@ import { markAwaitingUser } from '../lib/pipeline/stage-run-writer.js';
  * surface why the pipeline is parked and the orchestrator can resume from
  * a known state. No-op if no stage is mid-flight.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 async function stampUserPausedOnActiveStage(sb: any, projectId: string): Promise<void> {
   const { data: active } = await sb
     .from('stage_runs')
@@ -113,7 +113,7 @@ function mergePipelineStateJson(
 }
 
 async function insertTracksForProject(
-  sb: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  sb: any,  
   projectId: string,
   media: Medium[],
   mediaConfig: Record<string, MediaConfig> | undefined,

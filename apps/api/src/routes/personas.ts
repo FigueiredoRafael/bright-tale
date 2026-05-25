@@ -11,6 +11,7 @@ import {
   updatePersonaSchema,
   togglePersonaSchema,
 } from '@brighttale/shared/schemas/personas'
+import { getOrgIdStrict, ensureOrgId } from '../lib/orgs.js'
 import { buildAvatarPrompt, type AvatarSuggestions } from '../lib/ai/avatarPrompt.js'
 import { getImageProvider } from '../lib/ai/imageIndex.js'
 import fs from 'fs'
@@ -526,11 +527,15 @@ Return ONLY valid JSON, no explanation.`
     return reply.send({ data: { persona: mapPersonaFromDb(data as DbPersona) }, error: null })
   })
 
-  app.get('/', async (_req, reply) => {
+  // GET / — org's private personas + all global personas
+  app.get('/', async (req, reply) => {
     const sb = createServiceClient()
+    if (!req.userId) throw new ApiError(401, 'Unauthorized', 'UNAUTHORIZED')
+    const orgId = await getOrgIdStrict(req.userId)
     const { data, error } = await sb
       .from('personas')
       .select('*')
+      .or(`org_id.eq.${orgId},visibility.eq.global`)
       .eq('is_active', true)
       .order('name')
     if (error) throw new ApiError(500, error.message, 'PERSONAS_FETCH_ERROR')
@@ -543,26 +548,42 @@ Return ONLY valid JSON, no explanation.`
     const { data, error } = await sb.from('personas').select('*').eq('id', id).maybeSingle()
     if (error) throw new ApiError(500, error.message, 'PERSONAS_FETCH_ERROR')
     if (!data) throw new ApiError(404, 'Persona not found', 'PERSONA_NOT_FOUND')
-    return reply.send({ data: mapPersonaFromDb(data as DbPersona), error: null })
+    const persona = mapPersonaFromDb(data as DbPersona)
+    // Verify access: must be owner org or global
+    if (persona.visibility === 'private' && req.userId) {
+      const orgId = await getOrgIdStrict(req.userId).catch(() => null)
+      if (orgId !== persona.orgId) throw new ApiError(403, 'Access denied', 'FORBIDDEN')
+    }
+    return reply.send({ data: persona, error: null })
   })
 
+  // POST /  — create persona, scoped to requester's org
   app.post('/', async (req, reply) => {
     const body = createPersonaSchema.parse(req.body)
     const sb = createServiceClient()
+    if (!req.userId) throw new ApiError(401, 'Unauthorized', 'UNAUTHORIZED')
+    const orgId = await ensureOrgId(req.userId)
     const { data, error } = await sb
       .from('personas')
       .insert({
         slug: body.slug,
         name: body.name,
+        org_id: orgId,
+        visibility: 'private',
         avatar_url: body.avatarUrl ?? null,
         bio_short: body.bioShort,
         bio_long: body.bioLong,
         primary_domain: body.primaryDomain,
         domain_lens: body.domainLens,
         approved_categories: body.approvedCategories,
+        nationality: body.nationality ?? null,
+        age: body.age ?? null,
+        gender: body.gender ?? null,
+        languages_json: (body.languagesJson ?? []) as unknown as Json,
         writing_voice_json: body.writingVoiceJson as unknown as Json,
         eeat_signals_json: body.eeatSignalsJson as unknown as Json,
         soul_json: body.soulJson as unknown as Json,
+        traits_json: (body.traitsJson ?? {}) as unknown as Json,
         archetype_slug: body.archetypeSlug ?? null,
         avatar_params_json: (body.avatarParamsJson ?? null) as unknown as Json,
       })
@@ -570,6 +591,151 @@ Return ONLY valid JSON, no explanation.`
       .single()
     if (error) throw new ApiError(500, error.message, 'PERSONA_CREATE_ERROR')
     return reply.status(201).send({ data: mapPersonaFromDb(data as DbPersona), error: null })
+  })
+
+  // POST /:id/fork — clone a global persona as a private one in the requester's org
+  app.post('/:id/fork', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    if (!req.userId) throw new ApiError(401, 'Unauthorized', 'UNAUTHORIZED')
+    const sb = createServiceClient()
+    const { data: src, error: srcErr } = await sb.from('personas').select('*').eq('id', id).maybeSingle()
+    if (srcErr || !src) throw new ApiError(404, 'Persona not found', 'PERSONA_NOT_FOUND')
+    const source = mapPersonaFromDb(src as DbPersona)
+    if (source.visibility !== 'global') throw new ApiError(400, 'Only global personas can be forked', 'NOT_GLOBAL')
+    const orgId = await ensureOrgId(req.userId)
+    const forkSlug = `${source.slug}-${Date.now().toString(36)}`
+    const { data, error } = await sb
+      .from('personas')
+      .insert({
+        slug: forkSlug,
+        name: source.name,
+        org_id: orgId,
+        visibility: 'private',
+        avatar_url: source.avatarUrl,
+        bio_short: source.bioShort,
+        bio_long: source.bioLong,
+        primary_domain: source.primaryDomain,
+        domain_lens: source.domainLens,
+        approved_categories: source.approvedCategories,
+        nationality: source.nationality,
+        age: source.age,
+        gender: source.gender,
+        languages_json: source.languagesJson as unknown as Json,
+        writing_voice_json: source.writingVoiceJson as unknown as Json,
+        eeat_signals_json: source.eeatSignalsJson as unknown as Json,
+        soul_json: source.soulJson as unknown as Json,
+        traits_json: source.traitsJson as unknown as Json,
+        archetype_slug: source.archetypeSlug,
+        avatar_params_json: (source.avatarParamsJson ?? null) as unknown as Json,
+      })
+      .select()
+      .single()
+    if (error) throw new ApiError(500, error.message, 'PERSONA_FORK_ERROR')
+    return reply.status(201).send({ data: mapPersonaFromDb(data as DbPersona), error: null })
+  })
+
+  // POST /:id/promote — admin promotes a private persona to global
+  app.post('/:id/promote', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    if (!req.userId) throw new ApiError(401, 'Unauthorized', 'UNAUTHORIZED')
+    const sb = createServiceClient()
+    // Verify requester is an org admin or platform admin
+    const { data: membership } = await sb
+      .from('org_memberships')
+      .select('role')
+      .eq('user_id', req.userId)
+      .in('role', ['owner', 'admin'])
+      .limit(1)
+      .maybeSingle()
+    if (!membership) throw new ApiError(403, 'Admin access required', 'FORBIDDEN')
+    const { data, error } = await sb
+      .from('personas')
+      .update({ visibility: 'global' })
+      .eq('id', id)
+      .select()
+      .single()
+    if (error) throw new ApiError(500, error.message, 'PERSONA_UPDATE_ERROR')
+    if (!data) throw new ApiError(404, 'Persona not found', 'PERSONA_NOT_FOUND')
+    return reply.send({ data: mapPersonaFromDb(data as DbPersona), error: null })
+  })
+
+  // POST /:id/preview — generate a ~150-word sample paragraph in the persona's voice
+  app.post('/:id/preview', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const sb = createServiceClient()
+    const { data: row, error: rowErr } = await sb.from('personas').select('*').eq('id', id).maybeSingle()
+    if (rowErr || !row) throw new ApiError(404, 'Persona not found', 'PERSONA_NOT_FOUND')
+    const persona = mapPersonaFromDb(row as DbPersona)
+
+    const opinions = persona.soulJson.strongOpinions ?? []
+    const randomOpinion = opinions[Math.floor(Math.random() * opinions.length)] ?? ''
+    const topic = [persona.primaryDomain, randomOpinion].filter(Boolean).join(' — ')
+
+    const demographicLine = [
+      persona.nationality,
+      persona.age ? `${persona.age} anos` : null,
+      persona.gender,
+    ].filter(Boolean).join(', ')
+
+    const languageLine = (persona.languagesJson ?? [])
+      .map(l => `${l.language} (${l.level})`)
+      .join(', ')
+
+    const systemPrompt = [
+      `Você é ${persona.name}${demographicLine ? `, ${demographicLine}` : ''}.`,
+      languageLine ? `Você fala: ${languageLine}.` : '',
+      `Seu domínio: ${persona.primaryDomain}. ${persona.domainLens}`,
+      `Estilo de escrita: ${persona.writingVoiceJson.writingStyle}`,
+      persona.writingVoiceJson.signaturePhrases?.length
+        ? `Frases características: ${persona.writingVoiceJson.signaturePhrases.slice(0, 3).join(', ')}`
+        : '',
+      persona.soulJson.languageGuardrails?.length
+        ? `Nunca use: ${persona.soulJson.languageGuardrails.slice(0, 3).join(', ')}`
+        : '',
+      `Bio: ${persona.bioShort}`,
+      '',
+      'Escreva UM parágrafo de ~150 palavras sobre o tema abaixo, na sua voz característica. Sem introdução, sem título — só o parágrafo.',
+    ].filter(s => s !== null && s !== undefined).join('\n')
+
+    const sb2 = createServiceClient()
+    const { data: assignment } = await sb2
+      .from('module_ai_assignments')
+      .select('provider, model')
+      .eq('module_slug', 'persona_voice_preview' as any)
+      .maybeSingle()
+
+    const aiInput = { agentType: 'brainstorm' as const, systemPrompt, userMessage: `Tema: ${topic}`, rawText: true }
+
+    let text: string
+    if (assignment) {
+      const { generateWithFallback } = await import('../lib/ai/router.js')
+      const call = await generateWithFallback(
+        'brainstorm', 'standard', aiInput,
+        {
+          provider: assignment.provider as any,
+          model: assignment.model,
+          allowFallback: false,
+          logContext: { userId: req.userId ?? '', orgId: undefined, channelId: undefined, sessionId: undefined, sessionType: 'persona-voice-preview' },
+        },
+      )
+      text = (call.result as string ?? '').trim()
+    } else if (process.env.OPENAI_API_KEY) {
+      const { OpenAIProvider } = await import('../lib/ai/providers/openai.js')
+      text = ((await new OpenAIProvider(process.env.OPENAI_API_KEY, { model: 'gpt-4o-mini' }).generateContent(aiInput)) as string ?? '').trim()
+    } else if (process.env.ANTHROPIC_API_KEY) {
+      const { AnthropicProvider } = await import('../lib/ai/providers/anthropic.js')
+      text = ((await new AnthropicProvider(process.env.ANTHROPIC_API_KEY, { model: 'claude-haiku-4-5-20251001' }).generateContent(aiInput)) as string ?? '').trim()
+    } else {
+      const geminiKey = process.env.GOOGLE_AI_KEY ?? process.env.GEMINI_API_KEY
+      if (geminiKey) {
+        const { GeminiProvider } = await import('../lib/ai/providers/gemini.js')
+        text = ((await new GeminiProvider(geminiKey, { model: 'gemini-2.5-flash' }).generateContent(aiInput)) as string ?? '').trim()
+      } else {
+        throw new ApiError(500, 'No AI provider configured for persona voice preview. Set a provider in Admin → Configurações, or set OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_AI_KEY.', 'NO_AI_PROVIDER')
+      }
+    }
+    if (!text) throw new ApiError(500, 'AI preview returned empty response', 'PREVIEW_EMPTY')
+    return reply.send({ data: { text }, error: null })
   })
 
   app.put('/:id', async (req, reply) => {

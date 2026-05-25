@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles } from "lucide-react";
+import { useActiveProviders } from "@/hooks/useActiveProviders";
 
 export type ProviderId = "gemini" | "openai" | "anthropic" | "ollama" | "manual";
 
@@ -84,7 +85,7 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
     manual: "Manual",
 };
 
-const DEFAULT_PROVIDERS: ProviderId[] = ["gemini", "openai", "anthropic", "ollama"];
+const FALLBACK_PROVIDERS: ProviderId[] = ["gemini", "openai", "anthropic", "ollama"];
 
 interface Props {
     provider: ProviderId;
@@ -97,7 +98,13 @@ interface Props {
 }
 
 export function ModelPicker({ provider, model, recommended, onProviderChange, onModelChange, providers }: Props) {
-    const visibleProviders = providers ?? DEFAULT_PROVIDERS;
+    const { providers: activeProviders } = useActiveProviders();
+
+    // Only show providers that are is_active=true in the DB.
+    // Falls back to FALLBACK_PROVIDERS when the fetch hasn't resolved yet
+    // (activeProviders starts as the full list from the lazy initializer).
+    const candidates = providers ?? FALLBACK_PROVIDERS;
+    const visibleProviders = candidates.filter((p) => activeProviders.includes(p));
     const baseModels = MODELS_BY_PROVIDER[provider];
 
     const [adminModels, setAdminModels] = useState<AdminModelMap>(() => adminModelsCache ?? {});

@@ -12,10 +12,8 @@ import { authenticateWithUser } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
-import { encrypt, decrypt } from '../lib/crypto.js';
 import { getWordPressCredentials } from '../lib/publishing/wordpress-config.js';
 import { markdownToHtml } from '../lib/utils.js';
-import { convertToWebP } from '../lib/image/webp.js';
 import { getKeyByToken, createKey, consumeKey, deleteKey } from '../lib/idempotency.js';
 import {
   publishToWordPressSchema,
@@ -731,7 +729,7 @@ export async function wordpressRoutes(fastify: FastifyInstance): Promise<void> {
         let featuredAssetId: string | undefined;
         if (body.imageMap?.['featured_image']) {
           featuredAssetId = body.imageMap['featured_image'] as string;
-          const { data: assets, error: assetsErr } = await sb
+          const { data: assets } = await sb
             .from('assets')
             .select('*')
             .eq('content_id', body.draftId);

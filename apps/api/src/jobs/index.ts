@@ -21,3 +21,4 @@ export { pipelineReviewDispatch } from './pipeline-review-dispatch.js';
 export { pipelineAssetsDispatch } from './pipeline-assets-dispatch.js';
 export { pipelinePreviewDispatch } from './pipeline-preview-dispatch.js';
 export { pipelinePublishDispatch } from './pipeline-publish-dispatch.js';
+export { expireReservations } from './expire-reservations.js';

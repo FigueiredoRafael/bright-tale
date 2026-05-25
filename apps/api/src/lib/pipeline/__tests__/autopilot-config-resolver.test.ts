@@ -225,6 +225,7 @@ describe('resolveAutopilotConfig', () => {
         providerOverride: null,
         modelOverride: null,
         mode: 'auto_generate',
+        imageScope: 'all',
       });
     });
 

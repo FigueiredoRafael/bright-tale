@@ -44,6 +44,7 @@ const FALLBACK_BY_STAGE: { [S in Stage]: SlotForStage<S> } = {
     providerOverride: null,
     modelOverride: null,
     mode: 'briefs_only',
+    imageScope: 'all',
   },
   preview: { enabled: false },
   publish: { status: 'draft' },

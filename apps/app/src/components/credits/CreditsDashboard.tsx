@@ -1,18 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Zap } from 'lucide-react';
-
-interface CreditBalance {
-  creditsTotal: number;
-  creditsUsed: number;
-  creditsAddon: number;
-  creditsResetAt: string | null;
-  available: number;
-}
+import { useBillingStatus } from '@/hooks/useBillingStatus';
 
 interface CategoryUsage {
   categories: Record<string, number>;
@@ -81,31 +74,21 @@ function CategoryBreakdown({ categories }: { categories: Record<string, number> 
 }
 
 export function CreditsDashboard() {
-  const [balance, setBalance] = useState<CreditBalance | null>(null);
+  const { status, loading } = useBillingStatus();
   const [categories, setCategories] = useState<Record<string, number>>({});
-  const [loading, setLoading] = useState(true);
-
-  const fetchData = useCallback(async () => {
-    try {
-      const [balanceRes, categoryRes] = await Promise.all([
-        fetch('/api/credits/balance'),
-        fetch('/api/credits/usage/by-category'),
-      ]);
-      const balanceJson = await balanceRes.json();
-      const categoryJson = await categoryRes.json();
-
-      if (balanceJson.data) setBalance(balanceJson.data);
-      if (categoryJson.data) setCategories((categoryJson.data as CategoryUsage).categories);
-    } catch {
-      toast.error('Failed to load credit data');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    let cancelled = false;
+    fetch('/api/credits/usage/by-category')
+      .then((r) => r.json())
+      .then((json: { data?: CategoryUsage }) => {
+        if (!cancelled && json.data) setCategories(json.data.categories);
+      })
+      .catch(() => {
+        if (!cancelled) toast.error('Failed to load credit usage data');
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   if (loading) {
     return (
@@ -123,10 +106,11 @@ export function CreditsDashboard() {
     );
   }
 
-  if (!balance) return null;
+  if (!status) return null;
 
-  const percentage = balance.creditsTotal > 0
-    ? (balance.creditsUsed / balance.creditsTotal) * 100
+  const { credits } = status;
+  const percentage = credits.creditsTotal > 0
+    ? (credits.creditsUsed / credits.creditsTotal) * 100
     : 0;
 
   return (
@@ -137,23 +121,30 @@ export function CreditsDashboard() {
             <Zap className="h-5 w-5 text-amber-500" />
             Credits
           </CardTitle>
-          {percentage >= 80 && (
-            <Badge variant={percentage >= 95 ? 'destructive' : 'secondary'}>
-              {percentage >= 95 ? 'Almost depleted' : 'Running low'}
-            </Badge>
-          )}
+          <div className="flex items-center gap-2">
+            {credits.creditsReserved > 0 && (
+              <Badge variant="outline" data-testid="reserved-badge">
+                {credits.creditsReserved.toLocaleString()} reserved
+              </Badge>
+            )}
+            {percentage >= 80 && (
+              <Badge variant={percentage >= 95 ? 'destructive' : 'secondary'}>
+                {percentage >= 95 ? 'Almost depleted' : 'Running low'}
+              </Badge>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <ProgressBar
-          used={balance.creditsUsed}
-          total={balance.creditsTotal}
-          addon={balance.creditsAddon}
+          used={credits.creditsUsed}
+          total={credits.creditsTotal}
+          addon={credits.creditsAddon}
         />
 
-        {balance.creditsResetAt && (
+        {credits.creditsResetAt && (
           <p className="text-xs text-muted-foreground">
-            Resets {new Date(balance.creditsResetAt).toLocaleDateString()}
+            Resets {new Date(credits.creditsResetAt).toLocaleDateString()}
           </p>
         )}
 

@@ -19,6 +19,7 @@ export const userUpdateSchema = z
   .object({
     firstName: z.string().min(1).max(200).optional(),
     lastName: z.string().min(1).max(200).optional(),
+    locale: z.enum(['pt-BR', 'en']).optional(),
     isPremium: z.boolean().optional(),
     premiumPlan: z.enum(['monthly', 'yearly']).optional(),
     premiumExpiresAt: z.string().datetime().optional(),

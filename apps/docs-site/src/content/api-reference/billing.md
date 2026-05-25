@@ -30,12 +30,29 @@ Plano atual do org, créditos, datas.
 {
   "data": {
     "plan":       { "id", "displayName", "credits", "usdMonthly", "billingCycle" },
-    "credits":    { "total", "used", "addon", "remaining", "resetAt" },
+    "credits":    {
+      "total",
+      "used",
+      "addon",
+      "reserved",
+      "remaining",
+      "resetAt",
+      "signupBonus",
+      "signupBonusExpiresAt"
+    },
     "subscription": { "stripeCustomerId", "stripeSubscriptionId", "planStartedAt", "planExpiresAt" }
   },
   "error": null
 }
 ```
+
+**`credits.reserved`** (V2-006) — credits currently held by in-flight background jobs via the reservation system. These have been set aside but not yet charged (job is still running). The formula for effective available balance is:
+
+```
+available = (total − used − reserved) + addon + signupBonusRemaining
+```
+
+When a job completes, `reserved` decreases and `used` increases by the actual cost. When a job fails or times out, `reserved` decreases and `used` is unchanged (credits fully returned to the pool).
 
 ## POST `/checkout`
 

@@ -52,7 +52,7 @@ const FULL_AUTOPILOT_CONFIG: AutopilotConfig = {
   canonicalCore: { providerOverride: null, personaId: null },
   draft: { providerOverride: null, format: 'blog', wordCount: 1500 },
   review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
-  assets: { providerOverride: null, mode: 'skip' },
+  assets: { providerOverride: null, mode: 'skip', imageScope: 'all' as const },
   preview: { enabled: false },
   publish: { status: 'draft' },
 }
@@ -362,7 +362,7 @@ describe('ResearchEngine — stageRun binding (T3.5)', () => {
     canonicalCore: { providerOverride: null, personaId: null },
     draft: { providerOverride: null, format: 'blog', wordCount: 1500 },
     review: { providerOverride: null, maxIterations: 5, autoApproveThreshold: 90, hardFailThreshold: 40 },
-    assets: { providerOverride: null, mode: 'skip' },
+    assets: { providerOverride: null, mode: 'skip', imageScope: 'all' as const },
     preview: { enabled: false },
     publish: { status: 'draft' },
   }

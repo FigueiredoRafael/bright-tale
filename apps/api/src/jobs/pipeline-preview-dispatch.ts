@@ -24,7 +24,7 @@ interface StageRequestedEvent {
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type Sb = any;
 
 export const pipelinePreviewDispatch = inngest.createFunction(

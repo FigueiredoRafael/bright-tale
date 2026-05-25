@@ -11,7 +11,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { splitDraftStageRuns } from './legacy-track-migrator';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type Sb = SupabaseClient<any, any, any>;
 
 export interface BackfillFailure {

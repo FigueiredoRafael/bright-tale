@@ -30,13 +30,12 @@ import { authenticate } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
-import { assertProjectOwner } from '../lib/projects/ownership.js';
 import { publishToYouTube } from '../lib/youtube/publish.js';
 import { decryptTokens } from '../lib/youtube/oauth.js';
 import { inngest } from '../jobs/client.js';
 import { youtubePublishParams } from '@brighttale/shared/schemas/youtubePublishParams';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type Sb = any;
 
 /**

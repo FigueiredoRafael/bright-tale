@@ -16,6 +16,7 @@ export function ThemeToggle() {
       const dark = stored === 'dark'
       document.documentElement.classList.toggle('dark', dark)
       document.documentElement.classList.toggle('light', !dark)
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsDark(dark)
     }
   }, [])

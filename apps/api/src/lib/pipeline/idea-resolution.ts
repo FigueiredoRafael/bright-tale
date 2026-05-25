@@ -10,7 +10,7 @@
  * demand. Idempotent: looks for an existing archive by
  * `brainstorm_session_id + title` before inserting.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type Sb = any;
 
 export interface ResolvedIdea {

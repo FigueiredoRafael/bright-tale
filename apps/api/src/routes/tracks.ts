@@ -25,7 +25,7 @@ import { abortTrack } from '../lib/pipeline/abortTrack.js';
 import { addTrackSchema, updateTrackSchema } from '@brighttale/shared/schemas/tracks';
 import type { Medium } from '@brighttale/shared/pipeline/inputs';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type Sb = any;
 
 interface TrackRow {

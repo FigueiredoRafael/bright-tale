@@ -14,7 +14,7 @@ import {
   getVideoDetails,
   parseDuration,
 } from '../lib/youtube/client.js';
-import { checkCredits, debitCredits } from '../lib/credits.js';
+import { reserve, commit, release } from '../lib/credits/reservations.js';
 
 const NICHE_ANALYSIS_COST = 150;
 
@@ -100,75 +100,79 @@ export async function youtubeRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.send({ data: cached, error: null });
       }
 
-      // Check credits
-      await checkCredits(orgId, request.userId, NICHE_ANALYSIS_COST);
+      // Reserve credits upfront; commit on success, release on error.
+      const nikeToken = await reserve(orgId, request.userId, NICHE_ANALYSIS_COST);
 
-      // Search top videos for this niche
-      const regionCode = market === 'us' ? 'US' : market === 'uk' ? 'GB' : 'BR';
-      const relevanceLang = language?.split('-')[0] ?? 'pt';
+      let analysis: unknown;
+      try {
+        // Search top videos for this niche
+        const regionCode = market === 'us' ? 'US' : market === 'uk' ? 'GB' : 'BR';
+        const relevanceLang = language?.split('-')[0] ?? 'pt';
 
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const searchResults = await searchVideos(keyword, {
-        maxResults: 20,
-        regionCode,
-        relevanceLanguage: relevanceLang,
-        publishedAfter: thirtyDaysAgo,
-        order: 'viewCount',
-      });
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const searchResults = await searchVideos(keyword, {
+          maxResults: 20,
+          regionCode,
+          relevanceLanguage: relevanceLang,
+          publishedAfter: thirtyDaysAgo,
+          order: 'viewCount',
+        });
 
-      // Get detailed video info
-      const videoIds = searchResults.map((r) => r.id.videoId);
-      const videoDetails = await getVideoDetails(videoIds);
+        // Get detailed video info
+        const videoIds = searchResults.map((r) => r.id.videoId);
+        const videoDetails = await getVideoDetails(videoIds);
 
-      // Build top videos data
-      const safeInt = (s: string | undefined): number => {
-        const n = parseInt(s ?? '0', 10);
-        return Number.isNaN(n) ? 0 : n;
-      };
-
-      const topVideos = videoDetails.map((v) => {
-        const views = safeInt(v.statistics?.viewCount);
-        const likes = safeInt(v.statistics?.likeCount);
-        const comments = safeInt(v.statistics?.commentCount);
-        return {
-          title: v.snippet.title,
-          videoId: v.id,
-          channelTitle: v.snippet.channelTitle,
-          views,
-          likes,
-          comments,
-          duration: parseDuration(v.contentDetails?.duration ?? ''),
-          publishedAt: v.snippet.publishedAt,
-          thumbnail: v.snippet.thumbnails?.medium?.url ?? null,
-          engagementRate: views > 0 ? ((likes + comments) / views) * 100 : 0,
+        // Build top videos data
+        const safeInt = (s: string | undefined): number => {
+          const n = parseInt(s ?? '0', 10);
+          return Number.isNaN(n) ? 0 : n;
         };
-      }).sort((a, b) => b.views - a.views);
 
-      // Save analysis
-      const { data: analysis, error } = await sb
-        .from('youtube_niche_analyses')
-        .insert({
-          channel_id: channelId ?? null,
-          org_id: orgId,
-          user_id: request.userId,
-          niche: keyword,
-          market: market ?? 'br',
-          language: language ?? 'pt-BR',
-          top_videos_json: topVideos as unknown as Record<string, unknown>,
-          reference_channels_json: null,
-          opportunities_json: null,
-          saturated_topics_json: null,
-        } as never)
-        .select()
-        .single();
+        const topVideos = videoDetails.map((v) => {
+          const views = safeInt(v.statistics?.viewCount);
+          const likes = safeInt(v.statistics?.likeCount);
+          const comments = safeInt(v.statistics?.commentCount);
+          return {
+            title: v.snippet.title,
+            videoId: v.id,
+            channelTitle: v.snippet.channelTitle,
+            views,
+            likes,
+            comments,
+            duration: parseDuration(v.contentDetails?.duration ?? ''),
+            publishedAt: v.snippet.publishedAt,
+            thumbnail: v.snippet.thumbnails?.medium?.url ?? null,
+            engagementRate: views > 0 ? ((likes + comments) / views) * 100 : 0,
+          };
+        }).sort((a, b) => b.views - a.views);
 
-      if (error) throw error;
+        // Save analysis
+        const { data: savedAnalysis, error } = await sb
+          .from('youtube_niche_analyses')
+          .insert({
+            channel_id: channelId ?? null,
+            org_id: orgId,
+            user_id: request.userId,
+            niche: keyword,
+            market: market ?? 'br',
+            language: language ?? 'pt-BR',
+            top_videos_json: topVideos as unknown as Record<string, unknown>,
+            reference_channels_json: null,
+            opportunities_json: null,
+            saturated_topics_json: null,
+          } as never)
+          .select()
+          .single();
 
-      // Debit credits
-      await debitCredits(orgId, request.userId, 'niche_analysis', 'text', NICHE_ANALYSIS_COST, {
-        keyword,
-        market,
-      });
+        if (error) throw error;
+        analysis = savedAnalysis;
+
+        // Commit credits on success
+        await commit(nikeToken, NICHE_ANALYSIS_COST, 'niche_analysis', 'text', { keyword, market });
+      } catch (err) {
+        await release(nikeToken).catch(() => { /* best-effort */ });
+        throw err;
+      }
 
       return reply.send({ data: analysis, error: null });
     } catch (error) {

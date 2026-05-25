@@ -41,9 +41,10 @@ vi.mock('@/lib/api/fastify-errors', () => ({
     return reply.status(500).send({ data: null, error: { message: 'Server error', code: 'INTERNAL' } });
   }),
 }));
-vi.mock('@/lib/credits', () => ({
-  checkCredits: vi.fn(async () => true),
-  debitCredits: vi.fn(async () => undefined),
+vi.mock('@/lib/credits/reservations', () => ({
+  reserve: vi.fn(async () => 'mock-token'),
+  commit: vi.fn(async () => undefined),
+  release: vi.fn(async () => undefined),
 }));
 vi.mock('@/lib/ai/promptLoader', () => ({
   loadAgentPrompt: vi.fn(async () => 'You are BC_BRAINSTORM.'),

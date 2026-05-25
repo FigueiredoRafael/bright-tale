@@ -35,6 +35,7 @@ vi.mock('../../lib/billing/plans.js', async () => {
   return {
     ...actual,
     planFromPriceId: (priceId: string) => planFromPriceIdMock(priceId),
+    planFromPriceIdAsync: async (priceId: string) => planFromPriceIdMock(priceId),
   };
 });
 

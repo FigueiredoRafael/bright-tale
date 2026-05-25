@@ -11,7 +11,6 @@ import type { Database } from '@brighttale/shared/types/database';
 import { authenticate } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
-import { ApiError } from '../lib/api/errors.js';
 import { assertProjectOwner } from '../lib/projects/ownership.js';
 import { derivedFromStageResults, nextStageAfter } from '../lib/pipeline-state.js';
 import { setupProjectSchema } from '@brighttale/shared/schemas/projectSetup';

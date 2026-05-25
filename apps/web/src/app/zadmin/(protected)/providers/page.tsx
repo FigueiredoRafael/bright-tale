@@ -5,10 +5,11 @@ export const dynamic = 'force-dynamic'
 
 export default async function ProvidersPage() {
   const sb = createAdminClient()
-  const { data, error } = await sb
-    .from('ai_provider_configs')
-    .select('id, provider, api_key, is_active, models_json, updated_at')
-    .order('provider')
+
+  const [{ data, error }, { data: assignData }] = await Promise.all([
+    sb.from('ai_provider_configs').select('id, provider, api_key, is_active, models_json, updated_at').order('provider'),
+    sb.from('module_ai_assignments').select('module_slug, provider, model').order('module_slug'),
+  ])
 
   if (error) throw new Error(error.message)
 
@@ -23,5 +24,9 @@ export default async function ProvidersPage() {
     updatedAt:  row.updated_at as string,
   }))
 
-  return <ProvidersClient initialProviders={providers} />
+  const assignments = Object.fromEntries(
+    (assignData ?? []).map((r: any) => [r.module_slug as string, { provider: r.provider as string, model: r.model as string }])
+  )
+
+  return <ProvidersClient initialProviders={providers} initialAssignments={assignments} />
 }
