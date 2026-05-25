@@ -5,7 +5,7 @@
  */
 
 import type { Json } from "../types/database"
-import type { Persona, PersonaWritingVoice, PersonaEeatSignals, PersonaSoul, PersonaTraits } from "../types/agents";
+import type { Persona, PersonaWritingVoice, PersonaEeatSignals, PersonaSoul, PersonaTraits, PersonaLanguage } from "../types/agents";
 import { DEFAULT_PERSONA_TRAITS } from "../types/agents";
 
 // ─── Project ──────────────────────────────────────────────────────────────────
@@ -573,11 +573,12 @@ export function mapPersonaFromDb(row: DbPersona): Persona {
 // writingVoiceJson.writingStyle: string), but the update schema derives its
 // types from Zod's .partial() + .default('') combination, which makes nested
 // fields optional in the inferred type. This local type matches reality.
-type PersonaDbInput = Partial<Omit<Persona, 'writingVoiceJson' | 'eeatSignalsJson' | 'soulJson' | 'traitsJson'>> & {
+type PersonaDbInput = Partial<Omit<Persona, 'writingVoiceJson' | 'eeatSignalsJson' | 'soulJson' | 'traitsJson' | 'languagesJson'>> & {
   writingVoiceJson?: Partial<PersonaWritingVoice>
   eeatSignalsJson?: Partial<PersonaEeatSignals>
   soulJson?: Partial<PersonaSoul>
   traitsJson?: Partial<PersonaTraits>
+  languagesJson?: Partial<PersonaLanguage>[]
 }
 
 export function mapPersonaToDb(input: PersonaDbInput): Partial<DbPersona> {
