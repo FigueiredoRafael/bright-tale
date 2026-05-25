@@ -118,18 +118,22 @@ export const pipelineReviewDispatch = inngest.createFunction(
     });
     if (!claimed.won) return;
 
-    // Resolve the draft to review from the prior draft Stage Run.
+    // Resolve the draft to review from the prior production/draft Stage Run.
+    // Post-T1.6 the legacy `draft` stage was split — fresh runs land as
+    // `production` while pre-migration rows remain `draft`. We accept both so
+    // a project that started under the old taxonomy still routes to review
+    // cleanly, AND new projects don't fail with "No prior draft Stage Run".
     const { data: priorDraft } = await sb
       .from('stage_runs')
       .select('id, stage, status, payload_ref')
       .eq('project_id', projectId)
-      .eq('stage', 'draft')
+      .in('stage', ['production', 'draft'])
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
     const draftRef = priorDraft?.payload_ref as { kind?: string; id?: string } | null | undefined;
     if (draftRef?.kind !== 'content_draft' || !draftRef.id) {
-      await markFailed(sb, stageRunId, { ...ctx, errorMessage: 'No prior draft Stage Run to review' });
+      await markFailed(sb, stageRunId, { ...ctx, errorMessage: 'No prior production Stage Run to review' });
       return;
     }
     const draftId = draftRef.id;

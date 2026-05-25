@@ -97,6 +97,15 @@ vi.mock('../../lib/supabase/index.js', () => ({
                     }),
                   }),
                 }),
+                // pipeline-review-dispatch now accepts both legacy `draft` and
+                // current `production` stage names via `.in('stage', [...])`.
+                in: () => ({
+                  order: () => ({
+                    limit: () => ({
+                      maybeSingle: () => Promise.resolve({ data: priorDraftStageRun, error: null }),
+                    }),
+                  }),
+                }),
               };
             },
           }),
