@@ -858,14 +858,16 @@ p { margin: 0 0 8pt; }
 }
 @media print { .toolbar { display: none !important; } }
 
-/* @page margins give breathing room on EVERY page automatically (top +
-   bottom). Body background paints inside the content area on each page
-   thanks to print-color-adjust: exact, so the dark surface persists
-   across all pages. Trade-off: the strip outside the content area
-   (paper edge) shows the PDF viewer's paper color — the inner content
-   never collides with the page break, which is what matters. */
-@page { size: A4; margin: 14mm 12mm 18mm 12mm; }
+/* Strategy: @page { margin: 0 } makes the .page element fill the
+   paper edge-to-edge (so the dark surface bleeds completely). The
+   per-page breathing room is recreated via box-decoration-break: clone
+   on .page — each page fragment of the element re-applies its padding
+   and background, so content never collides with the page break and
+   the dark fill survives across every page. Supported by Chrome and
+   Firefox in print mode. */
+@page { size: A4; margin: 0; }
 html, body {
+  background: var(--bg);
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }
 .page {
@@ -876,19 +878,24 @@ html, body {
 @media print {
   .page {
     max-width: 100%; margin: 0;
-    padding: 0;
+    /* Top/bottom padding repeats on every page thanks to clone below. */
+    padding: 14mm 12mm 22mm 12mm;
     background: var(--bg);
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
   }
   /* Section breaks get extra top breathing room so the section header
-     doesn't sit flush against the page edge after a forced break. */
-  .section--new-page { padding-top: 4mm; }
+     doesn't sit flush against the (cloned) page padding after a forced
+     break. */
+  .section--new-page { padding-top: 2mm; }
 }
 
 .print-footer { display: none; }
 @media print {
-  /* Lives in the @page bottom margin band — appears on every page. */
+  /* Fixed footer paints on every page, sitting inside the .page
+     bottom padding band so it never overlaps content. */
   .print-footer {
-    display: block; position: fixed; bottom: 4mm; left: 12mm; right: 12mm;
+    display: block; position: fixed; bottom: 8mm; left: 12mm; right: 12mm;
     font-size: 8pt; color: var(--text-muted); font-family: var(--font-sans);
   }
   .print-footer__left { float: left; }
