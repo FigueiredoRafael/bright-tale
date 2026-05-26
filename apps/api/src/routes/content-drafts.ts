@@ -258,14 +258,25 @@ function resolveSeoDefaults(draft: Record<string, unknown>): {
     (blog.secondary_keywords as string[]) ??
     (dj.secondary_keywords as string[]) ??
     [];
-  const categories =
-    (pubBlog?.categories as string[]) ??
-    (pubPlan?.categories as string[]) ??
-    (primaryKeyword ? [primaryKeyword] : []);
-  const tags =
-    (pubBlog?.tags as string[]) ??
-    (pubPlan?.tags as string[]) ??
-    secondaryKeywords;
+  // Empty arrays must fall through to the keyword-derived defaults — the review
+  // agent template seeds `publication_plan.blog.categories: []` and `tags: []`
+  // as placeholders and frequently leaves them untouched. Treating `[]` as a
+  // valid value (which `??` does) leaks empty arrays straight to the preview
+  // UI and breaks WordPress publishing. Use length checks so the cascade
+  // continues to the primary_keyword / secondary_keywords fallback when the
+  // review agent didn't fill them in.
+  const firstNonEmpty = (...candidates: (unknown)[]): string[] => {
+    for (const c of candidates) {
+      if (Array.isArray(c) && c.length > 0) return c as string[];
+    }
+    return [];
+  };
+  const categories = firstNonEmpty(
+    pubBlog?.categories,
+    pubPlan?.categories,
+    primaryKeyword ? [primaryKeyword] : [],
+  );
+  const tags = firstNonEmpty(pubBlog?.tags, pubPlan?.tags, secondaryKeywords);
 
   return {
     title,
