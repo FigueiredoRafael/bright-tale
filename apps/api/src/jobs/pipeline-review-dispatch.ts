@@ -313,6 +313,10 @@ export const pipelineReviewDispatch = inngest.createFunction(
       // Upsert into review_iterations so the picker UI can show every pass
       // with its draft snapshot + feedback. Keyed on (draft_id, iteration)
       // — a retry of the same iteration overwrites instead of duplicating.
+      // review_cost_cents: populated from response.usage when the cost-per-token
+      // utility lands. For now the column is nullable and we write null so the
+      // schema is in place for the UI to display "—" vs a real number.
+      const reviewCostCents: number | null = null; // TODO: derive from response.usage
       await sb
         .from('review_iterations')
         .upsert(
@@ -323,6 +327,7 @@ export const pipelineReviewDispatch = inngest.createFunction(
             verdict: newVerdict,
             feedback_json: result,
             draft_json: draft.draft_json,
+            review_cost_cents: reviewCostCents,
           },
           { onConflict: 'draft_id,iteration' },
         );
