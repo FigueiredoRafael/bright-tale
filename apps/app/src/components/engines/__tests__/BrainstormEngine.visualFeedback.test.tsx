@@ -32,6 +32,11 @@ vi.mock('@/hooks/use-pipeline-tracker', () => ({
   }),
 }));
 
+// issue #242: stub useActiveStageRun so it doesn't call useProjectStream (Supabase)
+vi.mock('@/hooks/useActiveStageRun', () => ({
+  useActiveStageRun: () => ({ runId: null, status: null, startedAt: null, isActive: false, isFresh: false }),
+}));
+
 interface MountOpts {
   ideas?: BrainstormIdeaFixture[];
   session?: ReturnType<typeof makeBrainstormSession>;
