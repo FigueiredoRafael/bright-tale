@@ -1,11 +1,36 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
+const supabaseSignInMock = vi.fn()
+const supabaseSignOutMock = vi.fn()
+
 vi.mock('@tn-figueiredo/auth-nextjs/actions', () => ({
   signInWithPassword: vi.fn(),
   signInWithGoogle: vi.fn(),
   forgotPassword: vi.fn(),
   resetPassword: vi.fn(),
   signOutAction: vi.fn(),
+}))
+
+vi.mock('next/headers', () => ({
+  cookies: vi.fn(async () => ({
+    getAll: () => [],
+    set: () => {},
+  })),
+}))
+
+vi.mock('@supabase/ssr', () => ({
+  createServerClient: () => ({
+    auth: {
+      signInWithPassword: supabaseSignInMock,
+      signOut: supabaseSignOutMock,
+    },
+  }),
+}))
+
+vi.mock('../admin-login-gate', () => ({
+  gateAdminLogin: vi.fn(async () => ({ allowed: true })),
+  gateForgotPassword: vi.fn(async () => ({ allowed: true })),
+  finishWithUniformDelay: vi.fn(async () => {}),
 }))
 
 import * as lib from '@tn-figueiredo/auth-nextjs/actions'
@@ -15,16 +40,19 @@ describe('admin-actions wrappers', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://brighttale.test')
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://example.supabase.co')
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-test-key')
   })
 
   afterEach(() => {
     vi.unstubAllEnvs()
   })
 
-  it('signInWithPassword forwards input unchanged', async () => {
-    vi.mocked(lib.signInWithPassword).mockResolvedValue({ ok: true })
-    await actions.signInWithPassword({ email: 'a@b.co', password: 'pw' })
-    expect(lib.signInWithPassword).toHaveBeenCalledWith({ email: 'a@b.co', password: 'pw' })
+  it('signInWithPassword calls supabase auth with email + password', async () => {
+    supabaseSignInMock.mockResolvedValue({ error: null })
+    const result = await actions.signInWithPassword({ email: 'a@b.co', password: 'pw' })
+    expect(supabaseSignInMock).toHaveBeenCalledWith({ email: 'a@b.co', password: 'pw' })
+    expect(result).toEqual({ ok: true })
   })
 
   // SEC-007: Google OAuth is removed from the admin surface. The Server

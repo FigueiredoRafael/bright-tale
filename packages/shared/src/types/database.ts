@@ -705,7 +705,7 @@ export type Database = {
           sections_json: Json | null
           slug: string
           stage: string
-          tools_json: Json | null
+          tools_json: Json
           updated_at: string
         }
         Insert: {
@@ -721,7 +721,7 @@ export type Database = {
           sections_json?: Json | null
           slug: string
           stage: string
-          tools_json?: Json | null
+          tools_json?: Json
           updated_at?: string
         }
         Update: {
@@ -737,7 +737,7 @@ export type Database = {
           sections_json?: Json | null
           slug?: string
           stage?: string
-          tools_json?: Json | null
+          tools_json?: Json
           updated_at?: string
         }
         Relationships: [
@@ -1518,6 +1518,7 @@ export type Database = {
           scheduled_at: string | null
           status: string
           title: string | null
+          track_id: string | null
           type: string
           updated_at: string
           user_id: string
@@ -1546,6 +1547,7 @@ export type Database = {
           scheduled_at?: string | null
           status?: string
           title?: string | null
+          track_id?: string | null
           type: string
           updated_at?: string
           user_id: string
@@ -1574,6 +1576,7 @@ export type Database = {
           scheduled_at?: string | null
           status?: string
           title?: string | null
+          track_id?: string | null
           type?: string
           updated_at?: string
           user_id?: string
@@ -1622,6 +1625,13 @@ export type Database = {
             referencedRelation: "research_sessions"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "content_drafts_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
         ]
       }
       coupon_redemptions: {
@@ -1649,6 +1659,56 @@ export type Database = {
             columns: ["coupon_id"]
             isOneToOne: false
             referencedRelation: "custom_coupons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_reservations: {
+        Row: {
+          actual_amount: number | null
+          amount: number
+          committed_at: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          org_id: string
+          status: string
+          token: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          actual_amount?: number | null
+          amount: number
+          committed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          org_id: string
+          status?: string
+          token?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          actual_amount?: number | null
+          amount?: number
+          committed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          org_id?: string
+          status?: string
+          token?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_reservations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -1700,63 +1760,6 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
-      }
-      credit_reservations: {
-        Row: {
-          actual_amount: number | null
-          amount: number
-          committed_at: string | null
-          created_at: string
-          expires_at: string
-          id: string
-          org_id: string
-          status: string
-          token: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          actual_amount?: number | null
-          amount: number
-          committed_at?: string | null
-          created_at?: string
-          expires_at?: string
-          id?: string
-          org_id: string
-          status?: string
-          token?: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          actual_amount?: number | null
-          amount?: number
-          committed_at?: string | null
-          created_at?: string
-          expires_at?: string
-          id?: string
-          org_id?: string
-          status?: string
-          token?: string
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "credit_reservations_org_id_fkey"
-            columns: ["org_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "credit_reservations_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       credit_usage: {
         Row: {
@@ -3045,7 +3048,6 @@ export type Database = {
           review_max_iterations: number
           review_reject_threshold: number
           updated_at: string
-          /** V2-006.3: feature flag — when true jobs use reserve/commit/release lifecycle */
           use_credit_reservations: boolean
         }
         Insert: {
@@ -3908,6 +3910,7 @@ export type Database = {
         Row: {
           created_at: string
           draft_id: string
+          draft_json: Json | null
           feedback_json: Json | null
           id: string
           iteration: number
@@ -3917,6 +3920,7 @@ export type Database = {
         Insert: {
           created_at?: string
           draft_id: string
+          draft_json?: Json | null
           feedback_json?: Json | null
           id?: string
           iteration: number
@@ -3926,6 +3930,7 @@ export type Database = {
         Update: {
           created_at?: string
           draft_id?: string
+          draft_json?: Json | null
           feedback_json?: Json | null
           id?: string
           iteration?: number
@@ -4901,6 +4906,11 @@ export type Database = {
         Args: { p_channel_id: string; p_user_id: string }
         Returns: undefined
       }
+      commit_reservation: {
+        Args: { p_actual_cost: number; p_token: string }
+        Returns: Json
+      }
+      expire_stale_reservations: { Args: never; Returns: number }
       increment_affiliate_clicks: {
         Args: { aff_id: string }
         Returns: undefined
@@ -4916,6 +4926,11 @@ export type Database = {
       recompute_project_status: {
         Args: { p_project_id: string }
         Returns: undefined
+      }
+      release_reservation: { Args: { p_token: string }; Returns: Json }
+      reserve_credits: {
+        Args: { p_amount: number; p_org_id: string; p_user_id: string }
+        Returns: Json
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
