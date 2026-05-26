@@ -180,6 +180,34 @@ export function useProjectStream(projectId: string): {
   // (which throws "cannot add postgres_changes callbacks after subscribe()").
   const instanceId = useId();
 
+  // Mirror helpers update the `tracks` snapshot in addition to the flat
+  // reducer state. useActiveStageRun reads per-track runs from this snapshot
+  // (the flat slot collapses by stage and loses per-track identity on
+  // multi-track projects). The cast to `never` is a deliberate seam between
+  // the snapshot schema (`StageRunSnapshot`, schema-derived) and the runtime
+  // StageRun type — both share the wire shape and the engine consumers
+  // tolerate either, but the schemas diverge on awaitingReason literal vs
+  // string and on nested StageRunAttempt shape.
+  const mirrorRowToTracks = useCallback((row: StageRun) => {
+    if (!row.trackId) return;
+    setTracks((prev) => {
+      let touched = false;
+      const next = prev.map((track) => {
+        if (track.id !== row.trackId) return track;
+        const existing = (track.stageRuns ?? {})[row.stage] as unknown as StageRun | null;
+        if (existing && existing.createdAt > row.createdAt && existing.id !== row.id) {
+          return track;
+        }
+        touched = true;
+        return {
+          ...track,
+          stageRuns: { ...(track.stageRuns ?? {}), [row.stage]: row as never },
+        };
+      });
+      return touched ? next : prev;
+    });
+  }, []);
+
   const refresh = useCallback(async () => {
     try {
       const res = await fetch(`/api/projects/${projectId}/stages`);
@@ -227,7 +255,15 @@ export function useProjectStream(projectId: string): {
         },
         (payload: { new?: Record<string, unknown> }) => {
           if (!payload.new) return;
-          dispatch({ type: 'upsert', row: rowToStageRun(payload.new) });
+          const row = rowToStageRun(payload.new);
+          dispatch({ type: 'upsert', row });
+          // Multi-track projects keep one stage_runs row per (stage, trackId).
+          // The flat reducer state collapses them by stage only, so per-track
+          // engines that read from `tracks` need an immediate side-mirror to
+          // see Realtime updates without waiting for the next 4s snapshot poll.
+          if (row.trackId) {
+            mirrorRowToTracks(row);
+          }
         },
       )
       .on(
@@ -263,13 +299,47 @@ export function useProjectStream(projectId: string): {
       window.clearInterval(pollId);
       supabase.removeChannel(channel);
     };
-  }, [projectId, instanceId, refresh]);
+  }, [projectId, instanceId, refresh, mirrorRowToTracks]);
 
   const optimisticPatchStageRun = useCallback(
     (stage: Stage, trackId: string | null, patch: Partial<StageRun>) => {
       dispatch({ type: 'patch', stage, trackId, patch });
+      if (!trackId) return;
+      setTracks((prev) => {
+        let touched = false;
+        const next = prev.map((track) => {
+          if (track.id !== trackId) return track;
+          const existing = (track.stageRuns ?? {})[stage] as unknown as StageRun | null;
+          const baseSynthesized: StageRun = {
+            id: '__optimistic__',
+            projectId,
+            stage,
+            status: 'queued',
+            awaitingReason: null,
+            payloadRef: null,
+            attemptNo: 1,
+            inputJson: null,
+            errorMessage: null,
+            startedAt: null,
+            finishedAt: null,
+            outcomeJson: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            trackId,
+          };
+          const merged: StageRun = existing
+            ? { ...existing, ...patch }
+            : { ...baseSynthesized, ...patch };
+          touched = true;
+          return {
+            ...track,
+            stageRuns: { ...(track.stageRuns ?? {}), [stage]: merged as never },
+          };
+        });
+        return touched ? next : prev;
+      });
     },
-    [],
+    [projectId],
   );
 
   return { stageRuns: state.stageRuns, liveEvent, isConnected, project, tracks, refresh, optimisticPatchStageRun };

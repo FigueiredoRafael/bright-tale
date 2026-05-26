@@ -11,6 +11,7 @@ import type { StageRun } from '@brighttale/shared/pipeline/inputs';
 // ─── Mock useProjectStream ─────────────────────────────────────────────────────
 
 let streamStageRuns: Record<string, StageRun | null> = {};
+let streamTracks: Array<{ id: string; stageRuns?: Record<string, StageRun | null> }> = [];
 
 vi.mock('@/hooks/useProjectStream', () => ({
   useProjectStream: () => ({
@@ -18,7 +19,7 @@ vi.mock('@/hooks/useProjectStream', () => ({
     liveEvent: null,
     isConnected: true,
     project: { mode: 'autopilot', rawMode: null, paused: false },
-    tracks: [],
+    tracks: streamTracks,
     refresh: vi.fn(async () => undefined),
     optimisticPatchStageRun: vi.fn(),
   }),
@@ -52,8 +53,30 @@ function makeRun(overrides: Partial<StageRun> = {}): StageRun {
   };
 }
 
+/**
+ * Mirror runs into both the flat `stageRuns` slot AND the per-track `tracks`
+ * snapshot, matching the production wiring where per-track engines read from
+ * the latter and shared engines read from the former. Tests that only set one
+ * side won't exercise the lookup that `useActiveStageRun` actually performs.
+ */
 function setStream(runs: Record<string, StageRun | null>) {
   streamStageRuns = runs;
+  const tracksMap = new Map<string, Record<string, StageRun | null>>();
+  for (const run of Object.values(runs)) {
+    if (!run) continue;
+    if (run.trackId == null) continue;
+    const existing = tracksMap.get(run.trackId) ?? {};
+    existing[run.stage] = run;
+    tracksMap.set(run.trackId, existing);
+  }
+  streamTracks = Array.from(tracksMap.entries()).map(([id, stageRuns]) => ({
+    id,
+    stageRuns,
+  }));
+}
+
+function setTracks(tracks: Array<{ id: string; stageRuns?: Record<string, StageRun | null> }>) {
+  streamTracks = tracks;
 }
 
 const EMPTY = {
@@ -69,6 +92,7 @@ const EMPTY = {
 
 beforeEach(() => {
   streamStageRuns = { ...EMPTY };
+  streamTracks = [];
 });
 
 // ─── Tests ─────────────────────────────────────────────────────────────────────
@@ -225,5 +249,39 @@ describe('useActiveStageRun', () => {
     );
     expect(result.current.runId).toBeNull();
     expect(result.current.isActive).toBe(false);
+  });
+
+  // Scenario 9 (regression): multi-track collision — flat stageRuns slot holds
+  // a different track's run, but the queried track has its own active run in
+  // the tracks snapshot. Resolves the user-reported "modal never mounts" bug
+  // on blog+video projects.
+  it('returns the per-track active run even when the flat stageRuns slot holds a different track', () => {
+    const blogCompleted = makeRun({
+      id: 'sr-blog-2',
+      status: 'completed',
+      trackId: 'track-blog',
+      attemptNo: 2,
+    });
+    const videoRunning = makeRun({
+      id: 'sr-video-4',
+      status: 'running',
+      trackId: 'track-video',
+      attemptNo: 4,
+    });
+    // Simulate the buggy flat-slot situation: stageRuns['production'] holds
+    // blog's completed row (last-write-wins collapsed the video row), but
+    // tracks carries both rows correctly partitioned.
+    streamStageRuns = { ...EMPTY, production: blogCompleted };
+    streamTracks = [
+      { id: 'track-blog', stageRuns: { production: blogCompleted } },
+      { id: 'track-video', stageRuns: { production: videoRunning } },
+    ];
+
+    const { result } = renderHook(() =>
+      useActiveStageRun(PROJECT_ID, 'production', 'track-video'),
+    );
+    expect(result.current.runId).toBe('sr-video-4');
+    expect(result.current.status).toBe('running');
+    expect(result.current.isActive).toBe(true);
   });
 });

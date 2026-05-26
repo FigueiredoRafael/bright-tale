@@ -7,7 +7,7 @@
  */
 import { useRef } from 'react';
 import { useProjectStream } from '@/hooks/useProjectStream';
-import type { Stage, StageRunStatus } from '@brighttale/shared/pipeline/inputs';
+import type { Stage, StageRun, StageRunStatus } from '@brighttale/shared/pipeline/inputs';
 
 const ACTIVE_STATUSES = new Set<StageRunStatus>(['queued', 'running']);
 
@@ -52,7 +52,7 @@ export function useActiveStageRun(
   stage: Stage,
   trackId: string | null,
 ): ActiveStageRunResult {
-  const { stageRuns } = useProjectStream(projectId);
+  const { stageRuns, tracks } = useProjectStream(projectId);
 
   // Tracks the last runId this hook instance returned as active (queued/running).
   // Updated during render to implement "previous value" tracking.
@@ -62,18 +62,27 @@ export function useActiveStageRun(
   // true when a NEW runId appears after the prior one completed.
   const lastCompletedRunIdRef = useRef<string | null>(null);
 
-  const run = stageRuns[stage] ?? null;
+  // Per-track stages (production, review, assets, preview, publish) must be
+  // resolved against the tracks snapshot because the flat `stageRuns` slot is
+  // last-write-wins per stage — on multi-track projects, another track's row
+  // collapses on top of this track's. Shared stages (brainstorm, research,
+  // canonical) keep using the flat slot since they only have trackId=null.
+  let run: StageRun | null = null;
+  if (trackId !== null) {
+    const track = tracks.find((t) => t.id === trackId);
+    run = (track?.stageRuns?.[stage] as StageRun | null | undefined) ?? null;
+  } else {
+    run = stageRuns[stage] ?? null;
+  }
 
-  // Shared stages (brainstorm, research, canonical) have no track affinity —
-  // their stage_runs rows have trackId: null. For per-track stages, filter by
-  // the requested trackId.
   const isMatch = (() => {
     if (!run) return false;
     if (trackId === null) {
       // Shared stage: accept whatever the stream has for this stage.
       return true;
     }
-    // Per-track stage: the run must belong to this specific track.
+    // Per-track stage: the run must belong to this specific track. Defensive
+    // even though the tracks lookup above already filtered by track id.
     return (run.trackId ?? null) === trackId;
   })();
 
