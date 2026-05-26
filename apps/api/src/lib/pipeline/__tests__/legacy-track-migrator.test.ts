@@ -8,7 +8,7 @@
  * No global mock state.
  */
 import { describe, it, expect } from 'vitest';
-import { ensureTracksForProject, splitDraftStageRuns } from '../legacy-track-migrator';
+import { ensureTracksForProject, splitDraftStageRuns } from '../legacy-track-migrator.js';
 
 const PROJECT_ID = '00000000-0000-0000-0000-0000000000aa';
 
@@ -480,7 +480,7 @@ describe('ensureTracksForProject → splitDraftStageRuns wiring', () => {
     expect(stages).toEqual(['canonical', 'draft', 'production']);
   });
 
-  it('does NOT call splitDraftStageRuns when track already exists (second call)', async () => {
+  it('is idempotent on the second call when canonical+production already exist', async () => {
     const sb = makeSb({
       projects: [{ id: PROJECT_ID, pipeline_state_json: null }],
       tracks: [
@@ -520,13 +520,43 @@ describe('ensureTracksForProject → splitDraftStageRuns wiring', () => {
           created_at: '2026-05-13T00:00:00Z',
           updated_at: '2026-05-13T00:00:00Z',
         },
+        {
+          id: 'sr-canonical',
+          project_id: PROJECT_ID,
+          stage: 'canonical',
+          status: 'completed',
+          payload_ref: { kind: 'content_draft', id: 'cd-1' },
+          outcome_json: null,
+          track_id: null,
+          publish_target_id: null,
+          attempt_no: 1,
+          started_at: '2026-05-13T00:00:00Z',
+          finished_at: '2026-05-13T00:00:00Z',
+          created_at: '2026-05-13T00:00:00Z',
+          updated_at: '2026-05-13T00:00:00Z',
+        },
+        {
+          id: 'sr-production',
+          project_id: PROJECT_ID,
+          stage: 'production',
+          status: 'completed',
+          payload_ref: { kind: 'content_draft', id: 'cd-1' },
+          outcome_json: null,
+          track_id: 'tr-blog',
+          publish_target_id: null,
+          attempt_no: 1,
+          started_at: '2026-05-13T00:00:00Z',
+          finished_at: '2026-05-13T00:00:00Z',
+          created_at: '2026-05-13T00:00:00Z',
+          updated_at: '2026-05-13T00:00:00Z',
+        },
       ],
     });
 
     await ensureTracksForProject(sb as unknown as never, PROJECT_ID);
 
-    expect(sb.stage_runs).toHaveLength(1);
-    expect(sb.stage_runs[0].stage).toBe('draft');
+    const stages = sb.stage_runs.map((r) => r.stage).sort();
+    expect(stages).toEqual(['canonical', 'draft', 'production']);
   });
 });
 

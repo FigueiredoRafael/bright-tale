@@ -112,7 +112,11 @@ export function PipelineWorkspace({ projectId }: Props) {
   // skipped when their stage run is marked 'skipped' (e.g. wizard config).
   useEffect(() => {
     if (isGraph) return;
-    if (project.rawMode !== 'supervised') return;
+    // Accept both the canonical 'supervised' label and the legacy 'autopilot'
+    // alias the Slice 13 backfill stamped onto pre-existing projects. Without
+    // this, projects created before the supervised/overview/step-by-step split
+    // (mode='autopilot') never auto-advance even though the user clicked play.
+    if (project.rawMode !== 'supervised' && project.rawMode !== 'autopilot') return;
     if (project.paused) return;
     const currentStage = searchParams.get('stage');
     if (!currentStage) return;

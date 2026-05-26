@@ -73,10 +73,36 @@ export async function splitDraftStageRuns(
   const splitStages = new Set(
     ((existingSplits as Array<{ stage: string }> | null) ?? []).map((r) => r.stage),
   );
-  if (splitStages.has('canonical') && splitStages.has('production')) return null;
+  // Per-stage idempotency: skip insertion of whichever stage already exists.
+  // Earlier "both must exist" gate created orphan duplicates whenever the user
+  // (or a cascade abort) deleted one of the pair: the survivor was treated as
+  // "neither present" and the function re-inserted both, producing two
+  // canonical rows. Latest-by-created_at wins in the v2 sidebar dedup, so the
+  // fresh row (status=queued, no payload_ref) shadowed the real completed row
+  // and the canonical stage rendered as blocked.
+  const needsCanonical = !splitStages.has('canonical');
+  const needsProduction = !splitStages.has('production');
+  if (!needsCanonical && !needsProduction) return null;
 
   const draft = rows[0];
-  const contentDraftId = draft.payload_ref?.kind === 'content_draft' ? draft.payload_ref.id : null;
+  let contentDraftId = draft.payload_ref?.kind === 'content_draft' ? draft.payload_ref.id : null;
+
+  // Fallback: legacy draft stage_runs may have been seeded without a
+  // payload_ref (e.g. status=skipped rows inserted during early pipeline
+  // bootstrap). Without this fallback we cannot read canonical_core_json /
+  // draft_json from content_drafts and the split inserts rows as 'queued'
+  // even when the user already approved the canonical core — leaving the
+  // sidebar in a stuck state.
+  if (!contentDraftId) {
+    const { data: latestDraft } = await sb
+      .from('content_drafts')
+      .select('id')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    contentDraftId = (latestDraft as { id?: string } | null)?.id ?? null;
+  }
 
   let canonicalCore: unknown = null;
   let draftJson: unknown = null;
@@ -103,37 +129,65 @@ export async function splitDraftStageRuns(
   const now = new Date().toISOString();
   const payloadRef = contentDraftId ? { kind: 'content_draft', id: contentDraftId } : null;
 
-  const { data: canonicalRow } = await sb
-    .from('stage_runs')
-    .insert({
-      project_id: projectId,
-      stage: 'canonical',
-      status: canonicalStatus,
-      payload_ref: payloadRef,
-      track_id: null,
-      publish_target_id: null,
-      attempt_no: 1,
-      started_at: canonicalStatus === 'completed' ? draft.started_at ?? now : null,
-      finished_at: canonicalStatus === 'completed' ? draft.finished_at ?? now : null,
-    })
-    .select()
-    .single();
+  let canonicalRow: { id: string } | null = null;
+  if (needsCanonical) {
+    const { data } = await sb
+      .from('stage_runs')
+      .insert({
+        project_id: projectId,
+        stage: 'canonical',
+        status: canonicalStatus,
+        payload_ref: payloadRef,
+        track_id: null,
+        publish_target_id: null,
+        attempt_no: 1,
+        started_at: canonicalStatus === 'completed' ? draft.started_at ?? now : null,
+        finished_at: canonicalStatus === 'completed' ? draft.finished_at ?? now : null,
+      })
+      .select()
+      .single();
+    canonicalRow = data as { id: string } | null;
+  } else {
+    const { data } = await sb
+      .from('stage_runs')
+      .select('id, status')
+      .eq('project_id', projectId)
+      .eq('stage', 'canonical')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    canonicalRow = data as { id: string } | null;
+  }
 
-  const { data: productionRow } = await sb
-    .from('stage_runs')
-    .insert({
-      project_id: projectId,
-      stage: 'production',
-      status: productionStatus,
-      payload_ref: payloadRef,
-      track_id: trackId,
-      publish_target_id: null,
-      attempt_no: 1,
-      started_at: productionStatus === 'completed' ? draft.started_at ?? now : null,
-      finished_at: productionStatus === 'completed' ? draft.finished_at ?? now : null,
-    })
-    .select()
-    .single();
+  let productionRow: { id: string } | null = null;
+  if (needsProduction) {
+    const { data } = await sb
+      .from('stage_runs')
+      .insert({
+        project_id: projectId,
+        stage: 'production',
+        status: productionStatus,
+        payload_ref: payloadRef,
+        track_id: trackId,
+        publish_target_id: null,
+        attempt_no: 1,
+        started_at: productionStatus === 'completed' ? draft.started_at ?? now : null,
+        finished_at: productionStatus === 'completed' ? draft.finished_at ?? now : null,
+      })
+      .select()
+      .single();
+    productionRow = data as { id: string } | null;
+  } else {
+    const { data } = await sb
+      .from('stage_runs')
+      .select('id, status')
+      .eq('project_id', projectId)
+      .eq('stage', 'production')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    productionRow = data as { id: string } | null;
+  }
 
   return {
     canonical: { id: (canonicalRow as { id: string }).id, status: canonicalStatus },

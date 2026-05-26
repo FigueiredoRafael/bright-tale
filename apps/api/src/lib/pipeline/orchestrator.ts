@@ -548,6 +548,33 @@ export async function resumeProject(projectId: string): Promise<void> {
     }
 
     // Resume point: either no run yet, or last attempt was failed/aborted.
+    // Multi-track stages need fan-out: production runs one stage_run per
+    // active+non-paused track (`fanOutFromCanonical` derives the per-track
+    // spec via the planner). Inserting a single track-less production row
+    // here causes the dispatcher to fail with "Production Stage Run missing
+    // track_id" (advanceAfter's canonical-completed path uses fan-out for
+    // exactly this reason — resume needs the same shape).
+    if (stage === 'production') {
+      const { data: canonicalRun } = await sb
+        .from('stage_runs')
+        .select('id')
+        .eq('project_id', projectId)
+        .eq('stage', 'canonical')
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (canonicalRun?.id) {
+        await fanOutFromCanonical(
+          sb,
+          projectId,
+          project.autopilot_config_json,
+          canonicalRun.id as string,
+        );
+      }
+      return;
+    }
+
     const attemptNo = latest ? latest.attemptNo + 1 : 1;
     const nextRow: Record<string, unknown> = {
       project_id: projectId,
