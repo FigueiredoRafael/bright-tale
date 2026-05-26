@@ -41,7 +41,14 @@ export type AwaitingReason =
   | 'manual_review'
   | 'provider_quota_exhausted'
   | 'max_iterations'
-  | 'user_paused';
+  | 'user_paused'
+  /**
+   * Stagnation: the last 3 review iterations showed no score progress
+   * (max-min ≤ 2) and the same critical issues kept repeating (Jaccard ≥ 0.7).
+   * Distinct from max_iterations so telemetry separates converged loops from
+   * loops that hit the budget limit. Gated behind ENABLE_REVIEW_STAGNATION_PARK.
+   */
+  | 'stagnation';
 
 export interface PayloadRef {
   kind: string;
@@ -539,9 +546,21 @@ export async function bulkAbort(
   projectId: string,
   stages: ReadonlyArray<string>,
   errorMessage: string,
+  /**
+   * Optional per-track scope. When provided, only rows whose `track_id`
+   * matches are aborted — sibling tracks keep their completed downstream
+   * runs. Required for multi-track projects: restarting Video's review
+   * must not wipe Blog's already-approved review/assets/preview/publish.
+   *
+   * Shared stages (brainstorm/research/canonical/draft) have `track_id IS NULL`
+   * and are still aborted when present in `stages` so a cascade from a shared
+   * stage rebuilds the whole pipeline — pass `trackId` only when cascading
+   * from a per-track stage (production/review/assets/preview/publish).
+   */
+  trackId?: string | null,
 ): Promise<void> {
   const now = new Date().toISOString();
-  const { error } = await sb
+  let query = sb
     .from('stage_runs')
     .update({
       status: 'aborted',
@@ -552,10 +571,15 @@ export async function bulkAbort(
     .eq('project_id', projectId)
     .in('stage', stages)
     .in('status', ['queued', 'running', 'awaiting_user', 'completed', 'skipped']);
+  if (trackId !== undefined && trackId !== null) {
+    query = query.eq('track_id', trackId);
+  }
+  const { error } = await query;
   if (error) {
     logTransition('error', 'bulkAbort failed', {
       projectId,
       stages: stages as unknown as string[],
+      trackId: trackId ?? null,
       err: error.message,
     });
     throw new Error(`bulkAbort project=${projectId}: ${error.message}`);
@@ -563,6 +587,7 @@ export async function bulkAbort(
   logTransition('info', 'stage-runs bulk-aborted (cascade)', {
     projectId,
     stages: stages as unknown as string[],
+    trackId: trackId ?? null,
     reason: errorMessage,
   });
 }
