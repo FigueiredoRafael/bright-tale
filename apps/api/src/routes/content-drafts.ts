@@ -221,6 +221,7 @@ function resolveSeoDefaults(draft: Record<string, unknown>): {
 } {
   const dj = (draft.draft_json ?? {}) as Record<string, unknown>;
   const blog = (dj.blog ?? dj) as Record<string, unknown>;
+  const canonicalCore = (draft.canonical_core_json ?? {}) as Record<string, unknown>;
   const feedback = (draft.review_feedback_json ?? {}) as Record<
     string,
     unknown
@@ -258,13 +259,19 @@ function resolveSeoDefaults(draft: Record<string, unknown>): {
     (blog.secondary_keywords as string[]) ??
     (dj.secondary_keywords as string[]) ??
     [];
-  // Empty arrays must fall through to the keyword-derived defaults — the review
-  // agent template seeds `publication_plan.blog.categories: []` and `tags: []`
-  // as placeholders and frequently leaves them untouched. Treating `[]` as a
-  // valid value (which `??` does) leaks empty arrays straight to the preview
-  // UI and breaks WordPress publishing. Use length checks so the cascade
-  // continues to the primary_keyword / secondary_keywords fallback when the
-  // review agent didn't fill them in.
+  // Resolution cascade for categories + tags:
+  //   1. canonical_core_json (source of truth — agent-3a writes these as
+  //      format-agnostic taxonomy shared across blog/video/shorts/podcast)
+  //   2. publication_plan.blog.* (legacy: review agent used to seed these
+  //      as empty placeholders, kept for back-compat with pre-canonical drafts)
+  //   3. publication_plan.* (even older shape — flat layout)
+  //   4. keyword fallback (primary_keyword for categories, secondary_keywords
+  //      for tags) — last resort for projects with neither canonical nor
+  //      a populated review publication_plan.
+  //
+  // `??` short-circuits on null/undefined but NOT on empty arrays — review
+  // template seeded `[]` placeholders that frequently shipped untouched, so
+  // the cascade has to length-check each candidate explicitly.
   const firstNonEmpty = (...candidates: (unknown)[]): string[] => {
     for (const c of candidates) {
       if (Array.isArray(c) && c.length > 0) return c as string[];
@@ -272,11 +279,17 @@ function resolveSeoDefaults(draft: Record<string, unknown>): {
     return [];
   };
   const categories = firstNonEmpty(
+    canonicalCore.categories,
     pubBlog?.categories,
     pubPlan?.categories,
     primaryKeyword ? [primaryKeyword] : [],
   );
-  const tags = firstNonEmpty(pubBlog?.tags, pubPlan?.tags, secondaryKeywords);
+  const tags = firstNonEmpty(
+    canonicalCore.tags,
+    pubBlog?.tags,
+    pubPlan?.tags,
+    secondaryKeywords,
+  );
 
   return {
     title,

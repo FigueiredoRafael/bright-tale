@@ -245,13 +245,10 @@ export const review: AgentDefinition = {
             arrOf('internal_links', 'Internal link topic suggestions (content team will add actual URLs)', [
               str('anchor_text', 'Suggested link text'),
             ], false),
-            arr('categories', 'Blog categories', 'string', false),
-            arr('tags', 'Blog tags', 'string', false),
           ], false),
           obj('youtube', 'YouTube publication plan', [
             str('final_title', 'Selected title from title_options', false),
             str('description', 'Full YouTube description with timestamps and links', false),
-            arr('tags', 'Video tags', 'string', false),
             arrOf('cards_and_endscreens', 'Cards and endscreens to add', [
               str('type', 'card | endscreen'),
               str('timestamp', 'Timestamp for card/endscreen'),

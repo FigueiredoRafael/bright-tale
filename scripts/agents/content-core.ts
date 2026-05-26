@@ -114,6 +114,8 @@ export const contentCore: AgentDefinition = {
         ], false),
         str('cta_subscribe', 'Subscribe call-to-action used in all formats'),
         str('cta_comment_prompt', 'Comment prompt that drives engagement on all platforms'),
+        arr('categories', '1-3 broad topical categories shared across every downstream format (WordPress categories, YouTube broad categories, podcast top-level). Use the channel niche + thesis framing, NOT format-specific buckets.', 'string'),
+        arr('tags', '5-10 long-tail tags shared across every downstream format. Seed from research.secondary_keywords (if provided) and enrich with topical breadth from thesis + argument_chain. Lowercase, no leading "#".', 'string'),
         contentWarningField('research material for canonical-core generation'),
       ],
     },
@@ -130,6 +132,8 @@ export const contentCore: AgentDefinition = {
         'Key_quotes: Only quotes from research.expert_quotes. Do not fabricate quotes.',
         'Knowledge_gaps in input: If research has knowledge gaps, do NOT make claims in argument_chain that depend on those gaps.',
         'Affiliate_moment: Point to a specific step number in argument_chain in trigger_context.',
+        'Categories: 1-3 entries. Pick the broadest taxonomic buckets that apply across blog, video, shorts, podcast (e.g. "Personal Finance", "Career Development"). NEVER format-specific or single-format-only tags here.',
+        'Tags: 5-10 entries. Start from research.secondary_keywords (if present); fill gaps using nouns/phrases from thesis + argument_chain that a reader would search for. Lowercase, single line, no "#" prefix, no duplicates of the primary_keyword.',
         'If research.sources or research.statistics cannot support the thesis (insufficient evidence), populate content_warning with "Thesis under-supported by research — recommend abandon or deeper research" instead of fabricating evidence.',
         'If persona_context is provided: frame the thesis and argument chain through this persona\'s analytical_lens. The thesis must reflect how they would interpret this evidence. Where the research supports it, let their strong_opinions inform the editorial position. Reject angles that fall outside approved_categories.',
       ],
@@ -166,6 +170,14 @@ Good: "Evergreen content outperforms trending content by 3:1 in 12-month ROI."`,
       {
         title: 'Field Guidance: Affiliate Moment',
         content: `Product recommendation fits naturally at a specific argument_chain step. Trigger_context references step number; product_angle describes how it solves the problem. Omit if no monetization.`,
+      },
+      {
+        title: 'Field Guidance: Categories and Tags',
+        content: `Categories and tags ship with the canonical core so every format (blog, video, shorts, podcast) lands in WordPress / YouTube / Apple Podcasts with the same taxonomy.
+
+Categories (1-3): broad parent buckets. Example for a side-hustle burnout thesis: ["Personal Finance", "Career Development"]. Avoid format-specific buckets ("Blog posts", "Short videos").
+
+Tags (5-10): specific long-tail terms searchable by a reader. Example: ["side hustle burnout", "gig work stress", "financial precarity", "workplace boundaries", "freelance income volatility"]. Lowercase, no "#", no duplicates of the primary_keyword.`,
       },
     ],
   },
