@@ -99,7 +99,14 @@ export function deriveStageResultsByTrack(runs: StageRunPayload[]): StageResults
         run.payloadRef?.kind === 'content_draft' && typeof run.payloadRef.id === 'string'
           ? run.payloadRef.id
           : null
-      const resolvedDraftId = draftIdFromOutcome ?? draftIdFromRef
+      // payload_ref wins on per-track rows. mirror-from-legacy copies the
+      // legacy flat `stageResults.draft.draftId` into outcome_json for every
+      // mirrored row — including per-track ones — even though that draftId
+      // points at the project-scoped legacy content_draft, NOT the per-track
+      // fork that production-dispatch actually created. payload_ref is what
+      // the production dispatcher wrote with the real per-track draft id.
+      const resolvedDraftId =
+        run.trackId && draftIdFromRef ? draftIdFromRef : draftIdFromOutcome ?? draftIdFromRef
       if (resolvedDraftId && !bucket.draft) {
         bucket.draft = {
           draftId: resolvedDraftId,
