@@ -31,6 +31,7 @@ import type { Persona } from '@brighttale/shared/types/agents';
 import { useProjectContext } from '@/components/pipeline/ProjectContextProvider';
 import { useAutoPilotTrigger } from '@/hooks/use-auto-pilot-trigger';
 import { usePipelineAbort } from '@/components/pipeline/PipelineAbortProvider';
+import { useActiveStageRun } from '@/hooks/useActiveStageRun';
 import { hydrateDraftFromConfig } from '@/lib/pipeline/hydrateEngineFromConfig';
 import { fetchTracks, firstActiveTrack, pushStage } from '@/lib/pipeline/advanceUrl';
 import { CanonicalTrackPicker } from '@/components/pipeline/CanonicalTrackPicker';
@@ -108,8 +109,10 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
   const [coreExpanded, setCoreExpanded] = useState(true);
   const [coreApproved, setCoreApproved] = useState(false);
 
-  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
-  const [activeSince, setActiveSince] = useState<string | null>(null);
+  // issue #242 Module 3: derive progress-modal visibility from stage_run status
+  // instead of local activeDraftId state. Canonical is a shared stage (trackId=null).
+  const activeRun = useActiveStageRun(projectId ?? '', 'canonical', null);
+
   const [busy, setBusy] = useState(false);
 
   const [manualState, setManualState] = useState<{
@@ -118,6 +121,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
   } | null>(null);
 
   const [personas, setPersonas] = useState<Persona[]>([]);
+  const [personasLoaded, setPersonasLoaded] = useState(false);
   const [rankedPersonas, setRankedPersonas] = useState<RankedPersona[]>([]);
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
 
@@ -168,6 +172,8 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
         }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
+      } finally {
+        setPersonasLoaded(true);
       }
     })();
   }, [abortController?.signal]);
@@ -277,13 +283,17 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
   const autoMode = ctx.context.mode;
   const overviewMode = autoMode === 'overview';
   const autoPaused = ctx.context.paused ?? false;
+  // showProgressModal: computed here so overviewMode is in scope.
+  // We don't gate on !!draftId because an active stage_run proves a draft exists;
+  // the GenerationProgressFloat renders with draftId falling back to '' if needed.
+  const showProgressModal = activeRun.isActive && !overviewMode;
 
   useAutoPilotTrigger({
     stage: 'draft',
     canFire: () =>
       phase === 'core' &&
       !busy &&
-      !activeDraftId &&
+      !activeRun.isActive &&
       !manualState &&
       !!research &&
       title.trim().length > 0 &&
@@ -419,7 +429,6 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
       return;
     }
 
-    const sinceAnchor = new Date(Date.now() - 1_000).toISOString();
     const enqueued = await runStep('start canonical core', () =>
       fetch(`/api/content-drafts/${newDraftId}/generate`, {
         method: 'POST',
@@ -429,8 +438,8 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
       })
     );
     if (!enqueued) return;
-    setActiveSince(sinceAnchor);
-    setActiveDraftId(newDraftId);
+    // The POST creates a stage_run. useActiveStageRun picks up the status change
+    // from the project stream and mounts the modal — no local state needed.
   }
 
   async function handleManualOutputSubmit(parsed: unknown) {
@@ -534,9 +543,8 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
 
   function onCoreJobComplete() {
     if (!draftId) return;
-    setActiveDraftId(null);
-    setActiveSince(null);
-
+    // activeRun.isActive will flip to false via useActiveStageRun when the
+    // stage_run row reaches 'completed' — no local state to clear here.
     (async () => {
       try {
         const res = await fetch(`/api/content-drafts/${draftId}`, {
@@ -578,8 +586,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
       provider,
       model,
     });
-    setActiveDraftId(null);
-    setActiveSince(null);
+    // activeRun.isActive will flip to false when the stage_run reaches 'failed'.
   }
 
   const cardCount = (() => {
@@ -939,6 +946,25 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
         </div>
       )}
 
+      {personasLoaded && personas.length === 0 && (
+        <Card data-testid="canonical-no-personas" className="border-amber-500/40 bg-amber-500/[0.04]">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">No personas yet</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Canonical core needs an author persona — the voice the content is written in.
+              Create one to continue.
+            </p>
+            <Button asChild size="sm">
+              <a href="/personas/new" target="_blank" rel="noreferrer">
+                Create persona
+              </a>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {phase === 'core' && (
         <Card style={personaCardStyle}>
           <CardHeader>
@@ -987,9 +1013,14 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
                     Select research first — production without research is weak.
                   </p>
                 )}
-                {!selectedPersonaId && (
+                {!selectedPersonaId && personas.length > 0 && (
                   <p className="text-xs text-muted-foreground">
                     Select a persona before generating.
+                  </p>
+                )}
+                {personasLoaded && personas.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    No personas available — create one first to unlock generation.
                   </p>
                 )}
               </div>
@@ -1006,18 +1037,19 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
         </Card>
       )}
 
-      {activeDraftId && (
+      {showProgressModal && (
         <GenerationProgressFloat
-          open={!overviewMode && !!activeDraftId}
-          sessionId={activeDraftId}
-          sseUrl={`/api/content-drafts/${activeDraftId}/events`}
-          since={activeSince ?? undefined}
+          open={showProgressModal}
+          sessionId={draftId ?? ''}
+          sseUrl={draftId ? `/api/content-drafts/${draftId}/events` : ''}
+          since={activeRun.startedAt ?? undefined}
           title="Generating canonical core"
           onComplete={onCoreJobComplete}
           onFailed={onJobFailed}
           onClose={() => {
-            setActiveDraftId(null);
-            setActiveSince(null);
+            // User dismisses the float manually — the stage_run may still be
+            // running in the background. The modal will re-mount if the stream
+            // still reports isActive=true on the next render. This is intentional.
           }}
         />
       )}
