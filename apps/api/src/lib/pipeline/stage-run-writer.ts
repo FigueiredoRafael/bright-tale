@@ -539,9 +539,10 @@ export async function bulkAbort(
   projectId: string,
   stages: ReadonlyArray<string>,
   errorMessage: string,
+  trackId?: string | null,
 ): Promise<void> {
   const now = new Date().toISOString();
-  const { error } = await sb
+  let query = sb
     .from('stage_runs')
     .update({
       status: 'aborted',
@@ -552,6 +553,12 @@ export async function bulkAbort(
     .eq('project_id', projectId)
     .in('stage', stages)
     .in('status', ['queued', 'running', 'awaiting_user', 'completed', 'skipped']);
+
+  if (trackId != null) {
+    query = query.eq('track_id', trackId);
+  }
+
+  const { error } = await query;
   if (error) {
     logTransition('error', 'bulkAbort failed', {
       projectId,
