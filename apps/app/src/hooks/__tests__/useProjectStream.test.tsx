@@ -203,6 +203,83 @@ describe('useProjectStream', () => {
     expect(result.current.liveEvent?.message).toBe('Calling AI…');
   });
 
+  // ── #242 follow-up: per-track trackId preservation ───────────────────────
+
+  it('preserves trackId on Realtime upsert (regression for #242 missing modal)', async () => {
+    const { result } = renderHook(() => useProjectStream(PROJECT_ID));
+
+    await waitFor(() => expect(channelMock.handlers['stage_runs:*']).toBeDefined());
+
+    act(() => {
+      channelMock.handlers['stage_runs:*']({
+        eventType: 'INSERT',
+        new: {
+          id: 'sr-video',
+          project_id: PROJECT_ID,
+          stage: 'production',
+          status: 'queued',
+          awaiting_reason: null,
+          payload_ref: null,
+          attempt_no: 2,
+          input_json: null,
+          error_message: null,
+          started_at: null,
+          finished_at: null,
+          created_at: '2026-05-26T20:00:00Z',
+          updated_at: '2026-05-26T20:00:00Z',
+          track_id: '7be3bd39-cbe1-4a26-946c-8ad6b0eb7e5b',
+        },
+      });
+    });
+
+    expect(result.current.stageRuns.production?.trackId).toBe(
+      '7be3bd39-cbe1-4a26-946c-8ad6b0eb7e5b',
+    );
+  });
+
+  it('optimisticPatchStageRun synthesizes an entry when the per-track slot is empty', async () => {
+    const { result } = renderHook(() => useProjectStream(PROJECT_ID));
+    await waitFor(() => expect(result.current.stageRuns.production).toBeNull());
+
+    act(() => {
+      result.current.optimisticPatchStageRun('production', 'track-video-1', {
+        status: 'queued',
+      });
+    });
+
+    expect(result.current.stageRuns.production?.status).toBe('queued');
+    expect(result.current.stageRuns.production?.trackId).toBe('track-video-1');
+  });
+
+  it('optimisticPatchStageRun synthesizes a new entry when the cached run belongs to a different track', async () => {
+    const snapshot = [
+      baseSnapshotRow({
+        id: 'sr-blog',
+        stage: 'production',
+        status: 'completed',
+        trackId: 'track-blog-1',
+      }),
+    ];
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { stageRuns: snapshot }, error: null }),
+    });
+
+    const { result } = renderHook(() => useProjectStream(PROJECT_ID));
+    await waitFor(() =>
+      expect(result.current.stageRuns.production?.trackId).toBe('track-blog-1'),
+    );
+
+    act(() => {
+      result.current.optimisticPatchStageRun('production', 'track-video-1', {
+        status: 'queued',
+      });
+    });
+
+    expect(result.current.stageRuns.production?.trackId).toBe('track-video-1');
+    expect(result.current.stageRuns.production?.status).toBe('queued');
+  });
+
   it('cleans up the channel on unmount', async () => {
     const { unmount } = renderHook(() => useProjectStream(PROJECT_ID));
 

@@ -159,6 +159,7 @@ function rowToStageRun(row: Record<string, unknown>): StageRun {
     outcomeJson: row.outcome_json,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
+    trackId: (row.track_id ?? null) as string | null,
   };
 }
 

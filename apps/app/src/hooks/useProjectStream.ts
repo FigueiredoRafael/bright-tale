@@ -44,7 +44,7 @@ interface ReducerState {
 type ReducerAction =
   | { type: 'snapshot'; rows: StageRun[] }
   | { type: 'upsert'; row: StageRun }
-  | { type: 'patch'; stage: Stage; patch: Partial<StageRun> };
+  | { type: 'patch'; stage: Stage; trackId: string | null; patch: Partial<StageRun> };
 
 function reducer(state: ReducerState, action: ReducerAction): ReducerState {
   if (action.type === 'snapshot') {
@@ -61,12 +61,40 @@ function reducer(state: ReducerState, action: ReducerAction): ReducerState {
   }
   if (action.type === 'patch') {
     const current = state.stageRuns[action.stage];
-    if (!current) return state;
+    // Only merge into the cached row when it belongs to the same per-track
+    // scope. Otherwise the latest-per-stage slot may hold a different track's
+    // run and the patch would silently mutate it. When the slot is empty or
+    // mismatched, synthesize a minimal optimistic entry so the hook can
+    // recognize the new active run before the next snapshot poll lands.
+    const trackMatches = current && (current.trackId ?? null) === action.trackId;
+    if (trackMatches) {
+      return {
+        stageRuns: {
+          ...state.stageRuns,
+          [action.stage]: { ...current, ...action.patch },
+        },
+      };
+    }
+    const synthesized: StageRun = {
+      id: '__optimistic__',
+      projectId: current?.projectId ?? '',
+      stage: action.stage,
+      status: 'queued',
+      awaitingReason: null,
+      payloadRef: null,
+      attemptNo: (current?.attemptNo ?? 0) + 1,
+      inputJson: null,
+      errorMessage: null,
+      startedAt: null,
+      finishedAt: null,
+      outcomeJson: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      trackId: action.trackId,
+      ...action.patch,
+    };
     return {
-      stageRuns: {
-        ...state.stageRuns,
-        [action.stage]: { ...current, ...action.patch },
-      },
+      stageRuns: { ...state.stageRuns, [action.stage]: synthesized },
     };
   }
   return state;
@@ -88,6 +116,12 @@ function rowToStageRun(row: Record<string, unknown>): StageRun {
     outcomeJson: row.outcome_json,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
+    // trackId MUST be preserved: useActiveStageRun filters per-track runs by
+    // matching `run.trackId === requestedTrackId`. Dropping it caused the
+    // Realtime upsert path to strip the field, leaving the hook unable to
+    // recognize an active per-track run and the engine's progress modal
+    // never mounting after a stage restart.
+    trackId: (row.track_id ?? null) as string | null,
   };
 }
 
@@ -123,15 +157,17 @@ export function useProjectStream(projectId: string): {
    * Optimistically patches the cached stage_run for (stage, trackId) so the
    * UI reacts immediately after a POST without waiting for the next poll.
    * The real refresh() call overwrites this patch with server truth.
-   * If no run exists for the stage yet, this is a no-op.
+   *
+   * When the cached slot is empty or holds a different track's run, a
+   * minimal optimistic stage_run is synthesized so per-track engines can
+   * react immediately. The synthesized row is replaced as soon as the next
+   * snapshot or Realtime upsert lands.
    *
    * @param stage    The stage whose run to patch.
-   * @param _trackId Reserved for future per-track optimistic patches. Currently
-   *   the reducer patches by stage only (the stream keeps one run per stage);
-   *   trackId is accepted for API symmetry with useActiveStageRun.
+   * @param trackId  The track scope. Pass null for shared stages.
    * @param patch    Partial StageRun fields to merge.
    */
-  optimisticPatchStageRun: (stage: Stage, _trackId: string | null, patch: Partial<StageRun>) => void;
+  optimisticPatchStageRun: (stage: Stage, trackId: string | null, patch: Partial<StageRun>) => void;
 } {
   const [state, dispatch] = useReducer(reducer, { stageRuns: EMPTY_STAGE_RUNS });
   const [liveEvent, setLiveEvent] = useState<JobEvent | null>(null);
@@ -230,8 +266,8 @@ export function useProjectStream(projectId: string): {
   }, [projectId, instanceId, refresh]);
 
   const optimisticPatchStageRun = useCallback(
-    (stage: Stage, _trackId: string | null, patch: Partial<StageRun>) => {
-      dispatch({ type: 'patch', stage, patch });
+    (stage: Stage, trackId: string | null, patch: Partial<StageRun>) => {
+      dispatch({ type: 'patch', stage, trackId, patch });
     },
     [],
   );
