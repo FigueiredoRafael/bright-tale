@@ -26,6 +26,11 @@ vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
   useAutoPilotTrigger: vi.fn(),
 }))
 
+// issue #242: stub useActiveStageRun so it doesn't call useProjectStream (Supabase)
+vi.mock('@/hooks/useActiveStageRun', () => ({
+  useActiveStageRun: () => ({ runId: null, status: null, startedAt: null, isActive: false, isFresh: false }),
+}))
+
 // 5 legacy cards returned by the API (sync path: cards in body, no findings)
 const STUB_CARDS = [
   { type: 'source', title: 'Source 1', url: 'https://a.com', relevance: 9 },

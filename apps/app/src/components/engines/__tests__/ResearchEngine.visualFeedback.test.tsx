@@ -17,6 +17,11 @@ vi.mock('@/components/pipeline/PipelineAbortProvider', () => ({
   usePipelineAbort: () => null,
 }));
 
+// issue #242: stub useActiveStageRun so it doesn't call useProjectStream (Supabase)
+vi.mock('@/hooks/useActiveStageRun', () => ({
+  useActiveStageRun: () => ({ runId: null, status: null, startedAt: null, isActive: false, isFresh: false }),
+}));
+
 function mountEngine(opts: { session?: ReturnType<typeof makeResearchSession> } = {}) {
   const session = opts.session ?? makeResearchSession();
   return render(

@@ -50,6 +50,7 @@ import { pushStage } from '@/lib/pipeline/advanceUrl';
 import type { ResearchResult, PipelineContext } from './types';
 import type { StageRun } from '@brighttale/shared/pipeline/inputs';
 import type { AutopilotConfig } from '@brighttale/shared';
+import { useActiveStageRun } from '@/hooks/useActiveStageRun';
 
 type Level = 'surface' | 'medium' | 'deep';
 
@@ -156,8 +157,11 @@ export function ResearchEngine({
     stageRun?.id ?? null,
   );
 
-  // Background generation tracking (Inngest job + SSE events)
-  const [activeGenerationId, setActiveGenerationId] = useState<string | null>(null);
+  // issue #242 Module 6: derive progress-modal visibility from stage_run status.
+  // Research is a shared stage (trackId=null). sessionId is still kept for the
+  // SSE URL — the hook only drives the mount/unmount decision.
+  const activeRun = useActiveStageRun(projectId, 'research', null);
+  const showProgressModal = activeRun.isActive && !!sessionId;
 
   const tracker = usePipelineTracker('research', trackerContext);
 
@@ -543,10 +547,11 @@ export function ResearchEngine({
         tracker.trackCompleted({ sessionId: newSessionId || '', cardCount: generatedCards.length, approvedCount: generatedCards.length, level });
         if (!overviewMode) toast.success(`${generatedCards.length} research cards found`);
       } else if (newSessionId) {
-        // Background job — show progress float, hydrate on complete
+        // Background job — show progress float, hydrate on complete.
+        // The POST creates a stage_run. useActiveStageRun picks up the status
+        // change from the project stream and mounts the modal.
         wentAsync = true;
-        setActiveGenerationId(newSessionId);
-        // Session ID persisted via server-driven context (stage_runs).
+        // No setActiveGenerationId needed — activeRun.isActive drives the modal.
         return;
       } else {
         if (!overviewMode) toast.warning('No research data recognized in output', {
@@ -573,8 +578,9 @@ export function ResearchEngine({
   }
 
   async function handleGenerationComplete() {
-    const id = activeGenerationId;
-    setActiveGenerationId(null);
+    const id = sessionId;
+    // activeRun.isActive will flip to false via useActiveStageRun when the
+    // stage_run row reaches 'completed' — no local state to clear here.
     if (!id) return;
     try {
       const res = await fetch(`/api/research-sessions/${id}`, {
@@ -613,7 +619,7 @@ export function ResearchEngine({
   }
 
   function handleGenerationFailed(message: string) {
-    setActiveGenerationId(null);
+    // activeRun.isActive will flip to false when the stage_run reaches 'failed'.
     setRunning(false);
     tracker.trackFailed(message);
     const friendly = friendlyAiError(message);
@@ -708,7 +714,7 @@ export function ResearchEngine({
       topic.trim().length > 0 &&
       !(isGenerating || running) &&
       !manualSessionId &&
-      !activeGenerationId &&
+      !activeRun.isActive &&
       !findings &&
       cards.length === 0 &&
       !researchResult?.researchSessionId &&
@@ -1646,14 +1652,17 @@ export function ResearchEngine({
           (engine runs behind display:none; fixed portal would leak onto dashboard).
           SSE runs regardless so onComplete fires and the pipeline advances. */}
       <GenerationProgressFloat
-        open={!overviewMode && !!activeGenerationId}
-        sessionId={activeGenerationId ?? ''}
-        sseUrl={activeGenerationId ? `/api/research-sessions/${activeGenerationId}/events` : ''}
-        cancelUrl={activeGenerationId ? `/api/research-sessions/${activeGenerationId}/cancel` : undefined}
+        open={showProgressModal && !overviewMode}
+        sessionId={sessionId ?? ''}
+        sseUrl={showProgressModal && sessionId ? `/api/research-sessions/${sessionId}/events` : ''}
+        cancelUrl={showProgressModal && sessionId ? `/api/research-sessions/${sessionId}/cancel` : undefined}
         title={`Generating research with ${model}`}
         onComplete={handleGenerationComplete}
         onFailed={handleGenerationFailed}
-        onClose={() => setActiveGenerationId(null)}
+        onClose={() => {
+          // User dismisses the float manually. The modal will re-mount if the
+          // stream still reports isActive=true on the next render.
+        }}
       />
     </div>
   );
