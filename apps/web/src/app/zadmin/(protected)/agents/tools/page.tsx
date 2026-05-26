@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { TOOL_META, type ToolMeta } from '@brighttale/shared';
+import { TOOL_META, type ToolMeta } from '@brighttale/shared/constants/tools';
 import { AgentsNav } from '../agents-nav';
 import { Code2, Info } from 'lucide-react';
 
