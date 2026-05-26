@@ -7,7 +7,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { createServiceClient } from '@/lib/supabase/index.js';
+import { createServiceClient } from '../supabase/index.js';
 import type { PublishDriver, PublishDriverOutcome, PublishTargetRow } from './types.js';
 import type { StageRun } from '@brighttale/shared/pipeline/inputs';
 

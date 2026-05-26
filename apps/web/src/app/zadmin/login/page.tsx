@@ -3,7 +3,7 @@
 import { Suspense } from 'react'
 import { AdminLogin } from '@tn-figueiredo/admin/login'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { adminPath } from '@/lib/admin-path'
+import { useAdminPaths } from '@/lib/use-admin-paths'
 import * as actions from '@/lib/auth/admin-actions'
 import { RateLimitBanner } from './RateLimitBanner'
 
@@ -21,6 +21,7 @@ const THEME = {
 
 function LoginForm() {
   const router = useRouter()
+  const { adminPath } = useAdminPaths()
   const params = useSearchParams()
   const errorParam = params.get('error') ?? undefined
   const isRateLimited = errorParam === 'rate_limited'

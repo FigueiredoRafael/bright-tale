@@ -1,6 +1,6 @@
 import type { NextConfig } from 'next';
 
-const adminSlug = process.env.NEXT_PUBLIC_ADMIN_SLUG || 'admin';
+const adminSlug = process.env.ADMIN_SLUG || 'admin';
 const isDev = process.env.NODE_ENV !== 'production';
 
 // Security headers for apps/web. Applies to the landing page AND the
@@ -43,12 +43,8 @@ const nextConfig: NextConfig = {
   // Remove the X-Powered-By: Next.js fingerprint.
   poweredByHeader: false,
 
-  turbopack: {
-    extensionAlias: {
-      '.js': ['.ts', '.tsx', '.js'],
-      '.mjs': ['.mts', '.mjs'],
-    },
-  },
+  // Empty turbopack config silences the "webpack config without turbopack config" error in Next.js 16.
+  turbopack: {},
 
   transpilePackages: ['@tn-figueiredo/admin', '@tn-figueiredo/affiliate-admin', '@tn-figueiredo/affiliate-portal', '@brighttale/shared'],
   async rewrites() {

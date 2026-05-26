@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { X, Loader2 } from 'lucide-react';
-import { adminApi } from '@/lib/admin-path';
+import { useAdminPaths } from '@/lib/use-admin-paths';
 import type { UserListItem } from '@brighttale/shared/types/users';
 
 interface UserEditModalProps {
@@ -13,6 +13,7 @@ interface UserEditModalProps {
 
 export function UserEditModal({ user, onClose }: UserEditModalProps) {
   const router = useRouter();
+  const { adminApi } = useAdminPaths();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

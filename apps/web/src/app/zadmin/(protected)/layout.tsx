@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { adminPath } from '@/lib/admin-path'
+import { adminPath, ADMIN_SLUG } from '@/lib/admin-path'
 import { AdminShell } from './admin-shell'
 
 const MANAGER_ROLES = new Set(['owner', 'admin', 'support', 'billing', 'readonly'])
@@ -36,5 +36,5 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   if (!session?.access_token || !(await isManager(user.id, session.access_token))) {
     redirect(adminPath('/login?error=unauthorized'))
   }
-  return <AdminShell userEmail={user.email!}>{children}</AdminShell>
+  return <AdminShell userEmail={user.email!} adminSlug={ADMIN_SLUG}>{children}</AdminShell>
 }

@@ -8,10 +8,9 @@ set -e
 # Get the repo root (parent of apps/api)
 REPO_ROOT="$(cd "$(dirname "$0")/../../" && pwd)"
 
-# Cache bust: force npm to re-resolve zod after shared package.json changed
-# from invalid ^4.3.6 to ^3.24.0. Vercel build cache was keeping stale types.
+# Cache bust: force npm to re-resolve packages whose Vercel build cache has gone stale.
 echo "=== Forcing npm re-resolution (cache bust) ==="
-rm -rf "$REPO_ROOT/node_modules/zod" "$REPO_ROOT/node_modules/.package-lock.json"
+rm -rf "$REPO_ROOT/node_modules/zod" "$REPO_ROOT/node_modules/openai" "$REPO_ROOT/node_modules/.package-lock.json"
 ( cd "$REPO_ROOT" && npm install --no-audit --no-fund --prefer-offline 2>&1 | tail -3 )
 
 echo "=== Building shared workspace package ==="

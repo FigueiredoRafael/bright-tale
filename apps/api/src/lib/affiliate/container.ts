@@ -20,14 +20,14 @@ import type {
   AffiliateRouteDeps,
   AffiliateAdminRouteDeps,
 } from '@tn-figueiredo/affiliate/routes'
-import { createServiceClient } from '@/lib/supabase'
-import { SupabaseAffiliateRepository } from './repository'
-import { ResendAffiliateEmailService } from './email-service'
-import { StubTaxIdRepository } from './tax-id-service'
-import { AFFILIATE_CONFIG } from './config'
-import { getAuthenticatedUser, isAdmin } from './auth-context'
-import { buildFraudEngine } from './fraud/engine'
-import { AffiliateFraudAdapter } from './fraud/service'
+import { createServiceClient } from '../supabase/index.js'
+import { SupabaseAffiliateRepository } from './repository/index.js'
+import { ResendAffiliateEmailService } from './email-service.js'
+import { StubTaxIdRepository } from './tax-id-service.js'
+import { AFFILIATE_CONFIG } from './config.js'
+import { getAuthenticatedUser, isAdmin } from './auth-context.js'
+import { buildFraudEngine } from './fraud/engine.js'
+import { AffiliateFraudAdapter } from './fraud/service.js'
 
 // Explicit interface (NOT `ReturnType<typeof buildAffiliateContainer>`) — that
 // pattern self-references and triggers TS2456.

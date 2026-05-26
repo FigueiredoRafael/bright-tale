@@ -1,4 +1,4 @@
-import { createServiceClient } from '../supabase/index';
+import { createServiceClient } from '../supabase/index.js';
 
 interface ChannelContextFields {
   language: string;

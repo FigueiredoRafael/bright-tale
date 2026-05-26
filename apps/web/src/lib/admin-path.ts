@@ -1,12 +1,12 @@
 /**
- * Admin panel URL slug — configurable via NEXT_PUBLIC_ADMIN_SLUG.
+ * Admin panel URL slug — configurable via ADMIN_SLUG (server-only, not exposed to the browser).
  * Falls back to "admin" when not set.
  *
  * The filesystem routes live under /zadmin (internal, never exposed).
  * next.config.ts rewrites /${slug}/* → /zadmin/* so the public URL is
- * whatever NEXT_PUBLIC_ADMIN_SLUG resolves to.
+ * whatever ADMIN_SLUG resolves to.
  */
-const ADMIN_SLUG = process.env.NEXT_PUBLIC_ADMIN_SLUG || 'admin';
+const ADMIN_SLUG = process.env.ADMIN_SLUG || 'admin';
 
 /** Internal filesystem prefix — kept constant so rewrites always land. */
 export const ADMIN_INTERNAL = '/zadmin';

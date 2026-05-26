@@ -9,7 +9,7 @@
  * cleanup migration drops them in a later wave.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { splitDraftStageRuns } from './legacy-track-migrator';
+import { splitDraftStageRuns } from './legacy-track-migrator.js';
 
  
 type Sb = SupabaseClient<any, any, any>;

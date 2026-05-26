@@ -13,7 +13,7 @@ import {
   AlertCircle,
   Info,
 } from 'lucide-react'
-import { adminApi } from '@/lib/admin-path'
+import { useAdminPaths } from '@/lib/use-admin-paths'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -169,6 +169,7 @@ function PricingSection({
   canWrite: boolean
   onSaved: () => void
 }) {
+  const { adminApi } = useAdminPaths()
   const [form, setForm] = useState(initial)
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<SaveStatus>(null)
@@ -281,6 +282,7 @@ function SlaSection({
   canWrite: boolean
   onSaved: () => void
 }) {
+  const { adminApi } = useAdminPaths()
   const [form, setForm] = useState(initial)
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<SaveStatus>(null)
@@ -355,6 +357,7 @@ function MarginsSection({
   canWrite: boolean
   onSaved: () => void
 }) {
+  const { adminApi } = useAdminPaths()
   const [form, setForm] = useState(initial)
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<SaveStatus>(null)
@@ -583,6 +586,7 @@ interface SettingsData {
 }
 
 export default function AdminSettingsClient({ canWrite }: { canWrite: boolean }) {
+  const { adminApi } = useAdminPaths()
   const [data, setData] = useState<SettingsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -601,7 +605,7 @@ export default function AdminSettingsClient({ canWrite }: { canWrite: boolean })
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [adminApi])
 
   useEffect(() => { void fetchData() }, [fetchData])
 

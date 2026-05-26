@@ -1,6 +1,6 @@
 import type { FastifyRequest } from 'fastify'
-import { ApiError } from '@/lib/api/errors'
-import { createServiceClient } from '@/lib/supabase'
+import { ApiError } from '../api/errors.js'
+import { createServiceClient } from '../supabase/index.js'
 
 // Per-request memoization. Avoids hitting user_roles N times per request when
 // the package's route handler invokes isAdmin from multiple places. WeakMap so

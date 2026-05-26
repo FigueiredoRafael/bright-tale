@@ -6,7 +6,7 @@ import {
   ArrowLeft, Check, Copy, Eye, EyeOff, Plus, Save, Sparkles, Trash2, X,
   AlertTriangle, ChevronUp, ChevronDown,
 } from 'lucide-react';
-import { adminPath } from '@/lib/admin-path';
+import { useAdminPaths } from '@/lib/use-admin-paths';
 import { updateAgentAction } from './actions';
 import {
   assembleInstructions,
@@ -78,6 +78,7 @@ function emptySections(): SectionsJson {
 }
 
 export function AgentEditor({ agent, providers = [] }: { agent: Agent; providers?: ProviderRow[] }) {
+  const { adminPath } = useAdminPaths();
   const initial = useMemo(
     () => ({
       name: agent.name,

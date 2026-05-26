@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { adminApi } from '@/lib/admin-path';
+import { useAdminPaths } from '@/lib/use-admin-paths';
 import { Tag, Plus, Archive, Copy, Check, X } from 'lucide-react';
 
 interface CouponRow {
@@ -46,6 +46,7 @@ function CopyButton({ text }: { text: string }) {
 }
 
 function CreateCouponForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
+  const { adminApi } = useAdminPaths();
   const [code, setCode] = useState('');
   const [credits, setCredits] = useState('');
   const [maxTotal, setMaxTotal] = useState('');
@@ -147,6 +148,7 @@ function CreateCouponForm({ onCreated, onCancel }: { onCreated: () => void; onCa
 
 export function CouponsClient({ initialCoupons }: Props) {
   const router = useRouter();
+  const { adminApi } = useAdminPaths();
   const [coupons, setCoupons] = useState(initialCoupons);
   const [creating, setCreating] = useState(false);
   const [archivingId, setArchivingId] = useState<string | null>(null);
@@ -155,7 +157,7 @@ export function CouponsClient({ initialCoupons }: Props) {
     const res = await fetch(adminApi('/coupons'));
     const json = await res.json();
     if (json.data) setCoupons(json.data);
-  }, []);
+  }, [adminApi]);
 
   const handleArchive = async (id: string) => {
     if (!confirm('Arquivar este cupom?')) return;

@@ -21,7 +21,10 @@ async function fetchAgents(): Promise<AgentRow[]> {
     .select('id, name, slug, stage, updated_at')
     .order('stage', { ascending: true })
     .order('slug', { ascending: true });
-  if (error) throw error;
+  if (error) {
+    console.error('[agents] fetch error:', error.message)
+    return []
+  }
   return (data ?? []) as AgentRow[];
 }
 

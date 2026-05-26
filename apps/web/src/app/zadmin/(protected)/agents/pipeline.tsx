@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { adminPath } from '@/lib/admin-path';
+import { useAdminPaths } from '@/lib/use-admin-paths';
 import {
   Lightbulb, Search, FileText, Clapperboard, MessageSquare, Mic, Zap, CheckCircle, ArrowRight,
 } from 'lucide-react';
@@ -96,6 +96,7 @@ function AgentCard({
   icon: React.ReactNode;
   agent?: AgentNode;
 }) {
+  const { adminPath } = useAdminPaths();
   const inner = (
     <div
       className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border transition-colors ${

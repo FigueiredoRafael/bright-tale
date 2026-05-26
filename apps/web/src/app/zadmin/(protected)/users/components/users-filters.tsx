@@ -3,10 +3,11 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
-import { adminPath } from '@/lib/admin-path';
+import { useAdminPaths } from '@/lib/use-admin-paths';
 
 export function UsersFilters() {
   const router = useRouter();
+  const { adminPath } = useAdminPaths();
   const searchParams = useSearchParams();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -23,7 +24,7 @@ export function UsersFilters() {
       params.set('page', '1');
       router.push(`${adminPath('/users')}?${params.toString()}`);
     },
-    [router, searchParams],
+    [router, searchParams, adminPath],
   );
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {

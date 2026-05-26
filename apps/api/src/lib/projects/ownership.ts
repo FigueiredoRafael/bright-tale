@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { ApiError } from '../api/errors'
+import { ApiError } from '../api/errors.js'
 
 export async function assertProjectOwner(
   projectId: string,

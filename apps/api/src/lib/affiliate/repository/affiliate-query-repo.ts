@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@brighttale/shared/types/database'
 import type { AffiliateAdminSummary, IAffiliateRepository } from '@tn-figueiredo/affiliate'
-import { mapAffiliateFromDb } from './mappers'
+import { mapAffiliateFromDb } from './mappers.js'
 
 type DbAffiliate = Database['public']['Tables']['affiliates']['Row']
 

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@brighttale/shared/types/database'
 import type { IAffiliateRepository } from '@tn-figueiredo/affiliate'
-import { mapReferralFromDb, mapReferralToDbInsert } from './mappers'
+import { mapReferralFromDb, mapReferralToDbInsert } from './mappers.js'
 
 export function createReferralsRepo(sb: SupabaseClient<Database>) {
   return {

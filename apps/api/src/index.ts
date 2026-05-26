@@ -357,7 +357,7 @@ server.register(couponsRoutes, { prefix: "/coupons" });
 server.register(testMockAiRoutes);
 
 // Affiliate platform — @tn-figueiredo/affiliate@0.4.0 (Phase 2A.3 wires /ref + /internal)
-const affiliateContainer = buildAffiliateContainer();
+// Lazy init inside callbacks: a bad SUPABASE_* key throws inside server.ready() (caught → 500) not at module load (→ process crash + INTERNAL_FUNCTION_INVOCATION_TIMEOUT).
 
 function parseRefRateLimitMax(): number {
   const raw = process.env.REF_RATE_LIMIT_MAX;
@@ -382,29 +382,31 @@ server.register(async (scope) => {
       },
     }),
   });
+  const ac = buildAffiliateContainer();
   registerAffiliateRedirectRoute(scope as never, {
-    webBaseUrl: affiliateContainer.config.webBaseUrl,
-    trackClickUseCase: affiliateContainer.trackClickUseCase,
+    webBaseUrl: ac.config.webBaseUrl,
+    trackClickUseCase: ac.trackClickUseCase,
   });
 }, { prefix: "/ref" });
 
 server.register(async (scope) => {
   scope.addHook("preHandler", authenticate);
+  const ac = buildAffiliateContainer();
   registerAffiliateInternalRoutes(scope as never, {
-    getAuthenticatedUser: affiliateContainer.getAuthenticatedUser,
-    isAdmin: affiliateContainer.isAdmin,
-    expirePendingUseCase: affiliateContainer.expirePendingUseCase,
+    getAuthenticatedUser: ac.getAuthenticatedUser,
+    isAdmin: ac.isAdmin,
+    expirePendingUseCase: ac.expirePendingUseCase,
   });
 }, { prefix: "/internal/affiliate" });
 
 server.register(async (scope) => {
   scope.addHook("preHandler", authenticate);
-  registerAffiliateRoutes(scope as never, affiliateContainer.endUserDeps);
+  registerAffiliateRoutes(scope as never, buildAffiliateContainer().endUserDeps);
 }, { prefix: "/affiliate" });
 
 server.register(async (scope) => {
   scope.addHook("preHandler", authenticate);
-  registerAffiliateAdminRoutes(scope as never, affiliateContainer.adminDeps);
+  registerAffiliateAdminRoutes(scope as never, buildAffiliateContainer().adminDeps);
 }, { prefix: "/admin/affiliate" });
 
 if (!process.env.VERCEL) {

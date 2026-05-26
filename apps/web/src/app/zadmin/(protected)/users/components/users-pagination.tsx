@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { adminPath } from '@/lib/admin-path';
+import { useAdminPaths } from '@/lib/use-admin-paths';
 
 interface UsersPaginationProps {
   page: number;
@@ -11,6 +11,7 @@ interface UsersPaginationProps {
 
 export function UsersPagination({ page, totalPages }: UsersPaginationProps) {
   const router = useRouter();
+  const { adminPath } = useAdminPaths();
   const searchParams = useSearchParams();
 
   if (totalPages <= 1) return null;

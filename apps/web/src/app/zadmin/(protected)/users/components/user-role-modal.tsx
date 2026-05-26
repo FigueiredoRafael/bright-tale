@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { X, Loader2, ShieldCheck, ShieldOff } from 'lucide-react';
-import { adminApi } from '@/lib/admin-path';
+import { useAdminPaths } from '@/lib/use-admin-paths';
 import type { UserListItem } from '@brighttale/shared/types/users';
 
 interface UserRoleModalProps {
@@ -13,6 +13,7 @@ interface UserRoleModalProps {
 
 export function UserRoleModal({ user, onClose }: UserRoleModalProps) {
   const router = useRouter();
+  const { adminApi } = useAdminPaths();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

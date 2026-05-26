@@ -239,7 +239,7 @@ export async function promoteExistingUserToManager(input: {
   // 4. Email the user — their existing app password still works, but they
   //    need to log in at the admin URL and complete MFA enrollment.
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.brighttale.com.br'
-  const adminSlug = process.env.NEXT_PUBLIC_ADMIN_SLUG ?? 'admin'
+  const adminSlug = process.env.ADMIN_SLUG ?? 'admin'
   const adminLoginUrl = `${appUrl}/${adminSlug}/login`
 
   const emailResult = await sendEmail({

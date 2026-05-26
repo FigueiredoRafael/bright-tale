@@ -63,7 +63,7 @@ p  { margin:0 0 10px; color:#8b98b0; font-size:13.5px; line-height:1.55; }
     <div class="countdown" id="c">${retryAfter}s</div>
     <div class="meter"><div id="m" style="width:100%"></div></div>
     <p style="margin-top:14px">The page will refresh automatically when the window clears.</p>
-    <a class="back" href="/admin/login" id="backLink" hidden>Try again →</a>
+    <a class="back" href="${adminPath('/login')}" id="backLink" hidden>Try again →</a>
   </section>
 </main>
 <script>
@@ -85,7 +85,7 @@ p  { margin:0 0 10px; color:#8b98b0; font-size:13.5px; line-height:1.55; }
     if (remain <= 0) {
       if (backLink) backLink.hidden = false;
       clearInterval(interval);
-      setTimeout(() => location.href = '/admin/login', 1200);
+      setTimeout(() => location.href = '${adminPath('/login')}', 1200);
     }
   };
   tick();

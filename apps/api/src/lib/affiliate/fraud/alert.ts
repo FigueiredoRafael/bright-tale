@@ -1,5 +1,5 @@
 import type { OnAdminAlert } from '@tn-figueiredo/fraud-detection';
-import { sendEmail } from '@/lib/email/provider';
+import { sendEmail } from '../../email/provider.js';
 
 function adminEmail(): string {
   return process.env.AFFILIATE_ADMIN_EMAIL ?? 'admin@brighttale.io';

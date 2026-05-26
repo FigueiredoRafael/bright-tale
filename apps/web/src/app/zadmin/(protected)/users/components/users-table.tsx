@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { adminPath, adminApi } from '@/lib/admin-path';
+import { useAdminPaths } from '@/lib/use-admin-paths';
 import {
   ChevronUp,
   ChevronDown,
@@ -116,6 +116,7 @@ function ActionMenu({ user, onEdit, onRole, onPromoteManager, onDelete, onDonate
 }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
+  const { adminApi } = useAdminPaths();
 
   const handleToggleActive = async () => {
     setOpen(false);
@@ -190,6 +191,7 @@ interface UsersTableProps {
 
 export function UsersTable({ users }: UsersTableProps) {
   const router = useRouter();
+  const { adminPath } = useAdminPaths();
   const searchParams = useSearchParams();
 
   const currentSort = (searchParams.get('sort') ?? 'created_at') as SortKey;

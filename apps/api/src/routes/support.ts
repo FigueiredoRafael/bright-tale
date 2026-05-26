@@ -8,7 +8,8 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import OpenAI from 'openai';
+import { OpenAI } from 'openai';
+import type { ChatCompletionTool, ChatCompletionMessageParam } from 'openai/resources/chat/completions/completions';
 import { authenticateWithUser, authenticate } from '../middleware/authenticate.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { ApiError } from '../lib/api/errors.js';
@@ -59,11 +60,11 @@ type UntypedSupabase = {
 };
 
 function supportThreads(sb: ReturnType<typeof createServiceClient>) {
-  return (sb as unknown as UntypedSupabase).from('support_threads') as SupabaseQueryBuilder<SupportThreadRow>;
+  return (sb as unknown as UntypedSupabase).from('support_threads') as unknown as SupabaseQueryBuilder<SupportThreadRow>;
 }
 
 function supportMessages(sb: ReturnType<typeof createServiceClient>) {
-  return (sb as unknown as UntypedSupabase).from('support_messages') as SupabaseQueryBuilder<SupportMessageRow>;
+  return (sb as unknown as UntypedSupabase).from('support_messages') as unknown as SupabaseQueryBuilder<SupportMessageRow>;
 }
 
 // ---------------------------------------------------------------------------
@@ -85,7 +86,7 @@ Se não conseguir resolver em 7 mensagens, use a tool escalate.`;
 // ---------------------------------------------------------------------------
 // OpenAI tool definitions
 // ---------------------------------------------------------------------------
-const supportTools: OpenAI.Chat.ChatCompletionTool[] = [
+const supportTools: ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
@@ -403,7 +404,7 @@ export async function supportRoutes(fastify: FastifyInstance): Promise<void> {
         error: unknown;
       }>);
 
-    const conversationMessages: OpenAI.Chat.ChatCompletionMessageParam[] = (messages ?? []).map((m) => ({
+    const conversationMessages: ChatCompletionMessageParam[] = (messages ?? []).map((m) => ({
       role: m.role === 'assistant' ? ('assistant' as const) : ('user' as const),
       content: m.content,
     }));
@@ -430,7 +431,7 @@ export async function supportRoutes(fastify: FastifyInstance): Promise<void> {
       let fullResponse = '';
 
       // Agentic loop: handle tool calls
-      const loopMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      const loopMessages: ChatCompletionMessageParam[] = [
         { role: 'system', content: SUPPORT_SYSTEM_PROMPT },
         ...conversationMessages,
       ];
