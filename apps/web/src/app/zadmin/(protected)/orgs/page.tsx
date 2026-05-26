@@ -26,7 +26,10 @@ async function fetchOrgsData() {
     .select('*')
     .order('created_at', { ascending: false });
 
-  if (error) throw error;
+  if (error) {
+    console.error('[orgs] fetch error:', error.message)
+    return { orgs: [], totalOrgs: 0, freeCount: 0, paidCount: 0, totalCreditsUsed: 0 }
+  }
 
   // Get member counts per org
   const { data: memberships } = await db

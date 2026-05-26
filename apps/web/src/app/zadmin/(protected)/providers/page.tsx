@@ -11,7 +11,10 @@ export default async function ProvidersPage() {
     sb.from('module_ai_assignments').select('module_slug, provider, model').order('module_slug'),
   ])
 
-  if (error) throw new Error(error.message)
+  if (error) {
+    console.error('[providers] fetch error:', error.message)
+    return <ProvidersClient initialProviders={[]} initialAssignments={{}} />
+  }
 
   const INTERNAL = new Set(['__placeholder__', '__manual__'])
 
