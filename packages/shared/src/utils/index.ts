@@ -1,7 +1,7 @@
-export { deriveTier, isApprovedTier } from "./reviewTierCompat.js";
+export { deriveTier, isApprovedTier } from "./reviewTierCompat";
 export {
   formatCurrency,
   currencyForCountry,
   type SupportedCurrency,
   type FormatCurrencyInput,
-} from "./format-currency.js";
+} from "./format-currency";

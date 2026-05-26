@@ -3,7 +3,7 @@
  */
 
 import { z } from "zod";
-import { MEDIA } from "../pipeline/inputs.js";
+import { MEDIA } from "../pipeline/inputs";
 
 // Valid stage types (legacy and new names)
 const validStageTypes = [

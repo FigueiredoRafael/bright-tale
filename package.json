@@ -71,7 +71,8 @@
   "lint-staged": {
     "apps/app/**/*.{ts,tsx}": "eslint -c apps/app/eslint.config.mjs --no-warn-ignored --max-warnings 0",
     "apps/api/**/*.ts": "eslint -c apps/api/eslint.config.mjs --no-warn-ignored --max-warnings 0",
-    "apps/web/**/*.{ts,tsx}": "eslint -c apps/web/eslint.config.mjs --no-warn-ignored --max-warnings 0"
+    "apps/web/**/*.{ts,tsx}": "eslint -c apps/web/eslint.config.mjs --no-warn-ignored --max-warnings 0",
+    "packages/shared/src/**/*.ts": "eslint -c packages/shared/eslint.config.mjs --no-warn-ignored --max-warnings 0"
   },
   "engines": {
     "node": ">=20.0.0"

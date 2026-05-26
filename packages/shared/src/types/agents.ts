@@ -764,7 +764,7 @@ const MAX_STATISTICS = 5;
 const MAX_QUOTES = 3;
 const MAX_COUNTERARGUMENTS = 3;
 
-import { legacyKeywordFallback } from "../mappers/pipeline.js";
+import { legacyKeywordFallback } from "../mappers/pipeline";
 
 export function mapResearchToProductionInput(
   research: ResearchOutput,
