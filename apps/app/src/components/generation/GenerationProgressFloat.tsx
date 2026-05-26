@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ChevronDown, ChevronUp, Loader2, Pause, Square, XCircle } from "lucide-react";
-import { useJobEvents } from "@/hooks/useJobEvents";
+import { useJobEvents, type JobEvent, type UseJobEventsState } from "@/hooks/useJobEvents";
 
 interface Props {
     open: boolean;
@@ -14,13 +14,20 @@ interface Props {
     /** ISO timestamp anchor for the SSE `since` filter — prevents picking up
      *  events from a previous stage sharing the same session ID. */
     since?: string;
+    /** Controlled-mode override for engines that don't have an SSE feed
+     *  (e.g. AssetsEngine, whose generation runs as a sequence of synchronous
+     *  POSTs). When both `events` and `status` are provided the float skips
+     *  the SSE subscription entirely and renders directly from props. */
+    events?: JobEvent[];
+    status?: UseJobEventsState["status"];
     onComplete?: () => void;
     onFailed?: (message: string) => void;
     onAborted?: () => void;
     onClose: () => void;
 }
 
-export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, title = "Generating…", reconnecting, since, onComplete, onFailed, onAborted, onClose }: Props) {
+export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, title = "Generating…", reconnecting, since, events: controlledEvents, status: controlledStatus, onComplete, onFailed, onAborted, onClose }: Props) {
+    const isControlled = controlledEvents !== undefined && controlledStatus !== undefined;
     const [collapsed, setCollapsed] = useState(false);
     const [cancelling, setCancelling] = useState(false);
 
@@ -44,21 +51,29 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
 
     // SSE connects whenever there's an active session URL — NOT gated on `open`.
     // The float UI visibility is gated on `open` separately (see early return below).
-    const effectiveUrl = activeAt && sseUrl
+    // Controlled mode skips SSE wiring (caller supplies events + status as props).
+    const effectiveUrl = activeAt && sseUrl && !isControlled
         ? `${sseUrl}${sseUrl.includes("?") ? "&" : "?"}since=${encodeURIComponent(activeAt)}`
         : "";
-    const { events, status } = useJobEvents(effectiveUrl);
+    const sse = useJobEvents(effectiveUrl);
+    const events = useMemo(
+        () => (isControlled ? (controlledEvents ?? []) : sse.events),
+        [isControlled, controlledEvents, sse.events],
+    );
+    const status = isControlled ? (controlledStatus ?? "idle") : sse.status;
 
-    // Elapsed timer runs whenever there's an active SSE session, not just when visible.
+    // Elapsed timer runs whenever there's an active session, not just when visible.
+    // In controlled mode the timer keys off `open` since there's no sseUrl.
     const startRef = useRef(0);
     const [elapsed, setElapsed] = useState(0);
+    const elapsedKey = isControlled ? (open ? "controlled" : "") : sseUrl;
     useEffect(() => {
-        if (!sseUrl) return;
+        if (!elapsedKey) return;
         startRef.current = Date.now();
         setElapsed(0); // eslint-disable-line react-hooks/set-state-in-effect -- reset on session start
         const t = setInterval(() => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)), 1000);
         return () => clearInterval(t);
-    }, [sseUrl]);
+    }, [elapsedKey]);
 
     // Stash latest callbacks in refs so the completion timer effect doesn't
     // re-run on every parent render and reset itself perpetually.
@@ -75,7 +90,7 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
     const completionFiredRef = useRef(false);
     useEffect(() => {
         completionFiredRef.current = false;
-    }, [sseUrl]);
+    }, [elapsedKey]);
 
     useEffect(() => {
         if (status === "completed") {
@@ -107,11 +122,11 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
     useEffect(() => { lastEventTimeRef.current = Date.now(); }, [events.length]);
     const [secondsSinceLastEvent, setSecondsSinceLastEvent] = useState(0);
     useEffect(() => {
-        if (!sseUrl) return;
+        if (!elapsedKey) return;
         lastEventTimeRef.current = Date.now();
         const t = setInterval(() => setSecondsSinceLastEvent(Math.floor((Date.now() - lastEventTimeRef.current) / 1000)), 1000);
         return () => clearInterval(t);
-    }, [sseUrl]);
+    }, [elapsedKey]);
     const stalled = status === "streaming" && secondsSinceLastEvent > 60;
 
     function fmtElapsed(s: number) {
@@ -135,7 +150,7 @@ export function GenerationProgressFloat({ open, sessionId, sseUrl, cancelUrl, ti
     const isAborted = status === "aborted";
 
     return (
-        <div className="fixed bottom-4 right-4 z-50 w-80 rounded-lg border bg-background shadow-lg overflow-hidden transition-all">
+        <div className="fixed top-1/2 right-4 -translate-y-1/2 z-50 w-80 rounded-lg border bg-background shadow-lg overflow-hidden transition-all">
             {/* Header — always visible */}
             <button
                 onClick={() => setCollapsed(!collapsed)}

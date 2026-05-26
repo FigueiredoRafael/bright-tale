@@ -29,6 +29,8 @@ import { getTrackStageResults } from '@/lib/pipeline/stage-results-by-track';
 import type { AssetsResult, PipelineContext, PipelineStage } from './types';
 import { AssetsEngineVideo } from './AssetsEngineVideo';
 import { getScopedSlots } from '@/lib/assets/scopeFilter';
+import { GenerationProgressFloat } from '@/components/generation/GenerationProgressFloat';
+import type { JobEvent, UseJobEventsState } from '@/hooks/useJobEvents';
 
 /* ── Types ── */
 
@@ -348,6 +350,25 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   const [imageProvider, setImageProvider] = useState<ImageProvider>('gemini');
   const [generatingAll, setGeneratingAll] = useState(false);
   const inFlightRef = useRef(false);
+
+  // ── Generation-progress float (mirrors brainstorm/research/draft) ──────────
+  // Assets generates via synchronous POSTs (no SSE feed) — we drive the float
+  // in controlled mode from local state. Each generate call pushes a JobEvent
+  // so the side panel shows briefs → per-slot progress in order.
+  const [genEvents, setGenEvents] = useState<JobEvent[]>([]);
+  const [genStatus, setGenStatus] = useState<UseJobEventsState["status"]>("idle");
+  const [genOpen, setGenOpen] = useState(false);
+  const [genTitle, setGenTitle] = useState("Generating assets");
+  const genIdRef = useRef(0);
+  const pushGenEvent = useCallback((message: string, stage: JobEvent["stage"] = "loading_prompt") => {
+    setGenEvents((prev) => [...prev, {
+      id: `assets-${genIdRef.current++}`,
+      stage,
+      message,
+      metadata: null,
+      created_at: new Date().toISOString(),
+    }]);
+  }, []);
   const tracker = usePipelineTracker('assets', trackerContext);
 
   // ── Auto-pilot wiring ────────────────────────────────────────────
@@ -680,6 +701,11 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
     // ASSETS_BRIEFS_STARTED was actor-only; context mode tracks via local generatingBriefs state
     ctx.setStageStatus('assets', { status: 'Generating briefs' });
     setGeneratingBriefs(true);
+    setGenTitle("Generating asset briefs");
+    setGenEvents([]);
+    setGenStatus("streaming");
+    setGenOpen(true);
+    pushGenEvent("Calling agent for prompt briefs", "calling_provider");
     try {
       const body: Record<string, unknown> = { provider };
       if (model && provider !== 'manual') body.model = model;
@@ -693,18 +719,30 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
       if (json.error) {
         const msg = json.error.message ?? 'Failed to generate briefs';
         toast.error(msg);
+        pushGenEvent(msg, "failed");
+        setGenStatus("failed");
         // STAGE_ERROR was actor-only; errors surface via toast in context mode
         return;
       }
       if (json.data?.status === 'awaiting_manual') {
         setManualBriefsOpen(true);
+        pushGenEvent("Awaiting manual paste", "saving");
+        setGenStatus("completed");
         return;
       }
+      pushGenEvent("Parsing briefs", "parsing_output");
       await handleManualImport(json.data);
+      pushGenEvent(`Imported ${(json.data?.slots ?? []).length} briefs`, "completed");
+      setGenStatus("completed");
     } catch (e) {
-      if (e instanceof Error && e.name === 'AbortError') return;
+      if (e instanceof Error && e.name === 'AbortError') {
+        setGenStatus("aborted");
+        return;
+      }
       const msg = e instanceof Error ? e.message : 'Failed to generate briefs';
       toast.error(msg);
+      pushGenEvent(msg, "failed");
+      setGenStatus("failed");
       // STAGE_ERROR was actor-only; errors surface via toast in context mode
     } finally {
       setGeneratingBriefs(false);
@@ -821,25 +859,40 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
   async function handleGenerateAllSlots() {
     if (generatingSlot || generatingAll || scopedSlotCards.length === 0) return;
     setGeneratingAll(true);
+    setGenTitle(`Generating ${scopedSlotCards.length} images`);
+    setGenEvents([]);
+    setGenStatus("streaming");
+    setGenOpen(true);
     let quotaErrorCode: string | null = null;
     try {
-      for (const card of scopedSlotCards) {
+      for (let i = 0; i < scopedSlotCards.length; i++) {
+        const card = scopedSlotCards[i];
         setGeneratingSlot(card.slot);
+        pushGenEvent(`Slot ${i + 1}/${scopedSlotCards.length}: ${card.slot}`, "calling_provider");
         const result = await generateSlotImage(card);
         if (result.errorCode === 'QUOTA_EXCEEDED' && !quotaErrorCode) {
           quotaErrorCode = result.errorCode;
+          pushGenEvent(`Quota exceeded at ${card.slot}`, "failed");
+          break;
         }
       }
       if (quotaErrorCode) {
         // Persist error state so autopilot does not re-dispatch on reload.
         ctx.setStageStatus('assets', { errorCode: quotaErrorCode, status: 'Quota exceeded' });
+        setGenStatus("failed");
       } else if ((imageProviderOverride ?? imageProvider) !== 'manual') {
         toast.success('All images generated');
+        pushGenEvent("All images generated", "completed");
+        setGenStatus("completed");
       } else {
         toast.success('All prompts emitted to Axiom');
+        pushGenEvent("All prompts emitted to Axiom", "completed");
+        setGenStatus("completed");
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Bulk generation failed');
+      pushGenEvent(e instanceof Error ? e.message : 'Bulk generation failed', "failed");
+      setGenStatus("failed");
     } finally {
       setGeneratingSlot(null);
       setGeneratingAll(false);
@@ -1105,6 +1158,15 @@ export function AssetsEngine({ mode: engineMode, onModeChange, draft, imageProvi
 
   return (
     <div className="space-y-6" data-testid="assets-engine-root">
+      <GenerationProgressFloat
+        open={genOpen && !overviewMode}
+        sessionId={draftId || 'assets'}
+        sseUrl=""
+        title={genTitle}
+        events={genEvents}
+        status={genStatus}
+        onClose={() => setGenOpen(false)}
+      />
       <ContextBanner stage="assets" context={trackerContext} onBack={navigate} />
 
       <div className="flex items-start justify-between gap-4">
