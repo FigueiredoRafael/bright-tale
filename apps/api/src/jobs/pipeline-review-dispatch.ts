@@ -20,12 +20,15 @@ import {
   deriveVerdictFromScore,
   extractRubricEvaluation,
   getRubricForType,
+  legacyScoreFromTier,
 } from '../lib/ai/scoring/computeRubricScore.js';
+import { deriveTier } from '@brighttale/shared/utils/reviewTierCompat';
 import {
   markAwaitingUser,
   markCompleted,
   markFailed,
 } from '../lib/pipeline/stage-run-writer.js';
+import { detectStagnation } from '../lib/ai/scoring/detectStagnation.js';
 
 interface StageRequestedEvent {
   name: 'pipeline/stage.requested';
@@ -240,7 +243,13 @@ export const pipelineReviewDispatch = inngest.createFunction(
         reviewScore = computed.score;
         overallVerdict = deriveVerdictFromScore(computed.score, computed.maxScore);
       } else {
-        reviewScore = (formatReview?.score as number | undefined) ?? null;
+        // Non-rubric types (video, shorts, podcast). Reviewer typically omits
+        // a numeric `score` field — synthesize from quality_tier so the
+        // history picker can show a real number instead of `—` and the
+        // autopilot loop has something to compare across iterations.
+        const rawScore = (formatReview?.score as number | undefined) ?? null;
+        const tier = deriveTier(formatReview);
+        reviewScore = rawScore !== null ? rawScore : legacyScoreFromTier(tier);
         overallVerdict = overallVerdictRaw;
       }
 
@@ -257,7 +266,8 @@ export const pipelineReviewDispatch = inngest.createFunction(
       type RunOutcome =
         | { status: 'completed' }
         | { status: 'failed'; errorMessage: string }
-        | { status: 'awaiting_user'; awaitingReason: 'max_iterations' };
+        | { status: 'awaiting_user'; awaitingReason: 'max_iterations' }
+        | { status: 'awaiting_user'; awaitingReason: 'stagnation' };
       let runOutcome: RunOutcome;
 
       const hardReject =
@@ -300,19 +310,51 @@ export const pipelineReviewDispatch = inngest.createFunction(
 
       await sb.from('content_drafts').update(updateData).eq('id', draftId);
 
-      // Append a row to review_iterations so the picker UI can show every
-      // pass with its draft snapshot + feedback. The dispatcher previously
-      // wrote terminal status straight to content_drafts and skipped this
-      // table, which is why autopilot reviews never showed up in the
-      // history that the legacy /:id/review path was already populating.
-      await sb.from('review_iterations').insert({
-        draft_id: draftId,
-        iteration: iterationCount,
-        score: reviewScore,
-        verdict: newVerdict,
-        feedback_json: result,
-        draft_json: draft.draft_json,
-      });
+      // Upsert into review_iterations so the picker UI can show every pass
+      // with its draft snapshot + feedback. Keyed on (draft_id, iteration)
+      // — a retry of the same iteration overwrites instead of duplicating.
+      await sb
+        .from('review_iterations')
+        .upsert(
+          {
+            draft_id: draftId,
+            iteration: iterationCount,
+            score: reviewScore,
+            verdict: newVerdict,
+            feedback_json: result,
+            draft_json: draft.draft_json,
+          },
+          { onConflict: 'draft_id,iteration' },
+        );
+
+      // Stagnation check (Fix 3): after writing the current iteration, load
+      // the last 3 rows and detect if the loop is stuck. Stagnation takes
+      // precedence over max_iterations — a flat 5-iteration loop should park
+      // as 'stagnation', not 'max_iterations', so telemetry can separate them.
+      // Gated behind ENABLE_REVIEW_STAGNATION_PARK (default off).
+      if (!approved && !hardReject && process.env.ENABLE_REVIEW_STAGNATION_PARK === 'true') {
+        const { data: recentIterations } = await sb
+          .from('review_iterations')
+          .select('iteration, score, feedback_json')
+          .eq('draft_id', draftId)
+          .order('iteration', { ascending: true })
+          .limit(3);
+        const iterationsForDetection = ((recentIterations ?? []) as Array<{
+          iteration: number;
+          score: number | null;
+          feedback_json: Record<string, unknown> | null;
+        }>).map((r) => ({
+          iteration: r.iteration,
+          score: r.score,
+          feedbackJson: r.feedback_json,
+        }));
+        const stagnationResult = detectStagnation(iterationsForDetection);
+        if (stagnationResult.stagnant) {
+          newVerdict = 'revision_required';
+          newDraftStatus = 'in_review';
+          runOutcome = { status: 'awaiting_user', awaitingReason: 'stagnation' };
+        }
+      }
 
       const payloadRef = { kind: 'content_draft', id: draftId };
       // Carry the verdict + feedback in the Stage Run itself so the

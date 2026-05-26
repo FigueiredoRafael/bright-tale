@@ -70,6 +70,9 @@ let priorDraftStageRun: Record<string, unknown> | null;
 let draftRow: Record<string, unknown> | null;
 let stageRunsUpdateMock: ReturnType<typeof vi.fn>;
 let contentDraftsUpdateMock: ReturnType<typeof vi.fn>;
+// Mutable so stagnation tests can inject prior iteration rows.
+let reviewIterationSelectRows: unknown[] = [];
+let reviewIterationsUpsertMock: ReturnType<typeof vi.fn>;
 
 vi.mock('../../lib/supabase/index.js', () => ({
   createServiceClient: () => ({
@@ -146,11 +149,20 @@ vi.mock('../../lib/supabase/index.js', () => ({
           }),
         };
       }
-      // review_iterations is appended on each pass so the picker UI can show
-      // (draft, review) per iteration. Mock just needs to swallow inserts.
+      // review_iterations: upserted on each pass + selected for stagnation check.
+      // reviewIterationSelectRows is mutable so stagnation tests can inject
+      // prior iteration rows (2 rows = stagnation possible on 3rd pass).
       if (table === 'review_iterations') {
         return {
           insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+          upsert: reviewIterationsUpsertMock,
+          select: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: () => Promise.resolve({ data: reviewIterationSelectRows, error: null }),
+              }),
+            }),
+          }),
         };
       }
       return {};
@@ -179,6 +191,8 @@ describe('pipeline-review-dispatch', () => {
     }
     stageRunsUpdateMock = vi.fn(() => makeUpdateChain());
     contentDraftsUpdateMock = vi.fn(() => makeUpdateChain());
+    reviewIterationsUpsertMock = vi.fn().mockResolvedValue({ data: null, error: null });
+    reviewIterationSelectRows = [];
 
     stageRunRow = {
       id: STAGE_RUN_ID,
@@ -363,6 +377,113 @@ describe('pipeline-review-dispatch', () => {
       (c) => (c[0] as { name: string }).name === 'pipeline/stage.run.finished',
     );
     expect(finishedCall).toBeUndefined();
+  });
+
+  it('stagnation: 3 consecutive score-60 iterations with same critical issue → awaiting_user(stagnation)', async () => {
+    // Fixture: 2 prior rows in review_iterations at score 60, same critical issue.
+    // The dispatcher will upsert iteration 3, then load last 3 rows for stagnation check.
+    const priorCriticalIssue = { issue: 'missing citations' };
+    reviewIterationSelectRows = [
+      {
+        iteration: 1,
+        score: 60,
+        feedback_json: { video_review: { issues: { critical: [priorCriticalIssue] } } },
+      },
+      {
+        iteration: 2,
+        score: 60,
+        feedback_json: { video_review: { issues: { critical: [priorCriticalIssue] } } },
+      },
+      // Iteration 3 row: the dispatcher upserts this, then re-reads last 3.
+      // We pre-populate it so the select after upsert returns the complete window.
+      {
+        iteration: 3,
+        score: 60,
+        feedback_json: { video_review: { issues: { critical: [priorCriticalIssue] } } },
+      },
+    ];
+
+    // Draft is a video type so we use legacy score (no rubric by default).
+    draftRow = {
+      ...(draftRow as Record<string, unknown>),
+      type: 'video',
+      iteration_count: 2, // already ran 2 iterations
+    };
+
+    generateWithFallbackMock.mockResolvedValueOnce({
+      result: {
+        overall_verdict: 'revision_required',
+        video_review: {
+          score: 60,
+          issues: { critical: [priorCriticalIssue] },
+        },
+      },
+      providerName: 'mock',
+      model: 'mock',
+      usage: {},
+    });
+
+    // Enable stagnation detection for this test.
+    vi.stubEnv('ENABLE_REVIEW_STAGNATION_PARK', 'true');
+
+    const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
+
+    await (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
+
+    vi.unstubAllEnvs();
+
+    // Assert: stage run parked as stagnation (not max_iterations).
+    const awaitingRow = stageRunsUpdateMock.mock.calls
+      .map((c) => c[0])
+      .find((r) => r.status === 'awaiting_user');
+    expect(awaitingRow).toBeDefined();
+    expect(awaitingRow.awaiting_reason).toBe('stagnation');
+
+    // Assert: third iteration was upserted.
+    expect(reviewIterationsUpsertMock).toHaveBeenCalled();
+  });
+
+  it('stagnation counter-fixture: third response score=90 → markCompleted, not stagnation', async () => {
+    reviewIterationSelectRows = [
+      { iteration: 1, score: 60, feedback_json: { video_review: { issues: { critical: [{ issue: 'missing citations' }] } } } },
+      { iteration: 2, score: 60, feedback_json: { video_review: { issues: { critical: [{ issue: 'missing citations' }] } } } },
+    ];
+    draftRow = { ...(draftRow as Record<string, unknown>), type: 'video', iteration_count: 2 };
+
+    // Third response scores 90 — should approve, not stagnate.
+    generateWithFallbackMock.mockResolvedValueOnce({
+      result: {
+        overall_verdict: 'approved',
+        video_review: { score: 90 },
+      },
+      providerName: 'mock',
+      model: 'mock',
+      usage: {},
+    });
+
+    vi.stubEnv('ENABLE_REVIEW_STAGNATION_PARK', 'true');
+    const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
+
+    await (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
+
+    vi.unstubAllEnvs();
+
+    // markCompleted → status = 'completed', not awaiting_user.
+    const completedRow = stageRunsUpdateMock.mock.calls
+      .map((c) => c[0])
+      .find((r) => r.status === 'completed');
+    expect(completedRow).toBeDefined();
+
+    const awaitingRow = stageRunsUpdateMock.mock.calls
+      .map((c) => c[0])
+      .find((r) => r.status === 'awaiting_user');
+    expect(awaitingRow).toBeUndefined();
   });
 
   it('on provider quota exhausted: stage_run → awaiting_user(provider_quota_exhausted), no rethrow', async () => {
