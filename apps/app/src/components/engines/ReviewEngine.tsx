@@ -25,6 +25,7 @@ import { getTrackStageResults } from '@/lib/pipeline/stage-results-by-track';
 import type { PipelineContext, PipelineStage, ReviewResult } from './types';
 import { deriveTier, isApprovedTier } from '@brighttale/shared';
 import type { AutopilotConfig } from '@brighttale/shared';
+import { useActiveStageRun } from '@/hooks/useActiveStageRun';
 
 /**
  * Non-null invariant — orchestrator gates render until draft is hydrated.
@@ -99,6 +100,11 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
   const draftId = trackId
     ? perTrackDraft?.draftId ?? ''
     : perTrackDraft?.draftId ?? draftResult?.draftId ?? '';
+
+  // issue #242 Module 4: derive progress-modal visibility from stage_run status.
+  // Review is a per-track stage when trackId is provided; shared (null) otherwise.
+  // Hook must be called unconditionally near top of component.
+  const activeRun = useActiveStageRun(projectId, 'review', trackId ?? null);
 
   // Local mutable view of the draft — initialized from the prop, kept in sync as
   // the engine refetches after status changes (review API, manual import, override).
@@ -187,6 +193,10 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
   const tracker = usePipelineTracker('review', trackerContext);
 
   const isManual = provider === 'manual';
+  // showProgressModal: mounts the GenerationProgressFloat when either the local
+  // `reviewing` flag is set (click-handler path) OR a stage_run is active from
+  // the stream (restart path). This is the fix for the restart visibility bug (#242).
+  const showProgressModal = (activeRun.isActive || reviewing) && !overviewMode && !isManual && !!draftId;
 
   // Manual provider state
   const [manualState, setManualState] = useState<{
@@ -265,6 +275,7 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
         status !== 'awaiting_manual' &&
         !busy &&
         !reviewing &&
+        !activeRun.isActive &&
         !inFlightRef.current
       );
     },
@@ -1066,12 +1077,12 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
       {/* SSE generation modal. Dialog UI is suppressed in overview mode (engine
           runs behind display:none; the portal would leak onto the dashboard). SSE
           runs regardless of `open` so that onComplete fires in overview mode. */}
-      {reviewing && !isManual && (
+      {showProgressModal && (
         <GenerationProgressFloat
-          open={!overviewMode && reviewing}
+          open={showProgressModal}
           sessionId={draftId}
           sseUrl={`/api/content-drafts/${draftId}/events`}
-          since={reviewSince ?? undefined}
+          since={reviewSince ?? activeRun.startedAt ?? undefined}
           title={revisePhase === 'revising' ? 'Revising draft from feedback' : 'Running AI Review'}
           onComplete={async () => {
             // Chained flow: when "Start AI Review" is the trigger, the first

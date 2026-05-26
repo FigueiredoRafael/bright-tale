@@ -71,6 +71,11 @@ vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
   useAutoPilotTrigger: () => undefined,
 }))
 
+// issue #242: stub useActiveStageRun so it doesn't call useProjectStream (Supabase)
+vi.mock('@/hooks/useActiveStageRun', () => ({
+  useActiveStageRun: () => ({ runId: null, status: null, startedAt: null, isActive: false, isFresh: false }),
+}))
+
 vi.mock('@/components/engines/ContextBanner', () => ({
   ContextBanner: () => null,
 }))

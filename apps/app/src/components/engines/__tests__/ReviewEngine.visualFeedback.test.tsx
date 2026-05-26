@@ -18,6 +18,11 @@ vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
   useAutoPilotTrigger: vi.fn(),
 }));
 
+// issue #242: stub useActiveStageRun so it doesn't call useProjectStream (Supabase)
+vi.mock('@/hooks/useActiveStageRun', () => ({
+  useActiveStageRun: () => ({ runId: null, status: null, startedAt: null, isActive: false, isFresh: false }),
+}));
+
 interface MountOpts {
   draft?: Record<string, unknown> | null;
   autoApproveThreshold?: number;
