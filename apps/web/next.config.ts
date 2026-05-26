@@ -43,6 +43,9 @@ const nextConfig: NextConfig = {
   // Remove the X-Powered-By: Next.js fingerprint.
   poweredByHeader: false,
 
+  // Empty turbopack config silences the "webpack config without turbopack config" error in Next.js 16.
+  turbopack: {},
+
   transpilePackages: ['@tn-figueiredo/admin', '@tn-figueiredo/affiliate-admin', '@tn-figueiredo/affiliate-portal', '@brighttale/shared'],
   async rewrites() {
     return [
