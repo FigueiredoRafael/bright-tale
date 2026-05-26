@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   computeRubricScore,
   deriveVerdictFromScore,
@@ -15,10 +15,21 @@ describe('getRubricForType', () => {
     expect(rubric!.every((c) => c.weight === 10)).toBe(true);
   });
 
-  it('returns null for types without a rubric (video/shorts/podcast)', () => {
+  it('returns null for types without a rubric (video/shorts/podcast) when flag is off', () => {
+    vi.stubEnv('ENABLE_VIDEO_RUBRIC', '');
     expect(getRubricForType('video')).toBeNull();
     expect(getRubricForType('shorts')).toBeNull();
     expect(getRubricForType('podcast')).toBeNull();
+    vi.unstubAllEnvs();
+  });
+
+  it('returns VIDEO_CRITERIA (10 criteria, sum 100) for video when ENABLE_VIDEO_RUBRIC=true', () => {
+    vi.stubEnv('ENABLE_VIDEO_RUBRIC', 'true');
+    const rubric = getRubricForType('video');
+    expect(rubric).not.toBeNull();
+    expect(rubric!.length).toBe(10);
+    expect(rubric!.reduce((s, c) => s + c.weight, 0)).toBe(100);
+    vi.unstubAllEnvs();
   });
 });
 

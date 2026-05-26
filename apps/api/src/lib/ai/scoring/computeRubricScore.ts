@@ -1,13 +1,20 @@
 import { BLOG_CRITERIA } from './criteria/blog.js';
+import { VIDEO_CRITERIA } from './criteria/video.js';
 import type { ComputedScore, RubricCriterion, RubricEvaluation } from './criteria/types.js';
 
 /**
- * Resolves the rubric for a given content type. Only blog has a full rubric
- * today; other mediums fall back to the legacy LLM-set score until their
- * rubrics are authored.
+ * Resolves the rubric for a given content type. Blog always uses the
+ * deterministic Σ(pass × weight) rubric. Video uses the same pattern but is
+ * gated behind the `ENABLE_VIDEO_RUBRIC` env flag (default off) so operators
+ * can observe false-positive-approve rates before switching it on in prod.
+ * Other mediums (shorts, podcast) fall back to the legacy LLM-set score until
+ * their rubrics are authored.
+ *
+ * Flag: set `ENABLE_VIDEO_RUBRIC=true` in the API env to activate.
  */
 export function getRubricForType(type: string): RubricCriterion[] | null {
   if (type === 'blog') return BLOG_CRITERIA;
+  if (type === 'video' && process.env.ENABLE_VIDEO_RUBRIC === 'true') return VIDEO_CRITERIA;
   return null;
 }
 
@@ -99,4 +106,24 @@ export function deriveVerdictFromScore(score: number, maxScore: number): 'approv
   if (pct >= 90) return 'approved';
   if (pct >= 30) return 'revision_required';
   return 'rejected';
+}
+
+/**
+ * Fallback numeric score for non-rubric content types (video, shorts,
+ * podcast). When the reviewer omits a numeric `score` field, map the
+ * qualitative `quality_tier` to a representative score so downstream
+ * consumers (review iteration history, autopilot loop comparison) get a
+ * non-null value to display and compare across iterations.
+ */
+const LEGACY_SCORE_BY_TIER: Record<string, number> = {
+  excellent: 95,
+  good: 82,
+  needs_revision: 60,
+  reject: 20,
+  not_requested: 0,
+};
+
+export function legacyScoreFromTier(tier: string | null | undefined): number | null {
+  if (!tier) return null;
+  return LEGACY_SCORE_BY_TIER[tier] ?? null;
 }
