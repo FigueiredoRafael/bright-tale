@@ -5,10 +5,20 @@ on:
     branches: [staging, main]
     paths:
       - 'supabase/migrations/**'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - prod
 
 jobs:
   migrate-staging:
-    if: github.ref == 'refs/heads/staging'
+    if: github.ref == 'refs/heads/staging' || (github.event_name == 'workflow_dispatch' && inputs.target == 'staging')
     name: Migrate (staging)
     runs-on: ubuntu-latest
     steps:
@@ -22,7 +32,7 @@ jobs:
         run: supabase db push --db-url "${{ secrets.STAGING_DB_URL }}"
 
   migrate-prod:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.target == 'prod')
     name: Migrate (prod)
     runs-on: ubuntu-latest
     environment: production
