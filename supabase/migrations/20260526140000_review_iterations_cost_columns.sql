@@ -11,11 +11,15 @@
 -- Both nullable: legacy rows before this migration have no cost data.
 
 ALTER TABLE review_iterations
-  ADD COLUMN IF NOT EXISTS produce_cost_cents int null,
-  ADD COLUMN IF NOT EXISTS review_cost_cents  int null;
+  ADD COLUMN IF NOT EXISTS produce_cost_cents      int  null,
+  ADD COLUMN IF NOT EXISTS review_cost_cents       int  null,
+  ADD COLUMN IF NOT EXISTS last_revision_strategy  text null;
 
 COMMENT ON COLUMN review_iterations.produce_cost_cents IS
   'Cost in cents of the producer LLM call that generated the draft for this iteration. Null for legacy rows.';
 
 COMMENT ON COLUMN review_iterations.review_cost_cents IS
   'Cost in cents of the reviewer LLM call that scored this iteration. Null for legacy rows.';
+
+COMMENT ON COLUMN review_iterations.last_revision_strategy IS
+  'Short summary of what the producer attempted to fix between the prior iteration and this one. Populated from the priorAttempts array the producer received. Null when the producer had no prior context or for legacy rows.';

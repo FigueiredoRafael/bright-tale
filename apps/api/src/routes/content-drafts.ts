@@ -48,6 +48,7 @@ import {
   deriveVerdictFromScore,
   extractRubricEvaluation,
   getRubricForType,
+  legacyScoreFromTier,
 } from "../lib/ai/scoring/computeRubricScore.js";
 import { buildAssetsMessage } from "../lib/ai/prompts/assets.js";
 import {
@@ -1811,14 +1812,6 @@ export async function contentDraftsRoutes(
           | Record<string, unknown>
           | undefined;
         const tier = deriveTier(formatReview);
-        const legacyScoreMap: Record<string, number> = {
-          excellent: 95,
-          good: 82,
-          needs_revision: 60,
-          reject: 20,
-          not_requested: 0,
-        };
-
         const rubric = getRubricForType(draftType);
         let reviewScore: number | null;
         let computedFromRubric: ReturnType<typeof computeRubricScore> | null = null;
@@ -1828,8 +1821,7 @@ export async function contentDraftsRoutes(
           reviewScore = computedFromRubric.score;
         } else {
           const rawScore = (formatReview?.score as number | undefined) ?? null;
-          reviewScore =
-            rawScore !== null ? rawScore : (legacyScoreMap[tier] ?? null);
+          reviewScore = rawScore !== null ? rawScore : legacyScoreFromTier(tier);
         }
 
         // Verdict: if we computed from rubric, the score determines verdict
@@ -1889,21 +1881,26 @@ export async function contentDraftsRoutes(
           .single();
         if (error) throw error;
 
-        // Log review iteration
+        // Log review iteration (upsert keyed on draft_id+iteration so retries
+        // of the same iteration overwrite rather than duplicating).
         await (
           sb.from("review_iterations" as never) as unknown as {
-            insert: (
+            upsert: (
               row: Record<string, unknown>,
+              opts: { onConflict: string },
             ) => Promise<{ error: unknown }>;
           }
-        ).insert({
-          draft_id: id,
-          iteration: iterationCount,
-          score: reviewScore,
-          verdict: newVerdict,
-          feedback_json: result,
-          draft_json: draft.draft_json,
-        });
+        ).upsert(
+          {
+            draft_id: id,
+            iteration: iterationCount,
+            score: reviewScore,
+            verdict: newVerdict,
+            feedback_json: result,
+            draft_json: draft.draft_json,
+          },
+          { onConflict: 'draft_id,iteration' },
+        );
 
         // Commit credits on successful agent call
         await commit(reviewToken, REVIEW_COST, "review", "text", {
@@ -2011,19 +2008,12 @@ export async function contentDraftsRoutes(
         ] as Record<string, unknown> | undefined;
 
         const tier2 = deriveTier(formatReview);
-        const legacyScoreMap2: Record<string, number> = {
-          excellent: 95,
-          good: 82,
-          needs_revision: 60,
-          reject: 20,
-          not_requested: 0,
-        };
         const rawScore2 =
           formatReview && typeof formatReview.score === "number"
             ? formatReview.score
             : null;
         const reviewScore: number | null =
-          rawScore2 !== null ? rawScore2 : (legacyScoreMap2[tier2] ?? null);
+          rawScore2 !== null ? rawScore2 : legacyScoreFromTier(tier2);
         let reviewVerdict = "revision_required";
 
         const overallVerdict = body.overall_verdict
@@ -2088,21 +2078,26 @@ export async function contentDraftsRoutes(
           .single();
         if (error) throw error;
 
-        // Log review iteration
+        // Log review iteration (upsert keyed on draft_id+iteration so retries
+        // of the same iteration overwrite rather than duplicating).
         await (
           sb.from("review_iterations" as never) as unknown as {
-            insert: (
+            upsert: (
               row: Record<string, unknown>,
+              opts: { onConflict: string },
             ) => Promise<{ error: unknown }>;
           }
-        ).insert({
-          draft_id: id,
-          iteration: iterationCount,
-          score: reviewScore,
-          verdict: reviewVerdict,
-          feedback_json: body,
-          draft_json: (row as { draft_json?: unknown }).draft_json ?? null,
-        });
+        ).upsert(
+          {
+            draft_id: id,
+            iteration: iterationCount,
+            score: reviewScore,
+            verdict: reviewVerdict,
+            feedback_json: body,
+            draft_json: (row as { draft_json?: unknown }).draft_json ?? null,
+          },
+          { onConflict: 'draft_id,iteration' },
+        );
 
         logAiUsage({
           userId: request.userId,
@@ -2943,7 +2938,7 @@ export async function contentDraftsRoutes(
           }
         )
           .select(
-            "id, iteration, score, verdict, feedback_json, draft_json, created_at",
+            "id, iteration, score, verdict, feedback_json, draft_json, created_at, produce_cost_cents, review_cost_cents, last_revision_strategy",
           )
           .eq("draft_id", id)
           .order("iteration", { ascending: true });
@@ -2966,6 +2961,9 @@ export async function contentDraftsRoutes(
               feedbackJson: (r as { feedback_json: unknown }).feedback_json,
               draftJson: (r as { draft_json: unknown }).draft_json,
               createdAt: (r as { created_at: string }).created_at,
+              produceCostCents: (r as { produce_cost_cents: number | null }).produce_cost_cents ?? null,
+              reviewCostCents: (r as { review_cost_cents: number | null }).review_cost_cents ?? null,
+              lastRevisionStrategy: (r as { last_revision_strategy: string | null }).last_revision_strategy ?? null,
             })),
           },
           error: null,
