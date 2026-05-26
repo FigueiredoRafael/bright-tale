@@ -43,7 +43,8 @@ interface ReducerState {
 
 type ReducerAction =
   | { type: 'snapshot'; rows: StageRun[] }
-  | { type: 'upsert'; row: StageRun };
+  | { type: 'upsert'; row: StageRun }
+  | { type: 'patch'; stage: Stage; patch: Partial<StageRun> };
 
 function reducer(state: ReducerState, action: ReducerAction): ReducerState {
   if (action.type === 'snapshot') {
@@ -56,6 +57,16 @@ function reducer(state: ReducerState, action: ReducerAction): ReducerState {
   if (action.type === 'upsert') {
     return {
       stageRuns: { ...state.stageRuns, [action.row.stage]: action.row },
+    };
+  }
+  if (action.type === 'patch') {
+    const current = state.stageRuns[action.stage];
+    if (!current) return state;
+    return {
+      stageRuns: {
+        ...state.stageRuns,
+        [action.stage]: { ...current, ...action.patch },
+      },
     };
   }
   return state;
@@ -108,6 +119,19 @@ export function useProjectStream(projectId: string): {
   project: ProjectMeta;
   tracks: TrackSnapshot[];
   refresh: () => Promise<void>;
+  /**
+   * Optimistically patches the cached stage_run for (stage, trackId) so the
+   * UI reacts immediately after a POST without waiting for the next poll.
+   * The real refresh() call overwrites this patch with server truth.
+   * If no run exists for the stage yet, this is a no-op.
+   *
+   * @param stage    The stage whose run to patch.
+   * @param _trackId Reserved for future per-track optimistic patches. Currently
+   *   the reducer patches by stage only (the stream keeps one run per stage);
+   *   trackId is accepted for API symmetry with useActiveStageRun.
+   * @param patch    Partial StageRun fields to merge.
+   */
+  optimisticPatchStageRun: (stage: Stage, _trackId: string | null, patch: Partial<StageRun>) => void;
 } {
   const [state, dispatch] = useReducer(reducer, { stageRuns: EMPTY_STAGE_RUNS });
   const [liveEvent, setLiveEvent] = useState<JobEvent | null>(null);
@@ -205,5 +229,12 @@ export function useProjectStream(projectId: string): {
     };
   }, [projectId, instanceId, refresh]);
 
-  return { stageRuns: state.stageRuns, liveEvent, isConnected, project, tracks, refresh };
+  const optimisticPatchStageRun = useCallback(
+    (stage: Stage, _trackId: string | null, patch: Partial<StageRun>) => {
+      dispatch({ type: 'patch', stage, patch });
+    },
+    [],
+  );
+
+  return { stageRuns: state.stageRuns, liveEvent, isConnected, project, tracks, refresh, optimisticPatchStageRun };
 }

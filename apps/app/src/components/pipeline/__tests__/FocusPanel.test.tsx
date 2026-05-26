@@ -608,3 +608,100 @@ describe('FocusPanel — AC4: URL state preserved on refresh', () => {
 // ── F2/F3: Awaiting banner moved to PipelineWorkspace (project scope) ─────────
 // These tests now live in PipelineWorkspace.test.tsx — the banner renders once
 // at project level so its visual scope matches POST /api/projects/:id/resume.
+
+// ── Refs #242: Optimistic queued patch on stage restart ───────────────────────
+
+describe('FocusPanel — Refs #242: optimistic queued patch after restart', () => {
+  let optimisticPatchMock: ReturnType<typeof vi.fn>;
+  let refreshMock: ReturnType<typeof vi.fn>;
+
+  function mockStreamWithOptimistic(allAttempts: StageRun[] = []) {
+    optimisticPatchMock = vi.fn();
+    refreshMock = vi.fn(async () => undefined);
+    useProjectStreamMock.mockReturnValue({
+      stageRuns: EMPTY_STAGE_RUNS,
+      liveEvent: null,
+      isConnected: true,
+      project: { mode: 'manual', paused: false },
+      refresh: refreshMock,
+      allAttempts,
+      optimisticPatchStageRun: optimisticPatchMock,
+    });
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { stageRun: { id: 'sr-new', status: 'queued' } }, error: null }),
+    }));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('calls optimisticPatchStageRun with queued status after POST resolves and before refresh', async () => {
+    searchParamsStub = new URLSearchParams('stage=production&track=track-1');
+    const completedRun = makeRun({
+      stage: 'production',
+      status: 'completed',
+      trackId: 'track-1',
+      attemptNo: 1,
+    });
+    mockStreamWithOptimistic([completedRun]);
+
+    render(<FocusPanel projectId="proj-1" />);
+
+    // Trigger restart dialog confirmation
+    const restartBtn = screen.getByTestId('restart-stage-button');
+    fireEvent.click(restartBtn);
+    const confirmBtn = screen.getByTestId('restart-stage-confirm');
+    fireEvent.click(confirmBtn);
+
+    // Wait for the async POST + optimistic patch to settle
+    await new Promise((r) => setTimeout(r, 50));
+
+    // optimisticPatchStageRun should have been called with queued status
+    expect(optimisticPatchMock).toHaveBeenCalledWith(
+      'production',
+      'track-1',
+      expect.objectContaining({ status: 'queued' }),
+    );
+
+    // refresh() should still be called after the optimistic patch
+    expect(refreshMock).toHaveBeenCalled();
+  });
+
+  it('calls optimisticPatchStageRun before refresh (correct ordering)', async () => {
+    searchParamsStub = new URLSearchParams('stage=production&track=track-1');
+    const completedRun = makeRun({
+      stage: 'production',
+      status: 'completed',
+      trackId: 'track-1',
+      attemptNo: 1,
+    });
+
+    const callOrder: string[] = [];
+    optimisticPatchMock = vi.fn(() => { callOrder.push('optimistic'); });
+    refreshMock = vi.fn(async () => { callOrder.push('refresh'); });
+
+    useProjectStreamMock.mockReturnValue({
+      stageRuns: EMPTY_STAGE_RUNS,
+      liveEvent: null,
+      isConnected: true,
+      project: { mode: 'manual', paused: false },
+      refresh: refreshMock,
+      allAttempts: [completedRun],
+      optimisticPatchStageRun: optimisticPatchMock,
+    });
+
+    render(<FocusPanel projectId="proj-1" />);
+
+    fireEvent.click(screen.getByTestId('restart-stage-button'));
+    fireEvent.click(screen.getByTestId('restart-stage-confirm'));
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(callOrder).toEqual(['optimistic', 'refresh']);
+  });
+});
