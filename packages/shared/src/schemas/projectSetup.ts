@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { autopilotConfigSchema } from './autopilotConfig.js'
-import { MEDIA } from '../pipeline/inputs.js'
+import { autopilotConfigSchema } from './autopilotConfig'
+import { MEDIA } from '../pipeline/inputs'
 
 export const startStageSchema = z.enum([
   'brainstorm', 'research', 'canonical', 'production', 'review', 'assets', 'preview', 'publish',

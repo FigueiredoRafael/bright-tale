@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { aiProviderSchema } from './ai.js'
+import { aiProviderSchema } from './ai'
 
 const ProviderOrInherit = aiProviderSchema.nullable()
 const DefaultProvider = z.union([z.literal('recommended'), aiProviderSchema])

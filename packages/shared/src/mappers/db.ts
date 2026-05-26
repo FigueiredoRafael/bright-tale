@@ -772,7 +772,7 @@ export function mapChannelPersonaFromDb(row: DbChannelPersona): DomainChannelPer
 
 // ─── ModuleAiAssignment ───────────────────────────────────────────────────────
 
-import type { ModuleAiAssignment, ModuleSlug } from '../schemas/module-ai-assignments.js';
+import type { ModuleAiAssignment, ModuleSlug } from '../schemas/module-ai-assignments';
 
 export interface DbModuleAiAssignment {
   id: string;

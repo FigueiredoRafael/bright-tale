@@ -1,10 +1,10 @@
-export * from './agents/index.js';
-export * from './constants/index.js';
-export * from './types/agents.js';
-export * from './schemas/index.js';
-export * from './mappers/db.js';
-export * from './mappers/video-to-shorts.js';
-export * from './utils/index.js';
-export * from './builders/videoAssetBundle.js';
+export * from './agents/index';
+export * from './constants/index';
+export * from './types/agents';
+export * from './schemas/index';
+export * from './mappers/db';
+export * from './mappers/video-to-shorts';
+export * from './utils/index';
+export * from './builders/videoAssetBundle';
 // database types are re-exported explicitly to avoid collision:
-export type { Database } from './types/database.js';
+export type { Database } from './types/database';

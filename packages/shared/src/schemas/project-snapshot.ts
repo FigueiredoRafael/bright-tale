@@ -14,7 +14,7 @@
  *     have no tracks table rows
  */
 import { z } from 'zod';
-import { MEDIA, STAGES, STAGE_RUN_STATUSES } from '../pipeline/inputs.js';
+import { MEDIA, STAGES, STAGE_RUN_STATUSES } from '../pipeline/inputs';
 
 // ─── StageRunAttemptSchema (T9.F152) ─────────────────────────────────────────
 //

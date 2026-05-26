@@ -1,3 +1,3 @@
-export * from './types.js';
-export * from './assembleInstructions.js';
-export * from './ruleLibrary.js';
+export * from './types';
+export * from './assembleInstructions';
+export * from './ruleLibrary';
