@@ -116,7 +116,19 @@ BrightCurios prioritizes clarity, credibility, and long-term trust. Content is r
         "visual_style": ""
       },
       "chapter_count": 0,
-      "pinned_comment": ""
+      "pinned_comment": "",
+      "lower_thirds": [
+        {
+          "timestamp": "",
+          "line1": "",
+          "line2": "",
+          "duration_seconds": 0
+        }
+      ],
+      "editor_script": {
+        "hook": {},
+        "chapters": []
+      }
     },
     "shorts": [
       {

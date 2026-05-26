@@ -366,11 +366,30 @@ export interface LowerThird {
 export interface VideoOutput {
   title_options: string[];
   thumbnail?: {
+    /**
+     * Producer-side name (BC_VIDEO_OUTPUT v0.2). Kept for backward compat.
+     * Reviewer and rubric criteria use `visual_style` — emit both during the
+     * transition window so neither side flags a missing-field error.
+     */
     visual_concept: string;
+    /**
+     * Reviewer-side name (agent-4-review.md input schema + VIDEO_CRITERIA
+     * `thumbnail_specified` criterion). Derived from `visual_concept` at
+     * producer-emission time. Required by the rubric; missing counts as fail.
+     */
+    visual_style?: string;
     text_overlay: string;
     emotion: "curiosity" | "shock" | "intrigue";
     why_it_works: string;
   };
+  /**
+   * Derived field: `script.chapters.length`. Emitted by the producer at
+   * output time. Reviewer expects this at `production.video.chapter_count`
+   * (see agent-4-review.md input schema). Without it the reviewer flags
+   * "chapter_count missing" on every iteration — the root cause of the stuck
+   * loop on project 8c4b8965 (Fix 2 from the stagnation-fixes PRD).
+   */
+  chapter_count?: number;
   script: VideoScript;
   total_duration_estimate?: string;
   /** AI-generated Imagen-optimised prompts for video assets */
