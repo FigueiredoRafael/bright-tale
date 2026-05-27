@@ -64,7 +64,7 @@ export const pipelineReviewDispatch = inngest.createFunction(
 
     const { data: stageRun } = await sb
       .from('stage_runs')
-      .select('id, project_id, stage, status, input_json')
+      .select('id, project_id, stage, status, input_json, track_id')
       .eq('id', stageRunId)
       .maybeSingle();
     if (!stageRun) return;
@@ -123,14 +123,24 @@ export const pipelineReviewDispatch = inngest.createFunction(
     // `production` while pre-migration rows remain `draft`. We accept both so
     // a project that started under the old taxonomy still routes to review
     // cleanly, AND new projects don't fail with "No prior draft Stage Run".
-    const { data: priorDraft } = await sb
+    //
+    // Multi-track: scope the lookup to the review run's track_id so the video
+    // review doesn't grab whichever production run finished most recently
+    // (which in mixed blog+video projects could be the blog draft). Legacy
+    // single-track runs have track_id=null and skip the filter, preserving
+    // the original behavior.
+    const reviewTrackId = (stageRun as { track_id?: string | null }).track_id ?? null;
+    let priorDraftQuery = sb
       .from('stage_runs')
-      .select('id, stage, status, payload_ref')
+      .select('id, stage, status, payload_ref, track_id')
       .eq('project_id', projectId)
       .in('stage', ['production', 'draft'])
       .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+    if (reviewTrackId) {
+      priorDraftQuery = priorDraftQuery.eq('track_id', reviewTrackId);
+    }
+    const { data: priorDraft } = await priorDraftQuery.maybeSingle();
     const draftRef = priorDraft?.payload_ref as { kind?: string; id?: string } | null | undefined;
     if (draftRef?.kind !== 'content_draft' || !draftRef.id) {
       await markFailed(sb, stageRunId, { ...ctx, errorMessage: 'No prior production Stage Run to review' });
@@ -156,7 +166,7 @@ export const pipelineReviewDispatch = inngest.createFunction(
     // even though the score is recorded on the draft. We derive the missing
     // track_id from the latest production stage_run on the same project
     // that points at the same content_draft.
-    if (!(stageRun as { track_id?: string | null }).track_id) {
+    if (!reviewTrackId) {
       const { data: priorProduction } = await sb
         .from('stage_runs')
         .select('track_id, payload_ref')

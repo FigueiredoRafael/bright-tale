@@ -82,6 +82,11 @@ const providerOverrideSchema = z.object({
   model: z.string().optional(),
   modelTier: z.string().optional(),
   productionParams: z.record(z.unknown()).optional(),
+  // Explicit user-initiated escape hatch for the review-iteration cap. The cap
+  // exists to stop autopilot loops from burning credits indefinitely; manual
+  // re-runs from the Review UI are always user actions and must be allowed to
+  // bypass it. Consumed only by POST /:id/review.
+  overrideMaxIterations: z.boolean().optional(),
 });
 
 const synthesizeDraftSchema = z.object({
@@ -1555,10 +1560,12 @@ export async function contentDraftsRoutes(
           );
         }
 
-        await assertWithinReviewCap(
-          (draft.project_id as string | null | undefined) ?? null,
-          (draft.iteration_count as number | null | undefined) ?? 0,
-        );
+        if (!override.overrideMaxIterations) {
+          await assertWithinReviewCap(
+            (draft.project_id as string | null | undefined) ?? null,
+            (draft.iteration_count as number | null | undefined) ?? 0,
+          );
+        }
 
         // Manual provider short-circuits the LLM call: build the prompt
         // synchronously, emit the full payload to Axiom, persist the draft in

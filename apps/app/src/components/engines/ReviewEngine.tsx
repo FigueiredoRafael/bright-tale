@@ -56,6 +56,85 @@ const TIER_COLOR: Record<string, string> = {
   not_requested: 'bg-gray-500/20 text-gray-700 border-gray-500/50',
 };
 
+/**
+ * Compose a readable preview from a per-type draft_json. The Review card
+ * needs to show the body so the user can sanity-check what the agent
+ * scored. Blog stores it directly as `full_draft`; video/shorts/podcast
+ * store structured shapes that have to be stitched together.
+ *
+ * Accepts both wrapped (`{ video: { script: {...} } }`) and flat
+ * (`{ script: {...} }`) forms — production has historically emitted both.
+ */
+function composeDraftBody(
+  type: string | null | undefined,
+  dj: Record<string, unknown>,
+): { body: string; sectionCount: number } {
+  const root = dj;
+  const wrappedKey = typeof type === 'string' ? type : '';
+  const inner =
+    wrappedKey && root[wrappedKey] && typeof root[wrappedKey] === 'object'
+      ? (root[wrappedKey] as Record<string, unknown>)
+      : root;
+
+  if (type === 'video') {
+    const script = (inner.script ?? root.script) as Record<string, unknown> | undefined;
+    if (!script) return { body: '', sectionCount: 0 };
+    const parts: string[] = [];
+    if (typeof script.hook_0_10s === 'string') {
+      parts.push(`Hook (0:00–0:10)\n${script.hook_0_10s}`);
+    }
+    if (typeof script.context_0_10_0_45 === 'string') {
+      parts.push(`Context (0:10–0:45)\n${script.context_0_10_0_45}`);
+    }
+    if (typeof script.teaser_0_45_1_00 === 'string') {
+      parts.push(`Teaser (0:45–1:00)\n${script.teaser_0_45_1_00}`);
+    }
+    const chapters = Array.isArray(script.chapters) ? (script.chapters as unknown[]) : [];
+    chapters.forEach((c, i) => {
+      const ch = c as Record<string, unknown>;
+      const title = typeof ch.chapter_title === 'string' ? ch.chapter_title : `Chapter ${i + 1}`;
+      const range = typeof ch.time_range === 'string' ? ch.time_range : '';
+      const content = typeof ch.content === 'string' ? ch.content : '';
+      parts.push(`${title}${range ? ` (${range})` : ''}\n${content}`);
+    });
+    const aff = script.affiliate_60_percent as Record<string, unknown> | undefined;
+    if (aff && typeof aff.content === 'string') {
+      const range = typeof aff.time_range === 'string' ? aff.time_range : '';
+      parts.push(`Affiliate${range ? ` (${range})` : ''}\n${aff.content}`);
+    }
+    if (typeof script.ending_takeaway === 'string') {
+      parts.push(`Ending Takeaway\n${script.ending_takeaway}`);
+    }
+    if (typeof script.cta === 'string') {
+      parts.push(`CTA\n${script.cta}`);
+    }
+    return { body: parts.join('\n\n'), sectionCount: chapters.length };
+  }
+
+  if (type === 'shorts') {
+    const arr = (Array.isArray(root.shorts)
+      ? root.shorts
+      : Array.isArray(inner.shorts)
+        ? inner.shorts
+        : []) as Array<Record<string, unknown>>;
+    const parts = arr.map((s, i) => {
+      const title = typeof s.title === 'string' ? s.title : `Short ${i + 1}`;
+      const script = typeof s.script === 'string' ? s.script : '';
+      return `${title}\n${script}`;
+    });
+    return { body: parts.join('\n\n'), sectionCount: arr.length };
+  }
+
+  // blog + podcast (and any other text-shaped draft) fall back to full_draft.
+  const fd =
+    typeof inner.full_draft === 'string'
+      ? (inner.full_draft as string)
+      : typeof root.full_draft === 'string'
+        ? (root.full_draft as string)
+        : '';
+  return { body: fd, sectionCount: 0 };
+}
+
 export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
   const ctx = useProjectContext();
   const abortController = usePipelineAbort();
@@ -307,6 +386,7 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
     id: string;
     title: string | null;
     status: string;
+    type: string | null;
     draft_json: Record<string, unknown> | null;
     review_feedback_json: Record<string, unknown> | null;
     review_score: number | null;
@@ -345,7 +425,8 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
     }
   }
 
-  async function handleSubmitForReview() {
+  async function handleSubmitForReview(opts?: { force?: boolean }) {
+    const force = opts?.force === true;
     await withGuard(async () => {
       try {
         tracker.trackStarted({ draftId, iterationCount: draftView.iteration_count });
@@ -377,6 +458,10 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
         setReviewing(true);
         const body: Record<string, unknown> = { provider };
         if (model && !isManual) body.model = model;
+        // Manual user-initiated re-runs bypass the per-project iteration cap.
+        // Autopilot triggers call this function without `force`, so the cap
+        // still protects unattended loops.
+        if (force) body.overrideMaxIterations = true;
         const res = await fetch(`/api/content-drafts/${draftId}/review`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -756,8 +841,15 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
             </Card>
           );
         }
-        const fullDraft = typeof dj.full_draft === 'string' ? (dj.full_draft as string) : '';
-        const outline = Array.isArray(dj.outline) ? (dj.outline as unknown[]) : null;
+        // Per-type body composer — blog uses dj.full_draft; video/shorts/podcast
+        // have structured shapes (script.* / shorts[].script / episodes[].*) and
+        // require assembling the prose from their parts. Without this, the card
+        // shows "Draft body is empty" for non-blog tracks even when production
+        // succeeded.
+        const composed = composeDraftBody(draftView.type, dj);
+        const fullDraft = composed.body;
+        const sectionCount = composed.sectionCount;
+        const outline = sectionCount === 0 && Array.isArray(dj.outline) ? (dj.outline as unknown[]) : null;
         const slug = typeof dj.slug === 'string' ? (dj.slug as string) : null;
         const wordCount = fullDraft ? fullDraft.trim().split(/\s+/).length : 0;
         const previewBody = draftPreviewExpanded || fullDraft.length <= 800
@@ -774,7 +866,8 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
                 <span className="font-medium text-foreground">{displayTitle}</span>
                 {slug && <span>· /{slug}</span>}
                 {wordCount > 0 && <span>· {wordCount.toLocaleString()} words</span>}
-                {outline && outline.length > 0 && <span>· {outline.length} sections</span>}
+                {sectionCount > 0 && <span>· {sectionCount} sections</span>}
+                {!sectionCount && outline && outline.length > 0 && <span>· {outline.length} sections</span>}
               </div>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -847,7 +940,7 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
                   : 'AI Review: runs the reviewer agent with the selected model.'}
               </p>
               <Button
-                onClick={handleSubmitForReview}
+                onClick={() => handleSubmitForReview()}
                 disabled={busy || reviewing || !draftView.draft_json}
                 size="lg"
                 className="gap-2 shrink-0"
@@ -899,7 +992,7 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
                   <Check className="h-4 w-4" />
                   <span>Draft approved! Ready to move to assets.</span>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button
                     onClick={async () => {
                       const score = effectiveScore ?? draftView.review_score ?? 0;
@@ -939,6 +1032,25 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
                   >
                     <Check className="h-4 w-4" />
                     Next: Assets <ArrowRight className="h-4 w-4" />
+                  </Button>
+                  {/* Re-run the review against the current draft body. Useful
+                      when the score barely cleared the threshold, a past
+                      iteration was promoted, or the user just wants another
+                      pass without going through "Restart step". Manual click
+                      always bypasses the iteration cap. */}
+                  <Button
+                    onClick={() => handleSubmitForReview({ force: true })}
+                    disabled={busy || reviewing}
+                    variant="outline"
+                    className="gap-2"
+                    data-testid="review-action-rerun"
+                  >
+                    {busy || reviewing ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4" />
+                    )}
+                    Generate again
                   </Button>
                 </div>
               </CardContent>
@@ -1002,7 +1114,7 @@ export function ReviewEngine({ draft, trackId }: ReviewEngineProps) {
                   <p className="text-xs font-medium text-muted-foreground">Other options:</p>
                   <div className="grid grid-cols-2 gap-2">
                     <Button
-                      onClick={handleSubmitForReview}
+                      onClick={() => handleSubmitForReview()}
                       disabled={busy || reviewing}
                       variant="outline"
                       size="sm"
