@@ -1,13 +1,19 @@
 import { BLOG_CRITERIA } from './criteria/blog.js';
+import { VIDEO_CRITERIA } from './criteria/video.js';
+import { SHORTS_CRITERIA } from './criteria/shorts.js';
+import { PODCAST_CRITERIA } from './criteria/podcast.js';
 import type { ComputedScore, RubricCriterion, RubricEvaluation } from './criteria/types.js';
 
 /**
- * Resolves the rubric for a given content type. Only blog has a full rubric
- * today; other mediums fall back to the legacy LLM-set score until their
- * rubrics are authored.
+ * Resolves the rubric for a given content type. Returning null forces the
+ * legacy tier→score bucket (60 for needs_revision) — keep that path only
+ * for types with no authored rubric.
  */
 export function getRubricForType(type: string): RubricCriterion[] | null {
   if (type === 'blog') return BLOG_CRITERIA;
+  if (type === 'video') return VIDEO_CRITERIA;
+  if (type === 'shorts') return SHORTS_CRITERIA;
+  if (type === 'podcast') return PODCAST_CRITERIA;
   return null;
 }
 

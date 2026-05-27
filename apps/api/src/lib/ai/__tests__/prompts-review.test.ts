@@ -206,13 +206,49 @@ describe('buildReviewMessage', () => {
     expect(msg).not.toContain('Self-check before returning');
   });
 
-  it('does NOT inject a rubric for types without one (video/shorts/podcast)', () => {
-    const videoMsg = buildReviewMessage({
+  it('injects the video rubric override with all 10 criteria keys', () => {
+    const msg = buildReviewMessage({
       type: 'video',
       title: 'Test',
       draftJson: {},
     });
-    expect(videoMsg).not.toContain('Rubric (REQUIRED');
-    expect(videoMsg).not.toContain('rubric_evaluation');
+    expect(msg).toContain('MANDATORY SCHEMA OVERRIDE');
+    expect(msg).toContain('video_review object MUST include a "rubric_evaluation"');
+    expect(msg).toContain('Do NOT include a "score" field');
+    expect(msg).toContain('has_strong_hook');
+    expect(msg).toContain('chapters_align_to_canonical');
+    expect(msg).toContain('outro_has_cta');
+    expect(msg).toContain('thumbnail_specified');
+    expect(msg).toContain('strengths_preserved');
+  });
+
+  it('injects the shorts rubric override', () => {
+    const msg = buildReviewMessage({
+      type: 'shorts',
+      title: 'Test',
+      draftJson: {},
+    });
+    expect(msg).toContain('MANDATORY SCHEMA OVERRIDE');
+    expect(msg).toContain('shorts_review object MUST include a "rubric_evaluation"');
+  });
+
+  it('injects the podcast rubric override', () => {
+    const msg = buildReviewMessage({
+      type: 'podcast',
+      title: 'Test',
+      draftJson: {},
+    });
+    expect(msg).toContain('MANDATORY SCHEMA OVERRIDE');
+    expect(msg).toContain('podcast_review object MUST include a "rubric_evaluation"');
+  });
+
+  it('skips the rubric override for unknown types', () => {
+    const msg = buildReviewMessage({
+      type: 'newsletter',
+      title: 'Test',
+      draftJson: {},
+    });
+    expect(msg).not.toContain('MANDATORY SCHEMA OVERRIDE');
+    expect(msg).not.toContain('rubric_evaluation');
   });
 });

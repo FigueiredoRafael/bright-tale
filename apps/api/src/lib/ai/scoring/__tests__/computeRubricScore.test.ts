@@ -6,6 +6,9 @@ import {
   getRubricForType,
 } from '../computeRubricScore.js';
 import { BLOG_CRITERIA, BLOG_MAX_SCORE } from '../criteria/blog.js';
+import { VIDEO_CRITERIA, VIDEO_MAX_SCORE } from '../criteria/video.js';
+import { SHORTS_CRITERIA, SHORTS_MAX_SCORE } from '../criteria/shorts.js';
+import { PODCAST_CRITERIA, PODCAST_MAX_SCORE } from '../criteria/podcast.js';
 
 describe('getRubricForType', () => {
   it('returns the blog rubric for type=blog', () => {
@@ -15,10 +18,27 @@ describe('getRubricForType', () => {
     expect(rubric!.every((c) => c.weight === 10)).toBe(true);
   });
 
-  it('returns null for types without a rubric (video/shorts/podcast)', () => {
-    expect(getRubricForType('video')).toBeNull();
-    expect(getRubricForType('shorts')).toBeNull();
-    expect(getRubricForType('podcast')).toBeNull();
+  it('returns the video rubric for type=video', () => {
+    const rubric = getRubricForType('video');
+    expect(rubric).toBe(VIDEO_CRITERIA);
+    expect(VIDEO_MAX_SCORE).toBe(100);
+  });
+
+  it('returns the shorts rubric for type=shorts', () => {
+    const rubric = getRubricForType('shorts');
+    expect(rubric).toBe(SHORTS_CRITERIA);
+    expect(SHORTS_MAX_SCORE).toBe(100);
+  });
+
+  it('returns the podcast rubric for type=podcast', () => {
+    const rubric = getRubricForType('podcast');
+    expect(rubric).toBe(PODCAST_CRITERIA);
+    expect(PODCAST_MAX_SCORE).toBe(100);
+  });
+
+  it('returns null for unknown types', () => {
+    expect(getRubricForType('newsletter')).toBeNull();
+    expect(getRubricForType('')).toBeNull();
   });
 });
 
