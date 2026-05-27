@@ -244,4 +244,31 @@ describe('pipeline-canonical-dispatch', () => {
     expect(event.data.stageRunId).toBe(STAGE_RUN_ID);
     expect(event.data.phase).toBe('canonical');
   });
+
+  it("parks the Stage Run in awaiting_user(manual_paste) and inserts content_draft with awaiting_manual when provider='manual'", async () => {
+    stageRunRow = { ...stageRunRow, input_json: { provider: 'manual' } };
+
+    const { pipelineCanonicalDispatch } = await import('../pipeline-canonical-dispatch.js');
+    const { inngest } = await import('../client.js');
+
+    await (
+      pipelineCanonicalDispatch as unknown as (args: {
+        event: { data: { stageRunId: string; stage: string; projectId: string } };
+      }) => Promise<void>
+    )({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'canonical', projectId: PROJECT_ID } },
+    });
+
+    expect(draftInsertMock).toHaveBeenCalled();
+    const draftRow = draftInsertMock.mock.calls[0][0];
+    expect(draftRow.status).toBe('awaiting_manual');
+
+    expect(stageRunsUpdateMock).toHaveBeenCalled();
+    const updateRow = stageRunsUpdateMock.mock.calls[0][0];
+    expect(updateRow.status).toBe('awaiting_user');
+    expect(updateRow.awaiting_reason).toBe('manual_paste');
+    expect(updateRow.payload_ref).toEqual({ kind: 'content_draft', id: DRAFT_ID });
+
+    expect(inngest.send).not.toHaveBeenCalled();
+  });
 });

@@ -180,7 +180,7 @@ describe('brainstorm-generate stage_runs writeback', () => {
     expect((finishedCall![0] as { data: { stageRunId: string } }).data.stageRunId).toBe(STAGE_RUN_ID);
   });
 
-  it('on failure: updates stage_runs to failed and emits pipeline/stage.run.finished', async () => {
+  it('on failure: parks stage_runs in awaiting_user(manual_paste) with payload_ref for paste', async () => {
     // Force the AI router to throw to enter the catch path.
     const router = await import('../../lib/ai/router.js');
     vi.mocked(router.generateWithFallback).mockRejectedValueOnce(new Error('provider down'));
@@ -205,19 +205,20 @@ describe('brainstorm-generate stage_runs writeback', () => {
       run: vi.fn(async (_name: string, fn: () => Promise<unknown>) => fn()),
     };
 
-    await expect(
-      (brainstormGenerate as unknown as (args: unknown) => Promise<unknown>)({ event, step }),
-    ).rejects.toThrow(/provider down/);
+    // Always-manual fallback: AI failure parks the run instead of throwing.
+    await (brainstormGenerate as unknown as (args: unknown) => Promise<unknown>)({ event, step });
 
     expect(stageRunsUpdateMock).toHaveBeenCalled();
     const updateRow = stageRunsUpdateMock.mock.calls[0][0];
-    expect(updateRow.status).toBe('failed');
+    expect(updateRow.status).toBe('awaiting_user');
+    expect(updateRow.awaiting_reason).toBe('manual_paste');
+    expect(updateRow.payload_ref).toEqual({ kind: 'brainstorm_session', id: 'sess-1' });
     expect(updateRow.error_message).toContain('provider down');
-    expect(updateRow.finished_at).toBeTruthy();
 
+    // No stage.run.finished — non-terminal parks don't advance.
     const finishedCall = (inngestSendMock.mock.calls as unknown as unknown[][]).find(
       (c) => (c[0] as { name: string }).name === 'pipeline/stage.run.finished',
     );
-    expect(finishedCall).toBeDefined();
+    expect(finishedCall).toBeUndefined();
   });
 });

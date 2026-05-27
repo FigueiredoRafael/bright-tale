@@ -14,7 +14,7 @@
 import { inngest } from './client.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { resolveIdeaArchiveFromBrainstorm } from '../lib/pipeline/idea-resolution.js';
-import { markFailed, markRunning } from '../lib/pipeline/stage-run-writer.js';
+import { markAwaitingUser, markFailed, markRunning } from '../lib/pipeline/stage-run-writer.js';
 
 interface StageRequestedEvent {
   name: 'pipeline/stage.requested';
@@ -91,6 +91,7 @@ export const pipelineResearchDispatch = inngest.createFunction(
     const modelTier = (input.modelTier as string | undefined) ?? 'standard';
     const reviewFeedback = input.reviewFeedback ?? null;
 
+    const initialStatus = provider === 'manual' ? 'awaiting_manual' : 'running';
     const { data: session, error: insertError } = await sb
       .from('research_sessions')
       .insert({
@@ -103,15 +104,24 @@ export const pipelineResearchDispatch = inngest.createFunction(
         focus_tags: focusTags,
         input_json: { topic, ideaTitle: topic, focusTags, level, reviewFeedback },
         model_tier: modelTier,
-        status: 'running',
+        status: initialStatus,
       })
       .select()
       .single();
     if (insertError || !session?.id) {
-      // Surface the silent failure on the Stage Run so the UI shows why.
       await markFailed(sb, stageRunId, {
         ...ctx,
         errorMessage: `Failed to create research_sessions row: ${(insertError as { message?: string } | undefined)?.message ?? 'unknown'}`,
+      });
+      return;
+    }
+
+    if (provider === 'manual') {
+      await markAwaitingUser(sb, stageRunId, {
+        ...ctx,
+        awaitingReason: 'manual_paste',
+        payloadRef: { kind: 'research_session', id: session.id },
+        markStarted: true,
       });
       return;
     }

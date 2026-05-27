@@ -291,23 +291,24 @@ describe('pipeline-review-dispatch', () => {
     expect(completedRow).toBeDefined();
   });
 
-  it('on AI failure: stage_run → failed, emits finished', async () => {
+  it('on AI failure: parks stage_run in awaiting_user(manual_paste) — always-manual fallback', async () => {
     generateWithFallbackMock.mockRejectedValueOnce(new Error('agent timeout'));
 
     const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
 
-    await expect(
-      (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
-        event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
-        step: STEP_MOCK,
-      }),
-    ).rejects.toThrow(/agent timeout/);
+    // Always-manual fallback: AI failure parks the run with manual_paste so
+    // the user can paste an externally-generated BC_REVIEW_OUTPUT.
+    await (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
 
-    const failedRow = stageRunsUpdateMock.mock.calls
+    const awaitingRow = stageRunsUpdateMock.mock.calls
       .map((c) => c[0])
-      .find((r) => r.status === 'failed');
-    expect(failedRow).toBeDefined();
-    expect(failedRow.error_message).toContain('agent timeout');
+      .find((r) => r.status === 'awaiting_user');
+    expect(awaitingRow).toBeDefined();
+    expect(awaitingRow.awaiting_reason).toBe('manual_paste');
+    expect(awaitingRow.payload_ref).toEqual({ kind: 'content_draft', id: DRAFT_ID });
   });
 
   it('marks stage_run failed when there is no prior draft Stage Run', async () => {
@@ -365,14 +366,17 @@ describe('pipeline-review-dispatch', () => {
     expect(finishedCall).toBeUndefined();
   });
 
-  it('on provider quota exhausted: stage_run → awaiting_user(provider_quota_exhausted), no rethrow', async () => {
+  it('on provider quota exhausted: also parks awaiting_user(manual_paste) — unified always-manual fallback', async () => {
+    // Quota errors used to park as `provider_quota_exhausted`; the unified
+    // always-manual fallback now parks every AI failure (quota, timeout,
+    // overload, all-providers-exhausted) under the same manual_paste reason
+    // so the centralised paste dialog opens.
     const quotaErr = new Error('429 quota exceeded');
     generateWithFallbackMock.mockRejectedValueOnce(quotaErr);
     isQuotaExhaustedMock.mockReturnValueOnce(true);
 
     const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
 
-    // Quota exhaustion swallows the rethrow because the run is parked, not failed.
     await (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
       event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
       step: STEP_MOCK,
@@ -382,11 +386,34 @@ describe('pipeline-review-dispatch', () => {
       .map((c) => c[0])
       .find((r) => r.status === 'awaiting_user');
     expect(awaitingRow).toBeDefined();
-    expect(awaitingRow.awaiting_reason).toBe('provider_quota_exhausted');
+    expect(awaitingRow.awaiting_reason).toBe('manual_paste');
 
     const failedRow = stageRunsUpdateMock.mock.calls
       .map((c) => c[0])
       .find((r) => r.status === 'failed');
     expect(failedRow).toBeUndefined();
+  });
+
+  it("parks the Stage Run in awaiting_user(manual_paste) and does NOT call the LLM when provider='manual'", async () => {
+    stageRunRow = {
+      ...stageRunRow,
+      input_json: { ...((stageRunRow.input_json as Record<string, unknown>) ?? {}), provider: 'manual' },
+    };
+
+    const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
+
+    await (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
+
+    expect(generateWithFallbackMock).not.toHaveBeenCalled();
+
+    const awaitingRow = stageRunsUpdateMock.mock.calls
+      .map((c) => c[0])
+      .find((r) => r.status === 'awaiting_user');
+    expect(awaitingRow).toBeDefined();
+    expect(awaitingRow.awaiting_reason).toBe('manual_paste');
+    expect(awaitingRow.payload_ref).toEqual({ kind: 'content_draft', id: DRAFT_ID });
   });
 });

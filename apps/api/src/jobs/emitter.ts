@@ -13,7 +13,8 @@ export type JobStage =
   | 'saving'
   | 'completed'
   | 'failed'
-  | 'aborted';
+  | 'aborted'
+  | 'awaiting_manual';
 
 export async function emitJobEvent(
   sessionId: string,

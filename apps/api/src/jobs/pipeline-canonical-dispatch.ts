@@ -11,7 +11,7 @@
 import { inngest } from './client.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { resolveIdeaArchiveFromBrainstorm } from '../lib/pipeline/idea-resolution.js';
-import { markFailed, markRunning } from '../lib/pipeline/stage-run-writer.js';
+import { markAwaitingUser, markFailed, markRunning } from '../lib/pipeline/stage-run-writer.js';
 
 interface StageRequestedEvent {
   name: 'pipeline/stage.requested';
@@ -116,6 +116,7 @@ export const pipelineCanonicalDispatch = inngest.createFunction(
     const provider = input.provider as string | undefined;
     const model = input.model as string | undefined;
 
+    const draftStatus = provider === 'manual' ? 'awaiting_manual' : 'draft';
     const { data: draft, error: insertError } = await sb
       .from('content_drafts')
       .insert({
@@ -127,7 +128,7 @@ export const pipelineCanonicalDispatch = inngest.createFunction(
         idea_id: ideaArchiveId,
         persona_id: personaId,
         type,
-        status: 'draft',
+        status: draftStatus,
       })
       .select()
       .single();
@@ -135,6 +136,16 @@ export const pipelineCanonicalDispatch = inngest.createFunction(
       await markFailed(sb, stageRunId, {
         ...ctx,
         errorMessage: `Failed to create content_drafts row: ${(insertError as { message?: string } | undefined)?.message ?? 'unknown'}`,
+      });
+      return;
+    }
+
+    if (provider === 'manual') {
+      await markAwaitingUser(sb, stageRunId, {
+        ...ctx,
+        awaitingReason: 'manual_paste',
+        payloadRef: { kind: 'content_draft', id: draft.id as string },
+        markStarted: true,
       });
       return;
     }

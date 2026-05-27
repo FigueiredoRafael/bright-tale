@@ -6,7 +6,7 @@
  * can show live progress ("Calling Ollama…", "Parsing output…", "Saving…").
  */
 import { inngest } from './client.js';
-import { STAGE_COSTS, generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
+import { STAGE_COSTS, generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
 import { withReservation } from './utils/with-reservation.js';
@@ -379,51 +379,38 @@ export const brainstormGenerate = inngest.createFunction(
       }
 
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
-      const quotaExhausted = isQuotaExhausted(err);
 
-      // Provider quota exhausted: park the stage awaiting user (not failed) so
-      // the operator can top up credits / swap providers and resume. Leave the
-      // upstream session row in 'failed' — the orchestrator only reads stage_runs.
+      // Any AI failure (quota, network, all-providers exhausted, malformed JSON)
+      // parks the stage in awaiting_user(manual_paste) so the user can paste an
+      // externally-generated BC_BRAINSTORM_OUTPUT via the centralised paste
+      // dialog. The legacy `provider_quota_exhausted` reason is gone — we go
+      // straight to manual paste so the user is never blocked by infra.
       await (sb.from('brainstorm_sessions') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
       })
-        .update({ status: 'failed', error_message: message.slice(0, 500) })
+        .update({ status: 'awaiting_manual', error_message: message.slice(0, 500) })
         .eq('id', sessionId);
 
-      await emitJobEvent(sessionId, 'brainstorm', 'failed', message.slice(0, 200), { error: message });
+      await emitJobEvent(sessionId, 'brainstorm', 'awaiting_manual', message.slice(0, 200), { error: message });
 
       const failureStageRunId = await resolveEffectiveStageRunId();
       if (failureStageRunId) {
         const now = new Date().toISOString();
-        const patch: Record<string, unknown> = quotaExhausted
-          ? {
-              status: 'awaiting_user',
-              awaiting_reason: 'provider_quota_exhausted',
-              updated_at: now,
-            }
-          : {
-              status: 'failed',
-              error_message: message.slice(0, 500),
-              finished_at: now,
-              updated_at: now,
-            };
         await (sb.from('stage_runs') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
-          .update(patch)
+          .update({
+            status: 'awaiting_user',
+            awaiting_reason: 'manual_paste',
+            payload_ref: { kind: 'brainstorm_session', id: sessionId },
+            error_message: message.slice(0, 500),
+            updated_at: now,
+          })
           .eq('id', failureStageRunId);
-        // Quota-park is non-terminal — no advance event; orchestrator resumes
-        // via the explicit /continue path when the user clears the block.
-        if (!quotaExhausted) {
-          await inngest.send({
-            name: 'pipeline/stage.run.finished',
-            data: { stageRunId: failureStageRunId, projectId },
-          });
-        }
+        // Non-terminal park — no advance event; user resumes via paste dialog.
       }
 
-      if (quotaExhausted) return;
-      throw err;
+      return;
     }
   },
 );

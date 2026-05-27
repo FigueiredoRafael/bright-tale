@@ -129,6 +129,10 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
           // rebuilds as each upstream stage completes. All write semantics
           // (status filter, error_message truncation, timestamps) live in
           // bulkAbort so this route stays a thin HTTP adapter.
+          //
+          // Track scope: when the client passes a track_id, the cascade is
+          // confined to that track so sibling tracks (e.g. Blog when Video's
+          // review is being restarted) keep their completed downstream rows.
           const sb: Sb = createServiceClient();
           await assertProjectOwner(projectId, userId, sb);
 
@@ -140,9 +144,13 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
               projectId,
               affected,
               `Superseded by cascade re-run from '${body.stage}'`,
+              body.track_id ?? null,
             );
           } catch (err) {
-            request.log.error({ err, projectId, fromStage: body.stage }, 'cascade abort failed');
+            request.log.error(
+              { err, projectId, fromStage: body.stage, trackId: body.track_id ?? null },
+              'cascade abort failed',
+            );
             throw new ApiError(500, 'Failed to supersede downstream Stage Runs', 'CASCADE_FAILED');
           }
         }
@@ -457,70 +465,234 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
             'INVALID_STATUS',
           );
         }
-        if (stageRun.stage !== 'brainstorm') {
-          throw new ApiError(
-            400,
-            `manual-output is only wired for brainstorm at this slice (stage=${stageRun.stage})`,
-            'STAGE_NOT_SUPPORTED',
-          );
-        }
         const ref = stageRun.payload_ref as { kind?: string; id?: string } | null;
-        if (!ref || ref.kind !== 'brainstorm_session' || !ref.id) {
-          throw new ApiError(
-            500,
-            'Stage Run has no brainstorm_session payload_ref to forward manual output to',
-            'MISSING_PAYLOAD_REF',
-          );
-        }
-
-        // Forward to the existing legacy endpoint. Internal authentication.
         const apiBase = process.env.API_URL ?? 'http://localhost:3001';
         const internalKey = process.env.INTERNAL_API_KEY;
         if (!internalKey) throw new ApiError(500, 'INTERNAL_API_KEY not set', 'CONFIG');
 
-        const forwardRes = await fetch(`${apiBase}/brainstorm/sessions/${ref.id}/manual-output`, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-internal-key': internalKey,
-            'x-user-id': userId,
-          },
-          body: JSON.stringify({ output: body.output }),
-        });
-        const forwardBody = (await forwardRes.json().catch(() => ({}))) as {
-          data?: { draftIds?: string[] };
-          error?: { message?: string; code?: string };
+        const forwardHeaders = {
+          'content-type': 'application/json',
+          'x-internal-key': internalKey,
+          'x-user-id': userId,
         };
-        if (!forwardRes.ok || forwardBody?.error) {
-          throw new ApiError(
-            forwardRes.status || 502,
-            forwardBody?.error?.message ?? 'Legacy manual-output failed',
-            forwardBody?.error?.code ?? 'UPSTREAM_ERROR',
+
+        // Each stage owns a downstream record (brainstorm_sessions,
+        // research_sessions, content_drafts) where the pasted output lands.
+        // Forward to that record's existing manual-output endpoint, then —
+        // for stages whose downstream endpoint doesn't itself flip the
+        // stage_run — terminate the Stage Run here.
+        async function handleBrainstorm() {
+          if (!ref || ref.kind !== 'brainstorm_session' || !ref.id) {
+            throw new ApiError(500, 'Stage Run has no brainstorm_session payload_ref', 'MISSING_PAYLOAD_REF');
+          }
+          const r = await fetch(`${apiBase}/brainstorm/sessions/${ref.id}/manual-output`, {
+            method: 'POST',
+            headers: forwardHeaders,
+            body: JSON.stringify({ output: body.output }),
+          });
+          const json = (await r.json().catch(() => ({}))) as {
+            data?: { draftIds?: string[] };
+            error?: { message?: string; code?: string };
+          };
+          if (!r.ok || json?.error) {
+            throw new ApiError(r.status || 502, json?.error?.message ?? 'brainstorm manual-output failed', json?.error?.code ?? 'UPSTREAM_ERROR');
+          }
+          // brainstorm endpoint flips the stage_run itself when a winner
+          // exists; re-flip here defensively in case no winner was set.
+          const firstDraftId = json?.data?.draftIds?.[0] ?? null;
+          const existingRef = stageRun!.payload_ref as { kind?: string; id?: string } | null;
+          const fallbackRef =
+            existingRef && existingRef.kind && existingRef.id
+              ? { kind: existingRef.kind, id: existingRef.id }
+              : null;
+          await flipStageRunCompleted(
+            firstDraftId ? { kind: 'brainstorm_draft', id: firstDraftId } : fallbackRef,
           );
         }
 
-        const firstDraftId = forwardBody?.data?.draftIds?.[0] ?? null;
-        const now = new Date().toISOString();
-        await (sb.from('stage_runs') as unknown as {
-          update: (row: Record<string, unknown>) => {
-            eq: (col: string, val: string) => Promise<unknown>;
-          };
-        })
-          .update({
-            status: 'completed',
-            awaiting_reason: null,
-            payload_ref: firstDraftId
-              ? { kind: 'brainstorm_draft', id: firstDraftId }
-              : (stageRun.payload_ref ?? null),
-            finished_at: now,
-            updated_at: now,
-          })
-          .eq('id', stageRunId);
+        async function handleResearch() {
+          if (!ref || ref.kind !== 'research_session' || !ref.id) {
+            throw new ApiError(500, 'Stage Run has no research_session payload_ref', 'MISSING_PAYLOAD_REF');
+          }
+          // Body for research is `{ output: unknown }`. Pass the paste through
+          // as-is (the legacy endpoint runs normalizeFindings server-side).
+          let parsed: unknown = body.output;
+          try { parsed = JSON.parse(body.output); } catch { /* keep raw string */ }
+          const r = await fetch(`${apiBase}/research/sessions/${ref.id}/manual-output`, {
+            method: 'POST',
+            headers: forwardHeaders,
+            body: JSON.stringify({ output: parsed }),
+          });
+          const json = (await r.json().catch(() => ({}))) as { error?: { message?: string; code?: string } };
+          if (!r.ok || json?.error) {
+            throw new ApiError(r.status || 502, json?.error?.message ?? 'research manual-output failed', json?.error?.code ?? 'UPSTREAM_ERROR');
+          }
+          // research /manual-output does NOT flip the stage_run — do it here.
+          await flipStageRunCompleted({ kind: 'research_session', id: ref.id });
+        }
 
-        await inngest.send({
-          name: 'pipeline/stage.run.finished',
-          data: { stageRunId, projectId },
-        });
+        async function handleContentDraft(stage: 'canonical' | 'production') {
+          if (!ref || ref.kind !== 'content_draft' || !ref.id) {
+            throw new ApiError(500, `Stage Run has no content_draft payload_ref`, 'MISSING_PAYLOAD_REF');
+          }
+          // Look up the draft's type so we know which `phase` to send.
+          const { data: draftRow } = await (sb.from('content_drafts') as unknown as {
+            select: (cols: string) => { eq: (c: string, v: string) => { maybeSingle: () => Promise<{ data: Record<string, unknown> | null }> } };
+          })
+            .select('id, type')
+            .eq('id', ref.id)
+            .maybeSingle();
+          const draftType = (draftRow?.type as string | undefined) ?? 'blog';
+          const phase = stage === 'canonical' ? 'core' : (draftType as 'blog' | 'video' | 'shorts' | 'podcast');
+          let parsed: unknown = body.output;
+          try { parsed = JSON.parse(body.output); } catch { /* keep raw */ }
+          const r = await fetch(`${apiBase}/content-drafts/${ref.id}/manual-output`, {
+            method: 'POST',
+            headers: forwardHeaders,
+            body: JSON.stringify({ phase, output: parsed }),
+          });
+          const json = (await r.json().catch(() => ({}))) as { error?: { message?: string; code?: string } };
+          if (!r.ok || json?.error) {
+            throw new ApiError(r.status || 502, json?.error?.message ?? 'content-drafts manual-output failed', json?.error?.code ?? 'UPSTREAM_ERROR');
+          }
+          // content-drafts /manual-output flips the matching stage_run +
+          // emits pipeline/stage.run.finished. Nothing more to do here.
+        }
+
+        async function handleReview() {
+          if (!ref || ref.kind !== 'content_draft' || !ref.id) {
+            throw new ApiError(500, 'Review Stage Run has no content_draft payload_ref', 'MISSING_PAYLOAD_REF');
+          }
+          const draftId = ref.id;
+          // Parse the pasted BC_REVIEW_OUTPUT. Accept either a JSON object or a
+          // JSON string; reject anything that doesn't deserialize to an object.
+          let parsedOutput: unknown = body.output;
+          try { parsedOutput = JSON.parse(body.output); } catch { /* assume already an object */ }
+          if (!parsedOutput || typeof parsedOutput !== 'object' || Array.isArray(parsedOutput)) {
+            throw new ApiError(400, 'Review output must be a JSON object', 'INVALID_OUTPUT');
+          }
+          const result = parsedOutput as Record<string, unknown>;
+
+          const { data: draft } = await (sb.from('content_drafts') as unknown as {
+            select: (cols: string) => { eq: (c: string, v: string) => { maybeSingle: () => Promise<{ data: Record<string, unknown> | null }> } };
+          })
+            .select('id, type, iteration_count')
+            .eq('id', draftId)
+            .maybeSingle();
+          if (!draft) throw new ApiError(404, `content_draft ${draftId} not found`, 'NOT_FOUND');
+          const draftType = (draft.type as string) ?? 'blog';
+
+          // Score derivation mirrors content-drafts.ts:1832-1849 (the AI path)
+          // and review-dispatch:333-376 — use the rubric when one is wired,
+          // else the legacy quality_tier→score bucket.
+          const { computeRubricScore, deriveVerdictFromScore, extractRubricEvaluation, getRubricForType } =
+            await import('../lib/ai/scoring/computeRubricScore.js');
+          const formatReview = result[`${draftType}_review`] as Record<string, unknown> | undefined;
+          const legacyScoreMap: Record<string, number> = {
+            excellent: 95,
+            good: 82,
+            needs_revision: 60,
+            reject: 20,
+            not_requested: 0,
+          };
+          const tier = (formatReview?.quality_tier as string | undefined) ?? 'needs_revision';
+          const rubric = getRubricForType(draftType);
+          let score: number;
+          let verdict: string;
+          if (rubric) {
+            const evalObj = extractRubricEvaluation(result, draftType);
+            const computed = computeRubricScore(rubric, evalObj);
+            score = computed.score;
+            verdict = deriveVerdictFromScore(computed.score, computed.maxScore);
+          } else {
+            score = (formatReview?.score as number | undefined) ?? legacyScoreMap[tier] ?? 60;
+            verdict = (result.overall_verdict as string | undefined) ?? 'revision_required';
+          }
+
+          const iterationNumber = ((draft.iteration_count as number | undefined) ?? 0) + 1;
+
+          await (sb.from('review_iterations') as unknown as {
+            insert: (row: Record<string, unknown>) => Promise<{ error: unknown }>;
+          }).insert({
+            draft_id: draftId,
+            iteration: iterationNumber,
+            score,
+            verdict,
+            feedback_json: result,
+          });
+          await (sb.from('content_drafts') as unknown as {
+            update: (row: Record<string, unknown>) => {
+              eq: (col: string, val: string) => Promise<{ error: unknown }>;
+            };
+          })
+            .update({
+              status: verdict === 'approved' ? 'approved' : 'in_review',
+              review_score: score,
+              review_verdict: verdict,
+              review_feedback_json: result,
+              iteration_count: iterationNumber,
+            })
+            .eq('id', draftId);
+
+          const outcome = {
+            score,
+            verdict,
+            draftType,
+            feedbackJson: result,
+            iterationCount: iterationNumber,
+            completedAt: new Date().toISOString(),
+          };
+          await flipStageRunCompleted({ kind: 'content_draft', id: draftId }, outcome);
+        }
+
+        async function flipStageRunCompleted(
+          payloadRef: { kind: string; id: string } | null,
+          outcomeJson: Record<string, unknown> | null = null,
+        ) {
+          const now = new Date().toISOString();
+          await (sb.from('stage_runs') as unknown as {
+            update: (row: Record<string, unknown>) => {
+              eq: (col: string, val: string) => Promise<unknown>;
+            };
+          })
+            .update({
+              status: 'completed',
+              awaiting_reason: null,
+              payload_ref: payloadRef,
+              outcome_json: outcomeJson,
+              finished_at: now,
+              updated_at: now,
+            })
+            .eq('id', stageRunId);
+          await inngest.send({
+            name: 'pipeline/stage.run.finished',
+            data: { stageRunId, projectId },
+          });
+        }
+
+        switch (stageRun.stage) {
+          case 'brainstorm':
+            await handleBrainstorm();
+            break;
+          case 'research':
+            await handleResearch();
+            break;
+          case 'canonical':
+            await handleContentDraft('canonical');
+            break;
+          case 'production':
+            await handleContentDraft('production');
+            break;
+          case 'review':
+            await handleReview();
+            break;
+          default:
+            throw new ApiError(
+              400,
+              `manual-output is not wired for stage=${stageRun.stage}`,
+              'STAGE_NOT_SUPPORTED',
+            );
+        }
 
         return reply.send({
           data: { stageRunId, status: 'completed' },

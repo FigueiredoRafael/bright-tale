@@ -34,6 +34,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
 import { MODELS_BY_PROVIDER, type ProviderId } from '@/components/ai/ModelPicker'
+import { useActiveProviders } from '@/hooks/useActiveProviders'
 import type { AutopilotConfig } from '@brighttale/shared'
 import { autopilotConfigSchema } from '@brighttale/shared'
 import { MEDIA } from '@brighttale/shared/pipeline/inputs'
@@ -109,7 +110,14 @@ type WizardFormValues = {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const AI_PROVIDERS = ['recommended', 'openai', 'anthropic', 'gemini', 'ollama'] as const
+const PROVIDER_LABELS: Record<string, string> = {
+  recommended: 'Recommended',
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  gemini: 'Gemini',
+  ollama: 'Ollama',
+  manual: 'Manual',
+}
 
 const STAGE_ORDER = [
   'brainstorm',
@@ -360,12 +368,42 @@ type ProviderModelStage =
   | 'review'
   | 'assets'
 
+function DefaultProviderSection() {
+  const { control } = useFormContext<WizardFormValues>()
+  const { providers: activeProviders } = useActiveProviders()
+  return (
+    <section>
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+        Default AI provider
+      </h2>
+      <Controller
+        control={control}
+        name="autopilotConfig.defaultProvider"
+        render={({ field }) => (
+          <Select value={field.value ?? 'recommended'} onValueChange={field.onChange}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="recommended">Recommended</SelectItem>
+              {activeProviders.map((p) => (
+                <SelectItem key={p} value={p}>{PROVIDER_LABELS[p] ?? p}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      />
+    </section>
+  )
+}
+
 function ProviderModelFields({ stage }: { stage: ProviderModelStage }) {
   const { control, watch, setValue } = useFormContext<WizardFormValues>()
   const providerPath = `autopilotConfig.${stage}.providerOverride` as const
   const modelPath = `autopilotConfig.${stage}.modelOverride` as const
   const selectedProvider = watch(providerPath) as string | null | undefined
   const selectedModel = watch(modelPath) as string | null | undefined
+  const { providers: activeProviders } = useActiveProviders()
 
   const modelOptions =
     selectedProvider && selectedProvider in MODELS_BY_PROVIDER
@@ -392,8 +430,8 @@ function ProviderModelFields({ stage }: { stage: ProviderModelStage }) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__recommended__">Recommended</SelectItem>
-                {(['openai', 'anthropic', 'gemini', 'ollama'] as const).map((p) => (
-                  <SelectItem key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</SelectItem>
+                {activeProviders.map((p) => (
+                  <SelectItem key={p} value={p}>{PROVIDER_LABELS[p] ?? p}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -1524,29 +1562,7 @@ export function PipelineWizard({ initialChannelId }: Props) {
                   <Separator />
 
                   {/* Default AI provider */}
-                  <section>
-                    <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                      Default AI provider
-                    </h2>
-                    <Controller
-                      control={control}
-                      name="autopilotConfig.defaultProvider"
-                      render={({ field }) => (
-                        <Select value={field.value ?? 'recommended'} onValueChange={field.onChange}>
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {AI_PROVIDERS.map((p) => (
-                              <SelectItem key={p} value={p}>
-                                {p.charAt(0).toUpperCase() + p.slice(1)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    />
-                  </section>
+                  <DefaultProviderSection />
 
                   <Separator />
 

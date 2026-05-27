@@ -10,7 +10,7 @@
  */
 import { inngest } from './client.js';
 import { createServiceClient } from '../lib/supabase/index.js';
-import { markFailed, markRunning } from '../lib/pipeline/stage-run-writer.js';
+import { markAwaitingUser, markFailed, markRunning } from '../lib/pipeline/stage-run-writer.js';
 import { deriveDraft } from '../lib/content-drafts/derive.js';
 import { ApiError } from '../lib/api/errors.js';
 
@@ -167,6 +167,23 @@ export const pipelineProductionDispatch = inngest.createFunction(
       await markFailed(sb, stageRunId, {
         ...ctx,
         errorMessage: `Failed to derive per-track draft: ${msg}`,
+      });
+      return;
+    }
+
+    if (provider === 'manual') {
+      // Flip the per-track draft to awaiting_manual so the content-drafts
+      // manual-output endpoint accepts the paste (its status guard requires
+      // awaiting_manual).
+      await sb
+        .from('content_drafts')
+        .update({ status: 'awaiting_manual' })
+        .eq('id', draftId);
+      await markAwaitingUser(sb, stageRunId, {
+        ...ctx,
+        awaitingReason: 'manual_paste',
+        payloadRef: { kind: 'content_draft', id: draftId },
+        markStarted: true,
       });
       return;
     }

@@ -537,12 +537,17 @@ export const productionProduce = inngest.createFunction(
       const rawMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       const providerLabel = provider ? `[${provider}${model ? `/${model}` : ''}] ` : '';
       const message = `${providerLabel}${rawMessage}`;
+
+      // Any AI failure parks the production Stage Run in awaiting_user(manual_paste)
+      // so the user can paste an externally-generated BC_*_OUTPUT body. The
+      // content_draft moves to awaiting_manual so the manual-output endpoint
+      // accepts the paste.
       await (sb.from('content_drafts') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
       })
-        .update({ status: 'failed', error_message: message.slice(0, 500) })
+        .update({ status: 'awaiting_manual', error_message: message.slice(0, 500) })
         .eq('id', draftId);
-      await emitJobEvent(draftId, 'production', 'failed', message.slice(0, 200), { error: message });
+      await emitJobEvent(draftId, 'production', 'awaiting_manual', message.slice(0, 200), { error: message });
 
       if (stageRunId) {
         const now = new Date().toISOString();
@@ -550,19 +555,16 @@ export const productionProduce = inngest.createFunction(
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
           .update({
-            status: 'failed',
+            status: 'awaiting_user',
+            awaiting_reason: 'manual_paste',
+            payload_ref: { kind: 'content_draft', id: draftId },
             error_message: message.slice(0, 500),
-            finished_at: now,
             updated_at: now,
           })
           .eq('id', stageRunId);
-        await inngest.send({
-          name: 'pipeline/stage.run.finished',
-          data: { stageRunId, projectId },
-        });
       }
 
-      throw err;
+      return;
     }
   },
 );

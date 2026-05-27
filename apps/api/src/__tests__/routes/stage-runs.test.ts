@@ -759,15 +759,18 @@ describe('POST /projects/:projectId/stage-runs/:stageRunId/manual-output', () =>
     expect(res.json().error.code).toBe('INVALID_STATUS');
   });
 
-  it('returns 400 STAGE_NOT_SUPPORTED for non-brainstorm stages', async () => {
+  it('returns 400 STAGE_NOT_SUPPORTED for stages without a manual-paste handler', async () => {
+    // preview/publish/assets have no AI call to manual-paste — endpoint
+    // rejects them with STAGE_NOT_SUPPORTED. brainstorm/research/canonical/
+    // production/review all route to their per-stage forwarder.
     sbChain.maybeSingle = vi.fn().mockResolvedValueOnce({
       data: {
         id: 'sr-1',
         project_id: PROJECT_ID,
-        stage: 'research',
+        stage: 'preview',
         status: 'awaiting_user',
         awaiting_reason: 'manual_paste',
-        payload_ref: { kind: 'research_session', id: 'rs-1' },
+        payload_ref: { kind: 'content_draft', id: 'cd-1' },
       },
       error: null,
     });

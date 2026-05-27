@@ -101,6 +101,9 @@ vi.mock('../../lib/supabase/index.js', () => ({
             }),
           }),
           insert: draftInsertMock,
+          update: () => ({
+            eq: () => Promise.resolve({ error: null }),
+          }),
         };
       }
       return {};
@@ -321,6 +324,33 @@ describe('pipeline-production-dispatch', () => {
     expect(stageRunsUpdateMock).toHaveBeenCalled();
     const updateRow = stageRunsUpdateMock.mock.calls[0][0];
     expect(updateRow.status).toBe('failed');
+  });
+
+  it("parks the Stage Run in awaiting_user(manual_paste) and does NOT enqueue production/produce when provider='manual'", async () => {
+    const { deriveDraft } = await import('../../lib/content-drafts/derive.js');
+    (deriveDraft as ReturnType<typeof vi.fn>).mockResolvedValue({ id: FORKED_DRAFT_ID, created: true });
+    stageRunRow = { ...stageRunRow, input_json: { provider: 'manual' } };
+
+    const { pipelineProductionDispatch } = await import('../pipeline-production-dispatch.js');
+    const { inngest } = await import('../client.js');
+
+    await (
+      pipelineProductionDispatch as unknown as (args: {
+        event: { data: { stageRunId: string; stage: string; projectId: string } };
+      }) => Promise<void>
+    )({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'production', projectId: PROJECT_ID } },
+    });
+
+    expect(stageRunsUpdateMock).toHaveBeenCalled();
+    const updateRow = stageRunsUpdateMock.mock.calls[0][0];
+    expect(updateRow.status).toBe('awaiting_user');
+    expect(updateRow.awaiting_reason).toBe('manual_paste');
+    expect(updateRow.payload_ref).toEqual({ kind: 'content_draft', id: FORKED_DRAFT_ID });
+
+    expect(inngest.send).not.toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'production/produce' }),
+    );
   });
 });
 

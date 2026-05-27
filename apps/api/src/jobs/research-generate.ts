@@ -3,7 +3,7 @@
  * Mirrors brainstorm-generate pattern.
  */
 import { inngest } from './client.js';
-import { generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
+import { generateWithFallback } from '../lib/ai/router.js';
 
 import { withReservation } from './utils/with-reservation.js';
 import { createServiceClient } from '../lib/supabase/index.js';
@@ -318,45 +318,34 @@ export const researchGenerate = inngest.createFunction(
       }
 
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
-      const quotaExhausted = isQuotaExhausted(err);
 
+      // Any AI failure parks the stage in awaiting_user(manual_paste) so the
+      // user can paste an externally-generated BC_RESEARCH_OUTPUT. Replaces
+      // the legacy `provider_quota_exhausted` branch.
       await (sb.from('research_sessions') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
       })
-        .update({ status: 'failed', error_message: message.slice(0, 500) })
+        .update({ status: 'awaiting_manual', error_message: message.slice(0, 500) })
         .eq('id', sessionId);
 
-      await emitJobEvent(sessionId, 'research', 'failed', message.slice(0, 200), { error: message });
+      await emitJobEvent(sessionId, 'research', 'awaiting_manual', message.slice(0, 200), { error: message });
 
       if (stageRunId) {
         const now = new Date().toISOString();
-        const patch: Record<string, unknown> = quotaExhausted
-          ? {
-              status: 'awaiting_user',
-              awaiting_reason: 'provider_quota_exhausted',
-              updated_at: now,
-            }
-          : {
-              status: 'failed',
-              error_message: message.slice(0, 500),
-              finished_at: now,
-              updated_at: now,
-            };
         await (sb.from('stage_runs') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
-          .update(patch)
+          .update({
+            status: 'awaiting_user',
+            awaiting_reason: 'manual_paste',
+            payload_ref: { kind: 'research_session', id: sessionId },
+            error_message: message.slice(0, 500),
+            updated_at: now,
+          })
           .eq('id', stageRunId);
-        if (!quotaExhausted) {
-          await inngest.send({
-            name: 'pipeline/stage.run.finished',
-            data: { stageRunId, projectId },
-          });
-        }
       }
 
-      if (quotaExhausted) return;
-      throw err;
+      return;
     }
   },
 );

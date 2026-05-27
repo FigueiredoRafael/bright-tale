@@ -7,6 +7,7 @@ import { FocusPanel } from './FocusPanel';
 import { GraphView } from './GraphView';
 import { ViewToggle } from './ViewToggle';
 import { ProjectContextProvider } from './ProjectContextProvider';
+import { StageManualPasteDialog } from './StageManualPasteDialog';
 import { useProjectStream } from '@/hooks/useProjectStream';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
@@ -204,11 +205,38 @@ export function PipelineWorkspace({ projectId }: Props) {
 
   // Project is awaiting if it is explicitly paused OR if any stage run is
   // awaiting user input. Either condition warrants the project-scope banner.
-  const awaitingRun = Object.values(stageRuns).find(
+  // We also walk per-track stage_runs because review/production parking on a
+  // single video track must surface the banner + paste dialog at the project
+  // level (the workspace doesn't know which track the user is focused on).
+  const projectScopeAwaiting = Object.values(stageRuns).find(
     (r) => r !== null && r.status === 'awaiting_user',
   ) ?? null;
+  const trackScopeAwaiting = (() => {
+    for (const t of tracks) {
+      const runs = t.stageRuns ?? {};
+      for (const r of Object.values(runs)) {
+        if (r && r.status === 'awaiting_user') return r;
+      }
+    }
+    return null;
+  })();
+  const awaitingRun = projectScopeAwaiting ?? trackScopeAwaiting;
   const isProjectAwaiting = project.paused || awaitingRun !== null;
   const awaitingReason = awaitingRun?.awaitingReason ?? null;
+
+  // Manual-paste dialog open state. The dialog is centralised here (instead of
+  // inside each engine) so it works identically in supervised + overview modes
+  // and for every stage that learns the manual-paste protocol.
+  const [pasteDismissedFor, setPasteDismissedFor] = useState<string | null>(null);
+  // Open the paste dialog for the new always-manual fallback reason
+  // (`manual_paste`) AND for legacy `provider_quota_exhausted` runs that still
+  // exist on older projects — both signal "AI failed, user should paste".
+  const manualPasteRun =
+    (awaitingReason === 'manual_paste' || awaitingReason === 'provider_quota_exhausted') &&
+    awaitingRun &&
+    awaitingRun.id !== pasteDismissedFor
+      ? awaitingRun
+      : null;
 
   return (
     <ProjectContextProvider projectId={projectId}>
@@ -224,6 +252,20 @@ export function PipelineWorkspace({ projectId }: Props) {
             reason={awaitingReason}
             projectId={projectId}
             onResumed={refresh}
+          />
+        )}
+
+        {/* Manual-paste dialog — opens whenever any stage run is parked in
+            awaiting_user(manual_paste). Works in supervised + overview modes
+            and across every stage that learns the manual-paste protocol. */}
+        {manualPasteRun && (
+          <StageManualPasteDialog
+            projectId={projectId}
+            stageRunId={manualPasteRun.id}
+            stage={manualPasteRun.stage}
+            open={true}
+            onClose={() => setPasteDismissedFor(manualPasteRun.id)}
+            onSubmitted={refresh}
           />
         )}
 

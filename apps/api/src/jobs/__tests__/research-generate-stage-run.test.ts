@@ -160,7 +160,7 @@ describe('research-generate stage_runs writeback', () => {
     expect((finishedCall![0] as { data: { stageRunId: string } }).data.stageRunId).toBe(STAGE_RUN_ID);
   });
 
-  it('on failure: updates stage_runs to failed and emits pipeline/stage.run.finished', async () => {
+  it('on failure: parks stage_runs in awaiting_user(manual_paste) with payload_ref for paste', async () => {
     const router = await import('../../lib/ai/router.js');
     vi.mocked(router.generateWithFallback).mockRejectedValueOnce(new Error('upstream timeout'));
 
@@ -185,18 +185,19 @@ describe('research-generate stage_runs writeback', () => {
       run: vi.fn(async (_name: string, fn: () => Promise<unknown>) => fn()),
     };
 
-    await expect(
-      (researchGenerate as unknown as (args: unknown) => Promise<unknown>)({ event, step }),
-    ).rejects.toThrow(/upstream timeout/);
+    // Always-manual fallback: AI failure parks the run instead of throwing.
+    await (researchGenerate as unknown as (args: unknown) => Promise<unknown>)({ event, step });
 
     expect(stageRunsUpdateMock).toHaveBeenCalled();
     const updateRow = stageRunsUpdateMock.mock.calls[0][0];
-    expect(updateRow.status).toBe('failed');
+    expect(updateRow.status).toBe('awaiting_user');
+    expect(updateRow.awaiting_reason).toBe('manual_paste');
+    expect(updateRow.payload_ref).toEqual({ kind: 'research_session', id: SESSION_ID });
     expect(updateRow.error_message).toContain('upstream timeout');
 
     const finishedCall = (inngestSendMock.mock.calls as unknown as unknown[][]).find(
       (c) => (c[0] as { name: string }).name === 'pipeline/stage.run.finished',
     );
-    expect(finishedCall).toBeDefined();
+    expect(finishedCall).toBeUndefined();
   });
 });

@@ -4,7 +4,7 @@
  */
 import { inngest } from './client.js';
 import { markCompleted } from '../lib/pipeline/stage-run-writer.js';
-import { generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
+import { generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
 import { loadIdeaContext } from '../lib/ai/loadIdeaContext.js';
@@ -332,48 +332,34 @@ export const productionGenerate = inngest.createFunction(
       }
 
       const rawMessage = err instanceof Error ? err.message : 'Erro desconhecido';
-      // Tag the message with which provider actually failed so the user can act
-      // on the right account (e.g. "Anthropic: credit balance" vs the user's
-      // selected "Ollama: ECONNREFUSED").
       const providerLabel = provider ? `[${provider}${model ? `/${model}` : ''}] ` : '';
       const message = `${providerLabel}${rawMessage}`;
-      const quotaExhausted = isQuotaExhausted(err);
+
+      // Any AI failure parks the canonical Stage Run in awaiting_user(manual_paste)
+      // so the user can paste an externally-generated BC_CANONICAL_CORE.
       await (sb.from('content_drafts') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
       })
-        .update({ status: 'failed' })
+        .update({ status: 'awaiting_manual' })
         .eq('id', draftId);
-      await emitJobEvent(draftId, 'production', 'failed', message.slice(0, 240), { error: rawMessage, provider, model });
+      await emitJobEvent(draftId, 'production', 'awaiting_manual', message.slice(0, 240), { error: rawMessage, provider, model });
 
       if (stageRunId) {
         const now = new Date().toISOString();
-        const patch: Record<string, unknown> = quotaExhausted
-          ? {
-              status: 'awaiting_user',
-              awaiting_reason: 'provider_quota_exhausted',
-              updated_at: now,
-            }
-          : {
-              status: 'failed',
-              error_message: message.slice(0, 500),
-              finished_at: now,
-              updated_at: now,
-            };
         await (sb.from('stage_runs') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         })
-          .update(patch)
+          .update({
+            status: 'awaiting_user',
+            awaiting_reason: 'manual_paste',
+            payload_ref: { kind: 'content_draft', id: draftId },
+            error_message: message.slice(0, 500),
+            updated_at: now,
+          })
           .eq('id', stageRunId);
-        if (!quotaExhausted) {
-          await inngest.send({
-            name: 'pipeline/stage.run.finished',
-            data: { stageRunId, projectId },
-          });
-        }
       }
 
-      if (quotaExhausted) return;
-      throw err;
+      return;
     }
   },
 );

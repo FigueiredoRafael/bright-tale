@@ -208,6 +208,34 @@ describe('pipeline-research-dispatch', () => {
     expect(event.data.level).toBe('medium');
   });
 
+  it("parks the Stage Run in awaiting_user(manual_paste) and does NOT enqueue research/generate when provider='manual'", async () => {
+    stageRunRow = {
+      ...stageRunRow,
+      input_json: { level: 'medium', provider: 'manual' },
+    };
+
+    const { pipelineResearchDispatch } = await import('../pipeline-research-dispatch.js');
+    const { inngest } = await import('../client.js');
+
+    await (pipelineResearchDispatch as unknown as (args: {
+      event: { data: { stageRunId: string; stage: string; projectId: string } };
+    }) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'research', projectId: PROJECT_ID } },
+    });
+
+    expect(sessionInsertMock).toHaveBeenCalled();
+    const sessionRow = sessionInsertMock.mock.calls[0][0];
+    expect(sessionRow.status).toBe('awaiting_manual');
+
+    expect(stageRunsUpdateMock).toHaveBeenCalled();
+    const updateRow = stageRunsUpdateMock.mock.calls[0][0];
+    expect(updateRow.status).toBe('awaiting_user');
+    expect(updateRow.awaiting_reason).toBe('manual_paste');
+    expect(updateRow.payload_ref).toEqual({ kind: 'research_session', id: SESSION_ID });
+
+    expect(inngest.send).not.toHaveBeenCalled();
+  });
+
   it('honours an explicit ideaId in stage_run.input_json instead of resolving from brainstorm', async () => {
     stageRunRow = {
       ...stageRunRow,

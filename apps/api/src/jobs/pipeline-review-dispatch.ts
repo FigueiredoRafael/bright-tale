@@ -11,7 +11,7 @@
  * actually queues a review Stage Run.
  */
 import { inngest } from './client.js';
-import { generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
+import { generateWithFallback } from '../lib/ai/router.js';
 import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { buildReviewMessage } from '../lib/ai/prompts/review.js';
@@ -78,6 +78,39 @@ export const pipelineReviewDispatch = inngest.createFunction(
     const input = (stageRun.input_json ?? {}) as Record<string, unknown>;
     const provider = input.provider as string | undefined;
     const model = input.model as string | undefined;
+
+    // Manual provider: park the review Stage Run and wait for the user to paste
+    // the externally-generated BC_REVIEW_OUTPUT via the manual-output endpoint.
+    // Park BEFORE claiming so the row stays in awaiting_user(manual_paste)
+    // instead of running. payload_ref points at the draft being reviewed so
+    // the paste endpoint knows which content_draft to write back to.
+    if (provider === 'manual') {
+      const trackId = (stageRun as { track_id?: string | null }).track_id ?? null;
+      const reviewTrackIdForLookup = trackId;
+      let priorDraftQuery = sb
+        .from('stage_runs')
+        .select('id, stage, status, payload_ref, track_id')
+        .eq('project_id', projectId)
+        .in('stage', ['production', 'draft'])
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (reviewTrackIdForLookup) {
+        priorDraftQuery = priorDraftQuery.eq('track_id', reviewTrackIdForLookup);
+      }
+      const { data: priorDraft } = await priorDraftQuery.maybeSingle();
+      const draftRef = priorDraft?.payload_ref as { kind?: string; id?: string } | null | undefined;
+      if (draftRef?.kind !== 'content_draft' || !draftRef.id) {
+        await markFailed(sb, stageRunId, { ...ctx, errorMessage: 'No prior production Stage Run to review' });
+        return;
+      }
+      await markAwaitingUser(sb, stageRunId, {
+        ...ctx,
+        awaitingReason: 'manual_paste',
+        payloadRef: { kind: 'content_draft', id: draftRef.id },
+        markStarted: true,
+      });
+      return;
+    }
 
     // Load review config from the project's autopilot config so the dispatcher
     // can honour the user's chosen thresholds + iteration cap.
@@ -354,21 +387,19 @@ export const pipelineReviewDispatch = inngest.createFunction(
         });
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erro desconhecido';
       console.error(err);
-      // Provider quota exhaustion isn't a stage failure — the operator just
-      // needs to top up credits or swap providers. Park awaiting_user so the
-      // user can resume after fixing it, instead of burning the Stage Run.
-      if (isQuotaExhausted(err)) {
-        await markAwaitingUser(sb, stageRunId, {
-          ...ctx,
-          awaitingReason: 'provider_quota_exhausted',
-          markStarted: true,
-        });
-        return;
-      }
-      await markFailed(sb, stageRunId, { ...ctx, errorMessage: message });
-      throw err;
+      // Any AI failure (quota, network, all-providers exhausted) parks the
+      // review Stage Run in awaiting_user(manual_paste) so the user can paste
+      // an externally-generated BC_REVIEW_OUTPUT. payload_ref points at the
+      // draft being reviewed so the manual-output endpoint knows where to
+      // write the verdict.
+      await markAwaitingUser(sb, stageRunId, {
+        ...ctx,
+        awaitingReason: 'manual_paste',
+        payloadRef: { kind: 'content_draft', id: draftId },
+        markStarted: true,
+      });
+      return;
     }
   },
 );

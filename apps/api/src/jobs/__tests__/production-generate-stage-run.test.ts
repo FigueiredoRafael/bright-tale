@@ -222,7 +222,7 @@ describe('production-generate stage_runs writeback', () => {
     expect(finishedCall).toBeDefined();
   });
 
-  it('on failure: updates stage_runs to failed and emits pipeline/stage.run.finished', async () => {
+  it('on failure: parks stage_runs in awaiting_user(manual_paste) with payload_ref for paste', async () => {
     const router = await import('../../lib/ai/router.js');
     vi.mocked(router.generateWithFallback).mockRejectedValueOnce(new Error('boom'));
 
@@ -244,13 +244,14 @@ describe('production-generate stage_runs writeback', () => {
       run: vi.fn(async (_name: string, fn: () => Promise<unknown>) => fn()),
     };
 
-    await expect(
-      (productionGenerate as unknown as (args: unknown) => Promise<unknown>)({ event, step }),
-    ).rejects.toThrow(/boom/);
+    // Always-manual fallback: AI failure parks the run instead of throwing.
+    await (productionGenerate as unknown as (args: unknown) => Promise<unknown>)({ event, step });
 
     expect(stageRunsUpdateMock).toHaveBeenCalled();
     const updateRow = stageRunsUpdateMock.mock.calls[0][0];
-    expect(updateRow.status).toBe('failed');
+    expect(updateRow.status).toBe('awaiting_user');
+    expect(updateRow.awaiting_reason).toBe('manual_paste');
+    expect(updateRow.payload_ref).toEqual({ kind: 'content_draft', id: DRAFT_ID });
     expect(updateRow.error_message).toContain('boom');
   });
 });
