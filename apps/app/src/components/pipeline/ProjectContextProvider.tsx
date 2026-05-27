@@ -106,7 +106,9 @@ interface ProjectRow {
   id: string;
   channel_id: string | null;
   title: string;
-  mode: 'step-by-step' | 'supervised' | 'overview' | null;
+  // Includes legacy values ('autopilot'/'manual') that ProjectModeControls
+  // used to write — coerced to canonical taxonomy before reaching context.
+  mode: 'step-by-step' | 'supervised' | 'overview' | 'autopilot' | 'manual' | null;
   autopilot_config_json: AutopilotConfig | null;
   template_id: string | null;
   paused: boolean;
@@ -348,11 +350,20 @@ export function ProjectContextProvider({
         const iterationCount = deriveIterationCount(stageRuns);
         const lastError = deriveLastError(stageRuns);
 
+        // Coerce legacy orchestrator vocab ('autopilot'/'manual') to the
+        // canonical wizard taxonomy used by engines + useAutoPilotTrigger.
+        // Without this, projects whose mode was set by ProjectModeControls
+        // before the canonical-vocab fix never auto-fire in the UI.
+        const canonicalMode =
+          project.mode === 'autopilot' ? 'supervised'
+          : project.mode === 'manual' ? 'step-by-step'
+          : project.mode;
+
         setContext({
           projectId: project.id,
           channelId: project.channel_id,
           projectTitle: project.title,
-          mode: project.mode,
+          mode: canonicalMode,
           autopilotConfig: project.autopilot_config_json,
           templateId: project.template_id,
           stageResults: derived,

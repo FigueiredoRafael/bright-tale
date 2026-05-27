@@ -92,6 +92,7 @@ vi.mock('../../lib/supabase/index.js', () => ({
       if (table === 'review_iterations') {
         return {
           insert: async () => ({ error: null }),
+          upsert: async () => ({ error: null }),
         };
       }
       if (table === 'credit_settings') {

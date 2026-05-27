@@ -311,6 +311,36 @@ describe('bulkAbort', () => {
       bulkAbort(sb, PROJECT_ID, ['draft'], 'cascade'),
     ).rejects.toThrow(/bulkAbort/);
   });
+
+  it('scopes the update to a track when trackId is provided so sibling tracks survive', async () => {
+    await bulkAbort(
+      sb,
+      PROJECT_ID,
+      ['review', 'assets', 'preview', 'publish'],
+      "Superseded by cascade re-run from 'review'",
+      'track-video',
+    );
+
+    const trackFilter = lastChain?.filters.find(
+      (f) => f.method === 'eq' && f.args[0] === 'track_id',
+    );
+    expect(trackFilter?.args[1]).toBe('track-video');
+  });
+
+  it('omits the track_id filter when trackId is null so shared-stage cascades touch all tracks', async () => {
+    await bulkAbort(
+      sb,
+      PROJECT_ID,
+      ['draft', 'production', 'review', 'assets', 'preview', 'publish'],
+      "Superseded by cascade re-run from 'draft'",
+      null,
+    );
+
+    const trackFilter = lastChain?.filters.find(
+      (f) => f.method === 'eq' && f.args[0] === 'track_id',
+    );
+    expect(trackFilter).toBeUndefined();
+  });
 });
 
 describe('abortProject', () => {

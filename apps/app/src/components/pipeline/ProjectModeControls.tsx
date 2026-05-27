@@ -26,6 +26,13 @@ interface ProjectModeControlsProps {
   patchUrl?: string;
 }
 
+// Canonical wizard taxonomy ('supervised'|'overview'|'step-by-step') is what
+// engines + useAutoPilotTrigger read. Header toggle now writes those values
+// instead of the legacy 'autopilot'|'manual' pair so a single mode round-trip
+// stays consistent across the orchestrator and UI.
+const AUTOPILOT_MODE = 'supervised';
+const MANUAL_MODE = 'step-by-step';
+
 export function ProjectModeControls({
   projectId,
   initialMode,
@@ -51,7 +58,7 @@ export function ProjectModeControls({
     const prev = mode;
     setPending('mode');
     setMode(next);
-    const ok = await patch({ mode: next });
+    const ok = await patch({ mode: next === 'autopilot' ? AUTOPILOT_MODE : MANUAL_MODE });
     if (!ok) setMode(prev);
     setPending(null);
   }

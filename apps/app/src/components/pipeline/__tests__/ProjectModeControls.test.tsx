@@ -40,7 +40,7 @@ describe('<ProjectModeControls />', () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe(`/api/projects/${PROJECT_ID}`);
     expect((init as RequestInit).method).toBe('PATCH');
-    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ mode: 'manual' });
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ mode: 'step-by-step' });
     expect(screen.getByTestId('mode-toggle')).toHaveAttribute('data-mode', 'manual');
   });
 
