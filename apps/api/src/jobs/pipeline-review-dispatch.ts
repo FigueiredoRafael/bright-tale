@@ -15,6 +15,7 @@ import { generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
 import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { buildReviewMessage } from '../lib/ai/prompts/review.js';
+import { resolveAutopilotConfig } from '../lib/pipeline/autopilot-config-resolver.js';
 import {
   computeRubricScore,
   deriveVerdictFromScore,
@@ -36,12 +37,8 @@ interface StageRequestedEvent {
   };
 }
 
- 
-type Sb = any;
 
-const AUTO_APPROVE_DEFAULT = 90;
-const HARD_FAIL_DEFAULT = 40;
-const MAX_ITERATIONS_DEFAULT = 5;
+type Sb = any;
 
 export const pipelineReviewDispatch = inngest.createFunction(
   {
@@ -64,7 +61,7 @@ export const pipelineReviewDispatch = inngest.createFunction(
 
     const { data: stageRun } = await sb
       .from('stage_runs')
-      .select('id, project_id, stage, status, input_json')
+      .select('id, project_id, stage, status, track_id, input_json')
       .eq('id', stageRunId)
       .maybeSingle();
     if (!stageRun) return;
@@ -79,28 +76,37 @@ export const pipelineReviewDispatch = inngest.createFunction(
     const provider = input.provider as string | undefined;
     const model = input.model as string | undefined;
 
-    // Load review config from the project's autopilot config so the dispatcher
-    // can honour the user's chosen thresholds + iteration cap.
+    // Load review config by coalescing track ▸ project ▸ FALLBACK via the
+    // shared resolver. This honours per-track autopilot overrides (BRI-25).
     const { data: projectRow } = await sb
       .from('projects')
       .select('autopilot_config_json')
       .eq('id', projectId)
       .maybeSingle();
-    const reviewConfig =
-      ((projectRow?.autopilot_config_json as Record<string, Record<string, unknown>> | null | undefined)
-        ?.review as Record<string, unknown> | undefined) ?? {};
+
+    const trackId = (stageRun as { track_id?: string | null }).track_id ?? null;
+    let trackConfigRow: { autopilot_config_json: unknown } | null = null;
+    if (trackId) {
+      const { data: trackData } = await sb
+        .from('tracks')
+        .select('id, autopilot_config_json')
+        .eq('id', trackId)
+        .maybeSingle();
+      trackConfigRow = (trackData as { autopilot_config_json: unknown } | null) ?? null;
+    }
+
+    const reviewSlot = resolveAutopilotConfig(
+      { autopilotConfigJson: projectRow?.autopilot_config_json ?? null },
+      trackConfigRow ? { autopilotConfigJson: trackConfigRow.autopilot_config_json } : null,
+      'review',
+    );
+
     const autoApproveThreshold =
-      (input.autoApproveThreshold as number | undefined) ??
-      (reviewConfig.autoApproveThreshold as number | undefined) ??
-      AUTO_APPROVE_DEFAULT;
+      (input.autoApproveThreshold as number | undefined) ?? (reviewSlot?.autoApproveThreshold ?? 90);
     const hardFailThreshold =
-      (input.hardFailThreshold as number | undefined) ??
-      (reviewConfig.hardFailThreshold as number | undefined) ??
-      HARD_FAIL_DEFAULT;
+      (input.hardFailThreshold as number | undefined) ?? (reviewSlot?.hardFailThreshold ?? 50);
     const maxIterations =
-      (input.maxIterations as number | undefined) ??
-      (reviewConfig.maxIterations as number | undefined) ??
-      MAX_ITERATIONS_DEFAULT;
+      (input.maxIterations as number | undefined) ?? (reviewSlot?.maxIterations ?? 3);
 
     // Atomic compare-and-swap inside step.run so the claim only happens on
     // the FIRST Inngest invocation; replays see the cached `claimed: true`
