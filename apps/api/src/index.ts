@@ -72,7 +72,7 @@ import { adminPipelineSettingsRoutes } from "./routes/admin-pipeline-settings.js
 import { aiProvidersRoutes } from "./routes/ai-providers.js";
 import { moduleAiAssignmentsRoutes } from "./routes/module-ai-assignments.js";
 import { chatRoutes } from "./routes/chat.js";
-import { adminCreditSettingsRoutes } from "./routes/admin-credit-settings.js";
+import { adminPlatformSettingsRoutes } from "./routes/admin-platform-settings.js";
 import { testMockAiRoutes } from "./routes/test-mock-ai.js";
 import { currencyRefreshRoutes } from "./routes/currency-refresh.js";
 import rateLimit from "@fastify/rate-limit";
@@ -344,7 +344,7 @@ server.register(adminPipelineSettingsRoutes, { prefix: "/admin/pipeline-settings
 server.register(aiProvidersRoutes, { prefix: "/ai-providers" });
 server.register(moduleAiAssignmentsRoutes, { prefix: "/ai-providers/module-assignments" });
 server.register(chatRoutes, { prefix: "/chat" });
-server.register(adminCreditSettingsRoutes, { prefix: "/admin/credit-settings" });
+server.register(adminPlatformSettingsRoutes, { prefix: "/admin/credit-settings" });
 server.register(autopilotTemplatesRoutes, { prefix: "/autopilot-templates" });
 server.register(currencyRefreshRoutes);
 server.register(userNotificationsRoutes, { prefix: "/notifications" });

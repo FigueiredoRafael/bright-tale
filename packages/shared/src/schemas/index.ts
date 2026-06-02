@@ -221,16 +221,16 @@ export {
   type SetPrimaryChannelPersonaInput,
 } from "./channel-personas";
 
-// Pipeline Settings & Credit Settings schemas
+// Pipeline Settings & Platform Settings schemas
 export {
   updatePipelineSettingsSchema,
   pipelineSettingsResponseSchema,
-  updateCreditSettingsSchema,
-  creditSettingsResponseSchema,
+  updatePlatformSettingsSchema,
+  platformSettingsResponseSchema,
   type UpdatePipelineSettingsInput,
   type PipelineSettingsResponse,
-  type UpdateCreditSettingsInput,
-  type CreditSettingsResponse,
+  type UpdatePlatformSettingsInput,
+  type PlatformSettingsResponse,
 } from "./pipeline-settings";
 
 // Autopilot Config schemas

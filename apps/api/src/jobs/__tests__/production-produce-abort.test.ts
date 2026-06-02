@@ -37,8 +37,8 @@ vi.mock('../../lib/calculate-draft-cost.js', () => ({
   calculateDraftCost: vi.fn(() => 100),
 }))
 
-vi.mock('../../lib/credit-settings.js', () => ({
-  loadCreditSettings: vi.fn(() =>
+vi.mock('../../lib/platform-settings.js', () => ({
+  loadPlatformSettings: vi.fn(() =>
     Promise.resolve({
       costCanonicalCore: 100,
       costProduce: 50,

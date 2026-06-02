@@ -25,7 +25,7 @@ export const pipelineSettingsResponseSchema = z.object({
 });
 export type PipelineSettingsResponse = z.infer<typeof pipelineSettingsResponseSchema>;
 
-export const updateCreditSettingsSchema = z.object({
+export const updatePlatformSettingsSchema = z.object({
   costBlog:             z.number().int().min(0).optional(),
   costVideo:            z.number().int().min(0).optional(),
   costShorts:           z.number().int().min(0).optional(),
@@ -36,9 +36,9 @@ export const updateCreditSettingsSchema = z.object({
   costResearchMedium:   z.number().int().min(0).optional(),
   costResearchDeep:     z.number().int().min(0).optional(),
 });
-export type UpdateCreditSettingsInput = z.infer<typeof updateCreditSettingsSchema>;
+export type UpdatePlatformSettingsInput = z.infer<typeof updatePlatformSettingsSchema>;
 
-export const creditSettingsResponseSchema = z.object({
+export const platformSettingsResponseSchema = z.object({
   costBlog:             z.number(),
   costVideo:            z.number(),
   costShorts:           z.number(),
@@ -49,4 +49,4 @@ export const creditSettingsResponseSchema = z.object({
   costResearchMedium:   z.number(),
   costResearchDeep:     z.number(),
 });
-export type CreditSettingsResponse = z.infer<typeof creditSettingsResponseSchema>;
+export type PlatformSettingsResponse = z.infer<typeof platformSettingsResponseSchema>;

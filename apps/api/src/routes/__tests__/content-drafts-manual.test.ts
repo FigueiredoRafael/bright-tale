@@ -96,7 +96,7 @@ vi.mock('../../lib/supabase/index.js', () => ({
       if (table === 'research_sessions') {
         return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) };
       }
-      if (table === 'credit_settings') {
+      if (table === 'platform_settings') {
         return { select: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) };
       }
       return {} as never;
