@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveAutopilotConfig, slotToStageInput } from '../autopilot-config-resolver';
+import { resolveAutopilotConfig, slotToStageInput } from '../autopilot-config-resolver.js';
 
 describe('resolveAutopilotConfig', () => {
   describe('project-only config (no Track override)', () => {
@@ -242,6 +242,64 @@ describe('resolveAutopilotConfig', () => {
       const resolved = resolveAutopilotConfig(project, null, 'review');
       expect(resolved).toMatchObject({ maxIterations: 7 });
     });
+  });
+});
+
+describe('resolveAutopilotConfig — schema versioning (BRI-29)', () => {
+  it('legacy blob (no _v) flows through without throwing and still resolves correctly', () => {
+    const project = {
+      autopilotConfigJson: {
+        canonicalCore: {
+          providerOverride: null,
+          modelOverride: null,
+          personaId: 'persona-legacy',
+        },
+      },
+    };
+    expect(() => resolveAutopilotConfig(project, null, 'canonical')).not.toThrow();
+    const resolved = resolveAutopilotConfig(project, null, 'canonical');
+    expect(resolved).toMatchObject({ personaId: 'persona-legacy' });
+  });
+
+  it('blob with _v: 999 (future) does not throw and still resolves correctly', () => {
+    const project = {
+      autopilotConfigJson: {
+        _v: 999,
+        review: {
+          providerOverride: null,
+          modelOverride: null,
+          maxIterations: 7,
+          autoApproveThreshold: 95,
+          hardFailThreshold: 50,
+        },
+      },
+    };
+    expect(() => resolveAutopilotConfig(project, null, 'review')).not.toThrow();
+    const resolved = resolveAutopilotConfig(project, null, 'review');
+    expect(resolved).toMatchObject({ maxIterations: 7, autoApproveThreshold: 95 });
+  });
+
+  it('track blob with _v: 999 does not throw and track override applies correctly', () => {
+    const project = {
+      autopilotConfigJson: {
+        review: {
+          providerOverride: null,
+          modelOverride: null,
+          maxIterations: 3,
+          autoApproveThreshold: 90,
+          hardFailThreshold: 50,
+        },
+      },
+    };
+    const track = {
+      autopilotConfigJson: {
+        _v: 999,
+        review: { autoApproveThreshold: 85 },
+      },
+    };
+    expect(() => resolveAutopilotConfig(project, track, 'review')).not.toThrow();
+    const resolved = resolveAutopilotConfig(project, track, 'review');
+    expect(resolved).toMatchObject({ maxIterations: 3, autoApproveThreshold: 85 });
   });
 });
 
