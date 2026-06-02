@@ -108,7 +108,7 @@ describe('POST /content-drafts', () => {
 
 describe('POST /content-drafts/:id/canonical-core', () => {
   it('runs agent-3a and stores canonical_core_json', async () => {
-    // loadDraft → maybeSingle returns draft; loadCreditSettings → maybeSingle returns null (uses defaults)
+    // loadDraft → maybeSingle returns draft; loadPlatformSettings → maybeSingle returns null (uses defaults)
     mockChain.maybeSingle
       .mockResolvedValueOnce({
         data: { id: 'cd-1', type: 'blog', research_session_id: null, model_tier: 'standard' },

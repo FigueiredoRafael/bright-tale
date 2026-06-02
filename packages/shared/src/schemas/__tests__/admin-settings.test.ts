@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   updatePipelineSettingsSchema,
-  updateCreditSettingsSchema,
+  updatePlatformSettingsSchema,
   pipelineSettingsResponseSchema,
-  creditSettingsResponseSchema,
+  platformSettingsResponseSchema,
 } from '../pipeline-settings';
 
 describe('updatePipelineSettingsSchema', () => {
@@ -23,14 +23,14 @@ describe('updatePipelineSettingsSchema', () => {
   });
 });
 
-describe('updateCreditSettingsSchema', () => {
+describe('updatePlatformSettingsSchema', () => {
   it('accepts valid partial update', () => {
-    const result = updateCreditSettingsSchema.safeParse({ costBlog: 300 });
+    const result = updatePlatformSettingsSchema.safeParse({ costBlog: 300 });
     expect(result.success).toBe(true);
   });
 
   it('rejects negative cost', () => {
-    const result = updateCreditSettingsSchema.safeParse({ costBlog: -10 });
+    const result = updatePlatformSettingsSchema.safeParse({ costBlog: -10 });
     expect(result.success).toBe(false);
   });
 });

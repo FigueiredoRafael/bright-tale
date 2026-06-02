@@ -20,7 +20,7 @@ import {
   getRubricForType,
 } from '../lib/ai/scoring/computeRubricScore.js';
 import { calculateDraftCost } from '../lib/calculate-draft-cost.js';
-import { loadCreditSettings } from '../lib/credit-settings.js';
+import { loadPlatformSettings } from '../lib/platform-settings.js';
 import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
 import { buildLayeredPersonaContext, loadPersonaForDraft } from '../lib/personas.js';
 
@@ -80,7 +80,7 @@ export const productionProduce = inngest.createFunction(
     try {
       await assertNotAborted(projectId, draftId, sb);
 
-      const creditSettings = await loadCreditSettings(sb);
+      const creditSettings = await loadPlatformSettings(sb);
       const cost = applyProviderDiscount(calculateDraftCost(type, creditSettings), provider);
 
       await step.run('emit-loading-produce', async () => {

@@ -33,8 +33,8 @@ vi.mock('../../lib/credits/reservations.js', () => ({
   release: vi.fn(async () => undefined),
 }))
 
-vi.mock('../../lib/credit-settings.js', () => ({
-  loadCreditSettings: vi.fn(() =>
+vi.mock('../../lib/platform-settings.js', () => ({
+  loadPlatformSettings: vi.fn(() =>
     Promise.resolve({
       costCanonicalCore: 100,
       costProduce: 50,

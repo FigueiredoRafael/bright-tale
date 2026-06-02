@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export interface CreditSettingsRecord {
+export interface PlatformSettingsRecord {
   costBlog: number;
   costVideo: number;
   costShorts: number;
@@ -9,7 +9,7 @@ export interface CreditSettingsRecord {
   costReview: number;
 }
 
-const DEFAULTS: CreditSettingsRecord = {
+const DEFAULTS: PlatformSettingsRecord = {
   costBlog: 200,
   costVideo: 200,
   costShorts: 100,
@@ -18,11 +18,11 @@ const DEFAULTS: CreditSettingsRecord = {
   costReview: 20,
 };
 
-export async function loadCreditSettings(
+export async function loadPlatformSettings(
   sb: SupabaseClient,
-): Promise<CreditSettingsRecord> {
+): Promise<PlatformSettingsRecord> {
   const { data } = await sb
-    .from("credit_settings")
+    .from("platform_settings")
     .select(
       "cost_blog, cost_video, cost_shorts, cost_podcast, cost_canonical_core, cost_review",
     )

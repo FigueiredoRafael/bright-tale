@@ -13,7 +13,7 @@ import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
 import { buildCanonicalCoreMessage } from '../lib/ai/prompts/production.js';
-import { loadCreditSettings } from '../lib/credit-settings.js';
+import { loadPlatformSettings } from '../lib/platform-settings.js';
 import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
 import {
   buildPersonaContext,
@@ -90,7 +90,7 @@ export const productionGenerate = inngest.createFunction(
     try {
       await assertNotAborted(projectId, draftId, sb);
 
-      const creditSettings = await loadCreditSettings(sb);
+      const creditSettings = await loadPlatformSettings(sb);
       const coreCost = applyProviderDiscount(creditSettings.costCanonicalCore, provider);
 
       // ─── Stage 1: Canonical Core ─────────────────────────────────────

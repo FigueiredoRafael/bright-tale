@@ -12,7 +12,7 @@ import { createServiceClient } from '../lib/supabase/index.js';
 import { sendError } from '../lib/api/fastify-errors.js';
 import { ApiError } from '../lib/api/errors.js';
 import { calculateDraftCost } from '../lib/calculate-draft-cost.js';
-import { loadCreditSettings } from '../lib/credit-settings.js';
+import { loadPlatformSettings } from '../lib/platform-settings.js';
 import { inngest } from '../jobs/client.js';
 import { emitJobEvent } from '../jobs/emitter.js';
 
@@ -56,7 +56,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
 
       // Cost is validated per-job via withReservation inside production/generate.
       // Calculate perDraft for the response metadata.
-      const creditSettings = await loadCreditSettings(sb);
+      const creditSettings = await loadPlatformSettings(sb);
       const perDraft = body.provider === 'ollama'
         ? 0
         : calculateDraftCost(body.type, creditSettings) + creditSettings.costCanonicalCore;

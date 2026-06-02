@@ -1,13 +1,13 @@
-import type { CreditSettingsRecord } from './credit-settings.js'
+import type { PlatformSettingsRecord } from './platform-settings.js'
 
-const FORMAT_TO_FIELD: Record<string, keyof CreditSettingsRecord> = {
+const FORMAT_TO_FIELD: Record<string, keyof PlatformSettingsRecord> = {
   blog:    'costBlog',
   video:   'costVideo',
   shorts:  'costShorts',
   podcast: 'costPodcast',
 }
 
-export function calculateDraftCost(type: string, settings: CreditSettingsRecord): number {
+export function calculateDraftCost(type: string, settings: PlatformSettingsRecord): number {
   const field = FORMAT_TO_FIELD[type]
   return field ? (settings[field] as number) : settings.costBlog
 }

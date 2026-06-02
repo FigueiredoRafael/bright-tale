@@ -56,7 +56,7 @@ import {
 } from "../lib/ai/loadIdeaContext.js";
 import { logAiUsage } from "../lib/axiom.js";
 import { deriveTier } from "@brighttale/shared/utils/reviewTierCompat";
-import { loadCreditSettings } from "../lib/credit-settings.js";
+import { loadPlatformSettings } from "../lib/platform-settings.js";
 import { calculateDraftCost } from "../lib/calculate-draft-cost.js";
 import { getVoiceProvider } from "../lib/voice/index.js";
 import { mapVideoOutputToShortsInput } from "@brighttale/shared/mappers/video-to-shorts";
@@ -581,7 +581,7 @@ export async function contentDraftsRoutes(
         const orgId =
           (draft.org_id as string | null) ?? (await getOrgId(request.userId));
 
-        const creditSettings = await loadCreditSettings(createServiceClient());
+        const creditSettings = await loadPlatformSettings(createServiceClient());
         const CANONICAL_CORE_COST = creditSettings.costCanonicalCore;
 
         const type =
@@ -725,7 +725,7 @@ export async function contentDraftsRoutes(
         const draft = (await loadDraft(id)) as Record<string, unknown>;
         const orgId = await getOrgId(request.userId);
 
-        const creditSettings = await loadCreditSettings(sb);
+        const creditSettings = await loadPlatformSettings(sb);
         const CANONICAL_CORE_COST = creditSettings.costCanonicalCore;
 
         // Manual provider short-circuits the LLM call: build the prompt
@@ -1054,7 +1054,7 @@ export async function contentDraftsRoutes(
         const orgId =
           (draft.org_id as string | null) ?? (await getOrgId(request.userId));
 
-        const creditSettings = await loadCreditSettings(sb);
+        const creditSettings = await loadPlatformSettings(sb);
 
         const type = (draft.type as string) ?? "blog";
         const _cost = calculateDraftCost(type, creditSettings);
@@ -1488,7 +1488,7 @@ export async function contentDraftsRoutes(
         const draft = (await loadDraft(id)) as Record<string, unknown>;
         const orgId = await getOrgId(request.userId);
 
-        const creditSettings = await loadCreditSettings(sb);
+        const creditSettings = await loadPlatformSettings(sb);
         const REVIEW_COST = creditSettings.costReview;
 
         if (draft.status !== "in_review") {
@@ -2416,7 +2416,7 @@ export async function contentDraftsRoutes(
           );
         }
 
-        const creditSettings = await loadCreditSettings(sb);
+        const creditSettings = await loadPlatformSettings(sb);
 
         const type = (draft.type as string) ?? "blog";
         const cost = calculateDraftCost(type, creditSettings);
