@@ -615,6 +615,58 @@ describe('PATCH /projects/:id — Mode + Paused (Slice 12)', () => {
   });
 });
 
+// ─── BRI-27 / D56: PATCH channelId parity with PUT ──────────────────────────
+
+describe('PATCH /projects/:id — channelId field (BRI-27)', () => {
+  it('persists channelId as channel_id column', async () => {
+    mockChain.maybeSingle.mockResolvedValueOnce({
+      data: { id: 'p-1', title: 'T', research_id: null, winner: false, mode: null, paused: false },
+      error: null,
+    });
+    mockChain.single.mockResolvedValueOnce({
+      data: { id: 'p-1', channel_id: '00000000-0000-0000-0000-000000000001' },
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/projects/p-1',
+      headers: AUTH,
+      payload: { channelId: '00000000-0000-0000-0000-000000000001' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const updateCalls = (mockChain.update as ReturnType<typeof vi.fn>).mock.calls;
+    const updateBody = updateCalls.find((c) => c[0]?.channel_id !== undefined)?.[0];
+    expect(updateBody).toBeDefined();
+    expect(updateBody.channel_id).toBe('00000000-0000-0000-0000-000000000001');
+  });
+
+  it('persists channelId: null to clear the channel', async () => {
+    mockChain.maybeSingle.mockResolvedValueOnce({
+      data: { id: 'p-1', title: 'T', research_id: null, winner: false, mode: null, paused: false },
+      error: null,
+    });
+    mockChain.single.mockResolvedValueOnce({
+      data: { id: 'p-1', channel_id: null },
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/projects/p-1',
+      headers: AUTH,
+      payload: { channelId: null },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const updateCalls = (mockChain.update as ReturnType<typeof vi.fn>).mock.calls;
+    const updateBody = updateCalls.find((c) => Object.prototype.hasOwnProperty.call(c[0], 'channel_id'))?.[0];
+    expect(updateBody).toBeDefined();
+    expect(updateBody.channel_id).toBeNull();
+  });
+});
+
 // ─── T2.14: POST /projects with media[] + per-medium config ─────────────────
 
 describe('POST /projects — T2.14 media[] + per-medium config', () => {

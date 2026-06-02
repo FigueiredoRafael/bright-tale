@@ -729,6 +729,8 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
           data.pipelineStateJson as Record<string, unknown>,
         );
       }
+      if (data.channelId !== undefined)
+        updateData.channel_id = data.channelId;
 
       const { data: project, error } = await sb
         .from('projects')
