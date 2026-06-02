@@ -29,6 +29,7 @@ import type { Json } from '@brighttale/shared/types/database';
 import type { Medium } from '@brighttale/shared/pipeline/inputs';
 import { isAutopilotMode, resumeProject, requestStageRun } from '../lib/pipeline/orchestrator.js';
 import { markAwaitingUser } from '../lib/pipeline/stage-run-writer.js';
+import { stampSchemaVersion } from '@brighttale/shared/utils/schema-version';
 
 /**
  * Pause transition (paused: false → true): stamp the currently-running
@@ -122,12 +123,13 @@ async function insertTracksForProject(
 
   for (const medium of media) {
     const config = mediaConfig?.[medium];
+    const trackConfig = config?.autopilotConfigJson as Record<string, unknown> | null | undefined;
     const { data: inserted, error: insertErr } = await sb
       .from('tracks')
       .insert({
         project_id: projectId,
         medium,
-        autopilot_config_json: (config?.autopilotConfigJson as Json | undefined) ?? null,
+        autopilot_config_json: trackConfig != null ? (stampSchemaVersion(trackConfig) as Json) : null,
       })
       .select('*')
       .single();
@@ -194,7 +196,9 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
           winner: data.winner,
           user_id: request.userId ?? null,
           channel_id: data.channelId ?? null,
-          autopilot_config_json: (data.autopilotConfigJson as Json | undefined) ?? null,
+          autopilot_config_json: data.autopilotConfigJson != null
+            ? (stampSchemaVersion(data.autopilotConfigJson as Record<string, unknown>) as Json)
+            : null,
         })
         .select('*, research:research_archives!research_id(id, title, theme), stages(count)')
         .single();

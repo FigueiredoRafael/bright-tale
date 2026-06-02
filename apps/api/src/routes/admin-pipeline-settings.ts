@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/authenticate.js'
 import { createServiceClient } from '../lib/supabase/index.js'
 import { ApiError } from '../lib/api/errors.js'
 import { updatePipelineSettingsSchema } from '@brighttale/shared/schemas/pipeline-settings'
+import { migrateToCurrentVersion, stampSchemaVersion } from '@brighttale/shared/utils/schema-version'
 
 async function assertAdmin(request: any, reply: any, sb: ReturnType<typeof createServiceClient>) {
   if (!request.userId) {
@@ -29,11 +30,15 @@ const DEFAULTS = {
 }
 
 function mapRow(row: Record<string, unknown>) {
+  const rawProviders = (row.default_providers_json ?? DEFAULTS.default_providers_json) as Record<string, unknown>
+  const migrated = migrateToCurrentVersion(rawProviders) ?? DEFAULTS.default_providers_json
+  // Strip _v before sending over the wire — pipelineSettingsResponseSchema expects z.record(z.string())
+  const { _v: _stripped, ...defaultProviders } = migrated as Record<string, unknown>
   return {
     reviewRejectThreshold: row.review_reject_threshold ?? DEFAULTS.review_reject_threshold,
     reviewApproveScore: row.review_approve_score ?? DEFAULTS.review_approve_score,
     reviewMaxIterations: row.review_max_iterations ?? DEFAULTS.review_max_iterations,
-    defaultProviders: row.default_providers_json ?? DEFAULTS.default_providers_json,
+    defaultProviders: defaultProviders as Record<string, string>,
     defaultModels: (row.default_models_json ?? DEFAULTS.default_models_json) as Record<string, string>,
   }
 }
@@ -62,7 +67,7 @@ export async function adminPipelineSettingsRoutes(app: FastifyInstance) {
     if (body.reviewRejectThreshold !== undefined) update.review_reject_threshold = body.reviewRejectThreshold
     if (body.reviewApproveScore !== undefined) update.review_approve_score = body.reviewApproveScore
     if (body.reviewMaxIterations !== undefined) update.review_max_iterations = body.reviewMaxIterations
-    if (body.defaultProviders !== undefined) update.default_providers_json = body.defaultProviders
+    if (body.defaultProviders !== undefined) update.default_providers_json = stampSchemaVersion(body.defaultProviders as Record<string, unknown>)
     if (body.defaultModels !== undefined) update.default_models_json = body.defaultModels
 
     const { data, error } = await sb

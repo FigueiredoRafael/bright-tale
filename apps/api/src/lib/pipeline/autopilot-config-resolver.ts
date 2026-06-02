@@ -1,5 +1,6 @@
 import type { Stage } from '@brighttale/shared/pipeline/inputs';
 import type { AutopilotConfig } from '@brighttale/shared/schemas/autopilotConfig';
+import { migrateToCurrentVersion } from '@brighttale/shared/utils/schema-version';
 
 // Maps the canonical Stage enum to the slot key used in `autopilotConfigSchema`.
 // The schema still uses the legacy `canonicalCore` and `draft` slot names; the
@@ -76,8 +77,18 @@ export function resolveAutopilotConfig<S extends Stage>(
   const slotKey = STAGE_TO_SLOT_KEY[stage];
   const fallback = FALLBACK_BY_STAGE[stage];
 
-  const projectSlot = readSlot(project?.autopilotConfigJson, slotKey);
-  const trackSlot = readSlot(track?.autopilotConfigJson, slotKey);
+  // Migrate each source's autopilotConfigJson on-read (BRI-29 D59).
+  // Unknown future versions are returned as-is (clamp-safe); the resolver
+  // treats the blob as opaque so a stamped `_v` is harmless to slot logic.
+  const projectJson = migrateToCurrentVersion(
+    project?.autopilotConfigJson as Record<string, unknown> | null | undefined,
+  );
+  const trackJson = migrateToCurrentVersion(
+    track?.autopilotConfigJson as Record<string, unknown> | null | undefined,
+  );
+
+  const projectSlot = readSlot(projectJson, slotKey);
+  const trackSlot = readSlot(trackJson, slotKey);
 
   if (trackSlot !== undefined) {
     if (trackSlot === null) return null as SlotForStage<S>;

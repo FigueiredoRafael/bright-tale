@@ -24,6 +24,7 @@ import { enqueueProductionForNewTrack } from '../lib/pipeline/orchestrator.js';
 import { abortTrack } from '../lib/pipeline/abortTrack.js';
 import { addTrackSchema, updateTrackSchema } from '@brighttale/shared/schemas/tracks';
 import type { Medium } from '@brighttale/shared/pipeline/inputs';
+import { stampSchemaVersion } from '@brighttale/shared/utils/schema-version';
 
  
 type Sb = any;
@@ -82,12 +83,13 @@ export async function tracksRoutes(fastify: FastifyInstance): Promise<void> {
           throw new ApiError(404, 'Project not found', 'NOT_FOUND');
         }
 
+        const rawConfig = parsed.data.autopilotConfigJson as Record<string, unknown> | null | undefined;
         const { data: inserted, error: insertErr } = await sb
           .from('tracks')
           .insert({
             project_id: projectId,
             medium: parsed.data.medium,
-            autopilot_config_json: parsed.data.autopilotConfigJson ?? null,
+            autopilot_config_json: rawConfig != null ? stampSchemaVersion(rawConfig) : null,
           })
           .select('*')
           .single();
@@ -159,7 +161,8 @@ export async function tracksRoutes(fastify: FastifyInstance): Promise<void> {
         if (parsed.data.paused !== undefined) patch.paused = parsed.data.paused;
         if (parsed.data.status !== undefined) patch.status = parsed.data.status;
         if (parsed.data.autopilotConfigJson !== undefined) {
-          patch.autopilot_config_json = parsed.data.autopilotConfigJson;
+          const patchConfig = parsed.data.autopilotConfigJson as Record<string, unknown> | null;
+          patch.autopilot_config_json = patchConfig != null ? stampSchemaVersion(patchConfig) : null;
         }
 
         const { data: updated, error: updateErr } = await sb

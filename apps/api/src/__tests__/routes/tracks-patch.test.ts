@@ -193,7 +193,8 @@ describe('PATCH /projects/:projectId/tracks/:trackId', () => {
     expect(res.json().data.track.autopilotConfigJson).toEqual(override);
 
     const updateCall = (sbChain.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(updateCall.autopilot_config_json).toEqual(override);
+    // BRI-29: write seam stamps _v; use toMatchObject to tolerate the added field
+    expect(updateCall.autopilot_config_json).toMatchObject(override);
   });
 
   it('returns 400 VALIDATION_ERROR when an unknown top-level key is sent (BRI-28)', async () => {
@@ -258,6 +259,28 @@ describe('PATCH /projects/:projectId/tracks/:trackId', () => {
 
     expect(res.statusCode).toBe(400);
     expect(res.json().error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('stamps _v: CURRENT_SCHEMA_VERSION onto autopilotConfigJson when patching (BRI-29)', async () => {
+    sbChain.maybeSingle.mockResolvedValueOnce({
+      data: trackRow(),
+      error: null,
+    });
+    const override = { review: { maxIterations: 3 } };
+    sbChain.single.mockResolvedValueOnce({
+      data: trackRow({ autopilot_config_json: { ...override, _v: 1 } }),
+      error: null,
+    });
+
+    await app.inject({
+      method: 'PATCH',
+      url: `/projects/${PROJECT_ID}/tracks/${TRACK_ID}`,
+      headers: AUTH,
+      payload: { autopilotConfigJson: override },
+    });
+
+    const updateCall = (sbChain.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(updateCall.autopilot_config_json).toHaveProperty('_v', 1);
   });
 
   it('returns 401 without the internal API key', async () => {

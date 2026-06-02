@@ -95,7 +95,7 @@ vi.mock('@brighttale/shared/schemas/projectSetup', async () => {
 
 vi.stubEnv('INTERNAL_API_KEY', 'test-key');
 
-import { projectSetupRoutes } from '../../routes/project-setup';
+import { projectSetupRoutes } from '../../routes/project-setup.js';
 import { assertProjectOwner } from '@/lib/projects/ownership';
 import { derivedFromStageResults, nextStageAfter } from '@/lib/pipeline-state';
 
@@ -267,9 +267,10 @@ describe('POST /projects/:id/setup', () => {
     });
 
     expect(res.statusCode).toBe(200);
+    // BRI-29: write seam stamps _v onto autopilot_config_json; use expect.objectContaining
     expect(mockChain.update).toHaveBeenCalledWith({
       mode: 'supervised',
-      autopilot_config_json: configObj,
+      autopilot_config_json: expect.objectContaining(configObj),
       autopilot_template_id: 'tmpl-1',
       pipeline_state_json: null,
     });
