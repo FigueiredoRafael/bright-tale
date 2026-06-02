@@ -22,7 +22,7 @@ export const setupProjectSchema = z.object({
   startStage: startStageSchema,
   media: z.array(z.enum(MEDIA)).optional(),
   mediaConfig: z.record(z.enum(MEDIA), z.object({}).passthrough()).optional(),
-}).superRefine((v, ctx) => {
+}).strict().superRefine((v, ctx) => {
   if (v.mode !== 'step-by-step' && !v.autopilotConfig) {
     ctx.addIssue({
       code: 'custom',

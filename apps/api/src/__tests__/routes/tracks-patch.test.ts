@@ -196,6 +196,46 @@ describe('PATCH /projects/:projectId/tracks/:trackId', () => {
     expect(updateCall.autopilot_config_json).toEqual(override);
   });
 
+  it('returns 400 VALIDATION_ERROR when an unknown top-level key is sent (BRI-28)', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/projects/${PROJECT_ID}/tracks/${TRACK_ID}`,
+      headers: AUTH,
+      payload: { paused: true, unknownKey: 'oops' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('accepts a valid partial subset of autopilotConfig in autopilotConfigJson (BRI-28 deepPartial)', async () => {
+    sbChain.maybeSingle.mockResolvedValueOnce({
+      data: trackRow(),
+      error: null,
+    });
+    // Only send a subset: just the review slot (omitting all other slots)
+    const partialOverride = {
+      review: {
+        maxIterations: 3,
+        autoApproveThreshold: 90,
+        hardFailThreshold: 40,
+      },
+    };
+    sbChain.single.mockResolvedValueOnce({
+      data: trackRow({ autopilot_config_json: partialOverride }),
+      error: null,
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/projects/${PROJECT_ID}/tracks/${TRACK_ID}`,
+      headers: AUTH,
+      payload: { autopilotConfigJson: partialOverride },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.track.autopilotConfigJson).toEqual(partialOverride);
+  });
+
   it('returns 400 on empty body', async () => {
     const res = await app.inject({
       method: 'PATCH',

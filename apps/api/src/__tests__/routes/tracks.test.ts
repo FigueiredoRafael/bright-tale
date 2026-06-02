@@ -239,6 +239,17 @@ describe('POST /projects/:projectId/tracks', () => {
     expect(enqueueProductionForNewTrackMock).not.toHaveBeenCalled();
   });
 
+  it('returns 400 VALIDATION_ERROR when an unknown top-level key is sent (BRI-28)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/tracks`,
+      headers: AUTH,
+      payload: { medium: 'blog', weirdKey: 'should be rejected' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+  });
+
   it('persists autopilotConfigJson onto the inserted Track', async () => {
     sbChain.maybeSingle.mockResolvedValueOnce({
       data: { id: PROJECT_ID, mode: 'manual', autopilot_config_json: null },
