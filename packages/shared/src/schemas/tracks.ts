@@ -7,12 +7,13 @@
  */
 import { z } from 'zod';
 import { MEDIA } from '../pipeline/inputs';
+import { autopilotConfigPatchSchema } from './autopilotConfig';
 
 export const addTrackSchema = z.object({
   medium: z.enum(MEDIA),
   autopilotConfigJson: z.record(z.unknown()).optional(),
   defaultMediaConfig: z.record(z.unknown()).optional(),
-});
+}).strict();
 
 export type AddTrackInput = z.infer<typeof addTrackSchema>;
 
@@ -33,8 +34,9 @@ export const updateTrackSchema = z
   .object({
     paused: z.boolean().optional(),
     status: z.enum(['active', 'aborted']).optional(),
-    autopilotConfigJson: z.record(z.unknown()).nullable().optional(),
+    autopilotConfigJson: autopilotConfigPatchSchema.nullable().optional(),
   })
+  .strict()
   .refine(
     (v) =>
       v.paused !== undefined ||

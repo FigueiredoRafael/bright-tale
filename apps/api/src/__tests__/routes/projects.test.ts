@@ -76,7 +76,7 @@ vi.mock('@/lib/queries/discovery', () => ({
 }));
 vi.stubEnv('INTERNAL_API_KEY', 'test-key');
 
-import { projectsRoutes } from '../../routes/projects';
+import { projectsRoutes } from '../../routes/projects.js';
 
 const AUTH = { 'x-internal-key': 'test-key' };
 const AUTH_USER = { ...AUTH, 'x-user-id': 'user-123' };
@@ -340,11 +340,6 @@ describe('DELETE /projects/:id', () => {
     // delete chain: mockChain.delete().eq('id', id) => resolves to { error: null }
     mockChain.eq.mockReturnValue({ ...mockChain, then: undefined });
 
-    const thenMock = vi.fn().mockImplementation((resolve: (v: any) => void) => {
-      resolve({ error: null });
-      return { catch: vi.fn() };
-    });
-
     // We need the delete chain to resolve
     const origDelete = mockChain.delete;
     mockChain.delete = vi.fn().mockReturnValue({
@@ -510,6 +505,54 @@ describe('POST /projects/:id/winner', () => {
     const body = res.json();
     expect(body.data.success).toBe(true);
     expect(body.data.message).toBe('Project marked as winner');
+  });
+});
+
+// ─── BRI-28 / D57 — strict schema: unknown top-level keys rejected ────────────
+
+describe('POST /projects — rejects unknown top-level keys (BRI-28)', () => {
+  const validBody = {
+    title: 'My Test Project',
+    current_stage: 'brainstorm',
+    status: 'active',
+    winner: false,
+  };
+
+  it('returns 400 VALIDATION_ERROR when an unknown top-level key is sent', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/projects',
+      headers: AUTH,
+      payload: { ...validBody, foo: 'extra' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('PUT /projects/:id — rejects unknown top-level keys (BRI-28)', () => {
+  it('returns 400 VALIDATION_ERROR when an unknown top-level key is sent', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/projects/p-1',
+      headers: AUTH,
+      payload: { title: 'New Title', unknownField: 'surprise' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('PATCH /projects/:id — rejects unknown top-level keys (BRI-28)', () => {
+  it('returns 400 VALIDATION_ERROR when an unknown top-level key is sent', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/projects/p-1',
+      headers: AUTH,
+      payload: { title: 'New Title', hackerField: true },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
   });
 });
 

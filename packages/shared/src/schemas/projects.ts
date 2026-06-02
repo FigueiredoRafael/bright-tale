@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import { MEDIA } from "../pipeline/inputs";
+import { autopilotConfigPatchSchema } from "./autopilotConfig";
 
 // Valid stage types (legacy and new names)
 const validStageTypes = [
@@ -51,6 +52,7 @@ export const createProjectSchema = z
      */
     mediaConfig: z.record(z.enum(MEDIA), mediaConfigSchema).optional(),
   })
+  .strict()
   .refine(
     (v) => {
       if (!v.mediaConfig) return true;
@@ -84,10 +86,10 @@ export const updateProjectSchema = z.object({
     .nullable()
     .optional(),
   paused: z.boolean().optional(),
-  autopilotConfigJson: z.record(z.unknown()).nullable().optional(),
+  autopilotConfigJson: autopilotConfigPatchSchema.nullable().optional(),
   autopilotTemplateId: z.string().nullable().optional(),
   abortRequestedAt: z.string().datetime().nullable().optional(),
-});
+}).strict();
 
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 
