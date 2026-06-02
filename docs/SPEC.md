@@ -168,6 +168,42 @@ Framework central que alimenta todos os formatos:
 |---|---|
 | `idempotency_keys` | Retry safety (token, request_hash, response, expires_at) |
 
+### Singletons de Configuração (convenção `lock_key='global'`)
+
+Settings administráveis vivem em **tabelas-singleton**: uma única linha de configuração para toda a plataforma. A convenção, idêntica em todos eles:
+
+```sql
+lock_key TEXT UNIQUE NOT NULL DEFAULT 'global'   -- garante 1 linha só (UPSERT por lock_key)
+-- + trigger handle_updated_at + RLS deny-all (service_role bypass)
+INSERT INTO <tabela> (lock_key) VALUES ('global'); -- linha seedada na migration
+```
+
+Leitura/escrita sempre por `.eq('lock_key', 'global').maybeSingle()`. O `UNIQUE` no `lock_key` impede uma segunda linha; o `DEFAULT 'global'` permite `INSERT`/`UPSERT` sem informar a chave. **Para adicionar um 3º singleton:** nova migration com esse mesmo bloco (coluna `lock_key`, trigger, RLS, linha seedada) + loader em `apps/api/src/lib/` que lê por `lock_key='global'` com `DEFAULTS` de fallback quando `maybeSingle()` retorna `null`.
+
+**Singletons separados — não fundidos** (decisão D16). Mantemos dois singletons distintos em vez de uma tabela única de "settings":
+
+| Singleton | Migration | Propósito | Por que separado |
+|---|---|---|---|
+| `pipeline_settings` | `20260424100000_pipeline_settings.sql` | Comportamento de runtime do pipeline: `review_reject_threshold` (40), `review_approve_score` (90), `review_max_iterations` (5), `default_providers_json` | Config de **execução** do pipeline — muda com a evolução do motor, lida em todo run |
+| `platform_settings` (← `credit_settings`, D55) | `20260424100001_credit_settings.sql` + rename do D55 | Defaults de **negócio/economia** da plataforma (admin-tunable) | Defaults **econômicos e de política** — mudam por decisão de produto, não por run |
+
+Separá-los evita acoplar uma migration de preço/política a uma de comportamento de motor, e mantém cada loader com responsabilidade única. A fronteira: `pipeline_settings` = "como o motor roda agora"; `platform_settings` = "quais defaults de negócio a plataforma aplica".
+
+#### `platform_settings` — os 4 blocos (contrato do D55/BRI-26)
+
+O rename `credit_settings → platform_settings` (D55) preserva o singleton (mesma `lock_key`, trigger, RLS, linha seedada) e expande para **4 blocos** de business-default que destravam D11 (estagnação), D72 (single-source de threshold de review), D74 (timeout de stage) e D58 (defaults do resolver de autopilot):
+
+| Bloco | Colunas | Default | Consumidor |
+|---|---|---|---|
+| **1. Créditos** (existente) | `cost_blog` `cost_video` `cost_shorts` `cost_podcast` `cost_canonical_core` `cost_review` | 200 / 200 / 100 / 150 / 80 / 20 | `with-reservation`, `bulk`, `content-drafts` |
+| **2. Review (defaults)** | `review_approve_score` `review_reject_threshold` `review_max_iterations` | 90 / 40 / 5 | resolver de autopilot (D58), D72 (single-source) |
+| **3. Estagnação** | `review_stagnation_window` `review_stagnation_min_delta` | 2 / 3 | detecção de estagnação no Review → `awaiting_user` (D11) |
+| **4. Timeout de stage** | `stage_finish_timeout_seconds` | 300 | `STAGE_FINISH_TIMEOUT` padronizado nos dispatchers (D74) |
+
+**Defaults do bloco 2 espelham `pipeline_settings`** (90/40/5) — backward-compatible. `platform_settings` carrega os **defaults de plataforma** que o resolver de autopilot (D58) usa como fallback quando project/track não sobrescrevem; `pipeline_settings` segue sendo o singleton de runtime. O D72 (wave-1) fará o single-source dos thresholds de review apontando as leituras para `platform_settings` — por isso o bloco 2 nasce aqui. Os blocos 3 e 4 expõem colunas que D11 e D74 (wave-1) vão cablear; os defaults são conservadores e podem ser tunados via `PATCH /api/admin/platform-settings`.
+
+> Loader: `loadCreditSettings` → `loadPlatformSettings` (`apps/api/src/lib/credit-settings.ts` → `platform-settings.ts`), lendo de `platform_settings` por `lock_key='global'`. Nenhuma referência TS viva a `credit_settings` deve sobrar após o D55 (só o histórico de migration).
+
 ---
 
 ## 5. Rotas da API
