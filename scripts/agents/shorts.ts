@@ -21,6 +21,8 @@ export const shorts: AgentDefinition = {
         '`short_number` must be sequential: 1, 2, 3.',
         '`visual_style` must be exactly one of: `talking head` | `b-roll` | `text overlay`.',
         'Save "watch the full video" for the `cta` only — not in the hook or script body.',
+        'Persona voice (first person): when a `<persona>` block is provided in the input, write every `hook` and `script` as that persona speaking in the first person, as themselves ("I", "my", addressing the viewer as "you"). Adopt the persona\'s writing style, signature phrases, characteristic opinions, and humor, and obey its language guardrails. With no persona block, default to a natural first-person voice in the channel tone.',
+        'Like + Subscribe CTA: every short ends with a fast spoken like+subscribe ask in the persona\'s voice. In short form the CTA lands at the END (the `cta` field), never mid-script where it would break the loop.',
         'Output JSON only, no markdown fences, follow the contract exactly.',
       ],
       purpose: [],
@@ -76,7 +78,8 @@ export const shorts: AgentDefinition = {
         'script: Must be self-contained — viewer needs no context from the main video to understand the point. Must be completable in stated `duration`.',
         'duration: Typical range 30-60 seconds. Match to script length.',
         'visual_style: ONLY talking head, b-roll, or text overlay — no underscores, no capitalization, no variations.',
-        'cta: At least one short should include `cta_comment_prompt` as a question. At least one should reference `cta_subscribe`. "Watch the full video" is acceptable in `cta` but NOT in `hook` or `script` body.',
+        'cta: Every short\'s `cta` ends with a brief, punchy like+subscribe ask in the persona\'s first-person voice (e.g., "hit like and subscribe for more"). At least one short should also include `cta_comment_prompt` as a question, and at least one should reference `cta_subscribe`. "Watch the full video" is acceptable in `cta` but NOT in `hook` or `script` body.',
+        'persona_voice: All `hook` and `script` text is the persona speaking in the first person. Do not lapse into third person or a neutral narrator voice when a persona is provided. Weave signature phrases in naturally — never force them. The persona language guardrails override channel tone.',
         'No fabricated stats — only use figures from `key_stats`.',
         'If production_params.target_duration_minutes is provided (in tenths), scale each short to that duration. 0.25 (15s) = 35-40 words, 0.5 (30s) = 70-80 words, 1.0 (60s) = 140-150 words. If material is insufficient, set content_warning instead of padding.',
         'If input key_stats is empty, every short MUST use qualitative framing derived from thesis. Never paraphrase an invented number as fact. If a short\'s hook requires a stat and none is in input, populate content_warning and use a qualitative hook.',
@@ -92,6 +95,8 @@ export const shorts: AgentDefinition = {
         'Verify "watch the full video" does not appear in hook or script body (only allowed in cta).',
         'Verify at least one short includes cta_comment_prompt as a question.',
         'Verify at least one short includes cta_subscribe reference.',
+        'Verify every short\'s cta includes a like+subscribe ask.',
+        'When a `<persona>` block was provided, verify every hook and script reads as that persona speaking in the first person.',
         'Verify no fabricated stats — only use key_stats from input.',
       ],
     },
@@ -234,6 +239,7 @@ CTA Options:
    "Comment below, then subscribe for the complete breakdown in our next video."
 
 Rules:
+- Every short's cta ends with a fast like+subscribe ask, in the persona's first-person voice
 - "Watch the full video" IS allowed in CTA (just not in hook or script body)
 - At least one of the 3 shorts must include cta_comment_prompt as a question
 - At least one must reference cta_subscribe
@@ -244,6 +250,26 @@ Example CTAs:
 - "Subscribe for more research-backed sleep tips."
 - "Drop a comment — what's your best sleep window?"
 - "Watch the full video on our channel for the complete breakdown."`,
+      },
+      {
+        title: 'Persona Voice (Runtime-Injected)',
+        content: `A \`<persona>\` block may be appended to the input at runtime describing the on-camera presenter. When present it carries:
+
+- Name — who is speaking.
+- Bio — who they are / their authority.
+- Writing style — cadence, sentence length, formality.
+- Signature phrases — recurring expressions to use sparingly and naturally.
+- Characteristic opinions — stances this presenter is known for; let them color the framing.
+- Humor style — how they joke.
+- Language guardrails — words/claims/registers to avoid. These are hard limits.
+
+When a \`<persona>\` block is present:
+
+1. First person, always. Every \`hook\` and \`script\` is this person talking to camera as themselves — "I", "my", addressing the viewer directly as "you". Never narrate in the third person.
+2. Voice over template. Match the persona's writing style and humor; drop signature phrases where they land naturally (never shoehorn them); let characteristic opinions shape framing, without inventing facts.
+3. Guardrails win. The language guardrails override everything else, including channel tone.
+
+If no \`<persona>\` block is present, write in a consistent, natural first-person voice aligned with the channel tone.`,
       },
     ],
   },

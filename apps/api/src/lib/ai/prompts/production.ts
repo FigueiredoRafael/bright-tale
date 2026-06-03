@@ -18,6 +18,21 @@ export interface CanonicalCoreInput {
   channel?: { name?: string; niche?: string; language?: string; tone?: string };
 }
 
+export interface PersonaVoice {
+  name: string;
+  bioShort: string;
+  writingVoice: {
+    writingStyle: string;
+    signaturePhrases: string[];
+    characteristicOpinions: string[];
+  };
+  soul: {
+    humorStyle: string;
+    recurringJokes: string[];
+    languageGuardrails: string[];
+  };
+}
+
 export interface ProduceInput {
   type: string;
   title: string;
@@ -25,20 +40,7 @@ export interface ProduceInput {
   idea?: IdeaContext | null;
   productionParams?: unknown;
   sources?: unknown[];
-  persona?: {
-    name: string;
-    bioShort: string;
-    writingVoice: {
-      writingStyle: string;
-      signaturePhrases: string[];
-      characteristicOpinions: string[];
-    };
-    soul: {
-      humorStyle: string;
-      recurringJokes: string[];
-      languageGuardrails: string[];
-    };
-  } | null;
+  persona?: PersonaVoice | null;
   channel?: { name?: string; niche?: string; language?: string; tone?: string };
 }
 
@@ -69,7 +71,39 @@ export interface ReproduceInput {
    * because it can't see what it already tried in prior iterations.
    */
   priorAttempts?: PriorReviewAttempt[];
+  /**
+   * The presenter persona's voice. Mirrors ProduceInput.persona so the
+   * persona's first-person voice survives the review loop — without it the
+   * reproduce prompt drops the persona and revisions regress to a neutral
+   * narrator voice.
+   */
+  persona?: PersonaVoice | null;
   channel?: { name?: string; niche?: string; language?: string; tone?: string };
+}
+
+/** Render the persona voice block shared by produce + reproduce prompts. */
+function personaBlock(persona?: PersonaVoice | null): string {
+  if (!persona) return "";
+  const lines: string[] = [];
+  lines.push("");
+  lines.push("<persona>");
+  lines.push(`Name: ${persona.name}`);
+  lines.push(`Bio: ${persona.bioShort}`);
+  lines.push(`Writing style: ${persona.writingVoice.writingStyle}`);
+  lines.push(
+    `Signature phrases: ${persona.writingVoice.signaturePhrases.join(" | ")}`,
+  );
+  lines.push(
+    `Characteristic opinions: ${persona.writingVoice.characteristicOpinions.join(" | ")}`,
+  );
+  lines.push(`Humor style: ${persona.soul.humorStyle}`);
+  lines.push("Language guardrails:");
+  persona.soul.languageGuardrails.forEach((g) => lines.push(`- ${g}`));
+  lines.push(
+    "Write the draft in this persona's first-person voice — they are speaking as themselves.",
+  );
+  lines.push("</persona>");
+  return lines.join("\n");
 }
 
 function channelBlock(ch?: {
@@ -226,23 +260,8 @@ export function buildProduceMessage(input: ProduceInput): string {
 
   lines.push(channelBlock(input.channel));
 
-  if (input.persona) {
-    lines.push("");
-    lines.push("<persona>");
-    lines.push(`Name: ${input.persona.name}`);
-    lines.push(`Bio: ${input.persona.bioShort}`);
-    lines.push(`Writing style: ${input.persona.writingVoice.writingStyle}`);
-    lines.push(
-      `Signature phrases: ${input.persona.writingVoice.signaturePhrases.join(" | ")}`,
-    );
-    lines.push(
-      `Characteristic opinions: ${input.persona.writingVoice.characteristicOpinions.join(" | ")}`,
-    );
-    lines.push(`Humor style: ${input.persona.soul.humorStyle}`);
-    lines.push("Language guardrails:");
-    input.persona.soul.languageGuardrails.forEach((g) => lines.push(`- ${g}`));
-    lines.push("</persona>");
-  }
+  const persona = personaBlock(input.persona);
+  if (persona) lines.push(persona);
 
   lines.push("");
   lines.push(
@@ -348,6 +367,10 @@ export function buildReproduceMessage(input: ReproduceInput): string {
   }
 
   lines.push(channelBlock(input.channel));
+
+  const persona = personaBlock(input.persona);
+  if (persona) lines.push(persona);
+
   lines.push("");
   lines.push("Revision rules:");
   lines.push(

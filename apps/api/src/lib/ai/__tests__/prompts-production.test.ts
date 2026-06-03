@@ -12,6 +12,21 @@ const mockIdea: IdeaContext = {
   monetization: { affiliate_angle: 'CRM tools' },
 };
 
+const mockPersona = {
+  name: 'Dr. Vega',
+  bioShort: 'Neuroscientist turned creator',
+  writingVoice: {
+    writingStyle: 'punchy, second-person',
+    signaturePhrases: ['here is the kicker', 'stay curious'],
+    characteristicOpinions: ['hustle culture is a trap'],
+  },
+  soul: {
+    humorStyle: 'dry',
+    recurringJokes: ['coffee dependency'],
+    languageGuardrails: ['no medical claims', 'avoid hype words'],
+  },
+};
+
 describe('buildCanonicalCoreMessage', () => {
   it('includes title and type', () => {
     const msg = buildCanonicalCoreMessage({
@@ -75,6 +90,29 @@ describe('buildProduceMessage', () => {
     });
     expect(msg).toContain('Original idea context:');
     expect(msg).toContain('"target_audience": "Developers"');
+  });
+
+  it('injects the persona voice block (first person) when a persona is provided', () => {
+    const msg = buildProduceMessage({
+      type: 'video',
+      title: 'test',
+      canonicalCore: { thesis: 'test' },
+      persona: mockPersona,
+    });
+    expect(msg).toContain('<persona>');
+    expect(msg).toContain('Dr. Vega');
+    expect(msg).toContain('here is the kicker');
+    expect(msg).toContain('no medical claims');
+    expect(msg).toContain("first-person voice");
+  });
+
+  it('omits the persona block when no persona is provided', () => {
+    const msg = buildProduceMessage({
+      type: 'video',
+      title: 'test',
+      canonicalCore: { thesis: 'test' },
+    });
+    expect(msg).not.toContain('<persona>');
   });
 });
 
@@ -268,5 +306,27 @@ describe('buildReproduceMessage', () => {
       previousDraft: { something_else: 'no full_draft here' },
     });
     expect(msg).not.toContain('Previous opening (verbatim');
+  });
+
+  it('carries the persona voice into the revision prompt (survives the review loop)', () => {
+    const msg = buildReproduceMessage({
+      type: 'video',
+      title: 'test',
+      reviewFeedback: { overall_verdict: 'revision_required' },
+      persona: mockPersona,
+    });
+    expect(msg).toContain('<persona>');
+    expect(msg).toContain('Dr. Vega');
+    expect(msg).toContain('no medical claims');
+    expect(msg).toContain("first-person voice");
+  });
+
+  it('omits the persona block when no persona is provided', () => {
+    const msg = buildReproduceMessage({
+      type: 'video',
+      title: 'test',
+      reviewFeedback: { overall_verdict: 'revision_required' },
+    });
+    expect(msg).not.toContain('<persona>');
   });
 });
