@@ -1,7 +1,7 @@
 /**
  * Builds the user message for the assets agent.
  * Wraps BC_ASSETS_INPUT in a JSON code block and instructs the model to
- * return BC_ASSETS_OUTPUT matching the contract in agents/agent-5-assets.md.
+ * return BC_ASSETS_OUTPUT matching the contract in scripts/agents/assets.ts.
  */
 export interface AssetsPromptInput {
   title: string;
