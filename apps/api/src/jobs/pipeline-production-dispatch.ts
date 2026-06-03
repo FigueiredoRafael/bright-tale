@@ -495,6 +495,7 @@ export const pipelineProductionDispatch = inngest.createFunction(
                   reviewFeedback: normalizedReviewFeedback,
                   iterationCount,
                   priorAttempts,
+                  persona: layeredPersona?.voice ?? null,
                   channel: channelContext as
                     | { name?: string; niche?: string; language?: string; tone?: string }
                     | undefined,
