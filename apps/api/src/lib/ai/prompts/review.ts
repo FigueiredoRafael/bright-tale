@@ -59,7 +59,7 @@ export function buildReviewMessage(input: ReviewInput): string {
   }
 
   // The review agent's BC_REVIEW_INPUT contract expects the draft under
-  // `production.<type>.{...}` (see agents/agent-4-review.md). The producer
+  // `production.<type>.{...}` (see scripts/agents/review.ts). The producer
   // stores draft_json flat (`{title, slug, full_draft, ...}` direct at root
   // for blogs) because UI consumers read it that way. Without re-wrapping
   // here, the reviewer reports "Missing required field: production.blog.full_draft"
