@@ -48,7 +48,6 @@ import { advanceAfter } from '@/lib/pipeline/orchestrator';
 
 const PROJECT_ID = '00000000-0000-0000-0000-0000000000aa';
 const REVIEW_RUN_ID = 'sr-review-1';
-const DRAFT_ID = 'draft-uuid-1';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -118,15 +117,15 @@ describe('advanceAfter — review loop hand-off (revision_required)', () => {
       .mockResolvedValueOnce(mockProjectRow())
       // 3. Load finished review outcome_json
       .mockResolvedValueOnce(mockReviewOutcome('revision_required', feedback))
-      // 4. latestAttemptNo for 'draft' stage
+      // 4. latestAttemptNo for 'production' stage (T2.6 swap)
       .mockResolvedValueOnce({ data: { attempt_no: 1 }, error: null });
 
-    // 5. insertStageRun returns the new queued draft run
+    // 5. insertStageRun returns the new queued production run
     mockChain.single.mockResolvedValueOnce({
       data: {
-        id: 'sr-draft-2',
+        id: 'sr-production-2',
         project_id: PROJECT_ID,
-        stage: 'draft',
+        stage: 'production',
         status: 'queued',
         attempt_no: 2,
       },
@@ -138,7 +137,8 @@ describe('advanceAfter — review loop hand-off (revision_required)', () => {
     expect(mockChain.insert).toHaveBeenCalledTimes(1);
     const inserted = (mockChain.insert as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(inserted.project_id).toBe(PROJECT_ID);
-    expect(inserted.stage).toBe('draft');
+    // T2.6 swap: revision loop now queues 'production', not legacy 'draft'
+    expect(inserted.stage).toBe('production');
     expect(inserted.status).toBe('queued');
     expect(inserted.attempt_no).toBe(2);
 
@@ -153,9 +153,10 @@ describe('advanceAfter — review loop hand-off (revision_required)', () => {
       data: { stage: string; projectId: string; stageRunId: string };
     };
     expect(evt.name).toBe('pipeline/stage.requested');
-    expect(evt.data.stage).toBe('draft');
+    // T2.6 swap: event carries stage='production'
+    expect(evt.data.stage).toBe('production');
     expect(evt.data.projectId).toBe(PROJECT_ID);
-    expect(evt.data.stageRunId).toBe('sr-draft-2');
+    expect(evt.data.stageRunId).toBe('sr-production-2');
   });
 
   it('does NOT loop back to draft when the review outcome is approved (advances to assets instead)', async () => {
@@ -239,10 +240,11 @@ describe('advanceAfter — review loop hand-off (revision_required)', () => {
   });
 });
 
-describe('advanceAfter — review idempotency carve-out (draft finishes, prior review outcome still revision_required)', () => {
+describe('advanceAfter — review idempotency carve-out (production finishes, prior review outcome still revision_required)', () => {
   it('queues a FRESH review run when the existing review row has outcome.verdict=revision_required', async () => {
-    const finishedDraft = {
-      data: { id: 'sr-draft-2', project_id: PROJECT_ID, stage: 'draft', status: 'completed' },
+    // T2.6 swap: finished run stage is now 'production', not legacy 'draft'
+    const finishedProduction = {
+      data: { id: 'sr-production-2', project_id: PROJECT_ID, stage: 'production', status: 'completed', track_id: null },
       error: null,
     };
     const priorReviewRow = {
@@ -255,9 +257,9 @@ describe('advanceAfter — review idempotency carve-out (draft finishes, prior r
     };
 
     mockChain.maybeSingle
-      .mockResolvedValueOnce(finishedDraft) // 1. finished run
-      .mockResolvedValueOnce(mockProjectRow()) // 2. project
-      .mockResolvedValueOnce(priorReviewRow); // 3. existingNext review row (stale completed)
+      .mockResolvedValueOnce(finishedProduction) // 1. finished run
+      .mockResolvedValueOnce(mockProjectRow())   // 2. project
+      .mockResolvedValueOnce(priorReviewRow);    // 3. existingNext review row (stale completed)
 
     mockChain.single.mockResolvedValueOnce({
       data: {
@@ -270,7 +272,7 @@ describe('advanceAfter — review idempotency carve-out (draft finishes, prior r
       error: null,
     });
 
-    await advanceAfter('sr-draft-2');
+    await advanceAfter('sr-production-2');
 
     expect(mockChain.insert).toHaveBeenCalledTimes(1);
     const inserted = (mockChain.insert as ReturnType<typeof vi.fn>).mock.calls[0][0];
@@ -283,8 +285,9 @@ describe('advanceAfter — review idempotency carve-out (draft finishes, prior r
   });
 
   it('bails when the existing review outcome is approved (no fresh review run)', async () => {
-    const finishedDraft = {
-      data: { id: 'sr-draft-2', project_id: PROJECT_ID, stage: 'draft', status: 'completed' },
+    // T2.6 swap: finished run stage is now 'production', not legacy 'draft'
+    const finishedProduction = {
+      data: { id: 'sr-production-2', project_id: PROJECT_ID, stage: 'production', status: 'completed', track_id: null },
       error: null,
     };
     const priorReviewRow = {
@@ -297,11 +300,11 @@ describe('advanceAfter — review idempotency carve-out (draft finishes, prior r
     };
 
     mockChain.maybeSingle
-      .mockResolvedValueOnce(finishedDraft)
+      .mockResolvedValueOnce(finishedProduction)
       .mockResolvedValueOnce(mockProjectRow())
       .mockResolvedValueOnce(priorReviewRow);
 
-    await advanceAfter('sr-draft-2');
+    await advanceAfter('sr-production-2');
 
     expect(mockChain.insert).not.toHaveBeenCalled();
     expect(inngestSendMock).not.toHaveBeenCalled();

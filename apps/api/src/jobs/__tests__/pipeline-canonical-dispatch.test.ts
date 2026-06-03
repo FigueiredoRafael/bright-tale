@@ -1,12 +1,10 @@
 /**
- * T2.6 — pipeline-canonical-dispatch.
+ * D66 — pipeline-canonical-dispatch (native).
  *
- * Listens on `pipeline/stage.requested` filtered to stage='canonical'.
- * Project-scoped. Resolves persona/idea/research from prior Stage Runs,
- * creates the shared content_drafts row, transitions the Stage Run to
- * `running`, and sends `production/generate` with `phase='canonical'`
- * so the worker terminal-writes the canonical Stage Run after canonical
- * core generation (no chain to produce).
+ * The dispatcher now does the canonical-core AI work INLINE via step.run
+ * (mirroring pipeline-review-dispatch). No `production/generate` event is
+ * emitted. The Stage Run lifecycle is driven exclusively through
+ * stage-run-writer helpers.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -15,6 +13,50 @@ vi.mock('../client.js', () => ({
     createFunction: (_config: unknown, handler: unknown) => handler,
     send: vi.fn(async () => ({ ids: ['evt-1'] })),
   },
+}));
+
+const generateWithFallbackMock = vi.fn();
+const isQuotaExhaustedMock = vi.fn(() => false);
+vi.mock('../../lib/ai/router.js', () => ({
+  generateWithFallback: generateWithFallbackMock,
+  isQuotaExhausted: isQuotaExhaustedMock,
+}));
+
+vi.mock('../../lib/ai/promptLoader.js', () => ({
+  loadAgentConfig: vi.fn(async () => ({ instructions: 'system-core', tools: [] })),
+  resolveProviderOverride: vi.fn(() => ({ provider: 'openai', model: 'gpt-4' })),
+}));
+
+vi.mock('../../lib/ai/prompts/production.js', () => ({
+  buildCanonicalCoreMessage: vi.fn(() => 'canonical-core-message'),
+  buildProduceMessage: vi.fn(() => 'produce-message'),
+  buildReproduceMessage: vi.fn(() => 'reproduce-message'),
+}));
+
+vi.mock('../../lib/platform-settings.js', () => ({
+  loadPlatformSettings: vi.fn(async () => ({ costCanonicalCore: 1, costBlogDraft: 2 })),
+}));
+
+vi.mock('../../jobs/utils/with-reservation.js', () => ({
+  withReservation: vi.fn(async (_a, _b, _c, _d, _e, _f, fn: () => Promise<unknown>) => fn()),
+}));
+
+vi.mock('../../lib/ai/abortable.js', () => ({
+  assertNotAborted: vi.fn(async () => undefined),
+  JobAborted: class JobAborted extends Error { constructor() { super('aborted'); } },
+}));
+
+vi.mock('../../jobs/emitter.js', () => ({
+  emitJobEvent: vi.fn(async () => undefined),
+}));
+
+vi.mock('../../lib/ai/usage-log.js', () => ({
+  logUsage: vi.fn(async () => undefined),
+}));
+
+vi.mock('../../lib/ai/tools/index.js', () => ({
+  resolveTools: vi.fn(() => []),
+  buildToolExecutor: vi.fn(() => undefined),
 }));
 
 const STAGE_RUN_ID = 'sr-canonical';
@@ -27,14 +69,18 @@ const RESEARCH_SESSION_ID = 'rs-prior';
 const BRAINSTORM_PICK_ID = 'bd-pick';
 const TRACK_ID = 'track-blog';
 
+const STEP_MOCK = { run: <T>(_id: string, fn: () => Promise<T>) => fn() };
+
 let stageRunRow: Record<string, unknown>;
 let projectRow: Record<string, unknown>;
 let channelRow: Record<string, unknown> | null;
 let priorResearchStageRun: Record<string, unknown> | null;
 let priorBrainstormStageRun: Record<string, unknown> | null;
 let trackRows: Array<Record<string, unknown>>;
+let contentDraftRow: Record<string, unknown> | null;
 
 let stageRunsUpdateMock: ReturnType<typeof vi.fn>;
+let contentDraftsUpdateMock: ReturnType<typeof vi.fn>;
 let draftInsertMock: ReturnType<typeof vi.fn>;
 
 vi.mock('../../lib/supabase/index.js', () => ({
@@ -93,7 +139,27 @@ vi.mock('../../lib/supabase/index.js', () => ({
         };
       }
       if (table === 'content_drafts') {
-        return { insert: draftInsertMock };
+        return {
+          insert: draftInsertMock,
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () => Promise.resolve({ data: contentDraftRow, error: null }),
+            }),
+          }),
+          update: (arg: unknown) => {
+            (contentDraftsUpdateMock as (a: unknown) => void)(arg);
+            return { eq: () => Promise.resolve({ error: null }) };
+          },
+        };
+      }
+      if (table === 'research_sessions') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () => Promise.resolve({ data: { approved_cards_json: null, cards_json: null }, error: null }),
+            }),
+          }),
+        };
       }
       if (table === 'brainstorm_drafts') {
         return {
@@ -120,15 +186,14 @@ vi.mock('../../lib/supabase/index.js', () => ({
         };
       }
       if (table === 'idea_archives') {
+        // Chainable: handles both single-eq (.eq(id).maybeSingle) and
+        // double-eq (.eq(x).eq(y).maybeSingle) access patterns.
+        const chain: Record<string, unknown> = {};
+        const maybeSingleFn = () => Promise.resolve({ data: null, error: null });
+        chain.maybeSingle = maybeSingleFn;
+        chain.eq = () => chain;
         return {
-          select: () => ({
-            eq: () => ({
-              eq: () => ({
-                maybeSingle: () => Promise.resolve({ data: null, error: null }),
-              }),
-            }),
-            count: 0,
-          }),
+          select: () => chain,
           insert: () => ({
             select: () => ({
               single: () => Promise.resolve({ data: { id: 'idea-arch-1' }, error: null }),
@@ -141,13 +206,29 @@ vi.mock('../../lib/supabase/index.js', () => ({
   }),
 }));
 
-describe('pipeline-canonical-dispatch', () => {
+type HandlerArgs = {
+  event: { data: { stageRunId: string; stage: string; projectId: string } };
+  step: typeof STEP_MOCK;
+};
+
+describe('pipeline-canonical-dispatch (native D66)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    stageRunsUpdateMock = vi.fn().mockReturnValue({
-      eq: vi.fn().mockResolvedValue({ error: null }),
-    });
+    function makeUpdateChain() {
+      const chain: Record<string, unknown> & PromiseLike<{ data: unknown; error: null }> = {
+        then(onResolve) {
+          return Promise.resolve({ data: [{ id: STAGE_RUN_ID }], error: null }).then(onResolve);
+        },
+      } as Record<string, unknown> & PromiseLike<{ data: unknown; error: null }>;
+      ['eq', 'in', 'select'].forEach((m) => {
+        (chain as Record<string, ReturnType<typeof vi.fn>>)[m] = vi.fn(() => chain);
+      });
+      return chain;
+    }
+    stageRunsUpdateMock = vi.fn(() => makeUpdateChain());
+    contentDraftsUpdateMock = vi.fn(() => makeUpdateChain());
+
     draftInsertMock = vi.fn().mockReturnValue({
       select: () => ({
         single: () => Promise.resolve({ data: { id: DRAFT_ID }, error: null }),
@@ -176,72 +257,212 @@ describe('pipeline-canonical-dispatch', () => {
       payload_ref: { kind: 'brainstorm_draft', id: BRAINSTORM_PICK_ID },
     };
     trackRows = [{ id: TRACK_ID, medium: 'blog', status: 'active' }];
+    contentDraftRow = {
+      id: DRAFT_ID,
+      project_id: PROJECT_ID,
+      type: 'blog',
+      title: 'Test Title',
+      research_session_id: RESEARCH_SESSION_ID,
+      idea_id: 'idea-arch-1',
+      persona_id: null,
+      channel_id: CHANNEL_ID,
+      org_id: ORG_ID,
+      user_id: USER_ID,
+      draft_json: null,
+      canonical_core_json: null,
+    };
+
+    generateWithFallbackMock.mockResolvedValue({
+      result: { thesis: 'core thesis', key_points: [] },
+      providerName: 'openai',
+      model: 'gpt-4',
+      usage: {},
+    });
   });
 
   it('returns early when event stage is not canonical', async () => {
     const { pipelineCanonicalDispatch } = await import('../pipeline-canonical-dispatch.js');
     const { inngest } = await import('../client.js');
 
-    await (
-      pipelineCanonicalDispatch as unknown as (args: {
-        event: { data: { stageRunId: string; stage: string; projectId: string } };
-      }) => Promise<void>
-    )({
+    await (pipelineCanonicalDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
       event: { data: { stageRunId: STAGE_RUN_ID, stage: 'research', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
     });
 
+    expect(generateWithFallbackMock).not.toHaveBeenCalled();
     expect(inngest.send).not.toHaveBeenCalled();
     expect(draftInsertMock).not.toHaveBeenCalled();
   });
 
-  it('skips when stage_run is not queued (idempotency)', async () => {
+  it('allows both queued and running (replay-safe idempotency)', async () => {
     stageRunRow = { ...stageRunRow, status: 'running' };
 
     const { pipelineCanonicalDispatch } = await import('../pipeline-canonical-dispatch.js');
-    const { inngest } = await import('../client.js');
 
-    await (
-      pipelineCanonicalDispatch as unknown as (args: {
-        event: { data: { stageRunId: string; stage: string; projectId: string } };
-      }) => Promise<void>
-    )({
-      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'canonical', projectId: PROJECT_ID } },
-    });
-
-    expect(inngest.send).not.toHaveBeenCalled();
-    expect(draftInsertMock).not.toHaveBeenCalled();
+    // running is allowed through (Inngest replay pattern); it should NOT bail early
+    // but the CAS claim inside step.run will have cached `won:true` on first pass.
+    // In tests step.run runs inline so claim succeeds for 'running' rows too.
+    // Simply assert the function runs without throwing.
+    await expect(
+      (pipelineCanonicalDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+        event: { data: { stageRunId: STAGE_RUN_ID, stage: 'canonical', projectId: PROJECT_ID } },
+        step: STEP_MOCK,
+      }),
+    ).resolves.not.toThrow();
   });
 
-  it('inserts shared content_draft, marks running, emits production/generate with phase=canonical', async () => {
+  it('creates shared content_draft inside step.run (memoized insert)', async () => {
     const { pipelineCanonicalDispatch } = await import('../pipeline-canonical-dispatch.js');
-    const { inngest } = await import('../client.js');
 
-    await (
-      pipelineCanonicalDispatch as unknown as (args: {
-        event: { data: { stageRunId: string; stage: string; projectId: string } };
-      }) => Promise<void>
-    )({
+    await (pipelineCanonicalDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
       event: { data: { stageRunId: STAGE_RUN_ID, stage: 'canonical', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
     });
 
-    expect(draftInsertMock).toHaveBeenCalled();
+    expect(draftInsertMock).toHaveBeenCalledTimes(1);
     const draftRow = draftInsertMock.mock.calls[0][0];
     expect(draftRow.project_id).toBe(PROJECT_ID);
     expect(draftRow.org_id).toBe(ORG_ID);
     expect(draftRow.user_id).toBe(USER_ID);
-    // canonical is project-scoped; type derived from first active Track
-    expect(draftRow.type).toBe('blog');
+    expect(draftRow.type).toBe('blog'); // derived from first active Track
     expect(draftRow.research_session_id).toBe(RESEARCH_SESSION_ID);
+  });
 
-    expect(stageRunsUpdateMock).toHaveBeenCalled();
-    const updateRow = stageRunsUpdateMock.mock.calls[0][0];
-    expect(updateRow.status).toBe('running');
+  it('calls generateWithFallback inline for canonical-core AI work', async () => {
+    const { pipelineCanonicalDispatch } = await import('../pipeline-canonical-dispatch.js');
 
-    expect(inngest.send).toHaveBeenCalledTimes(1);
-    const event = (inngest.send as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(event.name).toBe('production/generate');
-    expect(event.data.draftId).toBe(DRAFT_ID);
-    expect(event.data.stageRunId).toBe(STAGE_RUN_ID);
-    expect(event.data.phase).toBe('canonical');
+    await (pipelineCanonicalDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'canonical', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
+
+    expect(generateWithFallbackMock).toHaveBeenCalledTimes(1);
+    const [agentType] = generateWithFallbackMock.mock.calls[0];
+    expect(agentType).toBe('production');
+  });
+
+  it('saves canonical_core_json to the content_draft', async () => {
+    const canonicalResult = { thesis: 'core thesis', key_points: ['a', 'b'] };
+    generateWithFallbackMock.mockResolvedValueOnce({
+      result: canonicalResult,
+      providerName: 'openai',
+      model: 'gpt-4',
+      usage: {},
+    });
+
+    const { pipelineCanonicalDispatch } = await import('../pipeline-canonical-dispatch.js');
+
+    await (pipelineCanonicalDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'canonical', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
+
+    const updateCalls = contentDraftsUpdateMock.mock.calls.map((c) => c[0]);
+    const coreUpdate = updateCalls.find((r) => r.canonical_core_json !== undefined);
+    expect(coreUpdate).toBeDefined();
+    expect(coreUpdate.canonical_core_json).toEqual(
+      expect.objectContaining({ thesis: 'core thesis' }),
+    );
+  });
+
+  it('calls markCompleted with stage=canonical and payloadRef after AI succeeds', async () => {
+    const { pipelineCanonicalDispatch } = await import('../pipeline-canonical-dispatch.js');
+
+    await (pipelineCanonicalDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'canonical', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
+
+    const updateRows = stageRunsUpdateMock.mock.calls.map((c) => c[0]);
+    const completedRow = updateRows.find((r) => r.status === 'completed');
+    expect(completedRow).toBeDefined();
+    expect(completedRow.payload_ref).toEqual({ kind: 'content_draft', id: DRAFT_ID });
+  });
+
+  it('does NOT emit production/generate event (inline work, no hop)', async () => {
+    const { pipelineCanonicalDispatch } = await import('../pipeline-canonical-dispatch.js');
+    const { inngest } = await import('../client.js');
+
+    await (pipelineCanonicalDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'canonical', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
+
+    const allSentNames = (inngest.send as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => (c[0] as { name: string }).name,
+    );
+    expect(allSentNames).not.toContain('production/generate');
+  });
+
+  it('marks stage_run running then completed (lifecycle sequence)', async () => {
+    const { pipelineCanonicalDispatch } = await import('../pipeline-canonical-dispatch.js');
+
+    await (pipelineCanonicalDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'canonical', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
+
+    const updateRows = stageRunsUpdateMock.mock.calls.map((c) => c[0]);
+    const runningRow = updateRows.find((r) => r.status === 'running');
+    const completedRow = updateRows.find((r) => r.status === 'completed');
+    expect(runningRow).toBeDefined();
+    expect(completedRow).toBeDefined();
+    // running must come before completed in the call order
+    const runningIdx = stageRunsUpdateMock.mock.calls.findIndex((c) => c[0].status === 'running');
+    const completedIdx = stageRunsUpdateMock.mock.calls.findIndex((c) => c[0].status === 'completed');
+    expect(runningIdx).toBeLessThan(completedIdx);
+  });
+
+  it('on AI failure: marks stage_run failed and rethrows', async () => {
+    generateWithFallbackMock.mockRejectedValueOnce(new Error('llm timeout'));
+
+    const { pipelineCanonicalDispatch } = await import('../pipeline-canonical-dispatch.js');
+
+    await expect(
+      (pipelineCanonicalDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+        event: { data: { stageRunId: STAGE_RUN_ID, stage: 'canonical', projectId: PROJECT_ID } },
+        step: STEP_MOCK,
+      }),
+    ).rejects.toThrow(/llm timeout/);
+
+    const updateRows = stageRunsUpdateMock.mock.calls.map((c) => c[0]);
+    const failedRow = updateRows.find((r) => r.status === 'failed');
+    expect(failedRow).toBeDefined();
+    expect(failedRow.error_message).toContain('llm timeout');
+  });
+
+  it('on quota exhaustion: marks stage_run awaiting_user(provider_quota_exhausted), no rethrow', async () => {
+    const quotaErr = new Error('429 quota');
+    generateWithFallbackMock.mockRejectedValueOnce(quotaErr);
+    isQuotaExhaustedMock.mockReturnValueOnce(true);
+
+    const { pipelineCanonicalDispatch } = await import('../pipeline-canonical-dispatch.js');
+
+    await expect(
+      (pipelineCanonicalDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+        event: { data: { stageRunId: STAGE_RUN_ID, stage: 'canonical', projectId: PROJECT_ID } },
+        step: STEP_MOCK,
+      }),
+    ).resolves.not.toThrow();
+
+    const updateRows = stageRunsUpdateMock.mock.calls.map((c) => c[0]);
+    const awaitingRow = updateRows.find((r) => r.status === 'awaiting_user');
+    expect(awaitingRow).toBeDefined();
+    expect(awaitingRow.awaiting_reason).toBe('provider_quota_exhausted');
+    expect(updateRows.find((r) => r.status === 'failed')).toBeUndefined();
+  });
+
+  it('skips when stage_run has terminal status (completed/failed/aborted)', async () => {
+    stageRunRow = { ...stageRunRow, status: 'completed' };
+
+    const { pipelineCanonicalDispatch } = await import('../pipeline-canonical-dispatch.js');
+
+    await (pipelineCanonicalDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'canonical', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
+
+    expect(generateWithFallbackMock).not.toHaveBeenCalled();
+    expect(draftInsertMock).not.toHaveBeenCalled();
   });
 });
