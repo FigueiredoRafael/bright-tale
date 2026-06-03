@@ -858,9 +858,10 @@ describe('advanceAfter — per-Track pause + resolved config (T2.4)', () => {
     expect(requested[0].data.stage).toBe('assets');
   });
 
-  it('on review revision_required, the re-run draft carries the same track_id (paused track aborts the revision)', async () => {
-    // Review on Track T1 completes with revision_required → re-run draft for T1.
-    // First test: not paused — should insert a queued draft with track_id=T1.
+  it('on review revision_required, the re-run production carries the same track_id (paused track aborts the revision)', async () => {
+    // T2.6 swap: Review on Track T1 completes with revision_required →
+    // re-run production (not legacy draft) for T1.
+    // First test: not paused — should insert a queued production with track_id=T1.
     mockChain.maybeSingle
       .mockResolvedValueOnce({
         data: {
@@ -881,14 +882,14 @@ describe('advanceAfter — per-Track pause + resolved config (T2.4)', () => {
       })
       // Track lookup for pause check
       .mockResolvedValueOnce({ data: { id: TRACK_ID, paused: false }, error: null })
-      // latestAttemptNo lookup for draft stage
+      // latestAttemptNo lookup for production stage
       .mockResolvedValueOnce({ data: { attempt_no: 1 }, error: null });
 
     mockChain.single.mockResolvedValueOnce({
       data: {
-        id: 'sr-draft-2',
+        id: 'sr-production-2',
         project_id: PROJECT_ID,
-        stage: 'draft',
+        stage: 'production',
         status: 'queued',
         attempt_no: 2,
         track_id: TRACK_ID,
@@ -900,7 +901,8 @@ describe('advanceAfter — per-Track pause + resolved config (T2.4)', () => {
 
     expect(mockChain.insert).toHaveBeenCalledTimes(1);
     const inserted = (mockChain.insert as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(inserted.stage).toBe('draft');
+    // T2.6: revision loop queues 'production', not legacy 'draft'
+    expect(inserted.stage).toBe('production');
     expect(inserted.track_id).toBe(TRACK_ID);
     expect(inserted.input_json).toMatchObject({ type: 'blog' });
   });
