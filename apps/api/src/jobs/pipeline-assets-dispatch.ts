@@ -55,27 +55,49 @@ export const pipelineAssetsDispatch = inngest.createFunction(
 
     const { data: stageRun } = await sb
       .from('stage_runs')
-      .select('id, project_id, stage, status, input_json')
+      .select('id, project_id, stage, status, track_id, input_json')
       .eq('id', stageRunId)
       .maybeSingle();
     if (!stageRun) return;
-    if (stageRun.status !== 'queued') return;
+    // Idempotency: bail on terminal statuses. queued is normal entry; running
+    // is valid on Inngest replays (step results are cached).
+    if (stageRun.status !== 'queued' && stageRun.status !== 'running') return;
 
+    const trackId = stageRun.track_id as string | null | undefined;
     const input = (stageRun.input_json ?? {}) as Record<string, unknown>;
     const mode = (input.mode as 'auto_generate' | 'briefs_only' | 'manual_upload' | undefined) ?? 'briefs_only';
     const provider = input.provider as string | undefined;
     const model = input.model as string | undefined;
 
-    // Resolve the prior draft.
-    const { data: priorDraft } = await sb
-      .from('stage_runs')
-      .select('id, stage, status, payload_ref')
-      .eq('project_id', projectId)
-      .eq('stage', 'draft')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const draftRef = priorDraft?.payload_ref as { kind?: string; id?: string } | null | undefined;
+    // Resolve the draft to annotate. After the D66 draft→canonical+production
+    // split the body lives on the per-track PRODUCTION Stage Run's
+    // content_draft (track-scoped), not the legacy project-scoped 'draft'
+    // stage. Fall back to that legacy stage for pre-multi-track projects whose
+    // runs predate the split.
+    let draftRef: { kind?: string; id?: string } | null | undefined;
+    if (trackId) {
+      const { data: priorProduction } = await sb
+        .from('stage_runs')
+        .select('id, stage, status, payload_ref')
+        .eq('project_id', projectId)
+        .eq('stage', 'production')
+        .eq('track_id', trackId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      draftRef = priorProduction?.payload_ref as { kind?: string; id?: string } | null | undefined;
+    }
+    if (draftRef?.kind !== 'content_draft' || !draftRef.id) {
+      const { data: priorDraft } = await sb
+        .from('stage_runs')
+        .select('id, stage, status, payload_ref')
+        .eq('project_id', projectId)
+        .eq('stage', 'draft')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      draftRef = priorDraft?.payload_ref as { kind?: string; id?: string } | null | undefined;
+    }
     if (draftRef?.kind !== 'content_draft' || !draftRef.id) {
       await markFailed(sb, stageRunId, { ...ctx, errorMessage: 'No prior draft Stage Run to anchor assets to' });
       return;
@@ -89,21 +111,31 @@ export const pipelineAssetsDispatch = inngest.createFunction(
         awaitingReason: 'manual_paste',
         payloadRef: { kind: 'content_draft', id: draftId },
         markStarted: true,
+        outcome: { mode },
       });
       return;
     }
 
-    const { data: draft } = await sb
-      .from('content_drafts')
-      .select('*')
-      .eq('id', draftId)
-      .maybeSingle();
+    // Wrap in step.run so the draft snapshot is memoized across Inngest
+    // replays (matches pipeline-production-dispatch's `load-draft`).
+    const draft = (await step.run('load-draft', async () => {
+      const { data } = await sb
+        .from('content_drafts')
+        .select('*')
+        .eq('id', draftId)
+        .maybeSingle();
+      return data;
+    })) as Record<string, unknown> | null;
     if (!draft) {
       await markFailed(sb, stageRunId, { ...ctx, errorMessage: `content_draft ${draftId} not found` });
       return;
     }
 
-    await markRunning(sb, stageRunId, ctx);
+    // Wrap in step.run so the queued→running transition is memoized: a bare
+    // markRunning would re-stamp started_at on every Inngest replay.
+    await step.run('mark-running', async () => {
+      await markRunning(sb, stageRunId, { ...ctx, payloadRef: { kind: 'content_draft', id: draftId } });
+    });
 
     try {
       const agentConfig = await loadAgentConfig('assets');
@@ -155,11 +187,14 @@ export const pipelineAssetsDispatch = inngest.createFunction(
 
       const briefs = response.result as Record<string, unknown>;
       const mergedDraftJson = { ...draftJson, asset_briefs: briefs };
-      await sb.from('content_drafts').update({ draft_json: mergedDraftJson }).eq('id', draftId);
+      await step.run('save-asset-briefs', async () => {
+        await sb.from('content_drafts').update({ draft_json: mergedDraftJson }).eq('id', draftId);
+      });
 
       await markCompleted(sb, stageRunId, {
         ...ctx,
         payloadRef: { kind: 'content_draft', id: draftId },
+        outcome: { mode },
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
@@ -167,6 +202,7 @@ export const pipelineAssetsDispatch = inngest.createFunction(
         await markAwaitingUser(sb, stageRunId, {
           ...ctx,
           awaitingReason: 'provider_quota_exhausted',
+          markStarted: true,
         });
         return;
       }
