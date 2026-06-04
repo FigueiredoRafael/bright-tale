@@ -3,6 +3,21 @@
  *
  * Handles async content generation triggered by the simplified flow.
  * Runs brainstorm → research → production → review pipeline.
+ *
+ * LEGACY — intentionally NOT consolidated under BRI-137.
+ * This is a standalone full-pipeline orchestrator (not a per-stage worker):
+ *   - it has no `content_drafts` row to anchor on, so the shared per-draft
+ *     generation core (`loadGenerationContext` / `buildStageUserMessage` in
+ *     lib/ai/generation/) does not apply;
+ *   - it builds prompts with the raw production builders and minimal context
+ *     (no channel/persona/idea), hardcodes blog for canonical/review, and
+ *     persists empty stubs to the legacy `blog_drafts` / `video_drafts` tables
+ *     rather than `content_drafts` — the generated text is discarded;
+ *   - its routes (`POST /content/generate`, `POST /content/bulk-generate`) are
+ *     not wired to any current UI surface.
+ * The per-stage production divergence BRI-137 targets is fully resolved in the
+ * canonical/produce worker+dispatcher pairs and the manual content-drafts
+ * routes; deprecating/removing this orphaned flow is tracked separately.
  */
 
 import { inngest } from './client.js';
