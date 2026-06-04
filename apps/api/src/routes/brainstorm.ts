@@ -17,6 +17,7 @@ import { emitJobEvent } from '../jobs/emitter.js';
 import { buildBrainstormMessage } from '../lib/ai/prompts/brainstorm.js';
 import type { BrainstormInput } from '../lib/ai/prompts/brainstorm.js';
 import { logAiUsage } from '../lib/axiom.js';
+import { ensureStageRunId } from '../lib/pipeline/stage-run-writer.js';
 
 interface RawIdea {
   idea_id?: string;
@@ -332,16 +333,13 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
           brainstormSessionId: id,
         };
 
-        const { data: latestRun } = await sb
-          .from('stage_runs')
-          .select('id')
-          .eq('project_id', projectId)
-          .eq('stage', 'brainstorm')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        // Resolve the brainstorm Stage Run to reconcile, creating one when the
+        // step-by-step path never pre-created it (no autopilot dispatcher).
+        // Without this a manually-pasted brainstorm would leave no completed
+        // stage_run → the work can't be re-hydrated on navigation (BRI-145).
+        const stageRunId = await ensureStageRunId(sb, projectId, 'brainstorm').catch(() => undefined);
 
-        if (latestRun?.id) {
+        if (stageRunId) {
           const now = new Date().toISOString();
           await (sb.from('stage_runs') as unknown as {
             update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
@@ -355,11 +353,11 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
               finished_at: now,
               updated_at: now,
             })
-            .eq('id', latestRun.id as string);
+            .eq('id', stageRunId);
 
           await inngest.send({
             name: 'pipeline/stage.run.finished',
-            data: { stageRunId: latestRun.id as string, projectId },
+            data: { stageRunId, projectId },
           });
         }
 
@@ -528,6 +526,17 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
 
       if (insertErr || !session) throw insertErr ?? new ApiError(500, 'Failed to create session', 'DB_ERROR');
 
+      // Engine-driven (step-by-step) brainstorm has no autopilot dispatcher to
+      // pre-create the brainstorm Stage Run, so create/reuse one here and hand
+      // its id to the job. Without it the completed brainstorm leaves no
+      // stage_run → deriveStageResults never surfaces stageResults.brainstorm,
+      // the work vanishes on navigation, and the stage never reads as done
+      // downstream (BRI-145). Best-effort: Stage Run bookkeeping must not block
+      // generation — the job's resolveEffectiveStageRunId is the backstop.
+      const brainstormStageRunId = body.projectId
+        ? await ensureStageRunId(sb, body.projectId, 'brainstorm').catch(() => undefined)
+        : undefined;
+
       // Seed a "queued" event so the SSE stream has something to show immediately.
       await emitJobEvent(session.id, 'brainstorm', 'queued', 'Iniciando…');
 
@@ -545,6 +554,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
           provider: body.provider,
           model: body.model,
           targetCount: body.ideasRequested,
+          stageRunId: brainstormStageRunId,
         },
       });
 

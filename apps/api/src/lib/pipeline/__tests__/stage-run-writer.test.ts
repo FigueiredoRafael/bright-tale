@@ -56,6 +56,7 @@ beforeEach(() => {
 
 import {
   insertRun,
+  ensureStageRunId,
   markRunning,
   markCompleted,
   markFailed,
@@ -600,6 +601,111 @@ describe('insertRun', () => {
         status: 'queued',
       }),
     ).rejects.toThrow(/insertRun/);
+  });
+});
+
+// ─── ensureStageRunId ──────────────────────────────────────────────────────
+
+/**
+ * Build a stage_runs mock that serves a queued sequence of `maybeSingle`
+ * reads (latest-run lookups) and a fixed insert result. Captures every
+ * inserted payload so tests can assert attempt_no / status.
+ */
+function mockSbEnsure(opts: {
+  reads: Array<{ id?: string; status?: string; attempt_no?: number } | null>;
+  insertResult: { data?: Record<string, unknown>; error?: { code?: string; message: string } | null };
+  inserts: Array<Record<string, unknown>>;
+}): typeof sb {
+  const reads = [...opts.reads];
+  return {
+    from: vi.fn(() => ({
+      // SELECT chain → ...maybeSingle()
+      select: vi.fn(() => {
+        const chain: Record<string, unknown> = {};
+        ['eq', 'order', 'limit'].forEach((m) => {
+          chain[m] = vi.fn(() => chain);
+        });
+        chain.maybeSingle = vi.fn(async () => ({ data: reads.shift() ?? null, error: null }));
+        return chain;
+      }),
+      // INSERT chain → .select().single()
+      insert: vi.fn((payload: Record<string, unknown>) => {
+        opts.inserts.push(payload);
+        return {
+          select: vi.fn(() => ({
+            single: vi.fn(async () => ({
+              data: opts.insertResult.data ?? null,
+              error: opts.insertResult.error ?? null,
+            })),
+          })),
+        };
+      }),
+    })),
+  } as unknown as typeof sb;
+}
+
+describe('ensureStageRunId', () => {
+  it('reuses a live (non-terminal) run without inserting', async () => {
+    const inserts: Array<Record<string, unknown>> = [];
+    const sbLocal = mockSbEnsure({
+      reads: [{ id: 'sr-live', status: 'running', attempt_no: 1 }],
+      insertResult: { data: { id: 'should-not-be-used' } },
+      inserts,
+    });
+
+    const id = await ensureStageRunId(sbLocal, PROJECT_ID, 'brainstorm');
+
+    expect(id).toBe('sr-live');
+    expect(inserts).toHaveLength(0);
+  });
+
+  it('inserts a fresh running run (attempt 1) when none exists', async () => {
+    const inserts: Array<Record<string, unknown>> = [];
+    const sbLocal = mockSbEnsure({
+      reads: [null],
+      insertResult: { data: { id: 'sr-new' } },
+      inserts,
+    });
+
+    const id = await ensureStageRunId(sbLocal, PROJECT_ID, 'brainstorm');
+
+    expect(id).toBe('sr-new');
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]).toMatchObject({
+      project_id: PROJECT_ID,
+      stage: 'brainstorm',
+      status: 'running',
+      attempt_no: 1,
+    });
+  });
+
+  it('inserts the next attempt when the latest run is terminal', async () => {
+    const inserts: Array<Record<string, unknown>> = [];
+    const sbLocal = mockSbEnsure({
+      reads: [{ id: 'sr-old', status: 'completed', attempt_no: 2 }],
+      insertResult: { data: { id: 'sr-3' } },
+      inserts,
+    });
+
+    const id = await ensureStageRunId(sbLocal, PROJECT_ID, 'brainstorm');
+
+    expect(id).toBe('sr-3');
+    expect(inserts[0]).toMatchObject({ status: 'running', attempt_no: 3 });
+  });
+
+  it('on uniqueness race: re-reads and reuses the slot winner', async () => {
+    const inserts: Array<Record<string, unknown>> = [];
+    const sbLocal = mockSbEnsure({
+      // 1st read: no live run → tries insert (collides). 2nd read: the winner.
+      reads: [null, { id: 'sr-winner', status: 'running', attempt_no: 1 }],
+      insertResult: { error: { code: '23505', message: 'duplicate key' } },
+      inserts,
+    });
+
+    const id = await ensureStageRunId(sbLocal, PROJECT_ID, 'brainstorm');
+
+    expect(id).toBe('sr-winner');
+    expect(inserts).toHaveLength(1);
   });
 });
 
