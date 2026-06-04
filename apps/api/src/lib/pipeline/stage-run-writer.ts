@@ -257,6 +257,68 @@ export async function insertRun(
 }
 
 /**
+ * Ensure a non-terminal Stage Run exists for (project, stage) and return its id.
+ *
+ * Autopilot dispatches always create the Stage Run before running a Stage, so
+ * the worker has a row to flip to `completed`. Engine-driven (step-by-step)
+ * generation has no dispatcher — the engine calls the Stage's `POST` route
+ * directly — so nothing pre-creates the row. Without it the worker (and the
+ * manual-paste handler) have nothing to reconcile: `deriveStageResults` only
+ * surfaces a Stage from a COMPLETED Stage Run, so the finished work can't be
+ * re-hydrated when the user navigates away and back, and the Stage never reads
+ * as done downstream. This is the single seam both paths share so they behave
+ * alike (regression introduced when project-create stopped auto-dispatching
+ * brainstorm in step-by-step — BRI-143).
+ *
+ * Reuses a live (queued/running/awaiting_user) run when one already owns the
+ * slot — avoids colliding with the `one_non_terminal_per_stage` partial unique
+ * index. Otherwise inserts a fresh `running` row for the next attempt. On a
+ * concurrent-insert race (StageRunUniquenessError) it re-reads and returns the
+ * winner rather than failing the caller over Stage Run bookkeeping.
+ */
+export async function ensureStageRunId(
+  sb: Sb,
+  projectId: string,
+  stage: string,
+  dims: MultiTrackDims = {},
+): Promise<string | undefined> {
+  const readLatest = async (): Promise<{ id?: string; status?: string; attempt_no?: number } | null> => {
+    const { data } = await sb
+      .from('stage_runs')
+      .select('id, status, attempt_no')
+      .eq('project_id', projectId)
+      .eq('stage', stage)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return (data as { id?: string; status?: string; attempt_no?: number } | null) ?? null;
+  };
+
+  const latest = await readLatest();
+  if (latest?.id && !isTerminal(latest.status as StageRunStatus)) {
+    return latest.id;
+  }
+
+  try {
+    const run = await insertRun(sb, {
+      projectId,
+      stage,
+      attemptNo: (latest?.attempt_no ?? 0) + 1,
+      status: 'running',
+      ...dims,
+    });
+    return (run as { id?: string }).id;
+  } catch (err) {
+    if (err instanceof StageRunUniquenessError) {
+      // A concurrent caller won the slot between our read and insert — reuse it.
+      const live = await readLatest();
+      return live?.id;
+    }
+    throw err;
+  }
+}
+
+/**
  * queued → running. Non-terminal — no advance event.
  *
  * `payloadRef` is optional: dispatchers that know the payload up front (e.g.
