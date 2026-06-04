@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ChevronDown, Loader2 } from "lucide-react"
 import { AvatarSection } from "./AvatarSection"
-import { WpIntegrationSection } from "./WpIntegrationSection"
+import { PersonaWpConnection } from "./PersonaWpConnection"
 import { PersonaRadar } from "./PersonaRadar"
 import type { PersonaTraits } from "@brighttale/shared/types/agents"
 import { DEFAULT_PERSONA_TRAITS } from "@brighttale/shared/types/agents"
@@ -107,25 +107,6 @@ export function PersonaForm({ initial, personaId, archetypeSlug, onSaved }: Pers
     const router = useRouter()
     const params = useParams()
     const locale = params.locale as string
-
-    const [channels, setChannels] = useState<Array<{ id: string; name: string; has_wordpress: boolean }>>([])
-    const [rawChannelCount, setRawChannelCount] = useState(0)
-    const [selectedChannelId, setSelectedChannelId] = useState<string>("")
-
-    useEffect(() => {
-        if (!personaId) return
-        fetch("/api/channels")
-            .then(r => r.json())
-            .then(({ data }) => {
-                const items = (data?.items ?? []) as Array<{ id: string; name: string; has_wordpress: boolean }>
-                setRawChannelCount(items.length)
-                const wpConfiguredChannels = items.filter(c => c.has_wordpress === true)
-                setChannels(wpConfiguredChannels)
-                if (wpConfiguredChannels.length && !selectedChannelId) setSelectedChannelId(wpConfiguredChannels[0].id)
-            })
-            .catch(() => { /* channel list is optional — silently skip if it fails */ })
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [personaId])
 
     function set<K extends keyof PersonaFormValues>(key: K, val: PersonaFormValues[K]) {
         setValues(prev => ({ ...prev, [key]: val }))
@@ -309,31 +290,8 @@ export function PersonaForm({ initial, personaId, archetypeSlug, onSaved }: Pers
             <Section title="Integrations">
                 {!personaId ? (
                     <p className="text-xs text-muted-foreground">Save the persona first to connect WordPress.</p>
-                ) : rawChannelCount === 0 ? (
-                    <p className="text-xs text-muted-foreground">Create a content channel first to connect WordPress.</p>
-                ) : channels.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">None of your channels have WordPress configured. Add a WordPress config in Channel → Settings → WordPress first.</p>
                 ) : (
-                    <div className="space-y-3">
-                        <div className="space-y-1">
-                            <Label className="text-xs">Channel</Label>
-                            <select
-                                value={selectedChannelId}
-                                onChange={e => setSelectedChannelId(e.target.value)}
-                                className="w-full h-8 px-2 text-sm rounded-md border bg-background"
-                            >
-                                {channels.map(c => (
-                                    <option key={c.id} value={c.id}>{c.name}</option>
-                                ))}
-                            </select>
-                            <p className="text-[10px] text-muted-foreground">Which channel's WordPress site to link against.</p>
-                        </div>
-                        <WpIntegrationSection
-                            personaId={personaId}
-                            currentWpAuthorId={values.wpAuthorId ?? null}
-                            channelId={selectedChannelId}
-                        />
-                    </div>
+                    <PersonaWpConnection personaId={personaId} currentWpAuthorId={values.wpAuthorId ?? null} />
                 )}
             </Section>
 

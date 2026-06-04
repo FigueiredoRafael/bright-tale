@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Loader2, Pencil, ChevronLeft, ToggleLeft, ToggleRight, X, Save, GitFork, Sparkles, Wand2 } from "lucide-react"
+import { Loader2, Pencil, ChevronLeft, ToggleLeft, ToggleRight, X, Save, GitFork, Sparkles, Wand2, Globe } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { PersonaProfileCard } from "@/components/personas/PersonaProfileCard"
+import { PersonaWpConnection } from "@/components/personas/PersonaWpConnection"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { ChatWizard } from "@/components/chat/ChatWizard"
 import Link from "next/link"
@@ -327,6 +328,22 @@ export default function PersonaProfilePage() {
                         onChange={setFormValues}
                         qualityScore={qualityScore}
                     />
+
+                    {/* WordPress author linking — surfaces the same connect flow as
+                        the creation wizard so a persona can be linked/unlinked after
+                        it exists. Only owned personas can be wired to WordPress. */}
+                    {canEdit && (
+                        <div className="mt-6 rounded-lg border bg-card p-4 space-y-3">
+                            <div className="flex items-center gap-2">
+                                <Globe className="h-4 w-4 text-muted-foreground" />
+                                <h2 className="text-sm font-semibold">WordPress</h2>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Link this persona to a WordPress author so published posts are attributed to them.
+                            </p>
+                            <PersonaWpConnection personaId={id} currentWpAuthorId={persona.wpAuthorId ?? null} />
+                        </div>
+                    )}
                 </div>
             </div>
 
