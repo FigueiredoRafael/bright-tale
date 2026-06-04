@@ -25,11 +25,15 @@ import { loadIdeaContext } from '../lib/ai/loadIdeaContext.js';
 import { withReservation } from './utils/with-reservation.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
-import { buildCanonicalCoreMessage } from '../lib/ai/prompts/production.js';
 import { loadPlatformSettings } from '../lib/platform-settings.js';
 import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
 import { loadPersonaForDraft, buildLayeredPersonaContext } from '../lib/personas.js';
-import { formatConstraintsBlock, applyProviderDiscount, STAGE_CHANNEL_SELECT } from '../lib/ai/generation/index.js';
+import {
+  applyProviderDiscount,
+  STAGE_CHANNEL_SELECT,
+  buildStageSystemPrompt,
+  buildStageUserMessage,
+} from '../lib/ai/generation/index.js';
 import {
   markRunning,
   markCompleted,
@@ -305,17 +309,17 @@ export const pipelineCanonicalDispatch = inngest.createFunction(
         { draftId, type, provider },
         async () => {
           const canonicalCore = await step.run('generate-core', async () => {
-            const userMessage = buildCanonicalCoreMessage({
-              type: type as string,
-              title: loadedDraft.title as string,
-              ideaId: loadedDraft.idea_id as string | undefined,
-              idea: ideaContext,
-              researchCards: approvedCards ?? undefined,
+            const userMessage = buildStageUserMessage({
+              stage: 'canonical',
+              ctx: {
+                draft: loadedDraft,
+                persona,
+                layeredPersona,
+                channel: channelContext,
+                idea: ideaContext,
+                researchCards: approvedCards,
+              },
               productionParams,
-              personaContext: layeredPersona?.context ?? null,
-              channel: channelContext as
-                | { name?: string; niche?: string; language?: string; tone?: string }
-                | undefined,
             });
             const enabledTools = resolveTools(coreAgentConfig.tools).filter(
               () => resolvedProvider !== 'ollama',
@@ -325,9 +329,7 @@ export const pipelineCanonicalDispatch = inngest.createFunction(
               modelTier,
               {
                 agentType: 'production',
-                systemPrompt: layeredPersona?.constraints.length
-                  ? `${formatConstraintsBlock(layeredPersona.constraints)}${coreAgentConfig.instructions ?? ''}`
-                  : coreAgentConfig.instructions ?? '',
+                systemPrompt: buildStageSystemPrompt(coreAgentConfig.instructions, layeredPersona?.constraints ?? []),
                 userMessage,
                 tools: enabledTools.length > 0 ? enabledTools : undefined,
                 toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,

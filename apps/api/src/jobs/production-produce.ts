@@ -12,17 +12,18 @@ import { createServiceClient } from '../lib/supabase/index.js';
 import { withReservation } from './utils/with-reservation.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
-import { buildProduceMessage, buildReproduceMessage } from '../lib/ai/prompts/production.js';
 import { loadPriorReviewAttempts } from '../lib/ai/loadPriorReviewAttempts.js';
 import { calculateDraftCost } from '../lib/calculate-draft-cost.js';
 import { loadPlatformSettings } from '../lib/platform-settings.js';
 import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
 import { buildLayeredPersonaContext, loadPersonaForDraft } from '../lib/personas.js';
 import {
-  formatConstraintsBlock,
   applyProviderDiscount,
   normalizeReviewFeedback,
   STAGE_CHANNEL_SELECT,
+  buildStageSystemPrompt,
+  buildStageUserMessage,
+  deriveEffectiveProductionParams,
 } from '../lib/ai/generation/index.js';
 
 interface ProductionProduceEvent {
@@ -131,19 +132,8 @@ export const productionProduce = inngest.createFunction(
       })) as Record<string, unknown> | null;
 
       // Derive video_style_config.channel_type from channel.video_style when caller didn't set it.
-      // channels.video_style enum: face | dark | hybrid → videoStyleConfig.channel_type: presenter | dark.
-      const effectiveProductionParams: Record<string, unknown> | null = (() => {
-        if (type !== 'video' || !channelContext) return productionParams ?? null;
-        const channelStyle = channelContext.video_style;
-        const derivedChannelType =
-          channelStyle === 'dark' ? 'dark' : channelStyle === 'face' || channelStyle === 'hybrid' ? 'presenter' : null;
-        if (!derivedChannelType) return productionParams ?? null;
-        const params = { ...(productionParams ?? {}) } as Record<string, unknown>;
-        const styleConfig = { ...((params.video_style_config as Record<string, unknown> | undefined) ?? {}) };
-        if (!styleConfig.channel_type) styleConfig.channel_type = derivedChannelType;
-        params.video_style_config = styleConfig;
-        return params;
-      })();
+      // Moved to shared assembly/deriveEffectiveProductionParams so dispatcher also applies it.
+      const effectiveProductionParams = deriveEffectiveProductionParams(type as string, channelContext, productionParams);
 
       await assertNotAborted(projectId, draftId, sb);
 
@@ -186,68 +176,44 @@ export const productionProduce = inngest.createFunction(
         { draftId, type },
         async () => {
           const draftJson = await step.run('generate-produce', async () => {
-            const approvedCardsObj =
-              approvedCards && typeof approvedCards === 'object' && !Array.isArray(approvedCards)
-                ? (approvedCards as Record<string, unknown>)
-                : null;
-            const researchSources =
-              type === 'blog' && approvedCardsObj?.sources ? (approvedCardsObj.sources as unknown[]) : undefined;
-
             // When the orchestrator hands us a `review_feedback` blob in
             // productionParams it means this run is a revision (review loop).
-            // Switch to the reproduce prompt so the agent rewrites the draft
-            // against the feedback instead of producing from scratch.
             const reviewFeedbackRaw =
               effectiveProductionParams && typeof effectiveProductionParams === 'object'
                 ? ((effectiveProductionParams as Record<string, unknown>).review_feedback as
                     | Record<string, unknown>
                     | undefined)
                 : undefined;
-            const normalizedReviewFeedback = normalizeReviewFeedback({
+            const normalizedReviewFeedbackForStep = normalizeReviewFeedback({
               raw: reviewFeedbackRaw ?? null,
               type: type as string,
               reviewScore: (draft.review_score as number | null) ?? null,
             });
-            const draftTitle = (draft.title as string) ?? ((draft.draft_json as Record<string, unknown> | null)?.title as string | undefined) ?? '';
-            // Mirror the reviewer's priorAttempts memory on the producer side.
-            // Without it the producer keeps re-applying the same paraphrase to a
-            // flagged section because it can't see what it already tried in
-            // previous iterations. skipLatest=true drops the just-completed
-            // review (its feedback is already in normalizedReviewFeedback below).
-            const priorAttempts = normalizedReviewFeedback
-              ? await loadPriorReviewAttempts(sb, draftId, type as string, {
-                  skipLatest: true,
-                })
+            const priorAttempts = normalizedReviewFeedbackForStep
+              ? await loadPriorReviewAttempts(sb, draftId, type as string, { skipLatest: true })
               : [];
-            const userMessage = normalizedReviewFeedback
-              ? buildReproduceMessage({
-                  type: type as string,
-                  title: draftTitle,
-                  canonicalCore,
-                  previousDraft: draft.draft_json,
-                  idea: ideaContext,
-                  reviewFeedback: normalizedReviewFeedback,
-                  iterationCount:
-                    typeof (draft.iteration_count as number | null) === 'number'
-                      ? ((draft.iteration_count as number) + 1)
-                      : 1,
-                  priorAttempts,
-                  channel: channelContext as
-                    | { name?: string; niche?: string; language?: string; tone?: string }
-                    | undefined,
-                })
-              : buildProduceMessage({
-                  type: type as string,
-                  title: draftTitle,
-                  canonicalCore,
-                  idea: ideaContext,
-                  productionParams: effectiveProductionParams ?? undefined,
-                  sources: researchSources,
-                  persona: layeredPersona?.voice ?? null,
-                  channel: channelContext as
-                    | { name?: string; niche?: string; language?: string; tone?: string }
-                    | undefined,
-                });
+            const iterationCount =
+              typeof (draft.iteration_count as number | null) === 'number'
+                ? ((draft.iteration_count as number) + 1)
+                : 1;
+
+            const ctx = {
+              draft: { ...draft, type, canonical_core_json: canonicalCore },
+              persona,
+              layeredPersona,
+              channel: channelContext,
+              idea: ideaContext,
+              researchCards: approvedCards,
+            };
+            const userMessage = buildStageUserMessage({
+              stage: normalizedReviewFeedbackForStep ? 'reproduce' : 'produce',
+              ctx,
+              productionParams: effectiveProductionParams,
+              reviewFeedback: normalizedReviewFeedbackForStep,
+              iterationCount: normalizedReviewFeedbackForStep ? iterationCount : undefined,
+              priorAttempts: normalizedReviewFeedbackForStep ? priorAttempts : undefined,
+            });
+
             const enabledTools = resolveTools(produceAgentConfig.tools).filter(
               () => resolvedProvider !== 'ollama',
             );
@@ -256,9 +222,7 @@ export const productionProduce = inngest.createFunction(
               modelTier,
               {
                 agentType: 'production',
-                systemPrompt: layeredPersona?.constraints.length
-                  ? `${formatConstraintsBlock(layeredPersona.constraints)}${produceAgentConfig.instructions}`
-                  : produceAgentConfig.instructions,
+                systemPrompt: buildStageSystemPrompt(produceAgentConfig.instructions, layeredPersona?.constraints ?? []),
                 userMessage,
                 tools: enabledTools.length > 0 ? enabledTools : undefined,
                 toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,

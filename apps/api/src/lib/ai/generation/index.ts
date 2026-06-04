@@ -11,3 +11,13 @@ export {
   type NormalizedReviewFeedback,
   type NormalizeReviewFeedbackParams,
 } from './review-feedback.js';
+export {
+  loadGenerationContext,
+  type GenerationContext,
+} from './context.js';
+export {
+  buildStageSystemPrompt,
+  buildStageUserMessage,
+  deriveEffectiveProductionParams,
+  type StageUserMessageParams,
+} from './assembly.js';

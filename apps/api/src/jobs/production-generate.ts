@@ -12,7 +12,6 @@ import { withReservation } from './utils/with-reservation.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
-import { buildCanonicalCoreMessage } from '../lib/ai/prompts/production.js';
 import { loadPlatformSettings } from '../lib/platform-settings.js';
 import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
 import {
@@ -20,8 +19,13 @@ import {
   buildPersonaVoice,
   buildLayeredPersonaContext,
   loadPersonaForDraft,
-} from '../lib/personas.js'
-import { formatConstraintsBlock, applyProviderDiscount, STAGE_CHANNEL_SELECT } from '../lib/ai/generation/index.js';
+} from '../lib/personas.js';
+import {
+  applyProviderDiscount,
+  STAGE_CHANNEL_SELECT,
+  buildStageSystemPrompt,
+  buildStageUserMessage,
+} from '../lib/ai/generation/index.js';
 
 // Re-exported for backward-compat with existing tests
 // (apps/api/src/jobs/__tests__/production-generate-persona.test.ts imports from here)
@@ -169,15 +173,17 @@ export const productionGenerate = inngest.createFunction(
         { draftId, type, provider },
         async () => {
           const canonicalCore = await step.run('generate-core', async () => {
-            const userMessage = buildCanonicalCoreMessage({
-              type: type as string,
-              title: draft.title as string,
-              ideaId: draft.idea_id as string | undefined,
-              idea: ideaContext,
-              researchCards: approvedCards ?? undefined,
+            const userMessage = buildStageUserMessage({
+              stage: 'canonical',
+              ctx: {
+                draft: draft as Record<string, unknown>,
+                persona,
+                layeredPersona,
+                channel: channelContext,
+                idea: ideaContext,
+                researchCards: approvedCards,
+              },
               productionParams,
-              personaContext: layeredPersona?.context ?? null,
-              channel: channelContext as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
             });
             const enabledTools = resolveTools(coreAgentConfig.tools).filter(
               () => resolvedProvider !== 'ollama',
@@ -187,9 +193,7 @@ export const productionGenerate = inngest.createFunction(
               modelTier,
               {
                 agentType: 'production',
-                systemPrompt: layeredPersona?.constraints.length
-                  ? `${formatConstraintsBlock(layeredPersona.constraints)}${coreSystemPrompt ?? ''}`
-                  : coreSystemPrompt ?? '',
+                systemPrompt: buildStageSystemPrompt(coreSystemPrompt, layeredPersona?.constraints ?? []),
                 userMessage,
                 tools: enabledTools.length > 0 ? enabledTools : undefined,
                 toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,

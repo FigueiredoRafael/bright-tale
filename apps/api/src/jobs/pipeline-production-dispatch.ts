@@ -34,19 +34,17 @@ import { loadPriorReviewAttempts } from '../lib/ai/loadPriorReviewAttempts.js';
 import { withReservation } from './utils/with-reservation.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
-import {
-  buildProduceMessage,
-  buildReproduceMessage,
-} from '../lib/ai/prompts/production.js';
 import { loadPlatformSettings } from '../lib/platform-settings.js';
 import { calculateDraftCost } from '../lib/calculate-draft-cost.js';
 import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
 import { loadPersonaForDraft, buildLayeredPersonaContext } from '../lib/personas.js';
 import {
-  formatConstraintsBlock,
   applyProviderDiscount,
   normalizeReviewFeedback,
   STAGE_CHANNEL_SELECT,
+  buildStageSystemPrompt,
+  buildStageUserMessage,
+  deriveEffectiveProductionParams,
 } from '../lib/ai/generation/index.js';
 import {
   markRunning,
@@ -361,19 +359,18 @@ export const pipelineProductionDispatch = inngest.createFunction(
         reviewScore: (loadedDraft.review_score as number | null) ?? null,
       });
 
-      const approvedCardsObj =
-        approvedCards && typeof approvedCards === 'object' && !Array.isArray(approvedCards)
-          ? (approvedCards as Record<string, unknown>)
-          : null;
-      const researchSources =
-        medium === 'blog' && approvedCardsObj?.sources
-          ? (approvedCardsObj.sources as unknown[])
-          : undefined;
-
       const iterationCount =
         typeof (loadedDraft.iteration_count as number | null) === 'number'
           ? ((loadedDraft.iteration_count as number) + 1)
           : 1;
+
+      // Derive video_style_config.channel_type from channel.video_style.
+      // Now applied in shared assembly for BOTH dispatcher and worker paths.
+      const effectiveProductionParams = deriveEffectiveProductionParams(
+        medium as string,
+        channelContext,
+        productionParams,
+      );
 
       await withReservation(
         safeOrgId,
@@ -384,13 +381,6 @@ export const pipelineProductionDispatch = inngest.createFunction(
         { draftId, type: medium },
         async () => {
           const draftJson = await step.run('generate-produce', async () => {
-            const draftTitle =
-              (loadedDraft.title as string) ??
-              ((loadedDraft.draft_json as Record<string, unknown> | null)?.title as
-                | string
-                | undefined) ??
-              '';
-
             const enabledTools = resolveTools(produceAgentConfig.tools).filter(
               () => resolvedProvider !== 'ollama',
             );
@@ -399,42 +389,29 @@ export const pipelineProductionDispatch = inngest.createFunction(
               ? await loadPriorReviewAttempts(sb, draftId, medium as string, { skipLatest: true })
               : [];
 
-            const userMessage = normalizedReviewFeedback
-              ? buildReproduceMessage({
-                  type: medium as string,
-                  title: draftTitle,
-                  canonicalCore: loadedDraft.canonical_core_json,
-                  previousDraft: loadedDraft.draft_json,
-                  idea: ideaContext,
-                  reviewFeedback: normalizedReviewFeedback,
-                  iterationCount,
-                  priorAttempts,
-                  persona: layeredPersona?.voice ?? null,
-                  channel: channelContext as
-                    | { name?: string; niche?: string; language?: string; tone?: string }
-                    | undefined,
-                })
-              : buildProduceMessage({
-                  type: medium as string,
-                  title: draftTitle,
-                  canonicalCore: loadedDraft.canonical_core_json,
-                  idea: ideaContext,
-                  productionParams: productionParams ?? undefined,
-                  sources: researchSources,
-                  persona: layeredPersona?.voice ?? null,
-                  channel: channelContext as
-                    | { name?: string; niche?: string; language?: string; tone?: string }
-                    | undefined,
-                });
+            const ctx = {
+              draft: loadedDraft,
+              persona,
+              layeredPersona,
+              channel: channelContext,
+              idea: ideaContext,
+              researchCards: approvedCards,
+            };
+            const userMessage = buildStageUserMessage({
+              stage: normalizedReviewFeedback ? 'reproduce' : 'produce',
+              ctx,
+              productionParams: effectiveProductionParams,
+              reviewFeedback: normalizedReviewFeedback,
+              iterationCount: normalizedReviewFeedback ? iterationCount : undefined,
+              priorAttempts: normalizedReviewFeedback ? priorAttempts : undefined,
+            });
 
             const call = await generateWithFallback(
               'production',
               modelTier,
               {
                 agentType: 'production',
-                systemPrompt: layeredPersona?.constraints.length
-                  ? `${formatConstraintsBlock(layeredPersona.constraints)}${produceAgentConfig.instructions}`
-                  : produceAgentConfig.instructions,
+                systemPrompt: buildStageSystemPrompt(produceAgentConfig.instructions, layeredPersona?.constraints ?? []),
                 userMessage,
                 tools: enabledTools.length > 0 ? enabledTools : undefined,
                 toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
