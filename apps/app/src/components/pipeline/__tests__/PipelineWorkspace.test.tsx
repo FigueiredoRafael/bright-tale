@@ -17,9 +17,10 @@ import type { StageRun } from '@brighttale/shared/pipeline/inputs';
 // ── Router / navigation mock ──────────────────────────────────────────────────
 
 let searchParamsStub = new URLSearchParams();
+const mockReplace = vi.fn();
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+  useRouter: () => ({ replace: mockReplace, push: vi.fn() }),
   useSearchParams: () => searchParamsStub,
   usePathname: () => '/projects/proj-1',
   useParams: () => ({ id: 'proj-1' }),
@@ -121,6 +122,49 @@ beforeEach(() => {
   vi.clearAllMocks();
   searchParamsStub = new URLSearchParams();
   mockStream();
+});
+
+// ── Cold-start auto-route to brainstorm ───────────────────────────────────────
+
+describe('PipelineWorkspace — cold-start auto-route to brainstorm', () => {
+  function routedUrls(): string[] {
+    return mockReplace.mock.calls.map((c) => String(c[0]));
+  }
+
+  it('routes to ?stage=brainstorm (no attempt) when no brainstorm run exists — step-by-step lands on the Generate CTA', () => {
+    searchParamsStub = new URLSearchParams();
+    mockStream(EMPTY_STAGE_RUNS); // brainstorm: null
+    render(<PipelineWorkspace projectId={PROJECT_ID} />);
+    expect(mockReplace).toHaveBeenCalled();
+    const urls = routedUrls();
+    expect(urls.some((u) => u.includes('stage=brainstorm'))).toBe(true);
+    expect(urls.every((u) => !u.includes('attempt='))).toBe(true);
+  });
+
+  it('routes to ?stage=brainstorm&attempt=N when the wizard auto-dispatched a brainstorm run (autopilot)', () => {
+    searchParamsStub = new URLSearchParams();
+    mockStream({
+      ...EMPTY_STAGE_RUNS,
+      brainstorm: makeRun({ stage: 'brainstorm', status: 'running', attemptNo: 1 }),
+    });
+    render(<PipelineWorkspace projectId={PROJECT_ID} />);
+    const urls = routedUrls();
+    expect(urls.some((u) => u.includes('stage=brainstorm') && u.includes('attempt=1'))).toBe(true);
+  });
+
+  it('does NOT auto-route when a ?stage= param is already present', () => {
+    searchParamsStub = new URLSearchParams('stage=research');
+    mockStream(EMPTY_STAGE_RUNS);
+    render(<PipelineWorkspace projectId={PROJECT_ID} />);
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('does NOT auto-route in graph view', () => {
+    searchParamsStub = new URLSearchParams('view=graph');
+    mockStream(EMPTY_STAGE_RUNS);
+    render(<PipelineWorkspace projectId={PROJECT_ID} />);
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
 });
 
 // ── Slice 1: Scaffold — ViewToggle in header ──────────────────────────────────

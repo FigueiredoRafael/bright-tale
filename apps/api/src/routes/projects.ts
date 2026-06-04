@@ -266,7 +266,17 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
       // seed_idea_id pre-completes brainstorm (pipeline_state_json above
       // already advances current_stage to 'research'). Best-effort: a
       // dispatch failure must not roll back project creation.
-      if (!data.seed_idea_id && request.userId) {
+      //
+      // Gated to autopilot only: in step-by-step the user drives each stage, so
+      // firing brainstorm on create would run the LLM (and spend credits)
+      // unprompted, contradicting step-by-step semantics. The default mode is
+      // 'step-by-step' (see the insert above), so an unset mode does NOT
+      // auto-dispatch.
+      if (
+        !data.seed_idea_id &&
+        request.userId &&
+        isAutopilotMode(data.mode ?? 'step-by-step')
+      ) {
         const bs = (data.autopilotConfigJson as Record<string, unknown> | undefined)?.brainstorm as
           | Record<string, unknown>
           | undefined;

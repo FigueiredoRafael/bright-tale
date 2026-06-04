@@ -88,17 +88,20 @@ export function PipelineWorkspace({ projectId }: Props) {
   const lastAutoRoutedStageRef = useRef<string | null>(null);
 
   // Cold-start auto-route: when the user lands on /projects/:id with no
-  // ?stage= param (e.g. straight from the wizard), point them at the
-  // brainstorm run that POST /api/projects auto-dispatched. Without this
-  // the Focus panel renders an empty "Select a stage" placeholder despite
-  // having freshly queued work.
+  // ?stage= param (e.g. straight from the wizard), focus the brainstorm stage
+  // so the Focus panel renders the BrainstormEngine instead of an empty
+  // "Select a stage" placeholder.
+  //
+  // - autopilot: the wizard auto-dispatched a brainstorm run — focus it and
+  //   pin its attempt so the running/completed work shows.
+  // - step-by-step: no run is dispatched on create (the user drives) — still
+  //   focus brainstorm so its Generate/import CTA renders ready to use.
   useEffect(() => {
     if (isGraph || hasStageParam) return;
     const brainstorm = stageRuns.brainstorm;
-    if (!brainstorm) return;
     const next = new URLSearchParams(searchParams.toString());
     next.set('stage', 'brainstorm');
-    next.set('attempt', String(brainstorm.attemptNo ?? 1));
+    if (brainstorm) next.set('attempt', String(brainstorm.attemptNo ?? 1));
     lastAutoRoutedStageRef.current = 'brainstorm';
     router.replace(`${pathname}?${next.toString()}`);
   }, [isGraph, hasStageParam, stageRuns.brainstorm, pathname, router, searchParams]);
