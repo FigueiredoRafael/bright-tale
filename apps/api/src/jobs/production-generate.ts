@@ -21,26 +21,11 @@ import {
   buildLayeredPersonaContext,
   loadPersonaForDraft,
 } from '../lib/personas.js'
+import { formatConstraintsBlock, applyProviderDiscount, STAGE_CHANNEL_SELECT } from '../lib/ai/generation/index.js';
 
 // Re-exported for backward-compat with existing tests
 // (apps/api/src/jobs/__tests__/production-generate-persona.test.ts imports from here)
 export { buildPersonaContext, buildPersonaVoice, loadPersonaForDraft }
-
-function formatConstraintsBlock(constraints: string[]): string {
-  if (constraints.length === 0) return ''
-  const lines = constraints.map(c => `- ${c}`).join('\n')
-  return `## Content Constraints\nThe following rules are non-negotiable and override all other instructions:\n${lines}\n\n`
-}
-
-/**
- * When the user runs everything locally via Ollama, our infra cost is zero —
- * so we charge nothing in internal credits either. Any other provider hits a
- * paid API and is billed at full rate.
- */
-function applyProviderDiscount(cost: number, provider?: string): number {
-  if (provider === 'ollama') return 0;
-  return cost;
-}
 
 interface ProductionGenerateEvent {
   name: 'production/generate';
@@ -138,7 +123,7 @@ export const productionGenerate = inngest.createFunction(
         if (!draft.channel_id) return null;
         const { data } = await sb
           .from('channels')
-          .select('name, niche, language, tone, presentation_style')
+          .select(STAGE_CHANNEL_SELECT)
           .eq('id', draft.channel_id as string)
           .maybeSingle();
         return data;

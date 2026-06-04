@@ -29,6 +29,7 @@ import { buildCanonicalCoreMessage } from '../lib/ai/prompts/production.js';
 import { loadPlatformSettings } from '../lib/platform-settings.js';
 import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
 import { loadPersonaForDraft, buildLayeredPersonaContext } from '../lib/personas.js';
+import { formatConstraintsBlock, applyProviderDiscount, STAGE_CHANNEL_SELECT } from '../lib/ai/generation/index.js';
 import {
   markRunning,
   markCompleted,
@@ -52,17 +53,6 @@ type Medium = 'blog' | 'video' | 'shorts' | 'podcast';
 
 function isMedium(v: unknown): v is Medium {
   return v === 'blog' || v === 'video' || v === 'shorts' || v === 'podcast';
-}
-
-function formatConstraintsBlock(constraints: string[]): string {
-  if (constraints.length === 0) return '';
-  const lines = constraints.map((c) => `- ${c}`).join('\n');
-  return `## Content Constraints\nThe following rules are non-negotiable and override all other instructions:\n${lines}\n\n`;
-}
-
-function applyProviderDiscount(cost: number, provider?: string): number {
-  if (provider === 'ollama') return 0;
-  return cost;
 }
 
 export const pipelineCanonicalDispatch = inngest.createFunction(
@@ -262,7 +252,7 @@ export const pipelineCanonicalDispatch = inngest.createFunction(
         if (!loadedDraft.channel_id) return null;
         const { data } = await sb
           .from('channels')
-          .select('name, niche, language, tone, presentation_style')
+          .select(STAGE_CHANNEL_SELECT)
           .eq('id', loadedDraft.channel_id as string)
           .maybeSingle();
         return data;

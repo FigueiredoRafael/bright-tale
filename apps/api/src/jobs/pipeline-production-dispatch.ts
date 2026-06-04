@@ -43,10 +43,11 @@ import { calculateDraftCost } from '../lib/calculate-draft-cost.js';
 import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
 import { loadPersonaForDraft, buildLayeredPersonaContext } from '../lib/personas.js';
 import {
-  computeRubricScore,
-  extractRubricEvaluation,
-  getRubricForType,
-} from '../lib/ai/scoring/computeRubricScore.js';
+  formatConstraintsBlock,
+  applyProviderDiscount,
+  normalizeReviewFeedback,
+  STAGE_CHANNEL_SELECT,
+} from '../lib/ai/generation/index.js';
 import {
   markRunning,
   markCompleted,
@@ -72,17 +73,6 @@ type Medium = 'blog' | 'video' | 'shorts' | 'podcast';
 
 function isMedium(v: unknown): v is Medium {
   return v === 'blog' || v === 'video' || v === 'shorts' || v === 'podcast';
-}
-
-function formatConstraintsBlock(constraints: string[]): string {
-  if (constraints.length === 0) return '';
-  const lines = constraints.map((c) => `- ${c}`).join('\n');
-  return `## Content Constraints\nThe following rules are non-negotiable and override all other instructions:\n${lines}\n\n`;
-}
-
-function applyProviderDiscount(cost: number, provider?: string): number {
-  if (provider === 'ollama') return 0;
-  return cost;
 }
 
 export const pipelineProductionDispatch = inngest.createFunction(
@@ -320,7 +310,7 @@ export const pipelineProductionDispatch = inngest.createFunction(
         if (!loadedDraft.channel_id) return null;
         const { data } = await sb
           .from('channels')
-          .select('name, niche, language, tone, presentation_style, video_style')
+          .select(STAGE_CHANNEL_SELECT)
           .eq('id', loadedDraft.channel_id as string)
           .maybeSingle();
         return data;
@@ -364,88 +354,12 @@ export const pipelineProductionDispatch = inngest.createFunction(
 
       await assertNotAborted(projectId, draftId, sb);
 
-      // Normalise review feedback for buildReproduceMessage (same logic as
-      // production-produce.ts: flatten nested wrapper into flat shape).
-      const normalizedReviewFeedback = ((): {
-        overall_verdict?: string;
-        score?: number | null;
-        critical_issues?: string[];
-        minor_issues?: string[];
-        strengths?: string[];
-      } | undefined => {
-        const raw = reviewFeedback;
-        if (!raw || typeof raw !== 'object') return undefined;
-        const block = (
-          (raw[`${medium}_review`] as Record<string, unknown> | undefined) ?? raw
-        ) as Record<string, unknown>;
-        const issues = (block.issues as Record<string, unknown> | undefined) ?? {};
-        const rubric = (block.rubric_checks as Record<string, unknown> | undefined) ?? {};
-
-        const fmtIssue = (i: unknown): string => {
-          if (typeof i === 'string') return i;
-          if (!i || typeof i !== 'object') return '';
-          const obj = i as Record<string, unknown>;
-          const issueText = (obj.issue as string) ?? '';
-          const fix = (obj.suggested_fix as string) ?? '';
-          const loc = (obj.location as string) ?? '';
-          const head = loc ? `[${loc}] ${issueText}` : issueText;
-          return fix ? `${head} — Fix: ${fix}` : head;
-        };
-        const dedupe = (arr: string[]): string[] => Array.from(new Set(arr.filter(Boolean)));
-
-        const criticalDetailed = Array.isArray(issues.critical)
-          ? (issues.critical as unknown[]).map(fmtIssue)
-          : [];
-        const minorDetailed = Array.isArray(issues.minor)
-          ? (issues.minor as unknown[]).map(fmtIssue)
-          : [];
-        const criticalRubric = Array.isArray(rubric.critical_issues)
-          ? (rubric.critical_issues as string[])
-          : [];
-        const minorRubric = Array.isArray(rubric.minor_issues)
-          ? (rubric.minor_issues as string[])
-          : [];
-        const blockStrengths = Array.isArray(block.strengths) ? (block.strengths as string[]) : [];
-        const rubricStrengths = Array.isArray(rubric.strengths)
-          ? (rubric.strengths as string[])
-          : [];
-
-        const rubricForType = getRubricForType(medium as string);
-        const criticalFromRubric: string[] = [];
-        if (rubricForType) {
-          const rubricEval = extractRubricEvaluation(raw, medium as string);
-          const computed = computeRubricScore(rubricForType, rubricEval);
-          for (const f of computed.failures) {
-            const evidenceLine =
-              f.evidence && f.evidence !== '(no evidence provided)'
-                ? `Evidence: ${f.evidence}. `
-                : '';
-            criticalFromRubric.push(
-              `[${f.key}] ${f.title} — FAIL. ${evidenceLine}Pass condition: ${f.passWhen}`,
-            );
-          }
-        }
-
-        const critical_issues = dedupe([...criticalFromRubric, ...criticalDetailed, ...criticalRubric]);
-        const minor_issues = dedupe([...minorDetailed, ...minorRubric]);
-        const strengths = dedupe([...blockStrengths, ...rubricStrengths]);
-
-        if (
-          critical_issues.length === 0 &&
-          minor_issues.length === 0 &&
-          strengths.length === 0
-        ) {
-          return undefined;
-        }
-        return {
-          overall_verdict:
-            (block.verdict as string) ?? (block.quality_tier as string) ?? undefined,
-          score: (loadedDraft.review_score as number | null) ?? null,
-          critical_issues,
-          minor_issues,
-          strengths,
-        };
-      })();
+      // Normalise review feedback for buildReproduceMessage.
+      const normalizedReviewFeedback = normalizeReviewFeedback({
+        raw: reviewFeedback ?? null,
+        type: medium as string,
+        reviewScore: (loadedDraft.review_score as number | null) ?? null,
+      });
 
       const approvedCardsObj =
         approvedCards && typeof approvedCards === 'object' && !Array.isArray(approvedCards)
