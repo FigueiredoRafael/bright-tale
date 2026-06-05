@@ -1713,7 +1713,7 @@ export type Database = {
           },
         ]
       }
-      credit_settings: {
+      platform_settings: {
         Row: {
           cost_blog: number
           cost_canonical_core: number
@@ -1727,6 +1727,12 @@ export type Database = {
           created_at: string
           id: string
           lock_key: string
+          review_approve_score: number
+          review_max_iterations: number
+          review_reject_threshold: number
+          review_stagnation_min_delta: number
+          review_stagnation_window: number
+          stage_finish_timeout_seconds: number
           updated_at: string
         }
         Insert: {
@@ -1742,6 +1748,12 @@ export type Database = {
           created_at?: string
           id?: string
           lock_key?: string
+          review_approve_score?: number
+          review_max_iterations?: number
+          review_reject_threshold?: number
+          review_stagnation_min_delta?: number
+          review_stagnation_window?: number
+          stage_finish_timeout_seconds?: number
           updated_at?: string
         }
         Update: {
@@ -1757,6 +1769,12 @@ export type Database = {
           created_at?: string
           id?: string
           lock_key?: string
+          review_approve_score?: number
+          review_max_iterations?: number
+          review_reject_threshold?: number
+          review_stagnation_min_delta?: number
+          review_stagnation_window?: number
+          stage_finish_timeout_seconds?: number
           updated_at?: string
         }
         Relationships: []

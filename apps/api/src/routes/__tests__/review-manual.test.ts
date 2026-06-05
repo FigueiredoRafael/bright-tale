@@ -94,7 +94,7 @@ vi.mock('../../lib/supabase/index.js', () => ({
           insert: async () => ({ error: null }),
         };
       }
-      if (table === 'credit_settings') {
+      if (table === 'platform_settings') {
         return { select: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) };
       }
       if (table === 'stage_runs') {

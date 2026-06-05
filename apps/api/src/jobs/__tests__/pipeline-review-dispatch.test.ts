@@ -71,6 +71,16 @@ let draftRow: Record<string, unknown> | null;
 let stageRunsUpdateMock: ReturnType<typeof vi.fn>;
 let contentDraftsUpdateMock: ReturnType<typeof vi.fn>;
 
+// Per-test configurable track row. `null` means "no track found" (track_id is
+// either absent or the row does not exist). Tests that need a track override
+// set this before running the handler.
+let trackRow: Record<string, unknown> | null;
+
+// Per-test configurable project row autopilot_config_json. Defaults to the
+// standard test config (review: autoApprove=90, hardFail=40, maxIter=5).
+// Tests that need a different project config reassign this before the handler.
+let projectAutopilotConfigJson: Record<string, unknown>;
+
 vi.mock('../../lib/supabase/index.js', () => ({
   createServiceClient: () => ({
     from: (table: string) => {
@@ -132,13 +142,7 @@ vi.mock('../../lib/supabase/index.js', () => ({
               maybeSingle: () => Promise.resolve({
                 data: {
                   id: PROJECT_ID,
-                  autopilot_config_json: {
-                    review: {
-                      autoApproveThreshold: 90,
-                      hardFailThreshold: 40,
-                      maxIterations: 5,
-                    },
-                  },
+                  autopilot_config_json: projectAutopilotConfigJson,
                 },
                 error: null,
               }),
@@ -151,6 +155,17 @@ vi.mock('../../lib/supabase/index.js', () => ({
       if (table === 'review_iterations') {
         return {
           insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+        };
+      }
+      // Track lookup: the dispatcher loads the track row when stageRun.track_id
+      // is non-null so it can feed track.autopilot_config_json into the resolver.
+      if (table === 'tracks') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () => Promise.resolve({ data: trackRow, error: null }),
+            }),
+          }),
         };
       }
       return {};
@@ -180,11 +195,24 @@ describe('pipeline-review-dispatch', () => {
     stageRunsUpdateMock = vi.fn(() => makeUpdateChain());
     contentDraftsUpdateMock = vi.fn(() => makeUpdateChain());
 
+    // Default: no track association. Tests that exercise track overrides must
+    // set stageRunRow.track_id and trackRow before invoking the handler.
+    trackRow = null;
+    // Default project config. Tests that need no-review-config set this to {}.
+    projectAutopilotConfigJson = {
+      review: {
+        autoApproveThreshold: 90,
+        hardFailThreshold: 40,
+        maxIterations: 5,
+      },
+    };
+
     stageRunRow = {
       id: STAGE_RUN_ID,
       project_id: PROJECT_ID,
       stage: 'review',
       status: 'queued',
+      track_id: null,
       input_json: { autoApproveThreshold: 90 },
     };
     priorDraftStageRun = {
@@ -389,4 +417,157 @@ describe('pipeline-review-dispatch', () => {
       .find((r) => r.status === 'failed');
     expect(failedRow).toBeUndefined();
   });
+
+  // ── Per-track config resolution (BRI-25) ──────────────────────────────────
+
+  it('track override wins: track autoApproveThreshold=80 beats project=90 → 85-score draft is approved', async () => {
+    // Project says autoApprove at 90, track overrides to 80. A score of 85
+    // (8/10 rubric passes) is below 90 but above 80 — with the track override
+    // the draft should be approved; without it (bug), it would be revision_required.
+    stageRunRow = { ...stageRunRow, track_id: 'track-abc', input_json: {} };
+    trackRow = {
+      id: 'track-abc',
+      autopilot_config_json: {
+        review: { autoApproveThreshold: 80 },
+      },
+    };
+
+    // 8/10 rubric passes → score 80 → should be approved because track threshold = 80
+    generateWithFallbackMock.mockResolvedValueOnce({
+      result: {
+        overall_verdict: 'revision_required', // LLM says revise, but rubric score >= 80 → approved
+        blog_review: {
+          score: 80,
+          rubric_evaluation: makeBlogRubricEval(8),
+        },
+      },
+      providerName: 'mock',
+      model: 'mock',
+      usage: {},
+    });
+
+    const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
+
+    await (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
+
+    const draftUpdate = contentDraftsUpdateMock.mock.calls[0][0];
+    // Track threshold (80) applied → score 80 >= 80 → approved
+    expect(draftUpdate.review_verdict).toBe('approved');
+    expect(draftUpdate.status).toBe('approved');
+  });
+
+  it('no track (track_id null): falls back to project autoApproveThreshold=90', async () => {
+    // stageRunRow.track_id is already null by default (set in beforeEach).
+    // Project threshold = 90. Score of 80 (8/10 passes) is below 90 → revision_required.
+    generateWithFallbackMock.mockResolvedValueOnce({
+      result: {
+        overall_verdict: 'revision_required',
+        blog_review: {
+          score: 80,
+          rubric_evaluation: makeBlogRubricEval(8),
+        },
+      },
+      providerName: 'mock',
+      model: 'mock',
+      usage: {},
+    });
+
+    const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
+
+    await (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
+
+    const draftUpdate = contentDraftsUpdateMock.mock.calls[0][0];
+    // Project threshold (90) applied → score 80 < 90 → revision_required
+    expect(draftUpdate.review_verdict).toBe('revision_required');
+    expect(draftUpdate.status).toBe('in_review');
+  });
+
+  it('neither project nor track config: resolver FALLBACK used (autoApprove=90, hardFail=50, maxIter=3)', async () => {
+    // Set projectAutopilotConfigJson to empty so neither project nor track has a
+    // review slot. The resolver falls back to FALLBACK_BY_STAGE.review =
+    // { autoApprove: 90, hardFail: 50, maxIter: 3 }.
+    //
+    // With FALLBACK hardFail=50: a score of 45 (below 50) → rejected.
+    // Under the old bug (hardFail=40): 45 >= 40 → revision_required. This
+    // assertion is the discriminating signal that proves the resolver is used.
+    projectAutopilotConfigJson = {}; // no review slot → resolver returns FALLBACK
+    stageRunRow = { ...stageRunRow, track_id: null, input_json: {} };
+
+    // 4/10 rubric passes → score 40; wait, we need score < 50 but > 40 to distinguish.
+    // Use a non-rubric path: override draftRow.type to something without a rubric
+    // so the LLM score field is used directly. 'podcast' has no rubric.
+    draftRow = { ...(draftRow as Record<string, unknown>), type: 'podcast' };
+
+    generateWithFallbackMock.mockResolvedValueOnce({
+      result: {
+        overall_verdict: 'revision_required',
+        podcast_review: { score: 45 },
+      },
+      providerName: 'mock',
+      model: 'mock',
+      usage: {},
+    });
+
+    const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
+
+    await (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
+
+    const draftUpdate = contentDraftsUpdateMock.mock.calls[0][0];
+    // FALLBACK hardFailThreshold=50: score 45 < 50 → rejected
+    expect(draftUpdate.review_verdict).toBe('rejected');
+    expect(draftUpdate.status).toBe('failed');
+  });
+
+  it('input.* wins over track+project: input_json.autoApproveThreshold used even when track differs', async () => {
+    // input overrides take priority: input says 95, track says 80, project says 90.
+    // Score 80 (8/10 passes, rubric pct=80 → deriveVerdict=revision_required):
+    //   • without input override: track threshold=80 → 80 >= 80 → approved
+    //   • with input override=95: 80 < 95 → revision_required  ← expected
+    stageRunRow = {
+      ...stageRunRow,
+      track_id: 'track-xyz',
+      input_json: { autoApproveThreshold: 95 },
+    };
+    trackRow = {
+      id: 'track-xyz',
+      autopilot_config_json: {
+        review: { autoApproveThreshold: 80 },
+      },
+    };
+
+    generateWithFallbackMock.mockResolvedValueOnce({
+      result: {
+        overall_verdict: 'revision_required',
+        blog_review: {
+          score: 80,
+          rubric_evaluation: makeBlogRubricEval(8), // 8/10 → score=80 → pct=80 → revision_required
+        },
+      },
+      providerName: 'mock',
+      model: 'mock',
+      usage: {},
+    });
+
+    const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
+
+    await (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
+
+    const draftUpdate = contentDraftsUpdateMock.mock.calls[0][0];
+    // input threshold (95) wins over track (80) → score 80 < 95 → revision_required
+    expect(draftUpdate.review_verdict).toBe('revision_required');
+    expect(draftUpdate.status).toBe('in_review');
+  });
 });
+

@@ -1,16 +1,58 @@
 /**
- * pipeline-production-dispatch (T2.6) — bridges `pipeline/stage.requested`
- * (stage='production') to the legacy `production/produce` worker.
+ * pipeline-production-dispatch (D66, native) — handles
+ * `pipeline/stage.requested` for stage='production'.
  *
- * Track-scoped: reads the Stage Run's `track_id`, resolves the Track's
- * medium (wins over input.type), finds the prior canonical Stage Run's
- * content_draft (project-scoped), reuses it when `type` matches the Track
- * medium, else forks a new content_draft copying canonical_core_json. The
- * produce worker writes the Stage Run terminal status.
+ * Mirrors pipeline-review-dispatch: AI work runs INLINE via `step.run`,
+ * lifecycle transitions go exclusively through stage-run-writer helpers,
+ * and NO `production/produce` event is emitted.
+ *
+ * Normal path (fresh produce):
+ *   CAS claim (queued→running) → deriveDraft (memoized per-track copy)
+ *   → markRunning → load context → produce AI → save draft_json
+ *   → markCompleted({ revision: false })
+ *
+ * Revision path (productionParams.review_feedback present):
+ *   deriveDraft → markRunning → load context → reproduce AI → save draft_json
+ *   → markCompleted({ revision: true, iterationCount })
+ *
+ * Error branches:
+ *   quota → markAwaitingUser(provider_quota_exhausted)
+ *   JobAborted → markAborted (no rethrow)
+ *   generic → markFailed + rethrow
+ *
+ * Idempotency: queued AND running allowed through (running = Inngest replay).
+ * Terminal statuses (completed/failed/aborted/skipped) bail immediately.
+ * Every side-effect (derive, AI, saves, milestone emits) inside step.run.
  */
 import { inngest } from './client.js';
+import { generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
+import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
+import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
 import { createServiceClient } from '../lib/supabase/index.js';
-import { markFailed, markRunning } from '../lib/pipeline/stage-run-writer.js';
+import { loadIdeaContext } from '../lib/ai/loadIdeaContext.js';
+import { loadPriorReviewAttempts } from '../lib/ai/loadPriorReviewAttempts.js';
+import { withReservation } from './utils/with-reservation.js';
+import { emitJobEvent } from './emitter.js';
+import { logUsage } from '../lib/ai/usage-log.js';
+import { loadPlatformSettings } from '../lib/platform-settings.js';
+import { calculateDraftCost } from '../lib/calculate-draft-cost.js';
+import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
+import { loadPersonaForDraft, buildLayeredPersonaContext } from '../lib/personas.js';
+import {
+  applyProviderDiscount,
+  normalizeReviewFeedback,
+  STAGE_CHANNEL_SELECT,
+  buildStageSystemPrompt,
+  buildStageUserMessage,
+  deriveEffectiveProductionParams,
+} from '../lib/ai/generation/index.js';
+import {
+  markRunning,
+  markCompleted,
+  markFailed,
+  markAwaitingUser,
+  markAborted,
+} from '../lib/pipeline/stage-run-writer.js';
 import { deriveDraft } from '../lib/content-drafts/derive.js';
 import { ApiError } from '../lib/api/errors.js';
 
@@ -23,7 +65,6 @@ interface StageRequestedEvent {
   };
 }
 
- 
 type Sb = any;
 
 type Medium = 'blog' | 'video' | 'shorts' | 'podcast';
@@ -36,9 +77,16 @@ export const pipelineProductionDispatch = inngest.createFunction(
   {
     id: 'pipeline-production-dispatch',
     retries: 0,
+    timeouts: { finish: '5m' },
     triggers: [{ event: 'pipeline/stage.requested', if: "event.data.stage == 'production'" }],
   },
-  async ({ event }: { event: StageRequestedEvent }) => {
+  async ({
+    event,
+    step,
+  }: {
+    event: StageRequestedEvent;
+    step: { run: <T>(id: string, fn: () => Promise<T>) => Promise<T> };
+  }) => {
     if (event.data.stage !== 'production') return;
 
     const sb: Sb = createServiceClient();
@@ -51,7 +99,13 @@ export const pipelineProductionDispatch = inngest.createFunction(
       .eq('id', stageRunId)
       .maybeSingle();
     if (!stageRun) return;
-    if (stageRun.status !== 'queued') return;
+
+    // Idempotency: bail on terminal statuses. queued is normal entry;
+    // running is valid on Inngest replays (step results are cached).
+    if (
+      stageRun.status !== 'queued' &&
+      stageRun.status !== 'running'
+    ) return;
 
     const trackId = stageRun.track_id as string | null | undefined;
     if (!trackId) {
@@ -129,18 +183,6 @@ export const pipelineProductionDispatch = inngest.createFunction(
       return;
     }
 
-    const modelTier = (input.modelTier as string | undefined) ?? 'standard';
-    const provider = input.provider as string | undefined;
-    const model = input.model as string | undefined;
-    const productionParams = (input.productionParams as Record<string, unknown> | undefined) ?? null;
-
-    // Issue #210 — auto-pilot uses the same deriveDraft helper that the
-    // step-by-step ProductionEngine calls via POST /api/content-drafts/:id/derive.
-    // Always derives a per-track row (track_id set) with canonical_core_json
-    // copied + empty draft_json. Idempotent at DB level via the partial unique
-    // index on (project_id, track_id). The "reuse canonical when type matches"
-    // optimization is gone: the canonical row stays untouched (track_id=null),
-    // every track gets its own derived row.
     if (!userId) {
       await markFailed(sb, stageRunId, {
         ...ctx,
@@ -148,47 +190,318 @@ export const pipelineProductionDispatch = inngest.createFunction(
       });
       return;
     }
-    let draftId: string;
-    try {
-      const result = await deriveDraft(sb, {
-        sourceId: canonicalDraftId,
-        trackId,
-        medium,
-        userId,
-      });
-      draftId = result.id;
-    } catch (err) {
-      const msg =
-        err instanceof ApiError
-          ? `${err.code}: ${err.message}`
-          : err instanceof Error
-            ? err.message
-            : 'Unknown error';
+
+    const modelTier = (input.modelTier as string | undefined) ?? 'standard';
+    const provider = input.provider as string | undefined;
+    const model = input.model as string | undefined;
+    const productionParams = (input.productionParams as Record<string, unknown> | undefined) ?? null;
+
+    const safeOrgId = (orgId as string | null) ?? '';
+    const safeUserId = userId;
+
+    // Memoize deriveDraft inside step.run: replay-safe (idempotent via DB
+    // partial unique index on (project_id, track_id)).
+    const derived = await step.run('derive-per-track-draft', async () => {
+      try {
+        const result = await deriveDraft(sb, {
+          sourceId: canonicalDraftId,
+          trackId,
+          medium,
+          userId: safeUserId,
+        });
+        return { id: result.id, errorMessage: null };
+      } catch (err) {
+        const msg =
+          err instanceof ApiError
+            ? `${err.code}: ${err.message}`
+            : err instanceof Error
+              ? err.message
+              : 'Unknown error';
+        return { id: null, errorMessage: msg };
+      }
+    });
+
+    if (!derived.id) {
       await markFailed(sb, stageRunId, {
         ...ctx,
-        errorMessage: `Failed to derive per-track draft: ${msg}`,
+        errorMessage: `Failed to derive per-track draft: ${derived.errorMessage ?? 'unknown'}`,
       });
       return;
     }
 
-    await markRunning(sb, stageRunId, {
-      ...ctx,
-      payloadRef: { kind: 'content_draft', id: draftId },
+    const draftId = derived.id;
+
+    // Wrap in step.run so the queued→running transition is memoized: Inngest
+    // re-executes the function body at each step boundary, and a bare
+    // markRunning would re-stamp started_at on every replay.
+    await step.run('mark-running', async () => {
+      await markRunning(sb, stageRunId, {
+        ...ctx,
+        payloadRef: { kind: 'content_draft', id: draftId },
+      });
     });
 
-    await inngest.send({
-      name: 'production/produce',
-      data: {
-        draftId,
-        orgId,
-        userId,
-        type: medium,
-        modelTier,
+    // Detect revision path: review_feedback in productionParams
+    const reviewFeedback =
+      productionParams && typeof productionParams === 'object'
+        ? ((productionParams as Record<string, unknown>).review_feedback as
+            | Record<string, unknown>
+            | undefined)
+        : undefined;
+
+    try {
+      const creditSettings = await loadPlatformSettings(sb);
+      const produceCost = applyProviderDiscount(
+        calculateDraftCost(medium, creditSettings),
+        provider,
+      );
+
+      await assertNotAborted(projectId, draftId, sb);
+
+      await step.run('emit-loading-produce', async () => {
+        await emitJobEvent(draftId, 'production', 'loading_prompt', `Carregando agente ${medium}…`);
+      });
+
+      const loadedDraft = (await step.run('load-draft', async () => {
+        const { data } = await sb
+          .from('content_drafts')
+          .select('*')
+          .eq('id', draftId)
+          .maybeSingle();
+        return data;
+      })) as Record<string, unknown> | null;
+
+      if (!loadedDraft) {
+        await markFailed(sb, stageRunId, {
+          ...ctx,
+          errorMessage: `content_draft ${draftId} not found`,
+        });
+        return;
+      }
+
+      await assertNotAborted(projectId, draftId, sb);
+
+      const persona = (await step.run('load-persona', async () => {
+        return loadPersonaForDraft(loadedDraft, sb);
+      })) as Awaited<ReturnType<typeof loadPersonaForDraft>>;
+
+      const layeredPersona = (await step.run('load-persona-constraints', async () => {
+        if (!persona) return null;
+        return buildLayeredPersonaContext(persona, sb);
+      })) as Awaited<ReturnType<typeof buildLayeredPersonaContext>> | null;
+
+      await assertNotAborted(projectId, draftId, sb);
+
+      const approvedCards = (await step.run('load-research', async () => {
+        if (!loadedDraft.research_session_id) return null;
+        const { data } = await sb
+          .from('research_sessions')
+          .select('approved_cards_json, cards_json')
+          .eq('id', loadedDraft.research_session_id as string)
+          .maybeSingle();
+        return data?.approved_cards_json ?? data?.cards_json ?? null;
+      })) as unknown;
+
+      await assertNotAborted(projectId, draftId, sb);
+
+      const channelContext = (await step.run('load-channel', async () => {
+        if (!loadedDraft.channel_id) return null;
+        const { data } = await sb
+          .from('channels')
+          .select(STAGE_CHANNEL_SELECT)
+          .eq('id', loadedDraft.channel_id as string)
+          .maybeSingle();
+        return data;
+      })) as Record<string, unknown> | null;
+
+      await assertNotAborted(projectId, draftId, sb);
+
+      const ideaContext = (await step.run('load-idea', async () => {
+        if (!loadedDraft.idea_id) return null;
+        return loadIdeaContext(loadedDraft.idea_id as string);
+      })) as Awaited<ReturnType<typeof loadIdeaContext>> | null;
+
+      await assertNotAborted(projectId, draftId, sb);
+
+      const produceAgentConfig = (await step.run('load-produce-prompt', async () => {
+        const primary = await loadAgentConfig(medium);
+        if (primary.instructions) return primary;
+        return loadAgentConfig('production');
+      })) as Awaited<ReturnType<typeof loadAgentConfig>>;
+
+      const { provider: resolvedProvider, model: resolvedModel } = resolveProviderOverride(
         provider,
         model,
+        produceAgentConfig,
+      );
+
+      await assertNotAborted(projectId, draftId, sb);
+
+      await step.run('emit-calling-produce', async () => {
+        const label = resolvedProvider
+          ? `${resolvedProvider}${resolvedModel ? ` (${resolvedModel})` : ''}`
+          : modelTier;
+        await emitJobEvent(
+          draftId,
+          'production',
+          'calling_provider',
+          `Escrevendo ${medium} com ${label}…`,
+          { stage: 'produce', provider: resolvedProvider, model: resolvedModel },
+        );
+      });
+
+      await assertNotAborted(projectId, draftId, sb);
+
+      // Normalise review feedback for buildReproduceMessage.
+      const normalizedReviewFeedback = normalizeReviewFeedback({
+        raw: reviewFeedback ?? null,
+        type: medium as string,
+        reviewScore: (loadedDraft.review_score as number | null) ?? null,
+      });
+
+      const iterationCount =
+        typeof (loadedDraft.iteration_count as number | null) === 'number'
+          ? ((loadedDraft.iteration_count as number) + 1)
+          : 1;
+
+      // Derive video_style_config.channel_type from channel.video_style.
+      // Now applied in shared assembly for BOTH dispatcher and worker paths.
+      const effectiveProductionParams = deriveEffectiveProductionParams(
+        medium as string,
+        channelContext,
         productionParams,
-        stageRunId,
-      },
-    });
+      );
+
+      await withReservation(
+        safeOrgId,
+        safeUserId,
+        produceCost,
+        `production-${medium}`,
+        'text',
+        { draftId, type: medium },
+        async () => {
+          const draftJson = await step.run('generate-produce', async () => {
+            const enabledTools = resolveTools(produceAgentConfig.tools).filter(
+              () => resolvedProvider !== 'ollama',
+            );
+
+            const priorAttempts = normalizedReviewFeedback
+              ? await loadPriorReviewAttempts(sb, draftId, medium as string, { skipLatest: true })
+              : [];
+
+            const ctx = {
+              draft: loadedDraft,
+              persona,
+              layeredPersona,
+              channel: channelContext,
+              idea: ideaContext,
+              researchCards: approvedCards,
+            };
+            const userMessage = buildStageUserMessage({
+              stage: normalizedReviewFeedback ? 'reproduce' : 'produce',
+              ctx,
+              productionParams: effectiveProductionParams,
+              reviewFeedback: normalizedReviewFeedback,
+              iterationCount: normalizedReviewFeedback ? iterationCount : undefined,
+              priorAttempts: normalizedReviewFeedback ? priorAttempts : undefined,
+            });
+
+            const call = await generateWithFallback(
+              'production',
+              modelTier,
+              {
+                agentType: 'production',
+                systemPrompt: buildStageSystemPrompt(produceAgentConfig.instructions, layeredPersona?.constraints ?? []),
+                userMessage,
+                tools: enabledTools.length > 0 ? enabledTools : undefined,
+                toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
+              },
+              {
+                provider: resolvedProvider,
+                model: resolvedModel,
+                logContext: {
+                  userId: safeUserId,
+                  orgId: safeOrgId,
+                  channelId: (loadedDraft.channel_id as string | null) ?? undefined,
+                  sessionId: draftId,
+                  sessionType: 'production',
+                },
+              },
+            );
+            await logUsage({
+              orgId: safeOrgId,
+              userId: safeUserId,
+              channelId: (loadedDraft.channel_id as string | null) ?? null,
+              stage: 'production',
+              subStage: `produce-${medium}`,
+              sessionId: draftId,
+              sessionType: 'production',
+              provider: call.providerName,
+              model: call.model,
+              usage: call.usage,
+            });
+            return call.result;
+          });
+
+          await assertNotAborted(projectId, draftId, sb);
+
+          await step.run('emit-saving', async () => {
+            await emitJobEvent(draftId, 'production', 'saving', 'Salvando rascunho…');
+          });
+
+          await assertNotAborted(projectId, draftId, sb);
+
+          await step.run('save-produce', async () => {
+            await sb
+              .from('content_drafts')
+              .update({ draft_json: draftJson, status: 'draft' })
+              .eq('id', draftId);
+          });
+        },
+      );
+
+      await step.run('emit-produce-done', async () => {
+        const label =
+          medium === 'blog'
+            ? 'Post'
+            : medium === 'video'
+              ? 'Vídeo'
+              : medium === 'shorts'
+                ? 'Shorts'
+                : 'Podcast';
+        await emitJobEvent(draftId, 'production', 'completed', `${label} pronto!`, {
+          draftId,
+          type: medium,
+          stage: 'produce',
+        });
+      });
+
+      const outcome: Record<string, unknown> = reviewFeedback
+        ? { revision: true, iterationCount }
+        : { revision: false };
+
+      await markCompleted(sb, stageRunId, {
+        ...ctx,
+        payloadRef: { kind: 'content_draft', id: draftId },
+        outcome,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      console.error(err);
+      if (err instanceof JobAborted) {
+        await markAborted(sb, stageRunId, { ...ctx });
+        return;
+      }
+      if (isQuotaExhausted(err)) {
+        await markAwaitingUser(sb, stageRunId, {
+          ...ctx,
+          awaitingReason: 'provider_quota_exhausted',
+          markStarted: true,
+        });
+        return;
+      }
+      await markFailed(sb, stageRunId, { ...ctx, errorMessage: message });
+      throw err;
+    }
   },
 );

@@ -1,17 +1,46 @@
 /**
- * pipeline-canonical-dispatch (T2.6) — bridges `pipeline/stage.requested`
- * (stage='canonical') to the canonical-core phase of the production worker.
+ * pipeline-canonical-dispatch (D66, native) — handles
+ * `pipeline/stage.requested` for stage='canonical'.
  *
- * Project-scoped (no track_id): the canonical core is the shared foundation
- * that every Track's `production` Stage Run consumes downstream. Unlike the
- * legacy draft dispatcher, this one tells the worker (via `phase: 'canonical'`)
- * to terminal-write the Stage Run after canonical-core and SKIP the chain
- * into produce — produce is owned by the per-Track production dispatcher.
+ * Mirrors pipeline-review-dispatch: AI work runs INLINE via `step.run`,
+ * lifecycle transitions go exclusively through stage-run-writer helpers,
+ * and NO `production/generate` event is emitted.
+ *
+ * Normal path:
+ *   CAS claim (queued→running) → create shared content_draft (memoized)
+ *   → load context → canonical-core AI → save canonical_core_json
+ *   → markCompleted({ stage:'canonical', payloadRef })
+ *
+ * Idempotency: queued AND running are both allowed through (running = Inngest
+ * replay sees cached step results and must not short-circuit). Terminal
+ * statuses (completed/failed/aborted/skipped) bail immediately.
  */
 import { inngest } from './client.js';
+import { generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
+import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
+import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { resolveIdeaArchiveFromBrainstorm } from '../lib/pipeline/idea-resolution.js';
-import { markFailed, markRunning } from '../lib/pipeline/stage-run-writer.js';
+import { loadIdeaContext } from '../lib/ai/loadIdeaContext.js';
+import { withReservation } from './utils/with-reservation.js';
+import { emitJobEvent } from './emitter.js';
+import { logUsage } from '../lib/ai/usage-log.js';
+import { loadPlatformSettings } from '../lib/platform-settings.js';
+import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
+import { loadPersonaForDraft, buildLayeredPersonaContext } from '../lib/personas.js';
+import {
+  applyProviderDiscount,
+  STAGE_CHANNEL_SELECT,
+  buildStageSystemPrompt,
+  buildStageUserMessage,
+} from '../lib/ai/generation/index.js';
+import {
+  markRunning,
+  markCompleted,
+  markFailed,
+  markAwaitingUser,
+  markAborted,
+} from '../lib/pipeline/stage-run-writer.js';
 
 interface StageRequestedEvent {
   name: 'pipeline/stage.requested';
@@ -22,7 +51,6 @@ interface StageRequestedEvent {
   };
 }
 
- 
 type Sb = any;
 
 type Medium = 'blog' | 'video' | 'shorts' | 'podcast';
@@ -35,9 +63,16 @@ export const pipelineCanonicalDispatch = inngest.createFunction(
   {
     id: 'pipeline-canonical-dispatch',
     retries: 0,
+    timeouts: { finish: '5m' },
     triggers: [{ event: 'pipeline/stage.requested', if: "event.data.stage == 'canonical'" }],
   },
-  async ({ event }: { event: StageRequestedEvent }) => {
+  async ({
+    event,
+    step,
+  }: {
+    event: StageRequestedEvent;
+    step: { run: <T>(id: string, fn: () => Promise<T>) => Promise<T> };
+  }) => {
     if (event.data.stage !== 'canonical') return;
 
     const sb: Sb = createServiceClient();
@@ -50,7 +85,13 @@ export const pipelineCanonicalDispatch = inngest.createFunction(
       .eq('id', stageRunId)
       .maybeSingle();
     if (!stageRun) return;
-    if (stageRun.status !== 'queued') return;
+
+    // Idempotency: bail on terminal statuses. `queued` is the normal entry;
+    // `running` means Inngest is replaying (step results are cached) — let it through.
+    if (
+      stageRun.status !== 'queued' &&
+      stageRun.status !== 'running'
+    ) return;
 
     const input = (stageRun.input_json ?? {}) as Record<string, unknown>;
 
@@ -97,12 +138,6 @@ export const pipelineCanonicalDispatch = inngest.createFunction(
       ideaArchiveId = resolved.ideaArchiveId;
     }
 
-    // Canonical is project-scoped — content_draft.type must be set for the
-    // NOT NULL check, but the canonical_core_json is medium-agnostic. We
-    // pick the first active Track's medium so downstream production Stage
-    // Runs that reuse this content_draft (single-Track case) avoid an
-    // unnecessary copy. Defaults to 'blog' when no Tracks exist yet (the
-    // legacy lazy-migrate path will create one).
     const { data: tracks } = await sb
       .from('tracks')
       .select('id, medium, status')
@@ -115,48 +150,265 @@ export const pipelineCanonicalDispatch = inngest.createFunction(
     const modelTier = (input.modelTier as string | undefined) ?? 'standard';
     const provider = input.provider as string | undefined;
     const model = input.model as string | undefined;
+    const productionParams = (input.productionParams as Record<string, unknown> | undefined) ?? null;
 
-    const { data: draft, error: insertError } = await sb
-      .from('content_drafts')
-      .insert({
-        org_id: orgId,
-        user_id: userId,
-        channel_id: project.channel_id ?? null,
-        project_id: projectId,
-        research_session_id: researchSessionId,
-        idea_id: ideaArchiveId,
-        persona_id: personaId,
-        type,
-        status: 'draft',
-      })
-      .select()
-      .single();
-    if (insertError || !draft?.id) {
+    const safeOrgId = (orgId as string | null) ?? '';
+    const safeUserId = userId ?? '';
+
+    // Memoize the insert inside step.run: Inngest re-executes the function body
+    // on every step boundary, so an un-stepped insert would create a duplicate
+    // content_drafts row on replay. step.run returns the cached id on replays.
+    const created = await step.run('create-content-draft', async () => {
+      const { data, error } = await sb
+        .from('content_drafts')
+        .insert({
+          org_id: orgId,
+          user_id: userId,
+          channel_id: project.channel_id ?? null,
+          project_id: projectId,
+          research_session_id: researchSessionId,
+          idea_id: ideaArchiveId,
+          persona_id: personaId,
+          type,
+          status: 'draft',
+        })
+        .select()
+        .single();
+      return {
+        id: (data?.id as string | undefined) ?? null,
+        errorMessage: error ? ((error as { message?: string }).message ?? 'unknown') : null,
+      };
+    });
+
+    if (!created.id) {
       await markFailed(sb, stageRunId, {
         ...ctx,
-        errorMessage: `Failed to create content_drafts row: ${(insertError as { message?: string } | undefined)?.message ?? 'unknown'}`,
+        errorMessage: `Failed to create content_drafts row: ${created.errorMessage ?? 'unknown'}`,
       });
       return;
     }
 
-    await markRunning(sb, stageRunId, {
-      ...ctx,
-      payloadRef: { kind: 'content_draft', id: draft.id as string },
+    const draftId = created.id;
+
+    // Wrap in step.run so the queued→running transition is memoized: Inngest
+    // re-executes the function body at each step boundary, and a bare
+    // markRunning would re-stamp started_at on every replay.
+    await step.run('mark-running', async () => {
+      await markRunning(sb, stageRunId, {
+        ...ctx,
+        payloadRef: { kind: 'content_draft', id: draftId },
+      });
     });
 
-    await inngest.send({
-      name: 'production/generate',
-      data: {
-        draftId: draft.id,
-        orgId,
-        userId,
-        type,
-        modelTier,
+    try {
+      const creditSettings = await loadPlatformSettings(sb);
+      const coreCost = applyProviderDiscount(creditSettings.costCanonicalCore, provider);
+
+      await assertNotAborted(projectId, draftId, sb);
+
+      await step.run('emit-loading-core', async () => {
+        await emitJobEvent(draftId, 'production', 'loading_prompt', 'Carregando agente core…');
+      });
+
+      const loadedDraft = (await step.run('load-draft', async () => {
+        const { data } = await sb
+          .from('content_drafts')
+          .select('*')
+          .eq('id', draftId)
+          .maybeSingle();
+        return data;
+      })) as Record<string, unknown> | null;
+
+      if (!loadedDraft) {
+        await markFailed(sb, stageRunId, {
+          ...ctx,
+          errorMessage: `content_draft ${draftId} not found after insert`,
+        });
+        return;
+      }
+
+      await assertNotAborted(projectId, draftId, sb);
+
+      const persona = (await step.run('load-persona', async () => {
+        return loadPersonaForDraft(loadedDraft, sb);
+      })) as Awaited<ReturnType<typeof loadPersonaForDraft>>;
+
+      const layeredPersona = (await step.run('load-persona-constraints', async () => {
+        if (!persona) return null;
+        return buildLayeredPersonaContext(persona, sb);
+      })) as Awaited<ReturnType<typeof buildLayeredPersonaContext>> | null;
+
+      await assertNotAborted(projectId, draftId, sb);
+
+      const approvedCards = (await step.run('load-research', async () => {
+        if (!loadedDraft.research_session_id) return null;
+        const { data } = await sb
+          .from('research_sessions')
+          .select('approved_cards_json, cards_json')
+          .eq('id', loadedDraft.research_session_id as string)
+          .maybeSingle();
+        return data?.approved_cards_json ?? data?.cards_json ?? null;
+      })) as unknown;
+
+      await assertNotAborted(projectId, draftId, sb);
+
+      const channelContext = (await step.run('load-channel', async () => {
+        if (!loadedDraft.channel_id) return null;
+        const { data } = await sb
+          .from('channels')
+          .select(STAGE_CHANNEL_SELECT)
+          .eq('id', loadedDraft.channel_id as string)
+          .maybeSingle();
+        return data;
+      })) as Record<string, unknown> | null;
+
+      await assertNotAborted(projectId, draftId, sb);
+
+      const ideaContext = (await step.run('load-idea', async () => {
+        if (!loadedDraft.idea_id) return null;
+        return loadIdeaContext(loadedDraft.idea_id as string);
+      })) as Awaited<ReturnType<typeof loadIdeaContext>>;
+
+      await assertNotAborted(projectId, draftId, sb);
+
+      const coreAgentConfig = (await step.run('load-core-prompt', async () => {
+        const primary = await loadAgentConfig('content-core');
+        if (primary.instructions) return primary;
+        return loadAgentConfig('production');
+      })) as Awaited<ReturnType<typeof loadAgentConfig>>;
+
+      const { provider: resolvedProvider, model: resolvedModel } = resolveProviderOverride(
         provider,
         model,
-        stageRunId,
-        phase: 'canonical',
-      },
-    });
+        coreAgentConfig,
+      );
+
+      await assertNotAborted(projectId, draftId, sb);
+
+      await step.run('emit-calling-core', async () => {
+        const label = resolvedProvider
+          ? `${resolvedProvider}${resolvedModel ? ` (${resolvedModel})` : ''}`
+          : modelTier;
+        await emitJobEvent(
+          draftId,
+          'production',
+          'calling_provider',
+          `Estruturando ideia central com ${label}…`,
+          { stage: 'canonical-core', provider: resolvedProvider, model: resolvedModel },
+        );
+      });
+
+      await assertNotAborted(projectId, draftId, sb);
+
+      await withReservation(
+        safeOrgId,
+        safeUserId,
+        coreCost,
+        'canonical-core',
+        'text',
+        { draftId, type, provider },
+        async () => {
+          const canonicalCore = await step.run('generate-core', async () => {
+            const userMessage = buildStageUserMessage({
+              stage: 'canonical',
+              ctx: {
+                draft: loadedDraft,
+                persona,
+                layeredPersona,
+                channel: channelContext,
+                idea: ideaContext,
+                researchCards: approvedCards,
+              },
+              productionParams,
+            });
+            const enabledTools = resolveTools(coreAgentConfig.tools).filter(
+              () => resolvedProvider !== 'ollama',
+            );
+            const call = await generateWithFallback(
+              'production',
+              modelTier,
+              {
+                agentType: 'production',
+                systemPrompt: buildStageSystemPrompt(coreAgentConfig.instructions, layeredPersona?.constraints ?? []),
+                userMessage,
+                tools: enabledTools.length > 0 ? enabledTools : undefined,
+                toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
+              },
+              {
+                provider: resolvedProvider,
+                model: resolvedModel,
+                logContext: {
+                  userId: safeUserId,
+                  orgId: safeOrgId,
+                  channelId: (loadedDraft.channel_id as string | null) ?? undefined,
+                  sessionId: draftId,
+                  sessionType: 'production',
+                },
+              },
+            );
+            await logUsage({
+              orgId: safeOrgId,
+              userId: safeUserId,
+              channelId: (loadedDraft.channel_id as string | null) ?? null,
+              stage: 'production',
+              subStage: 'canonical-core',
+              sessionId: draftId,
+              sessionType: 'production',
+              provider: call.providerName,
+              model: call.model,
+              usage: call.usage,
+            });
+            return call.result;
+          });
+
+          await assertNotAborted(projectId, draftId, sb);
+
+          await step.run('save-core', async () => {
+            const coreToSave =
+              loadedDraft.idea_id &&
+              canonicalCore &&
+              typeof canonicalCore === 'object' &&
+              !Array.isArray(canonicalCore)
+                ? { ...(canonicalCore as Record<string, unknown>), idea_id: loadedDraft.idea_id }
+                : canonicalCore;
+            await sb
+              .from('content_drafts')
+              .update({ canonical_core_json: coreToSave })
+              .eq('id', draftId);
+          });
+        },
+      );
+
+      await step.run('emit-core-done', async () => {
+        await emitJobEvent(draftId, 'production', 'completed', 'Canonical core gerado!', {
+          draftId,
+          type,
+          stage: 'canonical-core',
+        });
+      });
+
+      await markCompleted(sb, stageRunId, {
+        ...ctx,
+        payloadRef: { kind: 'content_draft', id: draftId },
+        outcome: { draftId, type },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      console.error(err);
+      if (err instanceof JobAborted) {
+        await markAborted(sb, stageRunId, { ...ctx });
+        return;
+      }
+      if (isQuotaExhausted(err)) {
+        await markAwaitingUser(sb, stageRunId, {
+          ...ctx,
+          awaitingReason: 'provider_quota_exhausted',
+          markStarted: true,
+        });
+        return;
+      }
+      await markFailed(sb, stageRunId, { ...ctx, errorMessage: message });
+      throw err;
+    }
   },
 );

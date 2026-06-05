@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Loader2, BookOpen, Check,
@@ -481,57 +481,6 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
     }
   }
 
-  const handleManualCoreImport = useCallback(async (parsed: unknown) => {
-    let core = parsed as Record<string, unknown>;
-    if (core.BC_CANONICAL_CORE && typeof core.BC_CANONICAL_CORE === 'object') {
-      core = core.BC_CANONICAL_CORE as Record<string, unknown>;
-    }
-
-    if (!research) { toast.error('Select research before importing'); return; }
-    if (!title.trim()) { toast.error('Enter a title'); return; }
-    if (!selectedPersonaId) { toast.error('Select a persona'); return; }
-
-    const draft = await runStep('create draft', () =>
-      fetch('/api/content-drafts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...(channelId ? { channelId } : {}),
-          ...(projectId ? { projectId } : {}),
-          ...(trackerContext.ideaId ? { ideaId: trackerContext.ideaId } : {}),
-          researchSessionId: research.id,
-          title,
-          personaId: selectedPersonaId,
-        }),
-        signal: abortController?.signal,
-      })
-    );
-    if (!draft) return;
-    const newDraftId = (draft as { id: string }).id;
-    setDraftId(newDraftId);
-
-    const updated = await runStep('save canonical core', () =>
-      fetch(`/api/content-drafts/${newDraftId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ canonicalCoreJson: core }),
-        signal: abortController?.signal,
-      })
-    );
-    if (!updated) return;
-
-    setCanonicalCore(core);
-    tracker.trackAction('imported', {
-      phase: 'core',
-      source: 'manual',
-    });
-    setPhase('core-ready');
-    setCoreExpanded(true);
-    setCoreApproved(false);
-    if (!overviewMode) toast.success('Canonical core imported — review before producing');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [research, title, selectedPersonaId, channelId, projectId, trackerContext.ideaId, abortController?.signal, overviewMode]);
-
   function onCoreJobComplete() {
     if (!draftId) return;
     setActiveDraftId(null);
@@ -995,13 +944,6 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
               </div>
             </div>
 
-            <ManualOutputDialog
-              open={provider === 'manual' && phase === 'core' && !manualState}
-              title="Paste Canonical Core Output"
-              description="Paste the BC_CANONICAL_CORE YAML/JSON output from your AI assistant."
-              onSubmit={handleManualCoreImport}
-              onOpenChange={(o) => { if (!o) setProvider('gemini'); }}
-            />
           </CardContent>
         </Card>
       )}
@@ -1026,7 +968,7 @@ export function CanonicalEngine({ projectId: projectIdProp }: CanonicalEnginePro
         <ManualOutputDialog
           open={true}
           title="Paste Canonical Core Output"
-          description="Paste the BC_CANONICAL_CORE YAML/JSON output from your AI assistant."
+          description="Retrieve the prompt from Axiom, run it in your AI tool of choice, then paste the JSON output below."
           onSubmit={handleManualOutputSubmit}
           onOpenChange={(o) => { if (!o) void handleManualAbandon(); }}
           onAbandon={handleManualAbandon}

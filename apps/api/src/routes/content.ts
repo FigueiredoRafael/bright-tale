@@ -2,6 +2,12 @@
  * Content generation Fastify Route Plugin
  * F2-010/011: Simplified flow trigger
  * F2-013: Bulk generation
+ *
+ * LEGACY — these endpoints fan out to the `content/generate` Inngest function
+ * (see jobs/content-generate.ts), a standalone full-pipeline orchestrator that
+ * is intentionally excluded from the BRI-137 generation-core consolidation and
+ * is not wired to any current UI. Kept for backward compatibility; removal is
+ * tracked separately.
  */
 
 import type { FastifyInstance } from 'fastify';

@@ -29,6 +29,8 @@ export const video: AgentDefinition = {
         'Every section (hook, problem, teaser, chapters, outro) requires `sound_effects` AND `background_music`.',
         'If `affiliate_context` is provided, add an `affiliate_segment` between the last chapter and the outro.',
         '`cta_comment_prompt` → the `end_screen_prompt` in the outro.',
+        'Persona voice (first person): when a `<persona>` block is provided in the input, write the `teleprompter_script` and every `script.*.content` as that persona speaking in the first person, on camera, as themselves ("I", "my", addressing the viewer as "you"). Adopt the persona\'s writing style, signature phrases, characteristic opinions, and humor, and obey its language guardrails. With no persona block, default to a natural first-person presenter voice in the channel tone.',
+        'Like + Subscribe CTAs: weave a short spoken like+subscribe call-to-action EARLY (right after the hook lands) and again at the MIDPOINT of the video, in addition to the subscribe line in the outro. See Content Rules for exact placement.',
         'Output JSON only, no markdown fences, follow the contract exactly.',
       ],
       purpose: [],
@@ -174,8 +176,11 @@ export const video: AgentDefinition = {
         'presenter_notes: When `true`, add bracketed delivery cues inside `content` (e.g., `[pause for effect]`, `[look directly at camera]`).',
         'text_overlays = heavy: Add `[TEXT: ...]` directives inside `content` at every key statistic or claim.',
         'affiliate_segment: Include only when `affiliate_context` is provided. Must feel earned - place after the chapter whose claim revealed the problem the product solves.',
-        'outro.cta: Must include `cta_subscribe` text.',
+        'outro.cta: Must include the `cta_subscribe` text AND a final reminder to like the video.',
         'outro.end_screen_prompt: Must be the exact `cta_comment_prompt` question.',
+        'early_cta: In the `problem` section `content` and again early in the `teleprompter_script` (after the hook lands — NEVER inside the first-3-second hook, to protect retention), include ONE brief spoken like+subscribe ask in the persona\'s first-person voice. In `script.*.content` mark it inline as `[CTA: like + subscribe]`; in `teleprompter_script` write it as a clean spoken line with no brackets (TTS-safe).',
+        'mid_cta: At the MIDPOINT — the chapter where chapter_number = ceil(total chapters ÷ 2), and the matching point of the `teleprompter_script` — include ONE brief spoken like+subscribe ask that rides the momentum of that chapter (tie it to the value just delivered, e.g. "if this is landing for you, hit like and subscribe so you don\'t miss the rest"). Same marking rules as early_cta.',
+        'persona_voice: All narration (`teleprompter_script`) and every section `content` is the persona speaking in the first person. Do not lapse into third person or a neutral narrator voice when a persona is provided. Weave signature phrases in naturally — never force them. The persona language guardrails override channel tone.',
         'estimated_duration: Calculate from script word count at ~150 words/minute. State as an estimate.',
         'teleprompter_script: Clean narration for the presenter to read in order. Natural speech, short paragraphs, clear transitions. No brackets, no B-roll marks, no TEXT overlays. Section headers like [HOOK - 0:00] are allowed for navigation. Minimum 1500 characters.',
         'editor_script: Detailed production guide for the video editor. For each section: A-roll framing, B-roll suggestions with timestamps, text overlays with timing, SFX cues, BGM mood/intensity, visual effects (zoom, jump cut, etc) with rationale, transitions, pacing notes, and color grading. Treat as a briefing for an editor who was not at the shoot.',
@@ -205,6 +210,8 @@ export const video: AgentDefinition = {
         'Verify `audio_direction` is present and provides overall mood guidance.',
         'Verify `teleprompter_script` has no brackets or production cues.',
         'Verify `teleprompter_script` is at least 1500 characters.',
+        'Verify an early like+subscribe CTA appears after the hook (in the `problem` content and the teleprompter) and a mid-roll like+subscribe CTA appears at the midpoint chapter.',
+        'When a `<persona>` block was provided, verify the `teleprompter_script` and section `content` read as that persona speaking in the first person.',
         'Verify `editor_script` is detailed with A-roll, B-roll, and timing.',
         'Verify `pinned_comment` is specific and question-based (not generic).',
         'Verify `video_description` is at least 800 characters.',
@@ -256,6 +263,44 @@ Option 2 (Benefit/numbered): "[Number] [Thing] Marketers Don't Know About [topic
 Option 3 (Contrarian): "[Conventional wisdom] Is Wrong — Here's Why"
 
 All 3 must include the primary keyword naturally.`,
+      },
+      {
+        title: 'Persona Voice (Runtime-Injected)',
+        content: `A \`<persona>\` block may be appended to the input at runtime describing the on-camera presenter. When present it carries:
+
+- Name — who is speaking.
+- Bio — who they are / their authority.
+- Writing style — cadence, sentence length, formality.
+- Signature phrases — recurring expressions to use sparingly and naturally.
+- Characteristic opinions — stances this presenter is known for; let them color the framing.
+- Humor style — how they joke.
+- Language guardrails — words/claims/registers to avoid. These are hard limits.
+
+When a \`<persona>\` block is present:
+
+1. First person, always. The \`teleprompter_script\` and every section \`content\` is this person talking to camera as themselves — "I", "my", "let me show you", addressing the viewer directly as "you". Never narrate in the third person and never describe the presenter from outside.
+2. Voice over template. Match the persona's writing style and humor; drop signature phrases where they land naturally (never shoehorn them); let characteristic opinions shape how claims are framed, without inventing new facts.
+3. Guardrails win. The language guardrails override everything else, including channel tone.
+
+If no \`<persona>\` block is present, write in a consistent, natural first-person presenter voice aligned with the channel tone.`,
+      },
+      {
+        title: 'Like + Subscribe CTA Placement',
+        content: `Beyond the outro subscribe line, the script carries TWO spoken like+subscribe CTAs:
+
+EARLY (right after the hook):
+- Place it in the \`problem\` section \`content\` and at the matching early point of the \`teleprompter_script\`.
+- Never inside the first-3-second hook — that kills retention. It lands once the viewer is hooked and the problem is framed.
+- Keep it to one short, natural sentence in the persona's voice. Example: "Quick thing before we dig in — if this channel keeps helping you, hit like and subscribe."
+
+MIDPOINT (the value peak):
+- Place it in the \`content\` of the middle chapter (chapter_number = ceil(total chapters ÷ 2)) and the matching point of the \`teleprompter_script\`.
+- Ride the momentum of what was just delivered. Example: "If this part clicked, do me a favor — like the video and subscribe so the next one finds you."
+
+Marking:
+- In \`script.*.content\`: mark each as \`[CTA: like + subscribe]\` so the editor can spot them.
+- In \`teleprompter_script\`: write a clean spoken line, no brackets (TTS-safe), since the teleprompter must stay bracket-free.
+- Keep both CTAs brief and on-voice — never a hard sell, never repeated back to back.`,
       },
     ],
   },

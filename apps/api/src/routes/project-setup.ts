@@ -15,6 +15,7 @@ import { assertProjectOwner } from '../lib/projects/ownership.js';
 import { derivedFromStageResults, nextStageAfter } from '../lib/pipeline-state.js';
 import { setupProjectSchema } from '@brighttale/shared/schemas/projectSetup';
 import { abortProject } from '../lib/pipeline/stage-run-writer.js';
+import { stampSchemaVersion } from '@brighttale/shared/utils/schema-version';
 
 export async function projectSetupRoutes(fastify: FastifyInstance): Promise<void> {
   /**
@@ -65,7 +66,9 @@ export async function projectSetupRoutes(fastify: FastifyInstance): Promise<void
       // Build update object
       const update: Database['public']['Tables']['projects']['Update'] = {
         mode: body.mode,
-        autopilot_config_json: body.autopilotConfig,
+        autopilot_config_json: body.autopilotConfig != null
+          ? (stampSchemaVersion(body.autopilotConfig as Record<string, unknown>) as unknown as typeof body.autopilotConfig)
+          : body.autopilotConfig,
         autopilot_template_id: body.templateId,
       };
 

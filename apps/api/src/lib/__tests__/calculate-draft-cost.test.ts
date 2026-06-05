@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { calculateDraftCost } from '../calculate-draft-cost'
-import type { CreditSettingsRecord } from '../credit-settings'
+import { calculateDraftCost } from '../calculate-draft-cost.js'
+import type { PlatformSettingsRecord } from '../platform-settings.js'
 
-const settings: CreditSettingsRecord = {
+const settings: PlatformSettingsRecord = {
   costBlog: 200, costVideo: 150, costShorts: 75, costPodcast: 130,
   costCanonicalCore: 80, costReview: 20,
 }

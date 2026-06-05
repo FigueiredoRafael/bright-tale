@@ -43,8 +43,8 @@ vi.mock('../../lib/credits.js', () => ({
   debitCredits: vi.fn(async () => undefined),
 }));
 
-vi.mock('../../lib/credit-settings.js', () => ({
-  loadCreditSettings: vi.fn(async () => ({ costCanonicalCore: 50 })),
+vi.mock('../../lib/platform-settings.js', () => ({
+  loadPlatformSettings: vi.fn(async () => ({ costCanonicalCore: 50 })),
 }));
 
 vi.mock('../../lib/ai/loadIdeaContext.js', () => ({

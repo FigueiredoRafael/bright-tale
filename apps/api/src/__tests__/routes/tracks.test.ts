@@ -239,6 +239,17 @@ describe('POST /projects/:projectId/tracks', () => {
     expect(enqueueProductionForNewTrackMock).not.toHaveBeenCalled();
   });
 
+  it('returns 400 VALIDATION_ERROR when an unknown top-level key is sent (BRI-28)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/tracks`,
+      headers: AUTH,
+      payload: { medium: 'blog', weirdKey: 'should be rejected' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+  });
+
   it('persists autopilotConfigJson onto the inserted Track', async () => {
     sbChain.maybeSingle.mockResolvedValueOnce({
       data: { id: PROJECT_ID, mode: 'manual', autopilot_config_json: null },
@@ -274,8 +285,42 @@ describe('POST /projects/:projectId/tracks', () => {
     const insertCall = (sbChain.insert as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(insertCall.project_id).toBe(PROJECT_ID);
     expect(insertCall.medium).toBe('blog');
-    expect(insertCall.autopilot_config_json).toEqual({
+    // BRI-29: write seam stamps _v; use toMatchObject to tolerate the added field
+    expect(insertCall.autopilot_config_json).toMatchObject({
       review: { maxIterations: 2, autoApproveThreshold: 90, hardFailThreshold: 50 },
     });
+  });
+
+  it('stamps _v: CURRENT_SCHEMA_VERSION onto autopilotConfigJson when writing (BRI-29)', async () => {
+    sbChain.maybeSingle.mockResolvedValueOnce({
+      data: { id: PROJECT_ID, mode: 'manual', autopilot_config_json: null },
+      error: null,
+    });
+    sbChain.single.mockResolvedValueOnce({
+      data: {
+        id: 'tr-4',
+        project_id: PROJECT_ID,
+        medium: 'blog',
+        status: 'active',
+        paused: false,
+        autopilot_config_json: { review: { maxIterations: 2 }, _v: 1 },
+        created_at: '2026-05-15T10:00:00Z',
+        updated_at: '2026-05-15T10:00:00Z',
+      },
+      error: null,
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: `/projects/${PROJECT_ID}/tracks`,
+      headers: AUTH,
+      payload: {
+        medium: 'blog',
+        autopilotConfigJson: { review: { maxIterations: 2 } },
+      },
+    });
+
+    const insertCall = (sbChain.insert as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(insertCall.autopilot_config_json).toHaveProperty('_v', 1);
   });
 });
