@@ -32,15 +32,16 @@ import { deriveDraft } from "../lib/content-drafts/derive.js";
 import { inngest } from "../jobs/client.js";
 import { emitJobEvent } from "../jobs/emitter.js";
 import {
-  buildCanonicalCoreMessage,
-  buildProduceMessage,
-  buildReproduceMessage,
-} from "../lib/ai/prompts/production.js";
-import {
-  buildPersonaContext,
-  buildPersonaVoice,
+  buildLayeredPersonaContext,
   loadPersonaForDraft,
 } from "../lib/personas.js";
+import { loadPriorReviewAttempts } from "../lib/ai/loadPriorReviewAttempts.js";
+import {
+  normalizeReviewFeedback,
+  STAGE_CHANNEL_SELECT,
+  buildStageSystemPrompt,
+  buildStageUserMessage,
+} from "../lib/ai/generation/index.js";
 import { validateProducedDraft } from "../lib/ai/validators/index.js";
 import { buildReviewMessage } from "../lib/ai/prompts/review.js";
 import {
@@ -762,7 +763,7 @@ export async function contentDraftsRoutes(
             ? await (async () => {
                 const { data } = await (createServiceClient() as any)
                   .from("channels")
-                  .select("name, niche, language, tone, presentation_style")
+                  .select(STAGE_CHANNEL_SELECT)
                   .eq("id", draft.channel_id as string)
                   .maybeSingle();
                 return data;
@@ -773,23 +774,24 @@ export async function contentDraftsRoutes(
             ? await loadIdeaContext(draft.idea_id as string)
             : null;
           const persona = await loadPersonaForDraft(draft, sb);
+          const layeredPersona = persona ? await buildLayeredPersonaContext(persona, sb) : null;
 
-          const userMessage = buildCanonicalCoreMessage({
-            type: draft.type as string,
-            title: draft.title as string,
-            ideaId: draft.idea_id as string | undefined,
-            idea,
-            researchCards: approvedCards as unknown[] | undefined,
-            personaContext: persona ? buildPersonaContext(persona) : null,
-            channel: channelData as
-              | {
-                  name?: string;
-                  niche?: string;
-                  language?: string;
-                  tone?: string;
-                }
-              | undefined,
+          const userMessage = buildStageUserMessage({
+            stage: 'canonical',
+            ctx: {
+              draft: draft as Record<string, unknown>,
+              persona,
+              layeredPersona,
+              channel: channelData as Record<string, unknown> | null,
+              idea,
+              researchCards: approvedCards,
+            },
           });
+          if (layeredPersona?.constraints.length) {
+            systemPrompt = systemPrompt
+              ? buildStageSystemPrompt(systemPrompt, layeredPersona.constraints)
+              : buildStageSystemPrompt('', layeredPersona.constraints);
+          }
 
           // Update draft to awaiting_manual status
           const { data: manualDraft, error: manualInsertErr } = await (
@@ -881,7 +883,7 @@ export async function contentDraftsRoutes(
           ? await (async () => {
               const { data } = await (createServiceClient() as any)
                 .from("channels")
-                .select("name, niche, language, tone, presentation_style")
+                .select(STAGE_CHANNEL_SELECT)
                 .eq("id", draft.channel_id as string)
                 .maybeSingle();
               return data;
@@ -892,30 +894,24 @@ export async function contentDraftsRoutes(
           ? await loadIdeaContext(draft.idea_id as string)
           : null;
         const persona = await loadPersonaForDraft(draft, sb);
+        const layeredPersona = persona ? await buildLayeredPersonaContext(persona, sb) : null;
 
-        const userMessage = buildCanonicalCoreMessage({
-          type: draft.type as string,
-          title: draft.title as string,
-          ideaId: draft.idea_id as string | undefined,
+        const coreCtx = {
+          draft: draft as Record<string, unknown>,
+          persona,
+          layeredPersona,
+          channel: channelData as Record<string, unknown> | null,
           idea,
-          researchCards: approvedCards as unknown[] | undefined,
-          personaContext: persona ? buildPersonaContext(persona) : null,
-          channel: channelData as
-            | {
-                name?: string;
-                niche?: string;
-                language?: string;
-                tone?: string;
-              }
-            | undefined,
-        });
+          researchCards: approvedCards,
+        };
+        const userMessage = buildStageUserMessage({ stage: 'canonical', ctx: coreCtx });
 
         const { result } = await generateWithFallback(
           "production",
           override.modelTier ?? (draft.model_tier as string) ?? "standard",
           {
             agentType: "production",
-            systemPrompt: systemPrompt ?? "",
+            systemPrompt: buildStageSystemPrompt(systemPrompt, layeredPersona?.constraints ?? []),
             userMessage,
           },
           {
@@ -1119,7 +1115,7 @@ export async function contentDraftsRoutes(
             ? await (async () => {
                 const { data } = await (createServiceClient() as any)
                   .from("channels")
-                  .select("name, niche, language, tone, presentation_style")
+                  .select(STAGE_CHANNEL_SELECT)
                   .eq("id", draft.channel_id as string)
                   .maybeSingle();
                 return data;
@@ -1130,24 +1126,21 @@ export async function contentDraftsRoutes(
             ? await loadIdeaContext(draft.idea_id as string)
             : null;
           const persona = await loadPersonaForDraft(draft, sb);
+          const layeredPersonaForProduce = persona ? await buildLayeredPersonaContext(persona, sb) : null;
 
-          const userMessage = buildProduceMessage({
-            type: type as string,
-            title: draft.title as string,
-            canonicalCore: draft.canonical_core_json,
-            idea,
+          const userMessage = buildStageUserMessage({
+            stage: 'produce',
+            ctx: {
+              draft: { ...draft as Record<string, unknown>, type },
+              persona,
+              layeredPersona: layeredPersonaForProduce,
+              channel: channelData as Record<string, unknown> | null,
+              idea,
+              researchCards: null,
+            },
             productionParams:
               (draft.production_params as Record<string, unknown> | null) ??
-              undefined,
-            persona: persona ? buildPersonaVoice(persona) : null,
-            channel: channelData as
-              | {
-                  name?: string;
-                  niche?: string;
-                  language?: string;
-                  tone?: string;
-                }
-              | undefined,
+              null,
           });
 
           // Update draft to awaiting_manual status
@@ -2445,49 +2438,57 @@ export async function contentDraftsRoutes(
           }
         }
 
-        // Build input with review feedback context
-        const reviewFeedback = draft.review_feedback_json as Record<
-          string,
-          unknown
-        >;
-        const formatReview = reviewFeedback[`${type}_review`] as
-          | Record<string, unknown>
-          | undefined;
+        // Load channel, persona (layered), idea, prior review attempts
+        const reviewFeedbackRaw = draft.review_feedback_json as Record<string, unknown>;
 
-        // Load channel data for builder
         const channelData = draft.channel_id
           ? await (async () => {
               const { data } = await (createServiceClient() as any)
                 .from("channels")
-                .select("name, niche, language, tone, presentation_style")
+                .select(STAGE_CHANNEL_SELECT)
                 .eq("id", draft.channel_id as string)
                 .maybeSingle();
               return data;
             })()
           : null;
 
-        const userMessage = buildReproduceMessage({
+        const persona = await loadPersonaForDraft(draft as Record<string, unknown>, sb);
+        const layeredPersona = persona ? await buildLayeredPersonaContext(persona, sb) : null;
+
+        // Full normalization: issues.critical objects, rubric_checks, rubricEvaluation
+        const normalizedFeedback = normalizeReviewFeedback({
+          raw: reviewFeedbackRaw,
           type: type as string,
-          title: draft.title as string,
-          canonicalCore: draft.canonical_core_json,
-          previousDraft: draft.draft_json,
-          reviewFeedback: {
-            overall_verdict: reviewFeedback.overall_verdict as
-              | string
-              | undefined,
-            score: formatReview?.score as number | null | undefined,
-            critical_issues: (formatReview?.critical_issues ?? []) as string[],
-            minor_issues: (formatReview?.minor_issues ?? []) as string[],
-            strengths: (formatReview?.strengths ?? []) as string[],
+          reviewScore: (draft.review_score as number | null) ?? null,
+        });
+
+        const iterationCount = ((draft.iteration_count as number) ?? 0) + 1;
+
+        // Mirror reviewer's priorAttempts memory on the producer side
+        const priorAttempts = normalizedFeedback
+          ? await loadPriorReviewAttempts(sb, id, type as string, { skipLatest: true })
+          : [];
+
+        const reproduceCtx = {
+          draft: draft as Record<string, unknown>,
+          persona,
+          layeredPersona,
+          channel: channelData as Record<string, unknown> | null,
+          idea: draft.idea_id ? await loadIdeaContext(draft.idea_id as string) : null,
+          researchCards: null,
+        };
+        const userMessage = buildStageUserMessage({
+          stage: 'reproduce',
+          ctx: reproduceCtx,
+          reviewFeedback: normalizedFeedback ?? {
+            overall_verdict: (reviewFeedbackRaw.overall_verdict as string | undefined),
+            score: null,
+            critical_issues: [],
+            minor_issues: [],
+            strengths: [],
           },
-          channel: channelData as
-            | {
-                name?: string;
-                niche?: string;
-                language?: string;
-                tone?: string;
-              }
-            | undefined,
+          iterationCount,
+          priorAttempts,
         });
 
         const { result } = await generateWithFallback(
@@ -2495,7 +2496,7 @@ export async function contentDraftsRoutes(
           (draft.model_tier as string) ?? "standard",
           {
             agentType: "production",
-            systemPrompt: systemPrompt ?? "",
+            systemPrompt: buildStageSystemPrompt(systemPrompt, layeredPersona?.constraints ?? []),
             userMessage,
           },
           {
@@ -2509,8 +2510,6 @@ export async function contentDraftsRoutes(
             },
           },
         );
-
-        const iterationCount = ((draft.iteration_count as number) ?? 0) + 1;
 
         const { data: updated, error } = await (
           sb.from("content_drafts") as unknown as {

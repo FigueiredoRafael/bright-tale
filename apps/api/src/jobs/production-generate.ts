@@ -12,7 +12,6 @@ import { withReservation } from './utils/with-reservation.js';
 import { createServiceClient } from '../lib/supabase/index.js';
 import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
-import { buildCanonicalCoreMessage } from '../lib/ai/prompts/production.js';
 import { loadPlatformSettings } from '../lib/platform-settings.js';
 import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
 import {
@@ -20,27 +19,17 @@ import {
   buildPersonaVoice,
   buildLayeredPersonaContext,
   loadPersonaForDraft,
-} from '../lib/personas.js'
+} from '../lib/personas.js';
+import {
+  applyProviderDiscount,
+  STAGE_CHANNEL_SELECT,
+  buildStageSystemPrompt,
+  buildStageUserMessage,
+} from '../lib/ai/generation/index.js';
 
 // Re-exported for backward-compat with existing tests
 // (apps/api/src/jobs/__tests__/production-generate-persona.test.ts imports from here)
 export { buildPersonaContext, buildPersonaVoice, loadPersonaForDraft }
-
-function formatConstraintsBlock(constraints: string[]): string {
-  if (constraints.length === 0) return ''
-  const lines = constraints.map(c => `- ${c}`).join('\n')
-  return `## Content Constraints\nThe following rules are non-negotiable and override all other instructions:\n${lines}\n\n`
-}
-
-/**
- * When the user runs everything locally via Ollama, our infra cost is zero —
- * so we charge nothing in internal credits either. Any other provider hits a
- * paid API and is billed at full rate.
- */
-function applyProviderDiscount(cost: number, provider?: string): number {
-  if (provider === 'ollama') return 0;
-  return cost;
-}
 
 interface ProductionGenerateEvent {
   name: 'production/generate';
@@ -138,7 +127,7 @@ export const productionGenerate = inngest.createFunction(
         if (!draft.channel_id) return null;
         const { data } = await sb
           .from('channels')
-          .select('name, niche, language, tone, presentation_style')
+          .select(STAGE_CHANNEL_SELECT)
           .eq('id', draft.channel_id as string)
           .maybeSingle();
         return data;
@@ -184,15 +173,17 @@ export const productionGenerate = inngest.createFunction(
         { draftId, type, provider },
         async () => {
           const canonicalCore = await step.run('generate-core', async () => {
-            const userMessage = buildCanonicalCoreMessage({
-              type: type as string,
-              title: draft.title as string,
-              ideaId: draft.idea_id as string | undefined,
-              idea: ideaContext,
-              researchCards: approvedCards ?? undefined,
+            const userMessage = buildStageUserMessage({
+              stage: 'canonical',
+              ctx: {
+                draft: draft as Record<string, unknown>,
+                persona,
+                layeredPersona,
+                channel: channelContext,
+                idea: ideaContext,
+                researchCards: approvedCards,
+              },
               productionParams,
-              personaContext: layeredPersona?.context ?? null,
-              channel: channelContext as { name?: string; niche?: string; language?: string; tone?: string } | undefined,
             });
             const enabledTools = resolveTools(coreAgentConfig.tools).filter(
               () => resolvedProvider !== 'ollama',
@@ -202,9 +193,7 @@ export const productionGenerate = inngest.createFunction(
               modelTier,
               {
                 agentType: 'production',
-                systemPrompt: layeredPersona?.constraints.length
-                  ? `${formatConstraintsBlock(layeredPersona.constraints)}${coreSystemPrompt ?? ''}`
-                  : coreSystemPrompt ?? '',
+                systemPrompt: buildStageSystemPrompt(coreSystemPrompt, layeredPersona?.constraints ?? []),
                 userMessage,
                 tools: enabledTools.length > 0 ? enabledTools : undefined,
                 toolExecutor: enabledTools.length > 0 ? buildToolExecutor(enabledTools) : undefined,
