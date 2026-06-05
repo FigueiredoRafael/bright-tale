@@ -27,6 +27,7 @@ import {
   markCompleted,
   markFailed,
 } from '../lib/pipeline/stage-run-writer.js';
+import { findBestIteration, applyIterationToDraft } from '../lib/pipeline/review-iterations.js';
 
 interface StageRequestedEvent {
   name: 'pipeline/stage.requested';
@@ -319,6 +320,27 @@ export const pipelineReviewDispatch = inngest.createFunction(
         feedback_json: result,
         draft_json: draft.draft_json,
       });
+
+      // BRI-153: terminal best-of recovery. When the loop parks at max
+      // iterations without ever clearing auto-approve, the latest pass can be
+      // WORSE than an earlier one (e.g. 80 → 70). Auto-set the highest-scoring
+      // snapshot as the live draft so the user never loses the better draft —
+      // but keep the awaiting_user park so a human still confirms before
+      // advancing. (The stage_run outcome below still carries THIS pass's
+      // score: it records the review event that triggered the park.)
+      if (runOutcome.status === 'awaiting_user') {
+        const best = await findBestIteration(sb, draftId);
+        if (
+          best &&
+          best.score != null &&
+          (reviewScore == null || best.score > reviewScore)
+        ) {
+          await applyIterationToDraft(sb, draftId, best, {
+            status: 'in_review',
+            verdict: 'revision_required',
+          });
+        }
+      }
 
       const payloadRef = { kind: 'content_draft', id: draftId };
       // Carry the verdict + feedback in the Stage Run itself so the

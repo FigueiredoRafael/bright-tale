@@ -58,6 +58,10 @@ import {
 import { logAiUsage } from "../lib/axiom.js";
 import { deriveTier } from "@brighttale/shared/utils/reviewTierCompat";
 import { loadPlatformSettings } from "../lib/platform-settings.js";
+import {
+  applyIterationToDraft,
+  type ReviewIterationRow,
+} from "../lib/pipeline/review-iterations.js";
 import { calculateDraftCost } from "../lib/calculate-draft-cost.js";
 import { getVoiceProvider } from "../lib/voice/index.js";
 import { mapVideoOutputToShortsInput } from "@brighttale/shared/mappers/video-to-shorts";
@@ -3042,30 +3046,20 @@ export async function contentDraftsRoutes(
           );
         }
 
-        const approvedAt = new Date().toISOString();
-        const { data: updated, error } = await (
-          sb.from("content_drafts") as unknown as {
-            update: (row: Record<string, unknown>) => {
-              eq: (col: string, val: string) => {
-                select: () => {
-                  single: () => Promise<{ data: unknown; error: unknown }>;
-                };
-              };
-            };
-          }
-        )
-          .update({
-            draft_json: row.draft_json,
-            review_feedback_json: row.feedback_json,
-            review_score: row.score as number | null,
-            review_verdict: "approved",
+        // Single write-path shared with the dispatcher's terminal best-of
+        // recovery (BRI-153). Manual promote locks the chosen pass in as
+        // approved; the auto path parks it awaiting_user instead.
+        await applyIterationToDraft(
+          sb,
+          id,
+          row as unknown as ReviewIterationRow,
+          {
             status: "approved",
-            approved_at: approvedAt,
-          })
-          .eq("id", id)
-          .select()
-          .single();
-        if (error) throw error;
+            verdict: "approved",
+            approvedAt: new Date().toISOString(),
+          },
+        );
+        const updated = await loadDraft(id);
 
         return reply.send({ data: updated, error: null });
       } catch (error) {
