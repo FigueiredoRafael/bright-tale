@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+# also ignore symlinks/files named node_modules (trailing-slash rule above matches dirs only)
+node_modules
 .pnpm-store/
 
 # Builds
