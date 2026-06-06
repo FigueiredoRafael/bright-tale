@@ -336,7 +336,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         // Resolve the brainstorm Stage Run to reconcile, creating one when the
         // step-by-step path never pre-created it (no autopilot dispatcher).
         // Without this a manually-pasted brainstorm would leave no completed
-        // stage_run → the work can't be re-hydrated on navigation (BRI-145).
+        // stage_run → the work can't be re-hydrated on navigation (BRI-151).
         const stageRunId = await ensureStageRunId(sb, projectId, 'brainstorm').catch(() => undefined);
 
         if (stageRunId) {
@@ -531,7 +531,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       // its id to the job. Without it the completed brainstorm leaves no
       // stage_run → deriveStageResults never surfaces stageResults.brainstorm,
       // the work vanishes on navigation, and the stage never reads as done
-      // downstream (BRI-145). Best-effort: Stage Run bookkeeping must not block
+      // downstream (BRI-151). Best-effort: Stage Run bookkeeping must not block
       // generation — the job's resolveEffectiveStageRunId is the backstop.
       const brainstormStageRunId = body.projectId
         ? await ensureStageRunId(sb, body.projectId, 'brainstorm').catch(() => undefined)
