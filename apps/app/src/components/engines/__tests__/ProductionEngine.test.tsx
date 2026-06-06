@@ -1,8 +1,40 @@
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { ProjectContextProvider } from '@/components/pipeline/ProjectContextProvider';
 import { ProductionEngine } from '../ProductionEngine';
+import type { ActiveStageRunResult } from '@/hooks/useActiveStageRun';
+
+// ── useActiveStageRun mock — controlled per test ──────────────────────────────
+// Default: no active run. Individual tests override with setActiveRun().
+const INACTIVE_RUN: ActiveStageRunResult = {
+  runId: null, status: null, startedAt: null, isActive: false, isFresh: false,
+};
+let activeRunResult: ActiveStageRunResult = INACTIVE_RUN;
+function setActiveRun(result: Partial<ActiveStageRunResult>) {
+  activeRunResult = { ...INACTIVE_RUN, ...result };
+}
+vi.mock('@/hooks/useActiveStageRun', () => ({
+  useActiveStageRun: () => activeRunResult,
+}));
+
+// ── GenerationProgressFloat mock — thin stub so SSE setup is not needed ───────
+vi.mock('@/components/generation/GenerationProgressFloat', () => ({
+  GenerationProgressFloat: ({ open, sessionId, onComplete, onFailed, onClose }: {
+    open: boolean; sessionId: string;
+    onComplete?: () => void; onFailed?: (msg: string) => void; onClose: () => void;
+  }) =>
+    open ? (
+      <div
+        data-testid="generation-progress-float"
+        data-session-id={sessionId}
+        onClick={onClose}
+      >
+        <button data-testid="gpf-complete" onClick={onComplete}>complete</button>
+        <button data-testid="gpf-failed" onClick={() => onFailed?.('err')}>fail</button>
+      </div>
+    ) : null,
+}));
 
 vi.mock('@/hooks/use-pipeline-tracker', () => ({
   usePipelineTracker: () => ({
@@ -48,7 +80,10 @@ const EMPTY_STAGES_RESPONSE = {
 };
 
 let originalFetch: typeof global.fetch;
-beforeEach(() => { originalFetch = global.fetch; });
+beforeEach(() => {
+  originalFetch = global.fetch;
+  activeRunResult = INACTIVE_RUN; // reset between tests
+});
 afterEach(() => { global.fetch = originalFetch; vi.clearAllMocks(); });
 
 function makeFetch() {
@@ -311,5 +346,99 @@ describe('ProductionEngine — issue #210: derive-on-first-run', () => {
       ok: true,
       json: () => Promise.resolve({ data: { id: 'derived-vid-xyz', created: true }, error: null }),
     });
+  });
+});
+
+// ── issue #242 Module 2: progress modal driven by useActiveStageRun ──────────
+//
+// Pattern: mock useActiveStageRun at the module level (see top of file),
+// control its return value via setActiveRun(), assert GenerationProgressFloat
+// mounts/unmounts. No SSE plumbing needed — GenerationProgressFloat is also
+// mocked to a thin stub.
+
+describe('ProductionEngine — issue #242: progress modal driven by stage_run status', () => {
+  // Scenario (a): modal mounts when useActiveStageRun returns isActive=true (queued)
+  it('mounts GenerationProgressFloat when a fresh queued run is detected', async () => {
+    const { fn } = makeFetchWithStages([CANONICAL_RUN, PERTRACK_PRODUCTION_RUN]);
+    global.fetch = fn;
+
+    // Set active run BEFORE render so the engine sees it immediately.
+    setActiveRun({
+      runId: 'sr-restart-1',
+      status: 'queued',
+      startedAt: '2026-05-26T10:00:00Z',
+      isActive: true,
+      isFresh: true,
+    });
+
+    render(wrapWithTrack('video', TRACK_ID));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('generation-progress-float')).not.toBeNull(),
+    );
+    expect(screen.getByTestId('generation-progress-float').dataset.sessionId).toBe('derived-video-draft');
+  });
+
+  // Scenario (b): modal stays mounted while status='running'
+  it('keeps GenerationProgressFloat mounted while status transitions to running', async () => {
+    const { fn } = makeFetchWithStages([CANONICAL_RUN, PERTRACK_PRODUCTION_RUN]);
+    global.fetch = fn;
+
+    setActiveRun({
+      runId: 'sr-run-1',
+      status: 'running',
+      startedAt: '2026-05-26T10:00:00Z',
+      isActive: true,
+      isFresh: false,
+    });
+
+    render(wrapWithTrack('video', TRACK_ID));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('generation-progress-float')).not.toBeNull(),
+    );
+  });
+
+  // Scenario (c): modal unmounts when status flips to 'completed'
+  it('unmounts GenerationProgressFloat when stage_run reaches completed status', async () => {
+    const { fn } = makeFetchWithStages([CANONICAL_RUN, PERTRACK_PRODUCTION_RUN]);
+    global.fetch = fn;
+
+    // Start with active run
+    setActiveRun({
+      runId: 'sr-run-1',
+      status: 'running',
+      startedAt: '2026-05-26T10:00:00Z',
+      isActive: true,
+      isFresh: false,
+    });
+
+    const { rerender } = render(wrapWithTrack('video', TRACK_ID));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('generation-progress-float')).not.toBeNull(),
+    );
+
+    // Transition to completed
+    act(() => {
+      setActiveRun({ runId: 'sr-run-1', status: 'completed', isActive: false, isFresh: false });
+    });
+    rerender(wrapWithTrack('video', TRACK_ID));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('generation-progress-float')).toBeNull(),
+    );
+  });
+
+  // Scenario (d): modal does NOT mount when no active run exists
+  it('does not mount GenerationProgressFloat when no active run exists', async () => {
+    const { fn } = makeFetchWithStages([CANONICAL_RUN, PERTRACK_PRODUCTION_RUN]);
+    global.fetch = fn;
+    // activeRunResult is INACTIVE_RUN by default (reset in beforeEach)
+
+    render(wrapWithTrack('video', TRACK_ID));
+    await waitFor(() => expect(screen.queryByTestId('production-engine-root')).not.toBeNull());
+
+    expect(screen.queryByTestId('generation-progress-float')).toBeNull();
   });
 });

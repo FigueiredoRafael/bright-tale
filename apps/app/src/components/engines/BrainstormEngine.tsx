@@ -40,6 +40,7 @@ import { IdeaCard } from '@/components/brainstorm/IdeaCard';
 import type { BrainstormResult, PipelineContext } from './types';
 import type { StageRun } from '@brighttale/shared/pipeline/inputs';
 import type { AutopilotConfig } from '@brighttale/shared';
+import { useActiveStageRun } from '@/hooks/useActiveStageRun';
 
 const BRAINSTORM_PROVIDERS: ProviderId[] = ['gemini', 'openai', 'anthropic', 'ollama', 'manual'];
 
@@ -144,10 +145,15 @@ export function BrainstormEngine({
   // Regenerate state
   const [regenerating, setRegenerating] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-
-  // Generation progress modal
-  const [activeGenerationId, setActiveGenerationId] = useState<string | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
+
+  // issue #242 Module 5: derive progress-modal visibility from stage_run status.
+  // Brainstorm is a shared stage (trackId=null). sessionId is still kept for the
+  // SSE URL — the hook only drives the mount/unmount decision.
+  const activeRun = useActiveStageRun(projectId, 'brainstorm', null);
+  // showProgressModal: mounts the float when the stage_run is active OR when we
+  // are reconnecting to a running session (reconnect path bypasses the stream).
+  const showProgressModal = (activeRun.isActive || isReconnecting) && !!sessionId;
 
   // When initialSession is provided, we're in "session detail" mode
   const isSessionDetail = !!initialSession;
@@ -371,7 +377,7 @@ export function BrainstormEngine({
 
   // Reconnect to running session after page reload
   useEffect(() => {
-    if (initialSession || activeGenerationId) return;
+    if (initialSession || activeRun.isActive) return;
     (async () => {
       try {
         const url = channelId
@@ -385,7 +391,9 @@ export function BrainstormEngine({
           const ageMs = Date.now() - new Date(session.created_at).getTime();
           if (ageMs > 20 * 60 * 1000) return;
           setSessionId(session.id);
-          setActiveGenerationId(session.id);
+          // The stage_run stream will pick up isActive=true from the server.
+          // Set isReconnecting so showProgressModal opens while the stream
+          // hasn't yet received the running state.
           setIsReconnecting(true);
           setRunning(true);
         }
@@ -394,7 +402,7 @@ export function BrainstormEngine({
         // silent — no running session
       }
     })();
-  }, [initialSession, channelId, activeGenerationId, abortController?.signal]);
+  }, [initialSession, channelId, activeRun.isActive, abortController?.signal]);
 
   // Fetch recommended agent
   useEffect(() => {
@@ -599,7 +607,8 @@ export function BrainstormEngine({
         localStorage.removeItem(storageKey);
         return;
       }
-      setActiveGenerationId(newSessionId);
+      // The POST creates a stage_run. useActiveStageRun picks up the status change
+      // from the project stream and mounts the modal — no local activeGenerationId needed.
       // Clear persisted form state after successful submission
       localStorage.removeItem(storageKey);
     } catch (err) {
@@ -615,7 +624,8 @@ export function BrainstormEngine({
   }
 
   async function handleGenerationComplete() {
-    setActiveGenerationId(null);
+    // activeRun.isActive will flip to false via useActiveStageRun when the
+    // stage_run row reaches 'completed' — no local state to clear here.
     if (!sessionId) {
       setRunning(false);
       return;
@@ -671,7 +681,7 @@ export function BrainstormEngine({
   }
 
   function handleGenerationFailed(message: string) {
-    setActiveGenerationId(null);
+    // activeRun.isActive will flip to false when the stage_run reaches 'failed'.
     setRunning(false);
     tracker.trackFailed(message);
     const friendly = friendlyAiError(message);
@@ -1108,10 +1118,10 @@ export function BrainstormEngine({
           portal would leak onto the dashboard). SSE runs regardless so that
           onComplete fires and the pipeline advances in auto-pilot. */}
       <GenerationProgressFloat
-        open={!overviewMode && !!activeGenerationId}
-        sessionId={activeGenerationId ?? ''}
-        sseUrl={activeGenerationId ? `/api/brainstorm/sessions/${activeGenerationId}/events` : ''}
-        cancelUrl={activeGenerationId ? `/api/brainstorm/sessions/${activeGenerationId}/cancel` : undefined}
+        open={showProgressModal && !overviewMode}
+        sessionId={sessionId ?? ''}
+        sseUrl={showProgressModal && sessionId ? `/api/brainstorm/sessions/${sessionId}/events` : ''}
+        cancelUrl={showProgressModal && sessionId ? `/api/brainstorm/sessions/${sessionId}/cancel` : undefined}
         title={`Generating with ${model}`}
         reconnecting={isReconnecting}
         onComplete={() => {
@@ -1123,7 +1133,8 @@ export function BrainstormEngine({
           handleGenerationFailed(msg);
         }}
         onClose={() => {
-          setActiveGenerationId(null);
+          // User dismisses the float manually. The modal will re-mount if the
+          // stream still reports isActive=true on the next render.
           setIsReconnecting(false);
           setRunning(false);
         }}

@@ -30,6 +30,8 @@ interface ProjectStreamResult {
   refresh: () => Promise<void>;
   allAttempts?: StageRun[];
   tracks?: TrackSnapshot[];
+  /** Optimistic cache mutator — Refs #242 */
+  optimisticPatchStageRun?: (stage: Stage, trackId: string | null, patch: Partial<StageRun>) => void;
 }
 
 interface Props {
@@ -229,7 +231,7 @@ export function FocusPanel({ projectId }: Props) {
   const [restarting, setRestarting] = useState(false);
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
 
-  const { stageRuns, allAttempts: rawAllAttempts, tracks: rawTracks, refresh } = useProjectStream(projectId) as ProjectStreamResult;
+  const { stageRuns, allAttempts: rawAllAttempts, tracks: rawTracks, refresh, optimisticPatchStageRun } = useProjectStream(projectId) as ProjectStreamResult;
   const tracks: TrackSnapshot[] = rawTracks ?? [];
 
   // Overview mode — render the watch-only OverviewProgressView instead of any engine.
@@ -327,6 +329,9 @@ export function FocusPanel({ projectId }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+      // Optimistic patch: immediately reflect the new queued status in the
+      // local stream cache so the engine reacts before the next poll (Refs #242).
+      optimisticPatchStageRun?.(stage, trackId ?? null, { status: 'queued' });
       await refresh();
     } finally {
       setRestarting(false);

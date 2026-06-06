@@ -43,7 +43,8 @@ interface ReducerState {
 
 type ReducerAction =
   | { type: 'snapshot'; rows: StageRun[] }
-  | { type: 'upsert'; row: StageRun };
+  | { type: 'upsert'; row: StageRun }
+  | { type: 'patch'; stage: Stage; trackId: string | null; patch: Partial<StageRun> };
 
 function reducer(state: ReducerState, action: ReducerAction): ReducerState {
   if (action.type === 'snapshot') {
@@ -56,6 +57,44 @@ function reducer(state: ReducerState, action: ReducerAction): ReducerState {
   if (action.type === 'upsert') {
     return {
       stageRuns: { ...state.stageRuns, [action.row.stage]: action.row },
+    };
+  }
+  if (action.type === 'patch') {
+    const current = state.stageRuns[action.stage];
+    // Only merge into the cached row when it belongs to the same per-track
+    // scope. Otherwise the latest-per-stage slot may hold a different track's
+    // run and the patch would silently mutate it. When the slot is empty or
+    // mismatched, synthesize a minimal optimistic entry so the hook can
+    // recognize the new active run before the next snapshot poll lands.
+    const trackMatches = current && (current.trackId ?? null) === action.trackId;
+    if (trackMatches) {
+      return {
+        stageRuns: {
+          ...state.stageRuns,
+          [action.stage]: { ...current, ...action.patch },
+        },
+      };
+    }
+    const synthesized: StageRun = {
+      id: '__optimistic__',
+      projectId: current?.projectId ?? '',
+      stage: action.stage,
+      status: 'queued',
+      awaitingReason: null,
+      payloadRef: null,
+      attemptNo: (current?.attemptNo ?? 0) + 1,
+      inputJson: null,
+      errorMessage: null,
+      startedAt: null,
+      finishedAt: null,
+      outcomeJson: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      trackId: action.trackId,
+      ...action.patch,
+    };
+    return {
+      stageRuns: { ...state.stageRuns, [action.stage]: synthesized },
     };
   }
   return state;
@@ -77,6 +116,12 @@ function rowToStageRun(row: Record<string, unknown>): StageRun {
     outcomeJson: row.outcome_json,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
+    // trackId MUST be preserved: useActiveStageRun filters per-track runs by
+    // matching `run.trackId === requestedTrackId`. Dropping it caused the
+    // Realtime upsert path to strip the field, leaving the hook unable to
+    // recognize an active per-track run and the engine's progress modal
+    // never mounting after a stage restart.
+    trackId: (row.track_id ?? null) as string | null,
   };
 }
 
@@ -108,6 +153,21 @@ export function useProjectStream(projectId: string): {
   project: ProjectMeta;
   tracks: TrackSnapshot[];
   refresh: () => Promise<void>;
+  /**
+   * Optimistically patches the cached stage_run for (stage, trackId) so the
+   * UI reacts immediately after a POST without waiting for the next poll.
+   * The real refresh() call overwrites this patch with server truth.
+   *
+   * When the cached slot is empty or holds a different track's run, a
+   * minimal optimistic stage_run is synthesized so per-track engines can
+   * react immediately. The synthesized row is replaced as soon as the next
+   * snapshot or Realtime upsert lands.
+   *
+   * @param stage    The stage whose run to patch.
+   * @param trackId  The track scope. Pass null for shared stages.
+   * @param patch    Partial StageRun fields to merge.
+   */
+  optimisticPatchStageRun: (stage: Stage, trackId: string | null, patch: Partial<StageRun>) => void;
 } {
   const [state, dispatch] = useReducer(reducer, { stageRuns: EMPTY_STAGE_RUNS });
   const [liveEvent, setLiveEvent] = useState<JobEvent | null>(null);
@@ -119,6 +179,34 @@ export function useProjectStream(projectId: string): {
   // same page don't collide on a single shared Supabase Realtime channel
   // (which throws "cannot add postgres_changes callbacks after subscribe()").
   const instanceId = useId();
+
+  // Mirror helpers update the `tracks` snapshot in addition to the flat
+  // reducer state. useActiveStageRun reads per-track runs from this snapshot
+  // (the flat slot collapses by stage and loses per-track identity on
+  // multi-track projects). The cast to `never` is a deliberate seam between
+  // the snapshot schema (`StageRunSnapshot`, schema-derived) and the runtime
+  // StageRun type — both share the wire shape and the engine consumers
+  // tolerate either, but the schemas diverge on awaitingReason literal vs
+  // string and on nested StageRunAttempt shape.
+  const mirrorRowToTracks = useCallback((row: StageRun) => {
+    if (!row.trackId) return;
+    setTracks((prev) => {
+      let touched = false;
+      const next = prev.map((track) => {
+        if (track.id !== row.trackId) return track;
+        const existing = (track.stageRuns ?? {})[row.stage] as unknown as StageRun | null;
+        if (existing && existing.createdAt > row.createdAt && existing.id !== row.id) {
+          return track;
+        }
+        touched = true;
+        return {
+          ...track,
+          stageRuns: { ...(track.stageRuns ?? {}), [row.stage]: row as never },
+        };
+      });
+      return touched ? next : prev;
+    });
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -167,7 +255,15 @@ export function useProjectStream(projectId: string): {
         },
         (payload: { new?: Record<string, unknown> }) => {
           if (!payload.new) return;
-          dispatch({ type: 'upsert', row: rowToStageRun(payload.new) });
+          const row = rowToStageRun(payload.new);
+          dispatch({ type: 'upsert', row });
+          // Multi-track projects keep one stage_runs row per (stage, trackId).
+          // The flat reducer state collapses them by stage only, so per-track
+          // engines that read from `tracks` need an immediate side-mirror to
+          // see Realtime updates without waiting for the next 4s snapshot poll.
+          if (row.trackId) {
+            mirrorRowToTracks(row);
+          }
         },
       )
       .on(
@@ -203,7 +299,48 @@ export function useProjectStream(projectId: string): {
       window.clearInterval(pollId);
       supabase.removeChannel(channel);
     };
-  }, [projectId, instanceId, refresh]);
+  }, [projectId, instanceId, refresh, mirrorRowToTracks]);
 
-  return { stageRuns: state.stageRuns, liveEvent, isConnected, project, tracks, refresh };
+  const optimisticPatchStageRun = useCallback(
+    (stage: Stage, trackId: string | null, patch: Partial<StageRun>) => {
+      dispatch({ type: 'patch', stage, trackId, patch });
+      if (!trackId) return;
+      setTracks((prev) => {
+        let touched = false;
+        const next = prev.map((track) => {
+          if (track.id !== trackId) return track;
+          const existing = (track.stageRuns ?? {})[stage] as unknown as StageRun | null;
+          const baseSynthesized: StageRun = {
+            id: '__optimistic__',
+            projectId,
+            stage,
+            status: 'queued',
+            awaitingReason: null,
+            payloadRef: null,
+            attemptNo: 1,
+            inputJson: null,
+            errorMessage: null,
+            startedAt: null,
+            finishedAt: null,
+            outcomeJson: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            trackId,
+          };
+          const merged: StageRun = existing
+            ? { ...existing, ...patch }
+            : { ...baseSynthesized, ...patch };
+          touched = true;
+          return {
+            ...track,
+            stageRuns: { ...(track.stageRuns ?? {}), [stage]: merged as never },
+          };
+        });
+        return touched ? next : prev;
+      });
+    },
+    [projectId],
+  );
+
+  return { stageRuns: state.stageRuns, liveEvent, isConnected, project, tracks, refresh, optimisticPatchStageRun };
 }

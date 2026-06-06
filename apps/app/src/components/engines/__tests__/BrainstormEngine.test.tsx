@@ -38,6 +38,11 @@ vi.mock('@/hooks/use-auto-pilot-trigger', () => ({
   useAutoPilotTrigger: vi.fn(),
 }))
 
+// issue #242: stub useActiveStageRun so it doesn't call useProjectStream (Supabase)
+vi.mock('@/hooks/useActiveStageRun', () => ({
+  useActiveStageRun: () => ({ runId: null, status: null, startedAt: null, isActive: false, isFresh: false }),
+}))
+
 const STUB_IDEAS = [
   { id: 'idea-1', idea_id: 'BC-IDEA-001', title: 'Test Idea', verdict: 'viable', target_audience: 'devs', core_tension: 'tension' },
 ]

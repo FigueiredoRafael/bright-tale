@@ -31,6 +31,7 @@ import type { AutopilotConfig } from '@brighttale/shared';
 import type { DraftResult } from './types';
 import { usePipelineTracker } from '@/hooks/use-pipeline-tracker';
 import { useActiveChannel } from '@/hooks/use-active-channel';
+import { useActiveStageRun } from '@/hooks/useActiveStageRun';
 
 type Medium = 'blog' | 'video' | 'shorts' | 'podcast';
 type Phase = 'produce' | 'done';
@@ -170,8 +171,14 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
     model: null,
   });
 
-  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
-  const [activeSince, setActiveSince] = useState<string | null>(null);
+  // issue #242 Module 2: derive progress-modal visibility from stage_run status
+  // instead of local activeDraftId state.
+  const activeRun = useActiveStageRun(projectId ?? '', 'production', trackId);
+  // effectiveDraftId: the draft currently targeted by an in-flight run.
+  // We use the per-track/derived draft id — the same id the /produce POST targets.
+  const effectiveDraftId = draftId;
+  const showProgressModal = activeRun.isActive && !overviewMode && !!effectiveDraftId;
+
   const [busy, setBusy] = useState(false);
 
   const [manualState, setManualState] = useState<{
@@ -192,7 +199,7 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
   useEffect(() => {
     if (!draftId) return;
     if (hydratedDraftRef.current === draftId) return;
-    if (activeDraftId) return; // a generation is in flight — don't clobber its state
+    if (activeRun.isActive) return; // a generation is in flight — don't clobber its state
     hydratedDraftRef.current = draftId;
     (async () => {
       try {
@@ -215,7 +222,7 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
         if (err instanceof Error && err.name === 'AbortError') return;
       }
     })();
-  }, [draftId, medium, activeDraftId, abortController?.signal]);
+  }, [draftId, medium, activeRun.isActive, abortController?.signal]);
 
   const TYPES: { id: Medium; label: string; icon: typeof FileText; cost: number | undefined }[] = [
     { id: 'blog', label: 'Blog', icon: FileText, cost: creditSettings?.costBlog },
@@ -299,7 +306,6 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
       return;
     }
 
-    const sinceAnchor = new Date(Date.now() - 1_000).toISOString();
     const enqueued = await runStep('start produce', () =>
       fetch(`/api/content-drafts/${draftId}/produce`, {
         method: 'POST',
@@ -312,15 +318,14 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
       setPhase('produce');
       return;
     }
-    setActiveSince(sinceAnchor);
-    setActiveDraftId(draftId);
+    // The POST creates a stage_run. useActiveStageRun picks up the status change
+    // from the project stream and mounts the modal — no local state needed.
   }
 
   function onProduceJobComplete() {
     if (!draftId) return;
-    setActiveDraftId(null);
-    setActiveSince(null);
-
+    // activeRun.isActive will flip to false via useActiveStageRun when the
+    // stage_run row reaches 'completed' — no local state to clear here.
     (async () => {
       try {
         const res = await fetch(`/api/content-drafts/${draftId}`, {
@@ -359,8 +364,7 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
   function onJobFailed(message: string) {
     const friendly = friendlyAiError(message);
     toast.error(friendly.title, { description: friendly.hint });
-    setActiveDraftId(null);
-    setActiveSince(null);
+    // activeRun.isActive will flip to false when the stage_run reaches 'failed'.
   }
 
   async function handleManualOutputSubmit(parsed: unknown) {
@@ -607,18 +611,20 @@ function ProductionEngineInner({ projectId: projectIdProp, trackId, medium }: { 
       data-track-id={trackId}
       className="space-y-6"
     >
-      {activeDraftId && (
+      {showProgressModal && effectiveDraftId && (
         <GenerationProgressFloat
-          open={!overviewMode && !!activeDraftId}
-          sessionId={activeDraftId}
-          sseUrl={`/api/content-drafts/${activeDraftId}/events`}
-          since={activeSince ?? undefined}
+          open={showProgressModal}
+          sessionId={effectiveDraftId}
+          sseUrl={`/api/content-drafts/${effectiveDraftId}/events`}
+          since={activeRun.startedAt ?? undefined}
           title={`Producing ${medium}`}
           onComplete={onProduceJobComplete}
           onFailed={onJobFailed}
           onClose={() => {
-            setActiveDraftId(null);
-            setActiveSince(null);
+            // User dismisses the float manually — the stage_run may still be
+            // running in the background. The modal will re-mount if the stream
+            // still reports isActive=true on the next render. This is intentional:
+            // the float cannot be permanently suppressed mid-run from the UI.
           }}
         />
       )}
