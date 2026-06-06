@@ -81,6 +81,11 @@ let trackRow: Record<string, unknown> | null;
 // Tests that need a different project config reassign this before the handler.
 let projectAutopilotConfigJson: Record<string, unknown>;
 
+// Per-test configurable review_iterations history + insert spy (BRI-153).
+// `reviewIterationsRows` feeds findBestIteration's terminal best-of lookup.
+let reviewIterationsRows: Array<Record<string, unknown>>;
+let reviewIterationsInsertMock: ReturnType<typeof vi.fn>;
+
 vi.mock('../../lib/supabase/index.js', () => ({
   createServiceClient: () => ({
     from: (table: string) => {
@@ -151,10 +156,17 @@ vi.mock('../../lib/supabase/index.js', () => ({
         };
       }
       // review_iterations is appended on each pass so the picker UI can show
-      // (draft, review) per iteration. Mock just needs to swallow inserts.
+      // (draft, review) per iteration. `insert` swallows writes; `select`
+      // feeds findBestIteration's terminal best-of lookup (BRI-153).
       if (table === 'review_iterations') {
         return {
-          insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+          insert: reviewIterationsInsertMock,
+          select: () => ({
+            eq: () => ({
+              order: () =>
+                Promise.resolve({ data: reviewIterationsRows, error: null }),
+            }),
+          }),
         };
       }
       // Track lookup: the dispatcher loads the track row when stageRun.track_id
@@ -206,6 +218,12 @@ describe('pipeline-review-dispatch', () => {
         maxIterations: 5,
       },
     };
+
+    // Default: empty review history + fresh insert spy (BRI-153).
+    reviewIterationsRows = [];
+    reviewIterationsInsertMock = vi
+      .fn()
+      .mockResolvedValue({ data: null, error: null });
 
     stageRunRow = {
       id: STAGE_RUN_ID,
@@ -391,6 +409,109 @@ describe('pipeline-review-dispatch', () => {
       (c) => (c[0] as { name: string }).name === 'pipeline/stage.run.finished',
     );
     expect(finishedCall).toBeUndefined();
+  });
+
+  it('BRI-153: at maxIterations with a regression (80 → 70), auto-promotes the best-scoring snapshot as the live draft', async () => {
+    draftRow = {
+      ...(draftRow as Record<string, unknown>),
+      iteration_count: 4,
+      draft_json: { body: 'current-70' },
+    };
+    // This pass scores 70 (7/10), below auto-approve, above hard-fail → parks.
+    generateWithFallbackMock.mockResolvedValueOnce({
+      result: {
+        overall_verdict: 'revision_required',
+        blog_review: { score: 70, rubric_evaluation: makeBlogRubricEval(7) },
+      },
+      providerName: 'mock',
+      model: 'mock',
+      usage: {},
+    });
+    // History holds an earlier 80-scoring pass with a snapshot.
+    reviewIterationsRows = [
+      { iteration: 2, score: 80, draft_json: { body: 'best-80' }, feedback_json: { fb: 80 }, verdict: 'revision_required' },
+      { iteration: 5, score: 70, draft_json: { body: 'current-70' }, feedback_json: { fb: 70 }, verdict: 'revision_required' },
+    ];
+
+    const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
+    await (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
+
+    // Stage run still parks awaiting_user(max_iterations) — human gate kept.
+    const awaitingRow = stageRunsUpdateMock.mock.calls
+      .map((c) => c[0])
+      .find((r) => r.status === 'awaiting_user');
+    expect(awaitingRow?.awaiting_reason).toBe('max_iterations');
+
+    // content_drafts: the LAST update promotes the best (80) snapshot.
+    const updates = contentDraftsUpdateMock.mock.calls.map((c) => c[0]);
+    const promote = updates[updates.length - 1];
+    expect(promote.draft_json).toEqual({ body: 'best-80' });
+    expect(promote.review_score).toBe(80);
+    expect(promote.review_feedback_json).toEqual({ fb: 80 });
+    expect(promote.review_verdict).toBe('revision_required');
+    expect(promote.status).toBe('in_review');
+    // The current pass was still appended to history.
+    expect(reviewIterationsInsertMock).toHaveBeenCalled();
+  });
+
+  it('BRI-153: at maxIterations with no regression (latest is the best), leaves the current draft untouched', async () => {
+    draftRow = { ...(draftRow as Record<string, unknown>), iteration_count: 4 };
+    generateWithFallbackMock.mockResolvedValueOnce({
+      result: {
+        overall_verdict: 'revision_required',
+        blog_review: { score: 80, rubric_evaluation: makeBlogRubricEval(8) },
+      },
+      providerName: 'mock',
+      model: 'mock',
+      usage: {},
+    });
+    // Best historical (incl. current) is also 80 → nothing beats the latest.
+    reviewIterationsRows = [
+      { iteration: 3, score: 70, draft_json: { body: 'older-70' }, feedback_json: {}, verdict: 'revision_required' },
+      { iteration: 5, score: 80, draft_json: { body: 'current-80' }, feedback_json: {}, verdict: 'revision_required' },
+    ];
+
+    const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
+    await (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
+
+    // Only the single per-pass update — no best-of promote (current == best).
+    expect(contentDraftsUpdateMock).toHaveBeenCalledTimes(1);
+    const awaitingRow = stageRunsUpdateMock.mock.calls
+      .map((c) => c[0])
+      .find((r) => r.status === 'awaiting_user');
+    expect(awaitingRow?.awaiting_reason).toBe('max_iterations');
+  });
+
+  it('BRI-153: at maxIterations, skips best-of when the top pass predates snapshots (no draft_json)', async () => {
+    draftRow = { ...(draftRow as Record<string, unknown>), iteration_count: 4 };
+    generateWithFallbackMock.mockResolvedValueOnce({
+      result: {
+        overall_verdict: 'revision_required',
+        blog_review: { score: 70, rubric_evaluation: makeBlogRubricEval(7) },
+      },
+      providerName: 'mock',
+      model: 'mock',
+      usage: {},
+    });
+    // The higher-scoring 80 pass has NO snapshot (pre-feature) → not promotable.
+    reviewIterationsRows = [
+      { iteration: 1, score: 80, draft_json: null, feedback_json: {}, verdict: 'revision_required' },
+    ];
+
+    const { pipelineReviewDispatch } = await import('../pipeline-review-dispatch.js');
+    await (pipelineReviewDispatch as unknown as (args: HandlerArgs) => Promise<void>)({
+      event: { data: { stageRunId: STAGE_RUN_ID, stage: 'review', projectId: PROJECT_ID } },
+      step: STEP_MOCK,
+    });
+
+    // No promotable snapshot → no second update, no throw.
+    expect(contentDraftsUpdateMock).toHaveBeenCalledTimes(1);
   });
 
   it('on provider quota exhausted: stage_run → awaiting_user(provider_quota_exhausted), no rethrow', async () => {
