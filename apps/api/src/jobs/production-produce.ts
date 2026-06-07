@@ -4,7 +4,8 @@
  * a live status feed during the LLM call.
  */
 import { inngest } from './client.js';
-import { generateWithFallback } from '../lib/ai/router.js';
+import { generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
+import { markCompleted, markAborted, markFailed, markAwaitingUser, insertRun } from '../lib/pipeline/stage-run-writer.js';
 import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
 import { loadIdeaContext } from '../lib/ai/loadIdeaContext.js';
@@ -329,38 +330,26 @@ export const productionProduce = inngest.createFunction(
       }
 
       if (resolvedStageRunId) {
-        const now = new Date().toISOString();
-        await (sb.from('stage_runs') as unknown as {
-          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        })
-          .update({
-            status: 'completed',
-            payload_ref: { kind: 'content_draft', id: draftId },
-            error_message: null,
-            finished_at: now,
-            updated_at: now,
-          })
-          .eq('id', resolvedStageRunId);
-        await inngest.send({
-          name: 'pipeline/stage.run.finished',
-          data: { stageRunId: resolvedStageRunId, projectId },
+        // markCompleted clears error_message + awaiting_reason automatically.
+        await markCompleted(sb, resolvedStageRunId, {
+          projectId: projectId ?? '',
+          stage: 'production',
+          payloadRef: { kind: 'content_draft', id: draftId },
+          ...(resolvedTrackId ? { trackId: resolvedTrackId } : {}),
         });
       } else if (projectId && resolvedTrackId) {
         // No existing stage_run for this (project, track, production) — happens
         // in step-by-step mode where the orchestrator never fanned out. Insert
         // a fresh 'completed' row so the sidebar reflects the produce.
-        const now = new Date().toISOString();
-        await sb.from('stage_runs').insert({
-          project_id: projectId,
+        // insertRun emits no advance event (it's an insert, not a terminal transition).
+        await insertRun(sb, {
+          projectId,
           stage: 'production',
+          attemptNo: 1,
           status: 'completed',
-          attempt_no: 1,
-          track_id: resolvedTrackId,
-          publish_target_id: null,
-          payload_ref: { kind: 'content_draft', id: draftId },
-          started_at: now,
-          finished_at: now,
-          updated_at: now,
+          payloadRef: { kind: 'content_draft', id: draftId },
+          trackId: resolvedTrackId,
+          publishTargetId: null,
         });
       }
 
@@ -370,15 +359,9 @@ export const productionProduce = inngest.createFunction(
         await sb.from('content_drafts').update({ status: 'paused' }).eq('id', draftId);
         await emitJobEvent(draftId, 'production', 'aborted', 'Sessão cancelada pelo usuário');
         if (stageRunId) {
-          const now = new Date().toISOString();
-          await (sb.from('stage_runs') as unknown as {
-            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-          })
-            .update({ status: 'aborted', finished_at: now, updated_at: now })
-            .eq('id', stageRunId);
-          await inngest.send({
-            name: 'pipeline/stage.run.finished',
-            data: { stageRunId, projectId },
+          await markAborted(sb, stageRunId, {
+            projectId: projectId ?? '',
+            stage: 'production',
           });
         }
         return;
@@ -387,6 +370,7 @@ export const productionProduce = inngest.createFunction(
       const rawMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       const providerLabel = provider ? `[${provider}${model ? `/${model}` : ''}] ` : '';
       const message = `${providerLabel}${rawMessage}`;
+      const quotaExhausted = isQuotaExhausted(err);
       await (sb.from('content_drafts') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
       })
@@ -394,22 +378,26 @@ export const productionProduce = inngest.createFunction(
         .eq('id', draftId);
       await emitJobEvent(draftId, 'production', 'failed', message.slice(0, 200), { error: message });
 
-      if (stageRunId) {
-        const now = new Date().toISOString();
-        await (sb.from('stage_runs') as unknown as {
-          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        })
-          .update({
-            status: 'failed',
-            error_message: message.slice(0, 500),
-            finished_at: now,
-            updated_at: now,
-          })
-          .eq('id', stageRunId);
-        await inngest.send({
-          name: 'pipeline/stage.run.finished',
-          data: { stageRunId, projectId },
-        });
+      // The failure happened before the success-path resolution logic ran.
+      // Use stageRunId from the event (autopilot path) — undefined for engine-driven
+      // calls. Guard before calling the writer.
+      const failStageRunId = stageRunId ?? null;
+      if (failStageRunId) {
+        if (quotaExhausted) {
+          // Quota-park is non-terminal — markAwaitingUser emits NO event.
+          await markAwaitingUser(sb, failStageRunId, {
+            projectId: projectId ?? '',
+            stage: 'production',
+            awaitingReason: 'provider_quota_exhausted',
+          });
+          return;
+        } else {
+          await markFailed(sb, failStageRunId, {
+            projectId: projectId ?? '',
+            stage: 'production',
+            errorMessage: message,
+          });
+        }
       }
 
       throw err;

@@ -214,6 +214,15 @@ export async function insertRun(
   if (opts.inputJson !== undefined) row.input_json = opts.inputJson;
   if (opts.payloadRef) row.payload_ref = opts.payloadRef;
   if (opts.outcome) row.outcome_json = opts.outcome;
+  // A one-shot terminal insert (e.g. a synchronous publish, or the produce
+  // insert-fallback) never passes through markRunning/markCompleted, so stamp
+  // started_at + finished_at here — otherwise the row lands with both null and
+  // the frontend reads finishedAt: null for an already-completed Stage Run.
+  if (isTerminal(opts.status)) {
+    const now = new Date().toISOString();
+    row.started_at = now;
+    row.finished_at = now;
+  }
   applyDims(row, opts);
   // Always write the dimensions on insert (even as null) so the partial
   // unique index hashes the sentinel UUID — keeps the legacy single-Track
@@ -346,7 +355,39 @@ export async function markRunning(
   logTransition('info', 'stage-run → running', { stageRunId, ...ctx });
 }
 
-/** running → completed. Emits advance event unless suppressed. */
+/**
+ * awaiting_user → queued. Non-terminal — no advance event.
+ *
+ * Used by the /continue HTTP endpoint to re-queue a parked Stage Run so the
+ * matching dispatcher picks it up via `pipeline/stage.requested`. Clears
+ * awaiting_reason so the row no longer looks parked.
+ */
+export async function markQueued(
+  sb: Sb,
+  stageRunId: string,
+  ctx: TransitionContext & MultiTrackDims,
+): Promise<void> {
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = {
+    status: 'queued',
+    awaiting_reason: null,
+    updated_at: now,
+  };
+  applyDims(patch, ctx);
+  const { error } = await sb.from('stage_runs').update(patch).eq('id', stageRunId);
+  if (error) {
+    logTransition('error', 'markQueued failed', { stageRunId, ...ctx, err: error.message });
+    throw new Error(`markQueued ${stageRunId}: ${error.message}`);
+  }
+  logTransition('info', 'stage-run → queued', { stageRunId, ...ctx });
+}
+
+/**
+ * running → completed. Emits advance event unless suppressed.
+ *
+ * Always clears stale error_message and awaiting_reason so a completed
+ * terminal row never carries leftovers from a prior failed/awaiting attempt.
+ */
 export async function markCompleted(
   sb: Sb,
   stageRunId: string,
@@ -357,6 +398,10 @@ export async function markCompleted(
     status: 'completed',
     finished_at: now,
     updated_at: now,
+    // Clear stale fields from prior failed/awaiting attempts so this
+    // terminal row is always clean.
+    error_message: null,
+    awaiting_reason: null,
   };
   if (opts.payloadRef) patch.payload_ref = opts.payloadRef;
   if (opts.outcome) patch.outcome_json = opts.outcome;

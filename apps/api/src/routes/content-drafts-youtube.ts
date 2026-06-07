@@ -33,6 +33,7 @@ import { ApiError } from '../lib/api/errors.js';
 import { publishToYouTube } from '../lib/youtube/publish.js';
 import { decryptTokens } from '../lib/youtube/oauth.js';
 import { inngest } from '../jobs/client.js';
+import { insertRun } from '../lib/pipeline/stage-run-writer.js';
 import { youtubePublishParams } from '@brighttale/shared/schemas/youtubePublishParams';
 
  
@@ -57,10 +58,10 @@ async function resolveYouTubeTarget(
 }
 
 /**
- * Insert a completed stage_run row for the publish stage.
- * Uses direct insert (not stage-run-writer) because this route is called
- * from outside the pipeline orchestrator — there is no pre-existing running
- * row to transition. The orchestrator's advance event is emitted separately.
+ * Insert a completed stage_run row for the publish stage via the writer.
+ * Uses insertRun (stage-run-writer) so uniqueness collisions surface as
+ * StageRunUniquenessError and dimensions are applied consistently.
+ * The orchestrator's advance event is emitted separately (insertRun is non-emitting).
  */
 async function insertPublishStageRun(
   sb: Sb,
@@ -70,25 +71,17 @@ async function insertPublishStageRun(
     payloadRef: { kind: string; videoId: string; url: string };
   },
 ): Promise<string> {
-  const { data, error } = await sb
-    .from('stage_runs')
-    .insert({
-      project_id: opts.projectId,
-      stage: 'publish',
-      status: 'completed',
-      attempt_no: 1,
-      publish_target_id: opts.publishTargetId,
-      payload_ref: opts.payloadRef,
-      finished_at: new Date().toISOString(),
-    })
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to write publish stage_run: ${String(error.message)}`);
-  }
-
-  return (data as { id: string }).id;
+  // The YouTube payload_ref shape { kind, videoId, url } extends beyond
+  // PayloadRef { kind, id } — cast so insertRun stores the full shape.
+  const row = await insertRun(sb, {
+    projectId: opts.projectId,
+    stage: 'publish',
+    attemptNo: 1,
+    status: 'completed',
+    payloadRef: opts.payloadRef as unknown as { kind: string; id: string },
+    publishTargetId: opts.publishTargetId,
+  });
+  return (row as { id: string }).id;
 }
 
 export async function contentDraftsYouTubeRoutes(fastify: FastifyInstance): Promise<void> {

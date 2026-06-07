@@ -28,7 +28,7 @@ import {
   PredecessorNotDoneError,
   ConcurrentStageRunError,
 } from '../lib/pipeline/orchestrator.js';
-import { bulkAbort, markAborted } from '../lib/pipeline/stage-run-writer.js';
+import { bulkAbort, markAborted, markCompleted, markQueued } from '../lib/pipeline/stage-run-writer.js';
 import { mirrorFromLegacy } from '../lib/pipeline/mirror-from-legacy.js';
 import { ensureTracksForProject } from '../lib/pipeline/legacy-track-migrator.js';
 import { STAGES, type Stage, type StageRun } from '@brighttale/shared/pipeline/inputs';
@@ -213,14 +213,10 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
           );
         }
 
-        const now = new Date().toISOString();
-        await (sb.from('stage_runs') as unknown as {
-          update: (row: Record<string, unknown>) => {
-            eq: (col: string, val: string) => Promise<unknown>;
-          };
-        })
-          .update({ status: 'queued', awaiting_reason: null, updated_at: now })
-          .eq('id', stageRunId);
+        await markQueued(sb, stageRunId, {
+          projectId,
+          stage: stageRun.stage as string,
+        });
 
         await inngest.send({
           name: 'pipeline/stage.requested',
@@ -500,26 +496,13 @@ export async function stageRunsRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         const firstDraftId = forwardBody?.data?.draftIds?.[0] ?? null;
-        const now = new Date().toISOString();
-        await (sb.from('stage_runs') as unknown as {
-          update: (row: Record<string, unknown>) => {
-            eq: (col: string, val: string) => Promise<unknown>;
-          };
-        })
-          .update({
-            status: 'completed',
-            awaiting_reason: null,
-            payload_ref: firstDraftId
-              ? { kind: 'brainstorm_draft', id: firstDraftId }
-              : (stageRun.payload_ref ?? null),
-            finished_at: now,
-            updated_at: now,
-          })
-          .eq('id', stageRunId);
-
-        await inngest.send({
-          name: 'pipeline/stage.run.finished',
-          data: { stageRunId, projectId },
+        // markCompleted clears error_message + awaiting_reason automatically.
+        await markCompleted(sb, stageRunId, {
+          projectId,
+          stage: stageRun.stage as string,
+          payloadRef: firstDraftId
+            ? { kind: 'brainstorm_draft', id: firstDraftId }
+            : (stageRun.payload_ref as { kind: string; id: string } | null) ?? undefined,
         });
 
         return reply.send({

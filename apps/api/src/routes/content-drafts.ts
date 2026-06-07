@@ -57,6 +57,7 @@ import {
 } from "../lib/ai/loadIdeaContext.js";
 import { logAiUsage } from "../lib/axiom.js";
 import { deriveTier } from "@brighttale/shared/utils/reviewTierCompat";
+import { markCompleted } from "../lib/pipeline/stage-run-writer.js";
 import { loadPlatformSettings } from "../lib/platform-settings.js";
 import {
   applyIterationToDraft,
@@ -1443,28 +1444,15 @@ export async function contentDraftsRoutes(
             matchingRun?.id &&
             (runRef?.id === id || runRef?.kind !== "content_draft")
           ) {
-            const now = new Date().toISOString();
-            await (sb.from("stage_runs") as unknown as {
-              update: (row: Record<string, unknown>) => {
-                eq: (col: string, val: string) => Promise<unknown>;
-              };
-            })
-              .update({
-                status: "completed",
-                awaiting_reason: null,
-                error_message: null,
-                outcome_json: {
-                  draftId: id,
-                  draftTitle: (row.title as string) ?? "",
-                },
-                payload_ref: { kind: "content_draft", id },
-                finished_at: now,
-                updated_at: now,
-              })
-              .eq("id", matchingRun.id as string);
-            await inngest.send({
-              name: "pipeline/stage.run.finished",
-              data: { stageRunId: matchingRun.id as string, projectId },
+            // markCompleted clears error_message + awaiting_reason automatically.
+            await markCompleted(sb, matchingRun.id as string, {
+              projectId,
+              stage: targetStage,
+              payloadRef: { kind: "content_draft", id },
+              outcome: {
+                draftId: id,
+                draftTitle: (row.title as string) ?? "",
+              },
             });
           }
         }

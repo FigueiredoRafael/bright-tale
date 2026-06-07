@@ -208,6 +208,9 @@ describe('production-generate stage_runs writeback', () => {
       kind: 'content_draft',
       id: DRAFT_ID,
     });
+    // markCompleted always clears stale fields
+    expect((completedCall![0] as Record<string, unknown>).error_message).toBeNull();
+    expect((completedCall![0] as Record<string, unknown>).awaiting_reason).toBeNull();
 
     // No chain into produce
     const produceCall = (inngestSendMock.mock.calls as unknown as unknown[][]).find(
