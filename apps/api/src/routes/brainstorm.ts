@@ -17,7 +17,7 @@ import { emitJobEvent } from '../jobs/emitter.js';
 import { buildBrainstormMessage } from '../lib/ai/prompts/brainstorm.js';
 import type { BrainstormInput } from '../lib/ai/prompts/brainstorm.js';
 import { logAiUsage } from '../lib/axiom.js';
-import { ensureStageRunId } from '../lib/pipeline/stage-run-writer.js';
+import { ensureStageRunId, markCompleted } from '../lib/pipeline/stage-run-writer.js';
 
 interface RawIdea {
   idea_id?: string;
@@ -340,24 +340,12 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         const stageRunId = await ensureStageRunId(sb, projectId, 'brainstorm').catch(() => undefined);
 
         if (stageRunId) {
-          const now = new Date().toISOString();
-          await (sb.from('stage_runs') as unknown as {
-            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-          })
-            .update({
-              status: 'completed',
-              awaiting_reason: null,
-              error_message: null,
-              outcome_json: seedOutcome,
-              payload_ref: { kind: 'idea_archive', id: winnerId },
-              finished_at: now,
-              updated_at: now,
-            })
-            .eq('id', stageRunId);
-
-          await inngest.send({
-            name: 'pipeline/stage.run.finished',
-            data: { stageRunId, projectId },
+          // markCompleted clears error_message + awaiting_reason automatically.
+          await markCompleted(sb, stageRunId, {
+            projectId,
+            stage: 'brainstorm',
+            payloadRef: { kind: 'idea_archive', id: winnerId },
+            outcome: seedOutcome,
           });
         }
 

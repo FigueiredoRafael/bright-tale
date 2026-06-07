@@ -172,6 +172,9 @@ describe('brainstorm-generate stage_runs writeback', () => {
     expect(updateRow.status).toBe('completed');
     expect(updateRow.payload_ref).toEqual({ kind: 'brainstorm_draft', id: 'bd-1' });
     expect(updateRow.finished_at).toBeTruthy();
+    // markCompleted always clears stale fields from prior failed/awaiting attempts
+    expect(updateRow.error_message).toBeNull();
+    expect(updateRow.awaiting_reason).toBeNull();
 
     const finishedCall = (inngestSendMock.mock.calls as unknown as unknown[][]).find(
       (c) => (c[0] as { name: string }).name === 'pipeline/stage.run.finished',

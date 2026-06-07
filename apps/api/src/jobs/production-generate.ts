@@ -3,7 +3,7 @@
  * One Inngest job runs both stages so the user sees a single modal end-to-end.
  */
 import { inngest } from './client.js';
-import { markCompleted } from '../lib/pipeline/stage-run-writer.js';
+import { markCompleted, markAborted, markFailed, markAwaitingUser } from '../lib/pipeline/stage-run-writer.js';
 import { generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
 import { loadAgentConfig, resolveProviderOverride } from '../lib/ai/promptLoader.js';
 import { resolveTools, buildToolExecutor } from '../lib/ai/tools/index.js';
@@ -306,15 +306,9 @@ export const productionGenerate = inngest.createFunction(
         await sb.from('content_drafts').update({ status: 'paused' }).eq('id', draftId);
         await emitJobEvent(draftId, 'production', 'aborted', 'Sessão cancelada pelo usuário');
         if (stageRunId) {
-          const now = new Date().toISOString();
-          await (sb.from('stage_runs') as unknown as {
-            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-          })
-            .update({ status: 'aborted', finished_at: now, updated_at: now })
-            .eq('id', stageRunId);
-          await inngest.send({
-            name: 'pipeline/stage.run.finished',
-            data: { stageRunId, projectId },
+          await markAborted(sb, stageRunId, {
+            projectId: projectId ?? '',
+            stage: 'production',
           });
         }
         return;
@@ -335,28 +329,18 @@ export const productionGenerate = inngest.createFunction(
       await emitJobEvent(draftId, 'production', 'failed', message.slice(0, 240), { error: rawMessage, provider, model });
 
       if (stageRunId) {
-        const now = new Date().toISOString();
-        const patch: Record<string, unknown> = quotaExhausted
-          ? {
-              status: 'awaiting_user',
-              awaiting_reason: 'provider_quota_exhausted',
-              updated_at: now,
-            }
-          : {
-              status: 'failed',
-              error_message: message.slice(0, 500),
-              finished_at: now,
-              updated_at: now,
-            };
-        await (sb.from('stage_runs') as unknown as {
-          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        })
-          .update(patch)
-          .eq('id', stageRunId);
-        if (!quotaExhausted) {
-          await inngest.send({
-            name: 'pipeline/stage.run.finished',
-            data: { stageRunId, projectId },
+        if (quotaExhausted) {
+          // Quota-park is non-terminal — markAwaitingUser emits NO event.
+          await markAwaitingUser(sb, stageRunId, {
+            projectId: projectId ?? '',
+            stage: 'production',
+            awaitingReason: 'provider_quota_exhausted',
+          });
+        } else {
+          await markFailed(sb, stageRunId, {
+            projectId: projectId ?? '',
+            stage: 'production',
+            errorMessage: message,
           });
         }
       }

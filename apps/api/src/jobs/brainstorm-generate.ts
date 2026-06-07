@@ -15,6 +15,7 @@ import { emitJobEvent } from './emitter.js';
 import { logUsage } from '../lib/ai/usage-log.js';
 import { buildBrainstormMessage } from '../lib/ai/prompts/brainstorm.js';
 import { assertNotAborted, JobAborted } from '../lib/ai/abortable.js';
+import { markCompleted, markAborted, markFailed, markAwaitingUser } from '../lib/pipeline/stage-run-writer.js';
 import type { BrainstormInput } from '../lib/ai/prompts/brainstorm.js';
 
 interface BrainstormGenerateEvent {
@@ -312,7 +313,6 @@ export const brainstormGenerate = inngest.createFunction(
           .order('position', { ascending: true })
           .limit(1)
           .maybeSingle();
-        const now = new Date().toISOString();
         // Seed outcome_json with the first draft's metadata so downstream
         // engines (ResearchEngine reads brainstormResult.ideaTitle from
         // stage_runs.outcome_json via deriveStageResults) have a sensible
@@ -327,22 +327,15 @@ export const brainstormGenerate = inngest.createFunction(
               ideaCoreTension: (firstDraft.core_tension as string) ?? '',
               brainstormSessionId: sessionId,
             }
-          : null;
-        // Clear awaiting_reason / error_message so a prior failed/awaiting
-        // row gets reconciled cleanly when this run was a retry.
-        await (sb.from('stage_runs') as unknown as {
-          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        })
-          .update({
-            status: 'completed',
-            awaiting_reason: null,
-            error_message: null,
-            payload_ref: firstDraft?.id ? { kind: 'brainstorm_draft', id: firstDraft.id } : null,
-            ...(seedOutcome ? { outcome_json: seedOutcome } : {}),
-            finished_at: now,
-            updated_at: now,
-          })
-          .eq('id', successStageRunId);
+          : undefined;
+        // markCompleted clears error_message + awaiting_reason automatically
+        // so retry rows are always reconciled cleanly.
+        await markCompleted(sb, successStageRunId, {
+          projectId: projectId ?? '',
+          stage: 'brainstorm',
+          payloadRef: firstDraft?.id ? { kind: 'brainstorm_draft', id: firstDraft.id } : undefined,
+          outcome: seedOutcome,
+        });
         if (projectId && firstDraft?.title) {
           await (sb.from('projects') as unknown as {
             update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
@@ -350,10 +343,6 @@ export const brainstormGenerate = inngest.createFunction(
             .update({ title: firstDraft.title as string })
             .eq('id', projectId);
         }
-        await inngest.send({
-          name: 'pipeline/stage.run.finished',
-          data: { stageRunId: successStageRunId, projectId },
-        });
       }
 
       return { success: true, ideas: persisted };
@@ -364,15 +353,9 @@ export const brainstormGenerate = inngest.createFunction(
         await emitJobEvent(sessionId, 'brainstorm', 'aborted', 'Sessão cancelada pelo usuário');
         const abortStageRunId = await resolveEffectiveStageRunId();
         if (abortStageRunId) {
-          const now = new Date().toISOString();
-          await (sb.from('stage_runs') as unknown as {
-            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-          })
-            .update({ status: 'aborted', finished_at: now, updated_at: now })
-            .eq('id', abortStageRunId);
-          await inngest.send({
-            name: 'pipeline/stage.run.finished',
-            data: { stageRunId: abortStageRunId, projectId },
+          await markAborted(sb, abortStageRunId, {
+            projectId: projectId ?? '',
+            stage: 'brainstorm',
           });
         }
         return;
@@ -394,30 +377,19 @@ export const brainstormGenerate = inngest.createFunction(
 
       const failureStageRunId = await resolveEffectiveStageRunId();
       if (failureStageRunId) {
-        const now = new Date().toISOString();
-        const patch: Record<string, unknown> = quotaExhausted
-          ? {
-              status: 'awaiting_user',
-              awaiting_reason: 'provider_quota_exhausted',
-              updated_at: now,
-            }
-          : {
-              status: 'failed',
-              error_message: message.slice(0, 500),
-              finished_at: now,
-              updated_at: now,
-            };
-        await (sb.from('stage_runs') as unknown as {
-          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        })
-          .update(patch)
-          .eq('id', failureStageRunId);
-        // Quota-park is non-terminal — no advance event; orchestrator resumes
-        // via the explicit /continue path when the user clears the block.
-        if (!quotaExhausted) {
-          await inngest.send({
-            name: 'pipeline/stage.run.finished',
-            data: { stageRunId: failureStageRunId, projectId },
+        if (quotaExhausted) {
+          // Quota-park is non-terminal — markAwaitingUser emits NO event;
+          // orchestrator resumes via the explicit /continue path.
+          await markAwaitingUser(sb, failureStageRunId, {
+            projectId: projectId ?? '',
+            stage: 'brainstorm',
+            awaitingReason: 'provider_quota_exhausted',
+          });
+        } else {
+          await markFailed(sb, failureStageRunId, {
+            projectId: projectId ?? '',
+            stage: 'brainstorm',
+            errorMessage: message,
           });
         }
       }

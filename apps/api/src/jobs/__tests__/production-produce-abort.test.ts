@@ -17,6 +17,7 @@ vi.mock('../../lib/ai/router.js', () => ({
       usage: {},
     }),
   ),
+  isQuotaExhausted: vi.fn(() => false),
 }))
 
 vi.mock('../../lib/ai/promptLoader.js', () => ({
@@ -187,5 +188,117 @@ describe('production-produce abort handling', () => {
 
     // Validate assertNotAborted is callable
     expect(assertNotAborted).toBeDefined()
+  })
+})
+
+// ─── BRI-42: quota-park new behavior ─────────────────────────────────────────
+
+describe('production-produce: quota exhausted → parks as awaiting_user, no finished event (BRI-42)', () => {
+  it('parks as awaiting_user(provider_quota_exhausted) and does NOT emit pipeline/stage.run.finished', async () => {
+    vi.clearAllMocks()
+
+    // Override router mocks to simulate quota exhaustion
+    const router = await import('../../lib/ai/router.js')
+    vi.mocked(router.isQuotaExhausted).mockReturnValue(true)
+    vi.mocked(router.generateWithFallback).mockRejectedValueOnce(new Error('OpenAI: quota exceeded'))
+
+    // Track stage_runs updates and inngest sends
+    const stageRunsUpdateMock = vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ error: null }),
+    })
+    const inngestSendMock = vi.fn(async () => ({ ids: ['e-1'] }))
+
+    const { createServiceClient } = await import('../../lib/supabase/index.js')
+    vi.mocked(createServiceClient).mockReturnValueOnce({
+      from: vi.fn((table: string) => {
+        if (table === 'content_drafts') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({
+                  data: {
+                    id: 'draft-123',
+                    project_id: 'proj-1',
+                    title: 'Test',
+                    channel_id: null,
+                    idea_id: null,
+                    research_session_id: null,
+                    canonical_core_json: { content: 'core' },
+                    track_id: null,
+                    type: 'blog',
+                  },
+                })),
+              })),
+            })),
+            update: vi.fn(() => ({ eq: vi.fn(async () => ({})) })),
+          }
+        }
+        if (table === 'stage_runs') {
+          return { update: stageRunsUpdateMock }
+        }
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({ maybeSingle: vi.fn(async () => ({ data: null })) })),
+          })),
+          update: vi.fn(() => ({ eq: vi.fn(async () => ({})) })),
+        }
+      }),
+      rpc: vi.fn(async () => ({ data: { token: 'tok', error_code: null }, error: null })),
+    } as unknown as ReturnType<typeof createServiceClient>)
+
+    // Patch inngest.send on the imported client
+    const { inngest } = await import('../client.js')
+    ;(inngest as unknown as { send: ReturnType<typeof vi.fn> }).send = inngestSendMock
+
+    const { productionProduce } = await import('../production-produce.js')
+
+    const event = {
+      data: {
+        draftId: 'draft-123',
+        orgId: 'org-1',
+        userId: 'user-1',
+        type: 'blog' as const,
+        modelTier: 'standard',
+        stageRunId: 'sr-prod-1',
+      },
+      name: 'production/produce',
+    }
+
+    const step = {
+      run: vi.fn(async (name: string, fn: () => Promise<unknown>) => {
+        if (name === 'load-draft') {
+          return {
+            id: 'draft-123',
+            project_id: 'proj-1',
+            title: 'Test',
+            channel_id: null,
+            idea_id: null,
+            research_session_id: null,
+            canonical_core_json: { content: 'core' },
+            track_id: null,
+            type: 'blog',
+          }
+        }
+        return fn()
+      }),
+    }
+
+    const handler = productionProduce as unknown as (args: unknown) => Promise<unknown>
+    const result = await handler({ event, step })
+
+    // Should return (park) rather than throw
+    expect(result).toBeUndefined()
+
+    // stage_runs.update called with awaiting_user
+    expect(stageRunsUpdateMock).toHaveBeenCalled()
+    const updateRow = stageRunsUpdateMock.mock.calls[0][0] as Record<string, unknown>
+    expect(updateRow.status).toBe('awaiting_user')
+    expect(updateRow.awaiting_reason).toBe('provider_quota_exhausted')
+
+    // No pipeline/stage.run.finished emitted (non-terminal park)
+    const finishedCall = inngestSendMock.mock.calls.find(
+      (c: unknown[]) => (c[0] as { name?: string })?.name === 'pipeline/stage.run.finished',
+    )
+    expect(finishedCall).toBeUndefined()
   })
 })

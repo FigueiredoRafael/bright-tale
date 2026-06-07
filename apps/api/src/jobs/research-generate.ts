@@ -4,6 +4,7 @@
  */
 import { inngest } from './client.js';
 import { generateWithFallback, isQuotaExhausted } from '../lib/ai/router.js';
+import { markCompleted, markAborted, markFailed, markAwaitingUser } from '../lib/pipeline/stage-run-writer.js';
 
 import { withReservation } from './utils/with-reservation.js';
 import { createServiceClient } from '../lib/supabase/index.js';
@@ -270,7 +271,6 @@ export const researchGenerate = inngest.createFunction(
       }
 
       if (resolvedStageRunId) {
-        const now = new Date().toISOString();
         const signals = extractResearchSignals(findings);
         const outcomeJson: Record<string, unknown> = {
           researchSessionId: sessionId,
@@ -278,21 +278,12 @@ export const researchGenerate = inngest.createFunction(
           researchLevel: level,
           ...signals,
         };
-        await (sb.from('stage_runs') as unknown as {
-          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        })
-          .update({
-            status: 'completed',
-            payload_ref: { kind: 'research_session', id: sessionId },
-            outcome_json: outcomeJson,
-            error_message: null,
-            finished_at: now,
-            updated_at: now,
-          })
-          .eq('id', resolvedStageRunId);
-        await inngest.send({
-          name: 'pipeline/stage.run.finished',
-          data: { stageRunId: resolvedStageRunId, projectId },
+        // markCompleted clears error_message + awaiting_reason automatically.
+        await markCompleted(sb, resolvedStageRunId, {
+          projectId: projectId ?? '',
+          stage: 'research',
+          payloadRef: { kind: 'research_session', id: sessionId },
+          outcome: outcomeJson,
         });
       }
 
@@ -303,15 +294,9 @@ export const researchGenerate = inngest.createFunction(
         // so we only emit the abort event (no database update)
         await emitJobEvent(sessionId, 'research', 'aborted', 'Sessão cancelada pelo usuário');
         if (stageRunId) {
-          const now = new Date().toISOString();
-          await (sb.from('stage_runs') as unknown as {
-            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-          })
-            .update({ status: 'aborted', finished_at: now, updated_at: now })
-            .eq('id', stageRunId);
-          await inngest.send({
-            name: 'pipeline/stage.run.finished',
-            data: { stageRunId, projectId },
+          await markAborted(sb, stageRunId, {
+            projectId: projectId ?? '',
+            stage: 'research',
           });
         }
         return;
@@ -329,28 +314,18 @@ export const researchGenerate = inngest.createFunction(
       await emitJobEvent(sessionId, 'research', 'failed', message.slice(0, 200), { error: message });
 
       if (stageRunId) {
-        const now = new Date().toISOString();
-        const patch: Record<string, unknown> = quotaExhausted
-          ? {
-              status: 'awaiting_user',
-              awaiting_reason: 'provider_quota_exhausted',
-              updated_at: now,
-            }
-          : {
-              status: 'failed',
-              error_message: message.slice(0, 500),
-              finished_at: now,
-              updated_at: now,
-            };
-        await (sb.from('stage_runs') as unknown as {
-          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        })
-          .update(patch)
-          .eq('id', stageRunId);
-        if (!quotaExhausted) {
-          await inngest.send({
-            name: 'pipeline/stage.run.finished',
-            data: { stageRunId, projectId },
+        if (quotaExhausted) {
+          // Quota-park is non-terminal — markAwaitingUser emits NO event.
+          await markAwaitingUser(sb, stageRunId, {
+            projectId: projectId ?? '',
+            stage: 'research',
+            awaitingReason: 'provider_quota_exhausted',
+          });
+        } else {
+          await markFailed(sb, stageRunId, {
+            projectId: projectId ?? '',
+            stage: 'research',
+            errorMessage: message,
           });
         }
       }

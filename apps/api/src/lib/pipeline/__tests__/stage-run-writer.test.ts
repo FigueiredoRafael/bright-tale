@@ -62,6 +62,7 @@ import {
   markFailed,
   markAwaitingUser,
   markAborted,
+  markQueued,
   bulkAbort,
   abortProject,
   isTerminal,
@@ -116,6 +117,56 @@ describe('markCompleted', () => {
       suppressAdvanceEvent: true,
     });
     expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('markCompleted — clears stale error_message + awaiting_reason (BRI-42)', () => {
+  beforeEach(() => {
+    sb.from = vi.fn(() => ({
+      update: vi.fn((payload: Record<string, unknown>) => {
+        lastChain = { payload, filters: [], errorToReturn: null };
+        return makeUpdateChain(null);
+      }),
+    }));
+  });
+
+  it('always writes error_message: null and awaiting_reason: null so a retry row is clean', async () => {
+    await markCompleted(sb, 'sr-1', { projectId: PROJECT_ID, stage: 'brainstorm' });
+
+    expect(lastChain?.payload).toMatchObject({
+      status: 'completed',
+      error_message: null,
+      awaiting_reason: null,
+    });
+  });
+});
+
+describe('markQueued (BRI-42 new)', () => {
+  beforeEach(() => {
+    sb.from = vi.fn(() => ({
+      update: vi.fn((payload: Record<string, unknown>) => {
+        lastChain = { payload, filters: [], errorToReturn: null };
+        return makeUpdateChain(null);
+      }),
+    }));
+  });
+
+  it('writes status=queued + awaiting_reason=null + updated_at and NO advance event', async () => {
+    await markQueued(sb, 'sr-1', { projectId: PROJECT_ID, stage: 'publish' });
+
+    expect(lastChain?.payload).toMatchObject({
+      status: 'queued',
+      awaiting_reason: null,
+    });
+    expect(lastChain?.payload?.updated_at).toEqual(expect.any(String));
+    expect(lastChain?.filters).toContainEqual({ method: 'eq', args: ['id', 'sr-1'] });
+    // Non-terminal — no advance event
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+
+  it('propagates trackId when provided', async () => {
+    await markQueued(sb, 'sr-1', { projectId: PROJECT_ID, stage: 'publish', trackId: 'track-Z' });
+    expect(lastChain?.payload?.track_id).toBe('track-Z');
   });
 });
 
@@ -501,6 +552,39 @@ describe('insertRun', () => {
       publish_target_id: null,
       input_json: { topic: 'demo' },
     });
+  });
+
+  it('stamps started_at + finished_at on a terminal (completed) insert (BRI-42)', async () => {
+    const inserts: InsertCapture[] = [];
+    const sbLocal = mockSbInsert(inserts, { data: { id: 'sr-done' } });
+
+    await insertRun(sbLocal, {
+      projectId: PROJECT_ID,
+      stage: 'publish',
+      attemptNo: 1,
+      status: 'completed',
+      publishTargetId: 'target-1',
+    });
+
+    // A one-shot completed insert never passes through markRunning/markCompleted,
+    // so insertRun must stamp the timestamps or the row lands with finished_at: null.
+    expect(inserts[0].payload.started_at).toEqual(expect.any(String));
+    expect(inserts[0].payload.finished_at).toEqual(expect.any(String));
+  });
+
+  it('does NOT stamp finished_at on a non-terminal (queued) insert (BRI-42)', async () => {
+    const inserts: InsertCapture[] = [];
+    const sbLocal = mockSbInsert(inserts, { data: { id: 'sr-q' } });
+
+    await insertRun(sbLocal, {
+      projectId: PROJECT_ID,
+      stage: 'brainstorm',
+      attemptNo: 1,
+      status: 'queued',
+    });
+
+    expect(inserts[0].payload.finished_at).toBeUndefined();
+    expect(inserts[0].payload.started_at).toBeUndefined();
   });
 
   it('persists supplied trackId + publishTargetId on insert', async () => {
