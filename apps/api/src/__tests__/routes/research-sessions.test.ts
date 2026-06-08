@@ -114,8 +114,13 @@ describe('POST /research-sessions', () => {
 
 describe('PATCH /research-sessions/:id/review', () => {
   it('saves approved cards', async () => {
-    mockChain.single.mockResolvedValueOnce({
-      data: { id: 'rs-1', status: 'reviewed', approved_cards_json: [{ type: 'source' }] },
+    // BRI-156 (D24a): review handler now fetches session first (maybeSingle)
+    // to get project_id for Stage Run reconciliation, then does the update.
+    // The old test only mocked .single() (for the update chain); now we also
+    // need maybeSingle for the select, and we mock the stage_runs select
+    // returning null (no project) so reconciliation is skipped.
+    mockChain.maybeSingle.mockResolvedValueOnce({
+      data: { id: 'rs-1', project_id: null, user_id: 'user-1' },
       error: null,
     });
 
@@ -128,6 +133,7 @@ describe('PATCH /research-sessions/:id/review', () => {
 
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.data.status).toBe('reviewed');
+    // Handler now returns { id } not the full session row (no .select().single() on update).
+    expect(body.data.id).toBe('rs-1');
   });
 });

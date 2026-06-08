@@ -4,6 +4,9 @@
  * These exercise POST /sessions with provider='manual' and the new
  * POST /sessions/:id/manual-output endpoint. Supabase calls are mocked; the
  * goal is route shape + Axiom emission + Inngest-skip verification.
+ *
+ * BRI-156 (D24a): also asserts stage_run reconciliation on
+ * POST /sessions/:id/regenerate (ensureStageRunId + markCompleted/markFailed).
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import Fastify from 'fastify';
@@ -30,10 +33,31 @@ vi.mock('../../lib/ai/promptLoader.js', () => ({
   loadAgentPrompt: async () => 'You are the BrightCurios brainstorm agent...',
 }));
 
+// generateWithFallback mock: controlled via shouldRegenFail flag
+let shouldRegenFail = false;
+vi.mock('../../lib/ai/router.js', () => ({
+  generateWithFallback: async () => {
+    if (shouldRegenFail) throw new Error('AI provider error');
+    return {
+      result: {
+        ideas: [
+          { title: 'Regen idea', core_tension: 'x', target_audience: 'y', verdict: 'viable' },
+        ],
+        recommendation: { pick: 'Regen idea', rationale: 'strong' },
+      },
+    };
+  },
+  STAGE_COSTS: { brainstorm: 2 },
+}));
+
 // Supabase mock: minimal chainable stub.
 const insertedSessions: Record<string, unknown>[] = [];
 const insertedIdeas: Record<string, unknown>[] = [];
+const stageRunUpdates: Array<{ patch: Record<string, unknown>; id: string }> = [];
+const stageRunInserts: Record<string, unknown>[] = [];
 let nextSession: Record<string, unknown> = { id: 'session-1', status: 'awaiting_manual' };
+// nextStageRun: null → no existing run; set to simulate existing.
+let nextStageRun: Record<string, unknown> | null = null;
 const orgRow: Record<string, unknown> | null = { org_id: 'org-1' };
 
 vi.mock('../../lib/supabase/index.js', () => ({
@@ -107,13 +131,25 @@ vi.mock('../../lib/supabase/index.js', () => ({
               eq: () => ({
                 order: () => ({
                   limit: () => ({
-                    maybeSingle: async () => ({ data: null, error: null }),
+                    maybeSingle: async () => ({ data: nextStageRun, error: null }),
                   }),
                 }),
               }),
             }),
           }),
-          update: () => ({ eq: async () => ({ data: null, error: null }) }),
+          insert: (row: Record<string, unknown>) => {
+            const inserted = { ...row, id: 'run-1' };
+            stageRunInserts.push(inserted);
+            return {
+              select: () => ({ single: async () => ({ data: inserted, error: null }) }),
+            };
+          },
+          update: (patch: Record<string, unknown>) => ({
+            eq: (_col: string, id: string) => {
+              stageRunUpdates.push({ patch, id });
+              return Promise.resolve({ data: null, error: null });
+            },
+          }),
         };
       }
       if (table === 'projects') {
@@ -148,8 +184,12 @@ beforeEach(async () => {
   axiomCalls.length = 0;
   insertedSessions.length = 0;
   insertedIdeas.length = 0;
+  stageRunUpdates.length = 0;
+  stageRunInserts.length = 0;
   inngestSend.mockClear();
   emitJobEventMock.mockClear();
+  shouldRegenFail = false;
+  nextStageRun = null;
 
   const { brainstormRoutes } = await import('../brainstorm.js');
   app = Fastify();
@@ -307,5 +347,94 @@ describe('POST /api/brainstorm/sessions — project_id persistence', () => {
 
     expect(res.statusCode).toBe(202);
     expect(insertedSessions[0].project_id).toBeNull();
+  });
+});
+
+describe('POST /api/brainstorm/sessions/:id/regenerate — stage_run reconciliation (BRI-156)', () => {
+  it('reconciles stage_run to completed on successful regeneration with project_id', async () => {
+    // nextSession is the ORIGINAL session fetched for regen context,
+    // and also the new inserted session returned from insert.
+    nextSession = {
+      id: 'session-2',
+      status: 'running',
+      channel_id: null,
+      project_id: 'proj-1',
+      org_id: 'org-1',
+      user_id: 'user-1',
+      input_mode: 'blind',
+      input_json: { topic: 'coffee', ideasRequested: 3 },
+      model_tier: 'standard',
+    };
+    nextStageRun = null; // no pre-existing stage_run → ensureStageRunId inserts one
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/brainstorm/sessions/session-1/regenerate',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // ensureStageRunId must have inserted a new stage_run
+    expect(stageRunInserts.length).toBeGreaterThan(0);
+    const insertedRun = stageRunInserts[0];
+    expect(insertedRun.stage).toBe('brainstorm');
+    expect(insertedRun.project_id).toBe('proj-1');
+    // markCompleted must have updated it to completed
+    const completedUpdate = stageRunUpdates.find((u) => u.patch.status === 'completed' && u.id === 'run-1');
+    expect(completedUpdate).toBeDefined();
+  });
+
+  it('does NOT reconcile stage_run when project_id is null (standalone regen)', async () => {
+    nextSession = {
+      id: 'session-2',
+      status: 'running',
+      channel_id: null,
+      project_id: null,
+      org_id: 'org-1',
+      user_id: 'user-1',
+      input_mode: 'blind',
+      input_json: { topic: 'coffee', ideasRequested: 3 },
+      model_tier: 'standard',
+    };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/brainstorm/sessions/session-1/regenerate',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // No stage_run insert/update should happen (no project context)
+    expect(stageRunInserts).toHaveLength(0);
+    const completedUpdates = stageRunUpdates.filter((u) => u.patch.status === 'completed');
+    expect(completedUpdates).toHaveLength(0);
+  });
+
+  it('reconciles stage_run to failed on regeneration error with project_id', async () => {
+    shouldRegenFail = true;
+    nextSession = {
+      id: 'session-2',
+      status: 'running',
+      channel_id: null,
+      project_id: 'proj-1',
+      org_id: 'org-1',
+      user_id: 'user-1',
+      input_mode: 'blind',
+      input_json: { topic: 'coffee', ideasRequested: 3 },
+      model_tier: 'standard',
+    };
+    nextStageRun = null;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/brainstorm/sessions/session-1/regenerate',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+    });
+
+    // Route throws → sendError → should return a non-2xx status
+    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+    // markFailed must have updated the stage_run to failed
+    const failedUpdate = stageRunUpdates.find((u) => u.patch.status === 'failed' && u.id === 'run-1');
+    expect(failedUpdate).toBeDefined();
   });
 });

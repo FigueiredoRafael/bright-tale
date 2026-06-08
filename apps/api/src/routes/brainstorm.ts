@@ -17,7 +17,7 @@ import { emitJobEvent } from '../jobs/emitter.js';
 import { buildBrainstormMessage } from '../lib/ai/prompts/brainstorm.js';
 import type { BrainstormInput } from '../lib/ai/prompts/brainstorm.js';
 import { logAiUsage } from '../lib/axiom.js';
-import { ensureStageRunId, markCompleted } from '../lib/pipeline/stage-run-writer.js';
+import { ensureStageRunId, markCompleted, markFailed } from '../lib/pipeline/stage-run-writer.js';
 
 interface RawIdea {
   idea_id?: string;
@@ -745,6 +745,14 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
 
       if (insertErr || !session) throw insertErr ?? new ApiError(500, 'Failed to create session', 'DB_ERROR');
 
+      // Pipeline Orchestrator handoff for regenerate: ensure a Stage Run exists
+      // and record its id for terminal transitions below.
+      // Standalone sessions (no project) have no Stage Run — skip gracefully.
+      const regenProjectId = orig.project_id as string | null | undefined;
+      const regenRunId = regenProjectId
+        ? await ensureStageRunId(sb, regenProjectId, 'brainstorm').catch(() => undefined)
+        : undefined;
+
       try {
         const systemPrompt = (await loadAgentPrompt('brainstorm')) ?? undefined;
 
@@ -833,12 +841,28 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
 
         await commit(regenToken, STAGE_COSTS.brainstorm, 'brainstorm', 'text', { regeneratedFrom: id });
 
+        // Reconcile the Stage Run to completed (best-effort — session write already succeeded).
+        if (regenRunId && regenProjectId) {
+          await markCompleted(sb, regenRunId, {
+            projectId: regenProjectId,
+            stage: 'brainstorm',
+          }).catch(() => { /* best-effort */ });
+        }
+
         return reply.send({ data: { sessionId: session.id, ideas: ideaRows }, error: null });
       } catch (err) {
         await release(regenToken).catch(() => { /* best-effort */ });
         await (sb.from('brainstorm_sessions') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         }).update({ status: 'failed', error_message: (err as Error)?.message?.slice(0, 500) }).eq('id', session.id);
+        // Reconcile the Stage Run to failed (best-effort).
+        if (regenRunId && regenProjectId) {
+          await markFailed(sb, regenRunId, {
+            projectId: regenProjectId,
+            stage: 'brainstorm',
+            errorMessage: (err as Error)?.message ?? 'Brainstorm regeneration failed',
+          }).catch(() => { /* best-effort */ });
+        }
         throw err;
       }
     } catch (error) {
