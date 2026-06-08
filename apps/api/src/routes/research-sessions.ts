@@ -207,7 +207,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
       const { data: session } = await sb
         .from('research_sessions')
-        .select('id, status, user_id, project_id')
+        .select('id, user_id, project_id')
         .eq('id', id)
         .maybeSingle();
 
@@ -215,12 +215,12 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       const sessionRow = session as Record<string, unknown>;
       if (sessionRow.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
 
-      // Derive status from stage_run (single source of truth); fall back to
-      // column value for legacy sessions without a project_id (removed in D24c).
+      // Derive status from stage_run — the single source of truth (D24c dropped
+      // the legacy *_sessions.status column). Null-project sessions → 'pending'.
       const cancelResProjectId = sessionRow.project_id as string | null | undefined;
       const cancelDerivedStatus = cancelResProjectId
         ? await sessionStatusFromStageRun(sb, cancelResProjectId, 'research')
-        : ((sessionRow.status as string | undefined) ?? 'pending');
+        : 'pending';
 
       if (cancelDerivedStatus !== 'running' && cancelDerivedStatus !== 'awaiting_manual') {
         return reply.send({ data: { status: cancelDerivedStatus }, error: null });
@@ -342,10 +342,10 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
       const rowsWithStatus = rows.map((r) => ({
         ...r,
-        // Fall back to column value for legacy sessions without a project_id.
+        // Legacy sessions without a project_id report 'pending' (column dropped in D24c).
         status: r.project_id
           ? (statusMap.get(r.project_id as string) ?? 'pending')
-          : ((r.status as string | undefined) ?? 'pending'),
+          : 'pending',
       }));
 
       return reply.send({ data: { sessions: rowsWithStatus }, error: null });
@@ -716,7 +716,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       const getIdProjId = row.project_id as string | null | undefined;
       const computedStatus = getIdProjId
         ? await sessionStatusFromStageRun(sb, getIdProjId, 'research')
-        : ((row.status as string | undefined) ?? 'pending');
+        : 'pending';
       return reply.send({ data: { ...row, status: computedStatus }, error: null });
     } catch (error) {
       return sendError(reply, error);
@@ -737,7 +737,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
       const { data: session, error: fetchErr } = await sb
         .from('research_sessions')
-        .select('id, status, channel_id, project_id, org_id, user_id')
+        .select('id, channel_id, project_id, org_id, user_id')
         .eq('id', id)
         .maybeSingle();
       if (fetchErr) throw fetchErr;
@@ -745,12 +745,12 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       const row = session as Record<string, unknown>;
       if (row.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
 
-      // Derive status from stage_run (single source of truth); fall back to
-      // column value for legacy sessions without a project_id (removed in D24c).
+      // Derive status from stage_run — the single source of truth (D24c dropped
+      // the legacy *_sessions.status column). Null-project sessions → 'pending'.
       const manualResProjectId = row.project_id as string | null | undefined;
       const manualResDerivedStatus = manualResProjectId
         ? await sessionStatusFromStageRun(sb, manualResProjectId, 'research')
-        : ((row.status as string | undefined) ?? 'pending');
+        : 'pending';
 
       if (manualResDerivedStatus !== 'awaiting_manual') {
         throw new ApiError(409, `Session is not awaiting manual output (status=${manualResDerivedStatus})`, 'CONFLICT');
