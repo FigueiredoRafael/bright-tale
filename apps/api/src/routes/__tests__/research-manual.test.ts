@@ -205,8 +205,8 @@ describe('POST /api/research/ — provider=manual', () => {
     expect(body.data.status).toBe('awaiting_manual');
     expect(body.data.sessionId).toBe('session-1');
 
-    // Session row persisted with awaiting_manual status
-    expect(insertedSessions[0].status).toBe('awaiting_manual');
+    // BRI-157: status column is no longer written — derived from stage_runs
+    expect(insertedSessions[0].status).toBeUndefined();
 
     // Inngest NOT called (manual is synchronous)
     expect(inngestSend).not.toHaveBeenCalled();
@@ -293,8 +293,10 @@ describe('POST /api/research/:id/manual-output', () => {
 
   it('reconciles stage_run to completed when project_id is set', async () => {
     nextSession = { id: 'session-1', status: 'awaiting_manual', channel_id: null, project_id: 'proj-1', org_id: 'org-1', user_id: 'user-1' };
-    // No pre-existing stage_run → ensureStageRunId will insert one
-    nextStageRun = null;
+    // BRI-157: guard reads status from stage_run. Set to awaiting_user/manual_paste
+    // so sessionStatusFromStageRun maps to 'awaiting_manual', passing the guard.
+    // ensureStageRunId finds a non-terminal row (awaiting_user) and updates it.
+    nextStageRun = { id: 'run-1', status: 'awaiting_user', awaiting_reason: 'manual_paste', attempt_no: 1 };
 
     const res = await app.inject({
       method: 'POST',
@@ -309,9 +311,7 @@ describe('POST /api/research/:id/manual-output', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    // ensureStageRunId inserts a new run-1 row
-    expect(stageRunInserts.length).toBeGreaterThan(0);
-    // markCompleted updates the inserted run to completed
+    // markCompleted updates the existing run to completed
     const completedUpdate = stageRunUpdates.find((u) => u.patch.status === 'completed' && u.id === 'run-1');
     expect(completedUpdate).toBeDefined();
   });

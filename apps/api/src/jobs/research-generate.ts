@@ -230,10 +230,11 @@ export const researchGenerate = inngest.createFunction(
           await assertNotAborted(projectId, undefined, sb);
 
           await step.run('persist', async () => {
+            // BRI-157: status write removed — derived from stage_runs.
             await (sb.from('research_sessions') as unknown as {
               update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
             })
-              .update({ status: 'completed', cards_json: findings })
+              .update({ cards_json: findings })
               .eq('id', sessionId);
             // Credit debit handled by withReservation (commit on success, release on throw).
           });
@@ -305,10 +306,11 @@ export const researchGenerate = inngest.createFunction(
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       const quotaExhausted = isQuotaExhausted(err);
 
+      // BRI-157: status write removed — derived from stage_runs. Keep error_message.
       await (sb.from('research_sessions') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
       })
-        .update({ status: 'failed', error_message: message.slice(0, 500) })
+        .update({ error_message: message.slice(0, 500) })
         .eq('id', sessionId);
 
       await emitJobEvent(sessionId, 'research', 'failed', message.slice(0, 200), { error: message });

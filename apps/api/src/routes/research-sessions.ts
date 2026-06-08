@@ -20,6 +20,7 @@ import { buildResearchMessage } from '../lib/ai/prompts/research.js';
 import type { ResearchInput } from '../lib/ai/prompts/research.js';
 import { logAiUsage } from '../lib/axiom.js';
 import { ensureStageRunId, markCompleted, markFailed, markAborted, markAwaitingUser } from '../lib/pipeline/stage-run-writer.js';
+import { sessionStatusFromStageRun, dtoStatusToStageRunStatuses, batchSessionStatusFromStageRuns, mapStageRunToSessionStatus } from '../lib/pipeline/session-status.js';
 import { createEphemeralProject } from '../lib/projects/createEphemeralProject.js';
 
 /** Check idea exists in idea_archives before using as FK. Brainstorm drafts may not be promoted yet. */
@@ -213,14 +214,22 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
       const sessionRow = session as Record<string, unknown>;
       if (sessionRow.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
-      if (sessionRow.status !== 'running' && sessionRow.status !== 'awaiting_manual') {
-        return reply.send({ data: { status: sessionRow.status }, error: null });
+
+      // Derive status from stage_run (single source of truth); fall back to
+      // column value for legacy sessions without a project_id (removed in D24c).
+      const cancelResProjectId = sessionRow.project_id as string | null | undefined;
+      const cancelDerivedStatus = cancelResProjectId
+        ? await sessionStatusFromStageRun(sb, cancelResProjectId, 'research')
+        : ((sessionRow.status as string | undefined) ?? 'pending');
+
+      if (cancelDerivedStatus !== 'running' && cancelDerivedStatus !== 'awaiting_manual') {
+        return reply.send({ data: { status: cancelDerivedStatus }, error: null });
       }
 
       await (sb.from('research_sessions') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
       })
-        .update({ status: 'failed', error_message: 'Cancelled by user' })
+        .update({ error_message: 'Cancelled by user' })
         .eq('id', id);
 
       await emitJobEvent(id, 'research', 'failed', 'Cancelled by user');
@@ -232,14 +241,13 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
         // Best-effort — Inngest may not support this or the run may already be done
       }
 
-      // Pipeline Orchestrator handoff: mark the research Stage Run aborted so the
-      // orchestrator sees it as terminal. Standalone sessions (no project) skip.
-      const cancelProjectId = sessionRow.project_id as string | null | undefined;
-      if (cancelProjectId) {
-        const cancelRunId = await ensureStageRunId(sb, cancelProjectId, 'research').catch(() => undefined);
+      // BRI-157: Mark the research Stage Run aborted so the orchestrator sees
+      // it as terminal. Standalone sessions (no project) skip.
+      if (cancelResProjectId) {
+        const cancelRunId = await ensureStageRunId(sb, cancelResProjectId, 'research').catch(() => undefined);
         if (cancelRunId) {
           await markAborted(sb, cancelRunId, {
-            projectId: cancelProjectId,
+            projectId: cancelResProjectId,
             stage: 'research',
             errorMessage: 'Cancelled by user',
           }).catch(() => { /* best-effort */ });
@@ -254,21 +262,93 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
   /**
    * GET / — list research sessions (optionally filtered by channel + status).
+   *
+   * BRI-157: status is now derived from stage_runs. When ?status= is present,
+   * we first find project_ids whose latest research stage_run maps to that
+   * DTO status, then filter sessions by those project_ids. When absent we
+   * batch-fetch stage_run status per project_id and attach to each session row.
    */
   fastify.get('/', { preHandler: [authenticate] }, async (request, reply) => {
     try {
       const sb = createServiceClient();
       const q = request.query as { channel_id?: string; status?: string; limit?: string };
+      const limitNum = Math.min(Number(q.limit ?? 50), 200);
+
+      if (q.status) {
+        // Map the requested DTO status to stage_run statuses that could yield it.
+        const stageRunStatuses = dtoStatusToStageRunStatuses(q.status);
+
+        // Query stage_runs for matching research runs.
+        const { data: candidateRuns } = await sb
+          .from('stage_runs')
+          .select('project_id, status, awaiting_reason')
+          .eq('stage', 'research')
+          .in('status', stageRunStatuses)
+          .order('created_at', { ascending: false });
+
+        // Dedupe to latest run per project_id; keep only those whose mapped
+        // DTO status matches the requested filter.
+        const seenProjects = new Set<string>();
+        const matchingProjectIds: string[] = [];
+        const projectStatusMap = new Map<string, string>();
+        for (const run of (candidateRuns ?? []) as Array<{ project_id: string; status: string; awaiting_reason: string | null }>) {
+          if (seenProjects.has(run.project_id)) continue;
+          seenProjects.add(run.project_id);
+          const mapped = mapStageRunToSessionStatus(run.status, run.awaiting_reason);
+          if (mapped === q.status) {
+            matchingProjectIds.push(run.project_id);
+            projectStatusMap.set(run.project_id, mapped);
+          }
+        }
+
+        if (matchingProjectIds.length === 0) {
+          return reply.send({ data: { sessions: [] }, error: null });
+        }
+
+        let sessionQuery = sb
+          .from('research_sessions')
+          .select('id, project_id, channel_id, idea_id, level, input_json, cards_json, created_at')
+          .in('project_id', matchingProjectIds)
+          .order('created_at', { ascending: false })
+          .limit(limitNum);
+
+        if (q.channel_id) sessionQuery = sessionQuery.eq('channel_id', q.channel_id);
+
+        const { data: sessions, error } = await sessionQuery;
+        if (error) throw error;
+
+        // Attach computed status per row from the map.
+        const rowsWithStatus = (sessions ?? []).map((s: Record<string, unknown>) => ({
+          ...s,
+          status: projectStatusMap.get(s.project_id as string) ?? q.status,
+        }));
+
+        return reply.send({ data: { sessions: rowsWithStatus }, error: null });
+      }
+
+      // No status filter: fetch all sessions and batch-derive status from stage_runs.
       let query = sb
         .from('research_sessions')
-        .select('id, channel_id, idea_id, level, status, input_json, cards_json, created_at')
+        .select('id, project_id, channel_id, idea_id, level, input_json, cards_json, created_at')
         .order('created_at', { ascending: false })
-        .limit(Math.min(Number(q.limit ?? 50), 200));
+        .limit(limitNum);
       if (q.channel_id) query = query.eq('channel_id', q.channel_id);
-      if (q.status) query = query.eq('status', q.status);
       const { data, error } = await query;
       if (error) throw error;
-      return reply.send({ data: { sessions: data ?? [] }, error: null });
+
+      const rows = (data ?? []) as Array<Record<string, unknown>>;
+      const projectIds = [...new Set(rows.map((r) => r.project_id as string).filter(Boolean))];
+      const statusMap = await batchSessionStatusFromStageRuns(sb, projectIds, 'research');
+
+      const rowsWithStatus = rows.map((r) => ({
+        ...r,
+        // Fall back to column value for legacy sessions without a project_id.
+        status: r.project_id
+          ? (statusMap.get(r.project_id as string) ?? 'pending')
+          : ((r.status as string | undefined) ?? 'pending'),
+      }));
+
+      return reply.send({ data: { sessions: rowsWithStatus }, error: null });
     } catch (error) {
       return sendError(reply, error);
     }
@@ -367,7 +447,6 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
             focus_tags: body.focusTags,
             input_json: inputJson,
             model_tier: body.modelTier,
-            status: 'awaiting_manual',
           })
           .select()
           .single();
@@ -437,7 +516,6 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           focus_tags: body.focusTags,
           input_json: inputJson,
           model_tier: body.modelTier,
-          status: 'running',
         })
         .select()
         .single();
@@ -529,7 +607,6 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           focus_tags: [],
           input_json: inputJson,
           model_tier: 'manual',
-          status: 'completed',
           cards_json: body.cardsJson,
           approved_cards_json: body.cardsJson,
           refined_angle_json: body.refinedAngleJson ?? null,
@@ -625,6 +702,8 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
   /**
    * GET /:id — fetch session.
+   *
+   * BRI-157: status is injected from stage_runs into the response object.
    */
   fastify.get('/:id', { preHandler: [authenticate] }, async (request, reply) => {
     try {
@@ -633,7 +712,12 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       const { data, error } = await sb.from('research_sessions').select('*').eq('id', id).maybeSingle();
       if (error) throw error;
       if (!data) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
-      return reply.send({ data, error: null });
+      const row = data as Record<string, unknown>;
+      const getIdProjId = row.project_id as string | null | undefined;
+      const computedStatus = getIdProjId
+        ? await sessionStatusFromStageRun(sb, getIdProjId, 'research')
+        : ((row.status as string | undefined) ?? 'pending');
+      return reply.send({ data: { ...row, status: computedStatus }, error: null });
     } catch (error) {
       return sendError(reply, error);
     }
@@ -660,8 +744,16 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
       const row = session as Record<string, unknown>;
       if (row.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
-      if (row.status !== 'awaiting_manual') {
-        throw new ApiError(409, `Session is not awaiting manual output (status=${row.status})`, 'CONFLICT');
+
+      // Derive status from stage_run (single source of truth); fall back to
+      // column value for legacy sessions without a project_id (removed in D24c).
+      const manualResProjectId = row.project_id as string | null | undefined;
+      const manualResDerivedStatus = manualResProjectId
+        ? await sessionStatusFromStageRun(sb, manualResProjectId, 'research')
+        : ((row.status as string | undefined) ?? 'pending');
+
+      if (manualResDerivedStatus !== 'awaiting_manual') {
+        throw new ApiError(409, `Session is not awaiting manual output (status=${manualResDerivedStatus})`, 'CONFLICT');
       }
 
       const findings = normalizeFindings(body.output);
@@ -681,8 +773,8 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       // Extract refined_angle if present
       const refinedAngle = findings.refined_angle ?? null;
 
-      // Update session with findings and flip to completed
-      const updateData: Record<string, unknown> = { status: 'completed', cards_json: findings };
+      // BRI-157: status write removed — derived from stage_runs. Persist cards_json.
+      const updateData: Record<string, unknown> = { cards_json: findings };
       if (refinedAngle) updateData.refined_angle_json = refinedAngle;
 
       const { error: updErr } = await (sb.from('research_sessions') as unknown as {
@@ -691,13 +783,13 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
         .update(updateData)
         .eq('id', id);
       if (updErr) {
-        throw new ApiError(500, `Failed to mark session completed: ${String((updErr as { message?: string })?.message ?? updErr)}`, 'DB_ERROR');
+        throw new ApiError(500, `Failed to update session: ${String((updErr as { message?: string })?.message ?? updErr)}`, 'DB_ERROR');
       }
 
       // Pipeline Orchestrator handoff for manual research: flip the matching
       // research Stage Run to `completed` so deriveStageResults picks it up.
       // Standalone sessions (project_id is null) have no Stage Run — skip.
-      const manualProjectId = row.project_id as string | null | undefined;
+      const manualProjectId = manualResProjectId;
       if (manualProjectId) {
         const manualRunId = await ensureStageRunId(sb, manualProjectId, 'research').catch(() => undefined);
         if (manualRunId) {
@@ -758,7 +850,8 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       const { error: updErr } = await (sb.from('research_sessions') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<{ error: unknown }> };
       })
-        .update({ approved_cards_json: body.approvedCardsJson, status: 'reviewed' })
+        // BRI-157: status write removed — derived from stage_runs.
+        .update({ approved_cards_json: body.approvedCardsJson })
         .eq('id', id);
       if (updErr) throw updErr;
 
@@ -953,7 +1046,6 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           focus_tags: focusTags,
           input_json: inputJson,
           model_tier: orig.model_tier,
-          status: 'running',
         })
         .select()
         .single();
@@ -1046,7 +1138,8 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
         const findings = normalizeFindings(result);
         const refinedAngle = findings.refined_angle ?? null;
 
-        const updateData: Record<string, unknown> = { status: 'completed', cards_json: findings };
+        // BRI-157: status write removed — derived from stage_runs.
+        const updateData: Record<string, unknown> = { cards_json: findings };
         if (refinedAngle) updateData.refined_angle_json = refinedAngle;
 
         await (sb.from('research_sessions') as unknown as {
@@ -1066,9 +1159,10 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
         return reply.send({ data: { sessionId: sessionData2.id, level, findings, refinedAngle }, error: null });
       } catch (err) {
         await release(regenToken).catch(() => { /* best-effort */ });
+        // BRI-157: status write removed — derived from stage_runs. Keep error_message.
         await (sb.from('research_sessions') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        }).update({ status: 'failed', error_message: (err as Error)?.message?.slice(0, 500) }).eq('id', sessionData2.id);
+        }).update({ error_message: (err as Error)?.message?.slice(0, 500) }).eq('id', sessionData2.id);
         // Reconcile the Stage Run to failed (best-effort).
         if (regenRunId && regenProjectId) {
           await markFailed(sb, regenRunId, {

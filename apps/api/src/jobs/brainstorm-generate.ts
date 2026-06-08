@@ -281,11 +281,14 @@ export const brainstormGenerate = inngest.createFunction(
               }).insert(draftRows);
             }
 
-            await (sb.from('brainstorm_sessions') as unknown as {
-              update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-            })
-              .update({ status: 'completed', ...(recommendation ? { recommendation_json: recommendation } : {}) })
-              .eq('id', sessionId);
+            // BRI-157: status write removed — derived from stage_runs.
+            if (recommendation) {
+              await (sb.from('brainstorm_sessions') as unknown as {
+                update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+              })
+                .update({ recommendation_json: recommendation })
+                .eq('id', sessionId);
+            }
 
             // Credit debit is now handled by withReservation (commit on success,
             // release on throw). No inline debitCredits call here.
@@ -364,13 +367,11 @@ export const brainstormGenerate = inngest.createFunction(
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       const quotaExhausted = isQuotaExhausted(err);
 
-      // Provider quota exhausted: park the stage awaiting user (not failed) so
-      // the operator can top up credits / swap providers and resume. Leave the
-      // upstream session row in 'failed' — the orchestrator only reads stage_runs.
+      // BRI-157: status write removed — derived from stage_runs. Keep error_message.
       await (sb.from('brainstorm_sessions') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
       })
-        .update({ status: 'failed', error_message: message.slice(0, 500) })
+        .update({ error_message: message.slice(0, 500) })
         .eq('id', sessionId);
 
       await emitJobEvent(sessionId, 'brainstorm', 'failed', message.slice(0, 200), { error: message });

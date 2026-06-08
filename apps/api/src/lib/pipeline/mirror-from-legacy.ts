@@ -48,7 +48,7 @@ const TERMINAL_STATUSES: ReadonlyArray<string> = [
 
 interface PayloadIndex {
   brainstorm: { id: string; session_id: string | null; created_at: string } | null;
-  research: { id: string; status?: string | null; created_at: string; updated_at?: string | null } | null;
+  research: { id: string; created_at: string; updated_at?: string | null } | null;
   draft: {
     id: string;
     status?: string | null;
@@ -316,7 +316,7 @@ async function loadPayloadIndex(sb: Sb, projectId: string): Promise<PayloadIndex
       // to null and prevent mirror from creating the research stage_run.
       // Use `updated_at` instead; mirror only needs a representative finish
       // timestamp and updated_at is what the legacy completion path stamps.
-      .select('id, status, created_at, updated_at')
+      .select('id, created_at, updated_at')
       .eq('project_id', projectId)
       .order('created_at', { ascending: false })
       .limit(1)

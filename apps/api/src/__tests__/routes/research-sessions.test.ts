@@ -7,7 +7,7 @@ import Fastify, { FastifyInstance } from 'fastify';
 const mockChain: Record<string, any> = {};
 [
   'from', 'select', 'insert', 'update', 'delete', 'upsert',
-  'eq', 'order', 'limit',
+  'eq', 'in', 'order', 'limit',
 ].forEach(m => {
   mockChain[m] = vi.fn().mockReturnValue(mockChain);
 });
@@ -111,6 +111,43 @@ describe('POST /research-sessions', () => {
     const body = res.json();
     expect(body.data.sessionId).toBe('rs-1');
     expect(body.data.level).toBe('medium');
+  });
+});
+
+describe('GET /research-sessions?status=completed — BRI-157 status derived from stage_runs', () => {
+  it('returns sessions whose latest research stage_run is completed', async () => {
+    // Mock 1: stage_runs query returns a completed run for project-42
+    // Mock 2: research_sessions query returns matching session
+    // The mockChain is shared, so we chain two sequential resolutions.
+    // stage_runs query: .select().eq('stage').in('status').order()  → resolves with data
+    // sessions query: .select().in('project_id').order().limit()    → resolves with data
+    mockChain.order
+      // First call: stage_runs ordered result (array with completed run)
+      .mockReturnValueOnce({
+        ...mockChain,
+        data: [{ project_id: 'proj-42', status: 'completed', awaiting_reason: null }],
+        error: null,
+      })
+      // Second call: sessions ordered + limit chain
+      .mockReturnValue(mockChain);
+
+    mockChain.limit
+      .mockResolvedValueOnce({
+        data: [{ id: 'rs-42', project_id: 'proj-42', channel_id: null, idea_id: null, level: 'medium', input_json: {}, cards_json: null, created_at: '2026-01-01' }],
+        error: null,
+      });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/research-sessions?status=completed',
+      headers: AUTH_USER,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.data.sessions).toHaveLength(1);
+    expect(body.data.sessions[0].status).toBe('completed');
+    expect(body.data.sessions[0].id).toBe('rs-42');
   });
 });
 
