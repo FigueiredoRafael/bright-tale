@@ -128,7 +128,8 @@ describe('POST /brainstorm/sessions', () => {
       method: 'POST',
       url: '/brainstorm/sessions',
       headers: AUTH_USER,
-      payload: { inputMode: 'blind', topic: 'ai productivity' },
+      // BRI-159: create schema now requires projectId OR channelId.
+      payload: { inputMode: 'blind', topic: 'ai productivity', projectId: 'proj-1' },
     });
 
     // F2-036: POST now enqueues the job and returns 202 with just the sessionId.
@@ -153,6 +154,7 @@ describe('POST /brainstorm/sessions', () => {
       payload: {
         inputMode: 'reference_guided',
         referenceUrl: 'https://youtube.com/watch?v=abc',
+        projectId: 'proj-1', // BRI-159: projectId OR channelId now required
       },
     });
 
@@ -180,7 +182,7 @@ describe('POST /brainstorm/sessions', () => {
 
     const res = await app.inject({
       method: 'POST', url: '/brainstorm/sessions', headers: AUTH_USER,
-      payload: { inputMode: 'blind', topic: 'ai' },
+      payload: { inputMode: 'blind', topic: 'ai', projectId: 'proj-1' }, // BRI-159: projectId OR channelId required
     });
     expect(res.statusCode).toBe(202);
     // The inngest mock captures the payload — if count defaulted, the event

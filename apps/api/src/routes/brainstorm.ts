@@ -17,7 +17,8 @@ import { emitJobEvent } from '../jobs/emitter.js';
 import { buildBrainstormMessage } from '../lib/ai/prompts/brainstorm.js';
 import type { BrainstormInput } from '../lib/ai/prompts/brainstorm.js';
 import { logAiUsage } from '../lib/axiom.js';
-import { ensureStageRunId, markCompleted, markFailed } from '../lib/pipeline/stage-run-writer.js';
+import { ensureStageRunId, markCompleted, markFailed, markAwaitingUser, markAborted } from '../lib/pipeline/stage-run-writer.js';
+import { createEphemeralProject } from '../lib/projects/createEphemeralProject.js';
 
 interface RawIdea {
   idea_id?: string;
@@ -104,6 +105,14 @@ const brainstormBodySchema = z.object({
     })
     .optional(),
   contentGoal: z.enum(['growth', 'engagement', 'monetization', 'authority']).optional(),
+}).superRefine((val, ctx) => {
+  if (!val.projectId && !val.channelId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Either projectId or channelId is required',
+      path: ['channelId'],
+    });
+  }
 });
 
 async function getOrgId(userId: string): Promise<string> {
@@ -167,14 +176,15 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
 
       const { data: session } = await sb
         .from('brainstorm_sessions')
-        .select('id, status, user_id')
+        .select('id, status, user_id, project_id')
         .eq('id', id)
         .maybeSingle();
 
       if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
-      if (session.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
-      if (session.status !== 'running' && session.status !== 'awaiting_manual') {
-        return reply.send({ data: { status: session.status }, error: null });
+      const sessionRow = session as Record<string, unknown>;
+      if (sessionRow.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
+      if (sessionRow.status !== 'running' && sessionRow.status !== 'awaiting_manual') {
+        return reply.send({ data: { status: sessionRow.status }, error: null });
       }
 
       await (sb.from('brainstorm_sessions') as unknown as {
@@ -190,6 +200,20 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         await inngest.send({ name: 'inngest/function.cancelled', data: { function_id: 'brainstorm-generate', run_id: id } });
       } catch {
         // Best-effort — Inngest may not support this or the run may already be done
+      }
+
+      // BRI-159: Mark the brainstorm Stage Run aborted so the orchestrator sees
+      // the terminal state. Mirrors the research cancel handler. Best-effort.
+      const cancelProjectId = sessionRow.project_id as string | null | undefined;
+      if (cancelProjectId) {
+        const cancelRunId = await ensureStageRunId(sb, cancelProjectId, 'brainstorm').catch(() => undefined);
+        if (cancelRunId) {
+          await markAborted(sb, cancelRunId, {
+            projectId: cancelProjectId,
+            stage: 'brainstorm',
+            errorMessage: 'Cancelled by user',
+          }).catch(() => { /* best-effort */ });
+        }
       }
 
       return reply.send({ data: { status: 'cancelled' }, error: null });
@@ -413,6 +437,20 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         contentGoal: body.contentGoal ?? null,
       };
 
+      // BRI-159: Resolve (or create) the project id. When projectId is absent,
+      // auto-create an ephemeral project bound to channelId so stage_runs
+      // (which require project_id NOT NULL) can be created for this session.
+      // The superRefine above guarantees channelId is present when projectId is absent.
+      const effectiveProjectId: string = body.projectId
+        ? body.projectId
+        : await createEphemeralProject(sb, {
+            channelId: body.channelId as string,
+            userId: request.userId,
+            orgId,
+            title: body.topic ? `Standalone brainstorm — ${body.topic}` : 'Standalone brainstorm',
+            stage: 'brainstorm',
+          });
+
       // Manual provider short-circuits the LLM call: build the prompt
       // synchronously, emit the full payload to Axiom, persist the session in
       // awaiting_manual state, and return early. The user pastes the output
@@ -448,7 +486,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
             org_id: orgId,
             user_id: request.userId,
             channel_id: body.channelId ?? null,
-            project_id: body.projectId ?? null,
+            project_id: effectiveProjectId,
             input_mode: body.inputMode,
             input_json: inputJson,
             model_tier: body.modelTier,
@@ -459,6 +497,19 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         if (manualInsertErr || !manualSession) {
           throw manualInsertErr ?? new ApiError(500, 'Failed to create session', 'DB_ERROR');
         }
+
+        // BRI-159: Ensure a stage_run exists for the ephemeral/real project and
+        // mark it awaiting_user (manual_paste) so the orchestrator tracks this
+        // session's state. Best-effort — session create already succeeded.
+        await ensureStageRunId(sb, effectiveProjectId, 'brainstorm')
+          .then((runId) => runId
+            ? markAwaitingUser(sb, runId, {
+                projectId: effectiveProjectId,
+                stage: 'brainstorm',
+                awaitingReason: 'manual_paste',
+              }).catch(() => { /* best-effort */ })
+            : undefined)
+          .catch(() => { /* best-effort */ });
 
         // Combine system + user message so the operator can copy ONE prompt
         // from Axiom and paste it into ChatGPT/Claude without reassembling.
@@ -503,7 +554,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
           org_id: orgId,
           user_id: request.userId,
           channel_id: body.channelId ?? null,
-          project_id: body.projectId ?? null,
+          project_id: effectiveProjectId,
           input_mode: body.inputMode,
           input_json: inputJson,
           model_tier: body.modelTier,
@@ -521,9 +572,8 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       // the work vanishes on navigation, and the stage never reads as done
       // downstream (BRI-151). Best-effort: Stage Run bookkeeping must not block
       // generation — the job's resolveEffectiveStageRunId is the backstop.
-      const brainstormStageRunId = body.projectId
-        ? await ensureStageRunId(sb, body.projectId, 'brainstorm').catch(() => undefined)
-        : undefined;
+      // BRI-159: effectiveProjectId always has a project (real or ephemeral).
+      const brainstormStageRunId = await ensureStageRunId(sb, effectiveProjectId, 'brainstorm').catch(() => undefined);
 
       // Seed a "queued" event so the SSE stream has something to show immediately.
       await emitJobEvent(session.id, 'brainstorm', 'queued', 'Iniciando…');

@@ -19,7 +19,8 @@ import { fetchTrends } from '../lib/signals/trends.js';
 import { buildResearchMessage } from '../lib/ai/prompts/research.js';
 import type { ResearchInput } from '../lib/ai/prompts/research.js';
 import { logAiUsage } from '../lib/axiom.js';
-import { ensureStageRunId, markCompleted, markFailed, markAborted } from '../lib/pipeline/stage-run-writer.js';
+import { ensureStageRunId, markCompleted, markFailed, markAborted, markAwaitingUser } from '../lib/pipeline/stage-run-writer.js';
+import { createEphemeralProject } from '../lib/projects/createEphemeralProject.js';
 
 /** Check idea exists in idea_archives before using as FK. Brainstorm drafts may not be promoted yet. */
 /**
@@ -156,6 +157,14 @@ const createSchema = z.object({
   modelTier: z.string().default('standard'),
   provider: z.enum(['gemini', 'openai', 'anthropic', 'ollama', 'manual']).optional(),
   model: z.string().optional(),
+}).superRefine((val, ctx) => {
+  if (!val.projectId && !val.channelId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Either projectId or channelId is required',
+      path: ['channelId'],
+    });
+  }
 });
 
 const reviewSchema = z.object({
@@ -284,6 +293,20 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
         instruction: buildLevelInstruction(body.level, body.focusTags),
       };
 
+      // BRI-159: Resolve (or create) the project id. When projectId is absent,
+      // auto-create an ephemeral project bound to channelId so stage_runs
+      // (which require project_id NOT NULL) can be created for this session.
+      // The superRefine above guarantees channelId is present when projectId is absent.
+      const effectiveProjectId: string = body.projectId
+        ? body.projectId
+        : await createEphemeralProject(sb, {
+            channelId: body.channelId as string,
+            userId: request.userId,
+            orgId,
+            title: body.topic ? `Standalone research — ${body.topic}` : 'Standalone research',
+            stage: 'research',
+          });
+
       // Manual provider short-circuits the LLM call: build the prompt
       // synchronously, emit the full payload to Axiom, persist the session in
       // awaiting_manual state, and return early. The user pastes the output
@@ -338,7 +361,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
             org_id: orgId,
             user_id: request.userId,
             channel_id: body.channelId ?? null,
-            project_id: body.projectId ?? null,
+            project_id: effectiveProjectId,
             idea_id: await resolveIdeaId(body.ideaId),
             level: body.level,
             focus_tags: body.focusTags,
@@ -351,6 +374,19 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
         if (manualInsertErr || !manualSession) {
           throw manualInsertErr ?? new ApiError(500, 'Failed to create session', 'DB_ERROR');
         }
+
+        // BRI-159: Ensure a stage_run exists for the ephemeral/real project and
+        // mark it awaiting_user (manual_paste) so the orchestrator tracks this
+        // session's state. Best-effort — session create already succeeded.
+        await ensureStageRunId(sb, effectiveProjectId, 'research')
+          .then((runId) => runId
+            ? markAwaitingUser(sb, runId, {
+                projectId: effectiveProjectId,
+                stage: 'research',
+                awaitingReason: 'manual_paste',
+              }).catch(() => { /* best-effort */ })
+            : undefined)
+          .catch(() => { /* best-effort */ });
 
         // Combine system + user message so the operator can copy ONE prompt
         // from Axiom and paste it into ChatGPT/Claude without reassembling.
@@ -395,7 +431,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           org_id: orgId,
           user_id: request.userId,
           channel_id: body.channelId ?? null,
-          project_id: body.projectId ?? null,
+          project_id: effectiveProjectId,
           idea_id: await resolveIdeaId(body.ideaId),
           level: body.level,
           focus_tags: body.focusTags,
@@ -409,6 +445,13 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       if (insertErr || !session) throw insertErr ?? new ApiError(500, 'Failed to create session', 'INTERNAL');
 
       const sessionData = session!; // Narrowed after null check above
+
+      // BRI-159: Create the research Stage Run in the route (parity with the
+      // brainstorm path) and pass its id to the worker. Without this the
+      // engine-driven research path never gets a stage_run — research-generate
+      // only LOOKS UP an existing run, so markCompleted/markFailed were skipped.
+      // effectiveProjectId always has a project (real or ephemeral). Best-effort.
+      const researchStageRunId = await ensureStageRunId(sb, effectiveProjectId, 'research').catch(() => undefined);
 
       // Dispatch the LLM work to the Inngest worker (research-generate.ts) so
       // the route returns 202 quickly. The worker emits SSE progress events
@@ -428,6 +471,7 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
           modelTier: body.modelTier,
           provider: body.provider,
           model: body.model,
+          stageRunId: researchStageRunId,
         },
       });
 

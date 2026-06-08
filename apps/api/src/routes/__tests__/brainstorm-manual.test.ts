@@ -53,6 +53,7 @@ vi.mock('../../lib/ai/router.js', () => ({
 // Supabase mock: minimal chainable stub.
 const insertedSessions: Record<string, unknown>[] = [];
 const insertedIdeas: Record<string, unknown>[] = [];
+const insertedProjects: Record<string, unknown>[] = [];
 const stageRunUpdates: Array<{ patch: Record<string, unknown>; id: string }> = [];
 const stageRunInserts: Record<string, unknown>[] = [];
 let nextSession: Record<string, unknown> = { id: 'session-1', status: 'awaiting_manual' };
@@ -154,6 +155,15 @@ vi.mock('../../lib/supabase/index.js', () => ({
       }
       if (table === 'projects') {
         return {
+          insert: (row: Record<string, unknown>) => {
+            insertedProjects.push(row);
+            const inserted = { ...row, id: 'ephemeral-proj-1' };
+            return {
+              select: () => ({
+                single: async () => ({ data: inserted, error: null }),
+              }),
+            };
+          },
           update: () => ({ eq: async () => ({ data: null, error: null }) }),
         };
       }
@@ -184,6 +194,7 @@ beforeEach(async () => {
   axiomCalls.length = 0;
   insertedSessions.length = 0;
   insertedIdeas.length = 0;
+  insertedProjects.length = 0;
   stageRunUpdates.length = 0;
   stageRunInserts.length = 0;
   inngestSend.mockClear();
@@ -205,6 +216,7 @@ describe('POST /api/brainstorm/sessions — provider=manual', () => {
       url: '/api/brainstorm/sessions',
       headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
       payload: {
+        channelId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
         inputMode: 'blind',
         topic: 'espresso extraction',
         ideasRequested: 3,
@@ -332,21 +344,50 @@ describe('POST /api/brainstorm/sessions — project_id persistence', () => {
     expect(insertedSessions[0].project_id).toBe('proj-abc-123');
   });
 
-  it('persists project_id=null when projectId is omitted', async () => {
+  it('auto-creates an ephemeral project and uses its id when channelId is provided without projectId', async () => {
+    const channelId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
     const res = await app.inject({
       method: 'POST',
       url: '/api/brainstorm/sessions',
       headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
       payload: {
+        channelId,
         inputMode: 'blind',
-        topic: 'no project',
+        topic: 'standalone brainstorm',
         ideasRequested: 3,
         provider: 'manual',
       },
     });
 
     expect(res.statusCode).toBe(202);
-    expect(insertedSessions[0].project_id).toBeNull();
+    // An ephemeral project must have been inserted with is_standalone=true
+    expect(insertedProjects).toHaveLength(1);
+    expect(insertedProjects[0].is_standalone).toBe(true);
+    expect(insertedProjects[0].channel_id).toBe(channelId);
+    // The session must use the ephemeral project's id, not null
+    expect(insertedSessions[0].project_id).toBe('ephemeral-proj-1');
+    // A stage_run must have been created for the ephemeral project
+    expect(stageRunInserts.length).toBeGreaterThan(0);
+    expect(stageRunInserts[0].project_id).toBe('ephemeral-proj-1');
+    // The stage_run must be marked awaiting_user (manual path)
+    const awaitingUpdate = stageRunUpdates.find((u) => u.patch.status === 'awaiting_user');
+    expect(awaitingUpdate).toBeDefined();
+  });
+
+  it('returns 400 when neither projectId nor channelId is provided', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/brainstorm/sessions',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+      payload: {
+        inputMode: 'blind',
+        topic: 'no project no channel',
+        ideasRequested: 3,
+        provider: 'manual',
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
   });
 });
 
@@ -436,5 +477,36 @@ describe('POST /api/brainstorm/sessions/:id/regenerate — stage_run reconciliat
     // markFailed must have updated the stage_run to failed
     const failedUpdate = stageRunUpdates.find((u) => u.patch.status === 'failed' && u.id === 'run-1');
     expect(failedUpdate).toBeDefined();
+  });
+});
+
+describe('POST /api/brainstorm/sessions/:id/cancel — stage_run reconciliation (BRI-159)', () => {
+  it('reconciles stage_run to aborted when session has project_id', async () => {
+    nextSession = { id: 'session-1', status: 'running', user_id: 'user-1', project_id: 'proj-1' };
+    nextStageRun = { id: 'run-1', status: 'running', attempt_no: 1 };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/brainstorm/sessions/session-1/cancel',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const abortedUpdate = stageRunUpdates.find((u) => u.patch.status === 'aborted' && u.id === 'run-1');
+    expect(abortedUpdate).toBeDefined();
+  });
+
+  it('skips stage_run reconciliation on cancel when no project_id', async () => {
+    nextSession = { id: 'session-1', status: 'running', user_id: 'user-1', project_id: null };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/brainstorm/sessions/session-1/cancel',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const abortedUpdates = stageRunUpdates.filter((u) => u.patch.status === 'aborted');
+    expect(abortedUpdates).toHaveLength(0);
   });
 });

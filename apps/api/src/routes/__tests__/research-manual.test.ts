@@ -59,6 +59,7 @@ vi.mock('../../lib/ai/router.js', () => ({
 
 // Supabase mock: minimal chainable stub.
 const insertedSessions: Record<string, unknown>[] = [];
+const insertedProjects: Record<string, unknown>[] = [];
 const stageRunUpdates: Array<{ patch: Record<string, unknown>; id: string }> = [];
 const stageRunInserts: Record<string, unknown>[] = [];
 let nextSession: Record<string, unknown> = { id: 'session-1', status: 'awaiting_manual' };
@@ -129,6 +130,15 @@ vi.mock('../../lib/supabase/index.js', () => ({
       }
       if (table === 'projects') {
         return {
+          insert: (row: Record<string, unknown>) => {
+            insertedProjects.push(row);
+            const inserted = { ...row, id: 'ephemeral-proj-1' };
+            return {
+              select: () => ({
+                single: async () => ({ data: inserted, error: null }),
+              }),
+            };
+          },
           update: () => ({ eq: async () => ({ data: null, error: null }) }),
         };
       }
@@ -161,6 +171,7 @@ let app: FastifyInstance;
 beforeEach(async () => {
   axiomCalls.length = 0;
   insertedSessions.length = 0;
+  insertedProjects.length = 0;
   stageRunUpdates.length = 0;
   stageRunInserts.length = 0;
   inngestSend.mockClear();
@@ -182,6 +193,7 @@ describe('POST /api/research/ — provider=manual', () => {
       url: '/api/research/',
       headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
       payload: {
+        channelId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
         level: 'medium',
         topic: 'espresso extraction',
         provider: 'manual',
@@ -568,5 +580,51 @@ describe('POST /api/research/:id/regenerate — stage_run reconciliation (BRI-15
     // markFailed must have updated the stage_run to failed
     const failedUpdate = stageRunUpdates.find((u) => u.patch.status === 'failed' && u.id === 'run-1');
     expect(failedUpdate).toBeDefined();
+  });
+});
+
+describe('POST /api/research/ — ephemeral project creation (BRI-159)', () => {
+  it('auto-creates an ephemeral project and uses its id when channelId provided without projectId', async () => {
+    const channelId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/research/',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+      payload: {
+        channelId,
+        level: 'medium',
+        topic: 'standalone research topic',
+        provider: 'manual',
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    // An ephemeral project must have been inserted with is_standalone=true
+    expect(insertedProjects).toHaveLength(1);
+    expect(insertedProjects[0].is_standalone).toBe(true);
+    expect(insertedProjects[0].channel_id).toBe(channelId);
+    // The session must use the ephemeral project's id, not null
+    expect(insertedSessions[0].project_id).toBe('ephemeral-proj-1');
+    // A stage_run must have been created (ensureStageRunId)
+    expect(stageRunInserts.length).toBeGreaterThan(0);
+    expect(stageRunInserts[0].project_id).toBe('ephemeral-proj-1');
+    // Stage run must be marked awaiting_user (manual path)
+    const awaitingUpdate = stageRunUpdates.find((u) => u.patch.status === 'awaiting_user');
+    expect(awaitingUpdate).toBeDefined();
+  });
+
+  it('returns 400 when neither projectId nor channelId is provided', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/research/',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+      payload: {
+        level: 'medium',
+        topic: 'no project no channel',
+        provider: 'manual',
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
   });
 });
