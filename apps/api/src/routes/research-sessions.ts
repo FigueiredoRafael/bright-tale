@@ -19,6 +19,7 @@ import { fetchTrends } from '../lib/signals/trends.js';
 import { buildResearchMessage } from '../lib/ai/prompts/research.js';
 import type { ResearchInput } from '../lib/ai/prompts/research.js';
 import { logAiUsage } from '../lib/axiom.js';
+import { ensureStageRunId, markCompleted, markFailed, markAborted } from '../lib/pipeline/stage-run-writer.js';
 
 /** Check idea exists in idea_archives before using as FK. Brainstorm drafts may not be promoted yet. */
 /**
@@ -196,14 +197,15 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
       const { data: session } = await sb
         .from('research_sessions')
-        .select('id, status, user_id')
+        .select('id, status, user_id, project_id')
         .eq('id', id)
         .maybeSingle();
 
       if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
-      if (session.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
-      if (session.status !== 'running' && session.status !== 'awaiting_manual') {
-        return reply.send({ data: { status: session.status }, error: null });
+      const sessionRow = session as Record<string, unknown>;
+      if (sessionRow.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
+      if (sessionRow.status !== 'running' && sessionRow.status !== 'awaiting_manual') {
+        return reply.send({ data: { status: sessionRow.status }, error: null });
       }
 
       await (sb.from('research_sessions') as unknown as {
@@ -219,6 +221,20 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
         await inngest.send({ name: 'inngest/function.cancelled', data: { function_id: 'research-generate', run_id: id } });
       } catch {
         // Best-effort — Inngest may not support this or the run may already be done
+      }
+
+      // Pipeline Orchestrator handoff: mark the research Stage Run aborted so the
+      // orchestrator sees it as terminal. Standalone sessions (no project) skip.
+      const cancelProjectId = sessionRow.project_id as string | null | undefined;
+      if (cancelProjectId) {
+        const cancelRunId = await ensureStageRunId(sb, cancelProjectId, 'research').catch(() => undefined);
+        if (cancelRunId) {
+          await markAborted(sb, cancelRunId, {
+            projectId: cancelProjectId,
+            stage: 'research',
+            errorMessage: 'Cancelled by user',
+          }).catch(() => { /* best-effort */ });
+        }
       }
 
       return reply.send({ data: { status: 'cancelled' }, error: null });
@@ -479,6 +495,21 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
       if (insertErr || !session) throw insertErr ?? new ApiError(500, 'Failed to create session', 'INTERNAL');
 
+      // Pipeline Orchestrator handoff: when the import is scoped to a project,
+      // reconcile the research Stage Run to `completed` so deriveStageResults
+      // surfaces it and the pipeline can advance. Standalone imports (no project)
+      // have no Stage Run to reconcile — skip gracefully.
+      const importProjectId = body.projectId ?? null;
+      if (importProjectId) {
+        const importRunId = await ensureStageRunId(sb, importProjectId, 'research').catch(() => undefined);
+        if (importRunId) {
+          await markCompleted(sb, importRunId, {
+            projectId: importProjectId,
+            stage: 'research',
+          }).catch(() => { /* best-effort */ });
+        }
+      }
+
       return reply.send({
         data: {
           sessionId: session.id,
@@ -619,6 +650,20 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
         throw new ApiError(500, `Failed to mark session completed: ${String((updErr as { message?: string })?.message ?? updErr)}`, 'DB_ERROR');
       }
 
+      // Pipeline Orchestrator handoff for manual research: flip the matching
+      // research Stage Run to `completed` so deriveStageResults picks it up.
+      // Standalone sessions (project_id is null) have no Stage Run — skip.
+      const manualProjectId = row.project_id as string | null | undefined;
+      if (manualProjectId) {
+        const manualRunId = await ensureStageRunId(sb, manualProjectId, 'research').catch(() => undefined);
+        if (manualRunId) {
+          await markCompleted(sb, manualRunId, {
+            projectId: manualProjectId,
+            stage: 'research',
+          }).catch(() => { /* best-effort — session write already succeeded */ });
+        }
+      }
+
       logAiUsage({
         userId: request.userId,
         orgId: (row.org_id as string) ?? null,
@@ -646,6 +691,9 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
   /**
    * PATCH /:id/review — save approved cards and mark reviewed.
+   *
+   * Decision (BRI-156): `reviewed` maps to `completed` on the Stage Run —
+   * the pipeline orchestrator only distinguishes terminal vs non-terminal.
    */
   fastify.patch('/:id/review', { preHandler: [authenticate] }, async (request, reply) => {
     try {
@@ -653,20 +701,37 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
       const { id } = request.params as { id: string };
       const body = reviewSchema.parse(request.body);
 
-      const { data, error } = await (sb.from('research_sessions') as unknown as {
-        update: (row: Record<string, unknown>) => {
-          eq: (col: string, val: string) => {
-            select: () => { single: () => Promise<{ data: unknown; error: unknown }> };
-          };
-        };
+      // Fetch the session first to get project_id for Stage Run reconciliation.
+      const { data: reviewSession, error: fetchErr } = await sb
+        .from('research_sessions')
+        .select('id, project_id, user_id')
+        .eq('id', id)
+        .maybeSingle();
+      if (fetchErr) throw fetchErr;
+      if (!reviewSession) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
+      const reviewRow = reviewSession as Record<string, unknown>;
+
+      const { error: updErr } = await (sb.from('research_sessions') as unknown as {
+        update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<{ error: unknown }> };
       })
         .update({ approved_cards_json: body.approvedCardsJson, status: 'reviewed' })
-        .eq('id', id)
-        .select()
-        .single();
+        .eq('id', id);
+      if (updErr) throw updErr;
 
-      if (error) throw error;
-      return reply.send({ data, error: null });
+      // Pipeline Orchestrator handoff: `reviewed` → `completed` on the Stage Run.
+      // Standalone sessions (no project) have no Stage Run to reconcile.
+      const reviewProjectId = reviewRow.project_id as string | null | undefined;
+      if (reviewProjectId) {
+        const reviewRunId = await ensureStageRunId(sb, reviewProjectId, 'research').catch(() => undefined);
+        if (reviewRunId) {
+          await markCompleted(sb, reviewRunId, {
+            projectId: reviewProjectId,
+            stage: 'research',
+          }).catch(() => { /* best-effort */ });
+        }
+      }
+
+      return reply.send({ data: { id }, error: null });
     } catch (error) {
       return sendError(reply, error);
     }
@@ -853,6 +918,14 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
       const sessionData2 = session!; // Narrowed after null check above
 
+      // Pipeline Orchestrator handoff for regenerate: ensure a Stage Run exists
+      // and record its id for terminal transitions below.
+      // Standalone sessions (no project) have no Stage Run — skip gracefully.
+      const regenProjectId = orig.project_id as string | null | undefined;
+      const regenRunId = regenProjectId
+        ? await ensureStageRunId(sb, regenProjectId, 'research').catch(() => undefined)
+        : undefined;
+
       try {
         // Fetch idea context for the userMessage builder
         let ideaTitle: string | undefined;
@@ -938,12 +1011,28 @@ export async function researchSessionsRoutes(fastify: FastifyInstance): Promise<
 
         await commit(regenToken, cost, `research-${level}`, 'text', { regeneratedFrom: id });
 
+        // Reconcile the Stage Run to completed (best-effort — session write already succeeded).
+        if (regenRunId && regenProjectId) {
+          await markCompleted(sb, regenRunId, {
+            projectId: regenProjectId,
+            stage: 'research',
+          }).catch(() => { /* best-effort */ });
+        }
+
         return reply.send({ data: { sessionId: sessionData2.id, level, findings, refinedAngle }, error: null });
       } catch (err) {
         await release(regenToken).catch(() => { /* best-effort */ });
         await (sb.from('research_sessions') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
         }).update({ status: 'failed', error_message: (err as Error)?.message?.slice(0, 500) }).eq('id', sessionData2.id);
+        // Reconcile the Stage Run to failed (best-effort).
+        if (regenRunId && regenProjectId) {
+          await markFailed(sb, regenRunId, {
+            projectId: regenProjectId,
+            stage: 'research',
+            errorMessage: (err as Error)?.message ?? 'Research regeneration failed',
+          }).catch(() => { /* best-effort */ });
+        }
         throw err;
       }
     } catch (error) {

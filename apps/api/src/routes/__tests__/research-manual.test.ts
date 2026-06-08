@@ -4,6 +4,9 @@
  * These exercise POST / with provider='manual' and the new
  * POST /:id/manual-output endpoint. Supabase calls are mocked; the
  * goal is route shape + Axiom emission + Inngest-skip verification.
+ *
+ * BRI-156 (D24a): also asserts stage_run reconciliation on manual-output,
+ * PATCH /review, POST /import, POST /cancel, and POST /regenerate.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import Fastify from 'fastify';
@@ -28,11 +31,40 @@ vi.mock('../../jobs/emitter.js', () => ({
 
 vi.mock('../../lib/ai/promptLoader.js', () => ({
   loadAgentPrompt: async () => 'You are the BrightCurios research agent...',
+  loadAgentConfig: async () => ({
+    instructions: 'You are the BrightCurios research agent...',
+    tools: [],
+  }),
+  resolveProviderOverride: () => ({ provider: 'anthropic', model: 'claude-3-haiku-20240307' }),
+}));
+
+vi.mock('../../lib/ai/tools/index.js', () => ({
+  resolveTools: () => [],
+  buildToolExecutor: () => undefined,
+}));
+
+vi.mock('../../lib/signals/trends.js', () => ({
+  fetchTrends: async () => null,
+}));
+
+// generateWithFallback mock: controlled via shouldRegenFail flag
+let shouldRegenFail = false;
+vi.mock('../../lib/ai/router.js', () => ({
+  generateWithFallback: async () => {
+    if (shouldRegenFail) throw new Error('AI provider error');
+    return { result: { sources: [{ title: 'Regen result', url: 'http://x.com', type: 'source' }], research_summary: 'Regen summary' } };
+  },
+  LEVEL_COSTS: { surface: 1, medium: 2, deep: 3 },
 }));
 
 // Supabase mock: minimal chainable stub.
 const insertedSessions: Record<string, unknown>[] = [];
+const stageRunUpdates: Array<{ patch: Record<string, unknown>; id: string }> = [];
+const stageRunInserts: Record<string, unknown>[] = [];
 let nextSession: Record<string, unknown> = { id: 'session-1', status: 'awaiting_manual' };
+// nextStageRun: null means no existing run (ensureStageRunId will insert);
+// set to { id: 'run-1', status: 'running', attempt_no: 1 } to simulate existing.
+let nextStageRun: Record<string, unknown> | null = null;
 const orgRow: Record<string, unknown> | null = { org_id: 'org-1' };
 
 vi.mock('../../lib/supabase/index.js', () => ({
@@ -67,6 +99,39 @@ vi.mock('../../lib/supabase/index.js', () => ({
           }),
         };
       }
+      if (table === 'stage_runs') {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                order: () => ({
+                  limit: () => ({
+                    maybeSingle: async () => ({ data: nextStageRun, error: null }),
+                  }),
+                }),
+              }),
+            }),
+          }),
+          insert: (row: Record<string, unknown>) => {
+            const inserted = { ...row, id: 'run-1' };
+            stageRunInserts.push(inserted);
+            return {
+              select: () => ({ single: async () => ({ data: inserted, error: null }) }),
+            };
+          },
+          update: (patch: Record<string, unknown>) => ({
+            eq: (_col: string, id: string) => {
+              stageRunUpdates.push({ patch, id });
+              return Promise.resolve({ data: null, error: null });
+            },
+          }),
+        };
+      }
+      if (table === 'projects') {
+        return {
+          update: () => ({ eq: async () => ({ data: null, error: null }) }),
+        };
+      }
       if (table === 'channels') {
         return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) };
       }
@@ -96,8 +161,12 @@ let app: FastifyInstance;
 beforeEach(async () => {
   axiomCalls.length = 0;
   insertedSessions.length = 0;
+  stageRunUpdates.length = 0;
+  stageRunInserts.length = 0;
   inngestSend.mockClear();
   emitJobEventMock.mockClear();
+  nextStageRun = null;
+  shouldRegenFail = false;
 
   const { researchSessionsRoutes } = await import('../research-sessions.js');
   app = Fastify();
@@ -188,6 +257,53 @@ describe('POST /api/research/:id/manual-output', () => {
     expect(completedEvent!.metadata).toHaveProperty('stage', 'research');
   });
 
+  it('does NOT reconcile a stage_run when project_id is null (standalone session)', async () => {
+    nextSession = { id: 'session-1', status: 'awaiting_manual', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/research/session-1/manual-output',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+      payload: {
+        output: {
+          sources: [{ title: 'Source A', url: 'http://a.com', type: 'source' }],
+          research_summary: 'Summary',
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // No stage_run insert or update should have occurred (no project context)
+    const stageRunWrites = stageRunUpdates.filter((u) => u.patch.status === 'completed');
+    expect(stageRunWrites).toHaveLength(0);
+    expect(stageRunInserts).toHaveLength(0);
+  });
+
+  it('reconciles stage_run to completed when project_id is set', async () => {
+    nextSession = { id: 'session-1', status: 'awaiting_manual', channel_id: null, project_id: 'proj-1', org_id: 'org-1', user_id: 'user-1' };
+    // No pre-existing stage_run → ensureStageRunId will insert one
+    nextStageRun = null;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/research/session-1/manual-output',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+      payload: {
+        output: {
+          sources: [{ title: 'Source A', url: 'http://a.com', type: 'source' }],
+          research_summary: 'Summary',
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // ensureStageRunId inserts a new run-1 row
+    expect(stageRunInserts.length).toBeGreaterThan(0);
+    // markCompleted updates the inserted run to completed
+    const completedUpdate = stageRunUpdates.find((u) => u.patch.status === 'completed' && u.id === 'run-1');
+    expect(completedUpdate).toBeDefined();
+  });
+
   it('persists findings when output has cards array (legacy)', async () => {
     nextSession = { id: 'session-1', status: 'awaiting_manual', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
 
@@ -245,5 +361,212 @@ describe('POST /api/research/:id/manual-output', () => {
     expect(res.statusCode).toBe(400);
     const body = res.json();
     expect(body.error?.message).toMatch(/no research data/i);
+  });
+});
+
+describe('PATCH /api/research/:id/review — stage_run reconciliation (BRI-156)', () => {
+  it('reconciles stage_run to completed when session has project_id', async () => {
+    // The review handler fetches the session first to get project_id
+    nextSession = { id: 'session-1', status: 'reviewed', channel_id: null, project_id: 'proj-1', org_id: 'org-1', user_id: 'user-1' };
+    nextStageRun = null; // no pre-existing run → ensureStageRunId inserts
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/research/session-1/review',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+      payload: { approvedCardsJson: [{ title: 'Card A', type: 'source' }] },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // stage_run should have been inserted (ensureStageRunId) and then updated to completed
+    expect(stageRunInserts.length).toBeGreaterThan(0);
+    const completedUpdate = stageRunUpdates.find((u) => u.patch.status === 'completed' && u.id === 'run-1');
+    expect(completedUpdate).toBeDefined();
+  });
+
+  it('skips stage_run reconciliation when session has no project_id', async () => {
+    nextSession = { id: 'session-1', status: 'reviewed', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/research/session-1/review',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+      payload: { approvedCardsJson: [{ title: 'Card A', type: 'source' }] },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const stageRunWrites = stageRunUpdates.filter((u) => u.patch.status === 'completed');
+    expect(stageRunWrites).toHaveLength(0);
+    expect(stageRunInserts).toHaveLength(0);
+  });
+});
+
+describe('POST /api/research/import — stage_run reconciliation (BRI-156)', () => {
+  it('reconciles stage_run to completed when projectId is provided', async () => {
+    nextSession = { id: 'session-1', status: 'completed', channel_id: null, project_id: 'proj-1', org_id: 'org-1', user_id: 'user-1' };
+    nextStageRun = null;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/research/import',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+      payload: {
+        projectId: 'proj-1',
+        level: 'medium',
+        cardsJson: [{ title: 'Card A', type: 'source' }],
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(stageRunInserts.length).toBeGreaterThan(0);
+    const completedUpdate = stageRunUpdates.find((u) => u.patch.status === 'completed' && u.id === 'run-1');
+    expect(completedUpdate).toBeDefined();
+  });
+
+  it('skips stage_run reconciliation when no projectId is provided', async () => {
+    nextSession = { id: 'session-1', status: 'completed', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/research/import',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+      payload: {
+        level: 'medium',
+        cardsJson: [{ title: 'Card A', type: 'source' }],
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const stageRunWrites = stageRunUpdates.filter((u) => u.patch.status === 'completed');
+    expect(stageRunWrites).toHaveLength(0);
+    expect(stageRunInserts).toHaveLength(0);
+  });
+});
+
+describe('POST /api/research/:id/cancel — stage_run reconciliation (BRI-156)', () => {
+  it('reconciles stage_run to aborted when session has project_id', async () => {
+    nextSession = { id: 'session-1', status: 'running', channel_id: null, project_id: 'proj-1', org_id: 'org-1', user_id: 'user-1' };
+    // Simulate an existing running stage_run
+    nextStageRun = { id: 'run-1', status: 'running', attempt_no: 1 };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/research/session-1/cancel',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // markAborted should have updated the stage_run to aborted
+    const abortedUpdate = stageRunUpdates.find((u) => u.patch.status === 'aborted' && u.id === 'run-1');
+    expect(abortedUpdate).toBeDefined();
+  });
+
+  it('skips stage_run reconciliation on cancel when no project_id', async () => {
+    nextSession = { id: 'session-1', status: 'running', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/research/session-1/cancel',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const abortedUpdates = stageRunUpdates.filter((u) => u.patch.status === 'aborted');
+    expect(abortedUpdates).toHaveLength(0);
+  });
+});
+
+describe('POST /api/research/:id/regenerate — stage_run reconciliation (BRI-156)', () => {
+  it('reconciles stage_run to completed on successful regeneration with project_id', async () => {
+    // nextSession is the ORIGINAL session fetched for regen context,
+    // and also the new inserted session returned from insert.
+    nextSession = {
+      id: 'session-2',
+      status: 'running',
+      channel_id: null,
+      project_id: 'proj-1',
+      org_id: 'org-1',
+      user_id: 'user-1',
+      level: 'medium',
+      idea_id: null,
+      focus_tags: [],
+      input_json: { topic: 'espresso' },
+      model_tier: 'standard',
+    };
+    nextStageRun = null; // no pre-existing stage_run → ensureStageRunId inserts one
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/research/session-1/regenerate',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // ensureStageRunId must have inserted a new stage_run
+    expect(stageRunInserts.length).toBeGreaterThan(0);
+    const insertedRun = stageRunInserts[0];
+    expect(insertedRun.stage).toBe('research');
+    expect(insertedRun.project_id).toBe('proj-1');
+    // markCompleted must have updated it to completed
+    const completedUpdate = stageRunUpdates.find((u) => u.patch.status === 'completed' && u.id === 'run-1');
+    expect(completedUpdate).toBeDefined();
+  });
+
+  it('does NOT reconcile stage_run when project_id is null (standalone regen)', async () => {
+    nextSession = {
+      id: 'session-2',
+      status: 'running',
+      channel_id: null,
+      project_id: null,
+      org_id: 'org-1',
+      user_id: 'user-1',
+      level: 'medium',
+      idea_id: null,
+      focus_tags: [],
+      input_json: { topic: 'espresso' },
+      model_tier: 'standard',
+    };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/research/session-1/regenerate',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // No stage_run insert/update should happen (no project context)
+    expect(stageRunInserts).toHaveLength(0);
+    const completedUpdates = stageRunUpdates.filter((u) => u.patch.status === 'completed');
+    expect(completedUpdates).toHaveLength(0);
+  });
+
+  it('reconciles stage_run to failed on regeneration error with project_id', async () => {
+    shouldRegenFail = true;
+    nextSession = {
+      id: 'session-2',
+      status: 'running',
+      channel_id: null,
+      project_id: 'proj-1',
+      org_id: 'org-1',
+      user_id: 'user-1',
+      level: 'medium',
+      idea_id: null,
+      focus_tags: [],
+      input_json: { topic: 'espresso' },
+      model_tier: 'standard',
+    };
+    nextStageRun = null;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/research/session-1/regenerate',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+    });
+
+    // Route throws → sendError → should return a non-2xx status
+    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+    // markFailed must have updated the stage_run to failed
+    const failedUpdate = stageRunUpdates.find((u) => u.patch.status === 'failed' && u.id === 'run-1');
+    expect(failedUpdate).toBeDefined();
   });
 });
