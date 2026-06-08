@@ -99,7 +99,9 @@ describe('POST /research-sessions', () => {
       method: 'POST',
       url: '/research-sessions',
       headers: AUTH_USER,
-      payload: { level: 'medium', topic: 'deep work', focusTags: ['stats'] },
+      // BRI-159: create schema now requires projectId OR channelId. This test
+      // models the project-linked enqueue path (no ephemeral project created).
+      payload: { level: 'medium', topic: 'deep work', focusTags: ['stats'], projectId: 'proj-1' },
     });
 
     // Research is enqueued and runs async via the research/generate job;

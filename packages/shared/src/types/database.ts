@@ -1713,72 +1713,6 @@ export type Database = {
           },
         ]
       }
-      platform_settings: {
-        Row: {
-          cost_blog: number
-          cost_canonical_core: number
-          cost_podcast: number
-          cost_research_deep: number
-          cost_research_medium: number
-          cost_research_surface: number
-          cost_review: number
-          cost_shorts: number
-          cost_video: number
-          created_at: string
-          id: string
-          lock_key: string
-          review_approve_score: number
-          review_max_iterations: number
-          review_reject_threshold: number
-          review_stagnation_min_delta: number
-          review_stagnation_window: number
-          stage_finish_timeout_seconds: number
-          updated_at: string
-        }
-        Insert: {
-          cost_blog?: number
-          cost_canonical_core?: number
-          cost_podcast?: number
-          cost_research_deep?: number
-          cost_research_medium?: number
-          cost_research_surface?: number
-          cost_review?: number
-          cost_shorts?: number
-          cost_video?: number
-          created_at?: string
-          id?: string
-          lock_key?: string
-          review_approve_score?: number
-          review_max_iterations?: number
-          review_reject_threshold?: number
-          review_stagnation_min_delta?: number
-          review_stagnation_window?: number
-          stage_finish_timeout_seconds?: number
-          updated_at?: string
-        }
-        Update: {
-          cost_blog?: number
-          cost_canonical_core?: number
-          cost_podcast?: number
-          cost_research_deep?: number
-          cost_research_medium?: number
-          cost_research_surface?: number
-          cost_review?: number
-          cost_shorts?: number
-          cost_video?: number
-          created_at?: string
-          id?: string
-          lock_key?: string
-          review_approve_score?: number
-          review_max_iterations?: number
-          review_reject_threshold?: number
-          review_stagnation_min_delta?: number
-          review_stagnation_window?: number
-          stage_finish_timeout_seconds?: number
-          updated_at?: string
-        }
-        Relationships: []
-      }
       credit_usage: {
         Row: {
           action: string
@@ -3154,6 +3088,72 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_settings: {
+        Row: {
+          cost_blog: number
+          cost_canonical_core: number
+          cost_podcast: number
+          cost_research_deep: number
+          cost_research_medium: number
+          cost_research_surface: number
+          cost_review: number
+          cost_shorts: number
+          cost_video: number
+          created_at: string
+          id: string
+          lock_key: string
+          review_approve_score: number
+          review_max_iterations: number
+          review_reject_threshold: number
+          review_stagnation_min_delta: number
+          review_stagnation_window: number
+          stage_finish_timeout_seconds: number
+          updated_at: string
+        }
+        Insert: {
+          cost_blog?: number
+          cost_canonical_core?: number
+          cost_podcast?: number
+          cost_research_deep?: number
+          cost_research_medium?: number
+          cost_research_surface?: number
+          cost_review?: number
+          cost_shorts?: number
+          cost_video?: number
+          created_at?: string
+          id?: string
+          lock_key?: string
+          review_approve_score?: number
+          review_max_iterations?: number
+          review_reject_threshold?: number
+          review_stagnation_min_delta?: number
+          review_stagnation_window?: number
+          stage_finish_timeout_seconds?: number
+          updated_at?: string
+        }
+        Update: {
+          cost_blog?: number
+          cost_canonical_core?: number
+          cost_podcast?: number
+          cost_research_deep?: number
+          cost_research_medium?: number
+          cost_research_surface?: number
+          cost_review?: number
+          cost_shorts?: number
+          cost_video?: number
+          created_at?: string
+          id?: string
+          lock_key?: string
+          review_approve_score?: number
+          review_max_iterations?: number
+          review_reject_threshold?: number
+          review_stagnation_min_delta?: number
+          review_stagnation_window?: number
+          stage_finish_timeout_seconds?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       podcast_drafts: {
         Row: {
           created_at: string
@@ -3344,6 +3344,7 @@ export type Database = {
           created_at: string
           current_stage: string
           id: string
+          is_standalone: boolean
           migrated_to_stage_runs_at: string | null
           mode: string | null
           org_id: string | null
@@ -3366,6 +3367,7 @@ export type Database = {
           created_at?: string
           current_stage: string
           id?: string
+          is_standalone?: boolean
           migrated_to_stage_runs_at?: string | null
           mode?: string | null
           org_id?: string | null
@@ -3388,6 +3390,7 @@ export type Database = {
           created_at?: string
           current_stage?: string
           id?: string
+          is_standalone?: boolean
           migrated_to_stage_runs_at?: string | null
           mode?: string | null
           org_id?: string | null
@@ -3932,6 +3935,9 @@ export type Database = {
           feedback_json: Json | null
           id: string
           iteration: number
+          last_revision_strategy: string | null
+          produce_cost_cents: number | null
+          review_cost_cents: number | null
           score: number | null
           verdict: string | null
         }
@@ -3942,6 +3948,9 @@ export type Database = {
           feedback_json?: Json | null
           id?: string
           iteration: number
+          last_revision_strategy?: string | null
+          produce_cost_cents?: number | null
+          review_cost_cents?: number | null
           score?: number | null
           verdict?: string | null
         }
@@ -3952,6 +3961,9 @@ export type Database = {
           feedback_json?: Json | null
           id?: string
           iteration?: number
+          last_revision_strategy?: string | null
+          produce_cost_cents?: number | null
+          review_cost_cents?: number | null
           score?: number | null
           verdict?: string | null
         }

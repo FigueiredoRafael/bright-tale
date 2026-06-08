@@ -343,6 +343,10 @@ export async function projectsRoutes(fastify: FastifyInstance): Promise<void> {
         .from('projects')
         .select('*, research:research_archives!research_id(id, title, theme), stages(count)');
 
+      // BRI-159: Never surface ephemeral (standalone session) projects in listings.
+      countQuery = countQuery.eq('is_standalone', false);
+      dataQuery = dataQuery.eq('is_standalone', false);
+
       // Filter by user_id when present
       if (request.userId) {
         countQuery = countQuery.eq('user_id', request.userId);
