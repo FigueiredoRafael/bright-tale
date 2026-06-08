@@ -229,8 +229,8 @@ describe('POST /api/brainstorm/sessions — provider=manual', () => {
     expect(body.data.status).toBe('awaiting_manual');
     expect(body.data.sessionId).toBe('session-1');
 
-    // Session row persisted with awaiting_manual status
-    expect(insertedSessions[0].status).toBe('awaiting_manual');
+    // BRI-157: status column is no longer written — derived from stage_runs
+    expect(insertedSessions[0].status).toBeUndefined();
 
     // Inngest NOT called (manual is synchronous)
     expect(inngestSend).not.toHaveBeenCalled();

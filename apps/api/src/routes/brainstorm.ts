@@ -18,6 +18,7 @@ import { buildBrainstormMessage } from '../lib/ai/prompts/brainstorm.js';
 import type { BrainstormInput } from '../lib/ai/prompts/brainstorm.js';
 import { logAiUsage } from '../lib/axiom.js';
 import { ensureStageRunId, markCompleted, markFailed, markAwaitingUser, markAborted } from '../lib/pipeline/stage-run-writer.js';
+import { sessionStatusFromStageRun } from '../lib/pipeline/session-status.js';
 import { createEphemeralProject } from '../lib/projects/createEphemeralProject.js';
 
 interface RawIdea {
@@ -140,26 +141,52 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       const sb = createServiceClient();
       const { channelId } = request.query as { channelId?: string };
 
-      // Only return sessions created in the last 20 minutes — older ones are stale
-      const cutoff = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+      // Derive "running" sessions from stage_runs (single source of truth).
+      // Find project_ids whose latest brainstorm stage_run maps to DTO 'running':
+      //   stage_runs.status = 'running'  OR  (status = 'awaiting_user' AND awaiting_reason != 'manual_paste')
+      const runsQuery = sb
+        .from('stage_runs')
+        .select('project_id, status, awaiting_reason')
+        .eq('stage', 'brainstorm')
+        .in('status', ['running', 'awaiting_user'])
+        .order('created_at', { ascending: false });
 
-      let query = sb
+      const { data: candidateRuns } = await runsQuery;
+
+      // Dedupe to latest run per project_id, keep only those that map to DTO 'running'
+      const seenProjects = new Set<string>();
+      const runningProjectIds: string[] = [];
+      for (const run of (candidateRuns ?? []) as Array<{ project_id: string; status: string; awaiting_reason: string | null }>) {
+        if (seenProjects.has(run.project_id)) continue;
+        seenProjects.add(run.project_id);
+        const isRunning = run.status === 'running' ||
+          (run.status === 'awaiting_user' && run.awaiting_reason !== 'manual_paste');
+        if (isRunning) runningProjectIds.push(run.project_id);
+      }
+
+      if (runningProjectIds.length === 0) {
+        return reply.send({ data: { session: null }, error: null });
+      }
+
+      let sessionQuery = sb
         .from('brainstorm_sessions')
-        .select('id, status, input_json, created_at')
+        .select('id, project_id, input_json, created_at')
         .eq('user_id', request.userId)
-        .eq('status', 'running')
-        .gte('created_at', cutoff)
+        .in('project_id', runningProjectIds)
         .order('created_at', { ascending: false })
         .limit(1);
 
       if (channelId) {
-        query = query.eq('channel_id', channelId);
+        sessionQuery = sessionQuery.eq('channel_id', channelId);
       }
 
-      const { data, error } = await query.maybeSingle();
+      const { data, error } = await sessionQuery.maybeSingle();
       if (error) throw error;
 
-      return reply.send({ data: { session: data ?? null }, error: null });
+      // Inject computed status into response so body shape is unchanged
+      const session = data ? { ...data, status: 'running' } : null;
+
+      return reply.send({ data: { session }, error: null });
     } catch (error) {
       return sendError(reply, error);
     }
@@ -183,14 +210,22 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
       const sessionRow = session as Record<string, unknown>;
       if (sessionRow.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
-      if (sessionRow.status !== 'running' && sessionRow.status !== 'awaiting_manual') {
-        return reply.send({ data: { status: sessionRow.status }, error: null });
+
+      // Derive status from stage_run (single source of truth); fall back to
+      // column value for legacy sessions without a project_id (removed in D24c).
+      const cancelProjectId = sessionRow.project_id as string | null | undefined;
+      const derivedStatus = cancelProjectId
+        ? await sessionStatusFromStageRun(sb, cancelProjectId, 'brainstorm')
+        : ((sessionRow.status as string | undefined) ?? 'pending');
+
+      if (derivedStatus !== 'running' && derivedStatus !== 'awaiting_manual') {
+        return reply.send({ data: { status: derivedStatus }, error: null });
       }
 
       await (sb.from('brainstorm_sessions') as unknown as {
         update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
       })
-        .update({ status: 'failed', error_message: 'Cancelled by user' })
+        .update({ error_message: 'Cancelled by user' })
         .eq('id', id);
 
       await emitJobEvent(id, 'brainstorm', 'failed', 'Cancelled by user');
@@ -202,9 +237,8 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         // Best-effort — Inngest may not support this or the run may already be done
       }
 
-      // BRI-159: Mark the brainstorm Stage Run aborted so the orchestrator sees
+      // BRI-157: Mark the brainstorm Stage Run aborted so the orchestrator sees
       // the terminal state. Mirrors the research cancel handler. Best-effort.
-      const cancelProjectId = sessionRow.project_id as string | null | undefined;
       if (cancelProjectId) {
         const cancelRunId = await ensureStageRunId(sb, cancelProjectId, 'brainstorm').catch(() => undefined);
         if (cancelRunId) {
@@ -243,8 +277,16 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       if (!session) throw new ApiError(404, 'Session not found', 'NOT_FOUND');
       const row = session as Record<string, unknown>;
       if (row.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
-      if (row.status !== 'awaiting_manual') {
-        throw new ApiError(409, `Session is not awaiting manual output (status=${row.status})`, 'CONFLICT');
+
+      // Derive status from stage_run (single source of truth); fall back to
+      // column value for legacy sessions without a project_id (removed in D24c).
+      const manualOutputProjectId = row.project_id as string | null | undefined;
+      const manualDerivedStatus = manualOutputProjectId
+        ? await sessionStatusFromStageRun(sb, manualOutputProjectId, 'brainstorm')
+        : ((row.status as string | undefined) ?? 'pending');
+
+      if (manualDerivedStatus !== 'awaiting_manual') {
+        throw new ApiError(409, `Session is not awaiting manual output (status=${manualDerivedStatus})`, 'CONFLICT');
       }
 
       const rawIdeas = normalizeIdeas(body.output);
@@ -303,19 +345,18 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         }
       }
 
-      // The brainstorm_sessions table has no output_json column today; the
-      // full pasted output is already captured in Axiom via the
-      // manual.completed event below, so we only flip status here.
-      const { error: updErr } = await (sb.from('brainstorm_sessions') as unknown as {
-        update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<{ error: unknown }> };
-      })
-        .update({
-          status: 'completed',
-          ...(recommendation ? { recommendation_json: recommendation } : {}),
+      // BRI-157: status is now derived from stage_runs; only persist
+      // recommendation_json here if present. The full pasted output is captured
+      // in Axiom via the manual.completed event below.
+      if (recommendation) {
+        const { error: updErr } = await (sb.from('brainstorm_sessions') as unknown as {
+          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<{ error: unknown }> };
         })
-        .eq('id', id);
-      if (updErr) {
-        throw new ApiError(500, `Failed to mark session completed: ${String((updErr as { message?: string })?.message ?? updErr)}`, 'DB_ERROR');
+          .update({ recommendation_json: recommendation })
+          .eq('id', id);
+        if (updErr) {
+          throw new ApiError(500, `Failed to update session: ${String((updErr as { message?: string })?.message ?? updErr)}`, 'DB_ERROR');
+        }
       }
 
       // Re-query the persisted idea_archives rows so we can return real UUIDs to
@@ -490,7 +531,6 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
             input_mode: body.inputMode,
             input_json: inputJson,
             model_tier: body.modelTier,
-            status: 'awaiting_manual',
           })
           .select()
           .single();
@@ -558,7 +598,6 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
           input_mode: body.inputMode,
           input_json: inputJson,
           model_tier: body.modelTier,
-          status: 'running',
         })
         .select()
         .single();
@@ -741,7 +780,16 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         ideas = (archived ?? []) as Array<Record<string, unknown>>;
       }
 
-      return reply.send({ data: { session, ideas, pickedDraftId }, error: null });
+      // BRI-157: Inject computed status from stage_run into the session object
+      // so the response body shape is unchanged but the value is authoritative.
+      const sessionObj = session as Record<string, unknown>;
+      const getIdProjectId = sessionObj.project_id as string | null | undefined;
+      const computedStatus = getIdProjectId
+        ? await sessionStatusFromStageRun(sb, getIdProjectId, 'brainstorm')
+        : ((sessionObj.status as string | undefined) ?? 'pending');
+      const sessionWithStatus = { ...sessionObj, status: computedStatus };
+
+      return reply.send({ data: { session: sessionWithStatus, ideas, pickedDraftId }, error: null });
     } catch (error) {
       return sendError(reply, error);
     }
@@ -788,7 +836,6 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
           input_mode: orig.input_mode,
           input_json: inputJson,
           model_tier: orig.model_tier,
-          status: 'running',
         })
         .select()
         .single();
@@ -885,9 +932,12 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
           }).upsert(ideaRows, { onConflict: 'idea_id', ignoreDuplicates: true });
         }
 
-        await (sb.from('brainstorm_sessions') as unknown as {
-          update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        }).update({ status: 'completed', ...(recommendation ? { recommendation_json: recommendation } : {}) }).eq('id', session.id);
+        // BRI-157: status write removed — derived from stage_runs.
+        if (recommendation) {
+          await (sb.from('brainstorm_sessions') as unknown as {
+            update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
+          }).update({ recommendation_json: recommendation }).eq('id', session.id);
+        }
 
         await commit(regenToken, STAGE_COSTS.brainstorm, 'brainstorm', 'text', { regeneratedFrom: id });
 
@@ -902,9 +952,10 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
         return reply.send({ data: { sessionId: session.id, ideas: ideaRows }, error: null });
       } catch (err) {
         await release(regenToken).catch(() => { /* best-effort */ });
+        // BRI-157: status write removed — derived from stage_runs. Keep error_message.
         await (sb.from('brainstorm_sessions') as unknown as {
           update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<unknown> };
-        }).update({ status: 'failed', error_message: (err as Error)?.message?.slice(0, 500) }).eq('id', session.id);
+        }).update({ error_message: (err as Error)?.message?.slice(0, 500) }).eq('id', session.id);
         // Reconcile the Stage Run to failed (best-effort).
         if (regenRunId && regenProjectId) {
           await markFailed(sb, regenRunId, {

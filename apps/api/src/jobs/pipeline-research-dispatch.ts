@@ -91,6 +91,7 @@ export const pipelineResearchDispatch = inngest.createFunction(
     const modelTier = (input.modelTier as string | undefined) ?? 'standard';
     const reviewFeedback = input.reviewFeedback ?? null;
 
+    // BRI-157: status write removed — derived from stage_runs.
     const { data: session, error: insertError } = await sb
       .from('research_sessions')
       .insert({
@@ -103,7 +104,6 @@ export const pipelineResearchDispatch = inngest.createFunction(
         focus_tags: focusTags,
         input_json: { topic, ideaTitle: topic, focusTags, level, reviewFeedback },
         model_tier: modelTier,
-        status: 'running',
       })
       .select()
       .single();

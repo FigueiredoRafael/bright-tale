@@ -80,6 +80,7 @@ export const pipelineBrainstormDispatch = inngest.createFunction(
 
     // Insert the brainstorm_sessions row that drives the existing job.
     const inputMode = (input.mode as string) === 'reference_guided' ? 'reference_guided' : 'fine_tuned';
+    // BRI-157: status write removed — derived from stage_runs.
     const { data: session } = await sb
       .from('brainstorm_sessions')
       .insert({
@@ -90,7 +91,6 @@ export const pipelineBrainstormDispatch = inngest.createFunction(
         input_mode: inputMode,
         input_json: input,
         model_tier: 'standard',
-        status: 'running',
       })
       .select()
       .single();
