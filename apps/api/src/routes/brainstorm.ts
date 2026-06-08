@@ -203,7 +203,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
 
       const { data: session } = await sb
         .from('brainstorm_sessions')
-        .select('id, status, user_id, project_id')
+        .select('id, user_id, project_id')
         .eq('id', id)
         .maybeSingle();
 
@@ -211,12 +211,12 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       const sessionRow = session as Record<string, unknown>;
       if (sessionRow.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
 
-      // Derive status from stage_run (single source of truth); fall back to
-      // column value for legacy sessions without a project_id (removed in D24c).
+      // Derive status from stage_run — the single source of truth (D24c dropped
+      // the legacy *_sessions.status column). Null-project sessions → 'pending'.
       const cancelProjectId = sessionRow.project_id as string | null | undefined;
       const derivedStatus = cancelProjectId
         ? await sessionStatusFromStageRun(sb, cancelProjectId, 'brainstorm')
-        : ((sessionRow.status as string | undefined) ?? 'pending');
+        : 'pending';
 
       if (derivedStatus !== 'running' && derivedStatus !== 'awaiting_manual') {
         return reply.send({ data: { status: derivedStatus }, error: null });
@@ -270,7 +270,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
 
       const { data: session, error: fetchErr } = await sb
         .from('brainstorm_sessions')
-        .select('id, status, channel_id, project_id, org_id, user_id')
+        .select('id, channel_id, project_id, org_id, user_id')
         .eq('id', id)
         .maybeSingle();
       if (fetchErr) throw fetchErr;
@@ -278,12 +278,12 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       const row = session as Record<string, unknown>;
       if (row.user_id !== request.userId) throw new ApiError(403, 'Forbidden', 'FORBIDDEN');
 
-      // Derive status from stage_run (single source of truth); fall back to
-      // column value for legacy sessions without a project_id (removed in D24c).
+      // Derive status from stage_run — the single source of truth (D24c dropped
+      // the legacy *_sessions.status column). Null-project sessions → 'pending'.
       const manualOutputProjectId = row.project_id as string | null | undefined;
       const manualDerivedStatus = manualOutputProjectId
         ? await sessionStatusFromStageRun(sb, manualOutputProjectId, 'brainstorm')
-        : ((row.status as string | undefined) ?? 'pending');
+        : 'pending';
 
       if (manualDerivedStatus !== 'awaiting_manual') {
         throw new ApiError(409, `Session is not awaiting manual output (status=${manualDerivedStatus})`, 'CONFLICT');
@@ -786,7 +786,7 @@ export async function brainstormRoutes(fastify: FastifyInstance): Promise<void> 
       const getIdProjectId = sessionObj.project_id as string | null | undefined;
       const computedStatus = getIdProjectId
         ? await sessionStatusFromStageRun(sb, getIdProjectId, 'brainstorm')
-        : ((sessionObj.status as string | undefined) ?? 'pending');
+        : 'pending';
       const sessionWithStatus = { ...sessionObj, status: computedStatus };
 
       return reply.send({ data: { session: sessionWithStatus, ideas, pickedDraftId }, error: null });

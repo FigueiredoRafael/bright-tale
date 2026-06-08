@@ -255,7 +255,9 @@ describe('POST /api/brainstorm/sessions — provider=manual', () => {
 
 describe('POST /api/brainstorm/sessions/:id/manual-output', () => {
   it('persists ideas, flips status to completed, emits Axiom manual.completed', async () => {
-    nextSession = { id: 'session-1', status: 'awaiting_manual', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
+    // BRI-158: status derived from stage_run (column dropped); an awaiting_manual run passes the guard.
+    nextSession = { id: 'session-1', channel_id: null, project_id: 'proj-1', org_id: 'org-1', user_id: 'user-1' };
+    nextStageRun = { id: 'run-1', status: 'awaiting_user', awaiting_reason: 'manual_paste', attempt_no: 1 };
 
     const pastedOutput = {
       recommendation: { pick: 'BC-IDEA-001', rationale: 'strong hook' },
@@ -296,7 +298,9 @@ describe('POST /api/brainstorm/sessions/:id/manual-output', () => {
   });
 
   it('returns 409 when the session is already completed', async () => {
-    nextSession = { id: 'session-1', status: 'completed', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
+    // BRI-158: guard derives from stage_run; a completed run → not awaiting → 409.
+    nextSession = { id: 'session-1', channel_id: null, project_id: 'proj-1', org_id: 'org-1', user_id: 'user-1' };
+    nextStageRun = { id: 'run-1', status: 'completed', attempt_no: 1 };
 
     const res = await app.inject({
       method: 'POST',
@@ -309,7 +313,8 @@ describe('POST /api/brainstorm/sessions/:id/manual-output', () => {
   });
 
   it('returns 400 when no ideas found in the pasted output', async () => {
-    nextSession = { id: 'session-1', status: 'awaiting_manual', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
+    nextSession = { id: 'session-1', channel_id: null, project_id: 'proj-1', org_id: 'org-1', user_id: 'user-1' };
+    nextStageRun = { id: 'run-1', status: 'awaiting_user', awaiting_reason: 'manual_paste', attempt_no: 1 };
 
     const res = await app.inject({
       method: 'POST',

@@ -228,7 +228,9 @@ describe('POST /api/research/ — provider=manual', () => {
 
 describe('POST /api/research/:id/manual-output', () => {
   it('persists findings object, flips status to completed, emits Axiom manual.completed', async () => {
-    nextSession = { id: 'session-1', status: 'awaiting_manual', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
+    // BRI-158: status derived from stage_run (column dropped); an awaiting_manual run passes the guard.
+    nextSession = { id: 'session-1', channel_id: null, project_id: 'proj-1', org_id: 'org-1', user_id: 'user-1' };
+    nextStageRun = { id: 'run-1', status: 'awaiting_user', awaiting_reason: 'manual_paste', attempt_no: 1 };
 
     const pastedOutput = {
       sources: [
@@ -269,8 +271,10 @@ describe('POST /api/research/:id/manual-output', () => {
     expect(completedEvent!.metadata).toHaveProperty('stage', 'research');
   });
 
-  it('does NOT reconcile a stage_run when project_id is null (standalone session)', async () => {
-    nextSession = { id: 'session-1', status: 'awaiting_manual', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
+  it('returns 409 for a legacy null-project session (no stage_run to derive status post-D24c)', async () => {
+    // BRI-158: column dropped. A legacy session with no project_id has no status
+    // source, so the guard derives 'pending' and rejects the manual paste.
+    nextSession = { id: 'session-1', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
 
     const res = await app.inject({
       method: 'POST',
@@ -284,10 +288,8 @@ describe('POST /api/research/:id/manual-output', () => {
       },
     });
 
-    expect(res.statusCode).toBe(200);
-    // No stage_run insert or update should have occurred (no project context)
-    const stageRunWrites = stageRunUpdates.filter((u) => u.patch.status === 'completed');
-    expect(stageRunWrites).toHaveLength(0);
+    expect(res.statusCode).toBe(409);
+    // Handler rejects before any stage_run reconciliation.
     expect(stageRunInserts).toHaveLength(0);
   });
 
@@ -317,7 +319,8 @@ describe('POST /api/research/:id/manual-output', () => {
   });
 
   it('persists findings when output has cards array (legacy)', async () => {
-    nextSession = { id: 'session-1', status: 'awaiting_manual', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
+    nextSession = { id: 'session-1', channel_id: null, project_id: 'proj-1', org_id: 'org-1', user_id: 'user-1' };
+    nextStageRun = { id: 'run-1', status: 'awaiting_user', awaiting_reason: 'manual_paste', attempt_no: 1 };
 
     const pastedOutput = {
       cards: [
@@ -348,7 +351,9 @@ describe('POST /api/research/:id/manual-output', () => {
   });
 
   it('returns 409 when the session is not awaiting_manual', async () => {
-    nextSession = { id: 'session-1', status: 'completed', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
+    // BRI-158: guard derives from stage_run; a completed run → not awaiting → 409.
+    nextSession = { id: 'session-1', channel_id: null, project_id: 'proj-1', org_id: 'org-1', user_id: 'user-1' };
+    nextStageRun = { id: 'run-1', status: 'completed', attempt_no: 1 };
 
     const res = await app.inject({
       method: 'POST',
@@ -361,7 +366,8 @@ describe('POST /api/research/:id/manual-output', () => {
   });
 
   it('returns 400 when no research data found in the pasted output', async () => {
-    nextSession = { id: 'session-1', status: 'awaiting_manual', channel_id: null, project_id: null, org_id: 'org-1', user_id: 'user-1' };
+    nextSession = { id: 'session-1', channel_id: null, project_id: 'proj-1', org_id: 'org-1', user_id: 'user-1' };
+    nextStageRun = { id: 'run-1', status: 'awaiting_user', awaiting_reason: 'manual_paste', attempt_no: 1 };
 
     const res = await app.inject({
       method: 'POST',

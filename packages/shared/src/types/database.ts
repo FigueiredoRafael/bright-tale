@@ -1080,7 +1080,6 @@ export type Database = {
           org_id: string
           project_id: string | null
           recommendation_json: Json | null
-          status: string
           updated_at: string
           user_id: string
         }
@@ -1095,7 +1094,6 @@ export type Database = {
           org_id: string
           project_id?: string | null
           recommendation_json?: Json | null
-          status?: string
           updated_at?: string
           user_id: string
         }
@@ -1110,7 +1108,6 @@ export type Database = {
           org_id?: string
           project_id?: string | null
           recommendation_json?: Json | null
-          status?: string
           updated_at?: string
           user_id?: string
         }
@@ -3814,7 +3811,6 @@ export type Database = {
           pivot_applied: boolean | null
           project_id: string | null
           refined_angle_json: Json | null
-          status: string
           updated_at: string
           user_id: string
         }
@@ -3834,7 +3830,6 @@ export type Database = {
           pivot_applied?: boolean | null
           project_id?: string | null
           refined_angle_json?: Json | null
-          status?: string
           updated_at?: string
           user_id: string
         }
@@ -3854,7 +3849,6 @@ export type Database = {
           pivot_applied?: boolean | null
           project_id?: string | null
           refined_angle_json?: Json | null
-          status?: string
           updated_at?: string
           user_id?: string
         }
