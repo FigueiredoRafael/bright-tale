@@ -47,8 +47,13 @@ vi.mock('../../lib/signals/trends.js', () => ({
   fetchTrends: async () => null,
 }));
 
+// generateWithFallback mock: controlled via shouldRegenFail flag
+let shouldRegenFail = false;
 vi.mock('../../lib/ai/router.js', () => ({
-  generateWithFallback: async () => ({ result: { sources: [{ title: 'Regen result', url: 'http://x.com', type: 'source' }], research_summary: 'Regen summary' } }),
+  generateWithFallback: async () => {
+    if (shouldRegenFail) throw new Error('AI provider error');
+    return { result: { sources: [{ title: 'Regen result', url: 'http://x.com', type: 'source' }], research_summary: 'Regen summary' } };
+  },
   LEVEL_COSTS: { surface: 1, medium: 2, deep: 3 },
 }));
 
@@ -161,6 +166,7 @@ beforeEach(async () => {
   inngestSend.mockClear();
   emitJobEventMock.mockClear();
   nextStageRun = null;
+  shouldRegenFail = false;
 
   const { researchSessionsRoutes } = await import('../research-sessions.js');
   app = Fastify();
@@ -467,5 +473,100 @@ describe('POST /api/research/:id/cancel — stage_run reconciliation (BRI-156)',
     expect(res.statusCode).toBe(200);
     const abortedUpdates = stageRunUpdates.filter((u) => u.patch.status === 'aborted');
     expect(abortedUpdates).toHaveLength(0);
+  });
+});
+
+describe('POST /api/research/:id/regenerate — stage_run reconciliation (BRI-156)', () => {
+  it('reconciles stage_run to completed on successful regeneration with project_id', async () => {
+    // nextSession is the ORIGINAL session fetched for regen context,
+    // and also the new inserted session returned from insert.
+    nextSession = {
+      id: 'session-2',
+      status: 'running',
+      channel_id: null,
+      project_id: 'proj-1',
+      org_id: 'org-1',
+      user_id: 'user-1',
+      level: 'medium',
+      idea_id: null,
+      focus_tags: [],
+      input_json: { topic: 'espresso' },
+      model_tier: 'standard',
+    };
+    nextStageRun = null; // no pre-existing stage_run → ensureStageRunId inserts one
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/research/session-1/regenerate',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // ensureStageRunId must have inserted a new stage_run
+    expect(stageRunInserts.length).toBeGreaterThan(0);
+    const insertedRun = stageRunInserts[0];
+    expect(insertedRun.stage).toBe('research');
+    expect(insertedRun.project_id).toBe('proj-1');
+    // markCompleted must have updated it to completed
+    const completedUpdate = stageRunUpdates.find((u) => u.patch.status === 'completed' && u.id === 'run-1');
+    expect(completedUpdate).toBeDefined();
+  });
+
+  it('does NOT reconcile stage_run when project_id is null (standalone regen)', async () => {
+    nextSession = {
+      id: 'session-2',
+      status: 'running',
+      channel_id: null,
+      project_id: null,
+      org_id: 'org-1',
+      user_id: 'user-1',
+      level: 'medium',
+      idea_id: null,
+      focus_tags: [],
+      input_json: { topic: 'espresso' },
+      model_tier: 'standard',
+    };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/research/session-1/regenerate',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // No stage_run insert/update should happen (no project context)
+    expect(stageRunInserts).toHaveLength(0);
+    const completedUpdates = stageRunUpdates.filter((u) => u.patch.status === 'completed');
+    expect(completedUpdates).toHaveLength(0);
+  });
+
+  it('reconciles stage_run to failed on regeneration error with project_id', async () => {
+    shouldRegenFail = true;
+    nextSession = {
+      id: 'session-2',
+      status: 'running',
+      channel_id: null,
+      project_id: 'proj-1',
+      org_id: 'org-1',
+      user_id: 'user-1',
+      level: 'medium',
+      idea_id: null,
+      focus_tags: [],
+      input_json: { topic: 'espresso' },
+      model_tier: 'standard',
+    };
+    nextStageRun = null;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/research/session-1/regenerate',
+      headers: { 'x-internal-key': 'test', 'x-user-id': 'user-1' },
+    });
+
+    // Route throws → sendError → should return a non-2xx status
+    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+    // markFailed must have updated the stage_run to failed
+    const failedUpdate = stageRunUpdates.find((u) => u.patch.status === 'failed' && u.id === 'run-1');
+    expect(failedUpdate).toBeDefined();
   });
 });
